@@ -1,2 +1,3 @@
-# the-graph-service
-Source code for the centralized The Graph service
+# The Graph Network
+
+Source code for the network components of The Graph.
