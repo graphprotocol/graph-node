@@ -4,3 +4,5 @@ steps:
   - wait
   - label: Check coding style
     command: cargo fmt --all -- --write-mode=diff
+  - label: Run tests
+    command: cargo test
