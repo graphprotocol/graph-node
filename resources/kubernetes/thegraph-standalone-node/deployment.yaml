@@ -1,0 +1,17 @@
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: thegraph-standalone-node
+spec:
+  selector:
+    matchLabels:
+      app: thegraph-standalone-node
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: thegraph-standalone-node
+    spec:
+      containers:
+        - name: thegraph-standalone-node
+          image: gcr.io/the-graph-staging/thegraph-standalone-node:latest
