@@ -1,0 +1,11 @@
+[[package]]
+name = "thegraph"
+version = "0.1.0"
+
+[[package]]
+name = "thegraph-standalone-node"
+version = "0.1.0"
+dependencies = [
+ "thegraph 0.1.0",
+]
+
