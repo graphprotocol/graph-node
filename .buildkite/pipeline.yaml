@@ -1,0 +1,6 @@
+steps:
+  - label: Install rustfmt
+    command: rustup component add rustfmt-preview
+  - wait
+  - label: Check coding style
+    command: cargo fmt --all -- --write-mode=diff
