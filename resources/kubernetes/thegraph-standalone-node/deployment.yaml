@@ -15,3 +15,9 @@ spec:
       containers:
         - name: thegraph-standalone-node
           image: gcr.io/the-graph-staging/thegraph-standalone-node:latest
+          env:
+            - name: THEGRAPH_SENTRY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: thegraph-sentry-url
+                  key: value
