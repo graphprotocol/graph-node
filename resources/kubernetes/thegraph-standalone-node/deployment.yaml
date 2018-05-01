@@ -15,6 +15,8 @@ spec:
       containers:
         - name: thegraph-standalone-node
           image: gcr.io/the-graph-staging/thegraph-standalone-node:latest
+          ports:
+            - containerPort: 8000
           env:
             - name: THEGRAPH_SENTRY_URL
               valueFrom:
