@@ -6,3 +6,6 @@ steps:
     command: cargo fmt --all -- --write-mode=diff
   - label: Run tests
     command: cargo test
+  - label: Deploy to staging
+    trigger: the-graph-network-staging-deployment
+    branches: master
