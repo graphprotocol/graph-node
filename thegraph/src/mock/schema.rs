@@ -1,0 +1,85 @@
+use tokio;
+use futures::prelude::*;
+use futures::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
+use prelude::*;
+use common::schema::SchemaProviderEvent;
+use common::data_sources::SchemaEvent;
+use common::util::stream::StreamError;
+
+/// A mock [SchemaProvider](../common/schema/trait.SchemaProvider.html).
+pub struct MockSchemaProvider {
+    schema_event_sink: Sender<SchemaEvent>,
+    event_sink: Arc<Mutex<Option<Sender<SchemaProviderEvent>>>>,
+}
+
+impl MockSchemaProvider {
+    /// Creates a new mock [SchemaProvider](../common/schema/trait.SchemaProvider.html).
+    pub fn new() -> Self {
+        // Create a channel for receiving events from the data source provider
+        let (sink, stream) = channel(100);
+
+        // Create a new schema provider
+        let mut provider = MockSchemaProvider {
+            schema_event_sink: sink,
+            event_sink: Arc::new(Mutex::new(None)),
+        };
+
+        // Spawn a task to handle any incoming events from the data source provider
+        provider.handle_schema_events(stream);
+
+        // Return the new schema provider
+        provider
+    }
+
+    fn handle_schema_events(&mut self, stream: Receiver<SchemaEvent>) {
+        let event_sink = self.event_sink.clone();
+
+        tokio::spawn(stream.for_each(move |event| {
+            println!("Schema provider: Received schema event: {:?}", event);
+            println!("Schema provider:   Combining schemas");
+
+            // Obtain a lock on the event sink
+            let event_sink = event_sink.lock().unwrap();
+
+            // Mock processing the event from the data source provider
+            let resulting_event = SchemaProviderEvent::SchemaChanged("Combined schema");
+
+            // If we have another component listening to our events, forward the new
+            // combined schema to them through the event channel
+            match *event_sink {
+                Some(ref sink) => {
+                    println!("Schema provider:   Forwarding the combined schema");
+                    sink.clone().send(resulting_event).wait().unwrap();
+                }
+                None => {
+                    println!("Schema provider:   Not forwarding the combined schema yet");
+                }
+            }
+
+            // Tokio tasks always return an empty tuple
+            Ok(())
+        }));
+    }
+}
+
+impl SchemaProvider for MockSchemaProvider {
+    fn event_stream(&mut self) -> Result<Receiver<SchemaProviderEvent>, StreamError> {
+        println!("Schema provider: Setting up event stream");
+
+        // If possible, create a new channel for streaming schema provider events
+        let mut event_sink = self.event_sink.lock().unwrap();
+        match *event_sink {
+            Some(_) => Err(StreamError::AlreadyCreated),
+            None => {
+                let (sink, stream) = channel(100);
+                *event_sink = Some(sink);
+                Ok(stream)
+            }
+        }
+    }
+
+    fn schema_event_sink(&mut self) -> Sender<SchemaEvent> {
+        self.schema_event_sink.clone()
+    }
+}
