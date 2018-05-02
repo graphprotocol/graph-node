@@ -1,3 +1,9 @@
+extern crate futures;
+extern crate hyper;
+
+/// Mock implementations for all system components.
+pub mod mock;
+
 /// Common traits and types for all system components.
 pub mod common;
 
