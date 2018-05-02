@@ -1,5 +1,5 @@
 [workspace]
 members = [
     "thegraph",
-    "thegraph-standalone-node",
+    "thegraph-local-node",
 ]
