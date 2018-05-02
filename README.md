@@ -4,7 +4,7 @@ This repository contains the source code for the network components of The Graph
 Right now, this includes:
 
 1. A common library used by all nodes, called `thegraph`.
-2. A standalone The Graph node, called `thegraph-standalone-node`.
+2. A local-only The Graph node, called `thegraph-local-node`.
 
 ## Prerequisites
 
@@ -25,8 +25,7 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 
 ### Running
 
-To build and run the standalone node from the root directory in this repository,
-simply run
+To build and run the local node from the root directory in this repository, simply run
 ```sh
-cargo run -p thegraph-standalone-node
+cargo run -p thegraph-local-node
 ````

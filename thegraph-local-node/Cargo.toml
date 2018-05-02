@@ -1,7 +1,9 @@
 [package]
-name = "thegraph-standalone-node"
+name = "thegraph-local-node"
 version = "0.1.0"
 
 [dependencies]
+futures = "0.1.21"
 sentry = "0.3.1"
+tokio = "0.1.5"
 thegraph = { path = "../thegraph" }
