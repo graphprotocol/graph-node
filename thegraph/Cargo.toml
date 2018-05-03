@@ -3,5 +3,6 @@ name = "thegraph"
 version = "0.1.0"
 
 [dependencies]
-hyper = { git = "https://github.com/hyperium/hyper", branch = "master" }
 futures = "0.1.21"
+hyper = { git = "https://github.com/hyperium/hyper", branch = "master" }
+tokio = "0.1.6"

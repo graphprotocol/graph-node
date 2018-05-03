@@ -1,5 +1,6 @@
 extern crate futures;
 extern crate hyper;
+extern crate tokio;
 
 /// Mock implementations for all system components.
 pub mod mock;

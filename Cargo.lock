@@ -1146,6 +1146,7 @@ version = "0.1.0"
 dependencies = [
  "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper 0.12.0-pre.0 (git+https://github.com/hyperium/hyper)",
+ "tokio 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
