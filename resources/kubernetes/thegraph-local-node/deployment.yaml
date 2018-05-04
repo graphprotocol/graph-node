@@ -1,20 +1,20 @@
 apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
-  name: thegraph-standalone-node
+  name: thegraph-local-node
 spec:
   selector:
     matchLabels:
-      app: thegraph-standalone-node
+      app: thegraph-local-node
   replicas: 1
   template:
     metadata:
       labels:
-        app: thegraph-standalone-node
+        app: thegraph-local-node
     spec:
       containers:
-        - name: thegraph-standalone-node
-          image: gcr.io/the-graph-staging/thegraph-standalone-node:latest
+        - name: thegraph-local-node
+          image: gcr.io/the-graph-staging/thegraph-local-node:latest
           ports:
             - containerPort: 8000
           env:
