@@ -16,7 +16,8 @@ spec:
         - name: thegraph-local-node
           image: gcr.io/the-graph-staging/thegraph-local-node:latest
           ports:
-            - containerPort: 8000
+            - name: http
+              containerPort: 8000
           env:
             - name: THEGRAPH_SENTRY_URL
               valueFrom:
