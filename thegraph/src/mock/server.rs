@@ -199,7 +199,7 @@ impl GraphQLServer<Request<Body>> for MockGraphQLServer {
 
     fn serve(&mut self) -> Result<Box<Future<Item = (), Error = ()> + Send>, GraphQLServerError> {
         // We will listen on port 8000
-        let addr = "127.0.0.1:8000".parse().unwrap();
+        let addr = "0.0.0.0:8000".parse().unwrap();
 
         // Only launch the GraphQL server if there is a component that will handle incoming queries
         match self.query_sink {
