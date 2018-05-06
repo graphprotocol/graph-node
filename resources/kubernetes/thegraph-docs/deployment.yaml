@@ -1,0 +1,20 @@
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: thegraph-docs
+spec:
+  selector:
+    matchLabels:
+      app: thegraph-docs
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: thegraph-docs
+    spec:
+      containers:
+        - name: thegraph-docs
+          image: gcr.io/the-graph-staging/thegraph-docs:latest
+          ports:
+            - name: http
+              containerPort: 8000
