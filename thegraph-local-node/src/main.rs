@@ -4,6 +4,7 @@ extern crate sentry;
 #[macro_use]
 extern crate slog;
 extern crate thegraph;
+extern crate thegraph_hyper;
 extern crate tokio;
 
 use sentry::integrations::panic::register_panic_handler;
@@ -11,6 +12,7 @@ use std::env;
 use thegraph::common::util::log::logger;
 use thegraph::prelude::*;
 use thegraph::mock;
+use thegraph_hyper::HyperGraphQLServer;
 use tokio::prelude::*;
 
 fn main() {
@@ -41,6 +43,7 @@ fn main() {
         let mut schema_provider = mock::MockSchemaProvider::new(&logger);
         let mut store = mock::MockStore::new(&logger);
         let mut graphql_server = mock::MockGraphQLServer::new(&logger);
+        let mut graphql_server = HyperGraphQLServer::new();
 
         // Forward schema events from the data source provider to the schema provider
         let schema_stream = data_source_provider.schema_event_stream().unwrap();

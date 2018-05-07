@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "thegraph",
+    "thegraph-hyper",
     "thegraph-local-node",
 ]
