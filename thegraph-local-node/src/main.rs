@@ -42,8 +42,7 @@ fn main() {
         let mut data_source_provider = mock::MockDataSourceProvider::new(&logger);
         let mut schema_provider = mock::MockSchemaProvider::new(&logger);
         let mut store = mock::MockStore::new(&logger);
-        let mut graphql_server = mock::MockGraphQLServer::new(&logger);
-        let mut graphql_server = HyperGraphQLServer::new();
+        let mut graphql_server = HyperGraphQLServer::new(&logger);
 
         // Forward schema events from the data source provider to the schema provider
         let schema_stream = data_source_provider.schema_event_stream().unwrap();
