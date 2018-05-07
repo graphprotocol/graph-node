@@ -3,6 +3,7 @@ use futures::prelude::*;
 use futures::future;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use futures::sync::oneshot;
+use graphql_parser;
 use hyper;
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use hyper::service::Service;
@@ -63,12 +64,12 @@ impl Future for GraphQLResponse {
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
 struct GraphQLService {
-    query_sink: Sender<Query<Request<Body>>>,
+    query_sink: Sender<Query>,
 }
 
 impl GraphQLService {
     /// Creates a new GraphQL service.
-    pub fn new(query_sink: Sender<Query<Request<Body>>>) -> Self {
+    pub fn new(query_sink: Sender<Query>) -> Self {
         GraphQLService { query_sink }
     }
 
@@ -85,7 +86,7 @@ impl GraphQLService {
             self.query_sink
                 .clone()
                 .send(Query {
-                    request: req,
+                    document: graphql_parser::parse_query("query { allUsers }").unwrap(),
                     result_sender: sender,
                 })
                 .map_err(|e| panic!("Failed to feed query into the system: {}", e))
@@ -132,7 +133,7 @@ impl Service for GraphQLService {
 /// A mock [GraphQLServer](../common/server/trait.GraphQLServer.html) based on Hyper.
 pub struct MockGraphQLServer {
     logger: slog::Logger,
-    query_sink: Option<Sender<Query<Request<Body>>>>,
+    query_sink: Option<Sender<Query>>,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
     store_event_sink: Sender<StoreEvent>,
 }
@@ -181,7 +182,7 @@ impl MockGraphQLServer {
     }
 }
 
-impl GraphQLServer<Request<Body>> for MockGraphQLServer {
+impl GraphQLServer for MockGraphQLServer {
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
         self.schema_provider_event_sink.clone()
     }
@@ -190,7 +191,7 @@ impl GraphQLServer<Request<Body>> for MockGraphQLServer {
         self.store_event_sink.clone()
     }
 
-    fn query_stream(&mut self) -> Result<Receiver<Query<Request<Body>>>, StreamError> {
+    fn query_stream(&mut self) -> Result<Receiver<Query>, StreamError> {
         // If possible, create a new channel for streaming incoming queries
         match self.query_sink {
             Some(_) => Err(StreamError::AlreadyCreated),
