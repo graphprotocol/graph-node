@@ -1,16 +1,23 @@
 extern crate futures;
 #[macro_use]
 extern crate sentry;
+#[macro_use]
+extern crate slog;
 extern crate thegraph;
 extern crate tokio;
 
 use sentry::integrations::panic::register_panic_handler;
 use std::env;
+use thegraph::common::util::log::logger;
 use thegraph::prelude::*;
 use thegraph::mock;
 use tokio::prelude::*;
 
 fn main() {
+    let logger = logger();
+
+    debug!(logger, "Setting up Sentry");
+
     // Set up Sentry, with release tracking and panic handling;
     // fall back to an empty URL, which will result in no errors being reported
     let sentry_url = env::var_os("THEGRAPH_SENTRY_URL")
@@ -25,13 +32,15 @@ fn main() {
     ));
     register_panic_handler();
 
+    info!(logger, "Starting up");
+
     // Start the node
-    tokio::run(future::lazy(|| {
+    tokio::run(future::lazy(move || {
         // Create system components
-        let mut data_source_provider = mock::MockDataSourceProvider::new();
-        let mut schema_provider = mock::MockSchemaProvider::new();
-        let mut store = mock::MockStore::new();
-        let mut graphql_server = mock::MockGraphQLServer::new();
+        let mut data_source_provider = mock::MockDataSourceProvider::new(&logger);
+        let mut schema_provider = mock::MockSchemaProvider::new(&logger);
+        let mut store = mock::MockStore::new(&logger);
+        let mut graphql_server = mock::MockGraphQLServer::new(&logger);
 
         // Forward schema events from the data source provider to the schema provider
         let schema_stream = data_source_provider.schema_event_stream().unwrap();
@@ -70,7 +79,7 @@ fn main() {
         });
 
         // Forward incoming queries from the GraphQL server to the query runner
-        let mut query_runner = mock::MockQueryRunner::new(store);
+        let mut query_runner = mock::MockQueryRunner::new(&logger, store);
         let query_stream = graphql_server.query_stream().unwrap();
         tokio::spawn({
             query_stream
