@@ -1,5 +1,9 @@
 extern crate futures;
 extern crate hyper;
+#[macro_use]
+extern crate slog;
+extern crate slog_async;
+extern crate slog_term;
 extern crate tokio;
 
 /// Mock implementations for all system components.

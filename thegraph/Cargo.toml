@@ -5,4 +5,7 @@ version = "0.1.0"
 [dependencies]
 futures = "0.1.21"
 hyper = { git = "https://github.com/hyperium/hyper", branch = "master" }
+slog = "2.2.3"
+slog-async = "2.3.0"
+slog-term = "2.4.0"
 tokio = "0.1.6"
