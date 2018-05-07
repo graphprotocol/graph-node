@@ -2,22 +2,20 @@ use prelude::*;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
-use std::fmt::Debug;
 use std::sync::Arc;
 use tokio;
 
 use common::query::{Query, QueryResult};
 
 /// A mock [QueryRunner](../common/query/trait.QueryRunner.html).
-pub struct MockQueryRunner<T, S> {
+pub struct MockQueryRunner<S> {
     logger: slog::Logger,
-    query_sink: Sender<Query<T>>,
+    query_sink: Sender<Query>,
     store: Arc<S>,
 }
 
-impl<T, S> MockQueryRunner<T, S>
+impl<S> MockQueryRunner<S>
 where
-    T: Debug + Send + 'static,
     S: Store + Send + Sync + Sized + 'static,
 {
     /// Creates a new mock [QueryRunner](../common/query/trait.QueryRunner.html).
@@ -33,7 +31,7 @@ where
     }
 
     /// Spawns a Tokio task to run any queries received through the given stream.
-    fn run_queries(&self, stream: Receiver<Query<T>>) {
+    fn run_queries(&self, stream: Receiver<Query>) {
         info!(self.logger, "Preparing to run queries");
 
         let store = self.store.clone();
@@ -54,8 +52,8 @@ where
     }
 }
 
-impl<T, S> QueryRunner<T> for MockQueryRunner<T, S> {
-    fn query_sink(&mut self) -> Sender<Query<T>> {
+impl<S> QueryRunner for MockQueryRunner<S> {
+    fn query_sink(&mut self) -> Sender<Query> {
         self.query_sink.clone()
     }
 }
