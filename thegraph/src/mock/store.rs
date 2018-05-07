@@ -1,24 +1,28 @@
 use tokio;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use slog;
+
 use common::store::*;
 use common::schema::SchemaProviderEvent;
 use common::util::stream::StreamError;
 
 /// A mock [Store](../common/store/trait.Store.html).
 pub struct MockStore {
+    logger: slog::Logger,
     event_sink: Option<Sender<StoreEvent>>,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
 }
 
 impl MockStore {
     /// Creates a new mock [Store](../common/store/trait.Store.html).
-    pub fn new() -> Self {
+    pub fn new(logger: &slog::Logger) -> Self {
         // Create a channel for handling incoming schema provider events
         let (sink, stream) = channel(100);
 
         // Create a new mock store
         let mut store = MockStore {
+            logger: logger.new(o!("component" => "MockStore")),
             event_sink: None,
             schema_provider_event_sink: sink,
         };
@@ -32,14 +36,17 @@ impl MockStore {
 
     /// Handles incoming schema provider events.
     fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaProviderEvent>) {
-        tokio::spawn(stream.for_each(|event| {
-            println!("Store: Received schema provider event: {:?}", event);
+        let logger = self.logger.clone();
+        tokio::spawn(stream.for_each(move |event| {
+            info!(logger, "Received schema provider event: {:?}", event);
             Ok(())
         }));
     }
 
     /// Generates a bunch of mock store events.
     fn generate_mock_events(&self) {
+        info!(self.logger, "Generate mock events");
+
         let sink = self.event_sink.clone().unwrap();
         sink.clone()
             .send(StoreEvent::EntityAdded("Entity 1"))

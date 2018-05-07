@@ -6,6 +6,8 @@ use futures::sync::oneshot;
 use hyper;
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use hyper::service::Service;
+use slog;
+
 use prelude::*;
 use common::query::{Query, QueryResult};
 use common::schema::SchemaProviderEvent;
@@ -129,6 +131,7 @@ impl Service for GraphQLService {
 
 /// A mock [GraphQLServer](../common/server/trait.GraphQLServer.html) based on Hyper.
 pub struct MockGraphQLServer {
+    logger: slog::Logger,
     query_sink: Option<Sender<Query<Request<Body>>>>,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
     store_event_sink: Sender<StoreEvent>,
@@ -136,13 +139,14 @@ pub struct MockGraphQLServer {
 
 impl MockGraphQLServer {
     /// Creates a new mock [GraphQLServer](../common/server/trait.GraphQLServer.html).
-    pub fn new() -> Self {
+    pub fn new(logger: &slog::Logger) -> Self {
         // Create channels for handling incoming events from the schema provider and the store
         let (store_sink, store_stream) = channel(100);
         let (schema_provider_sink, schema_provider_stream) = channel(100);
 
         // Create a new mock GraphQL server
         let mut server = MockGraphQLServer {
+            logger: logger.new(o!("component" => "MockGraphQLServer")),
             query_sink: None,
             schema_provider_event_sink: schema_provider_sink,
             store_event_sink: store_sink,
@@ -158,19 +162,20 @@ impl MockGraphQLServer {
 
     /// Handle incoming events from the schema provider
     fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaProviderEvent>) {
-        tokio::spawn(stream.for_each(|event| {
-            println!(
-                "GraphQL server: Received schema provider event: {:?}",
-                event
-            );
+        let logger = self.logger.clone();
+
+        tokio::spawn(stream.for_each(move |event| {
+            info!(logger, "Received schema provider event"; "event" => format!("{:?}", event));
             Ok(())
         }));
     }
 
     // Handle incoming events from the store
     fn handle_store_events(&mut self, stream: Receiver<StoreEvent>) {
-        tokio::spawn(stream.for_each(|event| {
-            println!("GraphQL server: Received store event: {:?}", event);
+        let logger = self.logger.clone();
+
+        tokio::spawn(stream.for_each(move |event| {
+            info!(logger, "Received store event"; "event" => format!("{:?}", event));
             Ok(())
         }));
     }
