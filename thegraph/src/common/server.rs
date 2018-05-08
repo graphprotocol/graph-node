@@ -70,6 +70,8 @@ impl Error for GraphQLServerError {
 
 /// Common trait for GraphQL server implementations.
 pub trait GraphQLServer {
+    type ServeError;
+
     /// Sender to which others should write whenever the schema that the server
     /// should serve changes.
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent>;
@@ -83,5 +85,5 @@ pub trait GraphQLServer {
     fn query_stream(&mut self) -> Result<Receiver<Query>, StreamError>;
 
     /// Creates a new Tokio task that, when spawned, brings up the GraphQL server.
-    fn serve(&mut self) -> Result<Box<Future<Item = (), Error = ()> + Send>, GraphQLServerError>;
+    fn serve(&mut self) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError>;
 }
