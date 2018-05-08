@@ -1,5 +1,6 @@
 use futures::prelude::*;
 use futures::sync::oneshot;
+use hyper::Chunk;
 use graphql_parser;
 use serde_json;
 
@@ -8,13 +9,13 @@ use thegraph::common::server::GraphQLServerError;
 
 /// Future for a query parsed from an HTTP request.
 pub struct GraphQLRequest {
-    data: serde_json::Value,
+    body: Chunk,
 }
 
 impl GraphQLRequest {
     /// Creates a new GraphQLRequest future based on an HTTP request and a result sender.
-    pub fn new(data: serde_json::Value) -> Self {
-        GraphQLRequest { data }
+    pub fn new(body: Chunk) -> Self {
+        GraphQLRequest { body }
     }
 }
 
@@ -23,8 +24,12 @@ impl Future for GraphQLRequest {
     type Error = GraphQLServerError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        // Parse request body as JSON
+        let json: serde_json::Value = serde_json::from_slice(&self.body)
+            .or_else(|e| Err(GraphQLServerError::ClientError(format!("{}", e))))?;
+
         // Ensure the JSON data is an object
-        let obj = self.data.as_object().ok_or_else(|| {
+        let obj = json.as_object().ok_or_else(|| {
             GraphQLServerError::ClientError(String::from("Request data is not an object"))
         })?;
 
