@@ -3,7 +3,6 @@ use futures::future;
 use futures::sync::mpsc::Sender;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use hyper::service::Service;
-use serde_json;
 
 use thegraph::common::query::Query;
 use thegraph::common::server::GraphQLServerError;
@@ -36,11 +35,7 @@ impl GraphQLService {
                 .into_body()
                 .concat2()
                 .map_err(|_| GraphQLServerError::from("Failed to read request body"))
-                .and_then(|body| {
-                    serde_json::from_slice(&body)
-                        .or_else(|e| Err(GraphQLServerError::ClientError(format!("{}", e))))
-                })
-                .and_then(|data| GraphQLRequest::new(data))
+                .and_then(|body| GraphQLRequest::new(body))
                 .and_then(move |(query, receiver)| {
                     // Forward the query to the system
                     query_sink
