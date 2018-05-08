@@ -28,13 +28,17 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 To build and run a local node from the root directory in this repository, simply run
 ```sh
 cargo run -p thegraph-local-node
-````
+```
 
 ### Developing
 
 While developing, a useful command to run in the background is this:
 ```sh
-cargo watch -x check -x "doc --no-deps" -x "fmt -all"
+cargo watch                       \
+    -x "test -- --test-threads=1" \
+    -x check                      \
+    -x "doc --no-deps"            \
+    -x "fmt -all"
 ```
 This will watch your source directory and continuously do the following on changes:
 
