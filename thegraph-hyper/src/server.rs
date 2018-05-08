@@ -5,15 +5,38 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use hyper;
 use hyper::Server;
 use slog;
+use std::error::Error;
+use std::fmt;
 
 use thegraph::prelude::GraphQLServer;
 use thegraph::common::query::Query;
 use thegraph::common::schema::SchemaProviderEvent;
-use thegraph::common::server::GraphQLServerError;
 use thegraph::common::store::StoreEvent;
 use thegraph::common::util::stream::StreamError;
 
 use service::GraphQLService;
+
+/// Errors that may occur when starting the server.
+#[derive(Debug)]
+pub enum HyperGraphQLServeError {
+    OrphanError,
+}
+
+impl Error for HyperGraphQLServeError {
+    fn description(&self) -> &str {
+        "Failed to start the server"
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        None
+    }
+}
+
+impl fmt::Display for HyperGraphQLServeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "OrphanError: No component set up to handle the queries")
+    }
+}
 
 /// A [GraphQLServer](../common/server/trait.GraphQLServer.html) based on Hyper.
 pub struct HyperGraphQLServer {
@@ -72,6 +95,8 @@ impl HyperGraphQLServer {
 }
 
 impl GraphQLServer for HyperGraphQLServer {
+    type ServeError = HyperGraphQLServeError;
+
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
         self.schema_provider_event_sink.clone()
     }
@@ -92,33 +117,30 @@ impl GraphQLServer for HyperGraphQLServer {
         }
     }
 
-    fn serve(&mut self) -> Result<Box<Future<Item = (), Error = ()> + Send>, GraphQLServerError> {
+    fn serve(&mut self) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
         let logger = self.logger.clone();
 
         // We will listen on port 8000
         let addr = "0.0.0.0:8000".parse().unwrap();
 
         // Only launch the GraphQL server if there is a component that will handle incoming queries
-        match self.query_sink {
-            Some(ref query_sink) => {
-                // On every incoming request, launch a new GraphQL service that writes
-                // incoming queries to the query sink.
-                let query_sink = query_sink.clone();
-                let new_service = move || {
-                    let service = GraphQLService::new(query_sink.clone());
-                    future::ok::<GraphQLService, hyper::Error>(service)
-                };
+        let query_sink = self.query_sink
+            .clone()
+            .ok_or_else(|| HyperGraphQLServeError::OrphanError)?;
 
-                // Create a task to run the server and handle HTTP requests
-                let task = Server::bind(&addr)
-                    .serve(new_service)
-                    .map_err(move |e| error!(logger, "Server error"; "error" => format!("{}", e)));
+        // On every incoming request, launch a new GraphQL service that writes
+        // incoming queries to the query sink.
+        let query_sink = query_sink.clone();
+        let new_service = move || {
+            let service = GraphQLService::new(query_sink.clone());
+            future::ok::<GraphQLService, hyper::Error>(service)
+        };
 
-                Ok(Box::new(task))
-            }
-            None => Err(GraphQLServerError::InternalError(
-                "No component set up to handle incoming queries",
-            )),
-        }
+        // Create a task to run the server and handle HTTP requests
+        let task = Server::bind(&addr)
+            .serve(new_service)
+            .map_err(move |e| error!(logger, "Server error"; "error" => format!("{}", e)));
+
+        Ok(Box::new(task))
     }
 }

@@ -35,9 +35,10 @@ impl GraphQLService {
             request
                 .into_body()
                 .concat2()
-                .map_err(|_| GraphQLServerError::InternalError("Failed to read request body"))
+                .map_err(|_| GraphQLServerError::from("Failed to read request body"))
                 .and_then(|body| {
-                    serde_json::from_slice(&body).or_else(|e| Err(GraphQLServerError::from(e)))
+                    serde_json::from_slice(&body)
+                        .or_else(|e| Err(GraphQLServerError::ClientError(format!("{}", e))))
                 })
                 .and_then(|data| GraphQLRequest::new(data))
                 .and_then(move |(query, receiver)| {
