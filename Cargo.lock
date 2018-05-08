@@ -1241,11 +1241,13 @@ version = "0.1.0"
 dependencies = [
  "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
  "graphql-parser 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "http 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper 0.12.0-pre.0 (git+https://github.com/hyperium/hyper)",
  "serde_json 1.0.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "thegraph 0.1.0",
  "tokio 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

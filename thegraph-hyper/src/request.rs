@@ -62,3 +62,56 @@ impl Future for GraphQLRequest {
         )))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use graphql_parser;
+    use hyper;
+    use tokio_core::reactor::Core;
+
+    use super::GraphQLRequest;
+
+    #[test]
+    fn rejects_invalid_json() {
+        let mut core = Core::new().unwrap();
+        let request = GraphQLRequest::new(hyper::Chunk::from("!@#)%"));
+        let result = core.run(request);
+        result.expect_err("Should reject invalid JSON");
+    }
+
+    #[test]
+    fn rejects_json_without_query_field() {
+        let mut core = Core::new().unwrap();
+        let request = GraphQLRequest::new(hyper::Chunk::from("{}"));
+        let result = core.run(request);
+        result.expect_err("Should reject JSON without query field");
+    }
+
+    #[test]
+    fn rejects_json_with_non_string_query_field() {
+        let mut core = Core::new().unwrap();
+        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": 5}"));
+        let result = core.run(request);
+        result.expect_err("Should reject JSON with a non-string query field");
+    }
+
+    #[test]
+    fn rejects_broken_queries() {
+        let mut core = Core::new().unwrap();
+        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": \"foo\"}"));
+        let result = core.run(request);
+        result.expect_err("Should reject broken queries");
+    }
+
+    #[test]
+    fn accepts_valid_queries() {
+        let mut core = Core::new().unwrap();
+        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": \"{ user { name } }\"}"));
+        let result = core.run(request);
+        let (query, _) = result.expect("Should accept valid queries");
+        assert_eq!(
+            query.document,
+            graphql_parser::parse_query("{ user { name } }").unwrap()
+        );
+    }
+}
