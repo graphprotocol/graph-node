@@ -1,7 +1,6 @@
 use futures::prelude::*;
 use futures::sync::oneshot::Canceled;
 use futures::sync::mpsc::{Receiver, Sender};
-use serde_json;
 use std::error::Error;
 use std::fmt;
 use super::query::{Query, QueryError};
@@ -13,20 +12,14 @@ use super::util::stream::StreamError;
 #[derive(Debug)]
 pub enum GraphQLServerError {
     Canceled(Canceled),
-    JSONError(serde_json::Error),
+    ClientError(String),
     QueryError(QueryError),
-    InternalError(&'static str),
+    InternalError(String),
 }
 
 impl From<Canceled> for GraphQLServerError {
     fn from(e: Canceled) -> Self {
         GraphQLServerError::Canceled(e)
-    }
-}
-
-impl From<serde_json::Error> for GraphQLServerError {
-    fn from(e: serde_json::Error) -> Self {
-        GraphQLServerError::JSONError(e)
     }
 }
 
@@ -38,6 +31,12 @@ impl From<QueryError> for GraphQLServerError {
 
 impl From<&'static str> for GraphQLServerError {
     fn from(s: &'static str) -> Self {
+        GraphQLServerError::InternalError(String::from(s))
+    }
+}
+
+impl From<String> for GraphQLServerError {
+    fn from(s: String) -> Self {
         GraphQLServerError::InternalError(s)
     }
 }
@@ -46,7 +45,7 @@ impl fmt::Display for GraphQLServerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &GraphQLServerError::Canceled(ref e) => write!(f, "Query was canceled: {}", e),
-            &GraphQLServerError::JSONError(ref e) => write!(f, "JSON error: {}", e),
+            &GraphQLServerError::ClientError(ref s) => write!(f, "Client error: {}", s),
             &GraphQLServerError::QueryError(ref e) => write!(f, "Query error: {}", e),
             &GraphQLServerError::InternalError(ref s) => write!(f, "Internal error: {}", s),
         }
@@ -55,13 +54,13 @@ impl fmt::Display for GraphQLServerError {
 
 impl Error for GraphQLServerError {
     fn description(&self) -> &str {
-        "GraphQLServerError"
+        "Failed to process the GraphQL request"
     }
 
     fn cause(&self) -> Option<&Error> {
         match self {
             &GraphQLServerError::Canceled(ref e) => Some(e),
-            &GraphQLServerError::JSONError(ref e) => Some(e),
+            &GraphQLServerError::ClientError(_) => None,
             &GraphQLServerError::QueryError(ref e) => Some(e),
             &GraphQLServerError::InternalError(_) => None,
         }

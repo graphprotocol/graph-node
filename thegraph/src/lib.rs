@@ -1,7 +1,5 @@
 extern crate futures;
 extern crate graphql_parser;
-extern crate hyper;
-extern crate serde_json;
 #[macro_use]
 extern crate slog;
 extern crate slog_async;
