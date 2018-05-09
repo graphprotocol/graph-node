@@ -42,8 +42,8 @@ fn main() {
 
     // Create system components
     let mut data_source_provider = mock::MockDataSourceProvider::new(&logger);
-    let mut schema_provider = mock::MockSchemaProvider::new(&logger);
-    let mut store = mock::MockStore::new(&logger);
+    let mut schema_provider = mock::MockSchemaProvider::new(&logger, core.handle());
+    let mut store = mock::MockStore::new(&logger, core.handle());
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
 
     // Forward schema events from the data source provider to the schema provider
@@ -83,7 +83,7 @@ fn main() {
     });
 
     // Forward incoming queries from the GraphQL server to the query runner
-    let mut query_runner = mock::MockQueryRunner::new(&logger, store);
+    let mut query_runner = mock::MockQueryRunner::new(&logger, core.handle(), store);
     let query_stream = graphql_server.query_stream().unwrap();
     core.handle().spawn({
         query_stream

@@ -5,6 +5,7 @@ extern crate slog;
 extern crate slog_async;
 extern crate slog_term;
 extern crate tokio;
+extern crate tokio_core;
 
 /// Mock implementations for all system components.
 pub mod mock;
