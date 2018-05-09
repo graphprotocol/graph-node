@@ -1,8 +1,8 @@
-use tokio;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
 use std::sync::{Arc, Mutex};
+use tokio_core::reactor::Handle;
 
 use prelude::*;
 use common::schema::SchemaProviderEvent;
@@ -14,11 +14,12 @@ pub struct MockSchemaProvider {
     logger: slog::Logger,
     schema_event_sink: Sender<SchemaEvent>,
     event_sink: Arc<Mutex<Option<Sender<SchemaProviderEvent>>>>,
+    runtime: Handle,
 }
 
 impl MockSchemaProvider {
     /// Creates a new mock [SchemaProvider](../common/schema/trait.SchemaProvider.html).
-    pub fn new(logger: &slog::Logger) -> Self {
+    pub fn new(logger: &slog::Logger, runtime: Handle) -> Self {
         // Create a channel for receiving events from the data source provider
         let (sink, stream) = channel(100);
 
@@ -27,6 +28,7 @@ impl MockSchemaProvider {
             logger: logger.new(o!("component" => "MockSchemaProvider")),
             schema_event_sink: sink,
             event_sink: Arc::new(Mutex::new(None)),
+            runtime,
         };
 
         // Spawn a task to handle any incoming events from the data source provider
@@ -40,7 +42,7 @@ impl MockSchemaProvider {
         let event_sink = self.event_sink.clone();
         let logger = self.logger.clone();
 
-        tokio::spawn(stream.for_each(move |event| {
+        self.runtime.spawn(stream.for_each(move |event| {
             info!(logger, "Received schema event"; "event" => format!("{:?}", event));
             info!(logger, "Combining schemas");
 

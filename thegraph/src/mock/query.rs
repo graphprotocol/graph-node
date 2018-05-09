@@ -3,7 +3,7 @@ use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
 use std::sync::Arc;
-use tokio;
+use tokio_core::reactor::Handle;
 
 use common::query::{Query, QueryResult};
 
@@ -11,20 +11,22 @@ use common::query::{Query, QueryResult};
 pub struct MockQueryRunner<S> {
     logger: slog::Logger,
     query_sink: Sender<Query>,
-    store: Arc<S>,
+    _store: Arc<S>,
+    runtime: Handle,
 }
 
 impl<S> MockQueryRunner<S>
 where
-    S: Store + Send + Sync + Sized + 'static,
+    S: Store + Sized + 'static,
 {
     /// Creates a new mock [QueryRunner](../common/query/trait.QueryRunner.html).
-    pub fn new(logger: &slog::Logger, store: S) -> Self {
+    pub fn new(logger: &slog::Logger, runtime: Handle, store: S) -> Self {
         let (sink, stream) = channel(100);
         let runner = MockQueryRunner {
             logger: logger.new(o!("component" => "MockQueryRunner")),
             query_sink: sink,
-            store: Arc::new(store),
+            _store: Arc::new(store),
+            runtime,
         };
         runner.run_queries(stream);
         runner
@@ -34,14 +36,12 @@ where
     fn run_queries(&self, stream: Receiver<Query>) {
         info!(self.logger, "Preparing to run queries");
 
-        let store = self.store.clone();
         let logger = self.logger.clone();
 
-        tokio::spawn(stream.for_each(move |query| {
+        self.runtime.spawn(stream.for_each(move |query| {
             info!(logger, "Running query"; "query" => format!("{:?}", query));
 
             // Here we would access the store.
-            let _store = store.clone();
 
             query
                 .result_sender

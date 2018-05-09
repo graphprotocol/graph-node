@@ -1233,6 +1233,7 @@ dependencies = [
  "slog-async 2.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog-term 2.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
