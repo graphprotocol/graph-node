@@ -44,10 +44,8 @@ where
 
             // Here we would access the store.
             let mut data = HashMap::new();
-            data.insert(String::from("allUsers"), String::from("placeholder"))
-                .unwrap();
-            data.insert(String::from("allItems"), String::from("placeholder"))
-                .unwrap();
+            data.insert(String::from("allUsers"), String::from("placeholder"));
+            data.insert(String::from("allItems"), String::from("placeholder"));
 
             query
                 .result_sender
