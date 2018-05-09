@@ -85,10 +85,13 @@ mod tests {
     use http::status::StatusCode;
     use hyper::{Body, Method, Request};
     use hyper::service::Service;
+    use std::collections::HashMap;
     use tokio_core::reactor::Core;
 
     use thegraph::common::query::QueryResult;
+
     use super::GraphQLService;
+    use test_utils;
 
     #[test]
     fn posting_invalid_query_yields_error_response() {
@@ -100,11 +103,23 @@ mod tests {
         let request = Request::builder()
             .method(Method::POST)
             .uri("http://localhost:8000/")
-            .body(Body::from(""))
+            .body(Body::from("{}"))
             .unwrap();
 
-        let response = core.run(service.call(request)).unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let response = core.run(service.call(request))
+            .expect("Should return a response");
+        let errors =
+            test_utils::assert_error_response(&mut core, response, StatusCode::BAD_REQUEST);
+
+        let message = errors[0]
+            .as_object()
+            .expect("Query error is not an object")
+            .get("message")
+            .expect("Error contains no message")
+            .as_str()
+            .expect("Error message is not a string");
+
+        assert_eq!(message, "The \"query\" field missing in request data");
     }
 
     #[test]
@@ -117,7 +132,8 @@ mod tests {
         core.handle().spawn(
             query_stream
                 .for_each(move |query| {
-                    query.result_sender.send(QueryResult {}).unwrap();
+                    let result = QueryResult::new(Some(HashMap::new()));
+                    query.result_sender.send(result).unwrap();
                     Ok(())
                 })
                 .fuse(),
@@ -130,12 +146,11 @@ mod tests {
             .unwrap();
 
         // The response must be a 200
-        let response = core.run(service.call(request)).unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        let response = core.run(service.call(request))
+            .expect("Should return a response");
+        let data = test_utils::assert_successful_response(&mut core, response);
 
         // The body should match the simulated query result
-        let body = core.run(response.into_body().concat2().map(|chunk| chunk.to_vec()))
-            .unwrap();
-        assert_eq!(body, "QueryResult".as_bytes());
+        assert!(data.is_empty());
     }
 }
