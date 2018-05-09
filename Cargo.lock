@@ -1260,6 +1260,7 @@ dependencies = [
  "thegraph 0.1.0",
  "thegraph-hyper 0.1.0",
  "tokio 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
