@@ -5,7 +5,7 @@ steps:
   - label: Check coding style
     command: cargo fmt --all -- --write-mode=diff
   - label: Run tests
-    command: cargo test
+    command: cargo test -- --test-threads=1
   - wait
   - label: Deploy to staging
     trigger: the-graph-network-staging-deployment
