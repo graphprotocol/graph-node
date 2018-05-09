@@ -1,4 +1,4 @@
-use tokio;
+use tokio_core::reactor::Handle;
 use futures::prelude::*;
 use futures::future;
 use futures::sync::mpsc::{channel, Receiver, Sender};
@@ -44,11 +44,12 @@ pub struct HyperGraphQLServer {
     query_sink: Option<Sender<Query>>,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
     store_event_sink: Sender<StoreEvent>,
+    runtime: Handle,
 }
 
 impl HyperGraphQLServer {
     /// Creates a new [GraphQLServer](../common/server/trait.GraphQLServer.html).
-    pub fn new(logger: &slog::Logger) -> Self {
+    pub fn new(logger: &slog::Logger, runtime: Handle) -> Self {
         // Create channels for handling incoming events from the schema provider and the store
         let (store_sink, store_stream) = channel(100);
         let (schema_provider_sink, schema_provider_stream) = channel(100);
@@ -59,6 +60,7 @@ impl HyperGraphQLServer {
             query_sink: None,
             schema_provider_event_sink: schema_provider_sink,
             store_event_sink: store_sink,
+            runtime,
         };
 
         // Spawn tasks to handle incoming events from the schema provider and store
@@ -73,7 +75,7 @@ impl HyperGraphQLServer {
     fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaProviderEvent>) {
         let logger = self.logger.clone();
 
-        tokio::spawn(stream.for_each(move |event| {
+        self.runtime.spawn(stream.for_each(move |event| {
             info!(
                 logger,
                 "Received schema provider event";
@@ -87,7 +89,7 @@ impl HyperGraphQLServer {
     fn handle_store_events(&mut self, stream: Receiver<StoreEvent>) {
         let logger = self.logger.clone();
 
-        tokio::spawn(stream.for_each(move |event| {
+        self.runtime.spawn(stream.for_each(move |event| {
             info!(logger, "Received store event"; "event" => format!("{:?}",  event));
             Ok(())
         }));

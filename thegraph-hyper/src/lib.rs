@@ -7,8 +7,6 @@ extern crate serde_json;
 extern crate slog;
 extern crate thegraph;
 extern crate tokio;
-
-#[cfg(test)]
 extern crate tokio_core;
 
 mod request;
