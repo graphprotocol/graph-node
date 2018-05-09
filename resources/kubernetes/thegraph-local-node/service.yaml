@@ -11,4 +11,3 @@ spec:
       protocol: TCP
       port: 80
       targetPort: 8000
-      nodePort: 8000
