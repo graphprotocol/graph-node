@@ -2,6 +2,7 @@ use prelude::*;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio_core::reactor::Handle;
 
@@ -42,10 +43,15 @@ where
             info!(logger, "Running query"; "query" => format!("{:?}", query));
 
             // Here we would access the store.
+            let mut data = HashMap::new();
+            data.insert(String::from("allUsers"), String::from("placeholder"))
+                .unwrap();
+            data.insert(String::from("allItems"), String::from("placeholder"))
+                .unwrap();
 
             query
                 .result_sender
-                .send(QueryResult {})
+                .send(QueryResult::new(Some(data)))
                 .expect("Failed to send query result back");
             Ok(())
         }));

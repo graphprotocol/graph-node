@@ -1,6 +1,7 @@
 use futures::sync::oneshot;
 use futures::sync::mpsc::Sender;
 use graphql_parser::query;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::string::FromUtf8Error;
@@ -13,8 +14,16 @@ pub struct Query {
 }
 
 /// The result of running a query, if successful.
-#[derive(Debug)]
-pub struct QueryResult;
+#[derive(Debug, Serialize)]
+pub struct QueryResult {
+    pub data: Option<HashMap<String, String>>,
+}
+
+impl QueryResult {
+    pub fn new(data: Option<HashMap<String, String>>) -> Self {
+        QueryResult { data }
+    }
+}
 
 /// Error caused while running a [Query](struct.Query.html).
 #[derive(Debug)]
