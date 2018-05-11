@@ -7,8 +7,10 @@ RUN apt-get update \
 # Install Python to serve the docs
 RUN apt-get install python
 
-# Copy, build, install and run thegraph-local-node
+# Build all docs (dependencies and workspace crates)
 COPY . .
-RUN cd thegraph-local-node && cargo doc --no-deps -p thegraph
+RUN cd thegraph-local-node && cargo doc
+
+# Serve the docs over HTTP
 WORKDIR target/doc/
 CMD ["python", "-m", "SimpleHTTPServer", "8000"]
