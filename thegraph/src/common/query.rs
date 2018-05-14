@@ -1,6 +1,7 @@
 use futures::sync::oneshot;
 use futures::sync::mpsc::Sender;
 use graphql_parser::query;
+use serde::ser::*;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -17,11 +18,13 @@ pub struct Query {
 #[derive(Debug, Serialize)]
 pub struct QueryResult {
     pub data: Option<HashMap<String, String>>,
+    #[serde(skip_serializing)]
+    pub errors: Option<Vec<QueryError>>,
 }
 
 impl QueryResult {
     pub fn new(data: Option<HashMap<String, String>>) -> Self {
-        QueryResult { data }
+        QueryResult { data, errors: None }
     }
 }
 
@@ -60,9 +63,56 @@ impl Error for QueryError {
 impl fmt::Display for QueryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &QueryError::EncodingError(ref e) => write!(f, "QueryError: {}", e),
-            &QueryError::ParseError(ref e) => write!(f, "QueryError: {}", e),
+            &QueryError::EncodingError(ref e) => write!(f, "{}", e),
+            &QueryError::ParseError(ref e) => write!(f, "{}", e),
         }
+    }
+}
+
+impl Serialize for QueryError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(1))?;
+        let mut msg = format!("{}", self);
+
+        // Serialize parse errors with their location (line, column) to make it easier
+        // for users to find where the errors are; this is likely to change as the
+        // graphql_parser team makes improvements to their error reporting
+        if let &QueryError::ParseError(_) = self {
+            // Split the inner message into (first line, rest)
+            let inner_msg = msg.replace("query parse error:", "");
+            let inner_msg = inner_msg.trim();
+            let parts: Vec<&str> = inner_msg.splitn(2, "\n").collect();
+
+            // Find the colon in the first line and split there
+            let colon_pos = parts[0].rfind(":").unwrap();
+            let (a, b) = parts[0].split_at(colon_pos);
+
+            // Find the line and column numbers and convert them to u32
+            let line: u32 = a.matches(char::is_numeric)
+                .collect::<String>()
+                .parse()
+                .unwrap();
+            let column: u32 = b.matches(char::is_numeric)
+                .collect::<String>()
+                .parse()
+                .unwrap();
+
+            // Generate the list of locations
+            let mut location = HashMap::new();
+            location.insert("line", line);
+            location.insert("column", column);
+            let locations = vec![location];
+            map.serialize_entry("locations", &locations)?;
+
+            // Only use the remainder after the location as the error message
+            msg = parts[1].to_string();
+        }
+
+        map.serialize_entry("message", msg.as_str())?;
+        map.end()
     }
 }
 
