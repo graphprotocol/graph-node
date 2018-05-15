@@ -14,6 +14,7 @@ pub struct MockStore {
     event_sink: Option<Sender<StoreEvent>>,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
     runtime: Handle,
+    entities: Vec<Entity>,
 }
 
 impl MockStore {
@@ -22,12 +23,22 @@ impl MockStore {
         // Create a channel for handling incoming schema provider events
         let (sink, stream) = channel(100);
 
+        // Create a few test entities
+        let mut entities = vec![];
+        for (i, name) in ["Joe", "Jeff", "Linda"].iter().enumerate() {
+            let mut entity = Entity::new();
+            entity.insert("id".to_string(), Value::String(i.to_string()));
+            entity.insert("name".to_string(), Value::String(name.to_string()));
+            entities.push(entity);
+        }
+
         // Create a new mock store
         let mut store = MockStore {
             logger: logger.new(o!("component" => "MockStore")),
             event_sink: None,
             schema_provider_event_sink: sink,
             runtime,
+            entities,
         };
 
         // Spawn a task that handles incoming schema provider events
@@ -51,28 +62,29 @@ impl MockStore {
         info!(self.logger, "Generate mock events");
 
         let sink = self.event_sink.clone().unwrap();
-        sink.clone()
-            .send(StoreEvent::EntityAdded("Entity 1"))
-            .wait()
-            .unwrap();
-        sink.clone()
-            .send(StoreEvent::EntityAdded("Entity 2"))
-            .wait()
-            .unwrap();
-        sink.clone()
-            .send(StoreEvent::EntityChanged("Entity 1"))
-            .wait()
-            .unwrap();
-        sink.clone()
-            .send(StoreEvent::EntityRemoved("Entity 2"))
-            .wait()
-            .unwrap();
+        for entity in self.entities.iter() {
+            sink.clone()
+                .send(StoreEvent::EntityAdded(entity.clone()))
+                .wait()
+                .unwrap();
+        }
     }
 }
 
 impl Store for MockStore {
-    fn get(&self, _key: StoreKey) -> Result<Entity, ()> {
-        unimplemented!();
+    fn get(&self, key: StoreKey) -> Result<Entity, ()> {
+        if key.entity == "User" {
+            let matching_entity = self.entities.iter().find(|entity| {
+                let id = entity.get("id").unwrap();
+                match id {
+                    &Value::String(ref s) => s == &key.id,
+                }
+            });
+
+            matching_entity.cloned().ok_or(())
+        } else {
+            Err(())
+        }
     }
 
     fn set(&mut self, _key: StoreKey, _entity: Entity) -> Result<(), ()> {
