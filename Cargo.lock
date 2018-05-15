@@ -1239,6 +1239,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "thegraph-core"
+version = "0.1.0"
+dependencies = [
+ "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
+ "graphql-parser 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thegraph 0.1.0",
+ "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "thegraph-hyper"
 version = "0.1.0"
 dependencies = [

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "thegraph",
+    "thegraph-core",
     "thegraph-hyper",
     "thegraph-local-node",
     "thegraph-mock",
