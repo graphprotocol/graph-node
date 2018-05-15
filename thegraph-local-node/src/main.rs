@@ -4,6 +4,7 @@ extern crate sentry;
 #[macro_use]
 extern crate slog;
 extern crate thegraph;
+extern crate thegraph_core;
 extern crate thegraph_hyper;
 extern crate thegraph_mock;
 extern crate tokio;
@@ -43,7 +44,7 @@ fn main() {
 
     // Create system components
     let mut data_source_provider = mock::MockDataSourceProvider::new(&logger);
-    let mut schema_provider = mock::MockSchemaProvider::new(&logger, core.handle());
+    let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
     let mut store = mock::MockStore::new(&logger, core.handle());
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
 

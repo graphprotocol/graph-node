@@ -9,5 +9,6 @@ slog = "2.2.3"
 tokio = "0.1.5"
 tokio-core = "0.1.17"
 thegraph = { path = "../thegraph" }
+thegraph-core = { path = "../thegraph-core" }
 thegraph-hyper = { path = "../thegraph-hyper" }
 thegraph-mock = { path = "../thegraph-mock" }
