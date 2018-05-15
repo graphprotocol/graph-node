@@ -4,8 +4,8 @@ use hyper::Chunk;
 use graphql_parser;
 use serde_json;
 
-use thegraph::common::query::{Query, QueryError, QueryResult};
-use thegraph::common::server::GraphQLServerError;
+use thegraph::data::query::{Query, QueryError, QueryResult};
+use thegraph::components::server::GraphQLServerError;
 
 /// Future for a query parsed from an HTTP request.
 pub struct GraphQLRequest {

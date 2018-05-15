@@ -1,7 +1,7 @@
 use futures::sync::mpsc::Receiver;
 
-use super::schema::Schema;
-use super::util::stream::StreamError;
+use data::schema::Schema;
+use util::stream::StreamError;
 
 /// Events emitted by [DataSourceProvider](trait.DataSourceProvider.html) implementations.
 #[derive(Clone, Debug)]

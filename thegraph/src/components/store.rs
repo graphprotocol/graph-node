@@ -1,7 +1,8 @@
 use futures::sync::mpsc::{Receiver, Sender};
-use std::collections::HashMap;
-use super::schema::SchemaProviderEvent;
-use super::util::stream::StreamError;
+
+use components::schema::SchemaProviderEvent;
+use data::store::*;
+use util::stream::StreamError;
 
 /// Key by which an individual entity in the store can be accessed.
 pub struct StoreKey {
@@ -11,17 +12,6 @@ pub struct StoreKey {
     /// ID of the individual entity.
     pub id: String,
 }
-
-/// An entity attribute name is represented as a string.
-pub type Attribute = String;
-
-/// An attribute value is represented as an enum with variants for all supported value types.
-pub enum Value {
-    String(String),
-}
-
-/// An entity is represented as a map of attribute names to values.
-pub type Entity = HashMap<Attribute, Value>;
 
 /// Supported types of store filters.
 pub enum StoreFilter {

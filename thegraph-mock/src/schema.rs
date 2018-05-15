@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
 use thegraph::prelude::*;
-use thegraph::common::schema::SchemaProviderEvent;
-use thegraph::common::data_sources::SchemaEvent;
-use thegraph::common::util::stream::StreamError;
+use thegraph::components::schema::SchemaProviderEvent;
+use thegraph::components::data_sources::SchemaEvent;
+use thegraph::util::stream::StreamError;
 
 /// A mock [SchemaProvider](../common/schema/trait.SchemaProvider.html).
 pub struct MockSchemaProvider {

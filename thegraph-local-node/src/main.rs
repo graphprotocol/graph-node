@@ -11,8 +11,9 @@ extern crate tokio_core;
 
 use sentry::integrations::panic::register_panic_handler;
 use std::env;
-use thegraph::common::util::log::logger;
 use thegraph::prelude::*;
+use thegraph::util::log::logger;
+use thegraph_mock as mock;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
 use tokio::prelude::*;
 use tokio_core::reactor::Core;
@@ -41,9 +42,9 @@ fn main() {
     info!(logger, "Starting up");
 
     // Create system components
-    let mut data_source_provider = thegraph_mock::MockDataSourceProvider::new(&logger);
-    let mut schema_provider = thegraph_mock::MockSchemaProvider::new(&logger, core.handle());
-    let mut store = thegraph_mock::MockStore::new(&logger, core.handle());
+    let mut data_source_provider = mock::MockDataSourceProvider::new(&logger);
+    let mut schema_provider = mock::MockSchemaProvider::new(&logger, core.handle());
+    let mut store = mock::MockStore::new(&logger, core.handle());
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
 
     // Forward schema events from the data source provider to the schema provider
@@ -83,7 +84,7 @@ fn main() {
     });
 
     // Forward incoming queries from the GraphQL server to the query runner
-    let mut query_runner = thegraph_mock::MockQueryRunner::new(&logger, core.handle(), store);
+    let mut query_runner = mock::MockQueryRunner::new(&logger, core.handle(), store);
     let query_stream = graphql_server.query_stream().unwrap();
     core.handle().spawn({
         query_stream

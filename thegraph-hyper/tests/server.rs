@@ -14,9 +14,9 @@ use hyper::{Body, Client, Request};
 use std::collections::HashMap;
 use tokio_core::reactor::Core;
 
-use thegraph::common::util::log::logger;
 use thegraph::prelude::*;
-use thegraph::common::query::{Query, QueryResult};
+use thegraph::data::query::{Query, QueryResult};
+use thegraph::util::log::logger;
 
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
 use thegraph_hyper::test_utils;

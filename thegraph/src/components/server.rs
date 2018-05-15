@@ -5,10 +5,10 @@ use serde::ser::*;
 use std::error::Error;
 use std::fmt;
 
-use super::query::{Query, QueryError};
+use data::query::{Query, QueryError};
 use super::schema::SchemaProviderEvent;
 use super::store::StoreEvent;
-use super::util::stream::StreamError;
+use util::stream::StreamError;
 
 /// Errors that can occur while processing incoming requests.
 #[derive(Debug)]
