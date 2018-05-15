@@ -1273,6 +1273,7 @@ dependencies = [
  "sentry 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "thegraph 0.1.0",
+ "thegraph-core 0.1.0",
  "thegraph-hyper 0.1.0",
  "thegraph-mock 0.1.0",
  "tokio 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
