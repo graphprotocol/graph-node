@@ -6,7 +6,6 @@ use std::sync::Arc;
 use tokio_core::reactor::Handle;
 
 use thegraph::prelude::*;
-use thegraph::common::query::{Query, QueryResult};
 
 /// A mock [QueryRunner](../common/query/trait.QueryRunner.html).
 pub struct MockQueryRunner<S> {

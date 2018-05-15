@@ -1,10 +1,9 @@
 use futures::sync::oneshot;
-use futures::sync::mpsc::Sender;
 use graphql_parser::query;
 use serde::ser::*;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::collections::HashMap;
 use std::string::FromUtf8Error;
 
 /// A GraphQL query as submitted by a client, either directly or through a subscription.
@@ -114,10 +113,4 @@ impl Serialize for QueryError {
         map.serialize_entry("message", msg.as_str())?;
         map.end()
     }
-}
-
-/// Common trait for query runners that run queries against a [Store](../store/trait.Store.html).
-pub trait QueryRunner {
-    // Sender to which others can write queries that need to be run.
-    fn query_sink(&mut self) -> Sender<Query>;
 }

@@ -4,8 +4,8 @@ use futures::sync::mpsc::Sender;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use hyper::service::Service;
 
-use thegraph::common::query::Query;
-use thegraph::common::server::GraphQLServerError;
+use thegraph::data::query::Query;
+use thegraph::components::server::GraphQLServerError;
 
 use request::GraphQLRequest;
 use response::GraphQLResponse;
@@ -88,7 +88,7 @@ mod tests {
     use std::collections::HashMap;
     use tokio_core::reactor::Core;
 
-    use thegraph::common::query::QueryResult;
+    use thegraph::data::query::QueryResult;
 
     use super::GraphQLService;
     use test_utils;

@@ -4,8 +4,8 @@ use hyper::{Body, Response};
 use serde::ser::*;
 use serde_json;
 
-use thegraph::common::query::QueryResult;
-use thegraph::common::server::GraphQLServerError;
+use thegraph::data::query::QueryResult;
+use thegraph::components::server::GraphQLServerError;
 
 /// Future for HTTP responses to GraphQL query requests.
 pub struct GraphQLResponse {
@@ -92,8 +92,8 @@ mod tests {
     use tokio_core::reactor::Core;
 
     use super::GraphQLResponse;
-    use thegraph::common::query::{QueryError, QueryResult};
-    use thegraph::common::server::GraphQLServerError;
+    use thegraph::prelude::*;
+    use thegraph::components::server::GraphQLServerError;
 
     use test_utils;
 

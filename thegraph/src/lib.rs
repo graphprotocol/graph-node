@@ -10,20 +10,30 @@ extern crate slog_term;
 extern crate tokio;
 extern crate tokio_core;
 
-/// Common traits and types for all system components.
-pub mod common;
+/// Traits and types for all system components.
+pub mod components;
 
-/// A prelude that makes all system component traits available.
+/// Common data types used throughout The Graph.
+pub mod data;
+
+/// Utilities.
+pub mod util;
+
+/// A prelude that makes all system component traits and data types available.
 ///
-/// Add the following code to import all traits listed below at once.
+/// Add the following code to import all traits and data types listed below at once.
 ///
 /// ```
 /// use thegraph::prelude::*;
 /// ```
 pub mod prelude {
-    pub use common::data_sources::DataSourceProvider;
-    pub use common::query::QueryRunner;
-    pub use common::schema::SchemaProvider;
-    pub use common::server::GraphQLServer;
-    pub use common::store::Store;
+    pub use components::data_sources::DataSourceProvider;
+    pub use components::query::QueryRunner;
+    pub use components::schema::SchemaProvider;
+    pub use components::server::GraphQLServer;
+    pub use components::store::Store;
+
+    pub use data::query::{Query, QueryError, QueryResult};
+    pub use data::schema::Schema;
+    pub use data::store::{Attribute, Entity, Value};
 }

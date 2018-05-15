@@ -4,9 +4,8 @@ use graphql_parser;
 use slog;
 
 use thegraph::prelude::*;
-use thegraph::common::data_sources::{DataSourceProviderEvent, SchemaEvent};
-use thegraph::common::schema::Schema;
-use thegraph::common::util::stream::StreamError;
+use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
+use thegraph::util::stream::StreamError;
 
 /// A mock [DataSourceProvider](../common/data_sources/trait.DataSourceProvider.html).
 pub struct MockDataSourceProvider {

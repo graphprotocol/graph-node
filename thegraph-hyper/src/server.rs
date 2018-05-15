@@ -9,10 +9,10 @@ use std::error::Error;
 use std::fmt;
 
 use thegraph::prelude::GraphQLServer as GraphQLServerTrait;
-use thegraph::common::query::Query;
-use thegraph::common::schema::SchemaProviderEvent;
-use thegraph::common::store::StoreEvent;
-use thegraph::common::util::stream::StreamError;
+use thegraph::data::query::Query;
+use thegraph::components::schema::SchemaProviderEvent;
+use thegraph::components::store::StoreEvent;
+use thegraph::util::stream::StreamError;
 
 use service::GraphQLService;
 
