@@ -27,7 +27,8 @@ impl MockDataSourceProvider {
                     document: graphql_parser::parse_schema(
                         "\
                          type User { \
-                         name: String! \
+                             id: ID!
+                             name: String! \
                          }",
                     ).unwrap(),
                 },
