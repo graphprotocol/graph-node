@@ -3,18 +3,10 @@ use super::data_sources::SchemaEvent;
 use super::util::stream::StreamError;
 
 /// Events emitted by [SchemaProvider](trait.SchemaProvider.html) implementations.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum SchemaProviderEvent {
     /// The provided schema has changed.
     SchemaChanged(&'static str),
-}
-
-impl Clone for SchemaProviderEvent {
-    fn clone(&self) -> Self {
-        match self {
-            &SchemaProviderEvent::SchemaChanged(ref s) => SchemaProviderEvent::SchemaChanged(s),
-        }
-    }
 }
 
 /// Common trait for schema provider implementations.
