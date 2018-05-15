@@ -1,0 +1,11 @@
+[package]
+name = "thegraph-mock"
+version = "0.1.0"
+
+[dependencies]
+futures = "0.1.21"
+graphql-parser = "0.2.0"
+slog = "2.2.3"
+thegraph = { path = "../thegraph" }
+tokio = "0.1.6"
+tokio-core = "0.1.17"

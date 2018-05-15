@@ -8,11 +8,11 @@ use slog;
 use std::error::Error;
 use std::fmt;
 
-use prelude::*;
-use common::query::{Query, QueryResult};
-use common::schema::SchemaProviderEvent;
-use common::store::StoreEvent;
-use common::util::stream::StreamError;
+use thegraph::prelude::*;
+use thegraph::common::query::{Query, QueryResult};
+use thegraph::common::schema::SchemaProviderEvent;
+use thegraph::common::store::StoreEvent;
+use thegraph::common::util::stream::StreamError;
 
 #[derive(Debug)]
 pub struct MockServeError;

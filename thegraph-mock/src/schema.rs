@@ -4,10 +4,10 @@ use slog;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
-use prelude::*;
-use common::schema::SchemaProviderEvent;
-use common::data_sources::SchemaEvent;
-use common::util::stream::StreamError;
+use thegraph::prelude::*;
+use thegraph::common::schema::SchemaProviderEvent;
+use thegraph::common::data_sources::SchemaEvent;
+use thegraph::common::util::stream::StreamError;
 
 /// A mock [SchemaProvider](../common/schema/trait.SchemaProvider.html).
 pub struct MockSchemaProvider {

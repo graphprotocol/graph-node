@@ -10,3 +10,4 @@ tokio = "0.1.5"
 tokio-core = "0.1.17"
 thegraph = { path = "../thegraph" }
 thegraph-hyper = { path = "../thegraph-hyper" }
+thegraph-mock = { path = "../thegraph-mock" }

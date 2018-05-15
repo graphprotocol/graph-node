@@ -1,4 +1,3 @@
-use prelude::*;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
@@ -6,7 +5,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio_core::reactor::Handle;
 
-use common::query::{Query, QueryResult};
+use thegraph::prelude::*;
+use thegraph::common::query::{Query, QueryResult};
 
 /// A mock [QueryRunner](../common/query/trait.QueryRunner.html).
 pub struct MockQueryRunner<S> {
