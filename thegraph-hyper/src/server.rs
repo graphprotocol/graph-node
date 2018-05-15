@@ -8,7 +8,7 @@ use slog;
 use std::error::Error;
 use std::fmt;
 
-use thegraph::prelude::GraphQLServer;
+use thegraph::prelude::GraphQLServer as GraphQLServerTrait;
 use thegraph::common::query::Query;
 use thegraph::common::schema::SchemaProviderEvent;
 use thegraph::common::store::StoreEvent;
@@ -18,11 +18,11 @@ use service::GraphQLService;
 
 /// Errors that may occur when starting the server.
 #[derive(Debug)]
-pub enum HyperGraphQLServeError {
+pub enum GraphQLServeError {
     OrphanError,
 }
 
-impl Error for HyperGraphQLServeError {
+impl Error for GraphQLServeError {
     fn description(&self) -> &str {
         "Failed to start the server"
     }
@@ -32,14 +32,14 @@ impl Error for HyperGraphQLServeError {
     }
 }
 
-impl fmt::Display for HyperGraphQLServeError {
+impl fmt::Display for GraphQLServeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "OrphanError: No component set up to handle the queries")
     }
 }
 
 /// A [GraphQLServer](../common/server/trait.GraphQLServer.html) based on Hyper.
-pub struct HyperGraphQLServer {
+pub struct GraphQLServer {
     logger: slog::Logger,
     query_sink: Option<Sender<Query>>,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
@@ -47,7 +47,7 @@ pub struct HyperGraphQLServer {
     runtime: Handle,
 }
 
-impl HyperGraphQLServer {
+impl GraphQLServer {
     /// Creates a new [GraphQLServer](../common/server/trait.GraphQLServer.html).
     pub fn new(logger: &slog::Logger, runtime: Handle) -> Self {
         // Create channels for handling incoming events from the schema provider and the store
@@ -55,8 +55,8 @@ impl HyperGraphQLServer {
         let (schema_provider_sink, schema_provider_stream) = channel(100);
 
         // Create a new GraphQL server
-        let mut server = HyperGraphQLServer {
-            logger: logger.new(o!("component" => "HyperGraphQLServer")),
+        let mut server = GraphQLServer {
+            logger: logger.new(o!("component" => "GraphQLServer")),
             query_sink: None,
             schema_provider_event_sink: schema_provider_sink,
             store_event_sink: store_sink,
@@ -96,8 +96,8 @@ impl HyperGraphQLServer {
     }
 }
 
-impl GraphQLServer for HyperGraphQLServer {
-    type ServeError = HyperGraphQLServeError;
+impl GraphQLServerTrait for GraphQLServer {
+    type ServeError = GraphQLServeError;
 
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
         self.schema_provider_event_sink.clone()
@@ -128,7 +128,7 @@ impl GraphQLServer for HyperGraphQLServer {
         // Only launch the GraphQL server if there is a component that will handle incoming queries
         let query_sink = self.query_sink
             .clone()
-            .ok_or_else(|| HyperGraphQLServeError::OrphanError)?;
+            .ok_or_else(|| GraphQLServeError::OrphanError)?;
 
         // On every incoming request, launch a new GraphQL service that writes
         // incoming queries to the query sink.

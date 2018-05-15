@@ -13,7 +13,7 @@ use std::env;
 use thegraph::common::util::log::logger;
 use thegraph::prelude::*;
 use thegraph::mock;
-use thegraph_hyper::HyperGraphQLServer;
+use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
 use tokio::prelude::*;
 use tokio_core::reactor::Core;
 
