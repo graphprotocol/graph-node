@@ -8,7 +8,7 @@ steps:
   - wait
   - label: Deploy the local node
     command: |
-      kubectl apply \
+      kubectl apply --force \
          --cluster=$BUILDKITE_TARGET_CLUSTER \
          --user=$BUILDKITE_TARGET_CLUSTER \
          -f resources/kubernetes/thegraph-local-node/deployment.yaml \
