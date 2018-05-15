@@ -124,3 +124,54 @@ impl SchemaProviderTrait for SchemaProvider {
         self.schema_event_sink.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use futures::prelude::*;
+    use graphql_parser;
+    use tokio_core::reactor::Core;
+
+    use thegraph::prelude::*;
+    use thegraph::components::data_sources::SchemaEvent;
+    use thegraph::components::schema::SchemaProviderEvent;
+    use slog;
+
+    use super::SchemaProvider as CoreSchemaProvider;
+
+    #[test]
+    fn emits_a_combined_schema_after_one_schema_is_added() {
+        let mut core = Core::new().unwrap();
+
+        // Set up the schema provider
+        let logger = slog::Logger::root(slog::Discard, o!());
+        let mut schema_provider = CoreSchemaProvider::new(&logger, core.handle());
+        let schema_sink = schema_provider.schema_event_sink();
+        let schema_stream = schema_provider.event_stream().unwrap();
+
+        // Create an input schema event
+        let input_doc = graphql_parser::parse_schema("type User { name: String! }").unwrap();
+        let input_schema = Schema {
+            id: "input-schema".to_string(),
+            document: input_doc,
+        };
+        let input_event = SchemaEvent::SchemaAdded(input_schema.clone());
+
+        // Send the input schema event to the schema provider
+        schema_sink.clone().send(input_event).wait().unwrap();
+
+        // Expect one schema provider event to be emitted as a result
+        let work = schema_stream.take(1).into_future();
+        let output_event = core.run(work)
+            .expect("Failed to receive schema provider event from the stream")
+            .0
+            .expect("Schema provider event must not be None");
+
+        // Extract the output schema from the schema provider event
+        let SchemaProviderEvent::SchemaChanged(output_schema) = output_event;
+        let output_schema = output_schema.expect("Combined schema must not be None");
+
+        // The output schema (currently) must equal the input schema
+        assert_eq!(output_schema.id, input_schema.id);
+        assert_eq!(output_schema.document, input_schema.document);
+    }
+}
