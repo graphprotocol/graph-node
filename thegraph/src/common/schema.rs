@@ -1,12 +1,20 @@
 use futures::sync::mpsc::{Receiver, Sender};
+use graphql_parser::schema;
+
 use super::data_sources::SchemaEvent;
 use super::util::stream::StreamError;
+
+/// A GraphQL schema with additional meta data.
+#[derive(Clone, Debug)]
+pub struct Schema {
+    pub document: schema::Document,
+}
 
 /// Events emitted by [SchemaProvider](trait.SchemaProvider.html) implementations.
 #[derive(Clone, Debug)]
 pub enum SchemaProviderEvent {
     /// The provided schema has changed.
-    SchemaChanged(&'static str),
+    SchemaChanged(Schema),
 }
 
 /// Common trait for schema provider implementations.
