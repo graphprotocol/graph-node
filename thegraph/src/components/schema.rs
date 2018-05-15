@@ -8,7 +8,7 @@ use util::stream::StreamError;
 #[derive(Clone, Debug)]
 pub enum SchemaProviderEvent {
     /// The provided schema has changed.
-    SchemaChanged(Schema),
+    SchemaChanged(Option<Schema>),
 }
 
 /// Common trait for schema provider implementations.
