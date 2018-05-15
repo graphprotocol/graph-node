@@ -2,7 +2,7 @@ use futures::sync::mpsc::Receiver;
 use super::util::stream::StreamError;
 
 /// Events emitted by [DataSourceProvider](trait.DataSourceProvider.html) implementations.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum DataSourceProviderEvent {
     /// A data source was added to the provider.
     DataSourceAdded(&'static str),
@@ -10,35 +10,13 @@ pub enum DataSourceProviderEvent {
     DataSourceRemoved(&'static str),
 }
 
-impl Clone for DataSourceProviderEvent {
-    fn clone(&self) -> Self {
-        match self {
-            &DataSourceProviderEvent::DataSourceAdded(ref s) => {
-                DataSourceProviderEvent::DataSourceAdded(s)
-            }
-            &DataSourceProviderEvent::DataSourceRemoved(ref s) => {
-                DataSourceProviderEvent::DataSourceRemoved(s)
-            }
-        }
-    }
-}
-
 /// Schema-only events emitted by a [DataSourceProvider](trait.DataSourceProvider.html).
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum SchemaEvent {
     /// A data source with a new schema was added.
     SchemaAdded(&'static str),
     /// A data source with an existing schema was removed.
     SchemaRemoved(&'static str),
-}
-
-impl Clone for SchemaEvent {
-    fn clone(&self) -> Self {
-        match self {
-            &SchemaEvent::SchemaAdded(ref s) => SchemaEvent::SchemaAdded(s),
-            &SchemaEvent::SchemaRemoved(ref s) => SchemaEvent::SchemaRemoved(s),
-        }
-    }
 }
 
 /// Common trait for data source providers.
