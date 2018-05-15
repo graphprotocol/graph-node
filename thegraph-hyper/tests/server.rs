@@ -18,7 +18,7 @@ use thegraph::common::util::log::logger;
 use thegraph::prelude::*;
 use thegraph::common::query::{Query, QueryResult};
 
-use thegraph_hyper::HyperGraphQLServer;
+use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
 use thegraph_hyper::test_utils;
 
 /// Helper function that simulates running a single incoming query and then
