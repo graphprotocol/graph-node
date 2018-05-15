@@ -4,6 +4,7 @@ use std::collections::HashMap;
 pub type Attribute = String;
 
 /// An attribute value is represented as an enum with variants for all supported value types.
+#[derive(Clone, Debug)]
 pub enum Value {
     String(String),
 }

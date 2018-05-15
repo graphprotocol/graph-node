@@ -69,13 +69,13 @@ pub struct StoreQuery {
 #[derive(Debug)]
 pub enum StoreEvent {
     /// An entity was added to the store.
-    EntityAdded(&'static str),
+    EntityAdded(Entity),
 
     /// An entity was removed from the store.
-    EntityRemoved(&'static str),
+    EntityRemoved(Entity),
 
     /// An entity was changed in the store.
-    EntityChanged(&'static str),
+    EntityChanged(Entity),
 }
 
 /// Common trait for store implementations.
