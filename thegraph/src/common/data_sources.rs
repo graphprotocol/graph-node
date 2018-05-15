@@ -1,4 +1,6 @@
 use futures::sync::mpsc::Receiver;
+
+use super::schema::Schema;
 use super::util::stream::StreamError;
 
 /// Events emitted by [DataSourceProvider](trait.DataSourceProvider.html) implementations.
@@ -14,9 +16,9 @@ pub enum DataSourceProviderEvent {
 #[derive(Clone, Debug)]
 pub enum SchemaEvent {
     /// A data source with a new schema was added.
-    SchemaAdded(&'static str),
+    SchemaAdded(Schema),
     /// A data source with an existing schema was removed.
-    SchemaRemoved(&'static str),
+    SchemaRemoved(Schema),
 }
 
 /// Common trait for data source providers.
