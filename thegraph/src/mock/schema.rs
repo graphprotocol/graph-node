@@ -50,7 +50,10 @@ impl MockSchemaProvider {
             let event_sink = event_sink.lock().unwrap();
 
             // Mock processing the event from the data source provider
-            let resulting_event = SchemaProviderEvent::SchemaChanged("Combined schema");
+            let resulting_event = match event {
+                SchemaEvent::SchemaAdded(schema) => SchemaProviderEvent::SchemaChanged(schema),
+                SchemaEvent::SchemaRemoved(schema) => SchemaProviderEvent::SchemaChanged(schema),
+            };
 
             // If we have another component listening to our events, forward the new
             // combined schema to them through the event channel
