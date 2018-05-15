@@ -1,9 +1,11 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use graphql_parser;
 use slog;
 
 use prelude::*;
 use common::data_sources::{DataSourceProviderEvent, SchemaEvent};
+use common::schema::Schema;
 use common::util::stream::StreamError;
 
 /// A mock [DataSourceProvider](../common/data_sources/trait.DataSourceProvider.html).
@@ -11,6 +13,7 @@ pub struct MockDataSourceProvider {
     logger: slog::Logger,
     event_sink: Option<Sender<DataSourceProviderEvent>>,
     schema_event_sink: Option<Sender<SchemaEvent>>,
+    schemas: Vec<Schema>,
 }
 
 impl MockDataSourceProvider {
@@ -21,6 +24,16 @@ impl MockDataSourceProvider {
             logger: logger.new(o!("component" => "MockDataSourceProvider")),
             event_sink: None,
             schema_event_sink: None,
+            schemas: vec![
+                Schema {
+                    document: graphql_parser::parse_schema(
+                        "\
+                         type User { \
+                         name: String! \
+                         }",
+                    ).unwrap(),
+                },
+            ],
         }
     }
 
@@ -54,18 +67,13 @@ impl MockDataSourceProvider {
         info!(self.logger, "Generate mock schema events");
 
         let sink = self.schema_event_sink.clone().unwrap();
-        sink.clone()
-            .send(SchemaEvent::SchemaAdded("First schema"))
-            .wait()
-            .unwrap();
-        sink.clone()
-            .send(SchemaEvent::SchemaAdded("Second schema"))
-            .wait()
-            .unwrap();
-        sink.clone()
-            .send(SchemaEvent::SchemaRemoved("Second schema"))
-            .wait()
-            .unwrap();
+
+        for schema in self.schemas.iter() {
+            sink.clone()
+                .send(SchemaEvent::SchemaAdded(schema.clone()))
+                .wait()
+                .unwrap();
+        }
     }
 }
 
