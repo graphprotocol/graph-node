@@ -93,7 +93,7 @@ fn main() {
     });
 
     // Forward incoming queries from the GraphQL server to the query runner
-    let mut query_runner = mock::MockQueryRunner::new(&logger, core.handle(), store);
+    let mut query_runner = thegraph_core::QueryRunner::new(&logger, core.handle(), store);
     let query_stream = graphql_server.query_stream().unwrap();
     core.handle().spawn({
         query_stream
