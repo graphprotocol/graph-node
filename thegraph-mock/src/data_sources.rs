@@ -7,7 +7,7 @@ use thegraph::prelude::*;
 use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
 use thegraph::util::stream::StreamError;
 
-/// A mock [DataSourceProvider](../common/data_sources/trait.DataSourceProvider.html).
+/// A mock `DataSourceProvider`.
 pub struct MockDataSourceProvider {
     logger: slog::Logger,
     event_sink: Option<Sender<DataSourceProviderEvent>>,
@@ -16,8 +16,7 @@ pub struct MockDataSourceProvider {
 }
 
 impl MockDataSourceProvider {
-    /// Creates a new mock [DataSourceProvider](
-    /// ../common/data_sources/trait.DataSourceProvider.html).
+    /// Creates a new mock `DataSourceProvider`.
     pub fn new(logger: &slog::Logger) -> Self {
         MockDataSourceProvider {
             logger: logger.new(o!("component" => "MockDataSourceProvider")),

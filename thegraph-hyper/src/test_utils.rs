@@ -4,6 +4,7 @@ use hyper::{Body, Response};
 use serde_json;
 use tokio_core::reactor::Core;
 
+/// Asserts that the response is a successful GraphQL response; returns its `"data"` field.
 pub fn assert_successful_response(
     core: &mut Core,
     response: Response<Body>,
@@ -24,6 +25,7 @@ pub fn assert_successful_response(
         .clone()
 }
 
+/// Asserts that the response is a failed GraphQL response; returns its `"errors"` field.
 pub fn assert_error_response(
     core: &mut Core,
     response: Response<Body>,

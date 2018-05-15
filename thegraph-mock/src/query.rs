@@ -7,7 +7,7 @@ use tokio_core::reactor::Handle;
 
 use thegraph::prelude::*;
 
-/// A mock [QueryRunner](../common/query/trait.QueryRunner.html).
+/// A mock `QueryRunner`.
 pub struct MockQueryRunner<S> {
     logger: slog::Logger,
     query_sink: Sender<Query>,
@@ -19,7 +19,7 @@ impl<S> MockQueryRunner<S>
 where
     S: Store + Sized + 'static,
 {
-    /// Creates a new mock [QueryRunner](../common/query/trait.QueryRunner.html).
+    /// Creates a new mock `QueryRunner`.
     pub fn new(logger: &slog::Logger, runtime: Handle, store: S) -> Self {
         let (sink, stream) = channel(100);
         let runner = MockQueryRunner {

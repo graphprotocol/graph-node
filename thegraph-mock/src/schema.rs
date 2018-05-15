@@ -9,7 +9,7 @@ use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::data_sources::SchemaEvent;
 use thegraph::util::stream::StreamError;
 
-/// A mock [SchemaProvider](../common/schema/trait.SchemaProvider.html).
+/// A mock `SchemaProvider`.
 pub struct MockSchemaProvider {
     logger: slog::Logger,
     schema_event_sink: Sender<SchemaEvent>,
@@ -18,7 +18,7 @@ pub struct MockSchemaProvider {
 }
 
 impl MockSchemaProvider {
-    /// Creates a new mock [SchemaProvider](../common/schema/trait.SchemaProvider.html).
+    /// Creates a new mock `SchemaProvider`.
     pub fn new(logger: &slog::Logger, runtime: Handle) -> Self {
         // Create a channel for receiving events from the data source provider
         let (sink, stream) = channel(100);

@@ -8,7 +8,7 @@ use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::*;
 use thegraph::util::stream::StreamError;
 
-/// A mock [Store](../common/store/trait.Store.html).
+/// A mock `Store`.
 pub struct MockStore {
     logger: slog::Logger,
     event_sink: Option<Sender<StoreEvent>>,
@@ -17,7 +17,7 @@ pub struct MockStore {
 }
 
 impl MockStore {
-    /// Creates a new mock [Store](../common/store/trait.Store.html).
+    /// Creates a new mock `Store`.
     pub fn new(logger: &slog::Logger, runtime: Handle) -> Self {
         // Create a channel for handling incoming schema provider events
         let (sink, stream) = channel(100);

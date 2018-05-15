@@ -32,7 +32,7 @@ impl fmt::Display for MockServeError {
     }
 }
 
-/// A mock [GraphQLServer](../common/server/trait.GraphQLServer.html).
+/// A mock `GraphQLServer`.
 pub struct MockGraphQLServer {
     logger: slog::Logger,
     query_sink: Option<Sender<Query>>,
@@ -41,7 +41,7 @@ pub struct MockGraphQLServer {
 }
 
 impl MockGraphQLServer {
-    /// Creates a new mock [GraphQLServer](../common/server/trait.GraphQLServer.html).
+    /// Creates a new mock `GraphQLServer`.
     pub fn new(logger: &slog::Logger) -> Self {
         // Create channels for handling incoming events from the schema provider and the store
         let (store_sink, store_stream) = channel(100);
