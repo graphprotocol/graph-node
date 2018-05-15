@@ -38,7 +38,7 @@ impl fmt::Display for GraphQLServeError {
     }
 }
 
-/// A [GraphQLServer](../common/server/trait.GraphQLServer.html) based on Hyper.
+/// A GraphQL server based on Hyper.
 pub struct GraphQLServer {
     logger: slog::Logger,
     query_sink: Option<Sender<Query>>,
@@ -48,7 +48,7 @@ pub struct GraphQLServer {
 }
 
 impl GraphQLServer {
-    /// Creates a new [GraphQLServer](../common/server/trait.GraphQLServer.html).
+    /// Creates a new GraphQL server.
     pub fn new(logger: &slog::Logger, runtime: Handle) -> Self {
         // Create channels for handling incoming events from the schema provider and the store
         let (store_sink, store_stream) = channel(100);
