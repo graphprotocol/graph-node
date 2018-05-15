@@ -3,9 +3,9 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
 use tokio_core::reactor::Handle;
 
-use common::store::*;
-use common::schema::SchemaProviderEvent;
-use common::util::stream::StreamError;
+use thegraph::common::store::*;
+use thegraph::common::schema::SchemaProviderEvent;
+use thegraph::common::util::stream::StreamError;
 
 /// A mock [Store](../common/store/trait.Store.html).
 pub struct MockStore {
