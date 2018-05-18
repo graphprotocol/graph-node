@@ -88,10 +88,11 @@ impl Service for GraphQLService {
 mod tests {
     use futures::prelude::*;
     use futures::sync::mpsc::channel;
+    use graphql_parser::query::Value;
     use http::status::StatusCode;
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
     use std::sync::{Arc, Mutex};
     use tokio_core::reactor::Core;
 
@@ -141,7 +142,8 @@ mod tests {
         core.handle().spawn(
             query_stream
                 .for_each(move |query| {
-                    let result = QueryResult::new(Some(HashMap::new()));
+                    let data = Value::Object(BTreeMap::new());
+                    let result = QueryResult::new(Some(data));
                     query.result_sender.send(result).unwrap();
                     Ok(())
                 })

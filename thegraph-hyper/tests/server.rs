@@ -1,4 +1,5 @@
 extern crate futures;
+extern crate graphql_parser;
 extern crate http;
 extern crate hyper;
 extern crate serde_json;
@@ -9,9 +10,10 @@ extern crate tokio_core;
 
 use futures::prelude::*;
 use futures::sync::mpsc::Receiver;
+use graphql_parser::query::Value;
 use http::StatusCode;
 use hyper::{Body, Client, Request};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tokio_core::reactor::Core;
 
 use thegraph::data::query::{Query, QueryResult};
@@ -27,7 +29,8 @@ fn simulate_running_one_query(core: &Core, query_stream: Receiver<Query>) {
     core.handle().spawn(
         query_stream
             .for_each(move |query| {
-                let result = QueryResult::new(Some(HashMap::new()));
+                let data = Value::Object(BTreeMap::new());
+                let result = QueryResult::new(Some(data));
                 query.result_sender.send(result).unwrap();
                 Ok(())
             })
