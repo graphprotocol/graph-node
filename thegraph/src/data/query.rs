@@ -51,6 +51,8 @@ pub enum QueryExecutionError {
     NotSupported(String),
     NoRootQueryObjectType,
     ResolveEntityError(Pos, String),
+    NonNullError(Pos, String),
+    ListValueError(Pos, String),
 }
 
 impl Error for QueryExecutionError {
@@ -75,6 +77,8 @@ impl fmt::Display for QueryExecutionError {
                 write!(f, "No root Query type defined in the schema")
             }
             QueryExecutionError::ResolveEntityError(pos, s) => write!(f, "{}: {}", pos, s),
+            QueryExecutionError::NonNullError(pos, s) => write!(f, "{}: {}", pos, s),
+            QueryExecutionError::ListValueError(pos, s) => write!(f, "{}: {}", pos, s),
         }
     }
 }
@@ -172,7 +176,9 @@ impl Serialize for QueryError {
             }
 
             // Serialize entity resolution errors using their position
-            QueryError::ExecutionError(QueryExecutionError::ResolveEntityError(pos, s)) => {
+            QueryError::ExecutionError(QueryExecutionError::ResolveEntityError(pos, s))
+            | QueryError::ExecutionError(QueryExecutionError::NonNullError(pos, s))
+            | QueryError::ExecutionError(QueryExecutionError::ListValueError(pos, s)) => {
                 let mut location = HashMap::new();
                 location.insert("line", pos.line);
                 location.insert("column", pos.column);
