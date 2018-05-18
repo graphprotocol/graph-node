@@ -27,11 +27,46 @@ impl QueryResult {
     }
 }
 
-/// Error caused while running a [Query](struct.Query.html).
+/// Error caused while executing a [Query](struct.Query.html).
+#[derive(Debug)]
+pub enum QueryExecutionError {
+    OperationNameRequired,
+    OperationNotFound(String),
+    NotSupported(String),
+    NoRootQueryObjectType,
+}
+
+impl Error for QueryExecutionError {
+    fn description(&self) -> &str {
+        "Query execution error"
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        None
+    }
+}
+
+impl fmt::Display for QueryExecutionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &QueryExecutionError::OperationNameRequired => write!(f, "Operation name required"),
+            &QueryExecutionError::OperationNotFound(ref s) => {
+                write!(f, "Operation name not found: {}", s)
+            }
+            &QueryExecutionError::NotSupported(ref s) => write!(f, "Not supported: {}", s),
+            &QueryExecutionError::NoRootQueryObjectType => {
+                write!(f, "No root Query type defined in the schema")
+            }
+        }
+    }
+}
+
+/// Error caused while processing a [Query](struct.Query.html) request.
 #[derive(Debug)]
 pub enum QueryError {
     EncodingError(FromUtf8Error),
     ParseError(query::ParseError),
+    ExecutionError(QueryExecutionError),
 }
 
 impl From<FromUtf8Error> for QueryError {
@@ -46,6 +81,12 @@ impl From<query::ParseError> for QueryError {
     }
 }
 
+impl From<QueryExecutionError> for QueryError {
+    fn from(e: QueryExecutionError) -> Self {
+        QueryError::ExecutionError(e)
+    }
+}
+
 impl Error for QueryError {
     fn description(&self) -> &str {
         "Query error"
@@ -54,6 +95,7 @@ impl Error for QueryError {
     fn cause(&self) -> Option<&Error> {
         match self {
             &QueryError::EncodingError(ref e) => Some(e),
+            &QueryError::ExecutionError(ref e) => Some(e),
             _ => None,
         }
     }
@@ -63,6 +105,7 @@ impl fmt::Display for QueryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &QueryError::EncodingError(ref e) => write!(f, "{}", e),
+            &QueryError::ExecutionError(ref e) => write!(f, "{}", e),
             &QueryError::ParseError(ref e) => write!(f, "{}", e),
         }
     }
