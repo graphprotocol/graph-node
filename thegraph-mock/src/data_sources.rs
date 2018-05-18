@@ -30,7 +30,13 @@ impl MockDataSourceProvider {
                          type User { \
                              id: ID!
                              name: String! \
-                         }",
+                         } \
+                         \
+                         type Query { \
+                             allUsers: [User!] \
+                             User(id: ID!): User \
+                         } \
+                         ",
                     ).unwrap(),
                 },
             ],
