@@ -6,6 +6,7 @@ use graphql_parser;
 use slog;
 use std::error::Error;
 use std::fmt;
+use std::sync::{Arc, Mutex};
 use tokio;
 
 use thegraph::components::schema::SchemaProviderEvent;
@@ -38,6 +39,7 @@ pub struct MockGraphQLServer {
     query_sink: Option<Sender<Query>>,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
     store_event_sink: Sender<StoreEvent>,
+    schema: Arc<Mutex<Option<Schema>>>,
 }
 
 impl MockGraphQLServer {
@@ -53,6 +55,7 @@ impl MockGraphQLServer {
             query_sink: None,
             schema_provider_event_sink: schema_provider_sink,
             store_event_sink: store_sink,
+            schema: Arc::new(Mutex::new(None)),
         };
 
         // Spawn tasks to handle incoming events from the schema provider and store
@@ -66,9 +69,15 @@ impl MockGraphQLServer {
     /// Handle incoming events from the schema provider
     fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaProviderEvent>) {
         let logger = self.logger.clone();
+        let schema = self.schema.clone();
 
         tokio::spawn(stream.for_each(move |event| {
             info!(logger, "Received schema provider event"; "event" => format!("{:?}", event));
+            let SchemaProviderEvent::SchemaChanged(new_schema) = event;
+
+            let mut schema = schema.lock().unwrap();
+            *schema = new_schema;
+
             Ok(())
         }));
     }
@@ -110,14 +119,17 @@ impl GraphQLServer for MockGraphQLServer {
     fn serve(&mut self) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
         // Only launch the GraphQL server if there is a component that will handle incoming queries
         let query_sink = self.query_sink.clone().ok_or_else(|| MockServeError)?;
+        let schema = self.schema.clone();
 
         // Generate mock query requests
         let requests = (0..5)
             .map(|_| {
+                let schema = schema.lock().unwrap();
                 let (sink, stream) = oneshot::channel();
                 (
                     stream,
                     Query {
+                        schema: schema.clone().unwrap(),
                         document: graphql_parser::parse_query("{ allUsers { name }}").unwrap(),
                         result_sender: sink,
                     },

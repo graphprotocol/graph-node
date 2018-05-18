@@ -72,30 +72,31 @@ impl MockStore {
 }
 
 impl Store for MockStore {
-    fn get(&self, key: StoreKey) -> Result<Entity, ()> {
+    fn get(&self, key: StoreKey) -> Option<Entity> {
         if key.entity == "User" {
-            let matching_entity = self.entities.iter().find(|entity| {
-                let id = entity.get("id").unwrap();
-                match id {
-                    &Value::String(ref s) => s == &key.id,
-                }
-            });
-
-            matching_entity.cloned().ok_or(())
+            self.entities
+                .iter()
+                .find(|entity| {
+                    let id = entity.get("id").unwrap();
+                    match id {
+                        &Value::String(ref s) => s == &key.id,
+                    }
+                })
+                .map(|entity| entity.clone())
         } else {
-            Err(())
+            None
         }
     }
 
-    fn set(&mut self, _key: StoreKey, _entity: Entity) -> Result<(), ()> {
+    fn set(&mut self, _key: StoreKey, _entity: Entity) -> bool {
         unimplemented!();
     }
 
-    fn delete(&mut self, _key: StoreKey) -> Result<(), ()> {
+    fn delete(&mut self, _key: StoreKey) -> bool {
         unimplemented!();
     }
 
-    fn find(&self, _query: StoreQuery) -> Result<Vec<Entity>, ()> {
+    fn find(&self, _query: StoreQuery) -> Option<Vec<Entity>> {
         unimplemented!();
     }
 
