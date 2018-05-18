@@ -97,7 +97,7 @@ impl Store for MockStore {
     }
 
     fn find(&self, _query: StoreQuery) -> Option<Vec<Entity>> {
-        unimplemented!();
+        Some(self.entities.clone())
     }
 
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
