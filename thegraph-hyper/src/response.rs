@@ -101,7 +101,7 @@ mod tests {
     fn generates_500_for_internal_errors() {
         let mut core = Core::new().unwrap();
         let future = GraphQLResponse::new(Err(GraphQLServerError::from("Some error")));
-        let response = core.run(future).expect("Should generate are response");
+        let response = core.run(future).expect("Should generate a response");
         test_utils::assert_error_response(&mut core, response, StatusCode::INTERNAL_SERVER_ERROR);
     }
 
@@ -110,7 +110,7 @@ mod tests {
         let mut core = Core::new().unwrap();
         let error = GraphQLServerError::ClientError(String::from("foo"));
         let future = GraphQLResponse::new(Err(error));
-        let response = core.run(future).expect("Should generate are response");
+        let response = core.run(future).expect("Should generate a response");
         test_utils::assert_error_response(&mut core, response, StatusCode::BAD_REQUEST);
     }
 
@@ -120,7 +120,7 @@ mod tests {
         let parse_error = graphql_parser::parse_query("<>?><").unwrap_err();
         let query_error = QueryError::from(parse_error);
         let future = GraphQLResponse::new(Err(GraphQLServerError::from(query_error)));
-        let response = core.run(future).expect("Should generate are response");
+        let response = core.run(future).expect("Should generate a response");
         test_utils::assert_error_response(&mut core, response, StatusCode::BAD_REQUEST);
     }
 
@@ -129,7 +129,7 @@ mod tests {
         let mut core = Core::new().unwrap();
         let query_result = QueryResult::new(Some(HashMap::new()));
         let future = GraphQLResponse::new(Ok(query_result));
-        let response = core.run(future).expect("Should generate are response");
+        let response = core.run(future).expect("Should generate a response");
         test_utils::assert_successful_response(&mut core, response);
     }
 
@@ -138,7 +138,7 @@ mod tests {
         let mut core = Core::new().unwrap();
         let query_result = QueryResult::new(Some(HashMap::new()));
         let future = GraphQLResponse::new(Ok(query_result));
-        let response = core.run(future).expect("Should generate are response");
+        let response = core.run(future).expect("Should generate a response");
         let data = test_utils::assert_successful_response(&mut core, response);
         assert!(data.is_empty());
     }
@@ -148,7 +148,7 @@ mod tests {
         let mut core = Core::new().unwrap();
         let err = GraphQLServerError::Canceled(oneshot::Canceled);
         let future = GraphQLResponse::new(Err(err));
-        let response = core.run(future).expect("Should generate are response");
+        let response = core.run(future).expect("Should generate a response");
         let errors = test_utils::assert_error_response(
             &mut core,
             response,
@@ -172,7 +172,7 @@ mod tests {
         let mut core = Core::new().unwrap();
         let err = GraphQLServerError::ClientError(String::from("Something went wrong"));
         let future = GraphQLResponse::new(Err(err));
-        let response = core.run(future).expect("Should generate are response");
+        let response = core.run(future).expect("Should generate a response");
         let errors =
             test_utils::assert_error_response(&mut core, response, StatusCode::BAD_REQUEST);
         assert_eq!(errors.len(), 1);
@@ -196,7 +196,7 @@ mod tests {
         let query_error = QueryError::from(parse_error);
         let err = GraphQLServerError::QueryError(query_error);
         let future = GraphQLResponse::new(Err(err));
-        let response = core.run(future).expect("Should generate are response");
+        let response = core.run(future).expect("Should generate a response");
         let errors =
             test_utils::assert_error_response(&mut core, response, StatusCode::BAD_REQUEST);
         assert_eq!(errors.len(), 1);
@@ -250,7 +250,7 @@ mod tests {
         let mut core = Core::new().unwrap();
         let err = GraphQLServerError::InternalError(String::from("Something went wrong"));
         let future = GraphQLResponse::new(Err(err));
-        let response = core.run(future).expect("Should generate are response");
+        let response = core.run(future).expect("Should generate a response");
         let errors = test_utils::assert_error_response(
             &mut core,
             response,
