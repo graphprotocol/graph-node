@@ -6,9 +6,12 @@ use std::error::Error;
 use std::fmt;
 use std::string::FromUtf8Error;
 
+use data::schema::Schema;
+
 /// A GraphQL query as submitted by a client, either directly or through a subscription.
 #[derive(Debug)]
 pub struct Query {
+    pub schema: Schema,
     pub document: query::Document,
     pub result_sender: oneshot::Sender<QueryResult>,
 }
