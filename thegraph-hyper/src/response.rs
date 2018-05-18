@@ -86,15 +86,14 @@ impl Future for GraphQLResponse {
 
 #[cfg(test)]
 mod tests {
+    use super::GraphQLResponse;
     use futures::sync::oneshot;
     use graphql_parser;
     use http::status::StatusCode;
-    use std::collections::HashMap;
-    use tokio_core::reactor::Core;
-
-    use super::GraphQLResponse;
+    use std::collections::BTreeMap;
     use thegraph::components::server::GraphQLServerError;
     use thegraph::prelude::*;
+    use tokio_core::reactor::Core;
 
     use test_utils;
 
@@ -128,7 +127,8 @@ mod tests {
     #[test]
     fn generates_200_for_query_results() {
         let mut core = Core::new().unwrap();
-        let query_result = QueryResult::new(Some(HashMap::new()));
+        let data = graphql_parser::query::Value::Object(BTreeMap::new());
+        let query_result = QueryResult::new(Some(data));
         let future = GraphQLResponse::new(Ok(query_result));
         let response = core.run(future).expect("Should generate a response");
         test_utils::assert_successful_response(&mut core, response);
@@ -137,7 +137,8 @@ mod tests {
     #[test]
     fn generates_valid_json_for_an_empty_result() {
         let mut core = Core::new().unwrap();
-        let query_result = QueryResult::new(Some(HashMap::new()));
+        let data = graphql_parser::query::Value::Object(BTreeMap::new());
+        let query_result = QueryResult::new(Some(data));
         let future = GraphQLResponse::new(Ok(query_result));
         let response = core.run(future).expect("Should generate a response");
         let data = test_utils::assert_successful_response(&mut core, response);
