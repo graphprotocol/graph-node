@@ -17,13 +17,25 @@ pub struct Query {
 #[derive(Debug, Serialize)]
 pub struct QueryResult {
     pub data: Option<HashMap<String, String>>,
-    #[serde(skip_serializing)]
     pub errors: Option<Vec<QueryError>>,
 }
 
 impl QueryResult {
     pub fn new(data: Option<HashMap<String, String>>) -> Self {
         QueryResult { data, errors: None }
+    }
+
+    pub fn add_error(&mut self, e: QueryError) {
+        let errors = self.errors.get_or_insert(vec![]);
+        errors.push(e);
+    }
+}
+
+impl From<QueryExecutionError> for QueryResult {
+    fn from(e: QueryExecutionError) -> Self {
+        let mut result = Self::new(None);
+        result.errors = Some(vec![QueryError::from(e)]);
+        result
     }
 }
 
