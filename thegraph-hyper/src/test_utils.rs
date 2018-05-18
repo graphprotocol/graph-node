@@ -33,7 +33,6 @@ pub fn assert_error_response(
 
     let chunk = core.run(response.into_body().concat2())
         .expect("Truncated response body");
-    println!("Chunk: {}", String::from_utf8(chunk.to_vec()).unwrap());
     let json: serde_json::Value =
         serde_json::from_slice(&chunk).expect("GraphQL response is not valid JSON");
 
