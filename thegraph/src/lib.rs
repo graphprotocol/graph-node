@@ -33,7 +33,7 @@ pub mod prelude {
     pub use components::server::GraphQLServer;
     pub use components::store::Store;
 
-    pub use data::query::{Query, QueryError, QueryResult};
+    pub use data::query::{Query, QueryError, QueryExecutionError, QueryResult};
     pub use data::schema::Schema;
     pub use data::store::{Attribute, Entity, Value};
 }
