@@ -18,14 +18,14 @@ pub struct Query {
 }
 
 /// The result of running a query, if successful.
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct QueryResult {
-    pub data: Option<HashMap<String, String>>,
+    pub data: Option<query::Value>,
     pub errors: Option<Vec<QueryError>>,
 }
 
 impl QueryResult {
-    pub fn new(data: Option<HashMap<String, String>>) -> Self {
+    pub fn new(data: Option<query::Value>) -> Self {
         QueryResult { data, errors: None }
     }
 
