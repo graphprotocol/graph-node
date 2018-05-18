@@ -5,6 +5,7 @@ use serde::ser::*;
 use serde_json;
 
 use thegraph::components::server::GraphQLServerError;
+use thegraph::data::graphql::SerializableValue;
 use thegraph::data::query::QueryResult;
 
 /// Future for HTTP responses to GraphQL query requests.
@@ -48,7 +49,7 @@ impl Serialize for GraphQLResponse {
                 let mut map = serializer.serialize_map(None)?;
 
                 if let Some(ref data) = result.data {
-                    map.serialize_entry("data", data)?;
+                    map.serialize_entry("data", &SerializableValue(&data))?;
                 }
 
                 if let Some(ref errors) = result.errors {
