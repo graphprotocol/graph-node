@@ -1,6 +1,9 @@
 /// Data types for dealing with data sources.
 pub mod data_sources;
 
+/// Data types for dealing with GraphQL data.
+pub mod graphql;
+
 /// Data types for dealing with GraphQL queries.
 pub mod query;
 
