@@ -59,7 +59,7 @@ pub struct StoreQuery {
     pub order_by: Option<String>,
 
     /// The direction to order entities in.
-    pub order_direction: StoreOrder,
+    pub order_direction: Option<StoreOrder>,
 
     /// An optional range to limit the size of the result.
     pub range: Option<StoreRange>,
