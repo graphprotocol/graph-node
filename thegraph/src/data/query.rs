@@ -1,4 +1,5 @@
 use futures::sync::oneshot;
+use graphql_parser::Pos;
 use graphql_parser::query;
 use serde::ser::*;
 use std::collections::HashMap;
@@ -49,6 +50,7 @@ pub enum QueryExecutionError {
     OperationNotFound(String),
     NotSupported(String),
     NoRootQueryObjectType,
+    ResolveEntityError(Pos, String),
 }
 
 impl Error for QueryExecutionError {
@@ -64,14 +66,15 @@ impl Error for QueryExecutionError {
 impl fmt::Display for QueryExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &QueryExecutionError::OperationNameRequired => write!(f, "Operation name required"),
-            &QueryExecutionError::OperationNotFound(ref s) => {
+            QueryExecutionError::OperationNameRequired => write!(f, "Operation name required"),
+            QueryExecutionError::OperationNotFound(s) => {
                 write!(f, "Operation name not found: {}", s)
             }
-            &QueryExecutionError::NotSupported(ref s) => write!(f, "Not supported: {}", s),
-            &QueryExecutionError::NoRootQueryObjectType => {
+            QueryExecutionError::NotSupported(s) => write!(f, "Not supported: {}", s),
+            QueryExecutionError::NoRootQueryObjectType => {
                 write!(f, "No root Query type defined in the schema")
             }
+            QueryExecutionError::ResolveEntityError(pos, s) => write!(f, "{}: {}", pos, s),
         }
     }
 }
@@ -132,41 +135,52 @@ impl Serialize for QueryError {
         S: Serializer,
     {
         let mut map = serializer.serialize_map(Some(1))?;
-        let mut msg = format!("{}", self);
 
-        // Serialize parse errors with their location (line, column) to make it easier
-        // for users to find where the errors are; this is likely to change as the
-        // graphql_parser team makes improvements to their error reporting
-        if let &QueryError::ParseError(_) = self {
-            // Split the inner message into (first line, rest)
-            let inner_msg = msg.replace("query parse error:", "");
-            let inner_msg = inner_msg.trim();
-            let parts: Vec<&str> = inner_msg.splitn(2, "\n").collect();
+        let msg = match self {
+            // Serialize parse errors with their location (line, column) to make it easier
+            // for users to find where the errors are; this is likely to change as the
+            // graphql_parser team makes improvements to their error reporting
+            QueryError::ParseError(_) => {
+                // Split the inner message into (first line, rest)
+                let mut msg = format!("{}", self);
+                let inner_msg = msg.replace("query parse error:", "");
+                let inner_msg = inner_msg.trim();
+                let parts: Vec<&str> = inner_msg.splitn(2, "\n").collect();
 
-            // Find the colon in the first line and split there
-            let colon_pos = parts[0].rfind(":").unwrap();
-            let (a, b) = parts[0].split_at(colon_pos);
+                // Find the colon in the first line and split there
+                let colon_pos = parts[0].rfind(":").unwrap();
+                let (a, b) = parts[0].split_at(colon_pos);
 
-            // Find the line and column numbers and convert them to u32
-            let line: u32 = a.matches(char::is_numeric)
-                .collect::<String>()
-                .parse()
-                .unwrap();
-            let column: u32 = b.matches(char::is_numeric)
-                .collect::<String>()
-                .parse()
-                .unwrap();
+                // Find the line and column numbers and convert them to u32
+                let line: u32 = a.matches(char::is_numeric)
+                    .collect::<String>()
+                    .parse()
+                    .unwrap();
+                let column: u32 = b.matches(char::is_numeric)
+                    .collect::<String>()
+                    .parse()
+                    .unwrap();
 
-            // Generate the list of locations
-            let mut location = HashMap::new();
-            location.insert("line", line);
-            location.insert("column", column);
-            let locations = vec![location];
-            map.serialize_entry("locations", &locations)?;
+                // Generate the list of locations
+                let mut location = HashMap::new();
+                location.insert("line", line);
+                location.insert("column", column);
+                map.serialize_entry("locations", &vec![location])?;
 
-            // Only use the remainder after the location as the error message
-            msg = parts[1].to_string();
-        }
+                // Only use the remainder after the location as the error message
+                parts[1].to_string()
+            }
+
+            // Serialize entity resolution errors using their position
+            QueryError::ExecutionError(QueryExecutionError::ResolveEntityError(pos, s)) => {
+                let mut location = HashMap::new();
+                location.insert("line", pos.line);
+                location.insert("column", pos.column);
+                map.serialize_entry("locations", &vec![location]);
+                s.to_string()
+            }
+            _ => format!("{}", self),
+        };
 
         map.serialize_entry("message", msg.as_str())?;
         map.end()
