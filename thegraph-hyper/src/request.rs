@@ -5,17 +5,18 @@ use hyper::Chunk;
 use serde_json;
 
 use thegraph::components::server::GraphQLServerError;
-use thegraph::data::query::{Query, QueryError, QueryResult};
+use thegraph::prelude::*;
 
 /// Future for a query parsed from an HTTP request.
 pub struct GraphQLRequest {
     body: Chunk,
+    schema: Option<Schema>,
 }
 
 impl GraphQLRequest {
     /// Creates a new GraphQLRequest future based on an HTTP request and a result sender.
-    pub fn new(body: Chunk) -> Self {
-        GraphQLRequest { body }
+    pub fn new(body: Chunk, schema: Option<Schema>) -> Self {
+        GraphQLRequest { body, schema }
     }
 }
 
@@ -24,6 +25,11 @@ impl Future for GraphQLRequest {
     type Error = GraphQLServerError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        // Fail if no schema is available
+        let schema = self.schema.clone().ok_or_else(|| {
+            GraphQLServerError::InternalError("No schema available to query".to_string())
+        })?;
+
         // Parse request body as JSON
         let json: serde_json::Value = serde_json::from_slice(&self.body)
             .or_else(|e| Err(GraphQLServerError::ClientError(format!("{}", e))))?;
@@ -56,6 +62,7 @@ impl Future for GraphQLRequest {
         Ok(Async::Ready((
             Query {
                 document,
+                schema: schema,
                 result_sender: sender,
             },
             receiver,
@@ -69,12 +76,24 @@ mod tests {
     use hyper;
     use tokio_core::reactor::Core;
 
+    use thegraph::prelude::*;
+
     use super::GraphQLRequest;
+
+    const EXAMPLE_SCHEMA: &'static str = "\
+                                          type Query { \
+                                          users: [User!] \
+                                          } \
+                                          ";
 
     #[test]
     fn rejects_invalid_json() {
         let mut core = Core::new().unwrap();
-        let request = GraphQLRequest::new(hyper::Chunk::from("!@#)%"));
+        let schema = Schema {
+            id: "test".to_string(),
+            document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
+        };
+        let request = GraphQLRequest::new(hyper::Chunk::from("!@#)%"), Some(schema));
         let result = core.run(request);
         result.expect_err("Should reject invalid JSON");
     }
@@ -82,7 +101,11 @@ mod tests {
     #[test]
     fn rejects_json_without_query_field() {
         let mut core = Core::new().unwrap();
-        let request = GraphQLRequest::new(hyper::Chunk::from("{}"));
+        let schema = Schema {
+            id: "test".to_string(),
+            document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
+        };
+        let request = GraphQLRequest::new(hyper::Chunk::from("{}"), Some(schema));
         let result = core.run(request);
         result.expect_err("Should reject JSON without query field");
     }
@@ -90,7 +113,11 @@ mod tests {
     #[test]
     fn rejects_json_with_non_string_query_field() {
         let mut core = Core::new().unwrap();
-        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": 5}"));
+        let schema = Schema {
+            id: "test".to_string(),
+            document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
+        };
+        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": 5}"), Some(schema));
         let result = core.run(request);
         result.expect_err("Should reject JSON with a non-string query field");
     }
@@ -98,7 +125,11 @@ mod tests {
     #[test]
     fn rejects_broken_queries() {
         let mut core = Core::new().unwrap();
-        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": \"foo\"}"));
+        let schema = Schema {
+            id: "test".to_string(),
+            document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
+        };
+        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": \"foo\"}"), Some(schema));
         let result = core.run(request);
         result.expect_err("Should reject broken queries");
     }
@@ -106,7 +137,14 @@ mod tests {
     #[test]
     fn accepts_valid_queries() {
         let mut core = Core::new().unwrap();
-        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": \"{ user { name } }\"}"));
+        let schema = Schema {
+            id: "test".to_string(),
+            document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
+        };
+        let request = GraphQLRequest::new(
+            hyper::Chunk::from("{\"query\": \"{ user { name } }\"}"),
+            Some(schema),
+        );
         let result = core.run(request);
         let (query, _) = result.expect("Should accept valid queries");
         assert_eq!(

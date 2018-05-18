@@ -3,9 +3,10 @@ use futures::prelude::*;
 use futures::sync::mpsc::Sender;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
+use std::sync::{Arc, Mutex};
 
 use thegraph::components::server::GraphQLServerError;
-use thegraph::data::query::Query;
+use thegraph::prelude::*;
 
 use request::GraphQLRequest;
 use response::GraphQLResponse;
@@ -17,25 +18,30 @@ pub type GraphQLServiceResponse =
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
 pub struct GraphQLService {
+    schema: Arc<Mutex<Option<Schema>>>,
     query_sink: Sender<Query>,
 }
 
 impl GraphQLService {
     /// Creates a new GraphQL service.
-    pub fn new(query_sink: Sender<Query>) -> Self {
-        GraphQLService { query_sink }
+    pub fn new(schema: Arc<Mutex<Option<Schema>>>, query_sink: Sender<Query>) -> Self {
+        GraphQLService { schema, query_sink }
     }
 
     /// Handles GraphQL queries received via POST /.
     fn handle_graphql_query(&self, request: Request<Body>) -> GraphQLServiceResponse {
         let query_sink = self.query_sink.clone();
+        let schema = self.schema.clone();
 
         Box::new(
             request
                 .into_body()
                 .concat2()
                 .map_err(|_| GraphQLServerError::from("Failed to read request body"))
-                .and_then(|body| GraphQLRequest::new(body))
+                .and_then(move |body| {
+                    let schema = schema.lock().unwrap();
+                    GraphQLRequest::new(body, schema.clone())
+                })
                 .and_then(move |(query, receiver)| {
                     // Forward the query to the system
                     query_sink
@@ -86,6 +92,7 @@ mod tests {
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
     use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
     use tokio_core::reactor::Core;
 
     use thegraph::data::query::QueryResult;
@@ -97,8 +104,9 @@ mod tests {
     fn posting_invalid_query_yields_error_response() {
         let mut core = Core::new().unwrap();
 
+        let schema = Arc::new(Mutex::new(None));
         let (query_sink, _) = channel(1);
-        let mut service = GraphQLService::new(query_sink);
+        let mut service = GraphQLService::new(schema, query_sink);
 
         let request = Request::builder()
             .method(Method::POST)
@@ -126,8 +134,9 @@ mod tests {
     fn posting_valid_queries_yields_result_response() {
         let mut core = Core::new().unwrap();
 
+        let schema = Arc::new(Mutex::new(None));
         let (query_sink, query_stream) = channel(1);
-        let mut service = GraphQLService::new(query_sink);
+        let mut service = GraphQLService::new(schema, query_sink);
 
         core.handle().spawn(
             query_stream
