@@ -1,7 +1,8 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use graphql_parser::query as gqlq;
 use slog;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio_core::reactor::Handle;
 
@@ -42,9 +43,16 @@ where
             info!(logger, "Running query"; "query" => format!("{:?}", query));
 
             // Here we would access the store.
-            let mut data = HashMap::new();
-            data.insert(String::from("allUsers"), String::from("placeholder"));
-            data.insert(String::from("allItems"), String::from("placeholder"));
+            let mut data = BTreeMap::new();
+            data.insert(
+                String::from("allUsers"),
+                gqlq::Value::String("placeholder".to_string()),
+            );
+            data.insert(
+                String::from("allItems"),
+                gqlq::Value::String("placeholder".to_string()),
+            );
+            let data = gqlq::Value::Object(data);
 
             query
                 .result_sender
