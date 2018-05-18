@@ -6,11 +6,13 @@ use hyper::Server;
 use slog;
 use std::error::Error;
 use std::fmt;
+use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
 use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::StoreEvent;
 use thegraph::data::query::Query;
+use thegraph::data::schema::Schema;
 use thegraph::prelude::GraphQLServer as GraphQLServerTrait;
 use thegraph::util::stream::StreamError;
 
@@ -45,6 +47,7 @@ pub struct GraphQLServer {
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
     store_event_sink: Sender<StoreEvent>,
     runtime: Handle,
+    schema: Arc<Mutex<Option<Schema>>>,
 }
 
 impl GraphQLServer {
@@ -61,6 +64,7 @@ impl GraphQLServer {
             schema_provider_event_sink: schema_provider_sink,
             store_event_sink: store_sink,
             runtime,
+            schema: Arc::new(Mutex::new(None)),
         };
 
         // Spawn tasks to handle incoming events from the schema provider and store
@@ -74,6 +78,7 @@ impl GraphQLServer {
     /// Handle incoming events from the schema provider
     fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaProviderEvent>) {
         let logger = self.logger.clone();
+        let schema = self.schema.clone();
 
         self.runtime.spawn(stream.for_each(move |event| {
             info!(
@@ -81,6 +86,11 @@ impl GraphQLServer {
                 "Received schema provider event";
                 "event" => format!("{:?}", event),
             );
+
+            let SchemaProviderEvent::SchemaChanged(new_schema) = event;
+            let mut schema = schema.lock().unwrap();
+            *schema = new_schema;
+
             Ok(())
         }));
     }
@@ -133,8 +143,9 @@ impl GraphQLServerTrait for GraphQLServer {
         // On every incoming request, launch a new GraphQL service that writes
         // incoming queries to the query sink.
         let query_sink = query_sink.clone();
+        let schema = self.schema.clone();
         let new_service = move || {
-            let service = GraphQLService::new(query_sink.clone());
+            let service = GraphQLService::new(schema.clone(), query_sink.clone());
             future::ok::<GraphQLService, hyper::Error>(service)
         };
 
