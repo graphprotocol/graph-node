@@ -26,34 +26,44 @@ impl Future for GraphQLRequest {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         // Fail if no schema is available
-        let schema = self.schema.clone().ok_or_else(|| {
-            GraphQLServerError::InternalError("No schema available to query".to_string())
-        })?;
+        let schema = self.schema
+            .clone()
+            .ok_or(GraphQLServerError::InternalError(
+                "No schema available to query".to_string(),
+            ))?;
 
         // Parse request body as JSON
         let json: serde_json::Value = serde_json::from_slice(&self.body)
-            .or_else(|e| Err(GraphQLServerError::ClientError(format!("{}", e))))?;
+            .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))?;
 
         // Ensure the JSON data is an object
-        let obj = json.as_object().ok_or_else(|| {
-            GraphQLServerError::ClientError(String::from("Request data is not an object"))
-        })?;
+        let obj = json.as_object()
+            .ok_or(GraphQLServerError::ClientError(String::from(
+                "Request data is not an object",
+            )))?;
 
         // Ensure the JSON data has a "query" field
-        let query_value = obj.get("query").ok_or_else(|| {
-            GraphQLServerError::ClientError(String::from(
+        let query_value = obj.get("query")
+            .ok_or(GraphQLServerError::ClientError(String::from(
                 "The \"query\" field missing in request data",
-            ))
-        })?;
+            )))?;
 
         // Ensure the "query" field is a string
-        let query_string = query_value.as_str().ok_or_else(|| {
-            GraphQLServerError::ClientError(String::from("The\"query\" field is not a string"))
-        })?;
+        let query_string = query_value.as_str().ok_or(GraphQLServerError::ClientError(
+            String::from("The\"query\" field is not a string"),
+        ))?;
 
         // Parse the "query" field of the JSON body
         let document = graphql_parser::parse_query(query_string)
-            .or_else(|e| Err(GraphQLServerError::from(QueryError::from(e))))?;
+            .map_err(|e| GraphQLServerError::from(QueryError::from(e)))?;
+
+        // Parse the "variables" field of the JSON body, if present
+        let variables = match obj.get("variables") {
+            Some(variables) => serde_json::from_value(variables.clone())
+                .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))
+                .map(|v| Some(v)),
+            None => Ok(None),
+        }?;
 
         // Create a one-shot channel to allow another part of the system
         // to notify the service when the query has completed
@@ -62,6 +72,7 @@ impl Future for GraphQLRequest {
         Ok(Async::Ready((
             Query {
                 document,
+                variables,
                 schema: schema,
                 result_sender: sender,
             },
@@ -80,11 +91,7 @@ mod tests {
 
     use super::GraphQLRequest;
 
-    const EXAMPLE_SCHEMA: &'static str = "\
-                                          type Query { \
-                                          users: [User!] \
-                                          } \
-                                          ";
+    const EXAMPLE_SCHEMA: &'static str = "type Query { users: [User!] }";
 
     #[test]
     fn rejects_invalid_json() {
@@ -151,5 +158,33 @@ mod tests {
             query.document,
             graphql_parser::parse_query("{ user { name } }").unwrap()
         );
+    }
+
+    #[test]
+    fn parses_variables() {
+        let mut core = Core::new().unwrap();
+        let schema = Schema {
+            id: "test".to_string(),
+            document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
+        };
+        let request = GraphQLRequest::new(
+            hyper::Chunk::from(
+                "\
+                 {\
+                 \"query\": \"{ user { name } }\", \
+                 \"variables\": { \"foo\": \"bar\" } \
+                 }",
+            ),
+            Some(schema),
+        );
+        let result = core.run(request);
+        let (query, _) = result.expect("Should accept valid queries");
+
+        let expected_query = graphql_parser::parse_query("{ user { name } }").unwrap();
+        let mut expected_variables = QueryVariables::new();
+        expected_variables.insert("foo".to_string(), QueryVariableValue::from("bar"));
+
+        assert_eq!(query.document, expected_query);
+        assert_eq!(query.variables, Some(expected_variables));
     }
 }
