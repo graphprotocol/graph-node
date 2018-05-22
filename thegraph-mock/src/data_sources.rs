@@ -26,7 +26,12 @@ impl MockDataSourceProvider {
                 Schema {
                     id: "176dbd4fdeb8407b899be5d456ababc0".to_string(),
                     document: graphql_parser::parse_schema(
-                        "\
+                        "scalar Int \
+                         scalar Float \
+                         scalar String \
+                         scalar Boolean \
+                         scalar ID \
+                         \
                          type User { \
                              id: ID!
                              name: String! \
