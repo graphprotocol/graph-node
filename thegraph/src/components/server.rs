@@ -1,13 +1,13 @@
 use futures::prelude::*;
-use futures::sync::oneshot::Canceled;
 use futures::sync::mpsc::{Receiver, Sender};
+use futures::sync::oneshot::Canceled;
 use serde::ser::*;
 use std::error::Error;
 use std::fmt;
 
-use data::query::{Query, QueryError};
 use super::schema::SchemaProviderEvent;
 use super::store::StoreEvent;
+use data::query::{Query, QueryError};
 use util::stream::StreamError;
 
 /// Errors that can occur while processing incoming requests.

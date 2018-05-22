@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
-use thegraph::data::schema::Schema;
-use thegraph::components::schema::{SchemaProvider as SchemaProviderTrait, SchemaProviderEvent};
 use thegraph::components::data_sources::SchemaEvent;
+use thegraph::components::schema::{SchemaProvider as SchemaProviderTrait, SchemaProviderEvent};
+use thegraph::data::schema::Schema;
 use thegraph::util::stream::StreamError;
 
 /// Common schema provider implementation for The Graph.
@@ -131,10 +131,10 @@ mod tests {
     use graphql_parser;
     use tokio_core::reactor::Core;
 
-    use thegraph::prelude::*;
+    use slog;
     use thegraph::components::data_sources::SchemaEvent;
     use thegraph::components::schema::SchemaProviderEvent;
-    use slog;
+    use thegraph::prelude::*;
 
     use super::SchemaProvider as CoreSchemaProvider;
 

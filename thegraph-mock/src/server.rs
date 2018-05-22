@@ -1,4 +1,3 @@
-use tokio;
 use futures::prelude::*;
 use futures::stream;
 use futures::sync::mpsc::{channel, Receiver, Sender};
@@ -7,10 +6,11 @@ use graphql_parser;
 use slog;
 use std::error::Error;
 use std::fmt;
+use tokio;
 
-use thegraph::prelude::*;
 use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::StoreEvent;
+use thegraph::prelude::*;
 use thegraph::util::stream::StreamError;
 
 #[derive(Debug)]

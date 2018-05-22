@@ -3,8 +3,8 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use graphql_parser;
 use slog;
 
-use thegraph::prelude::*;
 use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
+use thegraph::prelude::*;
 use thegraph::util::stream::StreamError;
 
 /// A mock `DataSourceProvider`.

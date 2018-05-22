@@ -1,9 +1,9 @@
 use futures::sync::oneshot;
 use graphql_parser::query;
 use serde::ser::*;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use std::collections::HashMap;
 use std::string::FromUtf8Error;
 
 /// A GraphQL query as submitted by a client, either directly or through a subscription.
