@@ -127,8 +127,8 @@ impl GraphQLServerTrait for GraphQLServer {
 
         // Only launch the GraphQL server if there is a component that will handle incoming queries
         let query_sink = self.query_sink
-            .clone()
-            .ok_or_else(|| GraphQLServeError::OrphanError)?;
+            .as_ref()
+            .ok_or(GraphQLServeError::OrphanError)?;
 
         // On every incoming request, launch a new GraphQL service that writes
         // incoming queries to the query sink.
