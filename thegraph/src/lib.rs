@@ -2,6 +2,8 @@ extern crate futures;
 extern crate graphql_parser;
 extern crate serde;
 #[macro_use]
+extern crate serde_derive;
+#[macro_use]
 extern crate slog;
 extern crate slog_async;
 extern crate slog_term;
@@ -31,7 +33,8 @@ pub mod prelude {
     pub use components::server::GraphQLServer;
     pub use components::store::Store;
 
-    pub use data::query::{Query, QueryError, QueryExecutionError, QueryResult};
+    pub use data::query::{Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue,
+                          QueryVariables};
     pub use data::schema::Schema;
     pub use data::store::{Attribute, Entity, Value};
 }
