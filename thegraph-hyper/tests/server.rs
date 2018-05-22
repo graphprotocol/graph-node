@@ -3,6 +3,8 @@ extern crate graphql_parser;
 extern crate http;
 extern crate hyper;
 extern crate serde_json;
+#[macro_use]
+extern crate slog;
 extern crate thegraph;
 extern crate thegraph_hyper;
 extern crate tokio;
@@ -16,7 +18,7 @@ use hyper::{Body, Client, Request};
 use std::collections::BTreeMap;
 use tokio_core::reactor::Core;
 
-use thegraph::data::query::{Query, QueryResult};
+use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
 
@@ -29,7 +31,9 @@ fn simulate_running_one_query(core: &Core, query_stream: Receiver<Query>) {
     core.handle().spawn(
         query_stream
             .for_each(move |query| {
-                let data = Value::Object(BTreeMap::new());
+                let mut map = BTreeMap::new();
+                map.insert("name".to_string(), Value::String("Jordi".to_string()));
+                let data = Value::Object(map);
                 let result = QueryResult::new(Some(data));
                 query.result_sender.send(result).unwrap();
                 Ok(())
@@ -41,11 +45,27 @@ fn simulate_running_one_query(core: &Core, query_stream: Receiver<Query>) {
 #[test]
 fn rejects_empty_json() {
     let mut core = Core::new().unwrap();
-    let logger = logger();
+    let logger = slog::Logger::root(slog::Discard, o!());
 
     let mut server = HyperGraphQLServer::new(&logger, core.handle());
     let query_stream = server.query_stream().unwrap();
     let http_server = server.serve().expect("Failed to start GraphQL server");
+
+    // Create a simple schema and send it to the server
+    let schema = Schema {
+        id: "test-schema".to_string(),
+        document: graphql_parser::parse_schema(
+            "\
+             scalar String \
+             type Query { name: String } \
+             ",
+        ).unwrap(),
+    };
+    server
+        .schema_provider_event_sink()
+        .send(SchemaProviderEvent::SchemaChanged(Some(schema)))
+        .wait()
+        .expect("Failed to send schema to server");
 
     // Launch the server to handle a single request
     simulate_running_one_query(&core, query_stream);
@@ -76,7 +96,7 @@ fn rejects_empty_json() {
 #[test]
 fn rejects_invalid_queries() {
     let mut core = Core::new().unwrap();
-    let logger = logger();
+    let logger = slog::Logger::root(slog::Discard, o!());
 
     let mut server = HyperGraphQLServer::new(&logger, core.handle());
     let query_stream = server.query_stream().unwrap();
@@ -85,6 +105,22 @@ fn rejects_invalid_queries() {
     // Launch the server to handle a single request
     simulate_running_one_query(&core, query_stream);
     core.handle().spawn(http_server.fuse());
+
+    // Create a simple schema and send it to the server
+    let schema = Schema {
+        id: "test-schema".to_string(),
+        document: graphql_parser::parse_schema(
+            "\
+             scalar String \
+             type Query { name: String } \
+             ",
+        ).unwrap(),
+    };
+    server
+        .schema_provider_event_sink()
+        .send(SchemaProviderEvent::SchemaChanged(Some(schema)))
+        .wait()
+        .expect("Failed to send schema to server");
 
     // Send an broken query request
     let client = Client::new();
@@ -144,7 +180,7 @@ fn rejects_invalid_queries() {
 #[test]
 fn accepts_valid_queries() {
     let mut core = Core::new().unwrap();
-    let logger = logger();
+    let logger = slog::Logger::root(slog::Discard, o!());
 
     let mut server = HyperGraphQLServer::new(&logger, core.handle());
     let query_stream = server.query_stream().unwrap();
@@ -154,10 +190,26 @@ fn accepts_valid_queries() {
     simulate_running_one_query(&core, query_stream);
     core.handle().spawn(http_server.fuse());
 
+    // Create a simple schema and send it to the server
+    let schema = Schema {
+        id: "test-schema".to_string(),
+        document: graphql_parser::parse_schema(
+            "\
+             scalar String \
+             type Query { name: String } \
+             ",
+        ).unwrap(),
+    };
+    server
+        .schema_provider_event_sink()
+        .send(SchemaProviderEvent::SchemaChanged(Some(schema)))
+        .wait()
+        .expect("Failed to send schema to server");
+
     // Send a valid example query
     let client = Client::new();
     let request = Request::post("http://localhost:8000")
-        .body(Body::from("{\"query\": \"{ users { name }}\"}"))
+        .body(Body::from("{\"query\": \"{ name }\"}"))
         .unwrap();
     let work = client.request(request);
 
@@ -165,6 +217,10 @@ fn accepts_valid_queries() {
     let response = core.run(work).expect("Should return a response");
     let data = test_utils::assert_successful_response(&mut core, response);
 
-    // Assert that the JSON response is {"query": {"data": {}}}
-    assert!(data.is_empty());
+    // The JSON response should match the simulated query result
+    let name = data.get("name")
+        .expect("Query result data has no \"name\" field")
+        .as_str()
+        .expect("Query result field \"name\" is not a string");
+    assert_eq!(name, "Jordi".to_string());
 }
