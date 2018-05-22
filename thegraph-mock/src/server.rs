@@ -131,6 +131,7 @@ impl GraphQLServer for MockGraphQLServer {
                     Query {
                         schema: schema.clone().unwrap(),
                         document: graphql_parser::parse_query("{ allUsers { name }}").unwrap(),
+                        variables: None,
                         result_sender: sink,
                     },
                 )
