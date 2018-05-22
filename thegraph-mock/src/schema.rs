@@ -4,9 +4,9 @@ use slog;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
-use thegraph::prelude::*;
-use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::data_sources::SchemaEvent;
+use thegraph::components::schema::SchemaProviderEvent;
+use thegraph::prelude::*;
 use thegraph::util::stream::StreamError;
 
 /// A mock `SchemaProvider`.

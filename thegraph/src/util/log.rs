@@ -1,6 +1,6 @@
 use slog;
-use slog_term;
 use slog_async;
+use slog_term;
 
 use slog::Drain;
 

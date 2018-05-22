@@ -1,17 +1,17 @@
-use tokio_core::reactor::Handle;
-use futures::prelude::*;
 use futures::future;
+use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use hyper;
 use hyper::Server;
 use slog;
 use std::error::Error;
 use std::fmt;
+use tokio_core::reactor::Handle;
 
-use thegraph::prelude::GraphQLServer as GraphQLServerTrait;
-use thegraph::data::query::Query;
 use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::StoreEvent;
+use thegraph::data::query::Query;
+use thegraph::prelude::GraphQLServer as GraphQLServerTrait;
 use thegraph::util::stream::StreamError;
 
 use service::GraphQLService;

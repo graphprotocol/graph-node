@@ -14,8 +14,8 @@ use sentry::integrations::panic::register_panic_handler;
 use std::env;
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
-use thegraph_mock as mock;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
+use thegraph_mock as mock;
 use tokio::prelude::*;
 use tokio_core::reactor::Core;
 

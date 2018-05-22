@@ -1,11 +1,11 @@
-use futures::prelude::*;
 use futures::future;
+use futures::prelude::*;
 use futures::sync::mpsc::Sender;
-use hyper::{Body, Method, Request, Response, StatusCode};
 use hyper::service::Service;
+use hyper::{Body, Method, Request, Response, StatusCode};
 
-use thegraph::data::query::Query;
 use thegraph::components::server::GraphQLServerError;
+use thegraph::data::query::Query;
 
 use request::GraphQLRequest;
 use response::GraphQLResponse;
@@ -83,8 +83,8 @@ mod tests {
     use futures::prelude::*;
     use futures::sync::mpsc::channel;
     use http::status::StatusCode;
-    use hyper::{Body, Method, Request};
     use hyper::service::Service;
+    use hyper::{Body, Method, Request};
     use std::collections::HashMap;
     use tokio_core::reactor::Core;
 

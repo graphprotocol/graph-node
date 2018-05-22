@@ -1,11 +1,11 @@
 use futures::prelude::*;
 use futures::sync::oneshot;
-use hyper::Chunk;
 use graphql_parser;
+use hyper::Chunk;
 use serde_json;
 
-use thegraph::data::query::{Query, QueryError, QueryResult};
 use thegraph::components::server::GraphQLServerError;
+use thegraph::data::query::{Query, QueryError, QueryResult};
 
 /// Future for a query parsed from an HTTP request.
 pub struct GraphQLRequest {
