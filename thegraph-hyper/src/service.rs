@@ -88,6 +88,7 @@ impl Service for GraphQLService {
 mod tests {
     use futures::prelude::*;
     use futures::sync::mpsc::channel;
+    use graphql_parser;
     use graphql_parser::query::Value;
     use http::status::StatusCode;
     use hyper::service::Service;
@@ -97,6 +98,7 @@ mod tests {
     use tokio_core::reactor::Core;
 
     use thegraph::data::query::QueryResult;
+    use thegraph::data::schema::Schema;
 
     use super::GraphQLService;
     use test_utils;
@@ -105,7 +107,15 @@ mod tests {
     fn posting_invalid_query_yields_error_response() {
         let mut core = Core::new().unwrap();
 
-        let schema = Arc::new(Mutex::new(None));
+        let schema = Arc::new(Mutex::new(Some(Schema {
+            id: "test-schema".to_string(),
+            document: graphql_parser::parse_schema(
+                "\
+                 scalar String \
+                 type Query { name: String } \
+                 ",
+            ).unwrap(),
+        })));
         let (query_sink, _) = channel(1);
         let mut service = GraphQLService::new(schema, query_sink);
 
@@ -135,14 +145,24 @@ mod tests {
     fn posting_valid_queries_yields_result_response() {
         let mut core = Core::new().unwrap();
 
-        let schema = Arc::new(Mutex::new(None));
+        let schema = Arc::new(Mutex::new(Some(Schema {
+            id: "test-schema".to_string(),
+            document: graphql_parser::parse_schema(
+                "\
+                 scalar String \
+                 type Query { name: String } \
+                 ",
+            ).unwrap(),
+        })));
         let (query_sink, query_stream) = channel(1);
         let mut service = GraphQLService::new(schema, query_sink);
 
         core.handle().spawn(
             query_stream
                 .for_each(move |query| {
-                    let data = Value::Object(BTreeMap::new());
+                    let mut map = BTreeMap::new();
+                    map.insert("name".to_string(), Value::String("Jordi".to_string()));
+                    let data = Value::Object(map);
                     let result = QueryResult::new(Some(data));
                     query.result_sender.send(result).unwrap();
                     Ok(())
@@ -153,7 +173,7 @@ mod tests {
         let request = Request::builder()
             .method(Method::POST)
             .uri("http://localhost:8000/")
-            .body(Body::from("{\"query\": \"{ users { name } }\"}"))
+            .body(Body::from("{\"query\": \"{ name }\"}"))
             .unwrap();
 
         // The response must be a 200
@@ -162,6 +182,10 @@ mod tests {
         let data = test_utils::assert_successful_response(&mut core, response);
 
         // The body should match the simulated query result
-        assert!(data.is_empty());
+        let name = data.get("name")
+            .expect("Query result data has no \"name\" field")
+            .as_str()
+            .expect("Query result field \"name\" is not a string");
+        assert_eq!(name, "Jordi".to_string());
     }
 }
