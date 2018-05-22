@@ -53,6 +53,8 @@ pub enum QueryExecutionError {
     ResolveEntityError(Pos, String),
     NonNullError(Pos, String),
     ListValueError(Pos, String),
+    NamedTypeError(String),
+    AbstractTypeError(String),
 }
 
 impl Error for QueryExecutionError {
@@ -77,8 +79,18 @@ impl fmt::Display for QueryExecutionError {
                 write!(f, "No root Query type defined in the schema")
             }
             QueryExecutionError::ResolveEntityError(pos, s) => write!(f, "{}: {}", pos, s),
-            QueryExecutionError::NonNullError(pos, s) => write!(f, "{}: {}", pos, s),
-            QueryExecutionError::ListValueError(pos, s) => write!(f, "{}: {}", pos, s),
+            QueryExecutionError::NonNullError(pos, s) => {
+                write!(f, "{}: Null value resolved for non-null field: {}", pos, s)
+            }
+            QueryExecutionError::ListValueError(pos, s) => {
+                write!(f, "{}: Non-list value resolved for list field: {}", pos, s)
+            }
+            QueryExecutionError::NamedTypeError(s) => {
+                write!(f, "Failed to resolve named type: {}", s)
+            }
+            QueryExecutionError::AbstractTypeError(s) => {
+                write!(f, "Failed to resolve abstract type: {}", s)
+            }
         }
     }
 }
