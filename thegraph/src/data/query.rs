@@ -194,7 +194,7 @@ impl Serialize for QueryError {
                 let mut location = HashMap::new();
                 location.insert("line", pos.line);
                 location.insert("column", pos.column);
-                map.serialize_entry("locations", &vec![location]);
+                map.serialize_entry("locations", &vec![location])?;
                 s.to_string()
             }
             _ => format!("{}", self),
