@@ -4,6 +4,7 @@ version = "0.1.0"
 
 [dependencies]
 futures = "0.1.21"
+indexmap = "1.0"
 graphql-parser = "0.2.0"
 slog = "2.2.3"
 thegraph = { path = "../thegraph" }
