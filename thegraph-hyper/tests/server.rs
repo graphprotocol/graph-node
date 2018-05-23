@@ -20,7 +20,6 @@ use tokio_core::reactor::Core;
 
 use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::prelude::*;
-use thegraph::util::log::logger;
 
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
 use thegraph_hyper::test_utils;
