@@ -7,6 +7,7 @@ extern crate thegraph;
 extern crate thegraph_core;
 extern crate thegraph_hyper;
 extern crate thegraph_mock;
+extern crate thegraph_store_postgres_diesel;
 extern crate tokio;
 extern crate tokio_core;
 
@@ -16,6 +17,7 @@ use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
 use thegraph_mock as mock;
+use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
 use tokio::prelude::*;
 use tokio_core::reactor::Core;
 
@@ -45,7 +47,13 @@ fn main() {
     // Create system components
     let mut data_source_provider = mock::MockDataSourceProvider::new(&logger);
     let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
-    let mut store = mock::MockStore::new(&logger, core.handle());
+    let mut store = DieselStore::new(
+        StoreConfig {
+            url: "postgresql://jannis@localhost:5432/postgres".to_string(),
+        },
+        &logger,
+        core.handle(),
+    );
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
 
     // Forward schema events from the data source provider to the schema provider

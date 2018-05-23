@@ -5,4 +5,5 @@ members = [
     "thegraph-hyper",
     "thegraph-local-node",
     "thegraph-mock",
+    "thegraph-store-postgres-diesel",
 ]
