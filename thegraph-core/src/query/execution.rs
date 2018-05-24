@@ -3,11 +3,12 @@ use graphql_parser::schema as gqls;
 use indexmap::IndexMap;
 use slog;
 use std::cmp;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use thegraph::prelude::*;
 
 use super::ast as qast;
+use super::coercion::*;
 use schema::ast as sast;
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
@@ -17,7 +18,7 @@ pub trait Resolver: Clone {
         &self,
         parent: &Option<gqlq::Value>,
         entity: &String,
-        arguments: &Vec<&(gqlq::Name, gqlq::Value)>,
+        arguments: HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value;
 
     /// Resolves an entity referenced by a parent object.
@@ -25,7 +26,7 @@ pub trait Resolver: Clone {
         &self,
         parent: &Option<gqlq::Value>,
         entity: &String,
-        arguments: &Vec<&(gqlq::Name, gqlq::Value)>,
+        arguments: HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value;
 
     /// Resolves an enum value for a given enum type.
@@ -271,7 +272,17 @@ fn execute_field<'a, R>(
 where
     R: Resolver,
 {
-    resolve_field_value(ctx.clone(), object_type, object_value, field, field_type)
+    coerce_argument_values(ctx.clone(), object_type, field)
+        .and_then(|argument_values| {
+            resolve_field_value(
+                ctx.clone(),
+                object_type,
+                object_value,
+                field,
+                field_type,
+                argument_values,
+            )
+        })
         .and_then(|value| complete_value(ctx, field, field_type, fields, value))
 }
 
@@ -282,17 +293,23 @@ fn resolve_field_value<'a, R>(
     object_value: &Option<gqlq::Value>,
     field: &gqlq::Field,
     field_type: &gqls::Type,
+    argument_values: HashMap<&gqlq::Name, gqlq::Value>,
 ) -> Result<gqlq::Value, QueryExecutionError>
 where
     R: Resolver,
 {
     match field_type {
-        gqls::Type::NonNullType(inner_type) => {
-            resolve_field_value(ctx, object_type, object_value, field, inner_type.as_ref())
-        }
+        gqls::Type::NonNullType(inner_type) => resolve_field_value(
+            ctx,
+            object_type,
+            object_value,
+            field,
+            inner_type.as_ref(),
+            argument_values,
+        ),
 
         gqls::Type::NamedType(ref name) => {
-            resolve_field_value_for_named_type(ctx, object_value, field, name)
+            resolve_field_value_for_named_type(ctx, object_value, field, name, argument_values)
         }
 
         gqls::Type::ListType(inner_type) => resolve_field_value_for_list_type(
@@ -302,6 +319,7 @@ where
             field,
             field_type,
             inner_type.as_ref(),
+            argument_values,
         ),
     }
 }
@@ -312,6 +330,7 @@ fn resolve_field_value_for_named_type<'a, R>(
     object_value: &Option<gqlq::Value>,
     field: &gqlq::Field,
     type_name: &gqls::Name,
+    argument_values: HashMap<&gqlq::Name, gqlq::Value>,
 ) -> Result<gqlq::Value, QueryExecutionError>
 where
     R: Resolver,
@@ -324,7 +343,8 @@ where
         // Let the resolver decide how the field (with the given object type)
         // is resolved into an entity based on the (potential) parent object
         gqls::TypeDefinition::Object(t) => {
-            Ok(ctx.resolver.resolve_entity(object_value, &t.name, &vec![]))
+            Ok(ctx.resolver
+                .resolve_entity(object_value, &t.name, argument_values))
         }
 
         // Let the resolver decide how values in the resolved object value
@@ -361,6 +381,7 @@ fn resolve_field_value_for_list_type<'a, R>(
     field: &gqlq::Field,
     field_type: &gqls::Type,
     inner_type: &gqls::Type,
+    argument_values: HashMap<&gqlq::Name, gqlq::Value>,
 ) -> Result<gqlq::Value, QueryExecutionError>
 where
     R: Resolver,
@@ -373,6 +394,7 @@ where
             field,
             field_type,
             inner_type,
+            argument_values,
         ),
 
         gqls::Type::NamedType(ref type_name) => {
@@ -383,7 +405,7 @@ where
                 // is resolved into a entities based on the (potential) parent object
                 gqls::TypeDefinition::Object(t) => {
                     Ok(ctx.resolver
-                        .resolve_entities(object_value, &t.name, &vec![]))
+                        .resolve_entities(object_value, &t.name, argument_values))
                 }
 
                 // Let the resolver decide how values in the resolved object value
@@ -579,4 +601,79 @@ fn merge_selection_sets(fields: Vec<&gqlq::Field>) -> gqlq::SelectionSet {
         span: span.unwrap(),
         items,
     }
+}
+
+/// Coerces argument values into GraphQL values.
+fn coerce_argument_values<'a, R>(
+    ctx: ExecutionContext<'a, R>,
+    object_type: &'a gqls::ObjectType,
+    field: &'a gqlq::Field,
+) -> Result<HashMap<&'a gqlq::Name, gqlq::Value>, QueryExecutionError>
+where
+    R: Resolver,
+{
+    let mut coerced_values = HashMap::new();
+
+    if let Some(argument_definitions) = sast::get_argument_definitions(object_type, &field.name) {
+        for argument_def in argument_definitions.iter() {
+            match qast::get_argument_value(&field.arguments, &argument_def.name) {
+                // We don't support variables yet
+                Some(gqlq::Value::Variable(_)) => unimplemented!(),
+
+                // There is no value, either use the default or fail
+                None => {
+                    if let Some(ref default_value) = argument_def.default_value {
+                        coerced_values.insert(&argument_def.name, default_value.clone());
+                    } else if let gqls::Type::NonNullType(_) = argument_def.value_type {
+                        return Err(QueryExecutionError::MissingArgumentError(
+                            field.position.clone(),
+                            argument_def.name.to_owned(),
+                        ));
+                    };
+                }
+
+                // There is a value for the argument, attempt to coerce it to the
+                // value type of the argument definition
+                Some(v) => {
+                    coerced_values.insert(
+                        &argument_def.name,
+                        coerce_argument_value(ctx.clone(), field, argument_def, v)?,
+                    );
+                }
+            };
+        }
+    };
+
+    Ok(coerced_values)
+}
+
+/// Coerces a single argument value into a GraphQL value.
+fn coerce_argument_value<'a, R>(
+    ctx: ExecutionContext<'a, R>,
+    field: &'a gqlq::Field,
+    argument: &gqls::InputValue,
+    value: &gqlq::Value,
+) -> Result<gqlq::Value, QueryExecutionError>
+where
+    R: Resolver,
+{
+    debug!(ctx.logger, "Coerce argument value for type";
+           "argument" => &argument.name,
+           "type" => format!("{:?}", argument.value_type),
+           "value" => format!("{:?}", value),
+    );
+
+    MaybeCoercibleValue(value)
+        .coerce(&argument.value_type, &|name| {
+            let named_type = sast::get_named_type(&ctx.schema.document, name);
+            debug!(ctx.logger, "  Resolve named type";
+                   "name" => &name,
+                   "named_type" => format!("{:?}", named_type));
+            named_type
+        })
+        .ok_or(QueryExecutionError::InvalidArgumentError(
+            field.position.clone(),
+            argument.name.to_owned(),
+            value.clone(),
+        ))
 }
