@@ -1,4 +1,5 @@
 pub mod ast;
+mod coercion;
 mod execution;
 mod runner;
 
