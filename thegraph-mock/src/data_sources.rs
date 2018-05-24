@@ -32,13 +32,26 @@ impl MockDataSourceProvider {
                          scalar Boolean \
                          scalar ID \
                          \
+                         enum OrderDirection { \
+                         asc \
+                         desc \
+                         } \
+                         \
                          type User { \
                              id: ID!
                              name: String! \
                          } \
                          \
+                         enum User_orderBy { \
+                             id \
+                             name \
+                         } \
+                         \
                          type Query { \
-                             allUsers: [User!] \
+                             allUsers ( \
+                                 orderBy: User_orderBy, \
+                                 orderDirection: OrderDirection! \
+                             ): [User!] \
                              User(id: ID!): User \
                          } \
                          ",
