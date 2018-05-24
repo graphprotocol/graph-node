@@ -54,3 +54,11 @@ pub fn get_type_name(t: &TypeDefinition) -> &Name {
         TypeDefinition::Union(t) => &t.name,
     }
 }
+
+/// Returns the argument definitions for a field of an object type.
+pub fn get_argument_definitions<'a>(
+    object_type: &'a ObjectType,
+    name: &Name,
+) -> Option<&'a Vec<InputValue>> {
+    get_field_type(object_type, name).map(|field| &field.arguments)
+}
