@@ -3,7 +3,7 @@ steps:
     command: |
       cp resources/docker/thegraph-local-node/Dockerfile . \
       && gcloud container builds submit \
-         --timeout=25m \
+         --timeout=30m \
          --tag gcr.io/the-graph-staging/thegraph-local-node .
   - wait
   - label: Deploy the local node
