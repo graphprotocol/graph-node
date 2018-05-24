@@ -124,6 +124,8 @@ pub enum QueryExecutionError {
     ListValueError(Pos, String),
     NamedTypeError(String),
     AbstractTypeError(String),
+    InvalidArgumentError(Pos, String, query::Value),
+    MissingArgumentError(Pos, String),
 }
 
 impl Error for QueryExecutionError {
@@ -159,6 +161,14 @@ impl fmt::Display for QueryExecutionError {
             }
             QueryExecutionError::AbstractTypeError(s) => {
                 write!(f, "Failed to resolve abstract type: {}", s)
+            }
+            QueryExecutionError::InvalidArgumentError(pos, s, v) => write!(
+                f,
+                "{}: Invalid value provided for argument \"{}\": {:?}",
+                pos, s, v
+            ),
+            QueryExecutionError::MissingArgumentError(pos, s) => {
+                write!(f, "{}: No value provided for required argument: {}", pos, s)
             }
         }
     }
