@@ -72,7 +72,7 @@ impl MockStore {
 }
 
 impl Store for MockStore {
-    fn get(&self, key: StoreKey) -> Option<Entity> {
+    fn get(&self, key: StoreKey) -> Result<Entity, ()> {
         if key.entity == "User" {
             self.entities
                 .iter()
@@ -83,21 +83,22 @@ impl Store for MockStore {
                     }
                 })
                 .map(|entity| entity.clone())
+                .ok_or(())
         } else {
-            None
+            unimplemented!()
         }
     }
 
-    fn set(&mut self, _key: StoreKey, _entity: Entity) -> bool {
+    fn set(&mut self, _key: StoreKey, _entity: Entity) -> Result<(), ()> {
         unimplemented!();
     }
 
-    fn delete(&mut self, _key: StoreKey) -> bool {
+    fn delete(&mut self, _key: StoreKey) -> Result<(), ()> {
         unimplemented!();
     }
 
-    fn find(&self, _query: StoreQuery) -> Option<Vec<Entity>> {
-        Some(self.entities.clone())
+    fn find(&self, _query: StoreQuery) -> Result<Vec<Entity>, ()> {
+        Ok(self.entities.clone())
     }
 
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
