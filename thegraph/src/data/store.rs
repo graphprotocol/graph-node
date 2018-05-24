@@ -19,6 +19,24 @@ impl Into<query::Value> for Value {
     }
 }
 
+impl From<query::Value> for Value {
+    fn from(value: query::Value) -> Value {
+        match value {
+            query::Value::String(s) => Value::String(s),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl<'a> From<&'a query::Value> for Value {
+    fn from(value: &'a query::Value) -> Value {
+        match value {
+            query::Value::String(s) => Value::String(s.to_owned()),
+            _ => unimplemented!(),
+        }
+    }
+}
+
 /// An entity is represented as a map of attribute names to values.
 #[derive(Clone, Debug)]
 pub struct Entity(HashMap<Attribute, Value>);
