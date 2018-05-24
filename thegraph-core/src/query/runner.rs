@@ -3,6 +3,7 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use graphql_parser::query as gqlq;
 use graphql_parser::schema as gqls;
 use slog;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio_core::reactor::Handle;
 
@@ -28,7 +29,7 @@ impl execution::Resolver for StoreResolver {
         &self,
         _parent: &Option<gqlq::Value>,
         entity: &String,
-        _arguments: &Vec<&(gqlq::Name, gqlq::Value)>,
+        _arguments: HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value {
         self.store
             .find(StoreQuery {
@@ -53,7 +54,7 @@ impl execution::Resolver for StoreResolver {
         &self,
         _parent: &Option<gqlq::Value>,
         entity: &String,
-        _arguments: &Vec<&(gqlq::Name, gqlq::Value)>,
+        _arguments: HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value {
         self.store
             .get(StoreKey {
