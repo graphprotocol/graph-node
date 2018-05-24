@@ -58,14 +58,14 @@ pub fn get_directive(selection: &Selection, name: Name) -> Option<&Directive> {
 }
 
 /// Looks up the value of an argument in a vector of (name, value) tuples.
-pub fn get_argument_value(arguments: &Vec<(Name, Value)>, name: Name) -> Option<&Value> {
-    arguments.iter().find(|(n, _)| n == &name).map(|(_, v)| v)
+pub fn get_argument_value<'a>(arguments: &'a Vec<(Name, Value)>, name: &Name) -> Option<&'a Value> {
+    arguments.iter().find(|(n, _)| n == name).map(|(_, v)| v)
 }
 
 /// Returns true if a selection should be skipped (as per the `@skip` directive).
 pub fn skip_selection(selection: &Selection) -> bool {
     match get_directive(selection, "skip".to_string()) {
-        Some(directive) => match get_argument_value(&directive.arguments, "if".to_string()) {
+        Some(directive) => match get_argument_value(&directive.arguments, &"if".to_string()) {
             Some(val) => match val {
                 Value::Boolean(skip_if) => *skip_if,
                 _ => false,
@@ -79,7 +79,7 @@ pub fn skip_selection(selection: &Selection) -> bool {
 /// Returns true if a selection should be included (as per the `@include` directive).
 pub fn include_selection(selection: &Selection) -> bool {
     match get_directive(selection, "include".to_string()) {
-        Some(directive) => match get_argument_value(&directive.arguments, "include".to_string()) {
+        Some(directive) => match get_argument_value(&directive.arguments, &"include".to_string()) {
             Some(val) => match val {
                 Value::Boolean(include) => *include,
                 _ => false,
