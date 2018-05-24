@@ -38,7 +38,7 @@ impl execution::Resolver for StoreResolver {
                 order_direction: None,
                 range: None,
             })
-            .map_or(gqlq::Value::Null, |entities| {
+            .map(|entities| {
                 gqlq::Value::List(
                     entities
                         .into_iter()
@@ -46,6 +46,7 @@ impl execution::Resolver for StoreResolver {
                         .collect::<Vec<gqlq::Value>>(),
                 )
             })
+            .unwrap_or(gqlq::Value::Null)
     }
 
     fn resolve_entity(
@@ -59,7 +60,8 @@ impl execution::Resolver for StoreResolver {
                 entity: entity.to_owned(),
                 id: "1".to_string(),
             })
-            .map_or(gqlq::Value::Null, |entity| entity.into())
+            .map(|entity| entity.into())
+            .unwrap_or(gqlq::Value::Null)
     }
 
     fn resolve_enum_value(
