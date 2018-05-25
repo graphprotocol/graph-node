@@ -149,12 +149,14 @@ impl fmt::Display for QueryExecutionError {
             QueryExecutionError::NoRootQueryObjectType => {
                 write!(f, "No root Query type defined in the schema")
             }
-            QueryExecutionError::ResolveEntityError(pos, s) => write!(f, "{}: {}", pos, s),
-            QueryExecutionError::NonNullError(pos, s) => {
-                write!(f, "{}: Null value resolved for non-null field: {}", pos, s)
+            QueryExecutionError::ResolveEntityError(_, s) => {
+                write!(f, "Failed to resolve entity: {}", s)
             }
-            QueryExecutionError::ListValueError(pos, s) => {
-                write!(f, "{}: Non-list value resolved for list field: {}", pos, s)
+            QueryExecutionError::NonNullError(_, s) => {
+                write!(f, "Null value resolved for non-null field: {}", s)
+            }
+            QueryExecutionError::ListValueError(_, s) => {
+                write!(f, "Non-list value resolved for list field: {}", s)
             }
             QueryExecutionError::NamedTypeError(s) => {
                 write!(f, "Failed to resolve named type: {}", s)
@@ -162,13 +164,11 @@ impl fmt::Display for QueryExecutionError {
             QueryExecutionError::AbstractTypeError(s) => {
                 write!(f, "Failed to resolve abstract type: {}", s)
             }
-            QueryExecutionError::InvalidArgumentError(pos, s, v) => write!(
-                f,
-                "{}: Invalid value provided for argument \"{}\": {:?}",
-                pos, s, v
-            ),
-            QueryExecutionError::MissingArgumentError(pos, s) => {
-                write!(f, "{}: No value provided for required argument: {}", pos, s)
+            QueryExecutionError::InvalidArgumentError(_, s, v) => {
+                write!(f, "Invalid value provided for argument \"{}\": {:?}", s, v)
+            }
+            QueryExecutionError::MissingArgumentError(_, s) => {
+                write!(f, "No value provided for required argument: {}", s)
             }
         }
     }
@@ -267,14 +267,16 @@ impl Serialize for QueryError {
             }
 
             // Serialize entity resolution errors using their position
-            QueryError::ExecutionError(QueryExecutionError::ResolveEntityError(pos, s))
-            | QueryError::ExecutionError(QueryExecutionError::NonNullError(pos, s))
-            | QueryError::ExecutionError(QueryExecutionError::ListValueError(pos, s)) => {
+            QueryError::ExecutionError(QueryExecutionError::ResolveEntityError(pos, _))
+            | QueryError::ExecutionError(QueryExecutionError::NonNullError(pos, _))
+            | QueryError::ExecutionError(QueryExecutionError::ListValueError(pos, _))
+            | QueryError::ExecutionError(QueryExecutionError::InvalidArgumentError(pos, _, _))
+            | QueryError::ExecutionError(QueryExecutionError::MissingArgumentError(pos, _)) => {
                 let mut location = HashMap::new();
                 location.insert("line", pos.line);
                 location.insert("column", pos.column);
                 map.serialize_entry("locations", &vec![location])?;
-                s.to_string()
+                format!("{}", self)
             }
             _ => format!("{}", self),
         };
