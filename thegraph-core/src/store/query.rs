@@ -135,3 +135,250 @@ fn build_order_direction(arguments: &HashMap<&gqlq::Name, gqlq::Value>) -> Optio
             _ => None,
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use graphql_parser::query as gqlq;
+    use std::collections::{BTreeMap, HashMap};
+    use std::iter::FromIterator;
+
+    use thegraph::prelude::*;
+
+    use super::build_query;
+
+    #[test]
+    fn builc_query_uses_the_entity_name() {
+        assert_eq!(
+            build_query(&"Entity1".to_string(), &HashMap::new()).entity,
+            "Entity1".to_string()
+        );
+        assert_eq!(
+            build_query(&"Entity2".to_string(), &HashMap::new()).entity,
+            "Entity2".to_string()
+        );
+    }
+
+    #[test]
+    fn build_query_yields_no_order_if_order_arguments_are_missing() {
+        assert_eq!(
+            build_query(&"Entity".to_string(), &HashMap::new()).order_by,
+            None,
+        );
+        assert_eq!(
+            build_query(&"Entity".to_string(), &HashMap::new()).order_direction,
+            None,
+        );
+    }
+
+    #[test]
+    fn build_query_parses_order_by_from_enum_values_correctly() {
+        assert_eq!(
+            build_query(
+                &"Entity".to_string(),
+                &HashMap::from_iter(
+                    vec![
+                        (
+                            &"orderBy".to_string(),
+                            gqlq::Value::Enum("name".to_string()),
+                        ),
+                    ].into_iter(),
+                )
+            ).order_by,
+            Some("name".to_string())
+        );
+        assert_eq!(
+            build_query(
+                &"Entity".to_string(),
+                &HashMap::from_iter(
+                    vec![
+                        (
+                            &"orderBy".to_string(),
+                            gqlq::Value::Enum("email".to_string()),
+                        ),
+                    ].into_iter()
+                )
+            ).order_by,
+            Some("email".to_string())
+        );
+    }
+
+    #[test]
+    fn build_query_ignores_order_by_from_non_enum_values() {
+        assert_eq!(
+            build_query(
+                &"Entity".to_string(),
+                &HashMap::from_iter(
+                    vec![
+                        (
+                            &"orderBy".to_string(),
+                            gqlq::Value::String("name".to_string()),
+                        ),
+                    ].into_iter()
+                ),
+            ).order_by,
+            None,
+        );
+        assert_eq!(
+            build_query(
+                &"Entity".to_string(),
+                &HashMap::from_iter(
+                    vec![
+                        (
+                            &"orderBy".to_string(),
+                            gqlq::Value::String("email".to_string()),
+                        ),
+                    ].into_iter(),
+                )
+            ).order_by,
+            None,
+        );
+    }
+
+    #[test]
+    fn build_query_parses_order_direction_from_enum_values_correctly() {
+        assert_eq!(
+            build_query(
+                &"Entity".to_string(),
+                &HashMap::from_iter(
+                    vec![
+                        (
+                            &"orderDirection".to_string(),
+                            gqlq::Value::Enum("asc".to_string()),
+                        ),
+                    ].into_iter(),
+                )
+            ).order_direction,
+            Some(StoreOrder::Ascending)
+        );
+        assert_eq!(
+            build_query(
+                &"Entity".to_string(),
+                &HashMap::from_iter(
+                    vec![
+                        (
+                            &"orderDirection".to_string(),
+                            gqlq::Value::Enum("desc".to_string()),
+                        ),
+                    ].into_iter()
+                )
+            ).order_direction,
+            Some(StoreOrder::Descending)
+        );
+        assert_eq!(
+            build_query(
+                &"Entity".to_string(),
+                &HashMap::from_iter(
+                    vec![
+                        (
+                            &"orderDirection".to_string(),
+                            gqlq::Value::Enum("ascending...".to_string()),
+                        ),
+                    ].into_iter()
+                )
+            ).order_direction,
+            None,
+        );
+    }
+
+    #[test]
+    fn build_query_ignores_order_direction_from_non_enum_values() {
+        assert_eq!(
+            build_query(
+                &"Entity".to_string(),
+                &HashMap::from_iter(
+                    vec![
+                        (
+                            &"orderDirection".to_string(),
+                            gqlq::Value::String("asc".to_string()),
+                        ),
+                    ].into_iter()
+                ),
+            ).order_direction,
+            None,
+        );
+        assert_eq!(
+            build_query(
+                &"Entity".to_string(),
+                &HashMap::from_iter(
+                    vec![
+                        (
+                            &"orderDirection".to_string(),
+                            gqlq::Value::String("desc".to_string()),
+                        ),
+                    ].into_iter(),
+                )
+            ).order_direction,
+            None,
+        );
+    }
+
+    #[test]
+    fn build_query_yields_no_range_if_none_is_present() {
+        assert_eq!(
+            build_query(&"Entity".to_string(), &HashMap::new()).range,
+            None,
+        );
+    }
+
+    #[test]
+    fn build_query_yields_default_first_if_only_skip_is_present() {
+        // The following requires a new release of graphql_parser (> 0.2.0) that
+        // includes this already-merged PR:
+        // https://github.com/graphql-rust/graphql-parser/pull/13
+        //
+        // assert_eq!(
+        //     build_query(
+        //         &"Entity".to_string(),
+        //         &HashMap::from_iter(
+        //             vec![(&"skip".to_string(), gqlq::Value::Int(Number::from(50)))].into_iter()
+        //         )
+        //     ).range,
+        //     Some(StoreRange {
+        //         first: 100,
+        //         skip: 50,
+        //     }),
+        // );
+    }
+
+    #[test]
+    fn build_query_yields_default_skip_if_only_first_is_present() {
+        // The following requires a new release of graphql_parser (> 0.2.0) that
+        // includes this already-merged PR:
+        // https://github.com/graphql-rust/graphql-parser/pull/13
+        //
+        // assert_eq!(
+        //     build_query(
+        //         &"Entity".to_string(),
+        //         &HashMap::from_iter(
+        //             vec![(&"first".to_string(), gqlq::Value::Int(Number::from(70)))].into_iter()
+        //         )
+        //     ).range,
+        //     Some(StoreRange { first: 70, skip: 0 }),
+        // );
+    }
+
+    #[test]
+    fn build_query_yields_filters() {
+        assert_eq!(
+            build_query(
+                &"Entity".to_string(),
+                &HashMap::from_iter(
+                    vec![
+                        (
+                            &"filter".to_string(),
+                            gqlq::Value::Object(BTreeMap::from_iter(vec![
+                                (
+                                    "name_ends_with".to_string(),
+                                    gqlq::Value::String("ello".to_string()),
+                                ),
+                            ])),
+                        ),
+                    ].into_iter()
+                )
+            ).filter,
+            Some(StoreFilter::And(vec![
+                StoreFilter::EndsWith("name".to_string(), Value::String("ello".to_string())),
+            ]))
+        )
+    }
+}
