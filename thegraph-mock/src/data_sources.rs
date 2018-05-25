@@ -47,10 +47,16 @@ impl MockDataSourceProvider {
                              name \
                          } \
                          \
+                         input User_filter { \
+                             name_ends_with: String \
+                             name_starts_with: String \
+                         } \
+                         \
                          type Query { \
                              allUsers ( \
                                  orderBy: User_orderBy, \
                                  orderDirection: OrderDirection! \
+                                 filter: User_filter \
                              ): [User!] \
                              User(id: ID!): User \
                          } \
