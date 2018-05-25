@@ -8,6 +8,7 @@ pub trait MaybeCoercible<T, N, V, U> {
 }
 
 /// A GraphQL value that can be coerced according to a type.
+#[derive(Debug)]
 pub struct MaybeCoercibleValue<'a>(pub &'a Value);
 
 impl<'a> MaybeCoercible<&'a TypeDefinition, &'a Name, Value, &'a TypeDefinition>
@@ -63,8 +64,11 @@ impl<'a> MaybeCoercible<&'a TypeDefinition, &'a Name, Value, &'a TypeDefinition>
                 }
             }
 
-            // We'll tackle this one later
-            (TypeDefinition::InputObject(_), Value::Object(_)) => unimplemented!(),
+            // Try to coerce InputObject values
+            (TypeDefinition::InputObject(_), v) => match v {
+                Value::Object(_) => Some(self.0.clone()),
+                _ => None,
+            },
 
             // Everything else remains unimplemented
             _ => unimplemented!(),
@@ -78,19 +82,20 @@ impl<'a> MaybeCoercible<&'a Type, &'a Name, Value, &'a TypeDefinition> for Maybe
         F: Fn(&'a Name) -> Option<&'a TypeDefinition>,
     {
         match (using_type, self.0) {
-            // Null values for non-null arguments are invalid
+            // Null values cannot be coerced into non-null types
             (Type::NonNullType(_), Value::Null) => None,
 
-            // Non-null values for non-null arguments may be valid
+            // Non-null values may be coercible into non-null types
             (Type::NonNullType(t), _) => self.coerce(t.as_ref(), map_type),
 
-            // Named types are not supported
+            // Resolve named types, then try to coerce the value into the resolved type
             (Type::NamedType(name), _) => match map_type(name) {
                 Some(t) => self.coerce(t, map_type),
                 None => None,
             },
 
-            // List values for list types may be valid
+            // List values may be coercible if they are empty or their values are coercible
+            // into the inner type
             (Type::ListType(t), Value::List(values)) => if values.is_empty() {
                 Some(Value::List(values.clone()))
             } else {
@@ -108,6 +113,8 @@ impl<'a> MaybeCoercible<&'a Type, &'a Name, Value, &'a TypeDefinition> for Maybe
 
                 Some(Value::List(coerced_values))
             },
+
+            // Everything else is unsupported for now
             _ => unimplemented!(),
         }
     }
