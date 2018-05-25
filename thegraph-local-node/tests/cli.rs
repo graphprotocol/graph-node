@@ -1,6 +1,7 @@
 extern crate assert_cli;
 
-static WITHOUT_ARGS_OUTPUT: &'static str = "error: The following required arguments were not provided:
+static WITHOUT_ARGS_OUTPUT: &'static str =
+    "error: The following required arguments were not provided:
     --db <URL>
 
 USAGE:
@@ -19,7 +20,8 @@ mod integration {
         assert_cli::Assert::main_binary()
             .fails()
             .and()
-            .stderr().is(WITHOUT_ARGS_OUTPUT)
+            .stderr()
+            .is(WITHOUT_ARGS_OUTPUT)
             .unwrap();
     }
 }
