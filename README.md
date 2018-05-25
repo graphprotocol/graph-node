@@ -60,7 +60,7 @@ This will watch your source directory and continuously do the following on chang
 2. Generate docs for all packages in the workspace in `target/doc/`.
 3. Automatically format all your source files.
 
-> **Tip:** several libraries are required to run the above command
+> **Tip:** requirements to run the above command
 >
 > Cargo Watch
 > ```cargo install cargo-watch```
