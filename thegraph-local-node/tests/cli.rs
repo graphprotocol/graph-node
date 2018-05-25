@@ -1,27 +1,13 @@
 extern crate assert_cli;
 
-static WITHOUT_ARGS_OUTPUT: &'static str =
-    "error: The following required arguments were not provided:
-    --db <URL>
+use assert_cli;
 
-USAGE:
-    thegraph-local-node --db <URL>
-
-For more information try --help
-";
-
-#[cfg(test)]
-mod integration {
-    use assert_cli;
-    use WITHOUT_ARGS_OUTPUT;
-
-    #[test]
-    fn starting_local_node_without_args() {
-        assert_cli::Assert::main_binary()
-            .fails()
-            .and()
-            .stderr()
-            .is(WITHOUT_ARGS_OUTPUT)
-            .unwrap();
-    }
+#[test]
+fn local_node_fails_to_start_without_postgres_url() {
+    assert_cli::Assert::main_binary()
+        .fails()
+        .and()
+        .stderr()
+        .contains("error: The following required arguments were not provided:")
+        .unwrap();
 }
