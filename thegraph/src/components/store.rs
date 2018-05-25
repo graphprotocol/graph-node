@@ -58,8 +58,8 @@ pub struct StoreQuery {
     /// The name of the entity type.
     pub entity: String,
 
-    /// Filters to filter entities by.
-    pub filters: Vec<StoreFilter>,
+    /// Filter to filter entities by.
+    pub filter: Option<StoreFilter>,
 
     /// An optional attribute to order the entities by.
     pub order_by: Option<String>,
