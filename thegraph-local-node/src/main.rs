@@ -30,22 +30,20 @@ fn main() {
     // Setup CLI using Clap, provide general info and capture postgres url
     let matches = App::new("thegraph-local-node")
         .version("0.1.0")
-        .author("Graph Protocol, INC.")
+        .author("Graph Protocol, Inc.")
         .about("Scalable queries for a decentralized future (local node)")
         .arg(
-            Arg::with_name("postgres_url")
+            Arg::with_name("postgres-url")
                 .takes_value(true)
                 .required(true)
                 .long("postgres-url")
                 .value_name("URL")
                 .help("Location of the Postgres database used for storing entities"),
         )
-        .after_help("EXAMPLE (from root directory):
-	cargo run -p thegraph-local-node -- --postgres-url postgresql://exampleuser:exampluepassword@location:port/databasename")
         .get_matches();
 
-    // Safe to unwrap because a value is required by cli
-    let postgres_url = matches.value_of("postgres_url").unwrap().to_string();
+    // Safe to unwrap because a value is required by CLI
+    let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
 
     debug!(logger, "Setting up Sentry");
 
