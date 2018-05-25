@@ -55,9 +55,9 @@ impl<'a> MaybeCoercible<&'a TypeDefinition, &'a Name, Value, &'a TypeDefinition>
                 }
             }
 
-            // Try to coerce String values
+            // Try to coerce String and ID values
             (TypeDefinition::Scalar(t), Value::String(_)) => {
-                if t.name == "String" {
+                if t.name == "String" || t.name == "ID" {
                     Some(self.0.clone())
                 } else {
                     None
@@ -285,6 +285,46 @@ mod tests {
         );
 
         // We don't spport going from Value::Float -> TypeDefinition::Scalar(String)
+        assert_eq!(
+            MaybeCoercibleValue(&Value::Float(23.7)).coerce(&string_type, &|_| None),
+            None,
+        );
+        assert_eq!(
+            MaybeCoercibleValue(&Value::Float(-5.879)).coerce(&string_type, &|_| None),
+            None,
+        );
+    }
+
+    #[test]
+    fn coercion_using_id_type_definitions_is_correct() {
+        let string_type = TypeDefinition::Scalar(ScalarType {
+            name: "ID".to_string(),
+            description: None,
+            directives: vec![],
+            position: Pos::default(),
+        });
+
+        // We can coerce from Value::String -> TypeDefinition::Scalar(ID)
+        assert_eq!(
+            MaybeCoercibleValue(&Value::String("foo".to_string())).coerce(&string_type, &|_| None),
+            Some(Value::String("foo".to_string()))
+        );
+        assert_eq!(
+            MaybeCoercibleValue(&Value::String("bar".to_string())).coerce(&string_type, &|_| None),
+            Some(Value::String("bar".to_string()))
+        );
+
+        // We don't support going from Value::Boolean -> TypeDefinition::Scalar(ID)
+        assert_eq!(
+            MaybeCoercibleValue(&Value::Boolean(true)).coerce(&string_type, &|_| None),
+            None,
+        );
+        assert_eq!(
+            MaybeCoercibleValue(&Value::Boolean(false)).coerce(&string_type, &|_| None),
+            None,
+        );
+
+        // We don't spport going from Value::Float -> TypeDefinition::Scalar(ID)
         assert_eq!(
             MaybeCoercibleValue(&Value::Float(23.7)).coerce(&string_type, &|_| None),
             None,
