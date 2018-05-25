@@ -30,6 +30,7 @@ pub enum StoreFilter {
     Contains(Attribute, Value),
     NotContains(Attribute, Value),
     StartsWith(Attribute, Value),
+    NotStartsWith(Attribute, Value),
     EndsWith(Attribute, Value),
     NotEndsWith(Attribute, Value),
 }
