@@ -29,8 +29,8 @@ impl execution::Resolver for StoreResolver {
     fn resolve_entities(
         &self,
         _parent: &Option<gqlq::Value>,
-        entity: &String,
-        _arguments: HashMap<&gqlq::Name, gqlq::Value>,
+        entity: &gqlq::Name,
+        arguments: &HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value {
         self.store
             .find(StoreQuery {
@@ -54,8 +54,8 @@ impl execution::Resolver for StoreResolver {
     fn resolve_entity(
         &self,
         _parent: &Option<gqlq::Value>,
-        entity: &String,
-        _arguments: HashMap<&gqlq::Name, gqlq::Value>,
+        entity: &gqlq::Name,
+        _arguments: &HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value {
         self.store
             .get(StoreKey {
