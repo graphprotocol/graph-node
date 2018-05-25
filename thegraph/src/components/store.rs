@@ -5,7 +5,7 @@ use data::store::*;
 use util::stream::StreamError;
 
 /// Key by which an individual entity in the store can be accessed.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct StoreKey {
     /// Name of the entity type.
     pub entity: String,
@@ -15,7 +15,7 @@ pub struct StoreKey {
 }
 
 /// Supported types of store filters.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum StoreFilter {
     And(Vec<StoreFilter>),
     Or(Vec<StoreFilter>),
@@ -36,14 +36,14 @@ pub enum StoreFilter {
 }
 
 /// The order in which entities should be restored from a store.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum StoreOrder {
     Ascending,
     Descending,
 }
 
 /// How many entities to return, how many to skip etc.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct StoreRange {
     /// How many entities to return.
     pub first: usize,
@@ -53,7 +53,7 @@ pub struct StoreRange {
 }
 
 /// A query for entities in a store.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct StoreQuery {
     /// The name of the entity type.
     pub entity: String,
