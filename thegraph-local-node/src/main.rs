@@ -27,22 +27,25 @@ fn main() {
     let mut core = Core::new().unwrap();
     let logger = logger();
 
-    //Setup CLI using Clap, provide general info and capture db url
-    let matches = App::new("TheGraph-local-node")
-        .version("0.1")
-        .author("Graph Protocol, INC. <developers@thegraph.com>")
-        .about("Scalable queries for a decentralized future")
+    // Setup CLI using Clap, provide general info and capture postgres url
+    let matches = App::new("thegraph-local-node")
+        .version("0.1.0")
+        .author("Graph Protocol, INC.")
+        .about("Scalable queries for a decentralized future (local node)")
         .arg(
-            Arg::with_name("db_url")
+            Arg::with_name("postgres_url")
                 .takes_value(true)
                 .required(true)
-                .short("d")
-                .long("db")
+                .long("postgres-url")
                 .value_name("URL")
-                .help("Sets the location of the Postgres datastore"),
+                .help("Location of the Postgres database used for storing entities"),
         )
+        .after_help("EXAMPLE (from root directory):
+	cargo run -p thegraph-local-node -- --postgres-url postgresql://exampleuser:exampluepassword@location:port/databasename")
         .get_matches();
-    let postgres_url = matches.value_of("db_url").unwrap().to_string(); //safe to unwrap because a value is required by cli
+
+    // Safe to unwrap because a value is required by cli
+    let postgres_url = matches.value_of("postgres_url").unwrap().to_string();
 
     debug!(logger, "Setting up Sentry");
 
