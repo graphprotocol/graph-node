@@ -62,11 +62,3 @@ This will watch your source directory and continuously do the following on chang
 1. Build all packages in the workspace `target/`.
 2. Generate docs for all packages in the workspace in `target/doc/`.
 3. Automatically format all your source files.
-
-> **Tip:** requirements to run the above command
->
-> Cargo Watch
-> ```cargo install cargo-watch```
->
-> Rust Fmt
-> ```rustup component add rustfmt-preview```
