@@ -1,3 +1,4 @@
+extern crate clap;
 extern crate futures;
 #[macro_use]
 extern crate sentry;
@@ -11,6 +12,7 @@ extern crate thegraph_store_postgres_diesel;
 extern crate tokio;
 extern crate tokio_core;
 
+use clap::{App, Arg};
 use sentry::integrations::panic::register_panic_handler;
 use std::env;
 use thegraph::prelude::*;
@@ -23,8 +25,24 @@ use tokio_core::reactor::Core;
 
 fn main() {
     let mut core = Core::new().unwrap();
-
     let logger = logger();
+
+    //Setup CLI using Clap, provide general info and capture db url
+    let matches = App::new("TheGraph-local-node")
+        .version("0.1")
+        .author("Graph Protocol, INC. <developers@thegraph.com>")
+        .about("Scalable queries for a decentralized future")
+        .arg(
+            Arg::with_name("db_url")
+                .takes_value(true)
+                .required(true)
+                .short("d")
+                .long("db")
+                .value_name("URL")
+                .help("Sets the location of the Postgres datastore"),
+        )
+        .get_matches();
+    let postgres_url = matches.value_of("db_url").unwrap().to_string(); //safe to unwrap because a value is required by cli
 
     debug!(logger, "Setting up Sentry");
 
@@ -47,13 +65,7 @@ fn main() {
     // Create system components
     let mut data_source_provider = mock::MockDataSourceProvider::new(&logger);
     let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
-    let mut store = DieselStore::new(
-        StoreConfig {
-            url: "postgresql://jannis@localhost:5432/postgres".to_string(),
-        },
-        &logger,
-        core.handle(),
-    );
+    let mut store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
 
     // Forward schema events from the data source provider to the schema provider
