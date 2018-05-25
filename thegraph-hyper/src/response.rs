@@ -78,6 +78,8 @@ impl Future for GraphQLResponse {
             serde_json::to_string(self).expect("Failed to serialize GraphQL response to JSON");
         let response = Response::builder()
             .status(status_code)
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Headers", "Content-Type")
             .body(Body::from(json))
             .unwrap();
         Ok(Async::Ready(response))

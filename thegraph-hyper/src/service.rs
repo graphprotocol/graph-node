@@ -56,6 +56,18 @@ impl GraphQLService {
         )
     }
 
+    // Handles OPTIONS requests
+    fn handle_graphql_options(&self, _request: Request<Body>) -> GraphQLServiceResponse {
+        Box::new(future::ok(
+            Response::builder()
+                .status(200)
+                .header("Access-Control-Allow-Origin", "*")
+                .header("Access-Control-Allow-Headers", "Content-Type")
+                .body(Body::from(""))
+                .unwrap(),
+        ))
+    }
+
     /// Handles 404s.
     fn handle_not_found(&self, _req: Request<Body>) -> GraphQLServiceResponse {
         Box::new(future::ok(
@@ -77,6 +89,9 @@ impl Service for GraphQLService {
         match (req.method(), req.uri().path()) {
             // POST / receives GraphQL queries
             (&Method::POST, "/") => self.handle_graphql_query(req),
+
+            // OPTIONS / allows to check for GraphQL HTTP features
+            (&Method::OPTIONS, "/") => self.handle_graphql_options(req),
 
             // Everything else results in a 404
             _ => self.handle_not_found(req),
