@@ -8,6 +8,7 @@ use thegraph::components::store::*;
 use thegraph::prelude::Store;
 
 use super::execution;
+use store::query::build_query;
 
 /// A resolver that fetches entities from a `Store`.
 #[derive(Clone)]
@@ -32,14 +33,12 @@ impl execution::Resolver for StoreResolver {
         entity: &gqlq::Name,
         arguments: &HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value {
+        let store_query = build_query(entity, arguments);
+
+        debug!(self.logger, "Resolve entities"; "store_query" => format!("{:?}", store_query));
+
         self.store
-            .find(StoreQuery {
-                entity: entity.to_owned(),
-                filters: vec![],
-                order_by: None,
-                order_direction: None,
-                range: None,
-            })
+            .find(store_query)
             .map(|entities| {
                 gqlq::Value::List(
                     entities
