@@ -17,16 +17,16 @@ pub trait Resolver: Clone {
     fn resolve_entities(
         &self,
         parent: &Option<gqlq::Value>,
-        entity: &String,
-        arguments: HashMap<&gqlq::Name, gqlq::Value>,
+        entity: &gqlq::Name,
+        arguments: &HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value;
 
     /// Resolves an entity referenced by a parent object.
     fn resolve_entity(
         &self,
         parent: &Option<gqlq::Value>,
-        entity: &String,
-        arguments: HashMap<&gqlq::Name, gqlq::Value>,
+        entity: &gqlq::Name,
+        arguments: &HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value;
 
     /// Resolves an enum value for a given enum type.
@@ -280,7 +280,7 @@ where
                 object_value,
                 field,
                 field_type,
-                argument_values,
+                &argument_values,
             )
         })
         .and_then(|value| complete_value(ctx, field, field_type, fields, value))
@@ -293,7 +293,7 @@ fn resolve_field_value<'a, R>(
     object_value: &Option<gqlq::Value>,
     field: &gqlq::Field,
     field_type: &gqls::Type,
-    argument_values: HashMap<&gqlq::Name, gqlq::Value>,
+    argument_values: &HashMap<&gqlq::Name, gqlq::Value>,
 ) -> Result<gqlq::Value, QueryExecutionError>
 where
     R: Resolver,
@@ -330,7 +330,7 @@ fn resolve_field_value_for_named_type<'a, R>(
     object_value: &Option<gqlq::Value>,
     field: &gqlq::Field,
     type_name: &gqls::Name,
-    argument_values: HashMap<&gqlq::Name, gqlq::Value>,
+    argument_values: &HashMap<&gqlq::Name, gqlq::Value>,
 ) -> Result<gqlq::Value, QueryExecutionError>
 where
     R: Resolver,
@@ -381,7 +381,7 @@ fn resolve_field_value_for_list_type<'a, R>(
     field: &gqlq::Field,
     field_type: &gqls::Type,
     inner_type: &gqls::Type,
-    argument_values: HashMap<&gqlq::Name, gqlq::Value>,
+    argument_values: &HashMap<&gqlq::Name, gqlq::Value>,
 ) -> Result<gqlq::Value, QueryExecutionError>
 where
     R: Resolver,
