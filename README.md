@@ -39,12 +39,15 @@ FLAGS:
 
 OPTIONS:
         --postgres-url <URL>    Location of the Postgres database used for storing entities
-
-EXAMPLE (from root directory):
-	cargo run -p thegraph-local-node -- --postgres-url postgresql://exampleuser:exampluepassword@location:port/databasename
 ```
 
 ### Developing
+
+Install development helpers:
+```sh
+cargo install cargo-watch
+rustup component add rustfmt-preview
+```
 
 While developing, a useful command to run in the background is this:
 ```sh
