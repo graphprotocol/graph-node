@@ -1,7 +1,8 @@
 extern crate diesel;
 extern crate diesel_dynamic_schema;
+#[macro_use]
+extern crate diesel_migrations;
 extern crate futures;
-extern crate migrations_internals;
 #[macro_use]
 extern crate slog;
 extern crate thegraph;
