@@ -1,5 +1,6 @@
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
+use migrations_internals::run_pending_migrations;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
@@ -9,9 +10,16 @@ use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::{*, Store as StoreTrait};
 use thegraph::data::store::*;
 use thegraph::util::stream::StreamError;
+use thegraph::util::log::logger;
 
 /// Creates the "entities" table if it doesn't already exist
-fn ensure_entities_table(_conn: &PgConnection) {}
+fn run_all_migrations(conn: &PgConnection) {
+    let logger = logger();
+    match run_pending_migrations(conn) {
+        Ok(_) => info!(logger, "All pending postgres schema migrations successfully completed"),
+        Err(e) => panic!("Error with postgres schema setup: {:?}", e),
+    }
+}
 
 /// Configuration for the Diesel/Postgres store.
 pub struct StoreConfig {
@@ -40,7 +48,7 @@ impl Store {
         info!(logger, "Connected to Postgres"; "url" => &config.url);
 
         // Create the entities table (if necessary)
-        ensure_entities_table(&conn);
+        run_all_migrations(&conn);
 
         // Create the store
         let mut store = Store {
