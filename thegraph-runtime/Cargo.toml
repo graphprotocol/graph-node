@@ -1,0 +1,3 @@
+[package]
+name = "thegraph-runtime"
+version = "0.1.0"
