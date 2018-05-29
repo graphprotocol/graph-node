@@ -94,3 +94,15 @@ pub fn include_selection(selection: &Selection) -> bool {
 pub fn get_response_key(field: &Field) -> &Name {
     field.alias.as_ref().unwrap_or(&field.name)
 }
+
+/// Returns up the fragment with the given name, if it exists.
+pub fn get_fragment<'a>(document: &'a Document, name: &Name) -> Option<&'a FragmentDefinition> {
+    document
+        .definitions
+        .iter()
+        .filter_map(|d| match d {
+            Definition::Fragment(fd) => Some(fd),
+            _ => None,
+        })
+        .find(|fd| &fd.name == name)
+}
