@@ -9,15 +9,23 @@ use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::{*, Store as StoreTrait};
 use thegraph::data::store::*;
 use thegraph::util::stream::StreamError;
-use std::io::stdout;
 
 embed_migrations!("./migrations");
 
 /// Creates the "entities" table if it doesn't already exist.
 fn initiate_schema(logger: &slog::Logger, conn: &PgConnection) {
-    match embedded_migrations::run_with_output(conn, &mut stdout()) {
+    // Collect migration logging output
+    let mut output = vec![];
+
+    match embedded_migrations::run_with_output(conn, &mut output) {
         Ok(_) => info!(logger, "Completed pending Postgres schema migrations"),
         Err(e) => panic!("Error with Postgres schema setup: {:?}", e),
+    }
+
+    // If there was any migration output, log it now
+    if !output.is_empty() {
+        debug!(logger, "Postgres migration output";
+               "output" => String::from_utf8(output).unwrap_or(String::from("<unreadable>")));
     }
 }
 
@@ -38,6 +46,9 @@ pub struct Store {
 
 impl Store {
     pub fn new(config: StoreConfig, logger: &slog::Logger, runtime: Handle) -> Self {
+        // Create a store-specific logger
+        let logger = logger.new(o!("component" => "Store"));
+
         // Create a channel for handling incoming schema provider events
         let (sink, stream) = channel(100);
 
@@ -48,11 +59,11 @@ impl Store {
         info!(logger, "Connected to Postgres"; "url" => &config.url);
 
         // Create the entities table (if necessary)
-        initiate_schema(logger, &conn);
+        initiate_schema(&logger, &conn);
 
         // Create the store
         let mut store = Store {
-            logger: logger.new(o!("component" => "Store")),
+            logger,
             event_sink: None,
             schema_provider_event_sink: sink,
             runtime,
