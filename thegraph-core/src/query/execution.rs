@@ -3,7 +3,7 @@ use graphql_parser::schema as s;
 use indexmap::IndexMap;
 use slog;
 use std::cmp;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use thegraph::prelude::*;
 
@@ -185,7 +185,7 @@ where
     let mut result_map: BTreeMap<String, q::Value> = BTreeMap::new();
 
     // Group fields with the same response key, so we can execute them together
-    let grouped_field_set = collect_fields(ctx.clone(), object_type, selection_set);
+    let grouped_field_set = collect_fields(ctx.clone(), object_type, selection_set, None);
 
     // Process all field groups in order
     for (response_key, fields) in grouped_field_set {
@@ -227,13 +227,15 @@ where
 
 /// Collects fields of a selection set.
 fn collect_fields<'a, R>(
-    _ctx: ExecutionContext<'a, R>,
-    _object_type: &s::ObjectType,
+    ctx: ExecutionContext<'a, R>,
+    object_type: &s::ObjectType,
     selection_set: &'a q::SelectionSet,
+    visited_fragments: Option<HashSet<&'a q::Name>>,
 ) -> IndexMap<&'a String, Vec<&'a q::Field>>
 where
     R: Resolver,
 {
+    let mut visited_fragments = visited_fragments.unwrap_or(HashSet::new());
     let mut grouped_fields = IndexMap::new();
 
     // Only consider selections that are not skipped and should be included
@@ -260,12 +262,108 @@ where
                 group.push(field);
             }
 
-            q::Selection::FragmentSpread(_) => unimplemented!(),
+            q::Selection::FragmentSpread(spread) => {
+                // Only consider the fragment if it hasn't already been included,
+                // as would be the case if the same fragment spread ...Foo appeared
+                // twice in the same selection set
+                if !visited_fragments.contains(&spread.fragment_name) {
+                    visited_fragments.insert(&spread.fragment_name);
+
+                    // Resolve the fragment using its name and, if it applies, collect
+                    // fields for the fragment and group them
+                    let fragment_grouped_field_set =
+                        qast::get_fragment(&ctx.query.document, &spread.fragment_name)
+                            .and_then(|fragment| {
+                                // We have a fragment, only pass it on if it applies to the
+                                // current object type
+                                if does_fragment_type_apply(
+                                    ctx.clone(),
+                                    object_type,
+                                    &fragment.type_condition,
+                                ) {
+                                    Some(fragment)
+                                } else {
+                                    None
+                                }
+                            })
+                            .map(|fragment| {
+                                // We have a fragment that applies to the current object type,
+                                // collect its fields into response key groups
+                                collect_fields(
+                                    ctx.clone(),
+                                    object_type,
+                                    &fragment.selection_set,
+                                    Some(visited_fragments.clone()),
+                                )
+                            });
+
+                    if let Some(grouped_field_set) = fragment_grouped_field_set {
+                        // Add all items from each fragments group to the field group
+                        // with the corresponding response key
+                        for (response_key, mut fragment_group) in grouped_field_set {
+                            if !grouped_fields.contains_key(response_key) {
+                                grouped_fields.insert(response_key, vec![]);
+                            }
+                            let mut group = grouped_fields.get_mut(response_key).unwrap();
+                            group.append(&mut fragment_group);
+                        }
+                    }
+                }
+            }
+
             q::Selection::InlineFragment(_) => unimplemented!(),
         };
     }
 
     grouped_fields
+}
+
+/// Determines whether a fragment is applicable to the given object type.
+fn does_fragment_type_apply<'a, R>(
+    ctx: ExecutionContext<'a, R>,
+    object_type: &s::ObjectType,
+    fragment_type: &q::TypeCondition,
+) -> bool
+where
+    R: Resolver,
+{
+    // This is safe to do, as TypeCondition only has a single `On` variant.
+    let q::TypeCondition::On(ref name) = fragment_type;
+
+    // Resolve the type the fragment applies to based on its name
+    let named_type = sast::get_named_type(
+        if ctx.introspecting {
+            ctx.introspection_schema
+        } else {
+            &ctx.schema.document
+        },
+        name,
+    );
+
+    match named_type {
+        // The fragment applies to the object type if its type is the same object type
+        Some(s::TypeDefinition::Object(ot)) => object_type == ot,
+
+        // The fragment also applies to the object type if its type is an interface
+        // that the object type implements
+        Some(s::TypeDefinition::Interface(it)) => object_type
+            .implements_interfaces
+            .iter()
+            .find(|name| name == &&it.name)
+            .map(|_| true)
+            .unwrap_or(false),
+
+        // The fragment also applies to an object type if its type is a union that
+        // the object type is one of the possible types for
+        Some(s::TypeDefinition::Union(ut)) => ut.types
+            .iter()
+            .find(|name| name == &&object_type.name)
+            .map(|_| true)
+            .unwrap_or(false),
+
+        // In all other cases, the fragment does not apply
+        _ => false,
+    }
 }
 
 /// Executes a field.
