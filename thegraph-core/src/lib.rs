@@ -11,4 +11,4 @@ mod schema;
 mod store;
 
 pub use query::QueryRunner;
-pub use schema::SchemaProvider;
+pub use schema::{object_from_data, SchemaProvider};

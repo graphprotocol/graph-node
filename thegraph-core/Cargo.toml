@@ -9,3 +9,7 @@ graphql-parser = "0.2.0"
 slog = "2.2.3"
 thegraph = { path = "../thegraph" }
 tokio-core = "0.1.17"
+
+[dev-dependencies]
+pretty_assertions = "0.5.1"
+thegraph-mock = { path = "../thegraph-mock" }
