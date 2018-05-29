@@ -10,6 +10,7 @@ use thegraph::prelude::*;
 use super::ast as qast;
 use super::coercion::*;
 use schema::ast as sast;
+use schema::introspection;
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
 pub trait Resolver: Clone {
