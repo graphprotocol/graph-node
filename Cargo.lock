@@ -1465,6 +1465,12 @@ dependencies = [
 [[package]]
 name = "thegraph-runtime"
 version = "0.1.0"
+dependencies = [
+ "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper 0.11.25 (registry+https://github.com/rust-lang/crates.io-index)",
+ "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thegraph 0.1.0",
+]
 
 [[package]]
 name = "thegraph-store-postgres-diesel"

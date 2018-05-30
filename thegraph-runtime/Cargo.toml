@@ -1,3 +1,9 @@
 [package]
 name = "thegraph-runtime"
 version = "0.1.0"
+
+[dependencies]
+slog = "2.2.3"
+thegraph = { path = "../thegraph" }
+futures = "0.1.14"
+hyper = "0.11"
