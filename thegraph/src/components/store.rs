@@ -5,7 +5,7 @@ use data::store::*;
 use util::stream::StreamError;
 
 /// Key by which an individual entity in the store can be accessed.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct StoreKey {
     /// Name of the entity type.
     pub entity: String,
