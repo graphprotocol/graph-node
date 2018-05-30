@@ -1361,6 +1361,7 @@ dependencies = [
 name = "thegraph"
 version = "0.1.0"
 dependencies = [
+ "diesel 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
  "graphql-parser 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.45 (registry+https://github.com/rust-lang/crates.io-index)",

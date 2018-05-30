@@ -1,4 +1,5 @@
 use graphql_parser::query;
+use serde;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
 
@@ -6,7 +7,7 @@ use std::ops::{Deref, DerefMut};
 pub type Attribute = String;
 
 /// An attribute value is represented as an enum with variants for all supported value types.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub enum Value {
     String(String),
 }
@@ -38,9 +39,8 @@ impl<'a> From<&'a query::Value> for Value {
 }
 
 /// An entity is represented as a map of attribute names to values.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Queryable, Deserialize, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
-
 impl Entity {
     /// Creates a new entity with no attributes set.
     pub fn new() -> Self {
