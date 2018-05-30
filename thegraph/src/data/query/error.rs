@@ -1,116 +1,9 @@
-use futures::sync::oneshot;
-use graphql_parser::Pos;
-use graphql_parser::query;
+use graphql_parser::{query as q, Pos};
 use serde::ser::*;
-use std::cmp::PartialEq;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use std::ops::{Deref, DerefMut};
 use std::string::FromUtf8Error;
-
-use data::schema::Schema;
-
-#[derive(Deserialize)]
-#[serde(untagged, remote = "query::Value")]
-enum GraphQLValue {
-    String(String),
-}
-
-/// Variable value for a GraphQL query.
-#[derive(Debug, Deserialize)]
-pub struct QueryVariableValue(#[serde(with = "GraphQLValue")] query::Value);
-
-impl Deref for QueryVariableValue {
-    type Target = query::Value;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for QueryVariableValue {
-    fn deref_mut(&mut self) -> &mut query::Value {
-        &mut self.0
-    }
-}
-
-impl PartialEq for QueryVariableValue {
-    fn eq(&self, other: &QueryVariableValue) -> bool {
-        self.0 == other.0
-    }
-}
-
-impl<'a> From<&'a str> for QueryVariableValue {
-    fn from(s: &'a str) -> Self {
-        QueryVariableValue(query::Value::String(s.to_string()))
-    }
-}
-
-/// Variable values for a GraphQL query.
-#[derive(Debug, Deserialize)]
-pub struct QueryVariables(HashMap<String, QueryVariableValue>);
-
-impl QueryVariables {
-    pub fn new() -> Self {
-        QueryVariables(HashMap::new())
-    }
-}
-
-impl Deref for QueryVariables {
-    type Target = HashMap<String, QueryVariableValue>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for QueryVariables {
-    fn deref_mut(&mut self) -> &mut HashMap<String, QueryVariableValue> {
-        &mut self.0
-    }
-}
-
-impl PartialEq for QueryVariables {
-    fn eq(&self, other: &QueryVariables) -> bool {
-        self.0 == other.0
-    }
-}
-
-/// A GraphQL query as submitted by a client, either directly or through a subscription.
-#[derive(Debug)]
-pub struct Query {
-    pub schema: Schema,
-    pub document: query::Document,
-    pub variables: Option<QueryVariables>,
-    pub result_sender: oneshot::Sender<QueryResult>,
-}
-
-/// The result of running a query, if successful.
-#[derive(Debug)]
-pub struct QueryResult {
-    pub data: Option<query::Value>,
-    pub errors: Option<Vec<QueryError>>,
-}
-
-impl QueryResult {
-    pub fn new(data: Option<query::Value>) -> Self {
-        QueryResult { data, errors: None }
-    }
-
-    pub fn add_error(&mut self, e: QueryError) {
-        let errors = self.errors.get_or_insert(vec![]);
-        errors.push(e);
-    }
-}
-
-impl From<QueryExecutionError> for QueryResult {
-    fn from(e: QueryExecutionError) -> Self {
-        let mut result = Self::new(None);
-        result.errors = Some(vec![QueryError::from(e)]);
-        result
-    }
-}
 
 /// Error caused while executing a [Query](struct.Query.html).
 #[derive(Debug)]
@@ -124,7 +17,7 @@ pub enum QueryExecutionError {
     ListValueError(Pos, String),
     NamedTypeError(String),
     AbstractTypeError(String),
-    InvalidArgumentError(Pos, String, query::Value),
+    InvalidArgumentError(Pos, String, q::Value),
     MissingArgumentError(Pos, String),
 }
 
@@ -178,7 +71,7 @@ impl fmt::Display for QueryExecutionError {
 #[derive(Debug)]
 pub enum QueryError {
     EncodingError(FromUtf8Error),
-    ParseError(query::ParseError),
+    ParseError(q::ParseError),
     ExecutionError(QueryExecutionError),
 }
 
@@ -188,8 +81,8 @@ impl From<FromUtf8Error> for QueryError {
     }
 }
 
-impl From<query::ParseError> for QueryError {
-    fn from(e: query::ParseError) -> Self {
+impl From<q::ParseError> for QueryError {
+    fn from(e: q::ParseError) -> Self {
         QueryError::ParseError(e)
     }
 }
