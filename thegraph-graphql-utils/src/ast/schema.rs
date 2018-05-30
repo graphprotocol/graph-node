@@ -19,6 +19,30 @@ pub fn get_root_query_type(schema: &Document) -> Option<&ObjectType> {
         .next()
 }
 
+/// Returns all object type definitions in the schema.
+pub fn get_object_type_definitions<'a>(schema: &'a Document) -> Vec<&'a ObjectType> {
+    schema
+        .definitions
+        .iter()
+        .filter_map(|d| match d {
+            Definition::TypeDefinition(TypeDefinition::Object(t)) => Some(t),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Returns all interface definitions in the schema.
+pub fn get_interface_type_definitions<'a>(schema: &'a Document) -> Vec<&'a InterfaceType> {
+    schema
+        .definitions
+        .iter()
+        .filter_map(|d| match d {
+            Definition::TypeDefinition(TypeDefinition::Interface(t)) => Some(t),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Returns the type of a field of an object type.
 pub fn get_field_type<'a>(object_type: &'a ObjectType, name: &Name) -> Option<&'a Field> {
     object_type.fields.iter().find(|field| &field.name == name)
