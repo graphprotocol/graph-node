@@ -7,7 +7,6 @@ use serde_json;
 use slog;
 use tokio_core::reactor::Handle;
 
-use models;
 use std::io::stdout;
 use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::{Store as StoreTrait, *};
@@ -93,28 +92,40 @@ impl Store {
     }
 }
 
-// use diesel::result::Error;
-// use std::collections::{HashMap};
-
 impl StoreTrait for Store {
     fn get(&self, key: StoreKey) -> Result<store::Entity, ()> {
         use ourschema::entities::dsl::*;
+
+        //Datasource hardcoded at the moment
         let datasource: String = String::from("memefactory");
+
+        //Use primary key fields to get Entity
         let table_results = entities
             .find((key.id.parse::<i32>().unwrap(), datasource, key.entity))
             .select(data)
-            .first::<serde_json::Value>(&self.conn)
-            .expect(&format!("Error loading entity data for {:?}", key.id));
-        let entity_results: Result<store::Entity, serde_json::Error> =
-            serde_json::from_value(table_results);
-        let null_errors = entity_results.map_err(|_e| ()).map(|n| n);
-        null_errors
+            .first::<serde_json::Value>(&self.conn);
+
+        //Deserialize results json into Entity map and stub for error mapping
+        let new_results = table_results
+            .map(|r| {
+                serde_json::from_value::<store::Entity>(r)
+                    .expect("Error deserializing results of get")
+            })
+            .map_err(|_e| ());
+
+        new_results
     }
 
     fn set(&mut self, key: StoreKey, entity1: Entity) -> Result<(), ()> {
-        let entity_json: serde_json::Value = serde_json::to_value(&entity1).unwrap();
         use ourschema::entities::dsl::*;
+
+        //Convert Entity hashmap to serde_json::Value for insert
+        let entity_json: serde_json::Value = serde_json::to_value(&entity1).unwrap();
+
+        //Datasource hardcoded at the moment
         let datasource: String = String::from("memefactory");
+
+        //Insert entity, if pkey conflict then do update
         let set_rows_count = insert_into(entities)
             .values((
                 id.eq(&key.id.parse::<i32>().unwrap()),
@@ -131,13 +142,25 @@ impl StoreTrait for Store {
                 data.eq(&entity_json),
             ))
             .execute(&self.conn);
+
+        // Stub for mapping results, currentlyl just nulls them to match fn signature
+        //Not sure if it is preferable to use map like here or match as below in the
+        //delete() fn
         let out = set_rows_count.map(|_v| ()).map_err(|_e| ());
         out
     }
 
     fn delete(&mut self, key: StoreKey) -> Result<(), ()> {
         use ourschema::entities::dsl::*;
-        match delete(entities.filter(id.eq(&key.id.parse::<i32>().unwrap()))).execute(&self.conn) {
+
+        //Delete from DB where rows match id and entity value
+        //Add datasource here when meaningful
+        match delete(
+            entities
+                .filter(id.eq(&key.id.parse::<i32>().unwrap()))
+                .filter(entity.eq(&key.entity)),
+        ).execute(&self.conn)
+        {
             Ok(_result) => Ok(()),
             Err(_e) => Err(()),
         }
