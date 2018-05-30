@@ -5,8 +5,8 @@ use std::sync::Arc;
 use tokio_core::reactor::Handle;
 
 use thegraph::prelude::{Query, QueryRunner as QueryRunnerTrait, Store};
+use thegraph_graphql_utils::execution;
 
-use super::execution;
 use super::resolver::StoreResolver;
 
 /// Common query runner implementation for The Graph.

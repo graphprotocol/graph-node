@@ -1,10 +1,10 @@
 use graphql_parser;
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
-use std::collections::{BTreeMap, HashMap};
-use std::iter::FromIterator;
+use std::collections::HashMap;
 
-use super::ast as sast;
+use ast::query::object_value;
+use ast::schema as sast;
 
 const INTROSPECTION_SCHEMA: &'static str = "
 scalar Boolean
@@ -455,10 +455,4 @@ fn directive_locations(directive: &s::DirectiveDefinition) -> q::Value {
             .map(|name| q::Value::String(name.to_owned()))
             .collect(),
     )
-}
-
-pub fn object_value(data: Vec<(&str, q::Value)>) -> q::Value {
-    q::Value::Object(BTreeMap::from_iter(
-        data.into_iter().map(|(k, v)| (k.to_string(), v)),
-    ))
 }
