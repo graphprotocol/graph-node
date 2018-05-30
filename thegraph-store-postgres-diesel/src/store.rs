@@ -13,11 +13,11 @@ use std::io::stdout;
 
 embed_migrations!("./migrations");
 
-/// Creates the "entities" table if it doesn't already exist
+/// Creates the "entities" table if it doesn't already exist.
 fn initiate_schema(logger: &slog::Logger, conn: &PgConnection) {
     match embedded_migrations::run_with_output(conn, &mut stdout()) {
-        Ok(_) => info!(logger, "Completed pending postgres schema migrations"),
-        Err(e) => panic!("Error with postgres schema setup: {:?}", e),
+        Ok(_) => info!(logger, "Completed pending Postgres schema migrations"),
+        Err(e) => panic!("Error with Postgres schema setup: {:?}", e),
     }
 }
 
