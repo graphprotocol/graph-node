@@ -7,7 +7,6 @@ use serde_json;
 use slog;
 use tokio_core::reactor::Handle;
 
-use std::io::stdout;
 use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::{Store as StoreTrait, *};
 use thegraph::data::store;
