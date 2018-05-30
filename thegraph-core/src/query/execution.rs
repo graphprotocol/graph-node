@@ -884,7 +884,10 @@ where
     // Resolve __schema and __Type using the introspection schema
     if Some(object_type) == sast::get_root_query_type(&ctx.schema.document) {
         if let Some(ref object_type) = sast::get_root_query_type(ctx.introspection_schema) {
-            return sast::get_field_type(object_type, name).map(|t| (t, true));
+            match sast::get_field_type(object_type, name).map(|t| (t, true)) {
+                Some(v) => return Some(v),
+                None => (),
+            }
         }
     }
 
