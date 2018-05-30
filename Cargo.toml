@@ -2,6 +2,7 @@
 members = [
     "thegraph",
     "thegraph-core",
+    "thegraph-graphql-utils",
     "thegraph-hyper",
     "thegraph-local-node",
     "thegraph-mock",

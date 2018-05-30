@@ -7,6 +7,7 @@ extern crate serde_json;
 #[macro_use]
 extern crate slog;
 extern crate thegraph;
+extern crate thegraph_graphql_utils;
 extern crate tokio;
 extern crate tokio_core;
 

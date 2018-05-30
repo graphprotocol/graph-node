@@ -1,0 +1,17 @@
+[package]
+name = "thegraph-graphql-utils"
+version = "0.1.0"
+
+[dependencies]
+graphql-parser = "0.2.0"
+serde = "1.0"
+serde_derive = "1.0"
+slog = "2.2.3"
+thegraph = { path = "../thegraph" }
+indexmap = "1.0"
+
+[dev-dependencies]
+futures = "0.1.21"
+pretty_assertions = "0.5.1"
+thegraph-mock = { path = "../thegraph-mock" }
+tokio-core = "0.1.17"

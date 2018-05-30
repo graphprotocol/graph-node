@@ -4,11 +4,10 @@ use slog;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use store::query::build_query;
 use thegraph::components::store::*;
 use thegraph::prelude::Store;
-
-use super::execution;
-use store::query::build_query;
+use thegraph_graphql_utils::Resolver as ResolverTrait;
 
 /// A resolver that fetches entities from a `Store`.
 #[derive(Clone)]
@@ -26,7 +25,7 @@ impl StoreResolver {
     }
 }
 
-impl execution::Resolver for StoreResolver {
+impl ResolverTrait for StoreResolver {
     fn resolve_entities(
         &self,
         _parent: &Option<gqlq::Value>,
