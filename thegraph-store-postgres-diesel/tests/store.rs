@@ -3,8 +3,6 @@ extern crate serde_json;
 extern crate thegraph;
 extern crate thegraph_store_postgres_diesel;
 extern crate tokio_core;
-#[macro_use]
-extern crate slog;
 
 use diesel::pg::PgConnection;
 use diesel::*;
@@ -153,7 +151,7 @@ fn get_entity() {
 }
 
 #[test]
-fn add_new_entity() {
+fn insert_new_entity() {
     run_test(|| {
         use ourschema::entities::dsl::*;
 
@@ -185,8 +183,6 @@ fn add_new_entity() {
 #[test]
 fn update_existing_entity() {
     run_test(|| {
-        // use ourschema::entities::dsl::*;
-
         let core = Core::new().unwrap();
         let logger = logger();
         let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
