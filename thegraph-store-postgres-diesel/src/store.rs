@@ -1,18 +1,23 @@
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
+use diesel::{delete, insert_into};
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
+use serde_json;
 use tokio_core::reactor::Handle;
 
 use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::{*, Store as StoreTrait};
 use thegraph::data::store::*;
 use thegraph::util::stream::StreamError;
-
+use std::io::stdout;
+use thegraph::data::store;
+use models;
 embed_migrations!("./migrations");
 
-/// Creates the "entities" table if it doesn't already exist.
+/// Run all initial schema migrations
+/// Creates the "entities" table if it doesn't already exist
 fn initiate_schema(logger: &slog::Logger, conn: &PgConnection) {
     // Collect migration logging output
     let mut output = vec![];
@@ -41,7 +46,7 @@ pub struct Store {
     runtime: Handle,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
     _config: StoreConfig,
-    _conn: PgConnection,
+    pub conn: PgConnection,
 }
 
 impl Store {
@@ -68,7 +73,7 @@ impl Store {
             schema_provider_event_sink: sink,
             runtime,
             _config: config,
-            _conn: conn,
+            conn: conn,
         };
 
         // Spawn a task that handles incoming schema provider events
@@ -88,17 +93,51 @@ impl Store {
     }
 }
 
+// use diesel::result::Error;
+// use std::collections::{HashMap};
+
 impl StoreTrait for Store {
-    fn get(&self, _key: StoreKey) -> Result<Entity, ()> {
-        unimplemented!()
+    fn get(&self, key: StoreKey) -> Result<store::Entity, ()> {
+        use ourschema::entities::dsl::*;
+        let datasource: String = String::from("memefactory");
+        let table_results = entities
+            .find((key.id.parse::<i32>().unwrap(), datasource, key.entity))
+            .first::<models::EntityTable>(&self.conn)
+            .expect(&format!(
+                "Error loading entity data for {:?}",
+                key.id
+            ));
+        let entity_results: Result<store::Entity, serde_json::Error> = serde_json::from_value(table_results.data);
+        let null_results = entity_results.map_err(|_e| ()).map(|n| n);
+        null_results
     }
 
-    fn set(&mut self, _key: StoreKey, _entity: Entity) -> Result<(), ()> {
-        unimplemented!()
+    fn set(&mut self, key: StoreKey, entity1: Entity) -> Result<(), ()> {
+        let entity_json: serde_json::Value = serde_json::to_value(&entity1).unwrap();
+        use ourschema::entities::dsl::*;
+        let datasource: String = String::from("memefactory");
+        let set_rows_count = insert_into(entities)
+            .values(
+                (id.eq(&key.id.parse::<i32>().unwrap()), entity.eq(&key.entity), data_source.eq(&datasource), data.eq(&entity_json))
+            )
+            .on_conflict((id, entity, data_source))
+            .do_update()
+            .set(
+                (id.eq(&key.id.parse::<i32>().unwrap()), entity.eq(&key.entity), data_source.eq(&datasource), data.eq(&entity_json))
+            )
+            .execute(&self.conn);
+        println!("num rows affected by set(): {:?}", &set_rows_count);
+        let out = set_rows_count.map(|_v| ()).map_err(|_e| ());
+        out
     }
 
-    fn delete(&mut self, _key: StoreKey) -> Result<(), ()> {
-        unimplemented!()
+    fn delete(&mut self, key: StoreKey) -> Result<(), ()> {
+        use ourschema::entities::dsl::*;
+        match delete(entities.filter(id.eq(&key.id.parse::<i32>().unwrap())))
+            .execute(&self.conn) {
+                Ok(_result) => Ok(()),
+                Err(_e) => Err(()),
+            }
     }
 
     fn find(&self, _query: StoreQuery) -> Result<Vec<Entity>, ()> {
