@@ -15,5 +15,4 @@ pub mod models;
 pub mod ourschema;
 pub mod store;
 
-
 pub use self::store::{Store, StoreConfig};

@@ -14,5 +14,5 @@ pub struct EntityTable {
     #[sql_type = "VarChar"]
     pub entity: String,
     #[sql_type = "Jsonb"]
-    pub data: EntityJson
+    pub data: EntityJson,
 }
