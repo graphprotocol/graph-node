@@ -65,230 +65,7 @@ fn mock_schema() -> Schema {
     }
 }
 
-fn introspection_query(query: &str) -> QueryResult {
-    let mut core = Core::new().unwrap();
-    let logger = slog::Logger::root(slog::Discard, o!());
-
-    let store = thegraph_mock::MockStore::new(&logger, core.handle());
-    let mut query_runner = CoreQueryRunner::new(&logger, core.handle(), store);
-    let query_sink = query_runner.query_sink();
-
-    let (sender, receiver) = oneshot::channel();
-    let query = Query {
-        schema: mock_schema(),
-        document: graphql_parser::parse_query(query).unwrap(),
-        variables: None,
-        result_sender: sender,
-    };
-
-    query_sink.send(query).wait().unwrap();
-    core.run(receiver)
-        .expect("Failed to run introspection query")
-}
-
-#[test]
-fn satisfies_graphiql_introspection_query_without_fragments() {
-    let result = introspection_query(
-        "
-      query IntrospectionQuery {
-        __schema {
-          queryType { name }
-          mutationType { name }
-          subscriptionType { name}
-          types {
-            kind
-            name
-            description
-            fields(includeDeprecated: true) {
-              name
-              description
-              args {
-                name
-                description
-                type {
-                  kind
-                  name
-                  ofType {
-                    kind
-                    name
-                    ofType {
-                      kind
-                      name
-                      ofType {
-                        kind
-                        name
-                        ofType {
-                          kind
-                          name
-                          ofType {
-                            kind
-                            name
-                            ofType {
-                              kind
-                              name
-                              ofType {
-                                kind
-                                name
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-                defaultValue
-              }
-              type {
-                kind
-                name
-                ofType {
-                  kind
-                  name
-                  ofType {
-                    kind
-                    name
-                    ofType {
-                      kind
-                      name
-                      ofType {
-                        kind
-                        name
-                        ofType {
-                          kind
-                          name
-                          ofType {
-                            kind
-                            name
-                            ofType {
-                              kind
-                              name
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-              isDeprecated
-              deprecationReason
-            }
-            inputFields {
-              name
-              description
-              type {
-                kind
-                name
-                ofType {
-                  kind
-                  name
-                  ofType {
-                    kind
-                    name
-                    ofType {
-                      kind
-                      name
-                      ofType {
-                        kind
-                        name
-                        ofType {
-                          kind
-                          name
-                          ofType {
-                            kind
-                            name
-                            ofType {
-                              kind
-                              name
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-              defaultValue
-            }
-            interfaces {
-              kind
-              name
-              ofType {
-                kind
-                name
-                ofType {
-                  kind
-                  name
-                  ofType {
-                    kind
-                    name
-                    ofType {
-                      kind
-                      name
-                      ofType {
-                        kind
-                        name
-                        ofType {
-                          kind
-                          name
-                          ofType {
-                            kind
-                            name
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-            enumValues(includeDeprecated: true) {
-              name
-              description
-              isDeprecated
-              deprecationReason
-            }
-            possibleTypes {
-              kind
-              name
-              ofType {
-                kind
-                name
-                ofType {
-                  kind
-                  name
-                  ofType {
-                    kind
-                    name
-                    ofType {
-                      kind
-                      name
-                      ofType {
-                        kind
-                        name
-                        ofType {
-                          kind
-                          name
-                          ofType {
-                            kind
-                            name
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-           }
-          }
-          directives { name }
-        }
-      }
-    ",
-    );
-    let data = result.data.expect("Introspection query returned no result");
-
+fn expected_mock_schema_introspection() -> Value {
     let string_type = object_value(vec![
         ("kind", Value::Enum("SCALAR".to_string())),
         ("name", Value::String("String".to_string())),
@@ -652,10 +429,403 @@ fn satisfies_graphiql_introspection_query_without_fragments() {
         (
             "directives",
             Value::List(vec![
-                object_value(vec![("name", Value::String("language".to_string()))]),
+                object_value(vec![
+                    ("name", Value::String("language".to_string())),
+                    ("description", Value::Null),
+                    (
+                        "args",
+                        Value::List(vec![
+                            object_value(vec![
+                                ("name", Value::String("language".to_string())),
+                                ("description", Value::Null),
+                                (
+                                    "defaultValue",
+                                    Value::String("String(\"English\")".to_string()),
+                                ),
+                                (
+                                    "type",
+                                    object_value(vec![
+                                        ("kind", Value::Enum("SCALAR".to_string())),
+                                        ("name", Value::String("String".to_string())),
+                                        ("ofType", Value::Null),
+                                    ]),
+                                ),
+                            ]),
+                        ]),
+                    ),
+                ]),
             ]),
         ),
     ]);
 
-    assert_eq!(data, object_value(vec![("__schema", schema_type)]),)
+    object_value(vec![("__schema", schema_type)])
+}
+
+fn introspection_query(query: &str) -> QueryResult {
+    let mut core = Core::new().unwrap();
+    let logger = slog::Logger::root(slog::Discard, o!());
+
+    let store = thegraph_mock::MockStore::new(&logger, core.handle());
+    let mut query_runner = CoreQueryRunner::new(&logger, core.handle(), store);
+    let query_sink = query_runner.query_sink();
+
+    let (sender, receiver) = oneshot::channel();
+    let query = Query {
+        schema: mock_schema(),
+        document: graphql_parser::parse_query(query).unwrap(),
+        variables: None,
+        result_sender: sender,
+    };
+
+    query_sink.send(query).wait().unwrap();
+    core.run(receiver)
+        .expect("Failed to run introspection query")
+}
+
+#[test]
+fn satisfies_graphiql_introspection_query_without_fragments() {
+    let result = introspection_query(
+        "
+      query IntrospectionQuery {
+        __schema {
+          queryType { name }
+          mutationType { name }
+          subscriptionType { name}
+          types {
+            kind
+            name
+            description
+            fields(includeDeprecated: true) {
+              name
+              description
+              args {
+                name
+                description
+                type {
+                  kind
+                  name
+                  ofType {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                          ofType {
+                            kind
+                            name
+                            ofType {
+                              kind
+                              name
+                              ofType {
+                                kind
+                                name
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                defaultValue
+              }
+              type {
+                kind
+                name
+                ofType {
+                  kind
+                  name
+                  ofType {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                          ofType {
+                            kind
+                            name
+                            ofType {
+                              kind
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              isDeprecated
+              deprecationReason
+            }
+            inputFields {
+              name
+              description
+              type {
+                kind
+                name
+                ofType {
+                  kind
+                  name
+                  ofType {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                          ofType {
+                            kind
+                            name
+                            ofType {
+                              kind
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              defaultValue
+            }
+            interfaces {
+              kind
+              name
+              ofType {
+                kind
+                name
+                ofType {
+                  kind
+                  name
+                  ofType {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                          ofType {
+                            kind
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            enumValues(includeDeprecated: true) {
+              name
+              description
+              isDeprecated
+              deprecationReason
+            }
+            possibleTypes {
+              kind
+              name
+              ofType {
+                kind
+                name
+                ofType {
+                  kind
+                  name
+                  ofType {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                          ofType {
+                            kind
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+           }
+          }
+          directives {
+            name
+            description
+            args {
+              name
+              description
+              type {
+                kind
+                name
+                ofType {
+                  kind
+                  name
+                  ofType {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                          ofType {
+                            kind
+                            name
+                            ofType {
+                              kind
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              defaultValue
+            }
+          }
+        }
+      }
+    ",
+    );
+
+    let data = result.data.expect("Introspection query returned no result");
+    assert_eq!(data, expected_mock_schema_introspection());
+}
+
+#[test]
+fn satisfies_graphiql_introspection_query_with_fragments() {
+    let result = introspection_query(
+        "
+      query IntrospectionQuery {
+        __schema {
+          queryType { name }
+          mutationType { name }
+          subscriptionType { name }
+          types {
+            ...FullType
+          }
+          directives {
+            name
+            description
+            locations
+            args {
+              ...InputValue
+            }
+          }
+        }
+      }
+
+      fragment FullType on __Type {
+        kind
+        name
+        description
+        fields(includeDeprecated: true) {
+          name
+          description
+          args {
+            ...InputValue
+          }
+          type {
+            ...TypeRef
+          }
+          isDeprecated
+          deprecationReason
+        }
+        inputFields {
+          ...InputValue
+        }
+        interfaces {
+          ...TypeRef
+        }
+        enumValues(includeDeprecated: true) {
+          name
+          description
+          isDeprecated
+          deprecationReason
+        }
+        possibleTypes {
+          ...TypeRef
+        }
+      }
+
+      fragment InputValue on __InputValue {
+        name
+        description
+        type { ...TypeRef }
+        defaultValue
+      }
+
+      fragment TypeRef on __Type {
+        kind
+        name
+        ofType {
+          kind
+          name
+          ofType {
+            kind
+            name
+            ofType {
+              kind
+              name
+              ofType {
+                kind
+                name
+                ofType {
+                  kind
+                  name
+                  ofType {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    ",
+    );
+
+    let data = result.data.expect("Introspection query returned no result");
+    assert_eq!(data, expected_mock_schema_introspection());
 }
