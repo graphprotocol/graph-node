@@ -166,18 +166,18 @@ impl StoreTrait for Store {
         use ourschema::entities::columns::*;
         use ourschema::*;
 
-        //Datasource hardcoded at the moment
+        // Datasource hardcoded at the moment
         let _datasource: String = String::from("memefactory");
         let find_results: Result<Vec<serde_json::Value>, result::Error>;
 
-        //Create base boxed query
-        //This will be added to based on the query parameters provided
+        // Create base boxed query
+        // This will be added to based on the query parameters provided
         let mut diesel_query = entities::table
             .filter(entity.eq(query.entity))
             .select(data)
             .into_boxed::<Pg>();
 
-        //Add specified filter to query
+        // Add specified filter to query
         match &query.filters[0] {
             StoreFilter::Contains(attribute, value) => {
                 match value {
@@ -279,7 +279,7 @@ impl StoreTrait for Store {
             _ => panic!("Error with find query: unsupported filter type"),
         };
 
-        //Add order by filters to query
+        // Add order by filters to query
         match query.order_by {
             Some(order_attribute) => {
                 let direction = match query.order_direction {
@@ -299,7 +299,7 @@ impl StoreTrait for Store {
             None => (),
         }
 
-        //Add range filter to query
+        // Add range filter to query
         match query.range {
             Some(range) => {
                 diesel_query = diesel_query
@@ -311,9 +311,9 @@ impl StoreTrait for Store {
 
         find_results = diesel_query.load::<serde_json::Value>(&self.conn);
 
-        //Process results
-        //Deserialize to entity attribute hashmap on success
-        //Map to our storeerrors on error
+        // Process results
+        // Deserialize to entity attribute hashmap on success
+        // Map to our storeerrors on error
         let new_results = find_results
             .map(|r| {
                 r.into_iter()
