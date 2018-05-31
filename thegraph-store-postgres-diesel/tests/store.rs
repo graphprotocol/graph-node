@@ -208,12 +208,12 @@ fn find_entities_contain_string() {
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
-        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filters: vec![
+            filter: Some(StoreFilter::And(vec![
                 StoreFilter::Contains("name".to_string(), Value::String("%ind%".to_string())),
-            ],
+            ])),
             order_by: None,
             order_direction: None,
             range: None,
@@ -236,12 +236,12 @@ fn find_entities_equal_string() {
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
-        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filters: vec![
+            filter: Some(StoreFilter::And(vec![
                 StoreFilter::Equal("name".to_string(), Value::String("Cindini".to_string())),
-            ],
+            ])),
             order_by: None,
             order_direction: None,
             range: None,
@@ -264,12 +264,12 @@ fn find_entities_not_equal_string() {
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
-        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filters: vec![
+            filter: Some(StoreFilter::And(vec![
                 StoreFilter::Not("name".to_string(), Value::String("Cindini".to_string())),
-            ],
+            ])),
             order_by: None,
             order_direction: None,
             range: None,
@@ -296,12 +296,12 @@ fn find_entities_greater_than_string() {
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
-        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filters: vec![
+            filter: Some(StoreFilter::And(vec![
                 StoreFilter::GreaterThan("name".to_string(), Value::String("Kundi".to_string())),
-            ],
+            ])),
             order_by: None,
             order_direction: None,
             range: None,
@@ -328,12 +328,12 @@ fn find_entities_less_than_string() {
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
-        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filters: vec![
+            filter: Some(StoreFilter::And(vec![
                 StoreFilter::LessThan("name".to_string(), Value::String("Kundi".to_string())),
-            ],
+            ])),
             order_by: None,
             order_direction: None,
             range: None,
@@ -360,15 +360,15 @@ fn find_entities_less_than_string_order_by_name_desc() {
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
-        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filters: vec![
+            filter: Some(StoreFilter::And(vec![
                 StoreFilter::LessThan(
                     "name".to_string(),
                     thegraph::prelude::Value::String("Kundi".to_string()),
                 ),
-            ],
+            ])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
@@ -394,15 +394,15 @@ fn find_entities_less_than_string_with_range() {
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
-        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filters: vec![
+            filter: Some(StoreFilter::And(vec![
                 StoreFilter::LessThan(
                     "name".to_string(),
                     thegraph::prelude::Value::String("ZZZ".to_string()),
                 ),
-            ],
+            ])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 1, skip: 1 }),
@@ -428,10 +428,10 @@ fn find_entities_multi() {
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
-        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filters: vec![
+            filter: Some(StoreFilter::And(vec![
                 StoreFilter::LessThan(
                     "name".to_string(),
                     thegraph::prelude::Value::String("Cz".to_string()),
@@ -440,7 +440,7 @@ fn find_entities_multi() {
                     "name".to_string(),
                     thegraph::prelude::Value::String("Cindini".to_string()),
                 ),
-            ],
+            ])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
