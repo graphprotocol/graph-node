@@ -1,58 +1,51 @@
-extern crate futures;
-extern crate http;
-extern crate hyper;
-use self::futures::future::Future;
-use self::http::Uri;
-use self::hyper::server::{Http, Request, Response, Service};
-use self::hyper::{Method, StatusCode};
+use futures::future;
+use futures::prelude::*;
+use hyper;
+use hyper::server::conn::AddrIncoming;
+use hyper::service::Service;
+use hyper::{Body, Method, Request, Response, Server, StatusCode};
 
-struct RuntimeAdapterServer;
+#[derive(Default)]
+struct RuntimeAdapterService;
 
-impl Service for RuntimeAdapterServer {
-    type Request = Request;
-    type Response = Response;
+impl Service for RuntimeAdapterService {
+    type ReqBody = Body;
+    type ResBody = Body;
     type Error = hyper::Error;
-    type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
+    type Future = Box<Future<Item = Response<Self::ReqBody>, Error = hyper::Error> + Send>;
 
-    fn call(&self, _req: Request) -> Self::Future {
-        let mut response = Response::new();
-
-        match _req.method() {
-            &Method::Post => {
-                let uri = _req.path().parse::<Uri>().unwrap();
-                let (_, type_name) = uri.path().split_at(1);
-
+    fn call(&mut self, _req: Request<Self::ReqBody>) -> Self::Future {
+        let response = match _req.method() {
+            &Method::POST => {
                 // TODO: Parse body and forward to store
-
-                response.set_status(StatusCode::Created);
+                Response::builder()
+                    .status(StatusCode::CREATED)
+                    .body(Body::from("OK"))
+                    .unwrap()
             }
-            &Method::Put => {
-                let uri = _req.path().parse::<Uri>().unwrap();
-                let (_, type_name) = uri.path().split_at(1);
-
-                // TODO: Parse body and forward to store
-
-                response.set_status(StatusCode::Ok);
-            }
-            _ => {
-                response.set_status(StatusCode::NotFound);
-            }
+            _ => Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from("Not found"))
+                .unwrap(),
         };
 
-        Box::new(futures::future::ok(response))
+        Box::new(future::ok(response))
     }
 }
 
-// fn get_path(path: &str) -> &str {
-//   let uri = path.parse::<Uri>().unwrap();
-//   let (_, type_name) = uri.path().split_at(1);
-//   type_name
-// }
+pub fn start_server(addr: &str) {
+    let addr = addr.parse().expect(
+        "Invalid network address provided \
+         for the Node.js runtime adapter server",
+    );
 
-pub fn start_server() {
-    let addr = "127.0.0.1:8889".parse().unwrap();
-    let server = Http::new()
-        .bind(&addr, || Ok(RuntimeAdapterServer))
-        .unwrap();
-    server.run().unwrap();
+    let new_service = || {
+        let service = RuntimeAdapterService::default();
+        future::ok::<RuntimeAdapterService, hyper::Error>(service)
+    };
+
+    Server::bind(&addr)
+        .serve(new_service)
+        .wait()
+        .expect("Failed to start Node.js runtime adapter server");
 }
