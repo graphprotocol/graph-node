@@ -1,6 +1,8 @@
 use graphql_parser::Pos;
 use graphql_parser::schema::*;
 use inflector::Inflector;
+use std::error::Error;
+use std::fmt;
 use std::iter::IntoIterator;
 
 use ast::schema as ast;
@@ -8,6 +10,26 @@ use ast::schema as ast;
 #[derive(Debug)]
 pub enum APISchemaError {
     TypeExists(String),
+}
+
+impl Error for APISchemaError {
+    fn description(&self) -> &str {
+        "API schema error"
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        None
+    }
+}
+
+impl fmt::Display for APISchemaError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            APISchemaError::TypeExists(s) => {
+                write!(f, "Type \"{}\" already exists in the input schema", s)
+            }
+        }
+    }
 }
 
 /// Derives a full-fledged GraphQL API schema from an input schema.
