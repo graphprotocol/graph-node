@@ -1,8 +1,8 @@
-use diesel::pg::Pg;
 use diesel::dsl::sql;
-use diesel::sql_types::Text;
+use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
+use diesel::sql_types::Text;
 use diesel::{delete, insert_into, result};
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
@@ -162,145 +162,154 @@ impl StoreTrait for Store {
             .map_err(|_| ())
     }
 
-
-
     fn find(&self, query: StoreQuery) -> Result<Vec<store::Entity>, ()> {
-
-        // use ourschema::entities::*;
-        // use ourschema::entities::table;
-        use ourschema::*;
         use ourschema::entities::columns::*;
+        use ourschema::*;
 
         //Datasource hardcoded at the moment
         let _datasource: String = String::from("memefactory");
         let find_results: Result<Vec<serde_json::Value>, result::Error>;
 
+        //Create base boxed query
+        //This will be added to based on the query parameters provided
         let mut diesel_query = entities::table
             .filter(entity.eq(query.entity))
             .select(data)
             .into_boxed::<Pg>();
 
+        //Add specified filter to query
         match &query.filters[0] {
             StoreFilter::Contains(attribute, value) => {
                 match value {
                     Value::String(query_value) => {
                         info!(&self.logger, "query value for contains filter"; "string" => format!("{:#?}", &query_value));
-                        diesel_query = diesel_query
-                            .filter(
+                        diesel_query = diesel_query.filter(
                             sql("data -> ")
-                            .bind::<Text, _>(attribute)
-                            .sql("->>'String' LIKE ")
-                            .bind::<Text, _>(query_value));
-                    },
+                                .bind::<Text, _>(attribute)
+                                .sql("->>'String' LIKE ")
+                                .bind::<Text, _>(query_value),
+                        );
+                    }
                 };
-            },
+            }
             StoreFilter::Equal(attribute, value) => {
                 match value {
-                    Value::String(query_value)  => {
-                        diesel_query = diesel_query
-                            .filter(
-                                sql("data -> ")
+                    Value::String(query_value) => {
+                        diesel_query = diesel_query.filter(
+                            sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' = ")
-                                .bind::<Text, _>(query_value)
-                            );
-                    },
+                                .bind::<Text, _>(query_value),
+                        );
+                    }
                 };
-            },
+            }
             StoreFilter::Not(attribute, value) => {
                 match value {
-                    Value::String(query_value)  => {
-                        diesel_query = diesel_query
-                            .filter(
-                                sql("data -> ")
+                    Value::String(query_value) => {
+                        diesel_query = diesel_query.filter(
+                            sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' != ")
-                                .bind::<Text, _>(query_value)
-                            );
-                    },
+                                .bind::<Text, _>(query_value),
+                        );
+                    }
                 };
-            },
+            }
             StoreFilter::GreaterThan(attribute, value) => {
                 match value {
-                    Value::String(query_value)  => {
-                        diesel_query = diesel_query
-                            .filter(
-                                sql("data -> ")
+                    Value::String(query_value) => {
+                        diesel_query = diesel_query.filter(
+                            sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' > ")
-                                .bind::<Text, _>(query_value)
-                            );
-                    },
+                                .bind::<Text, _>(query_value),
+                        );
+                    }
                 };
-            },
+            }
             StoreFilter::LessThan(attribute, value) => {
                 match value {
-                    Value::String(query_value)  => {
-                        diesel_query = diesel_query
-                            .filter(
-                                sql("data -> ")
+                    Value::String(query_value) => {
+                        diesel_query = diesel_query.filter(
+                            sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' < ")
-                                .bind::<Text, _>(query_value)
-                            );
-                    },
+                                .bind::<Text, _>(query_value),
+                        );
+                    }
                 };
-            },
+            }
             StoreFilter::GreaterOrEqual(attribute, value) => {
                 match value {
-                    Value::String(query_value)  => {
-                        diesel_query = diesel_query
-                            .filter(
-                                sql("data -> ")
+                    Value::String(query_value) => {
+                        diesel_query = diesel_query.filter(
+                            sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' >= ")
-                                .bind::<Text, _>(query_value)
-                            );
-                    },
+                                .bind::<Text, _>(query_value),
+                        );
+                    }
                 };
-            },
+            }
             StoreFilter::LessThanOrEqual(attribute, value) => {
                 match value {
-                    Value::String(query_value)  => {
-                        diesel_query = diesel_query
-                            .filter(
-                                sql("data -> ")
+                    Value::String(query_value) => {
+                        diesel_query = diesel_query.filter(
+                            sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' <= ")
-                                .bind::<Text, _>(query_value)
-                            );
-                    },
+                                .bind::<Text, _>(query_value),
+                        );
+                    }
                 };
-            },
+            }
             StoreFilter::NotContains(attribute, value) => {
                 match value {
                     Value::String(query_value) => {
-                        diesel_query = diesel_query
-                            .filter(
-                                sql("data -> ")
+                        diesel_query = diesel_query.filter(
+                            sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' NOT LIKE ")
-                                .bind::<Text, _>(query_value)
-                            );
-                    },
+                                .bind::<Text, _>(query_value),
+                        );
+                    }
                 };
-            },
+            }
             _ => panic!("Error with find query: unsupported filter type"),
         };
 
+        //Add order by filters to query
         match query.order_by {
             Some(order_attribute) => {
+                let direction = match query.order_direction {
+                    Some(direction) => match direction {
+                        StoreOrder::Ascending => String::from("ASC"),
+                        StoreOrder::Descending => String::from("DESC"),
+                    },
+                    None => String::from("ASC"),
+                };
+
                 diesel_query = diesel_query.order(
                     sql::<Text>("data -> ")
-                    .bind::<Text, _>(order_attribute)
-                    .sql(" ASC")
-                    );
-            },
-            None => ()
+                        .bind::<Text, _>(order_attribute)
+                        .sql(&format!("{}", direction)),
+                );
+            }
+            None => (),
+        }
+
+        //Add range filter to query
+        match query.range {
+            Some(range) => {
+                diesel_query = diesel_query
+                    .limit(range.first as i64)
+                    .offset(range.skip as i64);
+            }
+            None => (),
         }
 
         find_results = diesel_query.load::<serde_json::Value>(&self.conn);
-        // info!(&self.logger, "Find entities"; "results" => format!("results {:#?}", &find_results));
 
         //Process results
         //Deserialize to entity attribute hashmap on success
@@ -308,9 +317,11 @@ impl StoreTrait for Store {
         let new_results = find_results
             .map(|r| {
                 r.into_iter()
-                    .map(|x| serde_json::from_value::<store::Entity>(x)
-                        .expect("Error deserializing results of get")
-                    ).collect()
+                    .map(|x| {
+                        serde_json::from_value::<store::Entity>(x)
+                            .expect("Error deserializing results of get")
+                    })
+                    .collect()
             })
             .map_err(|_e| ());
 

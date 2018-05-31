@@ -7,7 +7,7 @@ extern crate tokio_core;
 use diesel::pg::PgConnection;
 use diesel::*;
 use std::panic;
-use thegraph::components::store::{StoreFilter, StoreKey, StoreQuery};
+use thegraph::components::store::{StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange};
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_store_postgres_diesel::{db_schema, Store as DieselStore, StoreConfig};
@@ -218,10 +218,7 @@ fn find_entities_contain_string() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
-                StoreFilter::Contains(
-                    "name".to_string(),
-                    thegraph::prelude::Value::String("%ind%".to_string()),
-                ),
+                StoreFilter::Contains("name".to_string(), Value::String("%ind%".to_string())),
             ],
             order_by: None,
             order_direction: None,
@@ -255,10 +252,7 @@ fn find_entities_equal_string() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
-                StoreFilter::Equal(
-                    "name".to_string(),
-                    thegraph::prelude::Value::String("Cindini".to_string()),
-                ),
+                StoreFilter::Equal("name".to_string(), Value::String("Cindini".to_string())),
             ],
             order_by: None,
             order_direction: None,
@@ -292,10 +286,7 @@ fn find_entities_not_equal_string() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
-                StoreFilter::Not(
-                    "name".to_string(),
-                    thegraph::prelude::Value::String("Cindini".to_string()),
-                ),
+                StoreFilter::Not("name".to_string(), Value::String("Cindini".to_string())),
             ],
             order_by: None,
             order_direction: None,
@@ -333,10 +324,7 @@ fn find_entities_greater_than_string() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
-                StoreFilter::GreaterThan(
-                    "name".to_string(),
-                    thegraph::prelude::Value::String("Kundi".to_string()),
-                ),
+                StoreFilter::GreaterThan("name".to_string(), Value::String("Kundi".to_string())),
             ],
             order_by: None,
             order_direction: None,
@@ -374,10 +362,7 @@ fn find_entities_less_than_string() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
-                StoreFilter::LessThan(
-                    "name".to_string(),
-                    thegraph::prelude::Value::String("Kundi".to_string()),
-                ),
+                StoreFilter::LessThan("name".to_string(), Value::String("Kundi".to_string())),
             ],
             order_by: None,
             order_direction: None,
@@ -400,7 +385,7 @@ fn find_entities_less_than_string() {
 }
 
 #[test]
-fn find_entities_less_than_string_order_by_name() {
+fn find_entities_less_than_string_order_by_name_desc() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -414,22 +399,67 @@ fn find_entities_less_than_string_order_by_name() {
         );
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filters: vec![StoreFilter::LessThan("name".to_string(), thegraph::prelude::Value::String("Kundi".to_string()))],
+            filters: vec![
+                StoreFilter::LessThan(
+                    "name".to_string(),
+                    thegraph::prelude::Value::String("Kundi".to_string()),
+                ),
+            ],
             order_by: Some(String::from("name")),
-            order_direction: None,
+            order_direction: Some(StoreOrder::Descending),
             range: None,
         };
         let result = new_store.find(this_query);
         assert!(result.is_ok());
 
-        //Check if the first user in the result vector is "Cindini"
+        //Check if the first user in the result vector is "Johnton"
         let returned_entities = &result.unwrap();
         let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = &thegraph::prelude::Value::String("Cindini".to_string());
+        let test_value = &thegraph::prelude::Value::String("Johnton".to_string());
         assert!(returned_name.is_some());
         assert_eq!(test_value, returned_name.unwrap());
 
         //There should be 3 users returned in results
         assert_eq!(&(2 as usize), &returned_entities.len());
+    })
+}
+
+#[test]
+fn find_entities_less_than_string_with_range() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
+        let new_store = dieselstore::Store::new(
+            StoreConfig {
+                url: url.to_string(),
+            },
+            &logger,
+            core.handle(),
+        );
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filters: vec![
+                StoreFilter::LessThan(
+                    "name".to_string(),
+                    thegraph::prelude::Value::String("ZZZ".to_string()),
+                ),
+            ],
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: Some(StoreRange { first: 1, skip: 1 }),
+        };
+        let result = new_store.find(this_query);
+        assert!(result.is_ok());
+
+        //Check if the first user in the result vector is "Johnton"
+        let returned_entities = &result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = &thegraph::prelude::Value::String("Johnton".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(test_value, returned_name.unwrap());
+
+        //There should be 3 users returned in results
+        assert_eq!(&(1 as usize), &returned_entities.len());
     })
 }
