@@ -10,12 +10,17 @@ pub type Attribute = String;
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub enum Value {
     String(String),
+    Int(i64),
+    Float(f64)
+
 }
 
 impl Into<query::Value> for Value {
     fn into(self) -> query::Value {
         match self {
             Value::String(s) => query::Value::String(s.to_string()),
+            Value::Float(f) => query::Value::Float(f),
+            _ => unimplemented!()
         }
     }
 }
@@ -24,6 +29,8 @@ impl From<query::Value> for Value {
     fn from(value: query::Value) -> Value {
         match value {
             query::Value::String(s) => Value::String(s),
+            query::Value::Int(i) => Value::Int(i.as_i64().expect("Unable to parse graphql_parser::query::Number into i64")),
+            query::Value::Float(f) => Value::Float(f),
             _ => unimplemented!(),
         }
     }
@@ -33,6 +40,8 @@ impl<'a> From<&'a query::Value> for Value {
     fn from(value: &'a query::Value) -> Value {
         match value {
             query::Value::String(s) => Value::String(s.to_owned()),
+            query::Value::Int(i) => Value::Int(i.to_owned().as_i64().expect("Unable to parse graphql_parser::query::Number into i64")),
+            query::Value::Float(f) => Value::Float(f.to_owned()),
             _ => unimplemented!(),
         }
     }
