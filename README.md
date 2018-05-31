@@ -55,6 +55,12 @@ cargo install cargo-watch
 rustup component add rustfmt-preview
 ```
 
+Set environment variables:
+```sh
+# Only required when testing the Diesel/Postgres store
+export THEGRAPH_STORE_POSTGRES_DIESEL_URL=<Postgres database URL>
+```
+
 While developing, a useful command to run in the background is this:
 
 ```sh
