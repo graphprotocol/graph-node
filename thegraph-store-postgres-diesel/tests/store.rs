@@ -10,7 +10,7 @@ use std::panic;
 use thegraph::components::store::StoreKey;
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
-use thegraph_store_postgres_diesel::{ourschema, Store as DieselStore, StoreConfig};
+use thegraph_store_postgres_diesel::{db_schema, Store as DieselStore, StoreConfig};
 use tokio_core::reactor::Core;
 
 /// Helper function to ensure and obtain the Postgres URL to use for testing.
@@ -89,7 +89,7 @@ fn insert_test_data() {
 
 /// Removes test data from the database behind the store.
 fn remove_test_data() {
-    use ourschema::entities::dsl::*;
+    use db_schema::entities::dsl::*;
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
     delete(entities)
@@ -100,7 +100,7 @@ fn remove_test_data() {
 #[test]
 fn delete_entity() {
     run_test(|| {
-        use ourschema::entities::dsl::*;
+        use db_schema::entities::dsl::*;
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
@@ -112,8 +112,8 @@ fn delete_entity() {
         };
         store.delete(test_key).unwrap();
 
-        let all_ids = entities.select(id).load::<i32>(&store.conn).unwrap();
-        assert!(!all_ids.contains(&(3 as i32)));
+        let all_ids = entities.select(id).load::<String>(&store.conn).unwrap();
+        assert!(!all_ids.contains(&"3".to_string()));
     })
 }
 
@@ -146,7 +146,7 @@ fn get_entity() {
 #[test]
 fn insert_new_entity() {
     run_test(|| {
-        use ourschema::entities::dsl::*;
+        use db_schema::entities::dsl::*;
 
         let core = Core::new().unwrap();
         let logger = logger();
@@ -164,8 +164,8 @@ fn insert_new_entity() {
             .expect("Failed to set entity in the store");
 
         // Check that new record is in the store
-        let all_ids = entities.select(id).load::<i32>(&store.conn).unwrap();
-        assert!(all_ids.iter().any(|x| x == &(7i32)),);
+        let all_ids = entities.select(id).load::<String>(&store.conn).unwrap();
+        assert!(all_ids.iter().any(|x| x == &"7".to_string()));
     })
 }
 

@@ -11,8 +11,8 @@ extern crate thegraph;
 extern crate tokio;
 extern crate tokio_core;
 
+pub mod db_schema;
 pub mod models;
-pub mod ourschema;
 pub mod store;
 
 pub use self::store::{Store, StoreConfig};

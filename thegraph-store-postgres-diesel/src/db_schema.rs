@@ -1,6 +1,6 @@
 table! {
     entities (id, data_source, entity) {
-        id -> Int4,
+        id -> Varchar,
         data_source -> Varchar,
         entity -> Varchar,
         data -> Jsonb,

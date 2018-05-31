@@ -9,13 +9,13 @@ use tokio_core::reactor::Handle;
 
 use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::{*, Store as StoreTrait};
-use thegraph::data::store;
 use thegraph::data::store::*;
 use thegraph::util::stream::StreamError;
 embed_migrations!("./migrations");
 
-/// Run all initial schema migrations
-/// Creates the "entities" table if it doesn't already exist
+/// Run all initial schema migrations.
+///
+/// Creates the "entities" table if it doesn't already exist.
 fn initiate_schema(logger: &slog::Logger, conn: &PgConnection) {
     // Collect migration logging output
     let mut output = vec![];
@@ -83,51 +83,49 @@ impl Store {
 
     /// Handles incoming schema provider events.
     fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaProviderEvent>) {
-        let logger = self.logger.clone();
-        self.runtime.spawn(stream.for_each(move |event| {
-            info!(logger, "Received schema provider event: {:?}", event);
+        self.runtime.spawn(stream.for_each(move |_| {
+            // We are currently not doing anything in response to schema events
             Ok(())
         }));
     }
 }
 
 impl StoreTrait for Store {
-    fn get(&self, key: StoreKey) -> Result<store::Entity, ()> {
-        use ourschema::entities::dsl::*;
+    fn get(&self, key: StoreKey) -> Result<Entity, ()> {
+        debug!(self.logger, "get"; "key" => format!("{:?}", key));
 
-        //Datasource hardcoded at the moment
+        use db_schema::entities::dsl::*;
+
+        // The data source hardcoded at the moment
         let datasource: String = String::from("memefactory");
 
-        //Use primary key fields to get Entity
-        let table_results = entities
-            .find((key.id.parse::<i32>().unwrap(), datasource, key.entity))
+        // Use primary key fields to get the entity; deserialize the result JSON
+        entities
+            .find((key.id, datasource, key.entity))
             .select(data)
-            .first::<serde_json::Value>(&self.conn);
-
-        //Deserialize results json into Entity map and stub for error mapping
-        let new_results = table_results
-            .map(|r| {
-                serde_json::from_value::<store::Entity>(r)
-                    .expect("Error deserializing results of get")
+            .first::<serde_json::Value>(&self.conn)
+            .map(|value| {
+                serde_json::from_value::<Entity>(value).expect("Failed to deserialize entity")
             })
-            .map_err(|_e| ());
-
-        new_results
+            .map_err(|_| ())
     }
 
-    fn set(&mut self, key: StoreKey, entity1: Entity) -> Result<(), ()> {
-        use ourschema::entities::dsl::*;
+    fn set(&mut self, key: StoreKey, input_entity: Entity) -> Result<(), ()> {
+        debug!(self.logger, "set"; "key" => format!("{:?}", key));
 
-        //Convert Entity hashmap to serde_json::Value for insert
-        let entity_json: serde_json::Value = serde_json::to_value(&entity1).unwrap();
+        use db_schema::entities::dsl::*;
 
-        //Datasource hardcoded at the moment
+        // Convert Entity hashmap to serde_json::Value for insert
+        let entity_json: serde_json::Value =
+            serde_json::to_value(&input_entity).expect("Failed to serialize entity");
+
+        // The data source is hardcoded at the moment
         let datasource: String = String::from("memefactory");
 
-        //Insert entity, if pkey conflict then do update
-        let set_rows_count = insert_into(entities)
+        // Insert entity, perform an update in case of a primary key conflict
+        insert_into(entities)
             .values((
-                id.eq(&key.id.parse::<i32>().unwrap()),
+                id.eq(&key.id),
                 entity.eq(&key.entity),
                 data_source.eq(&datasource),
                 data.eq(&entity_json),
@@ -135,34 +133,30 @@ impl StoreTrait for Store {
             .on_conflict((id, entity, data_source))
             .do_update()
             .set((
-                id.eq(&key.id.parse::<i32>().unwrap()),
+                id.eq(&key.id),
                 entity.eq(&key.entity),
-                data_source.eq(&datasource),
+                data_source.eq(&data_source),
                 data.eq(&entity_json),
             ))
-            .execute(&self.conn);
-
-        // Stub for mapping results, currentlyl just nulls them to match fn signature
-        //Not sure if it is preferable to use map like here or match as below in the
-        //delete() fn
-        let out = set_rows_count.map(|_v| ()).map_err(|_e| ());
-        out
+            .execute(&self.conn)
+            .map(|_| ())
+            .map_err(|_| ())
     }
 
     fn delete(&mut self, key: StoreKey) -> Result<(), ()> {
-        use ourschema::entities::dsl::*;
+        debug!(self.logger, "delete"; "key" => format!("{:?}", key));
 
-        //Delete from DB where rows match id and entity value
-        //Add datasource here when meaningful
-        match delete(
+        use db_schema::entities::dsl::*;
+
+        // Delete from DB where rows match the ID and entity value;
+        // add data source here when meaningful
+        delete(
             entities
-                .filter(id.eq(&key.id.parse::<i32>().unwrap()))
+                .filter(id.eq(&key.id))
                 .filter(entity.eq(&key.entity)),
         ).execute(&self.conn)
-        {
-            Ok(_result) => Ok(()),
-            Err(_e) => Err(()),
-        }
+            .map(|_| ())
+            .map_err(|_| ())
     }
 
     fn find(&self, _query: StoreQuery) -> Result<Vec<Entity>, ()> {
