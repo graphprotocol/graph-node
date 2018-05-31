@@ -3,7 +3,7 @@ use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::sql_types::Text;
-use diesel::{delete, insert_into, result};
+use diesel::{delete, insert_into};
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use serde_json;
@@ -11,7 +11,7 @@ use slog;
 use tokio_core::reactor::Handle;
 
 use thegraph::components::schema::SchemaProviderEvent;
-use thegraph::components::store::{*, Store as StoreTrait};
+use thegraph::components::store::{Store as StoreTrait, *};
 use thegraph::data::store::*;
 use thegraph::util::stream::StreamError;
 embed_migrations!("./migrations");
@@ -168,7 +168,6 @@ impl StoreTrait for Store {
 
         // The data source is hard-coded at the moment
         let _datasource: String = String::from("memefactory");
-        let find_results: Result<Vec<serde_json::Value>, result::Error>;
 
         // Create base boxed query; this will be added to based on the
         // query parameters provided
@@ -192,6 +191,7 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
+                                _ => unimplemented!(),
                             };
                         }
                         StoreFilter::Equal(attribute, value) => {
@@ -204,6 +204,7 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
+                                _ => unimplemented!(),
                             };
                         }
                         StoreFilter::Not(attribute, value) => {
@@ -216,6 +217,7 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
+                                _ => unimplemented!(),
                             };
                         }
                         StoreFilter::GreaterThan(attribute, value) => {
@@ -228,6 +230,7 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
+                                _ => unimplemented!(),
                             };
                         }
                         StoreFilter::LessThan(attribute, value) => {
@@ -240,6 +243,7 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
+                                _ => unimplemented!(),
                             };
                         }
                         StoreFilter::GreaterOrEqual(attribute, value) => {
@@ -252,6 +256,7 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
+                                _ => unimplemented!(),
                             };
                         }
                         StoreFilter::LessThanOrEqual(attribute, value) => {
@@ -264,6 +269,7 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
+                                _ => unimplemented!(),
                             };
                         }
                         StoreFilter::NotContains(attribute, value) => {
@@ -276,6 +282,7 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
+                                _ => unimplemented!(),
                             };
                         }
 
