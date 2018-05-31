@@ -207,14 +207,8 @@ fn find_entities_contain_string() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
-        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-        let new_store = dieselstore::Store::new(
-            StoreConfig {
-                url: url.to_string(),
-            },
-            &logger,
-            core.handle(),
-        );
+        let url = postgres_test_url();
+        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
@@ -241,14 +235,8 @@ fn find_entities_equal_string() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
-        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-        let new_store = dieselstore::Store::new(
-            StoreConfig {
-                url: url.to_string(),
-            },
-            &logger,
-            core.handle(),
-        );
+        let url = postgres_test_url();
+        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
@@ -275,14 +263,8 @@ fn find_entities_not_equal_string() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
-        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-        let new_store = dieselstore::Store::new(
-            StoreConfig {
-                url: url.to_string(),
-            },
-            &logger,
-            core.handle(),
-        );
+        let url = postgres_test_url();
+        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
@@ -313,14 +295,8 @@ fn find_entities_greater_than_string() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
-        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-        let new_store = dieselstore::Store::new(
-            StoreConfig {
-                url: url.to_string(),
-            },
-            &logger,
-            core.handle(),
-        );
+        let url = postgres_test_url();
+        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
@@ -351,14 +327,8 @@ fn find_entities_less_than_string() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
-        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-        let new_store = dieselstore::Store::new(
-            StoreConfig {
-                url: url.to_string(),
-            },
-            &logger,
-            core.handle(),
-        );
+        let url = postgres_test_url();
+        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
@@ -389,14 +359,8 @@ fn find_entities_less_than_string_order_by_name_desc() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
-        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-        let new_store = dieselstore::Store::new(
-            StoreConfig {
-                url: url.to_string(),
-            },
-            &logger,
-            core.handle(),
-        );
+        let url = postgres_test_url();
+        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
@@ -429,14 +393,8 @@ fn find_entities_less_than_string_with_range() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
-        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-        let new_store = dieselstore::Store::new(
-            StoreConfig {
-                url: url.to_string(),
-            },
-            &logger,
-            core.handle(),
-        );
+        let url = postgres_test_url();
+        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
@@ -469,14 +427,8 @@ fn find_entities_multi() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
-        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-        let new_store = dieselstore::Store::new(
-            StoreConfig {
-                url: url.to_string(),
-            },
-            &logger,
-            core.handle(),
-        );
+        let url = postgres_test_url();
+        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filters: vec![
