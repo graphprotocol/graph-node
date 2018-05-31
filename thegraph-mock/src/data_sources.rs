@@ -26,41 +26,10 @@ impl MockDataSourceProvider {
                 Schema {
                     id: "176dbd4fdeb8407b899be5d456ababc0".to_string(),
                     document: graphql_parser::parse_schema(
-                        "scalar Int \
-                         scalar Float \
-                         scalar String \
-                         scalar Boolean \
-                         scalar ID \
-                         \
-                         enum OrderDirection { \
-                         asc \
-                         desc \
-                         } \
-                         \
-                         type User { \
-                             id: ID!
-                             name: String! \
-                         } \
-                         \
-                         enum User_orderBy { \
-                             id \
-                             name \
-                         } \
-                         \
-                         input User_filter { \
-                             name_ends_with: String \
-                             name_starts_with: String \
-                         } \
-                         \
-                         type Query { \
-                             allUsers ( \
-                                 orderBy: User_orderBy, \
-                                 orderDirection: OrderDirection! \
-                                 filter: User_filter \
-                             ): [User!] \
-                             User(id: ID!): User \
-                         } \
-                         ",
+                        "type User {
+                           id: ID!
+                           name: String!
+                         }",
                     ).unwrap(),
                 },
             ],
