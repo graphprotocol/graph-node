@@ -39,7 +39,7 @@ impl<'a> From<&'a query::Value> for Value {
 }
 
 /// An entity is represented as a map of attribute names to values.
-#[derive(Clone, Debug, Queryable, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
 impl Entity {
     /// Creates a new entity with no attributes set.

@@ -10,8 +10,6 @@ extern crate slog_async;
 extern crate slog_term;
 extern crate tokio;
 extern crate tokio_core;
-#[macro_use]
-extern crate diesel;
 
 /// Traits and types for all system components.
 pub mod components;
