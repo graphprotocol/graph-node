@@ -288,9 +288,19 @@ impl StoreTrait for Store {
             _ => panic!("Error with find query: unsupported filter type"),
         };
 
-        // info!(&self.logger, "Find entities"; "results" => format!("results {:#?}", &find_results));
+        match query.order_by {
+            Some(order_attribute) => {
+                diesel_query = diesel_query.order(
+                    sql::<Text>("data -> ")
+                    .bind::<Text, _>(order_attribute)
+                    .sql(" ASC")
+                    );
+            },
+            None => ()
+        }
 
         find_results = diesel_query.load::<serde_json::Value>(&self.conn);
+        // info!(&self.logger, "Find entities"; "results" => format!("results {:#?}", &find_results));
 
         //Process results
         //Deserialize to entity attribute hashmap on success
