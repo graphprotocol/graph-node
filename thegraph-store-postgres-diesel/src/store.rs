@@ -1,6 +1,9 @@
+use diesel::pg::Pg;
+use diesel::dsl::sql;
+use diesel::sql_types::Text;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
-use diesel::{delete, insert_into};
+use diesel::{delete, insert_into, result};
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use serde_json;
@@ -159,8 +162,174 @@ impl StoreTrait for Store {
             .map_err(|_| ())
     }
 
-    fn find(&self, _query: StoreQuery) -> Result<Vec<Entity>, ()> {
-        unimplemented!()
+
+
+    fn find(&self, query: StoreQuery) -> Result<Vec<store::Entity>, ()> {
+
+        // use ourschema::entities::*;
+        // use ourschema::entities::table;
+        use ourschema::*;
+        use ourschema::entities::columns::*;
+
+        //Datasource hardcoded at the moment
+        let _datasource: String = String::from("memefactory");
+        let find_results: Result<Vec<serde_json::Value>, result::Error>;
+
+        match &query.filters[0] {
+            StoreFilter::Contains(attribute, value) => {
+                match value {
+                    Value::String(query_value) => {
+                        info!(&self.logger, "query value for contains filter"; "string" => format!("{:#?}", &query_value));
+                        find_results = entities::table
+                            .filter(entity.eq(query.entity))
+                            .filter(
+                                sql("data -> ")
+                                .bind::<Text, _>(attribute)
+                                .sql("->>'String' LIKE ")
+                                .bind::<Text, _>(query_value)
+                            )
+                            .select(data)
+                            .load::<serde_json::Value>(&self.conn);
+                    },
+                };
+            },
+            StoreFilter::Equal(attribute, value) => {
+                match value {
+                    Value::String(query_value)  => {
+                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
+                        find_results = entities::table
+                            .filter(entity.eq(query.entity))
+                            .filter(
+                                sql("data -> ")
+                                .bind::<Text, _>(attribute)
+                                .sql("->>'String' = ")
+                                .bind::<Text, _>(query_value)
+                            )
+                            .select(data)
+                            .load::<serde_json::Value>(&self.conn);
+                    },
+                };
+            },
+            StoreFilter::Not(attribute, value) => {
+                match value {
+                    Value::String(query_value)  => {
+                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
+                        find_results = entities::table
+                            .filter(entity.eq(query.entity))
+                            .filter(
+                                sql("data -> ")
+                                .bind::<Text, _>(attribute)
+                                .sql("->>'String' != ")
+                                .bind::<Text, _>(query_value)
+                            )
+                            .select(data)
+                            .load::<serde_json::Value>(&self.conn);
+                    },
+                };
+            },
+            StoreFilter::GreaterThan(attribute, value) => {
+                match value {
+                    Value::String(query_value)  => {
+                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
+                        find_results = entities::table
+                            .filter(entity.eq(query.entity))
+                            .filter(
+                                sql("data -> ")
+                                .bind::<Text, _>(attribute)
+                                .sql("->>'String' > ")
+                                .bind::<Text, _>(query_value)
+                            )
+                            .select(data)
+                            .load::<serde_json::Value>(&self.conn);
+                    },
+                };
+            },
+            StoreFilter::LessThan(attribute, value) => {
+                match value {
+                    Value::String(query_value)  => {
+                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
+                        find_results = entities::table
+                            .filter(entity.eq(query.entity))
+                            .filter(
+                                sql("data -> ")
+                                .bind::<Text, _>(attribute)
+                                .sql("->>'String' < ")
+                                .bind::<Text, _>(query_value)
+                            )
+                            .select(data)
+                            .load::<serde_json::Value>(&self.conn);
+                    },
+                };
+            },
+            StoreFilter::GreaterOrEqual(attribute, value) => {
+                match value {
+                    Value::String(query_value)  => {
+                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
+                        find_results = entities::table
+                            .filter(entity.eq(query.entity))
+                            .filter(
+                                sql("data -> ")
+                                .bind::<Text, _>(attribute)
+                                .sql("->>'String' >= ")
+                                .bind::<Text, _>(query_value)
+                            )
+                            .select(data)
+                            .load::<serde_json::Value>(&self.conn);
+                    },
+                };
+            },
+            StoreFilter::LessThanOrEqual(attribute, value) => {
+                match value {
+                    Value::String(query_value)  => {
+                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
+                        find_results = entities::table
+                            .filter(entity.eq(query.entity))
+                            .filter(
+                                sql("data -> ")
+                                .bind::<Text, _>(attribute)
+                                .sql("->>'String' <= ")
+                                .bind::<Text, _>(query_value)
+                            )
+                            .select(data)
+                            .load::<serde_json::Value>(&self.conn);
+                    },
+                };
+            },
+            StoreFilter::NotContains(attribute, value) => {
+                match value {
+                    Value::String(query_value) => {
+                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
+                        find_results = entities::table
+                            .filter(entity.eq(query.entity))
+                            .filter(
+                                sql("data -> ")
+                                .bind::<Text, _>(attribute)
+                                .sql("->>'String' NOT LIKE ")
+                                .bind::<Text, _>(query_value)
+                            )
+                            .select(data)
+                            .load::<serde_json::Value>(&self.conn);
+                    },
+                };
+            },
+            _ => panic!("Error with find query: unsupported filter type"),
+        };
+
+        // info!(&self.logger, "Find entities"; "results" => format!("results {:#?}", &find_results));
+
+        //Process results
+        //Deserialize to entity attribute hashmap on success
+        //Map to our storeerrors on error
+        let new_results = find_results
+            .map(|r| {
+                r.into_iter()
+                    .map(|x| serde_json::from_value::<store::Entity>(x)
+                        .expect("Error deserializing results of get")
+                    ).collect()
+            })
+            .map_err(|_e| ());
+
+        new_results
     }
 
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
