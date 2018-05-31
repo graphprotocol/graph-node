@@ -211,9 +211,10 @@ fn find_entities_contain_string() {
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![
-                StoreFilter::Contains("name".to_string(), Value::String("%ind%".to_string())),
-            ])),
+            filter: Some(StoreFilter::And(vec![StoreFilter::Contains(
+                "name".to_string(),
+                Value::String("%ind%".to_string()),
+            )])),
             order_by: None,
             order_direction: None,
             range: None,
@@ -239,9 +240,10 @@ fn find_entities_equal_string() {
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![
-                StoreFilter::Equal("name".to_string(), Value::String("Cindini".to_string())),
-            ])),
+            filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
+                "name".to_string(),
+                Value::String("Cindini".to_string()),
+            )])),
             order_by: None,
             order_direction: None,
             range: None,
@@ -267,9 +269,10 @@ fn find_entities_not_equal_string() {
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![
-                StoreFilter::Not("name".to_string(), Value::String("Cindini".to_string())),
-            ])),
+            filter: Some(StoreFilter::And(vec![StoreFilter::Not(
+                "name".to_string(),
+                Value::String("Cindini".to_string()),
+            )])),
             order_by: None,
             order_direction: None,
             range: None,
@@ -298,9 +301,10 @@ fn find_entities_greater_than_string() {
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![
-                StoreFilter::GreaterThan("name".to_string(), Value::String("Kundi".to_string())),
-            ])),
+            filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
+                "name".to_string(),
+                Value::String("Kundi".to_string()),
+            )])),
             order_by: None,
             order_direction: None,
             range: None,
@@ -329,9 +333,10 @@ fn find_entities_less_than_string() {
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![
-                StoreFilter::LessThan("name".to_string(), Value::String("Kundi".to_string())),
-            ])),
+            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+                "name".to_string(),
+                Value::String("Kundi".to_string()),
+            )])),
             order_by: None,
             order_direction: None,
             range: None,
@@ -360,9 +365,10 @@ fn find_entities_less_than_string_order_by_name_desc() {
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![
-                StoreFilter::LessThan("name".to_string(), Value::String("Kundi".to_string())),
-            ])),
+            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+                "name".to_string(),
+                Value::String("Kundi".to_string()),
+            )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
@@ -391,9 +397,10 @@ fn find_entities_less_than_string_with_range() {
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![
-                StoreFilter::LessThan("name".to_string(), Value::String("ZZZ".to_string())),
-            ])),
+            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+                "name".to_string(),
+                Value::String("ZZZ".to_string()),
+            )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 1, skip: 1 }),
