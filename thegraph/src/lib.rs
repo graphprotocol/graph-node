@@ -28,7 +28,7 @@ pub mod util;
 /// use thegraph::prelude::*;
 /// ```
 pub mod prelude {
-    pub use components::data_sources::DataSourceProvider;
+    pub use components::data_sources::{DataSourceProvider, RuntimeAdapter};
     pub use components::query::QueryRunner;
     pub use components::schema::SchemaProvider;
     pub use components::server::GraphQLServer;
