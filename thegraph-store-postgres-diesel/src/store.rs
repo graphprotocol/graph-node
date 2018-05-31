@@ -175,140 +175,113 @@ impl StoreTrait for Store {
         let _datasource: String = String::from("memefactory");
         let find_results: Result<Vec<serde_json::Value>, result::Error>;
 
+        let mut diesel_query = entities::table
+            .filter(entity.eq(query.entity))
+            .select(data)
+            .into_boxed::<Pg>();
+
         match &query.filters[0] {
             StoreFilter::Contains(attribute, value) => {
                 match value {
                     Value::String(query_value) => {
                         info!(&self.logger, "query value for contains filter"; "string" => format!("{:#?}", &query_value));
-                        find_results = entities::table
-                            .filter(entity.eq(query.entity))
+                        diesel_query = diesel_query
                             .filter(
-                                sql("data -> ")
-                                .bind::<Text, _>(attribute)
-                                .sql("->>'String' LIKE ")
-                                .bind::<Text, _>(query_value)
-                            )
-                            .select(data)
-                            .load::<serde_json::Value>(&self.conn);
+                            sql("data -> ")
+                            .bind::<Text, _>(attribute)
+                            .sql("->>'String' LIKE ")
+                            .bind::<Text, _>(query_value));
                     },
                 };
             },
             StoreFilter::Equal(attribute, value) => {
                 match value {
                     Value::String(query_value)  => {
-                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
-                        find_results = entities::table
-                            .filter(entity.eq(query.entity))
+                        diesel_query = diesel_query
                             .filter(
                                 sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' = ")
                                 .bind::<Text, _>(query_value)
-                            )
-                            .select(data)
-                            .load::<serde_json::Value>(&self.conn);
+                            );
                     },
                 };
             },
             StoreFilter::Not(attribute, value) => {
                 match value {
                     Value::String(query_value)  => {
-                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
-                        find_results = entities::table
-                            .filter(entity.eq(query.entity))
+                        diesel_query = diesel_query
                             .filter(
                                 sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' != ")
                                 .bind::<Text, _>(query_value)
-                            )
-                            .select(data)
-                            .load::<serde_json::Value>(&self.conn);
+                            );
                     },
                 };
             },
             StoreFilter::GreaterThan(attribute, value) => {
                 match value {
                     Value::String(query_value)  => {
-                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
-                        find_results = entities::table
-                            .filter(entity.eq(query.entity))
+                        diesel_query = diesel_query
                             .filter(
                                 sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' > ")
                                 .bind::<Text, _>(query_value)
-                            )
-                            .select(data)
-                            .load::<serde_json::Value>(&self.conn);
+                            );
                     },
                 };
             },
             StoreFilter::LessThan(attribute, value) => {
                 match value {
                     Value::String(query_value)  => {
-                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
-                        find_results = entities::table
-                            .filter(entity.eq(query.entity))
+                        diesel_query = diesel_query
                             .filter(
                                 sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' < ")
                                 .bind::<Text, _>(query_value)
-                            )
-                            .select(data)
-                            .load::<serde_json::Value>(&self.conn);
+                            );
                     },
                 };
             },
             StoreFilter::GreaterOrEqual(attribute, value) => {
                 match value {
                     Value::String(query_value)  => {
-                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
-                        find_results = entities::table
-                            .filter(entity.eq(query.entity))
+                        diesel_query = diesel_query
                             .filter(
                                 sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' >= ")
                                 .bind::<Text, _>(query_value)
-                            )
-                            .select(data)
-                            .load::<serde_json::Value>(&self.conn);
+                            );
                     },
                 };
             },
             StoreFilter::LessThanOrEqual(attribute, value) => {
                 match value {
                     Value::String(query_value)  => {
-                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
-                        find_results = entities::table
-                            .filter(entity.eq(query.entity))
+                        diesel_query = diesel_query
                             .filter(
                                 sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' <= ")
                                 .bind::<Text, _>(query_value)
-                            )
-                            .select(data)
-                            .load::<serde_json::Value>(&self.conn);
+                            );
                     },
                 };
             },
             StoreFilter::NotContains(attribute, value) => {
                 match value {
                     Value::String(query_value) => {
-                        info!(&self.logger, "query value for equals filter"; "string" => format!("{:#?}", &query_value));
-                        find_results = entities::table
-                            .filter(entity.eq(query.entity))
+                        diesel_query = diesel_query
                             .filter(
                                 sql("data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql("->>'String' NOT LIKE ")
                                 .bind::<Text, _>(query_value)
-                            )
-                            .select(data)
-                            .load::<serde_json::Value>(&self.conn);
+                            );
                     },
                 };
             },
@@ -316,6 +289,8 @@ impl StoreTrait for Store {
         };
 
         // info!(&self.logger, "Find entities"; "results" => format!("results {:#?}", &find_results));
+
+        find_results = diesel_query.load::<serde_json::Value>(&self.conn);
 
         //Process results
         //Deserialize to entity attribute hashmap on success
