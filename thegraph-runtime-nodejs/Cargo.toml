@@ -3,8 +3,10 @@ name = "thegraph-runtime-nodejs"
 version = "0.1.0"
 
 [dependencies]
+futures = "0.1.21"
+hyper = { git = "https://github.com/hyperium/hyper", branch = "master" }
+http = "0.1.5"
 slog = "2.2.3"
+tempdir = "0.3"
 thegraph = { path = "../thegraph" }
-futures = "0.1.14"
-hyper = "0.11"
-http = "0.1"
+tokio-core = "0.1.6"
