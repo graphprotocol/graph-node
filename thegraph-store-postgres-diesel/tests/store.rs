@@ -8,10 +8,9 @@ use diesel::pg::PgConnection;
 use diesel::*;
 use std::panic;
 use thegraph::components::store::StoreKey;
-use thegraph::data::store::Entity;
-use thegraph::prelude::Store;
+use thegraph::prelude::*;
 use thegraph::util::log::logger;
-use thegraph_store_postgres_diesel::{ourschema, store as dieselstore, StoreConfig};
+use thegraph_store_postgres_diesel::{ourschema, Store as DieselStore, StoreConfig};
 use tokio_core::reactor::Core;
 
 /// Helper function to ensure and obtain the Postgres URL to use for testing.
@@ -28,52 +27,12 @@ where
     T: FnOnce() -> () + panic::UnwindSafe,
 {
     insert_test_data();
-
     let result = panic::catch_unwind(|| test());
-
     remove_test_data();
-
-    assert!(result.is_ok())
+    result.expect("Failed to run test");
 }
 
-fn insert_test_data() {
-    let core = Core::new().unwrap();
-    let logger = logger();
-    let url = postgres_test_url();
-    let mut new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
-
-    let test_entity_1 = create_test_entity(
-        String::from("1"),
-        String::from("user"),
-        String::from("Johnton".to_string()),
-        String::from("tonofjohn@email.com".to_string()),
-    );
-    assert!(new_store.set(test_entity_1.0, test_entity_1.1).is_ok());
-
-    let test_entity_2 = create_test_entity(
-        String::from("2"),
-        String::from("user"),
-        String::from("Cindini".to_string()),
-        String::from("dinici@email.com".to_string()),
-    );
-    assert!(new_store.set(test_entity_2.0, test_entity_2.1).is_ok());
-
-    let test_entity_3 = create_test_entity(
-        String::from("3"),
-        String::from("user"),
-        String::from("Shaqueeena".to_string()),
-        String::from("queensha@email.com".to_string()),
-    );
-    assert!(new_store.set(test_entity_3.0, test_entity_3.1).is_ok());
-}
-
-fn remove_test_data() {
-    use ourschema::entities::dsl::*;
-    let url = postgres_test_url();
-    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
-    let _results = delete(entities).execute(&conn).is_ok();
-}
-
+/// Creates a test entity.
 fn create_test_entity(
     id: String,
     entity: String,
@@ -85,9 +44,57 @@ fn create_test_entity(
         id: id,
     };
     let mut test_entity = Entity::new();
-    test_entity.insert("name".to_string(), thegraph::prelude::Value::String(name));
-    test_entity.insert("email".to_string(), thegraph::prelude::Value::String(email));
+    test_entity.insert("name".to_string(), Value::String(name));
+    test_entity.insert("email".to_string(), Value::String(email));
     (test_key, test_entity)
+}
+
+/// Inserts test data into the store.
+fn insert_test_data() {
+    let core = Core::new().unwrap();
+    let logger = logger();
+    let url = postgres_test_url();
+    let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+
+    let test_entity_1 = create_test_entity(
+        String::from("1"),
+        String::from("user"),
+        String::from("Johnton".to_string()),
+        String::from("tonofjohn@email.com".to_string()),
+    );
+    store
+        .set(test_entity_1.0, test_entity_1.1)
+        .expect("Failed to insert test entity into the store");
+
+    let test_entity_2 = create_test_entity(
+        String::from("2"),
+        String::from("user"),
+        String::from("Cindini".to_string()),
+        String::from("dinici@email.com".to_string()),
+    );
+    store
+        .set(test_entity_2.0, test_entity_2.1)
+        .expect("Failed to insert test entity into the store");
+
+    let test_entity_3 = create_test_entity(
+        String::from("3"),
+        String::from("user"),
+        String::from("Shaqueeena".to_string()),
+        String::from("queensha@email.com".to_string()),
+    );
+    store
+        .set(test_entity_3.0, test_entity_3.1)
+        .expect("Failed to insert test entity into the store");
+}
+
+/// Removes test data from the database behind the store.
+fn remove_test_data() {
+    use ourschema::entities::dsl::*;
+    let url = postgres_test_url();
+    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
+    delete(entities)
+        .execute(&conn)
+        .expect("Failed to remoec test data");
 }
 
 #[test]
@@ -97,15 +104,15 @@ fn delete_entity() {
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
-        let mut new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
+        let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
         let test_key = StoreKey {
             entity: String::from("user"),
             id: String::from("3"),
         };
-        let _num_rows_deleted = new_store.delete(test_key).unwrap();
+        store.delete(test_key).unwrap();
 
-        let all_ids = entities.select(id).load::<i32>(&new_store.conn).unwrap();
+        let all_ids = entities.select(id).load::<i32>(&store.conn).unwrap();
         assert!(!all_ids.contains(&(3 as i32)));
     })
 }
@@ -116,27 +123,23 @@ fn get_entity() {
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
-        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
         let key = StoreKey {
             entity: String::from("user"),
             id: String::from("1"),
         };
-        let result = new_store.get(key).unwrap();
+        let result = store.get(key).unwrap();
 
-        // Would like to implement Entity comparison traits here in order to compare against compare_map.
-        let mut compare_map = Entity::new();
-        compare_map.insert(
-            "name".to_string(),
-            thegraph::prelude::Value::String("Johnton".to_string()),
-        );
-        compare_map.insert(
+        let mut expected_entity = Entity::new();
+        expected_entity.insert("name".to_string(), Value::String("Johnton".to_string()));
+        expected_entity.insert(
             "email".to_string(),
-            thegraph::prelude::Value::String("tonofjohn@email.com".to_string()),
+            Value::String("tonofjohn@email.com".to_string()),
         );
 
-        //For now just making sure there are sane results
-        assert!(result.contains_key("name"));
+        // For now just making sure there are sane results
+        assert_eq!(result, expected_entity);
     })
 }
 
@@ -148,7 +151,7 @@ fn insert_new_entity() {
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
-        let mut new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
+        let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
         let test_entity_1 = create_test_entity(
             String::from("7"),
@@ -156,11 +159,13 @@ fn insert_new_entity() {
             String::from("Wanjon".to_string()),
             String::from("wanawana@email.com".to_string()),
         );
-        assert!(new_store.set(test_entity_1.0, test_entity_1.1).is_ok());
+        store
+            .set(test_entity_1.0, test_entity_1.1)
+            .expect("Failed to set entity in the store");
 
-        //Check that new record is in the Store
-        let all_ids = entities.select(id).load::<i32>(&new_store.conn).unwrap();
-        assert!(all_ids.iter().any(|x| x == &(7i32)));
+        // Check that new record is in the store
+        let all_ids = entities.select(id).load::<i32>(&store.conn).unwrap();
+        assert!(all_ids.iter().any(|x| x == &(7i32)),);
     })
 }
 
@@ -170,7 +175,12 @@ fn update_existing_entity() {
         let core = Core::new().unwrap();
         let logger = logger();
         let url = postgres_test_url();
-        let mut new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
+        let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+
+        let entity_key = StoreKey {
+            entity: String::from("user"),
+            id: String::from("1"),
+        };
 
         let test_entity_1 = create_test_entity(
             String::from("1"),
@@ -178,20 +188,16 @@ fn update_existing_entity() {
             String::from("Wanjon".to_string()),
             String::from("wanawana@email.com".to_string()),
         );
-        //Set test entity, since entity already exists an update should be performed
-        assert!(new_store.set(test_entity_1.0, test_entity_1.1).is_ok());
 
-        //Create fetch key, get entity that should have changed
-        let test_key = StoreKey {
-            entity: String::from("user"),
-            id: String::from("1"),
-        };
-        let result: Entity = new_store.get(test_key).unwrap();
+        // Verify that the entity before updating is different from what we expect afterwards
+        assert_ne!(store.get(entity_key.clone()).unwrap(), test_entity_1.1);
 
-        //Assert that the name attribute has been successfully changed to "Wanjon"
-        assert_eq!(
-            &thegraph::prelude::Value::String("Wanjon".to_string()),
-            result.get("name").unwrap()
-        );
+        // Set test entity; as the entity already exists an update should be performed
+        store
+            .set(test_entity_1.0, test_entity_1.1.clone())
+            .expect("Failed to update entity that already exists");
+
+        // Verify that the entity in the store has changed to what we have set
+        assert_eq!(store.get(entity_key).unwrap(), test_entity_1.1);
     })
 }
