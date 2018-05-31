@@ -463,3 +463,47 @@ fn find_entities_less_than_string_with_range() {
         assert_eq!(&(1 as usize), &returned_entities.len());
     })
 }
+
+#[test]
+fn find_entities_multi() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
+        let new_store = dieselstore::Store::new(
+            StoreConfig {
+                url: url.to_string(),
+            },
+            &logger,
+            core.handle(),
+        );
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filters: vec![
+                StoreFilter::LessThan(
+                    "name".to_string(),
+                    thegraph::prelude::Value::String("Cz".to_string()),
+                ),
+                StoreFilter::Equal(
+                    "name".to_string(),
+                    thegraph::prelude::Value::String("Cindini".to_string()),
+                ),
+            ],
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: None,
+        };
+        let result = new_store.find(this_query);
+        assert!(result.is_ok());
+
+        //Check if the first user in the result vector is "Johnton"
+        let returned_entities = &result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = &thegraph::prelude::Value::String("Cindini".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(test_value, returned_name.unwrap());
+
+        //There should be 3 users returned in results
+        assert_eq!(&(1 as usize), &returned_entities.len());
+    })
+}
