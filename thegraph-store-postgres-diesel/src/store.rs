@@ -8,7 +8,7 @@ use slog;
 use tokio_core::reactor::Handle;
 
 use thegraph::components::schema::SchemaProviderEvent;
-use thegraph::components::store::{Store as StoreTrait, *};
+use thegraph::components::store::{*, Store as StoreTrait};
 use thegraph::data::store;
 use thegraph::data::store::*;
 use thegraph::util::stream::StreamError;

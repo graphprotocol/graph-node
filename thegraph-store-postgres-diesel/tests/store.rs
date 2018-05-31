@@ -14,6 +14,14 @@ use thegraph::util::log::logger;
 use thegraph_store_postgres_diesel::{ourschema, store as dieselstore, StoreConfig};
 use tokio_core::reactor::Core;
 
+/// Helper function to ensure and obtain the Postgres URL to use for testing.
+fn postgres_test_url() -> String {
+    std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL")
+        .expect("The THEGRAPH_STORE_POSTGRES_DIESEL_URL environment variable is not set")
+        .into_string()
+        .unwrap()
+}
+
 /// Test harness for running database integration tests.
 fn run_test<T>(test: T) -> ()
 where
@@ -31,14 +39,8 @@ where
 fn insert_test_data() {
     let core = Core::new().unwrap();
     let logger = logger();
-    let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-    let mut new_store = dieselstore::Store::new(
-        StoreConfig {
-            url: url.to_string(),
-        },
-        &logger,
-        core.handle(),
-    );
+    let url = postgres_test_url();
+    let mut new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
 
     let test_entity_1 = create_test_entity(
         String::from("1"),
@@ -67,8 +69,8 @@ fn insert_test_data() {
 
 fn remove_test_data() {
     use ourschema::entities::dsl::*;
-    let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-    let conn = PgConnection::establish(&url).expect("Failed to connect to Postgres");
+    let url = postgres_test_url();
+    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
     let _results = delete(entities).execute(&conn).is_ok();
 }
 
@@ -94,14 +96,8 @@ fn delete_entity() {
         use ourschema::entities::dsl::*;
         let core = Core::new().unwrap();
         let logger = logger();
-        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-        let mut new_store = dieselstore::Store::new(
-            StoreConfig {
-                url: url.to_string(),
-            },
-            &logger,
-            core.handle(),
-        );
+        let url = postgres_test_url();
+        let mut new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
 
         let test_key = StoreKey {
             entity: String::from("user"),
@@ -119,14 +115,8 @@ fn get_entity() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
-        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-        let new_store = dieselstore::Store::new(
-            StoreConfig {
-                url: url.to_string(),
-            },
-            &logger,
-            core.handle(),
-        );
+        let url = postgres_test_url();
+        let new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
 
         let key = StoreKey {
             entity: String::from("user"),
@@ -157,14 +147,8 @@ fn insert_new_entity() {
 
         let core = Core::new().unwrap();
         let logger = logger();
-        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-        let mut new_store = dieselstore::Store::new(
-            StoreConfig {
-                url: url.to_string(),
-            },
-            &logger,
-            core.handle(),
-        );
+        let url = postgres_test_url();
+        let mut new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
 
         let test_entity_1 = create_test_entity(
             String::from("7"),
@@ -185,14 +169,8 @@ fn update_existing_entity() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
-        let url = "postgres://testuser:testpassword@192.168.99.100:31599/tests";
-        let mut new_store = dieselstore::Store::new(
-            StoreConfig {
-                url: url.to_string(),
-            },
-            &logger,
-            core.handle(),
-        );
+        let url = postgres_test_url();
+        let mut new_store = dieselstore::Store::new(StoreConfig { url }, &logger, core.handle());
 
         let test_entity_1 = create_test_entity(
             String::from("1"),
