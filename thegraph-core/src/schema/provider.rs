@@ -9,6 +9,7 @@ use thegraph::components::data_sources::SchemaEvent;
 use thegraph::components::schema::{SchemaProvider as SchemaProviderTrait, SchemaProviderEvent};
 use thegraph::data::schema::Schema;
 use thegraph::util::stream::StreamError;
+use thegraph_graphql_utils::api::api_schema;
 
 /// Common schema provider implementation for The Graph.
 pub struct SchemaProvider {
@@ -65,16 +66,36 @@ impl SchemaProvider {
                     }
                 };
 
-                // Attempt to combine the input schemas into one schema;
+                // Derive a full-fledged API schema from the first input schema
+                //
                 // NOTE: For the moment, we're simply picking the first schema
                 // we can find in the map. Once we support multiple data sources,
                 // this would be where we combine them into one and also detect
                 // conflicts
+                let api_schema = input_schemas
+                    .values()
+                    .next()
+                    .map(|schema| {
+                        api_schema(&schema.document)
+                            .map(|api_schema| {
+                                Some(Schema {
+                                    id: schema.id.clone(),
+                                    document: api_schema,
+                                })
+                            })
+                            .unwrap_or_else(|e| {
+                                error!(
+                                    logger,
+                                    "Failed to derive API schema from input schemas: {}", e
+                                );
+                                None
+                            })
+                    })
+                    .unwrap_or(None);
+
+                // Rember the combined API schema
                 let mut combined_schema = combined_schema.lock().unwrap();
-                *combined_schema = match input_schemas.len() {
-                    0 => None,
-                    _ => Some(input_schemas.values().nth(0).unwrap().clone()),
-                };
+                *combined_schema = api_schema;
             }
 
             // Obtain a lock on the event sink
@@ -135,6 +156,7 @@ mod tests {
     use thegraph::components::data_sources::SchemaEvent;
     use thegraph::components::schema::SchemaProviderEvent;
     use thegraph::prelude::*;
+    use thegraph_graphql_utils::ast::schema as ast;
 
     use super::SchemaProvider as CoreSchemaProvider;
 
@@ -170,8 +192,16 @@ mod tests {
         let SchemaProviderEvent::SchemaChanged(output_schema) = output_event;
         let output_schema = output_schema.expect("Combined schema must not be None");
 
-        // The output schema (currently) must equal the input schema
         assert_eq!(output_schema.id, input_schema.id);
-        assert_eq!(output_schema.document, input_schema.document);
+
+        // The output schema must include the input schema types
+        assert_eq!(
+            ast::get_named_type(&input_schema.document, &"User".to_string()),
+            ast::get_named_type(&output_schema.document, &"User".to_string())
+        );
+
+        // The output schema must include a Query type
+        ast::get_named_type(&output_schema.document, &"Query".to_string())
+            .expect("Query type missing in output schema");
     }
 }
