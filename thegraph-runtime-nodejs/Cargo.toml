@@ -1,5 +1,5 @@
 [package]
-name = "thegraph-runtime"
+name = "thegraph-runtime-nodejs"
 version = "0.1.0"
 
 [dependencies]
