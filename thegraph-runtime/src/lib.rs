@@ -57,8 +57,8 @@ impl RuntimeAdapter {
 
 #[cfg(test)]
 mod tests {
-    use thegraph::util::log::logger;
     use RuntimeAdapter;
+    use thegraph::util::log::logger;
     #[test]
     fn it_starts_the_runtime() {
         let logger = logger();
