@@ -94,7 +94,7 @@ fn remove_test_data() {
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
     delete(entities)
         .execute(&conn)
-        .expect("Failed to remoec test data");
+        .expect("Failed to remove test data");
 }
 
 #[test]
