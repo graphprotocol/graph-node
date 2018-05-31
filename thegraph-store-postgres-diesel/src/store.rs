@@ -166,12 +166,12 @@ impl StoreTrait for Store {
         use db_schema::entities::columns::*;
         use db_schema::*;
 
-        // Datasource hardcoded at the moment
+        // The data source is hard-coded at the moment
         let _datasource: String = String::from("memefactory");
         let find_results: Result<Vec<serde_json::Value>, result::Error>;
 
-        // Create base boxed query
-        // This will be added to based on the query parameters provided
+        // Create base boxed query; this will be added to based on the
+        // query parameters provided
         let mut diesel_query = entities::table
             .filter(entity.eq(query.entity))
             .select(data)
@@ -288,52 +288,42 @@ impl StoreTrait for Store {
         }
 
         // Add order by filters to query
-        match query.order_by {
-            Some(order_attribute) => {
-                let direction = match query.order_direction {
-                    Some(direction) => match direction {
-                        StoreOrder::Ascending => String::from("ASC"),
-                        StoreOrder::Descending => String::from("DESC"),
-                    },
-                    None => String::from("ASC"),
-                };
+        if let Some(order_attribute) = query.order_by {
+            let direction = query
+                .order_direction
+                .map(|direction| match direction {
+                    StoreOrder::Ascending => String::from("ASC"),
+                    StoreOrder::Descending => String::from("DESC"),
+                })
+                .unwrap_or(String::from("ASC"));
 
-                diesel_query = diesel_query.order(
-                    sql::<Text>("data -> ")
-                        .bind::<Text, _>(order_attribute)
-                        .sql(&format!("{}", direction)),
-                );
-            }
-            None => (),
+            diesel_query = diesel_query.order(
+                sql::<Text>("data -> ")
+                    .bind::<Text, _>(order_attribute)
+                    .sql(&format!("{}", direction)),
+            );
         }
 
         // Add range filter to query
-        match query.range {
-            Some(range) => {
-                diesel_query = diesel_query
-                    .limit(range.first as i64)
-                    .offset(range.skip as i64);
-            }
-            None => (),
+        if let Some(range) = query.range {
+            diesel_query = diesel_query
+                .limit(range.first as i64)
+                .offset(range.skip as i64);
         }
 
-        find_results = diesel_query.load::<serde_json::Value>(&self.conn);
-        info!(self.logger, "result"; "data" => format!("{:?}", &find_results));
-        // Process results
-        // Deserialize to entity attribute hashmap on success
-        // Map to our storeerrors on error
-        let new_results = find_results
-            .map(|r| {
-                r.into_iter()
-                    .map(|x| {
-                        serde_json::from_value::<Entity>(x)
-                            .expect("Error deserializing results of get")
+        // Process results; deserialize JSON data
+        diesel_query
+            .load::<serde_json::Value>(&self.conn)
+            .map(|values| {
+                values
+                    .into_iter()
+                    .map(|value| {
+                        serde_json::from_value::<Entity>(value)
+                            .expect("Error to deserialize entity")
                     })
                     .collect()
             })
-            .map_err(|_e| ());
-
-        new_results
+            .map_err(|_| ())
     }
 
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
