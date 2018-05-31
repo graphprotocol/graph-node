@@ -221,12 +221,12 @@ fn find_entities_contain_string() {
         let result = new_store.find(this_query);
         assert!(result.is_ok());
 
-        //Make sure the first user in the result vector is "Cindini"
+        // Make sure the first user in the result vector is "Cindini"
         let returned_entity = &result.unwrap()[0];
         let returned_name = returned_entity.get(&"name".to_string());
-        let test_value = &thegraph::prelude::Value::String("Cindini".to_string());
+        let test_value = Value::String("Cindini".to_string());
         assert!(returned_name.is_some());
-        assert_eq!(test_value, returned_name.unwrap());
+        assert_eq!(&test_value, returned_name.unwrap());
     })
 }
 
@@ -249,12 +249,12 @@ fn find_entities_equal_string() {
         let result = new_store.find(this_query);
         assert!(result.is_ok());
 
-        //Make sure the first user in the result vector is "Cindini"
+        // Make sure the first user in the result vector is "Cindini"
         let returned_entity = &result.unwrap()[0];
         let returned_name = returned_entity.get(&"name".to_string());
-        let test_value = &thegraph::prelude::Value::String("Cindini".to_string());
+        let test_value = Value::String("Cindini".to_string());
         assert!(returned_name.is_some());
-        assert_eq!(test_value, returned_name.unwrap());
+        assert_eq!(&test_value, returned_name.unwrap());
     })
 }
 
@@ -277,16 +277,15 @@ fn find_entities_not_equal_string() {
         let result = new_store.find(this_query);
         assert!(result.is_ok());
 
-        //Check if the first user in the result vector is "Cindini"
-        //If it is fail
-        let returned_entities = &result.unwrap();
+        // Check if the first user in the result vector is "Cindini"; fail if it is
+        let returned_entities = result.unwrap();
         let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = &thegraph::prelude::Value::String("Cindini".to_string());
+        let test_value = Value::String("Cindini".to_string());
         assert!(returned_name.is_some());
-        assert_ne!(test_value, returned_name.unwrap());
+        assert_ne!(&test_value, returned_name.unwrap());
 
-        //There should be 3 users returned in results
-        assert_eq!(&(2 as usize), &returned_entities.len());
+        // There should be 3 users returned in results
+        assert_eq!(2, returned_entities.len());
     })
 }
 
@@ -309,16 +308,15 @@ fn find_entities_greater_than_string() {
         let result = new_store.find(this_query);
         assert!(result.is_ok());
 
-        //Check if the first user in the result vector is "Cindini"
-        //If it is fail
-        let returned_entities = &result.unwrap();
+        // Check if the first user in the result vector is "Cindini"; fail if it is
+        let returned_entities = result.unwrap();
         let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = &thegraph::prelude::Value::String("Cindini".to_string());
+        let test_value = Value::String("Cindini".to_string());
         assert!(returned_name.is_some());
-        assert_ne!(test_value, returned_name.unwrap());
+        assert_ne!(&test_value, returned_name.unwrap());
 
-        //There should be 3 users returned in results
-        assert_eq!(&(1 as usize), &returned_entities.len());
+        // There should be one user returned in results
+        assert_eq!(1, returned_entities.len());
     })
 }
 
@@ -341,16 +339,15 @@ fn find_entities_less_than_string() {
         let result = new_store.find(this_query);
         assert!(result.is_ok());
 
-        //Check if the first user in the result vector is "Cindini"
-        //If it is fail
-        let returned_entities = &result.unwrap();
+        // Check if the first user in the result vector is "Cindini"; fail if it is
+        let returned_entities = result.unwrap();
         let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = &thegraph::prelude::Value::String("Cindini".to_string());
+        let test_value = Value::String("Cindini".to_string());
         assert!(returned_name.is_some());
-        assert_ne!(test_value, returned_name.unwrap());
+        assert_ne!(&test_value, returned_name.unwrap());
 
         //There should be 3 users returned in results
-        assert_eq!(&(2 as usize), &returned_entities.len());
+        assert_eq!(2, returned_entities.len());
     })
 }
 
@@ -364,10 +361,7 @@ fn find_entities_less_than_string_order_by_name_desc() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![
-                StoreFilter::LessThan(
-                    "name".to_string(),
-                    thegraph::prelude::Value::String("Kundi".to_string()),
-                ),
+                StoreFilter::LessThan("name".to_string(), Value::String("Kundi".to_string())),
             ])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
@@ -376,15 +370,15 @@ fn find_entities_less_than_string_order_by_name_desc() {
         let result = new_store.find(this_query);
         assert!(result.is_ok());
 
-        //Check if the first user in the result vector is "Johnton"
-        let returned_entities = &result.unwrap();
+        // Check if the first user in the result vector is "Johnton"
+        let returned_entities = result.unwrap();
         let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = &thegraph::prelude::Value::String("Johnton".to_string());
+        let test_value = Value::String("Johnton".to_string());
         assert!(returned_name.is_some());
-        assert_eq!(test_value, returned_name.unwrap());
+        assert_eq!(&test_value, returned_name.unwrap());
 
-        //There should be 3 users returned in results
-        assert_eq!(&(2 as usize), &returned_entities.len());
+        // There should be 2 users returned in results
+        assert_eq!(2, returned_entities.len());
     })
 }
 
@@ -398,10 +392,7 @@ fn find_entities_less_than_string_with_range() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![
-                StoreFilter::LessThan(
-                    "name".to_string(),
-                    thegraph::prelude::Value::String("ZZZ".to_string()),
-                ),
+                StoreFilter::LessThan("name".to_string(), Value::String("ZZZ".to_string())),
             ])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
@@ -410,20 +401,20 @@ fn find_entities_less_than_string_with_range() {
         let result = new_store.find(this_query);
         assert!(result.is_ok());
 
-        //Check if the first user in the result vector is "Johnton"
-        let returned_entities = &result.unwrap();
+        // Check if the first user in the result vector is "Johnton"
+        let returned_entities = result.unwrap();
         let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = &thegraph::prelude::Value::String("Johnton".to_string());
+        let test_value = Value::String("Johnton".to_string());
         assert!(returned_name.is_some());
-        assert_eq!(test_value, returned_name.unwrap());
+        assert_eq!(&test_value, returned_name.unwrap());
 
-        //There should be 3 users returned in results
-        assert_eq!(&(1 as usize), &returned_entities.len());
+        // There should be one user returned in results
+        assert_eq!(1, returned_entities.len());
     })
 }
 
 #[test]
-fn find_entities_multi() {
+fn find_entities_multiple_filters() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -432,14 +423,8 @@ fn find_entities_multi() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![
-                StoreFilter::LessThan(
-                    "name".to_string(),
-                    thegraph::prelude::Value::String("Cz".to_string()),
-                ),
-                StoreFilter::Equal(
-                    "name".to_string(),
-                    thegraph::prelude::Value::String("Cindini".to_string()),
-                ),
+                StoreFilter::LessThan("name".to_string(), Value::String("Cz".to_string())),
+                StoreFilter::Equal("name".to_string(), Value::String("Cindini".to_string())),
             ])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
@@ -448,14 +433,14 @@ fn find_entities_multi() {
         let result = new_store.find(this_query);
         assert!(result.is_ok());
 
-        //Check if the first user in the result vector is "Johnton"
-        let returned_entities = &result.unwrap();
+        // Check if the first user in the result vector is "Johnton"
+        let returned_entities = result.unwrap();
         let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = &thegraph::prelude::Value::String("Cindini".to_string());
+        let test_value = Value::String("Cindini".to_string());
         assert!(returned_name.is_some());
-        assert_eq!(test_value, returned_name.unwrap());
+        assert_eq!(&test_value, returned_name.unwrap());
 
-        //There should be 3 users returned in results
-        assert_eq!(&(1 as usize), &returned_entities.len());
+        // There should be one user returned in results
+        assert_eq!(1, returned_entities.len());
     })
 }
