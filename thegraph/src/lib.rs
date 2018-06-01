@@ -1,6 +1,5 @@
 extern crate futures;
 extern crate graphql_parser;
-#[macro_use]
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
