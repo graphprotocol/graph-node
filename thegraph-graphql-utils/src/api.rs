@@ -78,6 +78,7 @@ fn add_types_for_object_types(
 ) -> Result<(), APISchemaError> {
     for object_type in object_types {
         add_order_by_type(schema, &object_type.name, &object_type.fields)?;
+        add_order_direction_type(schema, &object_type.name, &object_type.fields)?;
         add_filter_type(schema, &object_type.name, &object_type.fields)?;
     }
     Ok(())
@@ -90,6 +91,7 @@ fn add_types_for_interface_types(
 ) -> Result<(), APISchemaError> {
     for interface_type in interface_types {
         add_order_by_type(schema, &interface_type.name, &interface_type.fields)?;
+        add_order_direction_type(schema, &interface_type.name, &interface_type.fields)?;
         add_filter_type(schema, &interface_type.name, &interface_type.fields)?;
     }
     Ok(())
@@ -129,6 +131,35 @@ fn add_order_by_type(
     Ok(())
 }
 
+/// Adds a `<type_name>_orderDirection` enum type for the given fields to the schema.
+fn add_order_direction_type(schema: &mut Document, type_name: &Name, fields: &Vec<Field>,) -> Result<(), APISchemaError>{
+    let type_name = format!("{}_orderDirection", type_name).to_string();
+
+    match ast::get_named_type(schema, &type_name) {
+        None => {
+            let typedef = TypeDefinition::Enum(EnumType {
+                position: Pos::default(),
+                description: None,
+                name: type_name,
+                directives: vec![],
+                values: fields
+                    .iter()
+                    .map(|field| &field.name)
+                    .map(|name| EnumValue {
+                        position: Pos::default(),
+                        description: None,
+                        name: name.to_owned(),
+                        directives: vec![]
+                    })
+                    .collect(),
+            });
+            let def = Definition::TypeDefinition(typedef);
+            schema.definitions.push(def);
+        }
+        Some(_) => return Err(APISchemaError::TypeExists(type_name)),
+    }
+    Ok(())
+}
 /// Adds a `<type_name>_filter` enum type for the given fields to the schema.
 fn add_filter_type(
     schema: &mut Document,
@@ -360,6 +391,24 @@ mod tests {
             TypeDefinition::Enum(t) => Some(t),
             _ => None,
         }.expect("User_orderBy type is not an enum");
+
+        let values: Vec<&Name> = enum_type.values.iter().map(|value| &value.name).collect();
+        assert_eq!(values, [&"id".to_string(), &"name".to_string()]);
+    }
+
+    #[test]
+    fn api_schema_contains_field_order_direction_enum() {
+        let input_schema = parse_schema("type User { id: ID!, name: String! }")
+            .expect("Failed to parse input schema");
+        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+
+        let user_order_direction = ast::get_named_type(&schema, &"User_orderDirection".to_string())
+            .expect("User_orderDirection type is missing in derived API schema");
+
+        let enum_type = match user_order_direction {
+            TypeDefinition::Enum(t) => Some(t),
+            _ => None,
+        }.expect("User_orderDirection type is not an enum");
 
         let values: Vec<&Name> = enum_type.values.iter().map(|value| &value.name).collect();
         assert_eq!(values, [&"id".to_string(), &"name".to_string()]);
