@@ -8,6 +8,7 @@ extern crate thegraph;
 extern crate thegraph_core;
 extern crate thegraph_hyper;
 extern crate thegraph_mock;
+extern crate thegraph_runtime_nodejs;
 extern crate thegraph_store_postgres_diesel;
 extern crate tokio;
 extern crate tokio_core;
@@ -15,13 +16,17 @@ extern crate tokio_core;
 use clap::{App, Arg};
 use sentry::integrations::panic::register_panic_handler;
 use std::env;
+use std::sync::{Arc, Mutex};
+use tokio::prelude::*;
+use tokio_core::reactor::Core;
+
+use thegraph::components::data_sources::RuntimeAdapterEvent;
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
 use thegraph_mock as mock;
+use thegraph_runtime_nodejs::{RuntimeAdapter as NodeRuntimeAdapter, RuntimeAdapterConfig};
 use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
-use tokio::prelude::*;
-use tokio_core::reactor::Core;
 
 fn main() {
     let mut core = Core::new().unwrap();
@@ -32,6 +37,22 @@ fn main() {
         .version("0.1.0")
         .author("Graph Protocol, Inc.")
         .about("Scalable queries for a decentralized future (local node)")
+        .arg(
+            Arg::with_name("data-source-definition")
+                .takes_value(true)
+                .required(false)
+                .long("data-source-definition")
+                .value_name("FILE")
+                .help("Path to the data source definition file"),
+        )
+        .arg(
+            Arg::with_name("data-source-runtime")
+                .takes_value(true)
+                .required(false)
+                .long("data-source-runtime")
+                .value_name("DIR")
+                .help("Path to the data source runtime source directory"),
+        )
         .arg(
             Arg::with_name("postgres-url")
                 .takes_value(true)
@@ -44,6 +65,10 @@ fn main() {
 
     // Safe to unwrap because a value is required by CLI
     let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
+
+    // Obtain data source related command-line arguments
+    let data_source_definition = matches.value_of("data-source-definition");
+    let data_source_runtime = matches.value_of("data-source-runtime");
 
     debug!(logger, "Setting up Sentry");
 
@@ -68,6 +93,24 @@ fn main() {
     let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
     let mut store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
+    let mut data_source_runtime_adapter = match (data_source_definition, data_source_runtime) {
+        (Some(definition), Some(runtime)) => Some(NodeRuntimeAdapter::new(
+            &logger,
+            core.handle(),
+            RuntimeAdapterConfig {
+                data_source_definition: definition.to_string(),
+                runtime_source_dir: runtime.to_string(),
+                json_rpc_url: "localhost:8545".to_string(),
+            },
+        )),
+        _ => {
+            warn!(
+                logger,
+                "No data source arguments provided. Will not index anything"
+            );
+            None
+        }
+    };
 
     // Forward schema events from the data source provider to the schema provider
     let schema_stream = data_source_provider.schema_event_stream().unwrap();
@@ -105,8 +148,12 @@ fn main() {
             .and_then(|_| Ok(()))
     });
 
+    // Obtain a protected version of the store
+    let protected_store = Arc::new(Mutex::new(store));
+
     // Forward incoming queries from the GraphQL server to the query runner
-    let mut query_runner = thegraph_core::QueryRunner::new(&logger, core.handle(), store);
+    let mut query_runner =
+        thegraph_core::QueryRunner::new(&logger, core.handle(), protected_store.clone());
     let query_stream = graphql_server.query_stream().unwrap();
     core.handle().spawn({
         query_stream
@@ -116,9 +163,50 @@ fn main() {
             .and_then(|_| Ok(()))
     });
 
+    // If we have a runtime adapter, connect and start it now
+    if let Some(ref mut runtime_adapter) = data_source_runtime_adapter {
+        core.handle().spawn({
+            // Connect the runtime adapter to the store
+            runtime_adapter
+                .event_stream()
+                .unwrap()
+                .for_each(move |event| {
+                    let mut store = protected_store.lock().unwrap();
+
+                    match event {
+                        RuntimeAdapterEvent::EntityAdded(ds, k, entity) => {
+                            store
+                                .set(k, entity)
+                                .expect("Failed to set entity in the store");
+                        }
+                        RuntimeAdapterEvent::EntityChanged(ds, k, entity) => {
+                            store
+                                .set(k, entity)
+                                .expect("Failed to set entity in the store");
+                        }
+                        RuntimeAdapterEvent::EntityRemoved(ds, k) => {
+                            store
+                                .delete(k)
+                                .expect("Failed to remove entity from the store");
+                        }
+                    };
+                    Ok(())
+                })
+                .and_then(|_| Ok(()))
+        });
+
+        // Start the adapter
+        runtime_adapter.start();
+    }
+
     // Serve GraphQL server over HTTP
     let http_server = graphql_server
         .serve()
         .expect("Failed to start GraphQL server");
     core.run(http_server).unwrap();
+
+    // Stop the runtime adapter
+    if let Some(ref mut runtime_adapter) = data_source_runtime_adapter {
+        runtime_adapter.stop();
+    }
 }
