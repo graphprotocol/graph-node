@@ -38,6 +38,7 @@ fn create_test_entity(
     entity: String,
     name: String,
     email: String,
+    age: f64,
 ) -> (StoreKey, Entity) {
     let test_key = StoreKey {
         entity: entity,
@@ -46,6 +47,7 @@ fn create_test_entity(
     let mut test_entity = Entity::new();
     test_entity.insert("name".to_string(), Value::String(name));
     test_entity.insert("email".to_string(), Value::String(email));
+    test_entity.insert("age".to_string(), Value::Float(age));
     (test_key, test_entity)
 }
 
@@ -61,6 +63,7 @@ fn insert_test_data() {
         String::from("user"),
         String::from("Johnton".to_string()),
         String::from("tonofjohn@email.com".to_string()),
+        67 as f64,
     );
     store
         .set(test_entity_1.0, test_entity_1.1)
@@ -71,6 +74,7 @@ fn insert_test_data() {
         String::from("user"),
         String::from("Cindini".to_string()),
         String::from("dinici@email.com".to_string()),
+        43 as f64,
     );
     store
         .set(test_entity_2.0, test_entity_2.1)
@@ -81,6 +85,7 @@ fn insert_test_data() {
         String::from("user"),
         String::from("Shaqueeena".to_string()),
         String::from("queensha@email.com".to_string()),
+        28 as f64,
     );
     store
         .set(test_entity_3.0, test_entity_3.1)
@@ -137,6 +142,7 @@ fn get_entity() {
             "email".to_string(),
             Value::String("tonofjohn@email.com".to_string()),
         );
+        expected_entity.insert("age".to_string(), Value::Float(67 as f64));
 
         // For now just making sure there are sane results
         assert_eq!(result, expected_entity);
@@ -158,6 +164,7 @@ fn insert_new_entity() {
             String::from("user"),
             String::from("Wanjon".to_string()),
             String::from("wanawana@email.com".to_string()),
+            76 as f64,
         );
         store
             .set(test_entity_1.0, test_entity_1.1)
@@ -187,6 +194,7 @@ fn update_existing_entity() {
             String::from("user"),
             String::from("Wanjon".to_string()),
             String::from("wanawana@email.com".to_string()),
+            76 as f64,
         );
 
         // Verify that the entity before updating is different from what we expect afterwards
@@ -383,7 +391,7 @@ fn find_entities_less_than_string_order_by_name_desc() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be 2 users returned in results
+        // There should be two users returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -444,6 +452,40 @@ fn find_entities_multiple_filters() {
         let returned_entities = result.unwrap();
         let returned_name = returned_entities[0].get(&"name".to_string());
         let test_value = Value::String("Cindini".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be one user returned in results
+        assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_entities_equal_float() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
+                "age".to_string(),
+                Value::Float(67 as f64),
+            )])),
+            order_by: None,
+            order_direction: None,
+            range: None,
+        };
+        println!("query {:?}", &this_query);
+        let result = new_store.find(this_query);
+        println!("results {:?}", &result);
+        assert!(result.is_ok());
+
+        // Check if the first user in the result vector is "Johnton"
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Johnton".to_string());
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
