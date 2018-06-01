@@ -28,7 +28,7 @@ where
 {
     insert_test_data();
     let result = panic::catch_unwind(|| test());
-    remove_test_data();
+    // remove_test_data();
     result.expect("Failed to run test");
 }
 
@@ -39,7 +39,8 @@ fn create_test_entity(
     name: String,
     email: String,
     age: i32,
-    weight: f32
+    weight: f32,
+    coffee: bool,
 ) -> (StoreKey, Entity) {
     let test_key = StoreKey {
         entity: entity,
@@ -50,6 +51,7 @@ fn create_test_entity(
     test_entity.insert("email".to_string(), Value::String(email));
     test_entity.insert("age".to_string(), Value::Int(age));
     test_entity.insert("weight".to_string(), Value::Float(weight));
+    test_entity.insert("coffee".to_string(), Value::Bool(coffee));
     (test_key, test_entity)
 }
 
@@ -66,7 +68,8 @@ fn insert_test_data() {
         String::from("Johnton".to_string()),
         String::from("tonofjohn@email.com".to_string()),
         67 as i32,
-        184.4 as f32
+        184.4 as f32,
+        false,
     );
     store
         .set(test_entity_1.0, test_entity_1.1)
@@ -78,7 +81,8 @@ fn insert_test_data() {
         String::from("Cindini".to_string()),
         String::from("dinici@email.com".to_string()),
         43 as i32,
-        159.1 as f32
+        159.1 as f32,
+        true,
     );
     store
         .set(test_entity_2.0, test_entity_2.1)
@@ -90,7 +94,8 @@ fn insert_test_data() {
         String::from("Shaqueeena".to_string()),
         String::from("queensha@email.com".to_string()),
         28 as i32,
-        111.7 as f32
+        111.7 as f32,
+        false,
     );
     store
         .set(test_entity_3.0, test_entity_3.1)
@@ -149,6 +154,7 @@ fn get_entity() {
         );
         expected_entity.insert("age".to_string(), Value::Int(67 as i32));
         expected_entity.insert("weight".to_string(), Value::Float(184.4 as f32));
+        expected_entity.insert("coffee".to_string(), Value::Bool(false));
 
         // For now just making sure there are sane results
         assert_eq!(result, expected_entity);
@@ -171,7 +177,8 @@ fn insert_new_entity() {
             String::from("Wanjon".to_string()),
             String::from("wanawana@email.com".to_string()),
             76 as i32,
-            111.7 as f32
+            111.7 as f32,
+            true,
         );
         store
             .set(test_entity_1.0, test_entity_1.1)
@@ -202,7 +209,8 @@ fn update_existing_entity() {
             String::from("Wanjon".to_string()),
             String::from("wanawana@email.com".to_string()),
             76 as i32,
-            111.7 as f32
+            111.7 as f32,
+            true,
         );
 
         // Verify that the entity before updating is different from what we expect afterwards
@@ -470,7 +478,7 @@ fn find_entities_multiple_filters() {
 }
 
 #[test]
-fn find_entities_equal_float() {
+fn find_entities_float_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -504,7 +512,7 @@ fn find_entities_equal_float() {
 }
 
 #[test]
-fn find_entities_not_equal_float() {
+fn find_entities_float_not_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -536,7 +544,7 @@ fn find_entities_not_equal_float() {
 }
 
 #[test]
-fn find_entities_equal_int() {
+fn find_entities_int_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -568,7 +576,7 @@ fn find_entities_equal_int() {
 }
 
 #[test]
-fn find_entities_not_equal_int() {
+fn find_entities_int_not_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -591,6 +599,70 @@ fn find_entities_not_equal_int() {
         let returned_entities = result.unwrap();
         let returned_name = returned_entities[0].get(&"name".to_string());
         let test_value = Value::String("Shaqueeena".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be two users returned in results
+        assert_eq!(2, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_entities_bool_equal() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
+                "coffee".to_string(),
+                Value::Bool(true),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: None,
+        };
+        let result = new_store.find(this_query);
+        assert!(result.is_ok());
+
+        // Check if the first user in the result vector is "Cindini"
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Cindini".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be one user returned in results
+        assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_entities_bool_not_equal() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::Not(
+                "coffee".to_string(),
+                Value::Bool(true),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Ascending),
+            range: None,
+        };
+        let result = new_store.find(this_query);
+        assert!(result.is_ok());
+
+        // Check if the first user in the result vector is "Johnton"
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Johnton".to_string());
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 

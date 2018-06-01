@@ -2,8 +2,8 @@ use diesel::dsl::sql;
 use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
-use diesel::sql_types::{Float, Integer, Text};
-use diesel::{delete, insert_into, debug_query};
+use diesel::sql_types::{Bool, Float, Integer, Text};
+use diesel::{delete, insert_into};
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use serde_json;
@@ -220,6 +220,14 @@ impl StoreTrait for Store {
                                             .bind::<Integer, _>(query_value),
                                     );
                                 }
+                                Value::Bool(query_value) => {
+                                    diesel_query = diesel_query.filter(
+                                        sql("(data -> ")
+                                            .bind::<Text, _>(attribute)
+                                            .sql("->>'Bool')::boolean = ")
+                                            .bind::<Bool, _>(query_value),
+                                    );
+                                }
                                 _ => unimplemented!(),
                             };
                         }
@@ -247,6 +255,14 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(attribute)
                                             .sql("->>'Int')::int != ")
                                             .bind::<Integer, _>(query_value),
+                                    );
+                                }
+                                Value::Bool(query_value) => {
+                                    diesel_query = diesel_query.filter(
+                                        sql("(data -> ")
+                                            .bind::<Text, _>(attribute)
+                                            .sql("->>'Bool')::boolean != ")
+                                            .bind::<Bool, _>(query_value),
                                     );
                                 }
                                 _ => unimplemented!(),
