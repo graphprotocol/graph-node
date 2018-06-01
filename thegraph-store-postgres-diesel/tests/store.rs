@@ -288,7 +288,7 @@ fn find_string_equal() {
 }
 
 #[test]
-fn find_string_notequal() {
+fn find_string_not_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -320,7 +320,7 @@ fn find_string_notequal() {
 }
 
 #[test]
-fn find_string_greaterthan() {
+fn find_string_greater_than() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -337,7 +337,6 @@ fn find_string_greaterthan() {
             range: None,
         };
         let result = new_store.find(this_query);
-        println!("result: {:?}", &result);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Cindini"; fail if it is
@@ -353,7 +352,7 @@ fn find_string_greaterthan() {
 }
 
 #[test]
-fn find_string_lessthan() {
+fn find_string_less_than() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -385,7 +384,7 @@ fn find_string_lessthan() {
 }
 
 #[test]
-fn find_string_lessthan_orderby_desc() {
+fn find_string_less_than_order_by_desc() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -417,7 +416,7 @@ fn find_string_lessthan_orderby_desc() {
 }
 
 #[test]
-fn find_string_lessthan_range() {
+fn find_string_less_than_range() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -497,9 +496,7 @@ fn find_float_equal() {
             order_direction: None,
             range: None,
         };
-        println!("Query {:?}", &this_query);
         let result = new_store.find(this_query);
-        println!("results {:?}", &result);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Johnton"
@@ -515,7 +512,7 @@ fn find_float_equal() {
 }
 
 #[test]
-fn find_float_notequal() {
+fn find_float_not_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -547,7 +544,7 @@ fn find_float_notequal() {
 }
 
 #[test]
-fn find_float_greaterthan() {
+fn find_float_greater_than() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -564,7 +561,6 @@ fn find_float_greaterthan() {
             range: None,
         };
         let result = new_store.find(this_query);
-        println!("result: {:?}", &result);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Johnton"
@@ -580,7 +576,7 @@ fn find_float_greaterthan() {
 }
 
 #[test]
-fn find_float_lessthan() {
+fn find_float_less_than() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -612,7 +608,7 @@ fn find_float_lessthan() {
 }
 
 #[test]
-fn find_float_lessthan_orderby_desc() {
+fn find_float_less_than_order_by_desc() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -644,7 +640,7 @@ fn find_float_lessthan_orderby_desc() {
 }
 
 #[test]
-fn find_float_lessthan_range() {
+fn find_float_less_than_range() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -662,7 +658,6 @@ fn find_float_lessthan_range() {
         };
         let result = new_store.find(this_query);
         assert!(result.is_ok());
-        println!("result: {:?}", result);
         // Check if the first user in the result vector is "Cindini"
         let returned_entities = result.unwrap();
         let returned_name = returned_entities[0].get(&"name".to_string());
@@ -740,7 +735,7 @@ fn find_int_not_equal() {
 }
 
 #[test]
-fn find_int_greaterthan() {
+fn find_int_greater_than() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -757,7 +752,6 @@ fn find_int_greaterthan() {
             range: None,
         };
         let result = new_store.find(this_query);
-        println!("result: {:?}", &result);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Johnton"
@@ -773,7 +767,7 @@ fn find_int_greaterthan() {
 }
 
 #[test]
-fn find_int_greaterorequal() {
+fn find_int_greater_or_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -790,7 +784,6 @@ fn find_int_greaterorequal() {
             range: None,
         };
         let result = new_store.find(this_query);
-        println!("result: {:?}", &result);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Cindini"
@@ -806,7 +799,7 @@ fn find_int_greaterorequal() {
 }
 
 #[test]
-fn find_int_lessthan() {
+fn find_int_less_than() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -838,7 +831,7 @@ fn find_int_lessthan() {
 }
 
 #[test]
-fn find_int_lessorequal() {
+fn find_int_less_or_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -870,7 +863,7 @@ fn find_int_lessorequal() {
 }
 
 #[test]
-fn find_int_lessthan_orderby_desc() {
+fn find_int_less_than_order_by_desc() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -902,7 +895,7 @@ fn find_int_lessthan_orderby_desc() {
 }
 
 #[test]
-fn find_int_lessthan_range() {
+fn find_int_less_than_range() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -966,7 +959,7 @@ fn find_bool_equal() {
 }
 
 #[test]
-fn find_bool_notequal() {
+fn find_bool_not_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
