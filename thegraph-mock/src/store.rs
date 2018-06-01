@@ -80,6 +80,7 @@ impl Store for MockStore {
                     let id = entity.get("id").unwrap();
                     match id {
                         &Value::String(ref s) => s == &key.id,
+                        _ => false
                     }
                 })
                 .map(|entity| entity.clone())
