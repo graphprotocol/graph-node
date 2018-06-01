@@ -278,6 +278,22 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
+                                Value::Float(query_value) => {
+                                    diesel_query = diesel_query.filter(
+                                        sql("(data -> ")
+                                            .bind::<Text, _>(attribute)
+                                            .sql("->>'Float')::float > ")
+                                            .bind::<Float, _>(query_value as f32),
+                                    );
+                                }
+                                Value::Int(query_value) => {
+                                    diesel_query = diesel_query.filter(
+                                        sql("(data -> ")
+                                            .bind::<Text, _>(attribute)
+                                            .sql("->>'Int')::int > ")
+                                            .bind::<Integer, _>(query_value),
+                                    );
+                                }
                                 _ => unimplemented!(),
                             };
                         }
@@ -289,6 +305,22 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(attribute)
                                             .sql("->>'String' < ")
                                             .bind::<Text, _>(query_value),
+                                    );
+                                }
+                                Value::Float(query_value) => {
+                                    diesel_query = diesel_query.filter(
+                                        sql("(data -> ")
+                                            .bind::<Text, _>(attribute)
+                                            .sql("->>'Float')::float < ")
+                                            .bind::<Float, _>(query_value as f32),
+                                    );
+                                }
+                                Value::Int(query_value) => {
+                                    diesel_query = diesel_query.filter(
+                                        sql("(data -> ")
+                                            .bind::<Text, _>(attribute)
+                                            .sql("->>'Int')::int < ")
+                                            .bind::<Integer, _>(query_value),
                                     );
                                 }
                                 _ => unimplemented!(),
@@ -304,6 +336,22 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
+                                Value::Float(query_value) => {
+                                    diesel_query = diesel_query.filter(
+                                        sql("(data -> ")
+                                            .bind::<Text, _>(attribute)
+                                            .sql("->>'Float')::float >= ")
+                                            .bind::<Float, _>(query_value as f32),
+                                    );
+                                }
+                                Value::Int(query_value) => {
+                                    diesel_query = diesel_query.filter(
+                                        sql("(data -> ")
+                                            .bind::<Text, _>(attribute)
+                                            .sql("->>'Int')::int >= ")
+                                            .bind::<Integer, _>(query_value),
+                                    );
+                                }
                                 _ => unimplemented!(),
                             };
                         }
@@ -315,6 +363,22 @@ impl StoreTrait for Store {
                                             .bind::<Text, _>(attribute)
                                             .sql("->>'String' <= ")
                                             .bind::<Text, _>(query_value),
+                                    );
+                                }
+                                Value::Float(query_value) => {
+                                    diesel_query = diesel_query.filter(
+                                        sql("(data -> ")
+                                            .bind::<Text, _>(attribute)
+                                            .sql("->>'Float')::float <= ")
+                                            .bind::<Float, _>(query_value as f32),
+                                    );
+                                }
+                                Value::Int(query_value) => {
+                                    diesel_query = diesel_query.filter(
+                                        sql("(data -> ")
+                                            .bind::<Text, _>(attribute)
+                                            .sql("->>'Int')::int <= ")
+                                            .bind::<Integer, _>(query_value),
                                     );
                                 }
                                 _ => unimplemented!(),

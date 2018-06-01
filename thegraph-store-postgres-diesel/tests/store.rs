@@ -28,7 +28,7 @@ where
 {
     insert_test_data();
     let result = panic::catch_unwind(|| test());
-    // remove_test_data();
+    remove_test_data();
     result.expect("Failed to run test");
 }
 
@@ -127,7 +127,10 @@ fn delete_entity() {
         };
         store.delete(test_key).unwrap();
 
+        //Get all ids in table
         let all_ids = entities.select(id).load::<String>(&store.conn).unwrap();
+
+        // Check that that the deleted entity id is not present
         assert!(!all_ids.contains(&"3".to_string()));
     })
 }
@@ -156,13 +159,13 @@ fn get_entity() {
         expected_entity.insert("weight".to_string(), Value::Float(184.4 as f32));
         expected_entity.insert("coffee".to_string(), Value::Bool(false));
 
-        // For now just making sure there are sane results
+        // Check that the expected entity was returned
         assert_eq!(result, expected_entity);
     })
 }
 
 #[test]
-fn insert_new_entity() {
+fn insert_entity() {
     run_test(|| {
         use db_schema::entities::dsl::*;
 
@@ -191,7 +194,7 @@ fn insert_new_entity() {
 }
 
 #[test]
-fn update_existing_entity() {
+fn update_existing() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -227,7 +230,7 @@ fn update_existing_entity() {
 }
 
 #[test]
-fn find_entities_contain_string() {
+fn find_string_contains() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -256,7 +259,7 @@ fn find_entities_contain_string() {
 }
 
 #[test]
-fn find_entities_equal_string() {
+fn find_string_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -285,7 +288,7 @@ fn find_entities_equal_string() {
 }
 
 #[test]
-fn find_entities_not_equal_string() {
+fn find_string_notequal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -317,7 +320,7 @@ fn find_entities_not_equal_string() {
 }
 
 #[test]
-fn find_entities_greater_than_string() {
+fn find_string_greaterthan() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -350,7 +353,7 @@ fn find_entities_greater_than_string() {
 }
 
 #[test]
-fn find_entities_less_than_string() {
+fn find_string_lessthan() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -382,7 +385,7 @@ fn find_entities_less_than_string() {
 }
 
 #[test]
-fn find_entities_less_than_string_order_by_name_desc() {
+fn find_string_lessthan_orderby_desc() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -414,7 +417,7 @@ fn find_entities_less_than_string_order_by_name_desc() {
 }
 
 #[test]
-fn find_entities_less_than_string_with_range() {
+fn find_string_lessthan_range() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -446,7 +449,7 @@ fn find_entities_less_than_string_with_range() {
 }
 
 #[test]
-fn find_entities_multiple_filters() {
+fn find_string_multiple_and() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -465,7 +468,7 @@ fn find_entities_multiple_filters() {
         let result = new_store.find(this_query);
         assert!(result.is_ok());
 
-        // Check if the first user in the result vector is "Johnton"
+        // Check if the first user in the result vector is "Cindini"
         let returned_entities = result.unwrap();
         let returned_name = returned_entities[0].get(&"name".to_string());
         let test_value = Value::String("Cindini".to_string());
@@ -478,7 +481,7 @@ fn find_entities_multiple_filters() {
 }
 
 #[test]
-fn find_entities_float_equal() {
+fn find_float_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -512,7 +515,7 @@ fn find_entities_float_equal() {
 }
 
 #[test]
-fn find_entities_float_not_equal() {
+fn find_float_notequal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -544,7 +547,136 @@ fn find_entities_float_not_equal() {
 }
 
 #[test]
-fn find_entities_int_equal() {
+fn find_float_greaterthan() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
+                "weight".to_string(),
+                Value::Float(160 as f32),
+            )])),
+            order_by: None,
+            order_direction: None,
+            range: None,
+        };
+        let result = new_store.find(this_query);
+        println!("result: {:?}", &result);
+        assert!(result.is_ok());
+
+        // Check if the first user in the result vector is "Johnton"
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Johnton".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be one user returned in results
+        assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_float_lessthan() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+                "weight".to_string(),
+                Value::Float(160 as f32),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Ascending),
+            range: None,
+        };
+        let result = new_store.find(this_query);
+        assert!(result.is_ok());
+
+        // Check if the first user in the result vector is "Cindini";
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Cindini".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        //There should be two users returned in results
+        assert_eq!(2, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_float_lessthan_orderby_desc() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+                "weight".to_string(),
+                Value::Float(160 as f32),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: None,
+        };
+        let result = new_store.find(this_query);
+        assert!(result.is_ok());
+
+        // Check if the first user in the result vector is "Shaqueeena"
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Shaqueeena".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be two users returned in results
+        assert_eq!(2, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_float_lessthan_range() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+                "weight".to_string(),
+                Value::Float(161 as f32),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: Some(StoreRange { first: 1, skip: 1 }),
+        };
+        let result = new_store.find(this_query);
+        assert!(result.is_ok());
+        println!("result: {:?}", result);
+        // Check if the first user in the result vector is "Cindini"
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Cindini".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be one user returned in results
+        assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_int_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -576,7 +708,7 @@ fn find_entities_int_equal() {
 }
 
 #[test]
-fn find_entities_int_not_equal() {
+fn find_int_not_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -608,7 +740,201 @@ fn find_entities_int_not_equal() {
 }
 
 #[test]
-fn find_entities_bool_equal() {
+fn find_int_greaterthan() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
+                "age".to_string(),
+                Value::Int(43 as i32),
+            )])),
+            order_by: None,
+            order_direction: None,
+            range: None,
+        };
+        let result = new_store.find(this_query);
+        println!("result: {:?}", &result);
+        assert!(result.is_ok());
+
+        // Check if the first user in the result vector is "Johnton"
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Johnton".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be one user returned in results
+        assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_int_greaterorequal() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::GreaterOrEqual(
+                "age".to_string(),
+                Value::Int(43 as i32),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Ascending),
+            range: None,
+        };
+        let result = new_store.find(this_query);
+        println!("result: {:?}", &result);
+        assert!(result.is_ok());
+
+        // Check if the first user in the result vector is "Cindini"
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Cindini".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be one user returned in results
+        assert_eq!(2, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_int_lessthan() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+                "age".to_string(),
+                Value::Int(50 as i32),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Ascending),
+            range: None,
+        };
+        let result = new_store.find(this_query);
+        assert!(result.is_ok());
+
+        // Check if the first user in the result vector is "Cindini"
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Cindini".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        //There should be two users returned in results
+        assert_eq!(2, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_int_lessorequal() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::LessThanOrEqual(
+                "age".to_string(),
+                Value::Int(43 as i32),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Ascending),
+            range: None,
+        };
+        let result = new_store.find(this_query);
+        assert!(result.is_ok());
+
+        // Check if the first user in the result vector is "Cindini";
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Cindini".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        //There should be two users returned in results
+        assert_eq!(2, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_int_lessthan_orderby_desc() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+                "age".to_string(),
+                Value::Int(50 as i32),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: None,
+        };
+        let result = new_store.find(this_query);
+        assert!(result.is_ok());
+
+        // Check if the first user in the result vector is "Shaqueeena"
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Shaqueeena".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be two users returned in results
+        assert_eq!(2, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_int_lessthan_range() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+                "age".to_string(),
+                Value::Int(67 as i32),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: Some(StoreRange { first: 1, skip: 1 }),
+        };
+        let result = new_store.find(this_query);
+        assert!(result.is_ok());
+
+        // Check if the first user in the result vector is "Johnton"
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"name".to_string());
+        let test_value = Value::String("Cindini".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be one user returned in results
+        assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_bool_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
@@ -640,7 +966,7 @@ fn find_entities_bool_equal() {
 }
 
 #[test]
-fn find_entities_bool_not_equal() {
+fn find_bool_notequal() {
     run_test(|| {
         let core = Core::new().unwrap();
         let logger = logger();
