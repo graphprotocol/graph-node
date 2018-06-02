@@ -28,6 +28,16 @@ impl GraphQLService {
         GraphQLService { schema, query_sink }
     }
 
+    /// Serves a GraphiQL index.html.
+    fn serve_file(&self, contents: &'static str) -> GraphQLServiceResponse {
+        Box::new(future::ok(
+            Response::builder()
+                .status(200)
+                .body(Body::from(contents))
+                .unwrap(),
+        ))
+    }
+
     /// Handles GraphQL queries received via POST /.
     fn handle_graphql_query(&self, request: Request<Body>) -> GraphQLServiceResponse {
         let query_sink = self.query_sink.clone();
@@ -87,11 +97,20 @@ impl Service for GraphQLService {
 
     fn call(&mut self, req: Request<Self::ReqBody>) -> Self::Future {
         match (req.method(), req.uri().path()) {
+            // GraphiQL
+            (&Method::GET, "/") => self.serve_file(include_str!("../assets/index.html")),
+            (&Method::GET, "/graphiql.css") => {
+                self.serve_file(include_str!("../assets/graphiql.css"))
+            }
+            (&Method::GET, "/graphiql.min.js") => {
+                self.serve_file(include_str!("../assets/graphiql.min.js"))
+            }
+
             // POST / receives GraphQL queries
-            (&Method::POST, "/") => self.handle_graphql_query(req),
+            (&Method::POST, "/graphql") => self.handle_graphql_query(req),
 
             // OPTIONS / allows to check for GraphQL HTTP features
-            (&Method::OPTIONS, "/") => self.handle_graphql_options(req),
+            (&Method::OPTIONS, "/graphql") => self.handle_graphql_options(req),
 
             // Everything else results in a 404
             _ => self.handle_not_found(req),
