@@ -1,5 +1,5 @@
-use graphql_parser::Pos;
 use graphql_parser::schema::*;
+use graphql_parser::Pos;
 use inflector::Inflector;
 use std::error::Error;
 use std::fmt;
@@ -274,16 +274,14 @@ fn query_fields_for_type(_schema: &Document, type_name: &Name) -> Vec<Field> {
             position: Pos::default(),
             description: None,
             name: type_name.to_lowercase(),
-            arguments: vec![
-                InputValue {
-                    position: Pos::default(),
-                    description: None,
-                    name: "id".to_string(),
-                    value_type: Type::NonNullType(Box::new(Type::NamedType("ID".to_string()))),
-                    default_value: None,
-                    directives: vec![],
-                },
-            ],
+            arguments: vec![InputValue {
+                position: Pos::default(),
+                description: None,
+                name: "id".to_string(),
+                value_type: Type::NonNullType(Box::new(Type::NamedType("ID".to_string()))),
+                default_value: None,
+                directives: vec![],
+            }],
             field_type: Type::NamedType(type_name.to_owned()),
             directives: vec![],
         },
@@ -440,9 +438,8 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            [
-                "skip", "first", "last", "after", "before", "orderBy", "where"
-            ].into_iter()
+            ["skip", "first", "last", "after", "before", "orderBy", "where",]
+                .into_iter()
                 .map(|name| name.to_string())
                 .collect::<Vec<String>>()
         );
@@ -498,9 +495,8 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            [
-                "skip", "first", "last", "after", "before", "orderBy", "where"
-            ].into_iter()
+            ["skip", "first", "last", "after", "before", "orderBy", "where",]
+                .into_iter()
                 .map(|name| name.to_string())
                 .collect::<Vec<String>>()
         );

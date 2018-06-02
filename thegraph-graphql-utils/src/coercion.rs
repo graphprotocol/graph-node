@@ -122,9 +122,9 @@ impl<'a> MaybeCoercible<&'a Type, &'a Name, Value, &'a TypeDefinition> for Maybe
 
 #[cfg(test)]
 mod tests {
-    use graphql_parser::Pos;
     use graphql_parser::query::Value;
     use graphql_parser::schema::{EnumType, EnumValue, InputObjectType, ScalarType, TypeDefinition};
+    use graphql_parser::Pos;
     use std::collections::BTreeMap;
     use std::iter::FromIterator;
 
@@ -137,14 +137,12 @@ mod tests {
             description: None,
             directives: vec![],
             position: Pos::default(),
-            values: vec![
-                EnumValue {
-                    name: "ValidVariant".to_string(),
-                    position: Pos::default(),
-                    description: None,
-                    directives: vec![],
-                },
-            ],
+            values: vec![EnumValue {
+                name: "ValidVariant".to_string(),
+                position: Pos::default(),
+                description: None,
+                directives: vec![],
+            }],
         });
 
         // We can coerce from Value::Enum -> TypeDefinition::Enum if the variant is valid

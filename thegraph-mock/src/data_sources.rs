@@ -22,17 +22,15 @@ impl MockDataSourceProvider {
             logger: logger.new(o!("component" => "MockDataSourceProvider")),
             event_sink: None,
             schema_event_sink: None,
-            schemas: vec![
-                Schema {
-                    id: "176dbd4fdeb8407b899be5d456ababc0".to_string(),
-                    document: graphql_parser::parse_schema(
-                        "type User {
+            schemas: vec![Schema {
+                id: "176dbd4fdeb8407b899be5d456ababc0".to_string(),
+                document: graphql_parser::parse_schema(
+                    "type User {
                            id: ID!
                            name: String!
                          }",
-                    ).unwrap(),
-                },
-            ],
+                ).unwrap(),
+            }],
         }
     }
 

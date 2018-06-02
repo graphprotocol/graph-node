@@ -176,12 +176,10 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![
-                        (
-                            &"orderBy".to_string(),
-                            gqlq::Value::Enum("name".to_string()),
-                        ),
-                    ].into_iter(),
+                    vec![(
+                        &"orderBy".to_string(),
+                        gqlq::Value::Enum("name".to_string()),
+                    )].into_iter(),
                 )
             ).order_by,
             Some("name".to_string())
@@ -190,12 +188,10 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![
-                        (
-                            &"orderBy".to_string(),
-                            gqlq::Value::Enum("email".to_string()),
-                        ),
-                    ].into_iter()
+                    vec![(
+                        &"orderBy".to_string(),
+                        gqlq::Value::Enum("email".to_string()),
+                    )].into_iter()
                 )
             ).order_by,
             Some("email".to_string())
@@ -208,12 +204,10 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![
-                        (
-                            &"orderBy".to_string(),
-                            gqlq::Value::String("name".to_string()),
-                        ),
-                    ].into_iter()
+                    vec![(
+                        &"orderBy".to_string(),
+                        gqlq::Value::String("name".to_string()),
+                    )].into_iter()
                 ),
             ).order_by,
             None,
@@ -222,12 +216,10 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![
-                        (
-                            &"orderBy".to_string(),
-                            gqlq::Value::String("email".to_string()),
-                        ),
-                    ].into_iter(),
+                    vec![(
+                        &"orderBy".to_string(),
+                        gqlq::Value::String("email".to_string()),
+                    )].into_iter(),
                 )
             ).order_by,
             None,
@@ -240,12 +232,10 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![
-                        (
-                            &"orderDirection".to_string(),
-                            gqlq::Value::Enum("asc".to_string()),
-                        ),
-                    ].into_iter(),
+                    vec![(
+                        &"orderDirection".to_string(),
+                        gqlq::Value::Enum("asc".to_string()),
+                    )].into_iter(),
                 )
             ).order_direction,
             Some(StoreOrder::Ascending)
@@ -254,12 +244,10 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![
-                        (
-                            &"orderDirection".to_string(),
-                            gqlq::Value::Enum("desc".to_string()),
-                        ),
-                    ].into_iter()
+                    vec![(
+                        &"orderDirection".to_string(),
+                        gqlq::Value::Enum("desc".to_string()),
+                    )].into_iter()
                 )
             ).order_direction,
             Some(StoreOrder::Descending)
@@ -268,12 +256,10 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![
-                        (
-                            &"orderDirection".to_string(),
-                            gqlq::Value::Enum("ascending...".to_string()),
-                        ),
-                    ].into_iter()
+                    vec![(
+                        &"orderDirection".to_string(),
+                        gqlq::Value::Enum("ascending...".to_string()),
+                    )].into_iter()
                 )
             ).order_direction,
             None,
@@ -286,12 +272,10 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![
-                        (
-                            &"orderDirection".to_string(),
-                            gqlq::Value::String("asc".to_string()),
-                        ),
-                    ].into_iter()
+                    vec![(
+                        &"orderDirection".to_string(),
+                        gqlq::Value::String("asc".to_string()),
+                    )].into_iter()
                 ),
             ).order_direction,
             None,
@@ -300,12 +284,10 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![
-                        (
-                            &"orderDirection".to_string(),
-                            gqlq::Value::String("desc".to_string()),
-                        ),
-                    ].into_iter(),
+                    vec![(
+                        &"orderDirection".to_string(),
+                        gqlq::Value::String("desc".to_string()),
+                    )].into_iter(),
                 )
             ).order_direction,
             None,
@@ -363,22 +345,19 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![
-                        (
-                            &"filter".to_string(),
-                            gqlq::Value::Object(BTreeMap::from_iter(vec![
-                                (
-                                    "name_ends_with".to_string(),
-                                    gqlq::Value::String("ello".to_string()),
-                                ),
-                            ])),
-                        ),
-                    ].into_iter()
+                    vec![(
+                        &"filter".to_string(),
+                        gqlq::Value::Object(BTreeMap::from_iter(vec![(
+                            "name_ends_with".to_string(),
+                            gqlq::Value::String("ello".to_string()),
+                        )])),
+                    )].into_iter()
                 )
             ).filter,
-            Some(StoreFilter::And(vec![
-                StoreFilter::EndsWith("name".to_string(), Value::String("ello".to_string())),
-            ]))
+            Some(StoreFilter::And(vec![StoreFilter::EndsWith(
+                "name".to_string(),
+                Value::String("ello".to_string()),
+            )]))
         )
     }
 }

@@ -121,43 +121,39 @@ fn expected_mock_schema_introspection() -> q::Value {
         ("description", q::Value::Null),
         (
             "fields",
-            q::Value::List(vec![
-                object_value(vec![
-                    ("name", q::Value::String("id".to_string())),
-                    ("description", q::Value::Null),
-                    (
-                        "type",
-                        object_value(vec![
-                            ("kind", q::Value::Enum("NON_NULL".to_string())),
-                            ("name", q::Value::Null),
-                            (
-                                "ofType",
-                                object_value(vec![
-                                    ("kind", q::Value::Enum("SCALAR".to_string())),
-                                    ("name", q::Value::String("ID".to_string())),
-                                    ("ofType", q::Value::Null),
-                                ]),
-                            ),
-                        ]),
-                    ),
-                    ("args", q::Value::List(vec![])),
-                    ("deprecationReason", q::Value::Null),
-                    ("isDeprecated", q::Value::Boolean(false)),
-                ]),
-            ]),
+            q::Value::List(vec![object_value(vec![
+                ("name", q::Value::String("id".to_string())),
+                ("description", q::Value::Null),
+                (
+                    "type",
+                    object_value(vec![
+                        ("kind", q::Value::Enum("NON_NULL".to_string())),
+                        ("name", q::Value::Null),
+                        (
+                            "ofType",
+                            object_value(vec![
+                                ("kind", q::Value::Enum("SCALAR".to_string())),
+                                ("name", q::Value::String("ID".to_string())),
+                                ("ofType", q::Value::Null),
+                            ]),
+                        ),
+                    ]),
+                ),
+                ("args", q::Value::List(vec![])),
+                ("deprecationReason", q::Value::Null),
+                ("isDeprecated", q::Value::Boolean(false)),
+            ])]),
         ),
         ("inputFields", q::Value::Null),
         ("enumValues", q::Value::Null),
         ("interfaces", q::Value::Null),
         (
             "possibleTypes",
-            q::Value::List(vec![
-                object_value(vec![
-                    ("kind", q::Value::Enum("OBJECT".to_string())),
-                    ("name", q::Value::String("User".to_string())),
-                    ("ofType", q::Value::Null),
-                ]),
-            ]),
+            q::Value::List(vec![object_value(vec![
+                ("kind", q::Value::Enum("OBJECT".to_string())),
+                ("name", q::Value::String("User".to_string())),
+                ("ofType", q::Value::Null),
+            ])]),
         ),
     ]);
 
@@ -308,13 +304,11 @@ fn expected_mock_schema_introspection() -> q::Value {
         ("enumValues", q::Value::Null),
         (
             "interfaces",
-            q::Value::List(vec![
-                object_value(vec![
-                    ("kind", q::Value::Enum("INTERFACE".to_string())),
-                    ("name", q::Value::String("Node".to_string())),
-                    ("ofType", q::Value::Null),
-                ]),
-            ]),
+            q::Value::List(vec![object_value(vec![
+                ("kind", q::Value::Enum("INTERFACE".to_string())),
+                ("name", q::Value::String("Node".to_string())),
+                ("ofType", q::Value::Null),
+            ])]),
         ),
         ("possibleTypes", q::Value::Null),
     ]);
@@ -419,33 +413,29 @@ fn expected_mock_schema_introspection() -> q::Value {
         query_type,
     ]);
 
-    let expected_directives = q::Value::List(vec![
-        object_value(vec![
-            ("name", q::Value::String("language".to_string())),
-            ("description", q::Value::Null),
-            (
-                "args",
-                q::Value::List(vec![
+    let expected_directives = q::Value::List(vec![object_value(vec![
+        ("name", q::Value::String("language".to_string())),
+        ("description", q::Value::Null),
+        (
+            "args",
+            q::Value::List(vec![object_value(vec![
+                ("name", q::Value::String("language".to_string())),
+                ("description", q::Value::Null),
+                (
+                    "defaultValue",
+                    q::Value::String("String(\"English\")".to_string()),
+                ),
+                (
+                    "type",
                     object_value(vec![
-                        ("name", q::Value::String("language".to_string())),
-                        ("description", q::Value::Null),
-                        (
-                            "defaultValue",
-                            q::Value::String("String(\"English\")".to_string()),
-                        ),
-                        (
-                            "type",
-                            object_value(vec![
-                                ("kind", q::Value::Enum("SCALAR".to_string())),
-                                ("name", q::Value::String("String".to_string())),
-                                ("ofType", q::Value::Null),
-                            ]),
-                        ),
+                        ("kind", q::Value::Enum("SCALAR".to_string())),
+                        ("name", q::Value::String("String".to_string())),
+                        ("ofType", q::Value::Null),
                     ]),
-                ]),
-            ),
-        ]),
-    ]);
+                ),
+            ])]),
+        ),
+    ])]);
 
     let schema_type = object_value(vec![
         (

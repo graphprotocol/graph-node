@@ -21,8 +21,8 @@ use tokio_core::reactor::Core;
 use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::prelude::*;
 
-use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
 use thegraph_hyper::test_utils;
+use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
 
 /// Helper function that simulates running a single incoming query and then
 /// closing the query stream.
