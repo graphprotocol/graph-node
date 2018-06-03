@@ -72,7 +72,7 @@ fn rejects_empty_json() {
 
     // Send an empty JSON POST request
     let client = Client::new();
-    let request = Request::post("http://localhost:8000")
+    let request = Request::post("http://localhost:8000/graphql")
         .body(Body::from("{}"))
         .unwrap();
     let work = client.request(request);
@@ -123,7 +123,7 @@ fn rejects_invalid_queries() {
 
     // Send an broken query request
     let client = Client::new();
-    let request = Request::post("http://localhost:8000")
+    let request = Request::post("http://localhost:8000/graphql")
         .body(Body::from("{\"query\": \"<L<G<>M>\"}"))
         .unwrap();
     let work = client.request(request);
@@ -207,7 +207,7 @@ fn accepts_valid_queries() {
 
     // Send a valid example query
     let client = Client::new();
-    let request = Request::post("http://localhost:8000")
+    let request = Request::post("http://localhost:8000/graphql")
         .body(Body::from("{\"query\": \"{ name }\"}"))
         .unwrap();
     let work = client.request(request);
