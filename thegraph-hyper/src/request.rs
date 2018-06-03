@@ -59,10 +59,15 @@ impl Future for GraphQLRequest {
 
         // Parse the "variables" field of the JSON body, if present
         let variables = match obj.get("variables") {
-            Some(variables) => serde_json::from_value(variables.clone())
-                .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))
-                .map(|v| Some(v)),
-            None => Ok(None),
+            None | Some(serde_json::Value::Null) => Ok(None),
+            Some(variables @ serde_json::Value::Object(_)) => {
+                serde_json::from_value(variables.clone())
+                    .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))
+                    .map(|v| Some(v))
+            }
+            _ => Err(GraphQLServerError::ClientError(format!(
+                "Invalid query variables provided"
+            ))),
         }?;
 
         // Create a one-shot channel to allow another part of the system
@@ -158,6 +163,52 @@ mod tests {
             query.document,
             graphql_parser::parse_query("{ user { name } }").unwrap()
         );
+    }
+
+    #[test]
+    fn accepts_null_variables() {
+        let mut core = Core::new().unwrap();
+        let schema = Schema {
+            id: "test".to_string(),
+            document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
+        };
+        let request = GraphQLRequest::new(
+            hyper::Chunk::from(
+                "\
+                 {\
+                 \"query\": \"{ user { name } }\", \
+                 \"variables\": null \
+                 }",
+            ),
+            Some(schema),
+        );
+        let result = core.run(request);
+        let (query, _) = result.expect("Should accept null variables");
+
+        let expected_query = graphql_parser::parse_query("{ user { name } }").unwrap();
+        assert_eq!(query.document, expected_query);
+        assert_eq!(query.variables, None);
+    }
+
+    #[test]
+    fn rejects_non_map_variables() {
+        let mut core = Core::new().unwrap();
+        let schema = Schema {
+            id: "test".to_string(),
+            document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
+        };
+        let request = GraphQLRequest::new(
+            hyper::Chunk::from(
+                "\
+                 {\
+                 \"query\": \"{ user { name } }\", \
+                 \"variables\": 5 \
+                 }",
+            ),
+            Some(schema),
+        );
+        let result = core.run(request);
+        result.expect_err("Should reject non-map variables");
     }
 
     #[test]
