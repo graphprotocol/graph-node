@@ -155,7 +155,7 @@ mod tests {
 
         let request = Request::builder()
             .method(Method::POST)
-            .uri("http://localhost:8000/")
+            .uri("http://localhost:8000/graphql")
             .body(Body::from("{}"))
             .unwrap();
 
@@ -206,7 +206,7 @@ mod tests {
 
         let request = Request::builder()
             .method(Method::POST)
-            .uri("http://localhost:8000/")
+            .uri("http://localhost:8000/graphql")
             .body(Body::from("{\"query\": \"{ name }\"}"))
             .unwrap();
 
