@@ -8,12 +8,15 @@ use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use serde_json;
 use slog;
+use std::ops::Deref;
+use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
 use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::{Store as StoreTrait, *};
 use thegraph::data::store::*;
 use thegraph::util::stream::StreamError;
+
 embed_migrations!("./migrations");
 
 /// Run all initial schema migrations.
@@ -46,8 +49,9 @@ pub struct Store {
     logger: slog::Logger,
     runtime: Handle,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
+    request_sink: Sender<StoreRequest>,
     _config: StoreConfig,
-    pub conn: PgConnection,
+    pub conn: Arc<Mutex<PgConnection>>,
 }
 
 impl Store {
@@ -56,7 +60,10 @@ impl Store {
         let logger = logger.new(o!("component" => "Store"));
 
         // Create a channel for handling incoming schema provider events
-        let (sink, stream) = channel(100);
+        let (schema_provider_sink, schema_provider_stream) = channel(100);
+
+        // Create a channel for handling store requests
+        let (request_sink, request_stream) = channel(100);
 
         // Connect to Postgres
         let conn =
@@ -71,14 +78,18 @@ impl Store {
         let mut store = Store {
             logger,
             event_sink: None,
-            schema_provider_event_sink: sink,
+            schema_provider_event_sink: schema_provider_sink,
+            request_sink: request_sink,
             runtime,
             _config: config,
-            conn: conn,
+            conn: Arc::new(Mutex::new(conn)),
         };
 
         // Spawn a task that handles incoming schema provider events
-        store.handle_schema_provider_events(stream);
+        store.handle_schema_provider_events(schema_provider_stream);
+
+        // Spawn a task that handles store requests
+        store.handle_requests(request_stream);
 
         // Return the store
         store
@@ -91,11 +102,39 @@ impl Store {
             Ok(())
         }));
     }
-}
 
-impl StoreTrait for Store {
-    fn get(&self, key: StoreKey) -> Result<Entity, ()> {
-        debug!(self.logger, "get"; "key" => format!("{:?}", key));
+    /// Handles incoming store requests.
+    fn handle_requests(&mut self, stream: Receiver<StoreRequest>) {
+        let logger = self.logger.clone();
+        let conn = self.conn.clone();
+
+        self.runtime.spawn(stream.for_each(move |request| {
+            let conn = conn.lock().unwrap();
+            match request {
+                StoreRequest::Get(key, sender) => {
+                    let result = Self::get(&logger, conn.deref(), key);
+                    sender.send(result).unwrap();
+                }
+                StoreRequest::Set(key, entity, sender) => {
+                    let result = Self::set(&logger, conn.deref(), key, entity);
+                    sender.send(result).unwrap();
+                }
+                StoreRequest::Delete(key, sender) => {
+                    let result = Self::delete(&logger, conn.deref(), key);
+                    sender.send(result).unwrap();
+                }
+                StoreRequest::Find(query, sender) => {
+                    let result = Self::find(&logger, conn.deref(), query);
+                    sender.send(result).unwrap();
+                }
+            };
+
+            Ok(())
+        }))
+    }
+
+    fn get(logger: &slog::Logger, conn: &PgConnection, key: StoreKey) -> Result<Entity, ()> {
+        debug!(logger, "Get"; "key" => format!("{:?}", key));
 
         use db_schema::entities::dsl::*;
 
@@ -106,15 +145,20 @@ impl StoreTrait for Store {
         entities
             .find((key.id, datasource, key.entity))
             .select(data)
-            .first::<serde_json::Value>(&self.conn)
+            .first::<serde_json::Value>(conn)
             .map(|value| {
                 serde_json::from_value::<Entity>(value).expect("Failed to deserialize entity")
             })
             .map_err(|_| ())
     }
 
-    fn set(&mut self, key: StoreKey, input_entity: Entity) -> Result<(), ()> {
-        debug!(self.logger, "set"; "key" => format!("{:?}", key));
+    fn set(
+        logger: &slog::Logger,
+        conn: &PgConnection,
+        key: StoreKey,
+        input_entity: Entity,
+    ) -> Result<(), ()> {
+        debug!(logger, "Set"; "key" => format!("{:?}", key));
 
         use db_schema::entities::dsl::*;
 
@@ -141,13 +185,13 @@ impl StoreTrait for Store {
                 data_source.eq(&data_source),
                 data.eq(&entity_json),
             ))
-            .execute(&self.conn)
+            .execute(conn)
             .map(|_| ())
             .map_err(|_| ())
     }
 
-    fn delete(&mut self, key: StoreKey) -> Result<(), ()> {
-        debug!(self.logger, "delete"; "key" => format!("{:?}", key));
+    fn delete(logger: &slog::Logger, conn: &PgConnection, key: StoreKey) -> Result<(), ()> {
+        debug!(logger, "Delete"; "key" => format!("{:?}", key));
 
         use db_schema::entities::dsl::*;
 
@@ -157,12 +201,18 @@ impl StoreTrait for Store {
             entities
                 .filter(id.eq(&key.id))
                 .filter(entity.eq(&key.entity)),
-        ).execute(&self.conn)
+        ).execute(conn)
             .map(|_| ())
             .map_err(|_| ())
     }
 
-    fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()> {
+    fn find(
+        logger: &slog::Logger,
+        conn: &PgConnection,
+        query: StoreQuery,
+    ) -> Result<Vec<Entity>, ()> {
+        debug!(logger, "Find"; "entity" => &query.entity);
+
         use db_schema::entities::columns::*;
         use db_schema::*;
 
@@ -228,7 +278,6 @@ impl StoreTrait for Store {
                                             .bind::<Bool, _>(query_value),
                                     );
                                 }
-                                _ => unimplemented!(),
                             };
                         }
                         StoreFilter::Not(attribute, value) => {
@@ -265,7 +314,6 @@ impl StoreTrait for Store {
                                             .bind::<Bool, _>(query_value),
                                     );
                                 }
-                                _ => unimplemented!(),
                             };
                         }
                         StoreFilter::GreaterThan(attribute, value) => {
@@ -432,7 +480,7 @@ impl StoreTrait for Store {
 
         // Process results; deserialize JSON data
         diesel_query
-            .load::<serde_json::Value>(&self.conn)
+            .load::<serde_json::Value>(conn)
             .map(|values| {
                 values
                     .into_iter()
@@ -443,6 +491,12 @@ impl StoreTrait for Store {
                     .collect()
             })
             .map_err(|_| ())
+    }
+}
+
+impl StoreTrait for Store {
+    fn request_sink(&mut self) -> Sender<StoreRequest> {
+        self.request_sink.clone()
     }
 
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
