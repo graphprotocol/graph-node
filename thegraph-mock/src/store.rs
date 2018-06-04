@@ -1,6 +1,7 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
+use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
 use thegraph::components::schema::SchemaProviderEvent;
@@ -13,15 +14,19 @@ pub struct MockStore {
     logger: slog::Logger,
     event_sink: Option<Sender<StoreEvent>>,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
+    request_sink: Sender<StoreRequest>,
     runtime: Handle,
-    entities: Vec<Entity>,
+    entities: Arc<Mutex<Vec<Entity>>>,
 }
 
 impl MockStore {
     /// Creates a new mock `Store`.
     pub fn new(logger: &slog::Logger, runtime: Handle) -> Self {
         // Create a channel for handling incoming schema provider events
-        let (sink, stream) = channel(100);
+        let (schema_provider_sink, schema_provider_stream) = channel(100);
+
+        // Create a channel for handling store requests
+        let (request_sink, request_stream) = channel(100);
 
         // Create a few test entities
         let mut entities = vec![];
@@ -36,13 +41,17 @@ impl MockStore {
         let mut store = MockStore {
             logger: logger.new(o!("component" => "MockStore")),
             event_sink: None,
-            schema_provider_event_sink: sink,
+            schema_provider_event_sink: schema_provider_sink,
+            request_sink: request_sink,
             runtime,
-            entities,
+            entities: Arc::new(Mutex::new(entities)),
         };
 
         // Spawn a task that handles incoming schema provider events
-        store.handle_schema_provider_events(stream);
+        store.handle_schema_provider_events(schema_provider_stream);
+
+        // Spawn a task that handles store requests
+        store.handle_requests(request_stream);
 
         // Return the new store
         store
@@ -57,24 +66,48 @@ impl MockStore {
         }));
     }
 
+    /// Handles store requests.
+    fn handle_requests(&mut self, stream: Receiver<StoreRequest>) {
+        let logger = self.logger.clone();
+        let entities = self.entities.clone();
+        self.runtime.spawn(stream.for_each(move |request| {
+            info!(logger, "Received store request"; "request" => format!("{:?}", request));
+            let entities = entities.lock().unwrap();
+            match request {
+                StoreRequest::Get(key, sender) => {
+                    sender.send(Self::get(&*entities, key)).unwrap();
+                }
+                StoreRequest::Set(key, entity, sender) => {
+                    sender.send(Self::set(&*entities, key, entity)).unwrap();
+                }
+                StoreRequest::Delete(key, sender) => {
+                    sender.send(Self::delete(&*entities, key)).unwrap();
+                }
+                StoreRequest::Find(query, sender) => {
+                    sender.send(Self::find(&*entities, query)).unwrap();
+                }
+            };
+            Ok(())
+        }));
+    }
+
     /// Generates a bunch of mock store events.
     fn generate_mock_events(&self) {
         info!(self.logger, "Generate mock events");
 
         let sink = self.event_sink.clone().unwrap();
-        for entity in self.entities.iter() {
+        let entities = self.entities.lock().unwrap();
+        for entity in entities.iter() {
             sink.clone()
                 .send(StoreEvent::EntityAdded(entity.clone()))
                 .wait()
                 .unwrap();
         }
     }
-}
 
-impl Store for MockStore {
-    fn get(&self, key: StoreKey) -> Result<Entity, ()> {
+    fn get(entities: &Vec<Entity>, key: StoreKey) -> StoreGetResponse {
         if key.entity == "User" {
-            self.entities
+            entities
                 .iter()
                 .find(|entity| {
                     let id = entity.get("id").unwrap();
@@ -90,16 +123,22 @@ impl Store for MockStore {
         }
     }
 
-    fn set(&mut self, _key: StoreKey, _entity: Entity) -> Result<(), ()> {
+    fn set(_entities: &Vec<Entity>, _key: StoreKey, _entity: Entity) -> StoreSetResponse {
         unimplemented!();
     }
 
-    fn delete(&mut self, _key: StoreKey) -> Result<(), ()> {
+    fn delete(_entities: &Vec<Entity>, _key: StoreKey) -> StoreDeleteResponse {
         unimplemented!();
     }
 
-    fn find(&self, _query: StoreQuery) -> Result<Vec<Entity>, ()> {
-        Ok(self.entities.clone())
+    fn find(entities: &Vec<Entity>, _query: StoreQuery) -> StoreFindResponse {
+        Ok(entities.clone())
+    }
+}
+
+impl Store for MockStore {
+    fn request_sink(&mut self) -> Sender<StoreRequest> {
+        self.request_sink.clone()
     }
 
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
