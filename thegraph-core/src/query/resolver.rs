@@ -1,26 +1,27 @@
+use futures::prelude::*;
+use futures::sync::mpsc::Sender;
+use futures::sync::oneshot;
 use graphql_parser::query as gqlq;
 use graphql_parser::schema as gqls;
 use slog;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use store::query::build_query;
 use thegraph::components::store::*;
-use thegraph::prelude::Store;
 use thegraph_graphql_utils::Resolver as ResolverTrait;
 
 /// A resolver that fetches entities from a `Store`.
 #[derive(Clone)]
 pub struct StoreResolver {
     logger: slog::Logger,
-    store: Arc<Store>,
+    store_requests: Sender<StoreRequest>,
 }
 
 impl StoreResolver {
-    pub fn new(logger: &slog::Logger, store: Arc<Store>) -> Self {
+    pub fn new(logger: &slog::Logger, store_requests: Sender<StoreRequest>) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
-            store,
+            store_requests,
         }
     }
 }
@@ -32,19 +33,28 @@ impl ResolverTrait for StoreResolver {
         entity: &gqlq::Name,
         arguments: &HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value {
+        // Prepare a store request
+        let (result_sender, result_receiver) = oneshot::channel();
         let store_query = build_query(entity, arguments);
+        let request = StoreRequest::Find(store_query, result_sender);
 
-        debug!(self.logger, "Resolve entities"; "store_query" => format!("{:?}", store_query));
+        // Send store request
+        self.store_requests.clone().send(request).wait().unwrap();
 
-        self.store
-            .find(store_query)
-            .map(|entities| {
-                gqlq::Value::List(
-                    entities
-                        .into_iter()
-                        .map(|e| e.into())
-                        .collect::<Vec<gqlq::Value>>(),
-                )
+        // Handle the a response
+        result_receiver
+            .wait()
+            .map(|result| {
+                result
+                    .map(|entities| {
+                        gqlq::Value::List(
+                            entities
+                                .into_iter()
+                                .map(|e| e.into())
+                                .collect::<Vec<gqlq::Value>>(),
+                        )
+                    })
+                    .unwrap_or(gqlq::Value::Null)
             })
             .unwrap_or(gqlq::Value::Null)
     }
@@ -55,12 +65,25 @@ impl ResolverTrait for StoreResolver {
         entity: &gqlq::Name,
         _arguments: &HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value {
-        self.store
-            .get(StoreKey {
-                entity: entity.to_owned(),
-                id: "1".to_string(),
+        // Prepare a store request
+        let (result_sender, result_receiver) = oneshot::channel();
+        let store_key = StoreKey {
+            entity: entity.to_owned(),
+            id: "1".to_string(),
+        };
+        let request = StoreRequest::Get(store_key, result_sender);
+
+        // Send store request
+        self.store_requests.clone().send(request).wait().unwrap();
+
+        // Handle the a response
+        result_receiver
+            .wait()
+            .map(|result| {
+                result
+                    .map(|entity| entity.into())
+                    .unwrap_or(gqlq::Value::Null)
             })
-            .map(|entity| entity.into())
             .unwrap_or(gqlq::Value::Null)
     }
 

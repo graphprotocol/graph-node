@@ -1,33 +1,33 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
-use std::sync::Arc;
 use tokio_core::reactor::Handle;
 
-use thegraph::prelude::{Query, QueryRunner as QueryRunnerTrait, Store};
+use thegraph::prelude::{Query, QueryRunner as QueryRunnerTrait, StoreRequest};
 use thegraph_graphql_utils::execution;
 
 use super::resolver::StoreResolver;
 
 /// Common query runner implementation for The Graph.
-pub struct QueryRunner<S> {
+pub struct QueryRunner {
     logger: slog::Logger,
     query_sink: Sender<Query>,
-    store: Arc<S>,
+    store_requests: Sender<StoreRequest>,
     runtime: Handle,
 }
 
-impl<S> QueryRunner<S>
-where
-    S: Store + Sized + 'static,
-{
+impl QueryRunner {
     /// Creates a new query runner.
-    pub fn new(logger: &slog::Logger, runtime: Handle, store: S) -> Self {
+    pub fn new(
+        logger: &slog::Logger,
+        runtime: Handle,
+        store_requests: Sender<StoreRequest>,
+    ) -> Self {
         let (sink, stream) = channel(100);
         let runner = QueryRunner {
             logger: logger.new(o!("component" => "QueryRunner")),
             query_sink: sink,
-            store: Arc::new(store),
+            store_requests,
             runtime,
         };
         runner.run_queries(stream);
@@ -39,12 +39,12 @@ where
         info!(self.logger, "Preparing to run queries");
 
         let logger = self.logger.clone();
-        let store = self.store.clone();
+        let store_requests = self.store_requests.clone();
 
         self.runtime.spawn(stream.for_each(move |query| {
             let options = execution::ExecutionOptions {
                 logger: logger.clone(),
-                resolver: StoreResolver::new(&logger, store.clone()),
+                resolver: StoreResolver::new(&logger, store_requests.clone()),
             };
             let result = execution::execute(&query, options);
 
@@ -57,7 +57,7 @@ where
     }
 }
 
-impl<S> QueryRunnerTrait for QueryRunner<S> {
+impl QueryRunnerTrait for QueryRunner {
     fn query_sink(&mut self) -> Sender<Query> {
         self.query_sink.clone()
     }
