@@ -8,11 +8,14 @@ pub type Attribute = String;
 
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(untagged)]
 pub enum Value {
     String(String),
     Int(i32),
     Float(f32),
     Bool(bool),
+    List(Vec<Value>),
+    Null,
 }
 
 impl Into<query::Value> for Value {
@@ -22,6 +25,10 @@ impl Into<query::Value> for Value {
             Value::Int(i) => query::Value::Int(query::Number::from(i)),
             Value::Float(f) => query::Value::Float(f.into()),
             Value::Bool(b) => query::Value::Boolean(b),
+            Value::Null => query::Value::Null,
+            Value::List(values) => {
+                query::Value::List(values.into_iter().map(|value| value.into()).collect())
+            }
         }
     }
 }
@@ -35,6 +42,10 @@ impl From<query::Value> for Value {
                 as i32),
             query::Value::Float(f) => Value::Float(f as f32),
             query::Value::Boolean(b) => Value::Bool(b),
+            query::Value::List(values) => {
+                Value::List(values.into_iter().map(|value| Value::from(value)).collect())
+            }
+            query::Value::Null => Value::Null,
             _ => unimplemented!(),
         }
     }
@@ -50,6 +61,10 @@ impl<'a> From<&'a query::Value> for Value {
                 as i32),
             query::Value::Float(f) => Value::Float(f.to_owned() as f32),
             query::Value::Boolean(b) => Value::Bool(b.to_owned()),
+            query::Value::List(values) => {
+                Value::List(values.iter().map(|value| Value::from(value)).collect())
+            }
+            query::Value::Null => Value::Null,
             _ => unimplemented!(),
         }
     }
