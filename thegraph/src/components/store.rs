@@ -1,4 +1,5 @@
 use futures::sync::mpsc::{Receiver, Sender};
+use futures::sync::oneshot;
 
 use components::schema::SchemaProviderEvent;
 use data::store::*;
@@ -84,19 +85,35 @@ pub enum StoreEvent {
     EntityChanged(Entity),
 }
 
+/// Response type for `StoreRequest::Get` requests.
+pub type StoreGetResponse = Result<Entity, ()>;
+
+/// Response type for `StoreRequest::Set` requests.
+pub type StoreSetResponse = Result<(), ()>;
+
+/// Response type for `StoreRequest::Delete` requests.
+pub type StoreDeleteResponse = Result<(), ()>;
+
+/// Response type for `StoreRequest::Find` requests.
+pub type StoreFindResponse = Result<Vec<Entity>, ()>;
+
+/// Requests that can be made to a [Store](trait.Store.html).
+#[derive(Debug)]
+pub enum StoreRequest {
+    /// Look up an entity using the given store key.
+    Get(StoreKey, oneshot::Sender<StoreGetResponse>),
+    /// Create/update an entity using the given store key and entity data.
+    Set(StoreKey, Entity, oneshot::Sender<StoreSetResponse>),
+    /// Delete an entity using the given store key.
+    Delete(StoreKey, oneshot::Sender<StoreDeleteResponse>),
+    /// Query the store for entities that match a store query.
+    Find(StoreQuery, oneshot::Sender<StoreFindResponse>),
+}
+
 /// Common trait for store implementations.
 pub trait Store {
-    /// Looks up an entity using the given store key.
-    fn get(&self, key: StoreKey) -> Result<Entity, ()>;
-
-    /// Updates an entity using the given store key and entity data.
-    fn set(&mut self, key: StoreKey, entity: Entity) -> Result<(), ()>;
-
-    /// Deletes an entity using the given store key.
-    fn delete(&mut self, key: StoreKey) -> Result<(), ()>;
-
-    /// Queries the store for entities that match the store query.
-    fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()>;
+    /// Sender through which others can make requests for data held by the store.
+    fn request_sink(&mut self) -> Sender<StoreRequest>;
 
     /// Sender to which others should write whenever the schema that the store
     /// should implement changes.
