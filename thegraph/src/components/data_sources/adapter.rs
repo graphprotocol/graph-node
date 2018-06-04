@@ -15,7 +15,7 @@ pub enum RuntimeAdapterEvent {
     // An entity should be updated.
     EntityChanged(DataSourceID, StoreKey, Entity),
     // An entity should be removed.
-    EntityRemoved(DataSourceID, StoreKey, Entity),
+    EntityRemoved(DataSourceID, StoreKey),
 }
 
 /// Common trait for runtime adapter implementations.
