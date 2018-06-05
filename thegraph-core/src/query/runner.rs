@@ -40,11 +40,12 @@ impl QueryRunner {
 
         let logger = self.logger.clone();
         let store_requests = self.store_requests.clone();
+        let runtime = self.runtime.clone();
 
         self.runtime.spawn(stream.for_each(move |query| {
             let options = execution::ExecutionOptions {
                 logger: logger.clone(),
-                resolver: StoreResolver::new(&logger, store_requests.clone()),
+                resolver: StoreResolver::new(&logger, runtime.clone(), store_requests.clone()),
             };
             let result = execution::execute(&query, options);
 

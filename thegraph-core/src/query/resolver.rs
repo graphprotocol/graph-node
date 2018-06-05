@@ -5,6 +5,7 @@ use graphql_parser::query as gqlq;
 use graphql_parser::schema as gqls;
 use slog;
 use std::collections::HashMap;
+use tokio_core::reactor::Handle;
 
 use store::query::build_query;
 use thegraph::components::store::*;
@@ -14,13 +15,19 @@ use thegraph_graphql_utils::Resolver as ResolverTrait;
 #[derive(Clone)]
 pub struct StoreResolver {
     logger: slog::Logger,
+    runtime: Handle,
     store_requests: Sender<StoreRequest>,
 }
 
 impl StoreResolver {
-    pub fn new(logger: &slog::Logger, store_requests: Sender<StoreRequest>) -> Self {
+    pub fn new(
+        logger: &slog::Logger,
+        runtime: Handle,
+        store_requests: Sender<StoreRequest>,
+    ) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
+            runtime,
             store_requests,
         }
     }
@@ -39,7 +46,15 @@ impl ResolverTrait for StoreResolver {
         let request = StoreRequest::Find(store_query, result_sender);
 
         // Send store request
-        self.store_requests.clone().send(request).wait().unwrap();
+        self.runtime.spawn(
+            self.store_requests
+                .clone()
+                .send(request)
+                .map(|_| ())
+                .map_err(|e| {
+                    panic!("Failed to send `find` request to the store: {}", e);
+                }),
+        );
 
         // Handle the a response
         result_receiver
@@ -74,7 +89,13 @@ impl ResolverTrait for StoreResolver {
         let request = StoreRequest::Get(store_key, result_sender);
 
         // Send store request
-        self.store_requests.clone().send(request).wait().unwrap();
+        self.runtime.spawn(
+            self.store_requests
+                .clone()
+                .send(request)
+                .map(|_| ())
+                .map_err(|e| panic!("Failed to send `get` request to the store: {}", e)),
+        );
 
         // Handle the a response
         result_receiver
