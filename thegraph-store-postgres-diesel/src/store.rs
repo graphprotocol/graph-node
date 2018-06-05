@@ -417,8 +417,8 @@ impl StoreTrait for Store {
             diesel_query = diesel_query.order(
                 sql::<Text>("data ->> ")
                     .bind::<Text, _>(order_attribute)
-                    .sql(&format!("{}", direction)),
-            );
+                    .sql(&format!(" {} ", direction)),
+            )
         }
 
         // Add range filter to query
