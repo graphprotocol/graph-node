@@ -2,7 +2,7 @@ use graphql_parser::query as gqlq;
 use graphql_parser::schema as gqls;
 use slog;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use store::query::build_query;
 use thegraph::components::store::*;
@@ -13,11 +13,11 @@ use thegraph_graphql_utils::Resolver as ResolverTrait;
 #[derive(Clone)]
 pub struct StoreResolver {
     logger: slog::Logger,
-    store: Arc<Store>,
+    store: Arc<Mutex<Store>>,
 }
 
 impl StoreResolver {
-    pub fn new(logger: &slog::Logger, store: Arc<Store>) -> Self {
+    pub fn new(logger: &slog::Logger, store: Arc<Mutex<Store>>) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,
@@ -32,12 +32,9 @@ impl ResolverTrait for StoreResolver {
         entity: &gqlq::Name,
         arguments: &HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value {
-        let store_query = build_query(entity, arguments);
-
-        debug!(self.logger, "Resolve entities"; "store_query" => format!("{:?}", store_query));
-
-        self.store
-            .find(store_query)
+        let store = self.store.lock().unwrap();
+        store
+            .find(build_query(entity, arguments))
             .map(|entities| {
                 gqlq::Value::List(
                     entities
@@ -55,7 +52,8 @@ impl ResolverTrait for StoreResolver {
         entity: &gqlq::Name,
         _arguments: &HashMap<&gqlq::Name, gqlq::Value>,
     ) -> gqlq::Value {
-        self.store
+        let store = self.store.lock().unwrap();
+        store
             .get(StoreKey {
                 entity: entity.to_owned(),
                 id: "1".to_string(),

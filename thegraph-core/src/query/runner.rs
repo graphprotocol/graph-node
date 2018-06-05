@@ -1,7 +1,7 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
 use thegraph::prelude::{Query, QueryRunner as QueryRunnerTrait, Store};
@@ -13,7 +13,7 @@ use super::resolver::StoreResolver;
 pub struct QueryRunner<S> {
     logger: slog::Logger,
     query_sink: Sender<Query>,
-    store: Arc<S>,
+    store: Arc<Mutex<S>>,
     runtime: Handle,
 }
 
@@ -22,12 +22,12 @@ where
     S: Store + Sized + 'static,
 {
     /// Creates a new query runner.
-    pub fn new(logger: &slog::Logger, runtime: Handle, store: S) -> Self {
+    pub fn new(logger: &slog::Logger, runtime: Handle, store: Arc<Mutex<S>>) -> Self {
         let (sink, stream) = channel(100);
         let runner = QueryRunner {
             logger: logger.new(o!("component" => "QueryRunner")),
             query_sink: sink,
-            store: Arc::new(store),
+            store: store,
             runtime,
         };
         runner.run_queries(stream);
