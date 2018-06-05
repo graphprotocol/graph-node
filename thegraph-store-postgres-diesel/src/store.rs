@@ -228,7 +228,6 @@ impl StoreTrait for Store {
                                             .bind::<Bool, _>(query_value),
                                     );
                                 }
-                                _ => unimplemented!(),
                             };
                         }
                         StoreFilter::Not(attribute, value) => {
@@ -265,7 +264,6 @@ impl StoreTrait for Store {
                                             .bind::<Bool, _>(query_value),
                                     );
                                 }
-                                _ => unimplemented!(),
                             };
                         }
                         StoreFilter::GreaterThan(attribute, value) => {
