@@ -1,13 +1,8 @@
 #[derive(Debug, PartialEq, Deserialize)]
-pub struct SourceDefinition {
-    pub spec_version: String,
-    pub schema: SourcePath,
-    pub datasets: SourceDataSet,
-}
-#[derive(Debug, PartialEq, Deserialize)]
 pub struct SourcePath {
     pub path: String,
 }
+
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct SourceDataSet {
     pub data: SourceData,
