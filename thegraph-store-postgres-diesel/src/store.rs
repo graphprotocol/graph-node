@@ -185,9 +185,9 @@ impl StoreTrait for Store {
                             match value {
                                 Value::String(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("data -> ")
+                                        sql("data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'String' LIKE ")
+                                            .sql(" LIKE ")
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
@@ -198,33 +198,33 @@ impl StoreTrait for Store {
                             match value {
                                 Value::String(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'String' = ")
+                                            .sql(") = ")
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
                                 Value::Float(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Float')::float = ")
+                                            .sql(")::float = ")
                                             .bind::<Float, _>(query_value),
                                     );
                                 }
                                 Value::Int(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Int')::int = ")
+                                            .sql(")::int = ")
                                             .bind::<Integer, _>(query_value),
                                     );
                                 }
                                 Value::Bool(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Bool')::boolean = ")
+                                            .sql(")::boolean = ")
                                             .bind::<Bool, _>(query_value),
                                     );
                                 }
@@ -235,33 +235,33 @@ impl StoreTrait for Store {
                             match value {
                                 Value::String(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("data -> ")
+                                        sql("data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'String' != ")
+                                            .sql(" != ")
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
                                 Value::Float(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Float')::float != ")
+                                            .sql(")::float != ")
                                             .bind::<Float, _>(query_value as f32),
                                     );
                                 }
                                 Value::Int(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Int')::int != ")
+                                            .sql(")::int != ")
                                             .bind::<Integer, _>(query_value),
                                     );
                                 }
                                 Value::Bool(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Bool')::boolean != ")
+                                            .sql(")::boolean != ")
                                             .bind::<Bool, _>(query_value),
                                     );
                                 }
@@ -272,25 +272,25 @@ impl StoreTrait for Store {
                             match value {
                                 Value::String(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("data -> ")
+                                        sql("data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'String' > ")
+                                            .sql(" > ")
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
                                 Value::Float(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Float')::float > ")
+                                            .sql(")::float > ")
                                             .bind::<Float, _>(query_value as f32),
                                     );
                                 }
                                 Value::Int(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Int')::int > ")
+                                            .sql(")::int > ")
                                             .bind::<Integer, _>(query_value),
                                     );
                                 }
@@ -301,25 +301,25 @@ impl StoreTrait for Store {
                             match value {
                                 Value::String(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("data -> ")
+                                        sql("data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'String' < ")
+                                            .sql(" < ")
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
                                 Value::Float(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Float')::float < ")
+                                            .sql(")::float < ")
                                             .bind::<Float, _>(query_value as f32),
                                     );
                                 }
                                 Value::Int(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Int')::int < ")
+                                            .sql(")::int < ")
                                             .bind::<Integer, _>(query_value),
                                     );
                                 }
@@ -330,25 +330,25 @@ impl StoreTrait for Store {
                             match value {
                                 Value::String(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("data -> ")
+                                        sql("data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'String' >= ")
+                                            .sql(" >= ")
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
                                 Value::Float(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Float')::float >= ")
+                                            .sql(")::float >= ")
                                             .bind::<Float, _>(query_value as f32),
                                     );
                                 }
                                 Value::Int(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Int')::int >= ")
+                                            .sql(")::int >= ")
                                             .bind::<Integer, _>(query_value),
                                     );
                                 }
@@ -359,25 +359,25 @@ impl StoreTrait for Store {
                             match value {
                                 Value::String(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("data -> ")
+                                        sql("data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'String' <= ")
+                                            .sql(" <= ")
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
                                 Value::Float(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Float')::float <= ")
+                                            .sql(")::float <= ")
                                             .bind::<Float, _>(query_value as f32),
                                     );
                                 }
                                 Value::Int(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("(data -> ")
+                                        sql("(data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'Int')::int <= ")
+                                            .sql(")::int <= ")
                                             .bind::<Integer, _>(query_value),
                                     );
                                 }
@@ -388,9 +388,9 @@ impl StoreTrait for Store {
                             match value {
                                 Value::String(query_value) => {
                                     diesel_query = diesel_query.filter(
-                                        sql("data -> ")
+                                        sql("data ->> ")
                                             .bind::<Text, _>(attribute)
-                                            .sql("->>'String' NOT LIKE ")
+                                            .sql(" NOT LIKE ")
                                             .bind::<Text, _>(query_value),
                                     );
                                 }
@@ -417,7 +417,7 @@ impl StoreTrait for Store {
                 .unwrap_or(String::from("ASC"));
 
             diesel_query = diesel_query.order(
-                sql::<Text>("data -> ")
+                sql::<Text>("data ->> ")
                     .bind::<Text, _>(order_attribute)
                     .sql(&format!("{}", direction)),
             );
