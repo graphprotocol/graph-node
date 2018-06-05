@@ -99,12 +99,9 @@ impl StoreTrait for Store {
 
         use db_schema::entities::dsl::*;
 
-        // The data source hardcoded at the moment
-        let datasource: String = String::from("memefactory");
-
         // Use primary key fields to get the entity; deserialize the result JSON
         entities
-            .find((key.id, datasource, key.entity))
+            .find((key.id, key.data_source, key.entity))
             .select(data)
             .first::<serde_json::Value>(&self.conn)
             .map(|value| {
@@ -122,15 +119,12 @@ impl StoreTrait for Store {
         let entity_json: serde_json::Value =
             serde_json::to_value(&input_entity).expect("Failed to serialize entity");
 
-        // The data source is hardcoded at the moment
-        let datasource: String = String::from("memefactory");
-
         // Insert entity, perform an update in case of a primary key conflict
         insert_into(entities)
             .values((
                 id.eq(&key.id),
                 entity.eq(&key.entity),
-                data_source.eq(&datasource),
+                data_source.eq(&key.data_source),
                 data.eq(&entity_json),
             ))
             .on_conflict((id, entity, data_source))
@@ -138,7 +132,7 @@ impl StoreTrait for Store {
             .set((
                 id.eq(&key.id),
                 entity.eq(&key.entity),
-                data_source.eq(&data_source),
+                data_source.eq(&key.data_source),
                 data.eq(&entity_json),
             ))
             .execute(&self.conn)
@@ -156,6 +150,7 @@ impl StoreTrait for Store {
         delete(
             entities
                 .filter(id.eq(&key.id))
+                .filter(data_source.eq(&key.data_source))
                 .filter(entity.eq(&key.entity)),
         ).execute(&self.conn)
             .map(|_| ())
@@ -166,12 +161,10 @@ impl StoreTrait for Store {
         use db_schema::entities::columns::*;
         use db_schema::*;
 
-        // The data source is hard-coded at the moment
-        let _datasource: String = String::from("memefactory");
-
         // Create base boxed query; this will be added to based on the
         // query parameters provided
         let mut diesel_query = entities::table
+            .filter(data_source.eq(query.data_source))
             .filter(entity.eq(query.entity))
             .select(data)
             .into_boxed::<Pg>();
