@@ -1,16 +1,7 @@
-use futures::sync::mpsc::Receiver;
-
-use data::data_sources::SourceDefinition;
 use data::schema::Schema;
-use util::stream::StreamError;
-
-use graphql_parser;
+use futures::sync::mpsc::Receiver;
 use serde_yaml;
-
-use std::error::Error;
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
+use util::stream::StreamError;
 
 /// Events emitted by [DataSourceProvider](trait.DataSourceProvider.html) implementations.
 #[derive(Clone, Debug)]
@@ -43,32 +34,9 @@ pub trait DataSourceProvider {
 
 /// Common trait for data source definition schema.
 pub trait DataSourceDefinition {
-    fn new(definition: serde_yaml::Value) -> Schema {
-        // Deserialize yaml file into SourceDefinition struct
-        let schema_definition: SourceDefinition = serde_yaml::from_value(definition).unwrap();
+    // Deserialize serde_yaml into data source definition struct
+    fn build_definition(definition: serde_yaml::Value) -> Self;
 
-        // Get definition file from filesystem and return string
-        let schema_path = Path::new(&schema_definition.schema.path);
-        let display_schema_path = schema_path.display();
-
-        let mut schema_file = match File::open(&schema_path) {
-            Err(why) => panic!(
-                "couldn't open schema at {}: {}",
-                display_schema_path,
-                why.description()
-            ),
-            Ok(file) => file,
-        };
-        let mut schema_string = String::new();
-        schema_file.read_to_string(&mut schema_string).unwrap();
-
-        // Parse graphql schema string into graphql Document
-        // and place into Schema struct
-        let graphql_schema = Schema {
-            id: "test".to_string(),
-            document: graphql_parser::parse_schema(&schema_string).unwrap(),
-        };
-
-        graphql_schema
-    }
+    // Extract graphql schema from data source definition struct
+    fn extract_schema(&self) -> Schema;
 }
