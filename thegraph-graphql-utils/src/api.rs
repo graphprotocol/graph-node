@@ -44,6 +44,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
 
     let mut schema = input_schema.clone();
     add_builtin_scalar_types(&mut schema)?;
+    add_order_direction_enum(&mut schema);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_query_type(&mut schema, &object_types, &interface_types)?;
@@ -69,6 +70,27 @@ fn add_builtin_scalar_types(schema: &mut Document) -> Result<(), APISchemaError>
         }
     }
     Ok(())
+}
+
+/// Adds a global `OrderDirection` type to the schema.
+fn add_order_direction_enum(schema: &mut Document) {
+    let typedef = TypeDefinition::Enum(EnumType {
+        position: Pos::default(),
+        description: None,
+        name: "OrderDirection".to_string(),
+        directives: vec![],
+        values: ["asc", "desc"]
+            .into_iter()
+            .map(|name| EnumValue {
+                position: Pos::default(),
+                description: None,
+                name: name.to_string(),
+                directives: vec![],
+            })
+            .collect(),
+    });
+    let def = Definition::TypeDefinition(typedef);
+    schema.definitions.push(def);
 }
 
 /// Adds `*_orderBy` and `*_filter` enum types for the given object types to the schema.
@@ -301,6 +323,11 @@ fn query_fields_for_type(_schema: &Document, type_name: &Name) -> Vec<Field> {
                     Type::NamedType(format!("{}_orderBy", type_name)),
                 ),
                 input_value(
+                    &"orderDirection".to_string(),
+                    "",
+                    Type::NamedType("OrderDirection".to_string()),
+                ),
+                input_value(
                     &"where".to_string(),
                     "",
                     Type::NamedType(format!("{}_filter", type_name)),
@@ -336,6 +363,23 @@ mod tests {
             .expect("Float type is missing in API schema");
         ast::get_named_type(&schema, &"String".to_string())
             .expect("String type is missing in API schema");
+    }
+
+    #[test]
+    fn api_schema_contains_order_direction_enum() {
+        let input_schema = parse_schema("type User { id: ID!, name: String! }")
+            .expect("Failed to parse input schema");
+        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+
+        let order_direction = ast::get_named_type(&schema, &"OrderDirection".to_string())
+            .expect("OrderDirection type is missing in derived API schema");
+        let enum_type = match order_direction {
+            TypeDefinition::Enum(t) => Some(t),
+            _ => None,
+        }.expect("OrderDirection type is not an enum");
+
+        let values: Vec<&Name> = enum_type.values.iter().map(|value| &value.name).collect();
+        assert_eq!(values, [&"asc".to_string(), &"desc".to_string()]);
     }
 
     #[test]
@@ -438,8 +482,16 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            ["skip", "first", "last", "after", "before", "orderBy", "where",]
-                .into_iter()
+            [
+                "skip",
+                "first",
+                "last",
+                "after",
+                "before",
+                "orderBy",
+                "orderDirection",
+                "where",
+            ].into_iter()
                 .map(|name| name.to_string())
                 .collect::<Vec<String>>()
         );
@@ -495,8 +547,16 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            ["skip", "first", "last", "after", "before", "orderBy", "where",]
-                .into_iter()
+            [
+                "skip",
+                "first",
+                "last",
+                "after",
+                "before",
+                "orderBy",
+                "orderDirection",
+                "where",
+            ].into_iter()
                 .map(|name| name.to_string())
                 .collect::<Vec<String>>()
         );
