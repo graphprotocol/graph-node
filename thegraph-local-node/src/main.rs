@@ -174,17 +174,17 @@ fn main() {
                     let mut store = protected_store.lock().unwrap();
 
                     match event {
-                        RuntimeAdapterEvent::EntityAdded(ds, k, entity) => {
+                        RuntimeAdapterEvent::EntityAdded(_, k, entity) => {
                             store
                                 .set(k, entity)
                                 .expect("Failed to set entity in the store");
                         }
-                        RuntimeAdapterEvent::EntityChanged(ds, k, entity) => {
+                        RuntimeAdapterEvent::EntityChanged(_, k, entity) => {
                             store
                                 .set(k, entity)
                                 .expect("Failed to set entity in the store");
                         }
-                        RuntimeAdapterEvent::EntityRemoved(ds, k) => {
+                        RuntimeAdapterEvent::EntityRemoved(_, k) => {
                             store
                                 .delete(k)
                                 .expect("Failed to remove entity from the store");
