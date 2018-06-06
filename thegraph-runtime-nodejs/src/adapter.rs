@@ -1,19 +1,16 @@
-use futures::future;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use serde_json;
 use slog;
 use std::fs;
 use std::path::Path;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use tempfile::{tempdir, TempDir};
 use tokio_core::reactor::Handle;
 
 use thegraph::components::data_sources::RuntimeAdapterEvent;
 use thegraph::components::store::StoreKey;
-use thegraph::prelude::{Entity, RuntimeAdapter as RuntimeAdapterTrait, Value, *};
+use thegraph::prelude::{RuntimeAdapter as RuntimeAdapterTrait, Value};
 use thegraph::util::stream::StreamError;
 
 use server;
@@ -107,7 +104,7 @@ impl RuntimeAdapterTrait for RuntimeAdapter {
         // Spawn the Node.js runtime process; Node needs to be installed on the machine
         // or this will fail
         debug!(self.logger, "Start the Node.js data source runtime");
-        let mut child = Command::new("node")
+        let child = Command::new("node")
             .current_dir(temp_dir_str)
             .arg("index.js")
             .arg(self.config.data_source_definition.as_str())
@@ -115,6 +112,8 @@ impl RuntimeAdapterTrait for RuntimeAdapter {
             .arg("http://127.0.0.1:7500/")
             .spawn()
             .expect("Failed to start Node.js date source runtime");
+
+        self.child_process = Some(child);
 
         // Process forwrd incoming runtime events
         let receiver_logger = self.logger.clone();

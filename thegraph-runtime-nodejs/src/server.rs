@@ -2,10 +2,8 @@ use futures::future;
 use futures::prelude::*;
 use futures::sync::mpsc::Sender;
 use hyper;
-use hyper::server::conn::AddrIncoming;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
-use serde_json;
 use slog;
 
 use super::event::RuntimeEvent;
@@ -32,10 +30,6 @@ impl Service for RuntimeAdapterService {
     type Future = Box<Future<Item = Response<Self::ReqBody>, Error = Self::Error> + Send>;
 
     fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
-        let read_logger = self.logger.clone();
-        let deserialize_logger = self.logger.clone();
-        let send_logger = self.logger.clone();
-
         let event_sender = self.event_sender.clone();
 
         match request.method() {
