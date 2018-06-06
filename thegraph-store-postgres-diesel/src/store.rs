@@ -178,6 +178,7 @@ impl StoreTrait for Store {
 
         // Add specified filter to query
         match query.filter {
+            None => {}
             Some(StoreFilter::And(filters)) => {
                 for filter in filters {
                     match filter {
