@@ -1,5 +1,3 @@
-use serde;
-
 use thegraph::prelude::*;
 
 #[derive(Debug, Deserialize, Serialize)]

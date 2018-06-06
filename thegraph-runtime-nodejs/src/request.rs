@@ -1,12 +1,9 @@
 use futures::prelude::*;
-use futures::sync::oneshot;
 use hyper;
 use hyper::Chunk;
 use serde_json;
 use std::error::Error;
 use std::fmt;
-
-use thegraph::prelude::*;
 
 use super::event::RuntimeEvent;
 
