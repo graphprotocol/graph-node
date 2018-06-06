@@ -1,5 +1,4 @@
 use graphql_parser::query;
-use serde;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
 
