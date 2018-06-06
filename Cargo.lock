@@ -1390,6 +1390,9 @@ version = "0.1.0"
 dependencies = [
  "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
  "graphql-parser 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_yaml 0.7.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "thegraph 0.1.0",
  "thegraph-graphql-utils 0.1.0",
