@@ -18,9 +18,9 @@ impl Into<query::Value> for Value {
     fn into(self) -> query::Value {
         match self {
             Value::String(s) => query::Value::String(s.to_string()),
+            Value::Int(i) => query::Value::Int(query::Number::from(i)),
             Value::Float(f) => query::Value::Float(f.into()),
             Value::Bool(b) => query::Value::Boolean(b),
-            _ => unimplemented!(),
         }
     }
 }
