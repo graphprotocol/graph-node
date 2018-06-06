@@ -384,6 +384,47 @@ fn find_string_less_than() {
 }
 
 #[test]
+fn find_string_less_than_order_by_asc() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+                "name".to_string(),
+                Value::String("Kundi".to_string()),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Ascending),
+            range: None,
+        };
+        let result = new_store
+            .find(this_query)
+            .expect("Failed to fetch entities from the store");
+
+        // Check that the number and order of users is correct
+        assert_eq!(2, result.len());
+        let names: Vec<&Value> = result
+            .iter()
+            .map(|entity| {
+                entity
+                    .get(&"name".to_string())
+                    .expect("Entity without \"name\" attribute returned")
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                &Value::String("Cindini".to_string()),
+                &Value::String("Johnton".to_string()),
+            ]
+        );
+    })
+}
+
+#[test]
 fn find_string_less_than_order_by_desc() {
     run_test(|| {
         let core = Core::new().unwrap();
@@ -400,18 +441,27 @@ fn find_string_less_than_order_by_desc() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = new_store.find(this_query);
-        assert!(result.is_ok());
+        let result = new_store
+            .find(this_query)
+            .expect("Failed to fetch entities from the store");
 
-        // Check if the first user in the result vector is "Johnton"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Johnton".to_string());
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be two users returned in results
-        assert_eq!(2, returned_entities.len());
+        // Check that the number and order of users is correct
+        assert_eq!(2, result.len());
+        let names: Vec<&Value> = result
+            .iter()
+            .map(|entity| {
+                entity
+                    .get(&"name".to_string())
+                    .expect("Entity without \"name\" attribute returned")
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                &Value::String("Johnton".to_string()),
+                &Value::String("Cindini".to_string()),
+            ]
+        );
     })
 }
 
