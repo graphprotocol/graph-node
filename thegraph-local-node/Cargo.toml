@@ -13,6 +13,7 @@ thegraph = { path = "../thegraph" }
 thegraph-core = { path = "../thegraph-core" }
 thegraph-hyper = { path = "../thegraph-hyper" }
 thegraph-mock = { path = "../thegraph-mock" }
+thegraph-runtime-nodejs = { path = "../thegraph-runtime-nodejs" }
 thegraph-store-postgres-diesel = { path = "../thegraph-store-postgres-diesel" }
 
 [dev-dependencies]
