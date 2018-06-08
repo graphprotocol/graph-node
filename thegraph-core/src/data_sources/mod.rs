@@ -1,1 +1,3 @@
-pub mod loader;
+mod loader;
+
+pub use self::loader::DataSourceDefinitionLoader;
