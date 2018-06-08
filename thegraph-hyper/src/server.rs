@@ -81,11 +81,7 @@ impl GraphQLServer {
         let schema = self.schema.clone();
 
         self.runtime.spawn(stream.for_each(move |event| {
-            info!(
-                logger,
-                "Received schema provider event";
-                "event" => format!("{:?}", event),
-            );
+            info!(logger, "Received schema provider event");
 
             let SchemaProviderEvent::SchemaChanged(new_schema) = event;
             let mut schema = schema.lock().unwrap();
