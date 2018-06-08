@@ -79,6 +79,18 @@ pub fn get_type_name(t: &TypeDefinition) -> &Name {
     }
 }
 
+/// Returns the description of a type.
+pub fn get_type_description(t: &TypeDefinition) -> &Option<String> {
+    match t {
+        TypeDefinition::Enum(t) => &t.description,
+        TypeDefinition::InputObject(t) => &t.description,
+        TypeDefinition::Interface(t) => &t.description,
+        TypeDefinition::Object(t) => &t.description,
+        TypeDefinition::Scalar(t) => &t.description,
+        TypeDefinition::Union(t) => &t.description,
+    }
+}
+
 /// Returns the argument definitions for a field of an object type.
 pub fn get_argument_definitions<'a>(
     object_type: &'a ObjectType,
