@@ -84,8 +84,8 @@ pub enum StoreEvent {
     EntityChanged(Entity),
 }
 
-/// Common trait for store implementations.
-pub trait Store {
+/// Common trait for store implementations that don't require interaction with the system.
+pub trait BasicStore {
     /// Looks up an entity using the given store key.
     fn get(&self, key: StoreKey) -> Result<Entity, ()>;
 
@@ -97,7 +97,10 @@ pub trait Store {
 
     /// Queries the store for entities that match the store query.
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()>;
+}
 
+/// Common trait for store implementations.
+pub trait Store: BasicStore {
     /// Sender to which others should write whenever the schema that the store
     /// should implement changes.
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent>;
