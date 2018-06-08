@@ -93,7 +93,7 @@ impl Store {
     }
 }
 
-impl StoreTrait for Store {
+impl BasicStore for Store {
     fn get(&self, key: StoreKey) -> Result<Entity, ()> {
         debug!(self.logger, "get"; "key" => format!("{:?}", key));
 
@@ -445,7 +445,9 @@ impl StoreTrait for Store {
             })
             .map_err(|_| ())
     }
+}
 
+impl StoreTrait for Store {
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
         self.schema_provider_event_sink.clone()
     }
