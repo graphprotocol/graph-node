@@ -4,20 +4,22 @@ use indexmap::IndexMap;
 use slog;
 use std::cmp;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 
 use thegraph::prelude::*;
 
 use ast::query as qast;
 use ast::schema as sast;
 use coercion::*;
-use introspection;
+use introspection::{introspection_schema, IntrospectionResolver};
 use resolver::Resolver;
 
 /// Contextual information passed around during query execution.
 #[derive(Clone)]
-struct ExecutionContext<'a, R>
+struct ExecutionContext<'a, R1, R2>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     /// The logger to use.
     pub logger: slog::Logger,
@@ -28,16 +30,19 @@ where
     /// The query to execute.
     pub query: &'a Query,
     /// The resolver to use.
-    pub resolver: R,
+    pub resolver: R1,
+    /// The introspection resolver to use.
+    pub introspection_resolver: R2,
     /// The current field stack (e.g. allUsers > friends > name).
     pub fields: Vec<&'a q::Field>,
     /// Whether or not we're executing an introspection query
     pub introspecting: bool,
 }
 
-impl<'a, R> ExecutionContext<'a, R>
+impl<'a, R1, R2> ExecutionContext<'a, R1, R2>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     /// Creates a derived context for a new field (added to the top of the field stack).
     pub fn for_field(&mut self, field: &'a q::Field) -> Self {
@@ -71,14 +76,16 @@ where
         Err(e) => return QueryResult::from(e),
     };
 
-    // Create an introspection schema
-    let introspection_schema = introspection::introspection_schema();
+    // Create an introspection type store and resolver
+    let introspection_schema = introspection_schema();
+    let introspection_resolver = IntrospectionResolver::new(&options.logger, &query.schema);
 
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: options.logger,
         resolver: options.resolver,
         schema: &query.schema,
+        introspection_resolver,
         introspection_schema: &introspection_schema,
         introspecting: false,
         query,
@@ -104,13 +111,14 @@ where
 }
 
 /// Executes the root selection set of a query.
-fn execute_root_selection_set<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn execute_root_selection_set<'a, R1, R2>(
+    ctx: ExecutionContext<'a, R1, R2>,
     selection_set: &'a q::SelectionSet,
     initial_value: &Option<q::Value>,
 ) -> QueryResult
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     // Obtain the root Query type and fail if there isn't one
     let query_type = match sast::get_root_query_type(&ctx.schema.document) {
@@ -126,14 +134,15 @@ where
 /// Executes a selection set, requiring the result to be of the given object type.
 ///
 /// Allows passing in a parent value during recursive processing of objects and their fields.
-fn execute_selection_set<'a, R>(
-    mut ctx: ExecutionContext<'a, R>,
+fn execute_selection_set<'a, R1, R2>(
+    mut ctx: ExecutionContext<'a, R1, R2>,
     selection_set: &'a q::SelectionSet,
     object_type: &s::ObjectType,
     object_value: &Option<q::Value>,
 ) -> Result<QueryResult, QueryExecutionError>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     let mut result = QueryResult::new(None);
     let mut result_map: BTreeMap<String, q::Value> = BTreeMap::new();
@@ -143,10 +152,6 @@ where
 
     // Process all field groups in order
     for (response_key, fields) in grouped_field_set {
-        warn!(ctx.logger, "Process field group";
-              "response_key" => response_key,
-              "fields" => format!("{:?}", fields));
-
         // If the field exists on the object, execute it and add its result to the result map
         if let Some((ref field, introspecting)) =
             get_field_type(ctx.clone(), object_type, &fields[0].name)
@@ -186,14 +191,15 @@ where
 }
 
 /// Collects fields of a selection set.
-fn collect_fields<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn collect_fields<'a, R1, R2>(
+    ctx: ExecutionContext<'a, R1, R2>,
     object_type: &s::ObjectType,
     selection_set: &'a q::SelectionSet,
     visited_fragments: Option<HashSet<&'a q::Name>>,
 ) -> IndexMap<&'a String, Vec<&'a q::Field>>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     let mut visited_fragments = visited_fragments.unwrap_or(HashSet::new());
     let mut grouped_fields = IndexMap::new();
@@ -279,13 +285,14 @@ where
 }
 
 /// Determines whether a fragment is applicable to the given object type.
-fn does_fragment_type_apply<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn does_fragment_type_apply<'a, R1, R2>(
+    ctx: ExecutionContext<'a, R1, R2>,
     object_type: &s::ObjectType,
     fragment_type: &q::TypeCondition,
 ) -> bool
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     // This is safe to do, as TypeCondition only has a single `On` variant.
     let q::TypeCondition::On(ref name) = fragment_type;
@@ -327,8 +334,8 @@ where
 }
 
 /// Executes a field.
-fn execute_field<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn execute_field<'a, R1, R2>(
+    ctx: ExecutionContext<'a, R1, R2>,
     object_type: &s::ObjectType,
     object_value: &Option<q::Value>,
     field: &'a q::Field,
@@ -336,7 +343,8 @@ fn execute_field<'a, R>(
     fields: Vec<&'a q::Field>,
 ) -> Result<q::Value, QueryExecutionError>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     coerce_argument_values(ctx.clone(), object_type, field)
         .and_then(|argument_values| {
@@ -353,8 +361,8 @@ where
 }
 
 /// Resolves the value of a field.
-fn resolve_field_value<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn resolve_field_value<'a, R1, R2>(
+    ctx: ExecutionContext<'a, R1, R2>,
     object_type: &s::ObjectType,
     object_value: &Option<q::Value>,
     field: &q::Field,
@@ -362,7 +370,8 @@ fn resolve_field_value<'a, R>(
     argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, QueryExecutionError>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     match field_type {
         s::Type::NonNullType(inner_type) => resolve_field_value(
@@ -391,15 +400,16 @@ where
 }
 
 /// Resolves the value of a field that corresponds to a named type.
-fn resolve_field_value_for_named_type<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn resolve_field_value_for_named_type<'a, R1, R2>(
+    ctx: ExecutionContext<'a, R1, R2>,
     object_value: &Option<q::Value>,
     field: &q::Field,
     type_name: &s::Name,
     argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, QueryExecutionError>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     // Try to resolve the type name into the actual type
     let named_type = sast::get_named_type(
@@ -411,73 +421,56 @@ where
         type_name,
     ).ok_or(QueryExecutionError::NamedTypeError(type_name.to_string()))?;
 
-    if ctx.introspecting {
-        match named_type {
-            s::TypeDefinition::Object(t) => Ok(introspection::resolve_object_value(
-                &ctx.schema.document,
+    match named_type {
+        // Let the resolver decide how the field (with the given object type)
+        // is resolved into an entity based on the (potential) parent object
+        s::TypeDefinition::Object(t) => if ctx.introspecting {
+            Ok(ctx.introspection_resolver.resolve_entity(
                 object_value,
-                t,
                 &field.name,
+                &t.name,
                 argument_values,
-            )),
-            s::TypeDefinition::Enum(_) => match object_value {
-                Some(q::Value::Object(o)) => match o.get(&field.name) {
-                    Some(v @ q::Value::Enum(_)) => Ok(v.clone()),
-                    _ => Ok(q::Value::Null),
-                },
-                _ => Ok(q::Value::Null),
-            },
-            s::TypeDefinition::Scalar(_) => match object_value {
-                Some(q::Value::Object(o)) => match o.get(&field.name) {
-                    Some(v @ q::Value::Boolean(_)) => Ok(v.clone()),
-                    Some(v @ q::Value::Int(_)) => Ok(v.clone()),
-                    Some(v @ q::Value::Float(_)) => Ok(v.clone()),
-                    Some(v @ q::Value::String(_)) => Ok(v.clone()),
-                    _ => Ok(q::Value::Null),
-                },
-                _ => Ok(q::Value::Null),
-            },
-            _ => unimplemented!(),
-        }
-    } else {
-        match named_type {
-            // Let the resolver decide how the field (with the given object type)
-            // is resolved into an entity based on the (potential) parent object
-            s::TypeDefinition::Object(t) => {
-                Ok(ctx.resolver
-                    .resolve_entity(object_value, &t.name, argument_values))
-            }
+            ))
+        } else {
+            Ok(ctx.resolver
+                .resolve_entity(object_value, &field.name, &t.name, argument_values))
+        },
 
-            // Let the resolver decide how values in the resolved object value
-            // map to values of GraphQL enums
-            s::TypeDefinition::Enum(t) => match object_value {
-                Some(q::Value::Object(o)) => {
-                    Ok(ctx.resolver.resolve_enum_value(t, o.get(&field.name)))
-                }
-                _ => Ok(q::Value::Null),
+        // Let the resolver decide how values in the resolved object value
+        // map to values of GraphQL enums
+        s::TypeDefinition::Enum(t) => match object_value {
+            Some(q::Value::Object(o)) => if ctx.introspecting {
+                Ok(ctx.introspection_resolver
+                    .resolve_enum_value(t, o.get(&field.name)))
+            } else {
+                Ok(ctx.resolver.resolve_enum_value(t, o.get(&field.name)))
             },
+            _ => Ok(q::Value::Null),
+        },
 
-            // Let the resolver decide how values in the resolved object value
-            // map to values of GraphQL scalars
-            s::TypeDefinition::Scalar(t) => match object_value {
-                Some(q::Value::Object(o)) => {
-                    Ok(ctx.resolver.resolve_scalar_value(t, o.get(&field.name)))
-                }
-                _ => Ok(q::Value::Null),
+        // Let the resolver decide how values in the resolved object value
+        // map to values of GraphQL scalars
+        s::TypeDefinition::Scalar(t) => match object_value {
+            Some(q::Value::Object(o)) => if ctx.introspecting {
+                Ok(ctx.introspection_resolver
+                    .resolve_scalar_value(t, o.get(&field.name)))
+            } else {
+                Ok(ctx.resolver.resolve_scalar_value(t, o.get(&field.name)))
             },
+            _ => Ok(q::Value::Null),
+        },
 
-            // We will implement these later
-            s::TypeDefinition::Interface(_) => unimplemented!(),
-            s::TypeDefinition::Union(_) => unimplemented!(),
+        // We will implement these later
+        s::TypeDefinition::Interface(_) => unimplemented!(),
+        s::TypeDefinition::Union(_) => unimplemented!(),
 
-            _ => unimplemented!(),
-        }
+        _ => unimplemented!(),
     }
 }
 
 /// Resolves the value of a field that corresponds to a list type.
-fn resolve_field_value_for_list_type<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn resolve_field_value_for_list_type<'a, R1, R2>(
+    ctx: ExecutionContext<'a, R1, R2>,
     object_type: &s::ObjectType,
     object_value: &Option<q::Value>,
     field: &q::Field,
@@ -486,7 +479,8 @@ fn resolve_field_value_for_list_type<'a, R>(
     argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, QueryExecutionError>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     match inner_type {
         s::Type::NonNullType(inner_type) => resolve_field_value_for_list_type(
@@ -509,71 +503,54 @@ where
                 type_name,
             ).expect("Failed to resolve named type inside list type");
 
-            if ctx.introspecting {
-                match named_type {
-                    s::TypeDefinition::Object(_) => match object_value {
-                        Some(q::Value::Object(o)) => Ok(match o.get(&field.name) {
-                            Some(v) => v.clone(),
-                            _ => q::Value::Null,
-                        }),
-                        _ => Ok(q::Value::Null),
+            match named_type {
+                // Let the resolver decide how the list field (with the given item object type)
+                // is resolved into a entities based on the (potential) parent object
+                s::TypeDefinition::Object(t) => if ctx.introspecting {
+                    Ok(ctx.introspection_resolver.resolve_entities(
+                        object_value,
+                        &field.name,
+                        &t.name,
+                        argument_values,
+                    ))
+                } else {
+                    Ok(ctx.resolver.resolve_entities(
+                        object_value,
+                        &field.name,
+                        &t.name,
+                        argument_values,
+                    ))
+                },
+
+                // Let the resolver decide how values in the resolved object value
+                // map to values of GraphQL enums
+                s::TypeDefinition::Enum(t) => match object_value {
+                    Some(q::Value::Object(o)) => if ctx.introspecting {
+                        Ok(ctx.introspection_resolver
+                            .resolve_enum_values(t, o.get(&field.name)))
+                    } else {
+                        Ok(ctx.resolver.resolve_enum_values(t, o.get(&field.name)))
                     },
+                    _ => Ok(q::Value::Null),
+                },
 
-                    s::TypeDefinition::Enum(_) => match object_value {
-                        Some(q::Value::Object(o)) => Ok(match o.get(&field.name) {
-                            Some(v @ q::Value::Enum(_)) => v.clone(),
-                            _ => q::Value::Null,
-                        }),
-                        _ => Ok(q::Value::Null),
+                // Let the resolver decide how values in the resolved object value
+                // map to values of GraphQL scalars
+                s::TypeDefinition::Scalar(t) => match object_value {
+                    Some(q::Value::Object(o)) => if ctx.introspecting {
+                        Ok(ctx.introspection_resolver
+                            .resolve_scalar_values(t, o.get(&field.name)))
+                    } else {
+                        Ok(ctx.resolver.resolve_scalar_values(t, o.get(&field.name)))
                     },
+                    _ => Ok(q::Value::Null),
+                },
 
-                    s::TypeDefinition::Scalar(_) => match object_value {
-                        Some(q::Value::Object(o)) => Ok(match o.get(&field.name) {
-                            Some(v @ q::Value::Boolean(_))
-                            | Some(v @ q::Value::Int(_))
-                            | Some(v @ q::Value::Float(_))
-                            | Some(v @ q::Value::String(_)) => v.clone(),
-                            _ => q::Value::Null,
-                        }),
-                        _ => Ok(q::Value::Null),
-                    },
+                // We will implement these later
+                s::TypeDefinition::Interface(_) => unimplemented!(),
+                s::TypeDefinition::Union(_) => unimplemented!(),
 
-                    // The rest are irrelevant for introspection queries
-                    _ => unimplemented!(),
-                }
-            } else {
-                match named_type {
-                    // Let the resolver decide how the list field (with the given item object type)
-                    // is resolved into a entities based on the (potential) parent object
-                    s::TypeDefinition::Object(t) => {
-                        Ok(ctx.resolver
-                            .resolve_entities(object_value, &t.name, argument_values))
-                    }
-
-                    // Let the resolver decide how values in the resolved object value
-                    // map to values of GraphQL enums
-                    s::TypeDefinition::Enum(t) => match object_value {
-                        Some(q::Value::Object(o)) => {
-                            Ok(ctx.resolver.resolve_enum_values(t, o.get(&field.name)))
-                        }
-                        _ => Ok(q::Value::Null),
-                    },
-
-                    // Let the resolver decide how values in the resolved object value
-                    // map to values of GraphQL scalars
-                    s::TypeDefinition::Scalar(t) => match object_value {
-                        Some(q::Value::Object(o)) => {
-                            Ok(ctx.resolver.resolve_scalar_values(t, o.get(&field.name)))
-                        }
-                        _ => Ok(q::Value::Null),
-                    },
-
-                    // We will implement these later
-                    s::TypeDefinition::Interface(_) => unimplemented!(),
-                    s::TypeDefinition::Union(_) => unimplemented!(),
-
-                    _ => unimplemented!(),
-                }
+                _ => unimplemented!(),
             }
         }
 
@@ -583,15 +560,16 @@ where
 }
 
 /// Ensures that a value matches the expected return type.
-fn complete_value<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn complete_value<'a, R1, R2>(
+    ctx: ExecutionContext<'a, R1, R2>,
     field: &'a q::Field,
     field_type: &'a s::Type,
     fields: Vec<&'a q::Field>,
     resolved_value: q::Value,
 ) -> Result<q::Value, QueryExecutionError>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     // Fail if the field type is non-null but the value is null
     if let s::Type::NonNullType(inner_type) = field_type {
@@ -708,13 +686,14 @@ where
 }
 
 /// Resolves an abstract type (interface, union) into an object type based on the given value.
-fn resolve_abstract_type<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn resolve_abstract_type<'a, R1, R2>(
+    ctx: ExecutionContext<'a, R1, R2>,
     abstract_type: &'a s::TypeDefinition,
     object_value: &q::Value,
 ) -> Result<&'a s::ObjectType, QueryExecutionError>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     // Let the resolver handle the type resolution, return an error if the resolution
     // yields nothing
@@ -762,13 +741,14 @@ fn merge_selection_sets(fields: Vec<&q::Field>) -> q::SelectionSet {
 }
 
 /// Coerces argument values into GraphQL values.
-fn coerce_argument_values<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn coerce_argument_values<'a, R1, R2>(
+    ctx: ExecutionContext<'a, R1, R2>,
     object_type: &'a s::ObjectType,
     field: &'a q::Field,
 ) -> Result<HashMap<&'a q::Name, q::Value>, QueryExecutionError>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     let mut coerced_values = HashMap::new();
 
@@ -806,14 +786,15 @@ where
 }
 
 /// Coerces a single argument value into a GraphQL value.
-fn coerce_argument_value<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn coerce_argument_value<'a, R1, R2>(
+    ctx: ExecutionContext<'a, R1, R2>,
     field: &'a q::Field,
     argument: &s::InputValue,
     value: &q::Value,
 ) -> Result<q::Value, QueryExecutionError>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     MaybeCoercibleValue(value)
         .coerce(&argument.value_type, &|name| {
@@ -833,13 +814,14 @@ where
         ))
 }
 
-fn get_field_type<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn get_field_type<'a, R1, R2>(
+    ctx: ExecutionContext<'a, R1, R2>,
     object_type: &'a s::ObjectType,
     name: &'a s::Name,
 ) -> Option<(&'a s::Field, bool)>
 where
-    R: Resolver,
+    R1: Resolver,
+    R2: Resolver,
 {
     // Resolve __schema and __Type using the introspection schema
     if Some(object_type) == sast::get_root_query_type(&ctx.schema.document) {
