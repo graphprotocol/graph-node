@@ -40,10 +40,10 @@ fn main() {
         .author("Graph Protocol, Inc.")
         .about("Scalable queries for a decentralized future (local node)")
         .arg(
-            Arg::with_name("data-source-definition")
+            Arg::with_name("data-source")
                 .takes_value(true)
                 .required(true)
-                .long("data-source-definition")
+                .long("data-source")
                 .value_name("FILE")
                 .help("Path to the data source definition file"),
         )
