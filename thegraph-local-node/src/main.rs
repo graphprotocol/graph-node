@@ -69,7 +69,7 @@ fn main() {
     let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
 
     // Obtain data source related command-line arguments
-    let data_source_definition_file = matches.value_of("data-source-definition").unwrap();
+    let data_source_definition_file = matches.value_of("data-source").unwrap();
     let data_source_runtime_dir = matches.value_of("data-source-runtime").unwrap().to_string();
 
     debug!(logger, "Setting up Sentry");
