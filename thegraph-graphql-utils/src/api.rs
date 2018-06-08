@@ -231,10 +231,23 @@ fn field_scalar_filter_input_values(
 /// Generates `*_filter` input values for the given enum field.
 fn field_enum_filter_input_values(
     _schema: &Document,
-    _field: &Field,
-    _field_type: &EnumType,
+    field: &Field,
+    field_type: &EnumType,
 ) -> Vec<InputValue> {
-    unimplemented!()
+    vec![
+        Some(input_value(
+            &field.name,
+            "",
+            Type::NamedType(field_type.name.to_owned()),
+        )),
+        Some(input_value(
+            &field.name,
+            "not",
+            Type::NamedType(field_type.name.to_owned()),
+        )),
+    ].into_iter()
+        .filter_map(|value_opt| value_opt)
+        .collect()
 }
 
 /// Generates `*_filter` input values for the given list field.
