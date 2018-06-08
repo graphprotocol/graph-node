@@ -6,18 +6,19 @@ use std::sync::{Arc, Mutex};
 
 use store::query::build_query;
 use thegraph::components::store::*;
-use thegraph::prelude::Store;
-use thegraph_graphql_utils::Resolver as ResolverTrait;
+use thegraph::prelude::BasicStore;
+
+use resolver::Resolver as ResolverTrait;
 
 /// A resolver that fetches entities from a `Store`.
 #[derive(Clone)]
 pub struct StoreResolver {
     logger: slog::Logger,
-    store: Arc<Mutex<Store>>,
+    store: Arc<Mutex<BasicStore>>,
 }
 
 impl StoreResolver {
-    pub fn new(logger: &slog::Logger, store: Arc<Mutex<Store>>) -> Self {
+    pub fn new(logger: &slog::Logger, store: Arc<Mutex<BasicStore>>) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,

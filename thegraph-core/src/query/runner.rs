@@ -5,9 +5,7 @@ use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
 use thegraph::prelude::{Query, QueryRunner as QueryRunnerTrait, Store};
-use thegraph_graphql_utils::execution;
-
-use super::resolver::StoreResolver;
+use thegraph_graphql_utils::{execution, StoreResolver};
 
 /// Common query runner implementation for The Graph.
 pub struct QueryRunner<S> {
