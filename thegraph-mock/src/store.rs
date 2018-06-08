@@ -71,7 +71,7 @@ impl MockStore {
     }
 }
 
-impl Store for MockStore {
+impl BasicStore for MockStore {
     fn get(&self, key: StoreKey) -> Result<Entity, ()> {
         if key.entity == "User" {
             self.entities
@@ -101,7 +101,9 @@ impl Store for MockStore {
     fn find(&self, _query: StoreQuery) -> Result<Vec<Entity>, ()> {
         Ok(self.entities.clone())
     }
+}
 
+impl Store for MockStore {
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
         self.schema_provider_event_sink.clone()
     }
