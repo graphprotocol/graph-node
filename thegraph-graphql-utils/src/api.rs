@@ -193,7 +193,8 @@ fn field_filter_input_values(
 ) -> Vec<InputValue> {
     match field_type {
         Type::NamedType(ref name) => {
-            let named_type = ast::get_named_type(schema, name).unwrap();
+            let named_type = ast::get_named_type(schema, name)
+                .expect(format!("Unable to resolve named type: {}", name).as_str());
             match named_type {
                 TypeDefinition::Scalar(ref t) => field_scalar_filter_input_values(schema, field, t),
                 TypeDefinition::Enum(ref t) => field_enum_filter_input_values(schema, field, t),
