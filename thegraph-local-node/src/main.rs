@@ -105,8 +105,11 @@ fn main() {
             .and_then(|_| Ok(()))
     });
 
+    // Obtain the request sink from the store
+    let store_requests = store.request_sink();
+
     // Forward incoming queries from the GraphQL server to the query runner
-    let mut query_runner = thegraph_core::QueryRunner::new(&logger, core.handle(), store);
+    let mut query_runner = thegraph_core::QueryRunner::new(&logger, core.handle(), store_requests);
     let query_stream = graphql_server.query_stream().unwrap();
     core.handle().spawn({
         query_stream
