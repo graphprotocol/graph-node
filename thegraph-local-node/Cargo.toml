@@ -5,6 +5,7 @@ version = "0.1.0"
 [dependencies]
 clap = "2.31.2"
 futures = "0.1.21"
+graphql-parser = "0.2.1"
 sentry = "0.3.1"
 slog = "2.2.3"
 tokio = "0.1.5"
