@@ -69,6 +69,12 @@ impl<'a> From<&'a query::Value> for Value {
     }
 }
 
+impl<'a> From<&'a str> for Value {
+    fn from(value: &'a str) -> Value {
+        Value::String(value.to_owned())
+    }
+}
+
 /// An entity is represented as a map of attribute names to values.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
