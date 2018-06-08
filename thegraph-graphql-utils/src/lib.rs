@@ -24,7 +24,9 @@ pub mod api;
 mod coercion;
 mod resolver;
 mod serialize;
+mod store;
 
 pub use self::coercion::{MaybeCoercible, MaybeCoercibleValue};
 pub use self::resolver::Resolver;
 pub use self::serialize::SerializableValue;
+pub use self::store::build_query;

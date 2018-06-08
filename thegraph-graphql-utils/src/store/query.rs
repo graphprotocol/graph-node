@@ -1,13 +1,10 @@
-use graphql_parser::query as gqlq;
+use graphql_parser::query as q;
 use std::collections::{BTreeMap, HashMap};
 
 use thegraph::prelude::*;
 
 /// Builds a StoreQuery from GraphQL arguments.
-pub fn build_query(
-    entity: &gqlq::Name,
-    arguments: &HashMap<&gqlq::Name, gqlq::Value>,
-) -> StoreQuery {
+pub fn build_query(entity: &q::Name, arguments: &HashMap<&q::Name, q::Value>) -> StoreQuery {
     StoreQuery {
         entity: entity.to_owned(),
         range: build_range(arguments),
@@ -18,11 +15,11 @@ pub fn build_query(
 }
 
 /// Parses GraphQL arguments into a StoreRange, if present.
-fn build_range(arguments: &HashMap<&gqlq::Name, gqlq::Value>) -> Option<StoreRange> {
+fn build_range(arguments: &HashMap<&q::Name, q::Value>) -> Option<StoreRange> {
     let first = arguments
         .get(&"first".to_string())
         .and_then(|value| match value {
-            gqlq::Value::Int(n) => n.as_i64(),
+            q::Value::Int(n) => n.as_i64(),
             _ => None,
         })
         .and_then(|n| if n > 0 { Some(n as usize) } else { None });
@@ -30,7 +27,7 @@ fn build_range(arguments: &HashMap<&gqlq::Name, gqlq::Value>) -> Option<StoreRan
     let skip = arguments
         .get(&"skip".to_string())
         .and_then(|value| match value {
-            gqlq::Value::Int(n) => n.as_i64(),
+            q::Value::Int(n) => n.as_i64(),
             _ => None,
         })
         .and_then(|n| if n >= 0 { Some(n as usize) } else { None });
@@ -44,18 +41,18 @@ fn build_range(arguments: &HashMap<&gqlq::Name, gqlq::Value>) -> Option<StoreRan
 }
 
 /// Parses GraphQL arguments into a StoreFilter, if present.
-fn build_filter(arguments: &HashMap<&gqlq::Name, gqlq::Value>) -> Option<StoreFilter> {
+fn build_filter(arguments: &HashMap<&q::Name, q::Value>) -> Option<StoreFilter> {
     arguments
         .get(&"filter".to_string())
         .and_then(|value| match value {
-            gqlq::Value::Object(ref object) => Some(object),
+            q::Value::Object(ref object) => Some(object),
             _ => None,
         })
         .map(|object| build_filter_from_object(object))
 }
 
 /// Parses a GraphQL input object into a StoreFilter, if present.
-fn build_filter_from_object(object: &BTreeMap<gqlq::Name, gqlq::Value>) -> StoreFilter {
+fn build_filter_from_object(object: &BTreeMap<q::Name, q::Value>) -> StoreFilter {
     StoreFilter::And(
         object
             .iter()
@@ -65,20 +62,20 @@ fn build_filter_from_object(object: &BTreeMap<gqlq::Name, gqlq::Value>) -> Store
 }
 
 /// Strips the operator suffix from an input object key such as name_eq.
-fn filter_attr(key: &gqlq::Name, suffix: &'static str) -> String {
+fn filter_attr(key: &q::Name, suffix: &'static str) -> String {
     key.trim_right_matches(suffix).to_owned()
 }
 
 /// Parses a list of GraphQL values (if it is one) into a vector of entity attribute values.
-fn list_values(value: &gqlq::Value) -> Vec<Value> {
+fn list_values(value: &q::Value) -> Vec<Value> {
     match value {
-        gqlq::Value::List(values) => values.iter().map(Value::from).collect(),
+        q::Value::List(values) => values.iter().map(Value::from).collect(),
         _ => vec![],
     }
 }
 
 /// Parses a ("name_eq", some_value) style pair into a StoreFilter.
-fn build_filter_from_key_value_pair(key: &gqlq::Name, value: &gqlq::Value) -> StoreFilter {
+fn build_filter_from_key_value_pair(key: &q::Name, value: &q::Value) -> StoreFilter {
     match key {
         s if s.ends_with("_not") => StoreFilter::Not(filter_attr(s, "_not"), value.into()),
         s if s.ends_with("_gt") => StoreFilter::Not(filter_attr(s, "_gt"), value.into()),
@@ -116,29 +113,29 @@ fn build_filter_from_key_value_pair(key: &gqlq::Name, value: &gqlq::Value) -> St
 }
 
 /// Parses GraphQL arguments into an attribute name to order by, if present.
-fn build_order_by(arguments: &HashMap<&gqlq::Name, gqlq::Value>) -> Option<String> {
+fn build_order_by(arguments: &HashMap<&q::Name, q::Value>) -> Option<String> {
     arguments
         .get(&"orderBy".to_string())
         .and_then(|value| match value {
-            gqlq::Value::Enum(name) => Some(name.to_owned()),
+            q::Value::Enum(name) => Some(name.to_owned()),
             _ => None,
         })
 }
 
 /// Parses GraphQL arguments into a StoreOrder, if present.
-fn build_order_direction(arguments: &HashMap<&gqlq::Name, gqlq::Value>) -> Option<StoreOrder> {
+fn build_order_direction(arguments: &HashMap<&q::Name, q::Value>) -> Option<StoreOrder> {
     arguments
         .get(&"orderDirection".to_string())
         .and_then(|value| match value {
-            gqlq::Value::Enum(name) if name == "asc" => Some(StoreOrder::Ascending),
-            gqlq::Value::Enum(name) if name == "desc" => Some(StoreOrder::Descending),
+            q::Value::Enum(name) if name == "asc" => Some(StoreOrder::Ascending),
+            q::Value::Enum(name) if name == "desc" => Some(StoreOrder::Descending),
             _ => None,
         })
 }
 
 #[cfg(test)]
 mod tests {
-    use graphql_parser::query as gqlq;
+    use graphql_parser::query as q;
     use std::collections::{BTreeMap, HashMap};
     use std::iter::FromIterator;
 
@@ -176,10 +173,7 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![(
-                        &"orderBy".to_string(),
-                        gqlq::Value::Enum("name".to_string()),
-                    )].into_iter(),
+                    vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
                 )
             ).order_by,
             Some("name".to_string())
@@ -188,10 +182,7 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![(
-                        &"orderBy".to_string(),
-                        gqlq::Value::Enum("email".to_string()),
-                    )].into_iter()
+                    vec![(&"orderBy".to_string(), q::Value::Enum("email".to_string()))].into_iter()
                 )
             ).order_by,
             Some("email".to_string())
@@ -204,10 +195,8 @@ mod tests {
             build_query(
                 &"Entity".to_string(),
                 &HashMap::from_iter(
-                    vec![(
-                        &"orderBy".to_string(),
-                        gqlq::Value::String("name".to_string()),
-                    )].into_iter()
+                    vec![(&"orderBy".to_string(), q::Value::String("name".to_string()))]
+                        .into_iter()
                 ),
             ).order_by,
             None,
@@ -218,7 +207,7 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(
                         &"orderBy".to_string(),
-                        gqlq::Value::String("email".to_string()),
+                        q::Value::String("email".to_string()),
                     )].into_iter(),
                 )
             ).order_by,
@@ -234,7 +223,7 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(
                         &"orderDirection".to_string(),
-                        gqlq::Value::Enum("asc".to_string()),
+                        q::Value::Enum("asc".to_string()),
                     )].into_iter(),
                 )
             ).order_direction,
@@ -246,7 +235,7 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(
                         &"orderDirection".to_string(),
-                        gqlq::Value::Enum("desc".to_string()),
+                        q::Value::Enum("desc".to_string()),
                     )].into_iter()
                 )
             ).order_direction,
@@ -258,7 +247,7 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(
                         &"orderDirection".to_string(),
-                        gqlq::Value::Enum("ascending...".to_string()),
+                        q::Value::Enum("ascending...".to_string()),
                     )].into_iter()
                 )
             ).order_direction,
@@ -274,7 +263,7 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(
                         &"orderDirection".to_string(),
-                        gqlq::Value::String("asc".to_string()),
+                        q::Value::String("asc".to_string()),
                     )].into_iter()
                 ),
             ).order_direction,
@@ -286,7 +275,7 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(
                         &"orderDirection".to_string(),
-                        gqlq::Value::String("desc".to_string()),
+                        q::Value::String("desc".to_string()),
                     )].into_iter(),
                 )
             ).order_direction,
@@ -312,7 +301,7 @@ mod tests {
         //     build_query(
         //         &"Entity".to_string(),
         //         &HashMap::from_iter(
-        //             vec![(&"skip".to_string(), gqlq::Value::Int(Number::from(50)))].into_iter()
+        //             vec![(&"skip".to_string(), q::Value::Int(Number::from(50)))].into_iter()
         //         )
         //     ).range,
         //     Some(StoreRange {
@@ -332,7 +321,7 @@ mod tests {
         //     build_query(
         //         &"Entity".to_string(),
         //         &HashMap::from_iter(
-        //             vec![(&"first".to_string(), gqlq::Value::Int(Number::from(70)))].into_iter()
+        //             vec![(&"first".to_string(), q::Value::Int(Number::from(70)))].into_iter()
         //         )
         //     ).range,
         //     Some(StoreRange { first: 70, skip: 0 }),
@@ -347,9 +336,9 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(
                         &"filter".to_string(),
-                        gqlq::Value::Object(BTreeMap::from_iter(vec![(
+                        q::Value::Object(BTreeMap::from_iter(vec![(
                             "name_ends_with".to_string(),
-                            gqlq::Value::String("ello".to_string()),
+                            q::Value::String("ello".to_string()),
                         )])),
                     )].into_iter()
                 )
