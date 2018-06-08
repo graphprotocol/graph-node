@@ -1,12 +1,16 @@
+use graphql_parser::schema;
 use serde_yaml;
-use std::path::Path;
+use std::io;
+use std::path::PathBuf;
 
 use data::data_sources::DataSourceDefinition;
 
 #[derive(Debug)]
 pub enum DataSourceDefinitionLoaderError {
     ParseError(serde_yaml::Error),
+    InvalidFormat,
     SchemaMissing,
+    SchemaIOError(io::Error),
 }
 
 impl From<serde_yaml::Error> for DataSourceDefinitionLoaderError {
@@ -20,6 +24,6 @@ pub trait DataSourceDefinitionLoader {
     /// Loads a `DataSourceDefinition` from a local path.
     fn load_from_path(
         &self,
-        path: Path,
+        path: PathBuf,
     ) -> Result<DataSourceDefinition, DataSourceDefinitionLoaderError>;
 }
