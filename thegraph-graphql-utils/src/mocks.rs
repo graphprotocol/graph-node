@@ -10,6 +10,7 @@ impl Resolver for MockResolver {
     fn resolve_entities(
         &self,
         _parent: &Option<q::Value>,
+        _field: &q::Name,
         _entity: &q::Name,
         _arguments: &HashMap<&q::Name, q::Value>,
     ) -> q::Value {
@@ -19,6 +20,7 @@ impl Resolver for MockResolver {
     fn resolve_entity(
         &self,
         _parent: &Option<q::Value>,
+        _field: &q::Name,
         _entity: &q::Name,
         _arguments: &HashMap<&q::Name, q::Value>,
     ) -> q::Value {
