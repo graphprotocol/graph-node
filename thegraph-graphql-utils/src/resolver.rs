@@ -15,6 +15,7 @@ pub trait Resolver: Clone {
     fn resolve_entity(
         &self,
         parent: &Option<q::Value>,
+        field: &q::Name,
         entity: &q::Name,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> q::Value;
