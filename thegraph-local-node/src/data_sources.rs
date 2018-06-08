@@ -21,12 +21,20 @@ pub struct LocalDataSourceProvider {
 }
 
 impl LocalDataSourceProvider {
-    pub fn new(logger: &slog::Logger, runtime: Handle, filename: String) -> Self {
+    pub fn new(logger: &slog::Logger, runtime: Handle, filename: &str) -> Self {
         // Load the data source definition
         let loader = thegraph_core::DataSourceDefinitionLoader::default();
         let definition = loader
-            .load_from_file(Path::new(filename))
+            .load_from_path(Path::new(filename).to_owned())
             .expect("Failed to load data source definition");
+
+        // Parse the schema
+        let schema = graphql_parser::parse_schema(definition.schema.as_str())
+            .map(|document| Schema {
+                id: String::from("local-data-source-schema"),
+                document,
+            })
+            .expect("Failed to parse data source schema");
 
         // Create the data source provider
         LocalDataSourceProvider {
@@ -34,7 +42,7 @@ impl LocalDataSourceProvider {
             event_sink: None,
             schema_event_sink: None,
             runtime,
-            schema: definition.schema,
+            schema: schema,
         }
     }
 }
