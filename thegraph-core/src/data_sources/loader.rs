@@ -1,68 +1,69 @@
-use graphql_parser;
 use serde_yaml;
-use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thegraph::components::data_sources::{DataSourceDefinitionLoader as LoaderTrait,
                                          DataSourceDefinitionLoaderError};
 use thegraph::data::data_sources::*;
-use thegraph::data::schema::Schema;
 
 #[derive(Default)]
 pub struct DataSourceDefinitionLoader;
 
 impl DataSourceDefinitionLoader {
-    fn resolve_path(&self, parent: Option<Path>, path: &Path) -> Path {
+    fn resolve_path(&self, parent: Option<&Path>, path: &Path) -> PathBuf {
         let is_relative = path.is_relative() || path.starts_with("./");
         match (is_relative, parent) {
-            (true, Some(parent_path)) if parent_path.is_dir() => dir.join(path),
-            _ => path.clone(),
+            (true, Some(parent_path)) if parent_path.is_dir() => parent_path.join(path),
+            _ => path.clone().to_path_buf(),
         }
     }
 
     fn load_schema_from_path(
         &self,
         path: &Path,
-    ) -> Result<Schema, DataSourceDefinitionLoaderError> {
-        let mut file = File::open(&schema_filename)
-            .expect(format!("Failed to open schema file: {}", schema_filename.display()).as_str());
-        let mut schema_str = String::new();
-        file.read_to_string(&mut schema_str)
-            .expect("Failed to read schema file");
+    ) -> Result<String, DataSourceDefinitionLoaderError> {
+        let mut file =
+            File::open(path).map_err(|e| DataSourceDefinitionLoaderError::SchemaIOError(e))?;
 
-        // Parse and remember the schema
-        let document = graphql_parser::parse_schema(&schema_str).expect("Failed to parse schema");
-        Schema {
-            id: String::from("local-data-source-schema"),
-            document: document,
-        }
+        let mut sdl = String::new();
+        file.read_to_string(&mut sdl)
+            .map_err(|e| DataSourceDefinitionLoaderError::SchemaIOError(e))?;
+
+        Ok(sdl)
     }
 }
 
 impl LoaderTrait for DataSourceDefinitionLoader {
     fn load_from_path(
         &self,
-        path: Path,
+        path: PathBuf,
     ) -> Result<DataSourceDefinition, DataSourceDefinitionLoaderError> {
+        // Read the YAML data from the definition file
         let file = File::open(&path).expect("Failed to open data source definition file");
-        let raw: serde_yaml::Value =
-            serde_yaml::from_reader(reader).map_err(DataSourceDefinitionLoaderError::from);
+        let mut raw: serde_yaml::Value =
+            serde_yaml::from_reader(file).map_err(DataSourceDefinitionLoaderError::from)?;
 
-        let schema_path = raw.as_mapping()
-            .and_then(|m| m.get("schema"))
-            .and_then(|location| location.get("path"))
-            .and_then(|path| path.as_string())
-            .ok_or(DataSourceDefinitionLoaderError::SchemaMissing)?;
+        {
+            let raw_mapping = raw.as_mapping_mut()
+                .ok_or(DataSourceDefinitionLoaderError::InvalidFormat)?;
 
-        if let Some(schema_path) = schema_path {
-            let path = self.resolve_path(path.parent(), &schema_path);
-            let schema = self.load_schema_from_path(&path)?;
+            // Resolve the schema path into a GraphQL SDL string
+            let schema = raw_mapping
+                .get(&serde_yaml::Value::String(String::from("schema")))
+                .and_then(|location| location.get(&serde_yaml::Value::String(String::from("path"))))
+                .and_then(|path| path.as_str())
+                .ok_or(DataSourceDefinitionLoaderError::SchemaMissing)
+                .map(|schema_path| self.resolve_path(path.parent(), Path::new(schema_path)))
+                .and_then(|path| self.load_schema_from_path(&path))?;
 
-            let m = raw.as_mapping_mut().unwrap();
-            m.insert("schema", schema);
+            // Replace the schema path with the SDL
+            raw_mapping.insert(
+                serde_yaml::Value::String(String::from("schema")),
+                serde_yaml::Value::String(schema),
+            );
         }
 
+        // Parse the YAML data into a DataSourceDefinition
         serde_yaml::from_value(raw).map_err(DataSourceDefinitionLoaderError::from)
     }
 }
