@@ -13,7 +13,6 @@ extern crate serde_derive;
 mod data_sources;
 mod query;
 mod schema;
-mod store;
 
 pub use data_sources::DataSourceDefinitionLoader;
 pub use query::QueryRunner;
