@@ -51,8 +51,7 @@ impl SchemaProvider {
         let combined_schema = self.combined_schema.clone();
 
         self.runtime.spawn(stream.for_each(move |event| {
-            info!(logger, "Received schema event"; "event" => format!("{:?}", event));
-            info!(logger, "Combining schemas");
+            info!(logger, "Received event -> combining schemas");
 
             {
                 // Add or remove the schema from the input schemas
