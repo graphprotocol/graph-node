@@ -75,6 +75,18 @@ impl<'a> From<&'a str> for Value {
     }
 }
 
+impl From<String> for Value {
+    fn from(value: String) -> Value {
+        Value::String(value)
+    }
+}
+
+impl<'a> From<&'a String> for Value {
+    fn from(value: &'a String) -> Value {
+        Value::String(value.clone())
+    }
+}
+
 /// An entity is represented as a map of attribute names to values.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
