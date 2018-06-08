@@ -1,5 +1,6 @@
 extern crate clap;
 extern crate futures;
+extern crate thegraph_local_node;
 #[macro_use]
 extern crate sentry;
 #[macro_use]
@@ -24,9 +25,10 @@ use thegraph::components::data_sources::RuntimeAdapterEvent;
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
-use thegraph_mock as mock;
 use thegraph_runtime_nodejs::{RuntimeAdapter as NodeRuntimeAdapter, RuntimeAdapterConfig};
 use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
+
+use thegraph_local_node::LocalDataSourceProvider;
 
 fn main() {
     let mut core = Core::new().unwrap();
@@ -40,7 +42,7 @@ fn main() {
         .arg(
             Arg::with_name("data-source-definition")
                 .takes_value(true)
-                .required(false)
+                .required(true)
                 .long("data-source-definition")
                 .value_name("FILE")
                 .help("Path to the data source definition file"),
@@ -48,7 +50,7 @@ fn main() {
         .arg(
             Arg::with_name("data-source-runtime")
                 .takes_value(true)
-                .required(false)
+                .required(true)
                 .long("data-source-runtime")
                 .value_name("DIR")
                 .help("Path to the data source runtime source directory"),
@@ -67,8 +69,11 @@ fn main() {
     let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
 
     // Obtain data source related command-line arguments
-    let data_source_definition = matches.value_of("data-source-definition");
-    let data_source_runtime = matches.value_of("data-source-runtime");
+    let data_source_definition_file = matches
+        .value_of("data-source-definition")
+        .unwrap()
+        .to_string();
+    let data_source_runtime_dir = matches.value_of("data-source-runtime").unwrap().to_string();
 
     debug!(logger, "Setting up Sentry");
 
@@ -89,28 +94,20 @@ fn main() {
     info!(logger, "Starting up");
 
     // Create system components
-    let mut data_source_provider = mock::MockDataSourceProvider::new(&logger);
+    let mut data_source_provider =
+        LocalDataSourceProvider::new(&logger, core.handle(), data_source_definition_file.clone());
     let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
     let mut store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
-    let mut data_source_runtime_adapter = match (data_source_definition, data_source_runtime) {
-        (Some(definition), Some(runtime)) => Some(NodeRuntimeAdapter::new(
-            &logger,
-            core.handle(),
-            RuntimeAdapterConfig {
-                data_source_definition: definition.to_string(),
-                runtime_source_dir: runtime.to_string(),
-                json_rpc_url: "localhost:8545".to_string(),
-            },
-        )),
-        _ => {
-            warn!(
-                logger,
-                "No data source arguments provided. Will not index anything"
-            );
-            None
-        }
-    };
+    let mut data_source_runtime_adapter = NodeRuntimeAdapter::new(
+        &logger,
+        core.handle(),
+        RuntimeAdapterConfig {
+            data_source_definition: data_source_definition_file.to_string(),
+            runtime_source_dir: data_source_runtime_dir.to_string(),
+            json_rpc_url: "localhost:8545".to_string(),
+        },
+    );
 
     // Forward schema events from the data source provider to the schema provider
     let schema_stream = data_source_provider.schema_event_stream().unwrap();
@@ -163,41 +160,38 @@ fn main() {
             .and_then(|_| Ok(()))
     });
 
-    // If we have a runtime adapter, connect and start it now
-    if let Some(ref mut runtime_adapter) = data_source_runtime_adapter {
-        core.handle().spawn({
-            // Connect the runtime adapter to the store
-            runtime_adapter
-                .event_stream()
-                .unwrap()
-                .for_each(move |event| {
-                    let mut store = protected_store.lock().unwrap();
+    // Connect the runtime adapter to the store
+    core.handle().spawn({
+        data_source_runtime_adapter
+            .event_stream()
+            .unwrap()
+            .for_each(move |event| {
+                let mut store = protected_store.lock().unwrap();
 
-                    match event {
-                        RuntimeAdapterEvent::EntityAdded(_, k, entity) => {
-                            store
-                                .set(k, entity)
-                                .expect("Failed to set entity in the store");
-                        }
-                        RuntimeAdapterEvent::EntityChanged(_, k, entity) => {
-                            store
-                                .set(k, entity)
-                                .expect("Failed to set entity in the store");
-                        }
-                        RuntimeAdapterEvent::EntityRemoved(_, k) => {
-                            store
-                                .delete(k)
-                                .expect("Failed to remove entity from the store");
-                        }
-                    };
-                    Ok(())
-                })
-                .and_then(|_| Ok(()))
-        });
+                match event {
+                    RuntimeAdapterEvent::EntityAdded(_, k, entity) => {
+                        store
+                            .set(k, entity)
+                            .expect("Failed to set entity in the store");
+                    }
+                    RuntimeAdapterEvent::EntityChanged(_, k, entity) => {
+                        store
+                            .set(k, entity)
+                            .expect("Failed to set entity in the store");
+                    }
+                    RuntimeAdapterEvent::EntityRemoved(_, k) => {
+                        store
+                            .delete(k)
+                            .expect("Failed to remove entity from the store");
+                    }
+                };
+                Ok(())
+            })
+            .and_then(|_| Ok(()))
+    });
 
-        // Start the adapter
-        runtime_adapter.start();
-    }
+    // Start the runtime adapter
+    data_source_runtime_adapter.start();
 
     // Serve GraphQL server over HTTP
     let http_server = graphql_server
@@ -206,7 +200,5 @@ fn main() {
     core.run(http_server).unwrap();
 
     // Stop the runtime adapter
-    if let Some(ref mut runtime_adapter) = data_source_runtime_adapter {
-        runtime_adapter.stop();
-    }
+    data_source_runtime_adapter.stop();
 }
