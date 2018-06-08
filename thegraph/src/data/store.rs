@@ -120,3 +120,9 @@ impl Into<query::Value> for Entity {
         query::Value::Object(fields)
     }
 }
+
+impl From<HashMap<Attribute, Value>> for Entity {
+    fn from(m: HashMap<Attribute, Value>) -> Entity {
+        Entity(m)
+    }
+}
