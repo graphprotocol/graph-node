@@ -256,7 +256,7 @@ fn field_list_filter_input_values(
     _field: &Field,
     _field_type: &Type,
 ) -> Vec<InputValue> {
-    unimplemented!()
+    vec![]
 }
 
 /// Generates a `*_filter` input value for the given field name, suffix and value type.
