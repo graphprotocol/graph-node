@@ -22,7 +22,8 @@ pub trait Resolver: Clone {
     ) -> q::Value;
 
     /// Resolves an enum value for a given enum type.
-    fn resolve_enum_value(&self, enum_type: &s::EnumType, value: Option<&q::Value>) -> q::Value;
+    fn resolve_enum_value(&self, enum_type: &s::EnumType, value: Option<&q::Value>)
+        -> q::Value;
 
     /// Resolves a scalar value for a given scalar type.
     fn resolve_scalar_value(
@@ -32,7 +33,11 @@ pub trait Resolver: Clone {
     ) -> q::Value;
 
     /// Resolves a list of enum values for a given enum type.
-    fn resolve_enum_values(&self, enum_type: &s::EnumType, value: Option<&q::Value>) -> q::Value;
+    fn resolve_enum_values(
+        &self,
+        enum_type: &s::EnumType,
+        value: Option<&q::Value>,
+    ) -> q::Value;
 
     /// Resolves a list of scalar values for a given list type.
     fn resolve_scalar_values(

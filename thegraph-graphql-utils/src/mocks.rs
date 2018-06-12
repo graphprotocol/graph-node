@@ -27,7 +27,11 @@ impl Resolver for MockResolver {
         q::Value::Null
     }
 
-    fn resolve_enum_value(&self, _enum_type: &s::EnumType, _value: Option<&q::Value>) -> q::Value {
+    fn resolve_enum_value(
+        &self,
+        _enum_type: &s::EnumType,
+        _value: Option<&q::Value>,
+    ) -> q::Value {
         q::Value::Null
     }
 
@@ -39,7 +43,11 @@ impl Resolver for MockResolver {
         q::Value::Null
     }
 
-    fn resolve_enum_values(&self, _enum_type: &s::EnumType, _value: Option<&q::Value>) -> q::Value {
+    fn resolve_enum_values(
+        &self,
+        _enum_type: &s::EnumType,
+        _value: Option<&q::Value>,
+    ) -> q::Value {
         q::Value::Null
     }
 
