@@ -19,6 +19,18 @@ pub fn get_root_query_type(schema: &Document) -> Option<&ObjectType> {
         .next()
 }
 
+/// Returns all type definitions in the schema.
+pub fn get_type_definitions<'a>(schema: &'a Document) -> Vec<&'a TypeDefinition> {
+    schema
+        .definitions
+        .iter()
+        .filter_map(|d| match d {
+            Definition::TypeDefinition(typedef) => Some(typedef),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Returns all object type definitions in the schema.
 pub fn get_object_type_definitions<'a>(schema: &'a Document) -> Vec<&'a ObjectType> {
     schema
