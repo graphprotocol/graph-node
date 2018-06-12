@@ -391,7 +391,7 @@ fn directive_locations(directive: &s::DirectiveDefinition) -> q::Value {
             .locations
             .iter()
             .map(|location| location.as_str())
-            .map(|name| q::Value::String(name.to_owned()))
+            .map(|name| q::Value::Enum(name.to_owned()))
             .collect(),
     )
 }
