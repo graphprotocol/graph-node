@@ -500,14 +500,11 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         entity: &q::Name,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> q::Value {
-        debug!(self.logger, "Resolve entities"; "field" => field);
-
         match field.as_str() {
             "possibleTypes" => {
                 let type_names = object_field(parent, "possibleTypes")
-                    .cloned()
                     .and_then(|value| match value {
-                        q::Value::List(type_names) => Some(type_names),
+                        q::Value::List(type_names) => Some(type_names.clone()),
                         _ => None,
                     })
                     .unwrap_or(vec![]);
@@ -520,28 +517,16 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                                 q::Value::String(ref type_name) => Some(type_name),
                                 _ => None,
                             })
-                            .map(|type_name| {
-                                named_type_object(&self.schema, &mut self.type_objects, type_name)
-                            })
+                            .filter_map(|type_name| self.type_objects.get(type_name).cloned())
                             .collect(),
                     )
                 } else {
                     q::Value::Null
                 }
             }
-            _ => {
-                let value = parent
-                    .as_ref()
-                    .and_then(|parent| match parent {
-                        q::Value::Object(object) => object.get(field),
-                        _ => None,
-                    })
-                    .map(|value| value.clone())
-                    .unwrap_or(q::Value::Null);
-
-                debug!(self.logger, "Resolve entities"; "result" => format!("{:#?}", value));
-                value
-            }
+            _ => object_field(parent, field.as_str())
+                .map(|value| value.clone())
+                .unwrap_or(q::Value::Null),
         }
     }
 
@@ -556,27 +541,18 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
             "__schema" => self.schema_object(),
             "__type" => self.type_object(arguments),
             "type" => object_field(parent, "type")
-                .map(|value| match value {
-                    q::Value::String(ref type_name) => {
-                        named_type_object(&self.schema, &mut self.type_objects, type_name)
-                    }
-                    _ => value.clone(),
+                .and_then(|value| match value {
+                    q::Value::String(type_name) => self.type_objects.get(type_name).cloned(),
+                    _ => Some(value.clone()),
                 })
                 .unwrap_or(q::Value::Null),
             "ofType" => object_field(parent, "ofType")
-                .map(|value| match value {
-                    q::Value::String(ref type_name) => {
-                        named_type_object(&self.schema, &mut self.type_objects, type_name)
-                    }
-                    _ => value.clone(),
+                .and_then(|value| match value {
+                    q::Value::String(type_name) => self.type_objects.get(type_name).cloned(),
+                    _ => Some(value.clone()),
                 })
                 .unwrap_or(q::Value::Null),
-            _ => parent
-                .as_ref()
-                .and_then(|parent| match parent {
-                    q::Value::Object(object) => object.get(field),
-                    _ => None,
-                })
+            _ => object_field(parent, field.as_str())
                 .map(|value| value.clone())
                 .unwrap_or(q::Value::Null),
         }
