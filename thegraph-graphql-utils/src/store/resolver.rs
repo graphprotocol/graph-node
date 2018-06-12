@@ -116,7 +116,11 @@ impl ResolverTrait for StoreResolver {
         //}
     }
 
-    fn resolve_enum_value(&self, enum_type: &s::EnumType, value: Option<&q::Value>) -> q::Value {
+    fn resolve_enum_value(
+        &self,
+        enum_type: &s::EnumType,
+        value: Option<&q::Value>,
+    ) -> q::Value {
         match value {
             Some(q::Value::Enum(name)) => enum_type
                 .values
@@ -137,7 +141,11 @@ impl ResolverTrait for StoreResolver {
         value.map(|value| value.clone()).unwrap_or(q::Value::Null)
     }
 
-    fn resolve_enum_values(&self, enum_type: &s::EnumType, value: Option<&q::Value>) -> q::Value {
+    fn resolve_enum_values(
+        &self,
+        enum_type: &s::EnumType,
+        value: Option<&q::Value>,
+    ) -> q::Value {
         match value {
             Some(q::Value::List(values)) => q::Value::List(
                 values
