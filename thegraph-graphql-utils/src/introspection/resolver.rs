@@ -82,7 +82,7 @@ fn list_type_object(
     inner_type: &s::Type,
 ) -> q::Value {
     object_value(vec![
-        ("kind", q::Value::Enum("LIST".to_string())),
+        ("kind", q::Value::Enum(String::from("LIST"))),
         ("ofType", type_object(schema, type_objects, inner_type)),
     ])
 }
@@ -93,7 +93,7 @@ fn non_null_type_object(
     inner_type: &s::Type,
 ) -> q::Value {
     object_value(vec![
-        ("kind", q::Value::Enum("NON_NULL".to_string())),
+        ("kind", q::Value::Enum(String::from("NON_NULL"))),
         ("ofType", type_object(schema, type_objects, inner_type)),
     ])
 }
@@ -132,7 +132,7 @@ fn type_definition_object(
 
 fn enum_type_object(enum_type: &s::EnumType) -> q::Value {
     object_value(vec![
-        ("kind", q::Value::Enum("ENUM".to_string())),
+        ("kind", q::Value::Enum(String::from("ENUM"))),
         ("name", q::Value::String(enum_type.name.to_owned())),
         (
             "description",
@@ -171,7 +171,7 @@ fn input_object_type_object(
 ) -> q::Value {
     object_value(vec![
         ("name", q::Value::String(input_object_type.name.to_owned())),
-        ("kind", q::Value::Enum("INPUT_OBJECT".to_string())),
+        ("kind", q::Value::Enum(String::from("INPUT_OBJECT"))),
         (
             "description",
             input_object_type
@@ -193,7 +193,7 @@ fn interface_type_object(
 ) -> q::Value {
     object_value(vec![
         ("name", q::Value::String(interface_type.name.to_owned())),
-        ("kind", q::Value::Enum("INTERFACE".to_string())),
+        ("kind", q::Value::Enum(String::from("INTERFACE"))),
         (
             "description",
             interface_type
@@ -234,7 +234,7 @@ fn object_type_object(
         .map(|type_object| type_object.clone())
         .unwrap_or_else(|| {
             let type_object = object_value(vec![
-                ("kind", q::Value::Enum("OBJECT".to_string())),
+                ("kind", q::Value::Enum(String::from("OBJECT"))),
                 ("name", q::Value::String(object_type.name.to_owned())),
                 (
                     "description",
@@ -305,7 +305,7 @@ fn object_interfaces(
 fn scalar_type_object(scalar_type: &s::ScalarType) -> q::Value {
     object_value(vec![
         ("name", q::Value::String(scalar_type.name.to_owned())),
-        ("kind", q::Value::Enum("SCALAR".to_string())),
+        ("kind", q::Value::Enum(String::from("SCALAR"))),
         (
             "description",
             scalar_type
@@ -321,7 +321,7 @@ fn scalar_type_object(scalar_type: &s::ScalarType) -> q::Value {
 fn union_type_object(schema: &Schema, union_type: &s::UnionType) -> q::Value {
     object_value(vec![
         ("name", q::Value::String(union_type.name.to_owned())),
-        ("kind", q::Value::Enum("UNION".to_string())),
+        ("kind", q::Value::Enum(String::from("UNION"))),
         (
             "description",
             union_type
