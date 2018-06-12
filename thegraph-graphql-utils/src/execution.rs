@@ -30,9 +30,9 @@ where
     /// The query to execute.
     pub query: &'a Query,
     /// The resolver to use.
-    pub resolver: R1,
+    pub resolver: Arc<R1>,
     /// The introspection resolver to use.
-    pub introspection_resolver: R2,
+    pub introspection_resolver: Arc<R2>,
     /// The current field stack (e.g. allUsers > friends > name).
     pub fields: Vec<&'a q::Field>,
     /// Whether or not we're executing an introspection query
@@ -83,9 +83,9 @@ where
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: options.logger,
-        resolver: options.resolver,
+        resolver: Arc::new(options.resolver),
         schema: &query.schema,
-        introspection_resolver,
+        introspection_resolver: Arc::new(introspection_resolver),
         introspection_schema: &introspection_schema,
         introspecting: false,
         query,
@@ -156,8 +156,6 @@ where
         if let Some((ref field, introspecting)) =
             get_field_type(ctx.clone(), object_type, &fields[0].name)
         {
-            warn!(ctx.logger, "Field type"; "field" => format!("{:?}", field));
-
             // Push the new field onto the context's field stack
             let mut ctx = ctx.for_field(&fields[0]);
 
