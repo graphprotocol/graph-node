@@ -2,9 +2,7 @@ use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use graphql_parser;
 use slog;
-use std::fs::File;
-use std::io::prelude::*;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tokio_core::reactor::Handle;
 
 use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
@@ -13,7 +11,7 @@ use thegraph::util::stream::StreamError;
 use thegraph_core;
 
 pub struct LocalDataSourceProvider {
-    logger: slog::Logger,
+    _logger: slog::Logger,
     event_sink: Option<Sender<DataSourceProviderEvent>>,
     schema_event_sink: Option<Sender<SchemaEvent>>,
     runtime: Handle,
@@ -38,7 +36,7 @@ impl LocalDataSourceProvider {
 
         // Create the data source provider
         LocalDataSourceProvider {
-            logger: logger.new(o!("component" => "LocalDataSourceProvider")),
+            _logger: logger.new(o!("component" => "LocalDataSourceProvider")),
             event_sink: None,
             schema_event_sink: None,
             runtime,
@@ -78,7 +76,7 @@ impl DataSourceProviderTrait for LocalDataSourceProvider {
                     .clone()
                     .unwrap()
                     .send(SchemaEvent::SchemaAdded(self.schema.clone()))
-                    .map_err(|e| panic!("Failed to forward the data source schema"))
+                    .map_err(|e| panic!("Failed to forward the data source schema: {}", e))
                     .and_then(|_| Ok(())),
             );
         }
