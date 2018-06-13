@@ -3,11 +3,10 @@ use slog;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use store::query::build_query;
 use thegraph::components::store::*;
 use thegraph::prelude::BasicStore;
 
-use resolver::Resolver as ResolverTrait;
+use prelude::*;
 
 /// A resolver that fetches entities from a `Store`.
 #[derive(Clone)]
@@ -25,7 +24,7 @@ impl StoreResolver {
     }
 }
 
-impl ResolverTrait for StoreResolver {
+impl Resolver for StoreResolver {
     fn resolve_entities(
         &self,
         _parent: &Option<q::Value>,

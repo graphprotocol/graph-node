@@ -5,7 +5,8 @@ use std::error::Error;
 use std::fmt;
 use std::iter::IntoIterator;
 
-use ast::schema as ast;
+use prelude::*;
+use schema::ast;
 
 #[derive(Debug)]
 pub enum APISchemaError {
@@ -360,7 +361,7 @@ mod tests {
     use graphql_parser::schema::*;
 
     use super::api_schema;
-    use ast::schema as ast;
+    use schema::ast;
 
     #[test]
     fn api_schema_contains_built_in_scalar_types() {

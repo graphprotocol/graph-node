@@ -4,9 +4,8 @@ use std::collections::{BTreeMap, HashMap};
 
 use thegraph::prelude::*;
 
-use ast::query::object_value;
-use ast::schema as sast;
-use resolver::Resolver;
+use prelude::*;
+use schema::ast as sast;
 
 type TypeObjectsMap = BTreeMap<String, q::Value>;
 
