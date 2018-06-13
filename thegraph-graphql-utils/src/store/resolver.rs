@@ -1,5 +1,4 @@
 use graphql_parser::query as q;
-use graphql_parser::schema as s;
 use slog;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

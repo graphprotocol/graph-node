@@ -1,4 +1,4 @@
-use graphql_parser::{query as q, schema as s};
+use graphql_parser::query as q;
 use std::collections::HashMap;
 
 use super::Resolver;

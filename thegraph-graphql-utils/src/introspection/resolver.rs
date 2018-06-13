@@ -102,7 +102,6 @@ fn type_definition_object(
                 }
                 s::TypeDefinition::Scalar(scalar_type) => scalar_type_object(scalar_type),
                 s::TypeDefinition::Union(union_type) => union_type_object(schema, union_type),
-                _ => q::Value::Null,
             };
 
             type_objects.insert(type_name.to_owned(), type_object.clone());
@@ -477,8 +476,8 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
-        entity: &q::Name,
-        arguments: &HashMap<&q::Name, q::Value>,
+        _entity: &q::Name,
+        _arguments: &HashMap<&q::Name, q::Value>,
     ) -> q::Value {
         match field.as_str() {
             "possibleTypes" => {
@@ -514,7 +513,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
-        entity: &q::Name,
+        _entity: &q::Name,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> q::Value {
         match field.as_str() {
