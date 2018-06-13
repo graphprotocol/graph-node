@@ -92,9 +92,9 @@ pub trait Resolver: Clone {
     // Resolves an abstract type into the specific type of an object.
     fn resolve_abstract_type<'a>(
         &self,
-        schema: &'a s::Document,
-        abstract_type: &s::TypeDefinition,
-        object_value: &q::Value,
+        _schema: &'a s::Document,
+        _abstract_type: &s::TypeDefinition,
+        _object_value: &q::Value,
     ) -> Option<&'a s::ObjectType> {
         None
     }

@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 use slog;
 use std::cmp;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use thegraph::prelude::*;
 
