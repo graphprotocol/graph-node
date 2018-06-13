@@ -1,5 +1,5 @@
 use graphql_parser::query::Value;
-use graphql_parser::schema::{Name, Type, TypeDefinition};
+use graphql_parser::schema::{EnumType, Name, ScalarType, Type, TypeDefinition};
 
 pub trait MaybeCoercible<T, N, V, U> {
     fn coerce<F>(&self, using_type: T, map_type: &F) -> Option<V>
@@ -11,58 +11,55 @@ pub trait MaybeCoercible<T, N, V, U> {
 #[derive(Debug)]
 pub struct MaybeCoercibleValue<'a>(pub &'a Value);
 
+impl<'a> MaybeCoercible<&'a EnumType, &'a Name, Value, &'a TypeDefinition>
+    for MaybeCoercibleValue<'a>
+{
+    fn coerce<F>(&self, using_type: &'a EnumType, _map_type: &F) -> Option<Value>
+    where
+        F: Fn(&'a Name) -> Option<&'a TypeDefinition>,
+    {
+        match self.0 {
+            Value::Enum(name) => using_type
+                .values
+                .iter()
+                .find(|value| &value.name == name)
+                .map(|_| self.0.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl<'a> MaybeCoercible<&'a ScalarType, &'a Name, Value, &'a TypeDefinition>
+    for MaybeCoercibleValue<'a>
+{
+    fn coerce<F>(&self, using_type: &'a ScalarType, _map_type: &F) -> Option<Value>
+    where
+        F: Fn(&'a Name) -> Option<&'a TypeDefinition>,
+    {
+        match (using_type.name.as_str(), self.0) {
+            ("Boolean", v @ Value::Boolean(_)) => Some(v.clone()),
+            ("Float", v @ Value::Float(_)) => Some(v.clone()),
+            ("Int", v @ Value::Int(_)) => Some(v.clone()),
+            ("String", v @ Value::String(_)) => Some(v.clone()),
+            ("ID", v @ Value::String(_)) => Some(v.clone()),
+            _ => None,
+        }
+    }
+}
+
 impl<'a> MaybeCoercible<&'a TypeDefinition, &'a Name, Value, &'a TypeDefinition>
     for MaybeCoercibleValue<'a>
 {
-    fn coerce<F>(&self, using_type: &'a TypeDefinition, _map_type: &F) -> Option<Value>
+    fn coerce<F>(&self, using_type: &'a TypeDefinition, map_type: &F) -> Option<Value>
     where
         F: Fn(&'a Name) -> Option<&'a TypeDefinition>,
     {
         match (using_type, self.0) {
             // Accept enum values if they match a value in the enum type
-            (TypeDefinition::Enum(t), Value::Enum(name)) => t.values
-                .iter()
-                .find(|value| &value.name == name)
-                .map(|_| self.0.clone()),
-
-            // Reject non-enum values for enum types
-            (TypeDefinition::Enum(_), _) => None,
+            (TypeDefinition::Enum(t), value) => MaybeCoercibleValue(value).coerce(t, map_type),
 
             // Try to coerce Boolean values
-            (TypeDefinition::Scalar(t), Value::Boolean(_)) => {
-                if t.name == "Boolean" {
-                    Some(self.0.clone())
-                } else {
-                    None
-                }
-            }
-
-            // Try to coerce Int values
-            (TypeDefinition::Scalar(t), Value::Int(_)) => {
-                if t.name == "Int" {
-                    Some(self.0.clone())
-                } else {
-                    None
-                }
-            }
-
-            // Try to coerce Float values
-            (TypeDefinition::Scalar(t), Value::Float(_)) => {
-                if t.name == "Float" {
-                    Some(self.0.clone())
-                } else {
-                    None
-                }
-            }
-
-            // Try to coerce String and ID values
-            (TypeDefinition::Scalar(t), Value::String(_)) => {
-                if t.name == "String" || t.name == "ID" {
-                    Some(self.0.clone())
-                } else {
-                    None
-                }
-            }
+            (TypeDefinition::Scalar(t), value) => MaybeCoercibleValue(value).coerce(t, map_type),
 
             // Try to coerce InputObject values
             (TypeDefinition::InputObject(_), v) => match v {
