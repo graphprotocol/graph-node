@@ -25,12 +25,12 @@ impl SchemaProvider {
     /// Creates a new schema provider.
     pub fn new(logger: &slog::Logger, runtime: Handle) -> Self {
         // Create a channel for receiving events from the data source provider
-        let (sink, stream) = channel(100);
+        let (schema_event_sink, stream) = channel(100);
 
         // Create a new schema provider
-        let mut provider = SchemaProvider {
+        let mut provider = Self {
             logger: logger.new(o!("component" => "SchemaProvider")),
-            schema_event_sink: sink,
+            schema_event_sink,
             event_sink: Arc::new(Mutex::new(None)),
             runtime,
             input_schemas: Arc::new(Mutex::new(HashMap::new())),
@@ -71,26 +71,20 @@ impl SchemaProvider {
                 // we can find in the map. Once we support multiple data sources,
                 // this would be where we combine them into one and also detect
                 // conflicts
-                let api_schema = input_schemas
-                    .values()
-                    .next()
-                    .map(|schema| {
-                        api_schema(&schema.document)
-                            .map(|api_schema| {
-                                Some(Schema {
-                                    id: schema.id.clone(),
-                                    document: api_schema,
-                                })
-                            })
-                            .unwrap_or_else(|e| {
-                                error!(
-                                    logger,
-                                    "Failed to derive API schema from input schemas: {}", e
-                                );
-                                None
-                            })
-                    })
-                    .unwrap_or(None);
+                let api_schema = input_schemas.values().next().and_then(|schema| {
+                    api_schema(&schema.document)
+                        .map(|document| Schema {
+                            id: schema.id.clone(),
+                            document,
+                        })
+                        .map_err(|e| {
+                            error!(
+                                logger,
+                                "Failed to derive API schema from input schemas: {}", e
+                            );
+                        })
+                        .ok()
+                });
 
                 // Rember the combined API schema
                 let mut combined_schema = combined_schema.lock().unwrap();
