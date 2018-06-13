@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
 use thegraph::prelude::{Query, QueryRunner as QueryRunnerTrait, Store};
-use thegraph_graphql_utils::{execution, StoreResolver};
+use thegraph_graphql_utils::prelude::*;
 
 /// Common query runner implementation for The Graph.
 pub struct QueryRunner<S> {
@@ -40,11 +40,11 @@ where
         let store = self.store.clone();
 
         self.runtime.spawn(stream.for_each(move |query| {
-            let options = execution::ExecutionOptions {
+            let options = ExecutionOptions {
                 logger: logger.clone(),
                 resolver: StoreResolver::new(&logger, store.clone()),
             };
-            let result = execution::execute(&query, options);
+            let result = execute(&query, options);
 
             query
                 .result_sender
