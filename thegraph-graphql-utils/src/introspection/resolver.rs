@@ -10,26 +10,6 @@ use resolver::Resolver;
 
 type TypeObjectsMap = BTreeMap<String, q::Value>;
 
-fn coerce_scalar_value(t: &s::ScalarType, value: &Option<&q::Value>) -> Option<q::Value> {
-    value.and_then(|value| match (t.name.as_str(), value) {
-        ("Boolean", v @ q::Value::Boolean(_)) => Some(v.clone()),
-        ("Float", v @ q::Value::Float(_)) => Some(v.clone()),
-        ("Int", v @ q::Value::Int(_)) => Some(v.clone()),
-        ("String", v @ q::Value::String(_)) => Some(v.clone()),
-        _ => None,
-    })
-}
-
-fn coerce_enum_value(t: &s::EnumType, value: &Option<&q::Value>) -> Option<q::Value> {
-    value.and_then(|value| match value {
-        q::Value::Enum(name) => t.values
-            .iter()
-            .find(|v| &v.name == name)
-            .map(|v| q::Value::Enum(v.name.to_owned())),
-        _ => None,
-    })
-}
-
 fn object_field<'a>(object: &'a Option<q::Value>, field: &str) -> Option<&'a q::Value> {
     object
         .as_ref()
@@ -556,78 +536,5 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                 .map(|value| value.clone())
                 .unwrap_or(q::Value::Null),
         }
-    }
-
-    fn resolve_enum_value(
-        &self,
-        enum_type: &s::EnumType,
-        value: Option<&q::Value>,
-    ) -> q::Value {
-        coerce_enum_value(enum_type, &value).unwrap_or(q::Value::Null)
-    }
-
-    fn resolve_scalar_value(
-        &self,
-        scalar_type: &s::ScalarType,
-        value: Option<&q::Value>,
-    ) -> q::Value {
-        coerce_scalar_value(scalar_type, &value).unwrap_or(q::Value::Null)
-    }
-
-    fn resolve_enum_values(
-        &self,
-        enum_type: &s::EnumType,
-        value: Option<&q::Value>,
-    ) -> q::Value {
-        value
-            .and_then(|value| match value {
-                q::Value::List(values) => {
-                    let coerced_values: Vec<q::Value> = values
-                        .iter()
-                        .filter_map(|value| coerce_enum_value(enum_type, &Some(value)))
-                        .collect();
-
-                    if values.len() == coerced_values.len() {
-                        Some(q::Value::List(coerced_values))
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            })
-            .unwrap_or(q::Value::Null)
-    }
-
-    fn resolve_scalar_values(
-        &self,
-        scalar_type: &s::ScalarType,
-        value: Option<&q::Value>,
-    ) -> q::Value {
-        value
-            .and_then(|value| match value {
-                q::Value::List(values) => {
-                    let coerced_values: Vec<q::Value> = values
-                        .iter()
-                        .filter_map(|value| coerce_scalar_value(scalar_type, &Some(value)))
-                        .collect();
-
-                    if values.len() == coerced_values.len() {
-                        Some(q::Value::List(coerced_values))
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            })
-            .unwrap_or(q::Value::Null)
-    }
-
-    fn resolve_abstract_type<'b>(
-        &self,
-        schema: &'b s::Document,
-        abstract_type: &s::TypeDefinition,
-        object_value: &q::Value,
-    ) -> Option<&'b s::ObjectType> {
-        None
     }
 }
