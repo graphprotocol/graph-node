@@ -466,7 +466,14 @@ impl<'a> IntrospectionResolver<'a> {
     }
 
     fn type_object(&self, arguments: &HashMap<&q::Name, q::Value>) -> q::Value {
-        q::Value::Null
+        arguments
+            .get(&String::from("name"))
+            .and_then(|value| match value {
+                q::Value::String(s) => Some(s),
+                _ => None,
+            })
+            .and_then(|name| self.type_objects.get(name).cloned())
+            .unwrap_or(q::Value::Null)
     }
 }
 
