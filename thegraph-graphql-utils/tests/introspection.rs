@@ -12,6 +12,7 @@ use futures::sync::oneshot;
 use graphql_parser::query as q;
 
 use thegraph::prelude::{Query, QueryResult, Schema};
+use thegraph_graphql_utils::api::api_schema;
 use thegraph_graphql_utils::ast::query::object_value;
 use thegraph_graphql_utils::{execution, mocks};
 
@@ -403,28 +404,29 @@ fn expected_mock_schema_introspection() -> q::Value {
     ]);
 
     let expected_types = q::Value::List(vec![
-        string_type,
         id_type,
-        role_type,
         node_type,
-        user_type,
-        user_orderby_type,
-        user_filter_type,
         query_type,
+        role_type,
+        string_type,
+        user_type,
+        user_filter_type,
+        user_orderby_type,
     ]);
 
     let expected_directives = q::Value::List(vec![object_value(vec![
         ("name", q::Value::String("language".to_string())),
         ("description", q::Value::Null),
         (
+            "locations",
+            q::Value::List(vec![q::Value::Enum(String::from("FIELD_DEFINITION"))]),
+        ),
+        (
             "args",
             q::Value::List(vec![object_value(vec![
                 ("name", q::Value::String("language".to_string())),
                 ("description", q::Value::Null),
-                (
-                    "defaultValue",
-                    q::Value::String("String(\"English\")".to_string()),
-                ),
+                ("defaultValue", q::Value::String("English".to_string())),
                 (
                     "type",
                     object_value(vec![
@@ -443,6 +445,7 @@ fn expected_mock_schema_introspection() -> q::Value {
             object_value(vec![("name", q::Value::String("Query".to_string()))]),
         ),
         ("mutationType", q::Value::Null),
+        ("subscriptionType", q::Value::Null),
         ("types", expected_types),
         ("directives", expected_directives),
     ]);
@@ -451,11 +454,11 @@ fn expected_mock_schema_introspection() -> q::Value {
 }
 
 /// Execute an introspection query.
-fn introspection_query(query: &str) -> QueryResult {
+fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     // Create the query
     let (sender, _) = oneshot::channel();
     let query = Query {
-        schema: mock_schema(),
+        schema: schema,
         document: graphql_parser::parse_query(query).unwrap(),
         variables: None,
         result_sender: sender,
@@ -474,6 +477,7 @@ fn introspection_query(query: &str) -> QueryResult {
 #[test]
 fn satisfies_graphiql_introspection_query_without_fragments() {
     let result = introspection_query(
+        mock_schema(),
         "
       query IntrospectionQuery {
         __schema {
@@ -670,6 +674,7 @@ fn satisfies_graphiql_introspection_query_without_fragments() {
           directives {
             name
             description
+            locations
             args {
               name
               description
@@ -720,6 +725,7 @@ fn satisfies_graphiql_introspection_query_without_fragments() {
 #[test]
 fn satisfies_graphiql_introspection_query_with_fragments() {
     let result = introspection_query(
+        mock_schema(),
         "
       query IntrospectionQuery {
         __schema {
@@ -817,4 +823,303 @@ fn satisfies_graphiql_introspection_query_with_fragments() {
 
     let data = result.data.expect("Introspection query returned no result");
     assert_eq!(data, expected_mock_schema_introspection());
+}
+
+#[test]
+fn successfully_runs_introspection_query_against_complex_schema() {
+    let complex_schema = "
+enum RegEntryStatus {
+  regEntry_status_challengePeriod
+  regEntry_status_commitPeriod
+  regEntry_status_revealPeriod
+  regEntry_status_blacklisted
+  regEntry_status_whitelisted
+}
+
+interface RegEntry {
+  regEntry_address: ID
+  regEntry_version: Int
+  regEntry_status: RegEntryStatus
+  regEntry_creator: User
+  regEntry_deposit: Int
+  regEntry_createdOn: String
+  regEntry_challengePeriodEnd: String
+  challenge_challenger: User
+  challenge_createdOn: String
+  challenge_comment: String
+  challenge_votingToken: String
+  challenge_rewardPool: Int
+  challenge_commitPeriodEnd: String
+  challenge_revealPeriodEnd: String
+  challenge_votesFor: Int
+  challenge_votesAgainst: Int
+  challenge_votesTotal: Int
+  challenge_claimedRewardOn: String
+  challenge_vote(vote_voter: ID!): Vote
+}
+
+enum VoteOption {
+  voteOption_noVote
+  voteOption_voteFor
+  voteOption_voteAgainst
+}
+
+type Vote {
+  vote_secretHash: String
+  vote_option: VoteOption
+  vote_amount: Int
+  vote_revealedOn: String
+  vote_claimedRewardOn: String
+  vote_reward: Int
+}
+
+type Meme implements RegEntry {
+  regEntry_address: ID
+  regEntry_version: Int
+  regEntry_status: RegEntryStatus
+  regEntry_creator: User
+  regEntry_deposit: Int
+  regEntry_createdOn: String
+  regEntry_challengePeriodEnd: String
+  challenge_challenger: User
+  challenge_createdOn: String
+  challenge_comment: String
+  challenge_votingToken: String
+  challenge_rewardPool: Int
+  challenge_commitPeriodEnd: String
+  challenge_revealPeriodEnd: String
+  challenge_votesFor: Int
+  challenge_votesAgainst: Int
+  challenge_votesTotal: Int
+  challenge_claimedRewardOn: String
+  challenge_vote(vote_voter: ID!): Vote
+  # Balance of voting token of a voter. This is client-side only, server doesn't return this
+  challenge_availableVoteAmount(voter: ID!): Int
+  meme_title: String
+  meme_number: Int
+  meme_metaHash: String
+  meme_imageHash: String
+  meme_totalSupply: Int
+  meme_totalMinted: Int
+  meme_tokenIdStart: Int
+  meme_totalTradeVolume: Int
+  meme_totalTradeVolumeRank: Int
+  meme_ownedMemeTokens(owner: String): [MemeToken]
+  meme_tags: [Tag]
+}
+
+type Tag {
+  tag_id: ID
+  tag_name: String
+}
+
+type MemeToken {
+  memeToken_tokenId: ID
+  memeToken_number: Int
+  memeToken_owner: User
+  memeToken_meme: Meme
+}
+
+enum MemeAuctionStatus {
+  memeAuction_status_active
+  memeAuction_status_canceled
+  memeAuction_status_done
+}
+
+type MemeAuction {
+  memeAuction_address: ID
+  memeAuction_seller: User
+  memeAuction_buyer: User
+  memeAuction_startPrice: Int
+  memeAuction_endPrice: Int
+  memeAuction_duration: Int
+  memeAuction_startedOn: String
+  memeAuction_boughtOn: String
+  memeAuction_status: MemeAuctionStatus
+  memeAuction_memeToken: MemeToken
+}
+
+type ParamChange implements RegEntry {
+  regEntry_address: ID
+  regEntry_version: Int
+  regEntry_status: RegEntryStatus
+  regEntry_creator: User
+  regEntry_deposit: Int
+  regEntry_createdOn: String
+  regEntry_challengePeriodEnd: String
+  challenge_challenger: User
+  challenge_createdOn: String
+  challenge_comment: String
+  challenge_votingToken: String
+  challenge_rewardPool: Int
+  challenge_commitPeriodEnd: String
+  challenge_revealPeriodEnd: String
+  challenge_votesFor: Int
+  challenge_votesAgainst: Int
+  challenge_votesTotal: Int
+  challenge_claimedRewardOn: String
+  challenge_vote(vote_voter: ID!): Vote
+  # Balance of voting token of a voter. This is client-side only, server doesn't return this
+  challenge_availableVoteAmount(voter: ID!): Int
+  paramChange_db: String
+  paramChange_key: String
+  paramChange_value: Int
+  paramChange_originalValue: Int
+  paramChange_appliedOn: String
+}
+
+type User {
+  # Ethereum address of an user
+  user_address: ID
+  # Total number of memes submitted by user
+  user_totalCreatedMemes: Int
+  # Total number of memes submitted by user, which successfully got into TCR
+  user_totalCreatedMemesWhitelisted: Int
+  # Largest sale creator has done with his newly minted meme
+  user_creatorLargestSale: MemeAuction
+  # Position of a creator in leaderboard according to user_totalCreatedMemesWhitelisted
+  user_creatorRank: Int
+  # Amount of meme tokenIds owned by user
+  user_totalCollectedTokenIds: Int
+  # Amount of unique memes owned by user
+  user_totalCollectedMemes: Int
+  # Largest auction user sold, in terms of price
+  user_largestSale: MemeAuction
+  # Largest auction user bought into, in terms of price
+  user_largestBuy: MemeAuction
+  # Amount of challenges user created
+  user_totalCreatedChallenges: Int
+  # Amount of challenges user created and ended up in his favor
+  user_totalCreatedChallengesSuccess: Int
+  # Total amount of DANK token user received from challenger rewards
+  user_challengerTotalEarned: Int
+  # Total amount of DANK token user received from challenger rewards
+  user_challengerRank: Int
+  # Amount of different votes user participated in
+  user_totalParticipatedVotes: Int
+  # Amount of different votes user voted for winning option
+  user_totalParticipatedVotesSuccess: Int
+  # Amount of DANK token user received for voting for winning option
+  user_voterTotalEarned: Int
+  # Position of voter in leaderboard according to user_voterTotalEarned
+  user_voterRank: Int
+  # Sum of user_challengerTotalEarned and user_voterTotalEarned
+  user_curatorTotalEarned: Int
+  # Position of curator in leaderboard according to user_curatorTotalEarned
+  user_curatorRank: Int
+}
+
+type Parameter {
+  param_db: ID
+  param_key: ID
+  param_value: Int
+}
+";
+
+    let document = graphql_parser::parse_schema(complex_schema).unwrap();
+    let api_document = api_schema(&document).unwrap();
+
+    let schema = Schema {
+        id: String::from("complex-schema"),
+        document: api_document,
+    };
+
+    let result = introspection_query(
+        schema,
+        "
+        query IntrospectionQuery {
+          __schema {
+            queryType { name }
+            mutationType { name }
+            subscriptionType { name }
+            types {
+              ...FullType
+            }
+            directives {
+              name
+              description
+              locations
+              args {
+                ...InputValue
+              }
+            }
+          }
+        }
+
+        fragment FullType on __Type {
+          kind
+          name
+          description
+          fields(includeDeprecated: true) {
+            name
+            description
+            args {
+              ...InputValue
+            }
+            type {
+              ...TypeRef
+            }
+            isDeprecated
+            deprecationReason
+          }
+          inputFields {
+            ...InputValue
+          }
+          interfaces {
+            ...TypeRef
+          }
+          enumValues(includeDeprecated: true) {
+            name
+            description
+            isDeprecated
+            deprecationReason
+          }
+          possibleTypes {
+            ...TypeRef
+          }
+        }
+
+        fragment InputValue on __InputValue {
+          name
+          description
+          type { ...TypeRef }
+          defaultValue
+        }
+
+        fragment TypeRef on __Type {
+          kind
+          name
+          ofType {
+            kind
+            name
+            ofType {
+              kind
+              name
+              ofType {
+                kind
+                name
+                ofType {
+                  kind
+                  name
+                  ofType {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+    ",
+    );
+
+    assert!(result.errors.is_none(), format!("{:#?}", result.errors));
 }
