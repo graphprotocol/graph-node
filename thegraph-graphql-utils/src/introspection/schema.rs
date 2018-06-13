@@ -17,6 +17,7 @@ type __Schema {
   types: [__Type!]!
   queryType: __Type!
   mutationType: __Type
+  subscriptionType: __Type
   directives: [__Directive!]!
 }
 
@@ -88,10 +89,22 @@ type __Directive {
 enum __DirectiveLocation {
   QUERY
   MUTATION
+  SUBSCRIPTION
   FIELD
   FRAGMENT_DEFINITION
   FRAGMENT_SPREAD
   INLINE_FRAGMENT
+  SCHEMA
+  SCALAR
+  OBJECT
+  FIELD_DEFINITION
+  ARGUMENT_DEFINITION
+  INTERFACE
+  UNION
+  ENUM
+  ENUM_VALUE
+  INPUT_OBJECT
+  INPUT_FIELD_DEFINITION
 }";
 
 pub fn introspection_schema() -> s::Document {
