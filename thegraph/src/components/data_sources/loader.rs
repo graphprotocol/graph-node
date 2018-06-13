@@ -1,4 +1,3 @@
-use graphql_parser::schema;
 use serde_yaml;
 use std::io;
 use std::path::PathBuf;
