@@ -1,15 +1,6 @@
 use graphql_parser::query::*;
-use std::collections::BTreeMap;
-use std::iter::FromIterator;
 
 use thegraph::prelude::QueryExecutionError;
-
-/// Creates a `graphql_parser::query::Value::Object` from key/value pairs.
-pub fn object_value(data: Vec<(&str, Value)>) -> Value {
-    Value::Object(BTreeMap::from_iter(
-        data.into_iter().map(|(k, v)| (k.to_string(), v)),
-    ))
-}
 
 /// Returns the operation for the given name (or the only operation if no name is defined).
 pub fn get_operation<'a>(

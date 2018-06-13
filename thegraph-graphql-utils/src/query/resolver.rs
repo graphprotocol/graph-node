@@ -1,7 +1,7 @@
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 
-use super::coercion::*;
+use prelude::*;
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
 pub trait Resolver: Clone {

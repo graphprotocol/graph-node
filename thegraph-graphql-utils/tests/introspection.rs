@@ -10,11 +10,37 @@ extern crate thegraph_graphql_utils;
 
 use futures::sync::oneshot;
 use graphql_parser::query as q;
+use std::collections::HashMap;
 
 use thegraph::prelude::{Query, QueryResult, Schema};
-use thegraph_graphql_utils::api::api_schema;
-use thegraph_graphql_utils::ast::query::object_value;
-use thegraph_graphql_utils::{execution, mocks};
+
+use thegraph_graphql_utils::prelude::*;
+
+/// Mock resolver used in tests that don't need a resolver.
+#[derive(Clone)]
+pub struct MockResolver;
+
+impl Resolver for MockResolver {
+    fn resolve_entities(
+        &self,
+        _parent: &Option<q::Value>,
+        _field: &q::Name,
+        _entity: &q::Name,
+        _arguments: &HashMap<&q::Name, q::Value>,
+    ) -> q::Value {
+        q::Value::Null
+    }
+
+    fn resolve_entity(
+        &self,
+        _parent: &Option<q::Value>,
+        _field: &q::Name,
+        _entity: &q::Name,
+        _arguments: &HashMap<&q::Name, q::Value>,
+    ) -> q::Value {
+        q::Value::Null
+    }
+}
 
 /// Creates a basic GraphQL schema that exercies scalars, directives,
 /// enums, interfaces, input objects, object types and field arguments.
@@ -465,11 +491,11 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     };
 
     // Execute it
-    execution::execute(
+    execute(
         &query,
-        execution::ExecutionOptions {
+        ExecutionOptions {
             logger: slog::Logger::root(slog::Discard, o!()),
-            resolver: mocks::MockResolver,
+            resolver: MockResolver,
         },
     )
 }

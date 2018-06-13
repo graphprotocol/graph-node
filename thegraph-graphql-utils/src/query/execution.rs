@@ -8,11 +8,9 @@ use std::sync::Arc;
 
 use thegraph::prelude::*;
 
-use ast::query as qast;
-use ast::schema as sast;
-use coercion::*;
-use introspection::{introspection_schema, IntrospectionResolver};
-use resolver::Resolver;
+use prelude::*;
+use query::ast as qast;
+use schema::ast as sast;
 
 /// Contextual information passed around during query execution.
 #[derive(Clone)]
