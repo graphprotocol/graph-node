@@ -26,7 +26,7 @@ pub trait RuntimeAdapter {
     /// Stops the underlying data source runtime.
     fn stop(&mut self);
 
-    /// Receiver from which otehrs can read runtime events emitted by the adapter.
+    /// Receiver from which others can read runtime events emitted by the adapter.
     /// Can only be called once. Any consecutive calls will result in a StreamError.
     fn event_stream(&mut self) -> Result<Receiver<RuntimeAdapterEvent>, StreamError>;
 }
