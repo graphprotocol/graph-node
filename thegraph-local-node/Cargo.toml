@@ -12,9 +12,10 @@ tokio = "0.1.5"
 tokio-core = "0.1.17"
 thegraph = { path = "../thegraph" }
 thegraph-core = { path = "../thegraph-core" }
+thegraph-ethereum = { path = "../thegraph-ethereum" }
 thegraph-hyper = { path = "../thegraph-hyper" }
 thegraph-mock = { path = "../thegraph-mock" }
-thegraph-runtime-nodejs = { path = "../thegraph-runtime-nodejs" }
+thegraph-runtime = { path = "../thegraph-runtime" }
 thegraph-store-postgres-diesel = { path = "../thegraph-store-postgres-diesel" }
 
 [dev-dependencies]

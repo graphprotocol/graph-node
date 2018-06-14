@@ -1,0 +1,8 @@
+[package]
+name = "thegraph-ethereum"
+version = "0.1.0"
+
+[dependencies]
+futures = "0.1.21"
+thegraph = { path = "../thegraph" }
+tokio-core = "0.1.6"
