@@ -1488,7 +1488,6 @@ dependencies = [
 name = "thegraph-ethereum"
 version = "0.1.0"
 dependencies = [
- "ethereum-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
  "thegraph 0.1.0",
  "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
