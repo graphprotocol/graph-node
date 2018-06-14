@@ -1,6 +1,9 @@
 /// Components dealing with data sources.
 pub mod data_sources;
 
+/// Components dealing with Ethereum.
+pub mod ethereum;
+
 /// Components dealing with processing GraphQL queries.
 pub mod query;
 
