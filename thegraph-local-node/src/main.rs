@@ -7,9 +7,10 @@ extern crate sentry;
 extern crate slog;
 extern crate thegraph;
 extern crate thegraph_core;
+extern crate thegraph_ethereum;
 extern crate thegraph_hyper;
 extern crate thegraph_mock;
-extern crate thegraph_runtime_nodejs;
+extern crate thegraph_runtime;
 extern crate thegraph_store_postgres_diesel;
 extern crate tokio;
 extern crate tokio_core;
@@ -25,7 +26,7 @@ use thegraph::components::data_sources::RuntimeAdapterEvent;
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
-use thegraph_runtime_nodejs::{RuntimeAdapter as NodeRuntimeAdapter, RuntimeAdapterConfig};
+use thegraph_runtime::{RuntimeAdapter as WASMRuntimeAdapter, RuntimeAdapterConfig};
 use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
 
 use thegraph_local_node::LocalDataSourceProvider;
@@ -48,14 +49,6 @@ fn main() {
                 .help("Path to the data source definition file"),
         )
         .arg(
-            Arg::with_name("data-source-runtime")
-                .takes_value(true)
-                .required(true)
-                .long("data-source-runtime")
-                .value_name("DIR")
-                .help("Path to the data source runtime source directory"),
-        )
-        .arg(
             Arg::with_name("postgres-url")
                 .takes_value(true)
                 .required(true)
@@ -70,7 +63,6 @@ fn main() {
 
     // Obtain data source related command-line arguments
     let data_source_definition_file = matches.value_of("data-source").unwrap();
-    let data_source_runtime_dir = matches.value_of("data-source-runtime").unwrap().to_string();
 
     debug!(logger, "Setting up Sentry");
 
@@ -96,13 +88,29 @@ fn main() {
     let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
     let mut store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
-    let mut data_source_runtime_adapter = NodeRuntimeAdapter::new(
+    let ethereum = Arc::new(Mutex::new(thegraph_ethereum::EthereumWatcher::new()));
+
+    // Create runtime adapter and connect it to Ethereum
+    let ethereum_for_subscribe = ethereum.clone();
+    let ethereum_for_unsubscribe = ethereum.clone();
+    let ethereum_for_contract_state = ethereum.clone();
+    let mut data_source_runtime_adapter = WASMRuntimeAdapter::new(
         &logger,
         core.handle(),
         RuntimeAdapterConfig {
             data_source_definition: data_source_definition_file.to_string(),
-            runtime_source_dir: data_source_runtime_dir.to_string(),
-            json_rpc_url: "localhost:8545".to_string(),
+            on_subscribe_to_event: move |request| {
+                let mut ethereum = ethereum_for_subscribe.lock().unwrap();
+                ethereum.subscribe_to_event(request)
+            },
+            on_unsubscribe_from_event: move |unique_id| {
+                let mut ethereum = ethereum_for_unsubscribe.lock().unwrap();
+                ethereum.unsubscribe_from_event(unique_id)
+            },
+            on_contract_state: move |request| {
+                let mut ethereum = ethereum_for_contract_state.lock().unwrap();
+                ethereum.contract_state(request)
+            },
         },
     );
 
