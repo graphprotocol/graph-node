@@ -1,8 +1,7 @@
-use futures::sync::mpsc::{Receiver, Sender};
+use super::{EventConsumer, EventProducer};
 
 use super::data_sources::SchemaEvent;
 use data::schema::Schema;
-use util::stream::StreamError;
 
 /// Events emitted by [SchemaProvider](trait.SchemaProvider.html) implementations.
 #[derive(Clone, Debug)]
@@ -11,13 +10,12 @@ pub enum SchemaProviderEvent {
     SchemaChanged(Option<Schema>),
 }
 
-/// Common trait for schema provider implementations.
-pub trait SchemaProvider {
-    /// Receiver from which others can read events emitted by the schema provider;
-    /// Can only be called once. Any consecutive call will result in a StreamError.
-    fn event_stream(&mut self) -> Result<Receiver<SchemaProviderEvent>, StreamError>;
-
-    /// Sender to which others should write whenever the data source schemas have
-    /// changed from which the provider generates the combined schema.
-    fn schema_event_sink(&mut self) -> Sender<SchemaEvent>;
-}
+/// A `SchemaProvider` is responsible for spawning a task that listens to the
+/// changes in the underlining data source providers (`EventConsumer`) and
+/// consolidates the received data into a single schema which is then
+/// broadcasted to higher-level consumers (`EventProducer`), such as query runners
+/// and the GraphQL server itself.
+///
+/// The task should be spawned upon construction of the provider, with the
+/// return value providing the required input and output handles.
+pub trait SchemaProvider: EventProducer<SchemaProviderEvent> + EventConsumer<SchemaEvent> {}
