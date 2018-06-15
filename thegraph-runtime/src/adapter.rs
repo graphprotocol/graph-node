@@ -9,51 +9,44 @@ use thegraph::components::ethereum::*;
 use thegraph::prelude::RuntimeAdapter as RuntimeAdapterTrait;
 use thegraph::util::stream::StreamError;
 
-pub struct RuntimeAdapterConfig<S, U, C> {
+pub struct RuntimeAdapterConfig {
     pub data_source_definition: String,
-    pub on_subscribe_to_event: S,
-    pub on_unsubscribe_from_event: U,
-    pub on_contract_state: C,
 }
 
-pub struct RuntimeAdapter<S, U, C>
+pub struct RuntimeAdapter<T>
 where
-    S: Fn(EthereumEventSubscription) -> Receiver<EthereumEvent>,
-    U: Fn(String) -> bool,
-    C: Fn(EthereumContractStateRequest)
-        -> Box<Future<Item = EthereumContractState, Error = EthereumContractStateError>>,
+    T: EthereumWatcher,
 {
-    _config: RuntimeAdapterConfig<S, U, C>,
+    _config: RuntimeAdapterConfig,
+    _runtime: Handle,
     logger: slog::Logger,
     event_sink: Arc<Mutex<Option<Sender<RuntimeAdapterEvent>>>>,
+    ethereum_watcher: Arc<Mutex<T>>,
 }
 
-impl<S, U, C> RuntimeAdapter<S, U, C>
+impl<T> RuntimeAdapter<T>
 where
-    S: Fn(EthereumEventSubscription) -> Receiver<EthereumEvent>,
-    U: Fn(String) -> bool,
-    C: Fn(EthereumContractStateRequest)
-        -> Box<Future<Item = EthereumContractState, Error = EthereumContractStateError>>,
+    T: EthereumWatcher,
 {
     pub fn new(
         logger: &slog::Logger,
-        _runtime: Handle,
-        config: RuntimeAdapterConfig<S, U, C>,
+        runtime: Handle,
+        ethereum_watcher: Arc<Mutex<T>>,
+        config: RuntimeAdapterConfig,
     ) -> Self {
         RuntimeAdapter {
             _config: config,
+            _runtime: runtime,
             logger: logger.new(o!("component" => "RuntimeAdapter")),
             event_sink: Arc::new(Mutex::new(None)),
+            ethereum_watcher,
         }
     }
 }
 
-impl<S, U, C> RuntimeAdapterTrait for RuntimeAdapter<S, U, C>
+impl<T> RuntimeAdapterTrait for RuntimeAdapter<T>
 where
-    S: Fn(EthereumEventSubscription) -> Receiver<EthereumEvent>,
-    U: Fn(String) -> bool,
-    C: Fn(EthereumContractStateRequest)
-        -> Box<Future<Item = EthereumContractState, Error = EthereumContractStateError>>,
+    T: EthereumWatcher,
 {
     fn start(&mut self) {
         info!(self.logger, "Start");
