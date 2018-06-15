@@ -1,99 +1,92 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use slog;
-use std::sync::{Arc, Mutex};
+use slog::Logger;
 use tokio_core::reactor::Handle;
 
 use thegraph::components::data_sources::SchemaEvent;
 use thegraph::components::schema::SchemaProviderEvent;
+use thegraph::components::{EventConsumer, EventProducer};
 use thegraph::prelude::*;
-use thegraph::util::stream::StreamError;
 
 /// A mock `SchemaProvider`.
 pub struct MockSchemaProvider {
-    logger: slog::Logger,
-    schema_event_sink: Sender<SchemaEvent>,
-    event_sink: Arc<Mutex<Option<Sender<SchemaProviderEvent>>>>,
-    runtime: Handle,
+    logger: Logger,
+    input: Sender<SchemaEvent>,
+    output: Option<Receiver<SchemaProviderEvent>>,
 }
 
-impl MockSchemaProvider {
-    /// Creates a new mock `SchemaProvider`.
-    pub fn new(logger: &slog::Logger, runtime: Handle) -> Self {
-        // Create a channel for receiving events from the data source provider
-        let (sink, stream) = channel(100);
+impl SchemaProvider for MockSchemaProvider {}
 
-        // Create a new schema provider
-        let mut provider = MockSchemaProvider {
-            logger: logger.new(o!("component" => "MockSchemaProvider")),
-            schema_event_sink: sink,
-            event_sink: Arc::new(Mutex::new(None)),
-            runtime,
-        };
+impl EventProducer<SchemaProviderEvent> for MockSchemaProvider {
+    type EventStream = Receiver<SchemaProviderEvent>;
 
-        // Spawn a task to handle any incoming events from the data source provider
-        provider.handle_schema_events(stream);
-
-        // Return the new schema provider
-        provider
+    fn take_event_stream(&mut self) -> Option<Self::EventStream> {
+        self.output.take()
     }
+}
 
-    fn handle_schema_events(&mut self, stream: Receiver<SchemaEvent>) {
-        let event_sink = self.event_sink.clone();
+impl EventConsumer<SchemaEvent> for MockSchemaProvider {
+    type EventSink = Box<Sink<SinkItem = SchemaEvent, SinkError = ()>>;
+
+    /// Get the wrapped event sink.
+    fn event_sink(&self) -> Self::EventSink {
         let logger = self.logger.clone();
-
-        self.runtime.spawn(stream.for_each(move |event| {
-            info!(logger, "Received schema event"; "event" => format!("{:?}", event));
-            info!(logger, "Combining schemas");
-
-            // Obtain a lock on the event sink
-            let event_sink = event_sink.lock().unwrap();
-
-            // Mock processing the event from the data source provider
-            let resulting_event = match event {
-                SchemaEvent::SchemaAdded(schema) => {
-                    SchemaProviderEvent::SchemaChanged(Some(schema))
-                }
-                SchemaEvent::SchemaRemoved(schema) => {
-                    SchemaProviderEvent::SchemaChanged(Some(schema))
-                }
-            };
-
-            // If we have another component listening to our events, forward the new
-            // combined schema to them through the event channel
-            match *event_sink {
-                Some(ref sink) => {
-                    info!(logger, "Forwarding the combined schema");
-                    sink.clone().send(resulting_event).wait().unwrap();
-                }
-                None => {
-                    warn!(logger, "Not forwarding the combined schema yet");
-                }
-            }
-
-            // Tokio tasks always return an empty tuple
-            Ok(())
-        }));
+        Box::new(self.input.clone().sink_map_err(move |e| {
+            error!(logger, "MockSchemaProvider was dropped {}", e);
+        }))
     }
 }
 
-impl SchemaProvider for MockSchemaProvider {
-    fn event_stream(&mut self) -> Result<Receiver<SchemaProviderEvent>, StreamError> {
-        info!(self.logger, "Setting up event stream");
+/// A mock implementor of `SchemaProvider`.
+impl MockSchemaProvider {
+    /// Spawns the provider and returns it's input and output handles.
+    pub fn new(logger: &Logger, runtime: Handle) -> Self {
+        let logger = logger.new(o!("component" => "MockSchemaProvider"));
+        info!(logger, "Building a `MockSchemaProvider`");
 
-        // If possible, create a new channel for streaming schema provider events
-        let mut event_sink = self.event_sink.lock().unwrap();
-        match *event_sink {
-            Some(_) => Err(StreamError::AlreadyCreated),
-            None => {
-                let (sink, stream) = channel(100);
-                *event_sink = Some(sink);
-                Ok(stream)
-            }
+        // Create a channel for receiving events from the data source provider.
+        let (data_source_sender, data_source_recv) = channel(100);
+        // Create a channel for broadcasting changes to the schema.
+        let (schema_sender, schema_recv) = channel(100);
+
+        // Spawn the internal handler for any incoming events from the data source provider.
+        runtime.spawn(Self::schema_event_handler(
+            logger.clone(),
+            data_source_recv,
+            schema_sender,
+        ));
+
+        MockSchemaProvider {
+            logger,
+            input: data_source_sender,
+            output: Some(schema_recv),
         }
     }
 
-    fn schema_event_sink(&mut self) -> Sender<SchemaEvent> {
-        self.schema_event_sink.clone()
+    // A task that handles incoming events from the data source provider, updates
+    // the schema and pushes the result to listeners. Any panics here crash the
+    // component, do be careful.
+    fn schema_event_handler(
+        logger: Logger,
+        input: Receiver<SchemaEvent>,
+        output: Sender<SchemaProviderEvent>,
+    ) -> impl Future<Item = (), Error = ()> {
+        let sink_err_logger = logger.clone();
+        input
+        .map(move |event| {
+            info!(logger, "Received schema event"; "event" => format!("{:?}", event));
+            info!(logger, "Combining schemas");
+
+            // Mock processing the event from the data source provider
+            match event {
+                SchemaEvent::SchemaAdded(schema) | SchemaEvent::SchemaRemoved(schema) => {
+                    SchemaProviderEvent::SchemaChanged(Some(schema))
+                }
+            }
+        })
+        // Forward the new combined schema through the schema channel.
+        .forward(output.sink_map_err(move |e| {
+            error!(sink_err_logger, "Receiver of schema events was dropped {}", e);
+        })).map(|_| ())
     }
 }

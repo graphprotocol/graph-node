@@ -23,6 +23,7 @@ use tokio::prelude::*;
 use tokio_core::reactor::Core;
 
 use thegraph::components::data_sources::RuntimeAdapterEvent;
+use thegraph::components::{EventConsumer, EventProducer};
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
@@ -102,7 +103,7 @@ fn main() {
 
     // Forward schema events from the data source provider to the schema provider
     let schema_stream = data_source_provider.schema_event_stream().unwrap();
-    let schema_sink = schema_provider.schema_event_sink();
+    let schema_sink = schema_provider.event_sink();
     core.handle().spawn({
         schema_stream
             .forward(schema_sink.sink_map_err(|e| {
@@ -112,7 +113,7 @@ fn main() {
     });
 
     // Forward schema events from the schema provider to the store and GraphQL server
-    let schema_stream = schema_provider.event_stream().unwrap();
+    let schema_stream = schema_provider.take_event_stream().unwrap();
     core.handle().spawn({
         schema_stream
             .forward(

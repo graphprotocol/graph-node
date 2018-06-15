@@ -1,61 +1,83 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use slog;
+use slog::Logger;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
 use thegraph::components::data_sources::SchemaEvent;
 use thegraph::components::schema::{SchemaProvider as SchemaProviderTrait, SchemaProviderEvent};
+use thegraph::components::{EventConsumer, EventProducer};
 use thegraph::data::schema::Schema;
-use thegraph::util::stream::StreamError;
+
 use thegraph_graphql_utils::prelude::*;
 
 /// Common schema provider implementation for The Graph.
 pub struct SchemaProvider {
-    logger: slog::Logger,
-    schema_event_sink: Sender<SchemaEvent>,
-    event_sink: Arc<Mutex<Option<Sender<SchemaProviderEvent>>>>,
-    runtime: Handle,
-    input_schemas: Arc<Mutex<HashMap<String, Schema>>>,
-    combined_schema: Arc<Mutex<Option<Schema>>>,
+    logger: Logger,
+    input: Sender<SchemaEvent>,
+    output: Option<Receiver<SchemaProviderEvent>>,
+}
+
+impl SchemaProviderTrait for SchemaProvider {}
+
+impl EventProducer<SchemaProviderEvent> for SchemaProvider {
+    type EventStream = Receiver<SchemaProviderEvent>;
+
+    fn take_event_stream(&mut self) -> Option<Self::EventStream> {
+        self.output.take()
+    }
+}
+
+impl EventConsumer<SchemaEvent> for SchemaProvider {
+    type EventSink = Box<Sink<SinkItem = SchemaEvent, SinkError = ()>>;
+
+    /// Get the wrapped event sink.
+    fn event_sink(&self) -> Self::EventSink {
+        let logger = self.logger.clone();
+        Box::new(self.input.clone().sink_map_err(move |e| {
+            error!(logger, "MockSchemaProvider was dropped {}", e);
+        }))
+    }
 }
 
 impl SchemaProvider {
-    /// Creates a new schema provider.
-    pub fn new(logger: &slog::Logger, runtime: Handle) -> Self {
-        // Create a channel for receiving events from the data source provider
-        let (schema_event_sink, stream) = channel(100);
+    /// Spawns the provider and returns it's input and output handles.
+    pub fn new(logger: &Logger, runtime: Handle) -> Self {
+        let logger = logger.new(o!("component" => "SchemaProvider"));
 
-        // Create a new schema provider
-        let mut provider = Self {
-            logger: logger.new(o!("component" => "SchemaProvider")),
-            schema_event_sink,
-            event_sink: Arc::new(Mutex::new(None)),
-            runtime,
-            input_schemas: Arc::new(Mutex::new(HashMap::new())),
-            combined_schema: Arc::new(Mutex::new(None)),
-        };
+        // Create a channel for receiving events from the data source provider.
+        let (data_source_sender, data_source_recv) = channel(100);
+        // Create a channel for broadcasting changes to the schema.
+        let (schema_sender, schema_recv) = channel(100);
 
-        // Spawn a task to handle any incoming events from the data source provider
-        provider.handle_schema_events(stream);
+        // Spawn the internal handler for any incoming events from the data source provider.
+        runtime.spawn(Self::schema_event_handler(
+            logger.clone(),
+            data_source_recv,
+            schema_sender,
+        ));
 
         // Return the new schema provider
-        provider
+        SchemaProvider {
+            logger,
+            input: data_source_sender,
+            output: Some(schema_recv),
+        }
     }
 
-    fn handle_schema_events(&mut self, stream: Receiver<SchemaEvent>) {
-        let event_sink = self.event_sink.clone();
-        let logger = self.logger.clone();
-        let input_schemas = self.input_schemas.clone();
-        let combined_schema = self.combined_schema.clone();
+    fn schema_event_handler(
+        logger: Logger,
+        input: Receiver<SchemaEvent>,
+        output: Sender<SchemaProviderEvent>,
+    ) -> impl Future<Item = (), Error = ()> {
+        let sink_err_logger = logger.clone();
+        let mut input_schemas = HashMap::new();
+        let mut combined_schema: Option<Schema> = None;
 
-        self.runtime.spawn(stream.for_each(move |event| {
-            info!(logger, "Received event -> combining schemas");
-
-            {
-                // Add or remove the schema from the input schemas
-                let mut input_schemas = input_schemas.lock().unwrap();
+        input
+            .map(move |event| {
+                info!(logger, "Received event -> combining schemas");
+                // Add or remove the schema from the input schemas.
                 match event {
                     SchemaEvent::SchemaAdded(ref schema) => {
                         input_schemas.insert(schema.id.clone(), schema.clone());
@@ -71,7 +93,7 @@ impl SchemaProvider {
                 // we can find in the map. Once we support multiple data sources,
                 // this would be where we combine them into one and also detect
                 // conflicts
-                let api_schema = input_schemas.values().next().and_then(|schema| {
+                combined_schema = input_schemas.values().next().and_then(|schema| {
                     api_schema(&schema.document)
                         .map(|document| Schema {
                             id: schema.id.clone(),
@@ -86,56 +108,18 @@ impl SchemaProvider {
                         .ok()
                 });
 
-                // Rember the combined API schema
-                let mut combined_schema = combined_schema.lock().unwrap();
-                *combined_schema = api_schema;
-            }
-
-            // Obtain a lock on the event sink
-            let event_sink = event_sink.lock().unwrap();
-
-            // Mock processing the event from the data source provider
-            let output_event = {
-                let combined_schema = combined_schema.lock().unwrap();
+                // Forward the new combined schema to them through the event channel
+                info!(logger, "Forwarding the combined schema");
+                // Mock processing the event from the data source provider
                 SchemaProviderEvent::SchemaChanged(combined_schema.clone())
-            };
-
-            // If we have another component listening to our events, forward the new
-            // combined schema to them through the event channel
-            match *event_sink {
-                Some(ref sink) => {
-                    info!(logger, "Forwarding the combined schema");
-                    sink.clone().send(output_event).wait().unwrap();
-                }
-                None => {
-                    warn!(logger, "Not forwarding the combined schema yet");
-                }
-            }
-
-            // Tokio tasks always return an empty tuple
-            Ok(())
-        }));
-    }
-}
-
-impl SchemaProviderTrait for SchemaProvider {
-    fn event_stream(&mut self) -> Result<Receiver<SchemaProviderEvent>, StreamError> {
-        info!(self.logger, "Setting up event stream");
-
-        // If possible, create a new channel for streaming schema provider events
-        let mut event_sink = self.event_sink.lock().unwrap();
-        match *event_sink {
-            Some(_) => Err(StreamError::AlreadyCreated),
-            None => {
-                let (sink, stream) = channel(100);
-                *event_sink = Some(sink);
-                Ok(stream)
-            }
-        }
-    }
-
-    fn schema_event_sink(&mut self) -> Sender<SchemaEvent> {
-        self.schema_event_sink.clone()
+            })
+            .forward(output.sink_map_err(move |e| {
+                error!(
+                    sink_err_logger,
+                    "Receiver of schema events was dropped {}", e
+                );
+            }))
+            .map(|_| ())
     }
 }
 
@@ -148,6 +132,7 @@ mod tests {
     use slog;
     use thegraph::components::data_sources::SchemaEvent;
     use thegraph::components::schema::SchemaProviderEvent;
+    use thegraph::components::{EventConsumer, EventProducer};
     use thegraph::prelude::*;
     use thegraph_graphql_utils::schema::ast;
 
@@ -160,8 +145,8 @@ mod tests {
         // Set up the schema provider
         let logger = slog::Logger::root(slog::Discard, o!());
         let mut schema_provider = CoreSchemaProvider::new(&logger, core.handle());
-        let schema_sink = schema_provider.schema_event_sink();
-        let schema_stream = schema_provider.event_stream().unwrap();
+        let schema_sink = schema_provider.event_sink();
+        let schema_stream = schema_provider.take_event_stream().unwrap();
 
         // Create an input schema event
         let input_doc = graphql_parser::parse_schema("type User { name: String! }").unwrap();
@@ -172,7 +157,7 @@ mod tests {
         let input_event = SchemaEvent::SchemaAdded(input_schema.clone());
 
         // Send the input schema event to the schema provider
-        schema_sink.clone().send(input_event).wait().unwrap();
+        schema_sink.send(input_event).wait().unwrap();
 
         // Expect one schema provider event to be emitted as a result
         let work = schema_stream.take(1).into_future();
