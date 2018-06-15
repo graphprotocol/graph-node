@@ -16,12 +16,12 @@ impl EthereumWatcherTrait for EthereumWatcher {
     fn contract_state(
         &mut self,
         request: EthereumContractStateRequest,
-    ) -> Box<Future<Item = EthereumContractState, Error = EthereumContractStateError>> {
-        Box::new(future::ok(EthereumContractState {
+    ) -> Result<EthereumContractState, EthereumContractStateError> {
+        Ok(EthereumContractState {
             address: String::from("123123"),
             block_hash: String::from("123123"),
             data: String::from("data"),
-        }))
+        })
     }
 
     fn subscribe_to_event(

@@ -51,7 +51,7 @@ pub trait EthereumWatcher {
     fn contract_state(
         &mut self,
         request: EthereumContractStateRequest,
-    ) -> Box<Future<Item = EthereumContractState, Error = EthereumContractStateError>>;
+    ) -> Result<EthereumContractState, EthereumContractStateError>;
 
     /// Subscribe to an event of a smart contract.
     fn subscribe_to_event(
