@@ -1,3 +1,5 @@
+extern crate ethabi;
+extern crate ethereum_types;
 extern crate futures;
 extern crate graphql_parser;
 extern crate serde;

@@ -3,6 +3,8 @@ name = "thegraph"
 version = "0.1.0"
 
 [dependencies]
+ethabi = "5.1"
+ethereum-types = "0.3"
 futures = "0.1.21"
 graphql-parser = "0.2.1"
 serde = "1.0"
