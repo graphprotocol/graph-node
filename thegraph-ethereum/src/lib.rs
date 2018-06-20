@@ -1,3 +1,4 @@
+extern crate ethereum_types;
 extern crate futures;
 extern crate thegraph;
 extern crate tokio_core;

@@ -1,6 +1,6 @@
-use futures::sync::mpsc::Receiver;
-use ethereum_types::{Address, H256};
 use ethabi::{Bytes, EventParam};
+use ethereum_types::{Address, H256};
+use futures::sync::mpsc::Receiver;
 
 /// A request for the state of a contract at a specific block hash and address.
 pub struct EthereumContractStateRequest {
