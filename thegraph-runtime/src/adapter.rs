@@ -9,6 +9,8 @@ use thegraph::components::ethereum::*;
 use thegraph::prelude::RuntimeAdapter as RuntimeAdapterTrait;
 use thegraph::util::stream::StreamError;
 
+use interpreter;
+
 pub struct RuntimeAdapterConfig {
     pub data_source_definition: String,
 }
@@ -50,9 +52,18 @@ where
 {
     fn start(&mut self) {
         info!(self.logger, "Start");
+
+        // Get location of wasm file
+
+        // Instantiate wasmi module
+        let _wasmi_module = interpreter::WasmiModule::new("/test.wasm");
+
+        // Connect runtime events to wasm interpreter
+
     }
     fn stop(&mut self) {
         info!(self.logger, "Stop");
+
     }
 
     fn event_stream(&mut self) -> Result<Receiver<RuntimeAdapterEvent>, StreamError> {
