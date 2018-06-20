@@ -1,3 +1,4 @@
+use ethereum_types::{Address, H256};
 use futures::future;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver};
@@ -18,9 +19,9 @@ impl EthereumWatcherTrait for EthereumWatcher {
         request: EthereumContractStateRequest,
     ) -> Result<EthereumContractState, EthereumContractStateError> {
         Ok(EthereumContractState {
-            address: String::from("123123"),
-            block_hash: String::from("123123"),
-            data: String::from("data"),
+            address: Address::new(),
+            block_hash: H256::new(),
+            data: Vec::new(),
         })
     }
 

@@ -3,6 +3,7 @@ name = "thegraph-ethereum"
 version = "0.1.0"
 
 [dependencies]
+ethereum-types = "0.3"
 futures = "0.1.21"
 thegraph = { path = "../thegraph" }
 tokio-core = "0.1.6"
