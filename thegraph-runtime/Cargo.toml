@@ -3,10 +3,10 @@ name = "thegraph-runtime"
 version = "0.1.0"
 
 [dependencies]
+ethereum-types = "0.3"
 futures = "0.1.21"
+parity-wasm = "0.27"
 slog = "2.2.3"
 tokio-core = "0.1.6"
 thegraph = { path = "../thegraph" }
 wasmi = "0.2.0"
-ethereum-types = "0.3"
-parity-wasm = "0.27"
