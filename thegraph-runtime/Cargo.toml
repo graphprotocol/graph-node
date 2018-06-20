@@ -7,3 +7,5 @@ futures = "0.1.21"
 slog = "2.2.3"
 tokio-core = "0.1.6"
 thegraph = { path = "../thegraph" }
+parity-wasm = "0.27.0"
+wasmi = "0.2.0"
