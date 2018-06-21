@@ -63,8 +63,9 @@ where
             .expect("Runtime started without event sink");
 
         // Instantiate Wasmi module
+        // TODO: Link this with the wasm runtime compiler output: wasm_location
         debug!(self.logger, "Instantiate wasm module from file");
-        let _wasmi_module = interpreter::WasmiModule::new("/allocate_add.wasm", event_sink);
+        let _wasmi_module = interpreter::WasmiModule::new("/test/add_fn.wasm", event_sink);
     }
     fn stop(&mut self) {
         info!(self.logger, "Stop");
@@ -86,11 +87,11 @@ where
 #[cfg(test)]
 mod tests {
     use futures::prelude::*;
-    use futures::sync::mpsc::{channel};
+    use futures::sync::mpsc::channel;
     use interpreter;
+    use thegraph::components::data_sources::RuntimeAdapterEvent;
     use thegraph::components::store as StoreComponents;
     use thegraph::data::store as StoreData;
-    use thegraph::components::data_sources::RuntimeAdapterEvent;
 
     #[test]
     fn exported_function_create_entity_method_emits_an_entity_added_event() {
@@ -112,18 +113,26 @@ mod tests {
         interpreter::Db::create_entity(sender.clone(), datasource, key, entity);
 
         // Consume receiver
-        let result = receiver.into_future().wait().unwrap().0.expect("No event found in receiver");
+        let result = receiver
+            .into_future()
+            .wait()
+            .unwrap()
+            .0
+            .expect("No event found in receiver");
 
         // Confirm receiver contains EntityAdded event with correct datasource and StoreKey
         match result {
             RuntimeAdapterEvent::EntityAdded(rec_datasource, rec_key, _rec_entity) => {
                 assert_eq!("memefactory".to_string(), rec_datasource);
-                assert_eq!(StoreComponents::StoreKey {
-                    entity: "test_type".to_string(),
-                    id: 1.to_string(),
-                }, rec_key);
+                assert_eq!(
+                    StoreComponents::StoreKey {
+                        entity: "test_type".to_string(),
+                        id: 1.to_string(),
+                    },
+                    rec_key
+                );
             }
-            _ => { panic!("EntityAdded event not received, other type found")}
+            _ => panic!("EntityAdded event not received, other type found"),
         }
     }
 }

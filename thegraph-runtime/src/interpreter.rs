@@ -21,11 +21,14 @@ pub struct WasmiModule {
 }
 
 impl WasmiModule {
+    /// Creates a new wasmi module
     pub fn new(wasm_location: &str, event_sink: Sender<RuntimeAdapterEvent>) -> Self {
         WasmiModule {
             module: WasmiModule::instantiate_wasmi_module(wasm_location, event_sink),
         }
     }
+
+    /// Create wasmi module instance using wasm, external functions and dependency resolver
     pub fn instantiate_wasmi_module(
         wasm_location: &str,
         event_sink: Sender<RuntimeAdapterEvent>,
@@ -79,7 +82,7 @@ impl WasmConverter {
     }
 }
 
-// Expose Store events to the wasm module
+/// Store events senders that will be exposed to the wasm module
 pub struct Db {}
 
 impl Db {
@@ -127,6 +130,7 @@ impl Db {
     }
 }
 
+/// Hosted external functions with access to event_sink
 pub struct HostExternals {
     event_sink: Sender<RuntimeAdapterEvent>,
 }
@@ -191,6 +195,7 @@ impl Externals for HostExternals {
     }
 }
 
+/// Resolver of the modules dependencies
 pub struct RuntimeModuleImportResolver;
 
 impl ModuleImportResolver for RuntimeModuleImportResolver {
