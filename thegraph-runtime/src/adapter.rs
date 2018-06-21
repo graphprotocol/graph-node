@@ -28,6 +28,7 @@ where
     _config: RuntimeAdapterConfig<S, U, C>,
     logger: slog::Logger,
     event_sink: Arc<Mutex<Option<Sender<RuntimeAdapterEvent>>>>,
+
 }
 
 impl<S, U, C> RuntimeAdapter<S, U, C>
@@ -61,18 +62,19 @@ where
         info!(self.logger, "Start");
 
         // Get location of wasm file
+        let event_sink = self.event_sink
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("Runtime started without event sink");
 
-        // Instantiate wasmi module
-        let _wasmi_module = interpreter::WasmiModule::new("/test.wasm");
-
-        // Connect runtime events to wasm interpreter
+        // Instantiate Wasmi module
+        let _wasmi_module = interpreter::WasmiModule::new("/test.wasm", event_sink);
 
     }
     fn stop(&mut self) {
         info!(self.logger, "Stop");
-
     }
-
     fn event_stream(&mut self) -> Result<Receiver<RuntimeAdapterEvent>, StreamError> {
         // If possible, create a new channel for streaming runtime adapter events
         let mut event_sink = self.event_sink.lock().unwrap();
