@@ -1,5 +1,6 @@
 use parity_wasm;
 use std::env::current_dir;
+use slog;
 use thegraph::components::store as StoreComponents;
 use thegraph::data::store as StoreData;
 use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, Module, ModuleImportResolver,
@@ -31,7 +32,9 @@ impl WasmiModule {
         event_sink: Sender<RuntimeAdapterEvent>,
     ) -> ModuleRef {
         // Load .wasm file into Wasmi interpreter
+
         let wasm_buffer = current_dir().unwrap().join(wasm_location);
+        println!("file location: {:?}", wasm_buffer);
         let module = parity_wasm::deserialize_file(&wasm_buffer).expect("File to be deserialized");
         let loaded_module = Module::from_parity_wasm_module(module).expect("Module to be valid");
 
@@ -53,7 +56,7 @@ impl WasmiModule {
     pub fn _allocate_memory(&self, size: i32) -> i32 {
         self.module
             .invoke_export(
-                "allocate_memory",
+                "malloc",
                 &[RuntimeValue::I32(size)],
                 &mut NopExternals,
             )
@@ -226,18 +229,33 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
 mod tests {
     use super::WasmiModule;
     use std::sync::{Arc, Mutex};
+    use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, Module, ModuleImportResolver,
+                ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue, Signature, Trap,
+                ValueType};
+    use futures::prelude::*;
+    use slog;
+    use futures::sync::mpsc::{channel, Receiver, Sender};
 
     #[test]
-    fn runs_a_function_exported_from_wasm() {
-        let wasm_location = "test/allocate_add.wasm";
-        let event_sink_raw = Arc::new(Mutex::new(None));
-        let event_sink = event_sink_raw
-            .lock()
-            .unwrap()
-            .clone()
-            .expect("Runtime started without event sink");
+    fn run_simple_function_exported_from_wasm_and_return_result() {
+        let logger = slog::Logger::root(slog::Discard, o!());
+        let wasm_location = "test/add_fn.wasm";
 
-        let main = WasmiModule::new(wasm_location, event_sink);
-        let allocated_memory = main.allocate_memory(2 as i32);
+        let (sender, reciever) = channel(100);
+
+        let main = WasmiModule::new(wasm_location, sender);
+//        let allocated_memory = main.add(2 as i32, 4 as i32);
+        let sum = main.module
+            .invoke_export(
+                "add",
+                &[RuntimeValue::I32(8 as i32), RuntimeValue::I32(3 as i32)],
+                &mut NopExternals,
+            )
+            .expect("call failed")
+            .expect("call returned nothing")
+            .try_into::<i32>()
+            .expect("call did not return u32");
+
+        assert_eq!(11 as i32, sum);
     }
 }
