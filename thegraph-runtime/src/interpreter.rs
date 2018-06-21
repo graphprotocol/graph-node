@@ -50,7 +50,7 @@ impl WasmiModule {
     }
 
     // Expose the allocate memory function exported from .wasm for memory management
-    pub fn _allocate_memory(&self, size: i32) -> i32 {
+    pub fn allocate_memory(&self, size: i32) -> i32 {
         self.module
             .invoke_export(
                 "allocate_memory",

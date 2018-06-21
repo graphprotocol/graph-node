@@ -60,8 +60,6 @@ where
     fn start(&mut self) {
         info!(self.logger, "Start");
 
-        // Get location of wasm file
-
         let event_sink = self.event_sink
             .lock()
             .unwrap()
@@ -75,6 +73,7 @@ where
     fn stop(&mut self) {
         info!(self.logger, "Stop");
     }
+
     fn event_stream(&mut self) -> Result<Receiver<RuntimeAdapterEvent>, StreamError> {
         // If possible, create a new channel for streaming runtime adapter events
         let mut event_sink = self.event_sink.lock().unwrap();
