@@ -3,7 +3,7 @@ use std::env::current_dir;
 use thegraph::components::store as StoreComponents;
 use thegraph::data::store as StoreData;
 use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, Module, ModuleImportResolver,
-            ModuleInstance, ModuleRef, RuntimeArgs, RuntimeValue, Signature, Trap, ValueType};
+            ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue, Signature, Trap, ValueType};
 
 use thegraph::components::data_sources::RuntimeAdapterEvent;
 use futures::sync::mpsc::{Sender};
@@ -184,5 +184,16 @@ impl WasmiModule {
             .expect("Failed to instantiate module")
             .run_start(&mut external_functions)
             .expect("Failed to start moduleinstance")
+    }
+    pub fn allocate_memory(&self, size: i32) -> i32 {
+        self.module.invoke_export(
+            "allocate_memory",
+            &[RuntimeValue::I32(size)],
+                &mut NopExternals,
+            )
+            .expect("call failed")
+            .expect("call returned nothing")
+            .try_into::<i32>()
+            .expect("call did not return u32")
     }
 }
