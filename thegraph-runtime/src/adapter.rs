@@ -42,10 +42,11 @@ where
         _runtime: Handle,
         config: RuntimeAdapterConfig<S, U, C>,
     ) -> Self {
+        let (sender, _receiver) = channel(100);
         RuntimeAdapter {
             _config: config,
             logger: logger.new(o!("component" => "RuntimeAdapter")),
-            event_sink: Arc::new(Mutex::new(None)),
+            event_sink: Arc::new(Mutex::new(Some(sender))),
         }
     }
 }
@@ -84,6 +85,51 @@ where
                 *event_sink = Some(sink);
                 Ok(stream)
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use futures::prelude::*;
+    use futures::sync::mpsc::{channel};
+    use interpreter;
+    use thegraph::components::store as StoreComponents;
+    use thegraph::data::store as StoreData;
+    use thegraph::components::data_sources::RuntimeAdapterEvent;
+
+    #[test]
+    fn exported_function_create_entity_method_emits_an_entity_added_event() {
+        let (sender, receiver) = channel(10);
+
+        // Build event data to send: datasource, StoreKey, Entity
+        let datasource = "memefactory".to_string();
+        let key = StoreComponents::StoreKey {
+            entity: "test_type".to_string(),
+            id: 1.to_string(),
+        };
+        let mut entity = StoreData::Entity::new();
+        entity.insert(
+            "Name".to_string(),
+            StoreData::Value::String("John".to_string()),
+        );
+
+        // Create EntityAdded event and send to channel
+        interpreter::Db::create_entity(sender.clone(), datasource, key, entity);
+
+        // Consume receiver
+        let result = receiver.into_future().wait().unwrap().0.expect("No event found in receiver");
+
+        // Confirm receiver contains EntityAdded event with correct datasource and StoreKey
+        match result {
+            RuntimeAdapterEvent::EntityAdded(rec_datasource, rec_key, _rec_entity) => {
+                assert_eq!("memefactory".to_string(), rec_datasource);
+                assert_eq!(StoreComponents::StoreKey {
+                    entity: "test_type".to_string(),
+                    id: 1.to_string(),
+                }, rec_key);
+            }
+            _ => { panic!("EntityAdded event not received, other type found")}
         }
     }
 }
