@@ -1,6 +1,5 @@
 use parity_wasm;
 use std::env::current_dir;
-use slog;
 use thegraph::components::store as StoreComponents;
 use thegraph::data::store as StoreData;
 use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, Module, ModuleImportResolver,
@@ -32,7 +31,6 @@ impl WasmiModule {
         event_sink: Sender<RuntimeAdapterEvent>,
     ) -> ModuleRef {
         // Load .wasm file into Wasmi interpreter
-
         let wasm_buffer = current_dir().unwrap().join(wasm_location);
         println!("file location: {:?}", wasm_buffer);
         let module = parity_wasm::deserialize_file(&wasm_buffer).expect("File to be deserialized");
@@ -55,11 +53,7 @@ impl WasmiModule {
     // Expose the allocate memory function exported from .wasm for memory management
     pub fn _allocate_memory(&self, size: i32) -> i32 {
         self.module
-            .invoke_export(
-                "malloc",
-                &[RuntimeValue::I32(size)],
-                &mut NopExternals,
-            )
+            .invoke_export("malloc", &[RuntimeValue::I32(size)], &mut NopExternals)
             .expect("call failed")
             .expect("call returned nothing")
             .try_into::<i32>()
@@ -228,23 +222,20 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
 #[cfg(test)]
 mod tests {
     use super::WasmiModule;
-    use std::sync::{Arc, Mutex};
-    use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, Module, ModuleImportResolver,
-                ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue, Signature, Trap,
-                ValueType};
-    use futures::prelude::*;
+    use futures::sync::mpsc::{channel};
     use slog;
-    use futures::sync::mpsc::{channel, Receiver, Sender};
+    use wasmi::{NopExternals, RuntimeValue};
 
     #[test]
     fn run_simple_function_exported_from_wasm_and_return_result() {
         let logger = slog::Logger::root(slog::Discard, o!());
         let wasm_location = "test/add_fn.wasm";
+        let (sender, _receiver) = channel(100);
 
-        let (sender, reciever) = channel(100);
-
+        debug!(logger, "Instantiate wasm module from file"; "file_location" => format!("{:?}", wasm_location));
         let main = WasmiModule::new(wasm_location, sender);
-//        let allocated_memory = main.add(2 as i32, 4 as i32);
+
+        debug!(logger, "Invoke exported sum function");
         let sum = main.module
             .invoke_export(
                 "add",
