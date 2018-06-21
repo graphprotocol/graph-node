@@ -98,7 +98,6 @@ fn main() {
     let mut data_source_runtime_adapter = WASMRuntimeAdapter::new(
         &logger,
         core.handle(),
-        ethereum_watcher.clone(),
         RuntimeAdapterConfig {
             data_source_definition: data_source_definition_file.to_string(),
             on_subscribe_to_event: move |request| {
