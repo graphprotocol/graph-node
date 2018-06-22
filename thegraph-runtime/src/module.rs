@@ -33,7 +33,7 @@ impl WasmiModule {
         wasm_location: &str,
         event_sink: Sender<RuntimeHostEvent>,
     ) -> ModuleRef {
-        // Load .wasm file into Wasmi interpreter
+        // Load .wasm file into Wasmi
         let wasm_buffer = current_dir().unwrap().join(wasm_location);
         let module = parity_wasm::deserialize_file(&wasm_buffer).expect("File to be deserialized");
         let loaded_module = Module::from_parity_wasm_module(module).expect("Module to be valid");
@@ -229,7 +229,7 @@ mod tests {
     use super::WasmiModule;
     use futures::prelude::*;
     use futures::sync::mpsc::channel;
-    use interpreter;
+    use module;
     use slog;
     use thegraph::components::data_sources::RuntimeHostEvent;
     use thegraph::components::store as StoreComponents;
@@ -277,7 +277,7 @@ mod tests {
         );
 
         // Create EntityCreated event and send to channel
-        interpreter::Db::create_entity(sender.clone(), datasource, key, entity);
+        module::Db::create_entity(sender.clone(), datasource, key, entity);
 
         // Consume receiver
         let result = receiver

@@ -9,6 +9,6 @@ extern crate wasmi;
 
 mod asc_abi;
 mod host;
-mod interpreter;
+mod module;
 
 pub use self::host::{RuntimeHost, RuntimeHostConfig};
