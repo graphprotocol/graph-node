@@ -85,7 +85,7 @@ impl WasmConverter {
 pub struct Db {}
 
 impl Db {
-    //
+    /// Send Entity Added Event
     pub fn create_entity(
         sender: Sender<RuntimeAdapterEvent>,
         datasource: String,
@@ -99,6 +99,8 @@ impl Db {
             .expect("Failed to forward runtime adapter event");
         id
     }
+
+    /// Send Entity Updated Event
     pub fn update_entity(
         sender: Sender<RuntimeAdapterEvent>,
         datasource: String,
@@ -112,6 +114,8 @@ impl Db {
             .expect("Failed to forward runtime adapter event");
         id
     }
+
+    /// Send Entity Removed Event
     pub fn remove_entity(
         sender: Sender<RuntimeAdapterEvent>,
         datasource: String,
@@ -126,7 +130,7 @@ impl Db {
     }
 }
 
-/// Hosted external functions with access to event_sink
+/// Hosted functions for external use by wasm module
 pub struct HostExternals {
     event_sink: Sender<RuntimeAdapterEvent>,
 }
