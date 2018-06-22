@@ -9,7 +9,7 @@ use thegraph::components::ethereum::*;
 use thegraph::prelude::RuntimeHost as RuntimeHostTrait;
 use thegraph::util::stream::StreamError;
 
-use interpreter;
+use module::WasmiModule;
 
 pub struct RuntimeHostConfig {
     pub data_source_definition: String,
@@ -65,7 +65,7 @@ where
         // Instantiate Wasmi module
         // TODO: Link this with the wasm runtime compiler output: wasm_location
         info!(self.logger, "Instantiate wasm module from file");
-        let _wasmi_module = interpreter::WasmiModule::new("/test/add_fn.wasm", event_sink);
+        let _wasmi_module = WasmiModule::new("/test/add_fn.wasm", event_sink);
     }
 
     fn stop(&mut self) {
