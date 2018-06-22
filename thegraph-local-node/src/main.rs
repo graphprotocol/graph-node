@@ -90,7 +90,11 @@ fn main() {
     let mut store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
     let ethereum_watcher = Arc::new(Mutex::new(thegraph_ethereum::EthereumWatcher::new()));
+    let runtime_manager = thegraph_core::RuntimeManager::new(&logger, core.handle());
 
+    // TODO: This should be turned into a runtime host builder that we pass to the
+    // runtime manager. The builder would be a common trait in `thegraph`, with a
+    // RuntimeHostBuilder implementation in `thegraph-runtime`.
     // Create runtime host and connect it to Ethereum
     let mut data_source_runtime_host = WASMRuntimeHost::new(
         &logger,
@@ -100,6 +104,20 @@ fn main() {
             data_source_definition: data_source_definition_file.to_string(),
         },
     );
+
+    // Forward data source events from the data source provider to the runtime manager
+    let data_source_stream = data_source_provider.event_stream().unwrap();
+    let runtime_manager_sink = runtime_manager.event_sink();
+    core.handle().spawn({
+        data_source_stream
+            .forward(runtime_manager_sink.sink_map_err(|e| {
+                panic!(
+                    "Failed to send data source event to the runtime manager: {:?}",
+                    e
+                );
+            }))
+            .and_then(|_| Ok(()))
+    });
 
     // Forward schema events from the data source provider to the schema provider
     let schema_stream = data_source_provider.schema_event_stream().unwrap();
