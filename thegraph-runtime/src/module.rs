@@ -242,7 +242,8 @@ mod tests {
         let wasm_location = "test/add_fn.wasm";
         let (sender, _receiver) = channel(10);
 
-        debug!(logger, "Instantiate wasm module from file"; "file_location" => format!("{:?}", wasm_location));
+        debug!(logger, "Instantiate wasm module from file";
+               "file_location" => format!("{:?}", wasm_location));
         let main = WasmiModule::new(wasm_location, sender);
 
         debug!(logger, "Invoke exported sum function");
