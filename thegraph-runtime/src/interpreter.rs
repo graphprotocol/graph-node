@@ -8,7 +8,7 @@ use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, Module, Mod
 
 use futures::prelude::*;
 use futures::sync::mpsc::Sender;
-use thegraph::components::data_sources::RuntimeAdapterEvent;
+use thegraph::components::data_sources::RuntimeHostEvent;
 
 // Set indexes for Store functions that will be exported with module
 const CREATE_FUNC_INDEX: usize = 0;
@@ -22,7 +22,7 @@ pub struct WasmiModule {
 
 impl WasmiModule {
     /// Creates a new wasmi module
-    pub fn new(wasm_location: &str, event_sink: Sender<RuntimeAdapterEvent>) -> Self {
+    pub fn new(wasm_location: &str, event_sink: Sender<RuntimeHostEvent>) -> Self {
         WasmiModule {
             module: WasmiModule::instantiate_wasmi_module(wasm_location, event_sink),
         }
@@ -31,7 +31,7 @@ impl WasmiModule {
     /// Create wasmi module instance using wasm, external functions and dependency resolver
     pub fn instantiate_wasmi_module(
         wasm_location: &str,
-        event_sink: Sender<RuntimeAdapterEvent>,
+        event_sink: Sender<RuntimeHostEvent>,
     ) -> ModuleRef {
         // Load .wasm file into Wasmi interpreter
         let wasm_buffer = current_dir().unwrap().join(wasm_location);
@@ -85,54 +85,54 @@ impl WasmConverter {
 pub struct Db {}
 
 impl Db {
-    /// Send Entity Added Event
+    /// Send Entity Created Event
     pub fn create_entity(
-        sender: Sender<RuntimeAdapterEvent>,
+        sender: Sender<RuntimeHostEvent>,
         datasource: String,
         key: StoreComponents::StoreKey,
         entity: StoreData::Entity,
     ) -> i32 {
         let id: i32 = key.id.parse().unwrap();
         sender
-            .send(RuntimeAdapterEvent::EntityAdded(datasource, key, entity))
+            .send(RuntimeHostEvent::EntityCreated(datasource, key, entity))
             .wait()
-            .expect("Failed to forward runtime adapter event");
+            .expect("Failed to forward runtime host event");
         id
     }
 
     /// Send Entity Updated Event
     pub fn update_entity(
-        sender: Sender<RuntimeAdapterEvent>,
+        sender: Sender<RuntimeHostEvent>,
         datasource: String,
         key: StoreComponents::StoreKey,
         entity: StoreData::Entity,
     ) -> i32 {
         let id: i32 = key.id.parse().unwrap();
         sender
-            .send(RuntimeAdapterEvent::EntityChanged(datasource, key, entity))
+            .send(RuntimeHostEvent::EntityChanged(datasource, key, entity))
             .wait()
-            .expect("Failed to forward runtime adapter event");
+            .expect("Failed to forward runtime host event");
         id
     }
 
     /// Send Entity Removed Event
     pub fn remove_entity(
-        sender: Sender<RuntimeAdapterEvent>,
+        sender: Sender<RuntimeHostEvent>,
         datasource: String,
         key: StoreComponents::StoreKey,
     ) -> i32 {
         let id: i32 = key.id.parse().unwrap();
         sender
-            .send(RuntimeAdapterEvent::EntityRemoved(datasource, key))
+            .send(RuntimeHostEvent::EntityRemoved(datasource, key))
             .wait()
-            .expect("Failed to forward runtime adapter event");
+            .expect("Failed to forward runtime host event");
         id
     }
 }
 
 /// Hosted functions for external use by wasm module
 pub struct HostExternals {
-    event_sink: Sender<RuntimeAdapterEvent>,
+    event_sink: Sender<RuntimeHostEvent>,
 }
 
 impl Externals for HostExternals {
@@ -229,13 +229,12 @@ mod tests {
     use super::WasmiModule;
     use futures::prelude::*;
     use futures::sync::mpsc::channel;
+    use interpreter;
     use slog;
-    use wasmi::{NopExternals, RuntimeValue};
-    use thegraph::components::data_sources::RuntimeAdapterEvent;
+    use thegraph::components::data_sources::RuntimeHostEvent;
     use thegraph::components::store as StoreComponents;
     use thegraph::data::store as StoreData;
-    use interpreter;
-
+    use wasmi::{NopExternals, RuntimeValue};
 
     #[test]
     fn run_simple_function_exported_from_wasm_and_return_result() {
@@ -262,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn exported_function_create_entity_method_emits_an_entity_added_event() {
+    fn exported_function_create_entity_method_emits_an_entity_created_event() {
         let (sender, receiver) = channel(10);
 
         // Build event data to send: datasource, StoreKey, Entity
@@ -277,7 +276,7 @@ mod tests {
             StoreData::Value::String("John".to_string()),
         );
 
-        // Create EntityAdded event and send to channel
+        // Create EntityCreated event and send to channel
         interpreter::Db::create_entity(sender.clone(), datasource, key, entity);
 
         // Consume receiver
@@ -288,9 +287,9 @@ mod tests {
             .0
             .expect("No event found in receiver");
 
-        // Confirm receiver contains EntityAdded event with correct datasource and StoreKey
+        // Confirm receiver contains EntityCreated event with correct datasource and StoreKey
         match result {
-            RuntimeAdapterEvent::EntityAdded(rec_datasource, rec_key, _rec_entity) => {
+            RuntimeHostEvent::EntityCreated(rec_datasource, rec_key, _rec_entity) => {
                 assert_eq!("memefactory".to_string(), rec_datasource);
                 assert_eq!(
                     StoreComponents::StoreKey {
@@ -300,7 +299,7 @@ mod tests {
                     rec_key
                 );
             }
-            _ => panic!("EntityAdded event not received, other type found"),
+            _ => panic!("EntityCreated event not received, other type found"),
         }
     }
 }
