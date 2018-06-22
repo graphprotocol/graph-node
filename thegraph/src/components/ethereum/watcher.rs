@@ -50,7 +50,7 @@ pub struct EthereumEvent {
 ///
 /// Implementations may be implemented against an in-process Ethereum node
 /// or a remote node over RPC.
-pub trait EthereumWatcher {
+pub trait EthereumAdapter {
     /// Obtain the state of a smart contract.
     fn contract_state(
         &mut self,

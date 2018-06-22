@@ -30,23 +30,18 @@ pub mod util;
 /// use thegraph::prelude::*;
 /// ```
 pub mod prelude {
-    pub use components::data_sources::{
-        DataSourceDefinitionLoader, DataSourceProvider, RuntimeHost, RuntimeHostBuilder,
-        RuntimeManager,
-    };
-    pub use components::ethereum::EthereumWatcher;
+    pub use components::data_sources::{DataSourceDefinitionLoader, DataSourceProvider,
+                                       RuntimeHost, RuntimeHostBuilder, RuntimeManager};
+    pub use components::ethereum::EthereumAdapter;
     pub use components::query::QueryRunner;
     pub use components::schema::SchemaProvider;
     pub use components::server::GraphQLServer;
-    pub use components::store::{
-        BasicStore, Store, StoreFilter, StoreOrder, StoreQuery, StoreRange,
-    };
+    pub use components::store::{BasicStore, Store, StoreFilter, StoreOrder, StoreQuery, StoreRange};
     pub use components::{EventConsumer, EventProducer};
 
     pub use data::data_sources::DataSourceDefinition;
-    pub use data::query::{
-        Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue, QueryVariables,
-    };
+    pub use data::query::{Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue,
+                          QueryVariables};
     pub use data::schema::Schema;
     pub use data::store::{Attribute, Entity, Value};
 }

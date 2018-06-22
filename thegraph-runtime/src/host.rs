@@ -9,9 +9,8 @@ use uuid::Uuid;
 
 use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
-use thegraph::prelude::{
-    RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
-};
+use thegraph::prelude::{RuntimeHost as RuntimeHostTrait,
+                        RuntimeHostBuilder as RuntimeHostBuilderTrait, *};
 
 use module::{WasmiModule, WasmiModuleConfig};
 
@@ -21,7 +20,7 @@ pub struct RuntimeHostConfig {
 
 pub struct RuntimeHostBuilder<T>
 where
-    T: EthereumWatcher,
+    T: EthereumAdapter,
 {
     logger: Logger,
     runtime: Handle,
@@ -30,7 +29,7 @@ where
 
 impl<T> RuntimeHostBuilder<T>
 where
-    T: EthereumWatcher,
+    T: EthereumAdapter,
 {
     pub fn new(logger: &Logger, runtime: Handle, ethereum_watcher: Arc<Mutex<T>>) -> Self {
         RuntimeHostBuilder {
@@ -43,7 +42,7 @@ where
 
 impl<T> RuntimeHostBuilderTrait for RuntimeHostBuilder<T>
 where
-    T: EthereumWatcher,
+    T: EthereumAdapter,
 {
     type Host = RuntimeHost<T>;
 
@@ -61,7 +60,7 @@ where
 
 pub struct RuntimeHost<T>
 where
-    T: EthereumWatcher,
+    T: EthereumAdapter,
 {
     config: RuntimeHostConfig,
     logger: Logger,
@@ -73,7 +72,7 @@ where
 
 impl<T> RuntimeHost<T>
 where
-    T: EthereumWatcher,
+    T: EthereumAdapter,
 {
     pub fn new(
         logger: &Logger,
@@ -187,7 +186,7 @@ where
 
 impl<T> EventProducer<RuntimeHostEvent> for RuntimeHost<T>
 where
-    T: EthereumWatcher,
+    T: EthereumAdapter,
 {
     type EventStream = Receiver<RuntimeHostEvent>;
 
@@ -198,7 +197,7 @@ where
 
 impl<T> RuntimeHostTrait for RuntimeHost<T>
 where
-    T: EthereumWatcher,
+    T: EthereumAdapter,
 {
     fn data_source_definition(&self) -> &DataSourceDefinition {
         &self.config.data_source_definition

@@ -89,9 +89,20 @@ fn main() {
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let protected_store = Arc::new(Mutex::new(store));
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
-    let ethereum_watcher = Arc::new(Mutex::new(thegraph_ethereum::EthereumWatcher::new()));
-    let runtime_host_builder =
-        WASMRuntimeHostBuilder::new(&logger, core.handle(), ethereum_watcher.clone());
+    let ethereum_watcher = thegraph_ethereum::EthereumAdapter::new(
+        thegraph_ethereum::EthereumAdapterConfig {
+            transport: thegraph_ethereum::transports::ipc::Ipc::with_event_loop(
+                &"insert_ipc_path_here"[..],
+                &core.handle(),
+            ).unwrap(),
+        },
+        core.handle(),
+    );
+    let runtime_host_builder = WASMRuntimeHostBuilder::new(
+        &logger,
+        core.handle(),
+        Arc::new(Mutex::new(ethereum_watcher)),
+    );
     let runtime_manager = thegraph_core::RuntimeManager::new(
         &logger,
         core.handle(),
