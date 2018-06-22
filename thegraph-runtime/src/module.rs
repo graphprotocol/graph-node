@@ -35,8 +35,10 @@ impl WasmiModule {
     ) -> ModuleRef {
         // Load .wasm file into Wasmi
         let wasm_buffer = current_dir().unwrap().join(wasm_location);
-        let module = parity_wasm::deserialize_file(&wasm_buffer).expect("File to be deserialized");
-        let loaded_module = Module::from_parity_wasm_module(module).expect("Module to be valid");
+        let module =
+            parity_wasm::deserialize_file(&wasm_buffer).expect("Failed to deserialize wasm file.");
+        let loaded_module = Module::from_parity_wasm_module(module)
+            .expect("Invalid parity_wasm module; Wasmi could not interpret.");
 
         // Create new instance of externally hosted functions invoker
         let mut external_functions = HostExternals { event_sink };
@@ -56,10 +58,10 @@ impl WasmiModule {
     pub fn _allocate_memory(&self, size: i32) -> i32 {
         self.module
             .invoke_export("malloc", &[RuntimeValue::I32(size)], &mut NopExternals)
-            .expect("call failed")
-            .expect("call returned nothing")
+            .expect("Failed to invoke memory allocation function.")
+            .expect("Function did not return a value.")
             .try_into::<i32>()
-            .expect("call did not return u32")
+            .expect("Function return value was not expected type, u32.")
     }
 }
 
@@ -246,17 +248,17 @@ mod tests {
                "file_location" => format!("{:?}", wasm_location));
         let main = WasmiModule::new(wasm_location, sender);
 
-        debug!(logger, "Invoke exported sum function");
+        debug!(logger, "Invoke exported function, find the sum of two integers.");
         let sum = main.module
             .invoke_export(
                 "add",
                 &[RuntimeValue::I32(8 as i32), RuntimeValue::I32(3 as i32)],
                 &mut NopExternals,
             )
-            .expect("call failed")
-            .expect("call returned nothing")
+            .expect("Failed to invoke memory allocation function.")
+            .expect("Function did not return a value.")
             .try_into::<i32>()
-            .expect("call did not return u32");
+            .expect("Function return value was not expected type, u32.");
 
         assert_eq!(11 as i32, sum);
     }
@@ -300,7 +302,7 @@ mod tests {
                     rec_key
                 );
             }
-            _ => panic!("EntityCreated event not received, other type found"),
+            _ => panic!("Unexpected Event recieved, expected RuntimeHostEvent::EntityCreated."),
         }
     }
 }
