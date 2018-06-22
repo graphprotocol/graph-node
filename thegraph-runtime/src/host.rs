@@ -4,29 +4,29 @@ use slog;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
-use thegraph::components::data_sources::RuntimeAdapterEvent;
+use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
-use thegraph::prelude::RuntimeAdapter as RuntimeAdapterTrait;
+use thegraph::prelude::RuntimeHost as RuntimeHostTrait;
 use thegraph::util::stream::StreamError;
 
 use interpreter;
 
-pub struct RuntimeAdapterConfig {
+pub struct RuntimeHostConfig {
     pub data_source_definition: String,
 }
 
-pub struct RuntimeAdapter<T>
+pub struct RuntimeHost<T>
 where
     T: EthereumWatcher,
 {
-    _config: RuntimeAdapterConfig,
+    _config: RuntimeHostConfig,
     _runtime: Handle,
     logger: slog::Logger,
-    event_sink: Arc<Mutex<Option<Sender<RuntimeAdapterEvent>>>>,
+    event_sink: Arc<Mutex<Option<Sender<RuntimeHostEvent>>>>,
     ethereum_watcher: Arc<Mutex<T>>,
 }
 
-impl<T> RuntimeAdapter<T>
+impl<T> RuntimeHost<T>
 where
     T: EthereumWatcher,
 {
@@ -34,20 +34,20 @@ where
         logger: &slog::Logger,
         runtime: Handle,
         ethereum_watcher: Arc<Mutex<T>>,
-        config: RuntimeAdapterConfig,
+        config: RuntimeHostConfig,
     ) -> Self {
         let (sender, _receiver) = channel(100);
-        RuntimeAdapter {
+        RuntimeHost {
             _config: config,
             _runtime: runtime,
-            logger: logger.new(o!("component" => "RuntimeAdapter")),
+            logger: logger.new(o!("component" => "RuntimeHost")),
             event_sink: Arc::new(Mutex::new(Some(sender))),
             ethereum_watcher,
         }
     }
 }
 
-impl<T> RuntimeAdapterTrait for RuntimeAdapter<T>
+impl<T> RuntimeHostTrait for RuntimeHost<T>
 where
     T: EthereumWatcher,
 {
@@ -69,10 +69,9 @@ where
     }
     fn stop(&mut self) {
         info!(self.logger, "Stop");
-
     }
-    fn event_stream(&mut self) -> Result<Receiver<RuntimeAdapterEvent>, StreamError> {
-        // If possible, create a new channel for streaming runtime adapter events
+    fn event_stream(&mut self) -> Result<Receiver<RuntimeHostEvent>, StreamError> {
+        // If possible, create a new channel for streaming runtime host events
         let mut event_sink = self.event_sink.lock().unwrap();
         match *event_sink {
             Some(_) => Err(StreamError::AlreadyCreated),
