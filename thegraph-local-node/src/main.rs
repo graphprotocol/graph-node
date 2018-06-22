@@ -22,12 +22,12 @@ use std::sync::{Arc, Mutex};
 use tokio::prelude::*;
 use tokio_core::reactor::Core;
 
-use thegraph::components::data_sources::RuntimeAdapterEvent;
+use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::{EventConsumer, EventProducer};
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
-use thegraph_runtime::{RuntimeAdapter as WASMRuntimeAdapter, RuntimeAdapterConfig};
+use thegraph_runtime::{RuntimeHost as WASMRuntimeHost, RuntimeHostConfig};
 use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
 
 use thegraph_local_node::LocalDataSourceProvider;
@@ -91,11 +91,12 @@ fn main() {
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
     let ethereum_watcher = Arc::new(Mutex::new(thegraph_ethereum::EthereumWatcher::new()));
 
-    // Create runtime adapter and connect it to Ethereum
-    let mut data_source_runtime_adapter = WASMRuntimeAdapter::new(
+    // Create runtime host and connect it to Ethereum
+    let mut data_source_runtime_host = WASMRuntimeHost::new(
         &logger,
         core.handle(),
-        RuntimeAdapterConfig {
+        ethereum_watcher.clone(),
+        RuntimeHostConfig {
             data_source_definition: data_source_definition_file.to_string(),
         },
     );
@@ -151,26 +152,26 @@ fn main() {
             .and_then(|_| Ok(()))
     });
 
-    // Connect the runtime adapter to the store
+    // Connect the runtime host to the store
     core.handle().spawn({
-        data_source_runtime_adapter
+        data_source_runtime_host
             .event_stream()
             .unwrap()
             .for_each(move |event| {
                 let mut store = protected_store.lock().unwrap();
 
                 match event {
-                    RuntimeAdapterEvent::EntityAdded(_, k, entity) => {
+                    RuntimeHostEvent::EntityCreated(_, k, entity) => {
                         store
                             .set(k, entity)
                             .expect("Failed to set entity in the store");
                     }
-                    RuntimeAdapterEvent::EntityChanged(_, k, entity) => {
+                    RuntimeHostEvent::EntityChanged(_, k, entity) => {
                         store
                             .set(k, entity)
                             .expect("Failed to set entity in the store");
                     }
-                    RuntimeAdapterEvent::EntityRemoved(_, k) => {
+                    RuntimeHostEvent::EntityRemoved(_, k) => {
                         store
                             .delete(k)
                             .expect("Failed to remove entity from the store");
@@ -181,8 +182,8 @@ fn main() {
             .and_then(|_| Ok(()))
     });
 
-    // Start the runtime adapter
-    data_source_runtime_adapter.start();
+    // Start the runtime host
+    data_source_runtime_host.start();
 
     // Serve GraphQL server over HTTP
     let http_server = graphql_server
@@ -190,6 +191,6 @@ fn main() {
         .expect("Failed to start GraphQL server");
     core.run(http_server).unwrap();
 
-    // Stop the runtime adapter
-    data_source_runtime_adapter.stop();
+    // Stop the runtime host
+    data_source_runtime_host.stop();
 }
