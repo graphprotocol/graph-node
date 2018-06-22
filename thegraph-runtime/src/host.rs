@@ -67,9 +67,11 @@ where
         info!(self.logger, "Instantiate wasm module from file");
         let _wasmi_module = interpreter::WasmiModule::new("/test/add_fn.wasm", event_sink);
     }
+
     fn stop(&mut self) {
         info!(self.logger, "Stop");
     }
+
     fn event_stream(&mut self) -> Result<Receiver<RuntimeHostEvent>, StreamError> {
         // If possible, create a new channel for streaming runtime host events
         let mut event_sink = self.event_sink.lock().unwrap();
