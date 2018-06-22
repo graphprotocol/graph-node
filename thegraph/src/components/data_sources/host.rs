@@ -7,26 +7,26 @@ use util::stream::StreamError;
 /// Type alias for data source IDs.
 type DataSourceID = String;
 
-/// Events emitted by a runtime adapter.
+/// Events emitted by a runtime host.
 #[derive(Debug, Clone)]
-pub enum RuntimeAdapterEvent {
-    // An entity should be added.
-    EntityAdded(DataSourceID, StoreKey, Entity),
+pub enum RuntimeHostEvent {
+    // An entity should be created.
+    EntityCreated(DataSourceID, StoreKey, Entity),
     // An entity should be updated.
     EntityChanged(DataSourceID, StoreKey, Entity),
     // An entity should be removed.
     EntityRemoved(DataSourceID, StoreKey),
 }
 
-/// Common trait for runtime adapter implementations.
-pub trait RuntimeAdapter {
+/// Common trait for runtime host implementations.
+pub trait RuntimeHost {
     /// Starts the underlying data source runtime.
     fn start(&mut self);
 
     /// Stops the underlying data source runtime.
     fn stop(&mut self);
 
-    /// Receiver from which others can read runtime events emitted by the adapter.
+    /// Receiver from which others can read runtime events emitted by the host.
     /// Can only be called once. Any consecutive calls will result in a StreamError.
-    fn event_stream(&mut self) -> Result<Receiver<RuntimeAdapterEvent>, StreamError>;
+    fn event_stream(&mut self) -> Result<Receiver<RuntimeHostEvent>, StreamError>;
 }
