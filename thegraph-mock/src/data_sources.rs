@@ -38,23 +38,15 @@ impl MockDataSourceProvider {
     fn generate_mock_events(&mut self) {
         info!(self.logger, "Generate mock events");
 
+        let mockDataSource = DataSourceDefinition {
+            spec_version: String::from("0.1"),
+            schema: String::from("example schema"),
+            datasets: vec![],
+        };
+
         let sink = self.event_sink.clone().unwrap();
         sink.clone()
-            .send(DataSourceProviderEvent::DataSourceAdded(
-                "First data source",
-            ))
-            .wait()
-            .unwrap();
-        sink.clone()
-            .send(DataSourceProviderEvent::DataSourceAdded(
-                "Second data source",
-            ))
-            .wait()
-            .unwrap();
-        sink.clone()
-            .send(DataSourceProviderEvent::DataSourceRemoved(
-                "Second data source",
-            ))
+            .send(DataSourceProviderEvent::DataSourceAdded(mockDataSource))
             .wait()
             .unwrap();
     }
