@@ -35,7 +35,6 @@ impl WasmiModule {
     ) -> ModuleRef {
         // Load .wasm file into Wasmi interpreter
         let wasm_buffer = current_dir().unwrap().join(wasm_location);
-        println!("file location: {:?}", wasm_buffer);
         let module = parity_wasm::deserialize_file(&wasm_buffer).expect("File to be deserialized");
         let loaded_module = Module::from_parity_wasm_module(module).expect("Module to be valid");
 
@@ -50,7 +49,7 @@ impl WasmiModule {
         ModuleInstance::new(&loaded_module, &imports)
             .expect("Failed to instantiate module")
             .run_start(&mut external_functions)
-            .expect("Failed to start moduleinstance")
+            .expect("Failed to start module instance")
     }
 
     // Expose the allocate memory function exported from .wasm for memory management
@@ -82,7 +81,7 @@ impl WasmConverter {
     }
 }
 
-/// Store events senders that will be exposed to the wasm module
+/// Store event senders that will be exposed to the wasm module
 pub struct Db {}
 
 impl Db {
@@ -95,7 +94,6 @@ impl Db {
     ) -> i32 {
         let id: i32 = key.id.parse().unwrap();
         sender
-            .clone()
             .send(RuntimeAdapterEvent::EntityAdded(datasource, key, entity))
             .wait()
             .expect("Failed to forward runtime adapter event");
@@ -109,7 +107,6 @@ impl Db {
     ) -> i32 {
         let id: i32 = key.id.parse().unwrap();
         sender
-            .clone()
             .send(RuntimeAdapterEvent::EntityChanged(datasource, key, entity))
             .wait()
             .expect("Failed to forward runtime adapter event");
@@ -122,7 +119,6 @@ impl Db {
     ) -> i32 {
         let id: i32 = key.id.parse().unwrap();
         sender
-            .clone()
             .send(RuntimeAdapterEvent::EntityRemoved(datasource, key))
             .wait()
             .expect("Failed to forward runtime adapter event");
@@ -150,7 +146,7 @@ impl Externals for HostExternals {
                 let entity_ptr: u32 = args.nth_checked(1)?;
                 let entity: StoreData::Entity = WasmConverter::entity_from_wasm(entity_ptr);
 
-                // Create add entity store and add to sink
+                // Send an add entity event
                 let id = Db::create_entity(
                     self.event_sink.clone(),
                     "memefactory".to_string(),
@@ -168,7 +164,7 @@ impl Externals for HostExternals {
                 let entity_ptr: u32 = args.nth_checked(1)?;
                 let entity: StoreData::Entity = WasmConverter::entity_from_wasm(entity_ptr);
 
-                // Create update entity store event and add to sink
+                // Send an update entity event
                 let id = Db::update_entity(
                     self.event_sink.clone(),
                     "memefactory".to_string(),
@@ -184,7 +180,7 @@ impl Externals for HostExternals {
                 let storekey: StoreComponents::StoreKey =
                     WasmConverter::storekey_from_wasm(storekey_ptr);
 
-                // Create delete entity store event and add to sink
+                // Send a delete entity event
                 let id =
                     Db::remove_entity(self.event_sink.clone(), "memefactory".to_string(), storekey);
 
@@ -227,15 +223,21 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
 #[cfg(test)]
 mod tests {
     use super::WasmiModule;
-    use futures::sync::mpsc::{channel};
+    use futures::prelude::*;
+    use futures::sync::mpsc::channel;
     use slog;
     use wasmi::{NopExternals, RuntimeValue};
+    use thegraph::components::data_sources::RuntimeAdapterEvent;
+    use thegraph::components::store as StoreComponents;
+    use thegraph::data::store as StoreData;
+    use interpreter;
+
 
     #[test]
     fn run_simple_function_exported_from_wasm_and_return_result() {
         let logger = slog::Logger::root(slog::Discard, o!());
         let wasm_location = "test/add_fn.wasm";
-        let (sender, _receiver) = channel(100);
+        let (sender, _receiver) = channel(10);
 
         debug!(logger, "Instantiate wasm module from file"; "file_location" => format!("{:?}", wasm_location));
         let main = WasmiModule::new(wasm_location, sender);
@@ -253,5 +255,48 @@ mod tests {
             .expect("call did not return u32");
 
         assert_eq!(11 as i32, sum);
+    }
+
+    #[test]
+    fn exported_function_create_entity_method_emits_an_entity_added_event() {
+        let (sender, receiver) = channel(10);
+
+        // Build event data to send: datasource, StoreKey, Entity
+        let datasource = "memefactory".to_string();
+        let key = StoreComponents::StoreKey {
+            entity: "test_type".to_string(),
+            id: 1.to_string(),
+        };
+        let mut entity = StoreData::Entity::new();
+        entity.insert(
+            "Name".to_string(),
+            StoreData::Value::String("John".to_string()),
+        );
+
+        // Create EntityAdded event and send to channel
+        interpreter::Db::create_entity(sender.clone(), datasource, key, entity);
+
+        // Consume receiver
+        let result = receiver
+            .into_future()
+            .wait()
+            .unwrap()
+            .0
+            .expect("No event found in receiver");
+
+        // Confirm receiver contains EntityAdded event with correct datasource and StoreKey
+        match result {
+            RuntimeAdapterEvent::EntityAdded(rec_datasource, rec_key, _rec_entity) => {
+                assert_eq!("memefactory".to_string(), rec_datasource);
+                assert_eq!(
+                    StoreComponents::StoreKey {
+                        entity: "test_type".to_string(),
+                        id: 1.to_string(),
+                    },
+                    rec_key
+                );
+            }
+            _ => panic!("EntityAdded event not received, other type found"),
+        }
     }
 }
