@@ -12,6 +12,6 @@ mod data_sources;
 mod query;
 mod schema;
 
-pub use data_sources::DataSourceDefinitionLoader;
+pub use data_sources::{DataSourceDefinitionLoader, RuntimeManager};
 pub use query::QueryRunner;
 pub use schema::SchemaProvider;
