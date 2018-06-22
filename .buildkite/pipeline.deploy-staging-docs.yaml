@@ -3,6 +3,7 @@ steps:
     command: |
       cp resources/docker/thegraph-docs/Dockerfile . \
       && gcloud container builds submit \
+         --machine-type=n1-highcpu-8 \
          --timeout=25m \
          --tag gcr.io/the-graph-staging/thegraph-docs .
   - wait
