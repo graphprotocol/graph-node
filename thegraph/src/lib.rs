@@ -30,8 +30,7 @@ pub mod util;
 /// use thegraph::prelude::*;
 /// ```
 pub mod prelude {
-    pub use components::data_sources::{DataSourceDefinitionLoader, DataSourceProvider,
-                                       RuntimeAdapter};
+    pub use components::data_sources::{DataSourceDefinitionLoader, DataSourceProvider, RuntimeHost};
     pub use components::ethereum::EthereumWatcher;
     pub use components::query::QueryRunner;
     pub use components::schema::SchemaProvider;
