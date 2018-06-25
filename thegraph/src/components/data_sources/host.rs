@@ -30,3 +30,11 @@ pub trait RuntimeHost {
     /// Can only be called once. Any consecutive calls will result in a StreamError.
     fn event_stream(&mut self) -> Result<Receiver<RuntimeHostEvent>, StreamError>;
 }
+
+/// Type alias for Host Source location
+type HostSourceFileLocation = String;
+
+pub trait RuntimeHostBuilder {
+    /// Build a new runtime host
+    fn create_host(&mut self, source_location: HostSourceFileLocation);
+}
