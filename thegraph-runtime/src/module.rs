@@ -1,5 +1,5 @@
 use parity_wasm;
-use std::env::current_dir;
+use std::path::PathBuf;
 use thegraph::components::store as StoreComponents;
 use thegraph::data::store as StoreData;
 use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, Module, ModuleImportResolver,
@@ -22,7 +22,7 @@ pub struct WasmiModule {
 
 impl WasmiModule {
     /// Creates a new wasmi module
-    pub fn new(wasm_location: &str, event_sink: Sender<RuntimeHostEvent>) -> Self {
+    pub fn new(wasm_location: String, event_sink: Sender<RuntimeHostEvent>) -> Self {
         WasmiModule {
             module: WasmiModule::instantiate_wasmi_module(wasm_location, event_sink),
         }
@@ -30,11 +30,10 @@ impl WasmiModule {
 
     /// Create wasmi module instance using wasm, external functions and dependency resolver
     pub fn instantiate_wasmi_module(
-        wasm_location: &str,
+        wasm_location: String,
         event_sink: Sender<RuntimeHostEvent>,
     ) -> ModuleRef {
-        // Load .wasm file into Wasmi
-        let wasm_buffer = current_dir().unwrap().join(wasm_location);
+        let wasm_buffer = PathBuf::from(wasm_location);
         let module =
             parity_wasm::deserialize_file(&wasm_buffer).expect("Failed to deserialize wasm file.");
         let loaded_module = Module::from_parity_wasm_module(module)
@@ -234,8 +233,8 @@ mod tests {
     use module;
     use slog;
     use thegraph::components::data_sources::RuntimeHostEvent;
-    use thegraph::components::store as StoreComponents;
-    use thegraph::data::store as StoreData;
+    use thegraph::components::store::StoreKey;
+    use thegraph::data::store::{Entity, Value};
     use wasmi::{NopExternals, RuntimeValue};
 
     #[test]
@@ -248,7 +247,10 @@ mod tests {
                "file_location" => format!("{:?}", wasm_location));
         let main = WasmiModule::new(wasm_location, sender);
 
-        debug!(logger, "Invoke exported function, find the sum of two integers.");
+        debug!(
+            logger,
+            "Invoke exported function, find the sum of two integers."
+        );
         let sum = main.module
             .invoke_export(
                 "add",
@@ -269,15 +271,13 @@ mod tests {
 
         // Build event data to send: datasource, StoreKey, Entity
         let datasource = "memefactory".to_string();
-        let key = StoreComponents::StoreKey {
+        let key = StoreKey {
             entity: "test_type".to_string(),
             id: 1.to_string(),
         };
-        let mut entity = StoreData::Entity::new();
-        entity.insert(
-            "Name".to_string(),
-            StoreData::Value::String("John".to_string()),
-        );
+
+        let mut entity = Entity::new();
+        entity.insert("Name".to_string(), Value::String("John".to_string()));
 
         // Create EntityCreated event and send to channel
         module::Db::create_entity(sender.clone(), datasource, key, entity);
@@ -295,7 +295,7 @@ mod tests {
             RuntimeHostEvent::EntityCreated(rec_datasource, rec_key, _rec_entity) => {
                 assert_eq!("memefactory".to_string(), rec_datasource);
                 assert_eq!(
-                    StoreComponents::StoreKey {
+                    StoreKey {
                         entity: "test_type".to_string(),
                         id: 1.to_string(),
                     },
