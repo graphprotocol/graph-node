@@ -1,5 +1,3 @@
-use serde_yaml;
-
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Location {
     pub path: String,
@@ -19,9 +17,15 @@ pub struct Data {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
-pub struct MappingConfigValue {
+pub struct MappingABI {
     pub name: String,
-    pub value: serde_yaml::Value,
+    pub source: Location,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct MappingEventHandler {
+    pub event: String,
+    pub handler: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -31,7 +35,9 @@ pub struct Mapping {
     pub api_version: String,
     pub language: String,
     pub entities: Vec<String>,
-    pub config: Vec<MappingConfigValue>,
+    pub abis: Vec<MappingABI>,
+    #[serde(rename = "eventHandlers")]
+    pub event_handlers: Vec<MappingEventHandler>,
     pub source: Location,
 }
 
@@ -43,6 +49,7 @@ pub struct DataSet {
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct DataSourceDefinition {
+    pub location: String,
     #[serde(rename = "specVersion")]
     pub spec_version: String,
     pub schema: String,
