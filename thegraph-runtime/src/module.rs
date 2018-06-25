@@ -1,7 +1,9 @@
 use futures::prelude::*;
 use futures::sync::mpsc::Sender;
 use parity_wasm;
+use slog::Logger;
 use std::path::PathBuf;
+use tokio_core::reactor::Handle;
 use wasmi::{
     Error, Externals, FuncInstance, FuncRef, ImportsBuilder, Module, ModuleImportResolver,
     ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue, Signature, Trap, ValueType,
@@ -11,57 +13,70 @@ use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::store::StoreKey;
 use thegraph::prelude::*;
 
-// Set indexes for Store functions that will be exported with module
-const CREATE_FUNC_INDEX: usize = 0;
-const UPDATE_FUNC_INDEX: usize = 1;
-const DELETE_FUNC_INDEX: usize = 2;
+// Indexes for exported host functions
+const ABORT_FUNC_INDEX: usize = 0;
+const DATABASE_CREATE_FUNC_INDEX: usize = 1;
+const DATABASE_UPDATE_FUNC_INDEX: usize = 2;
+const DATABASE_DELETE_FUNC_INDEX: usize = 3;
+const ETHEREUM_CALL_FUNC_INDEX: usize = 4;
+
+pub struct WasmiModuleConfig {
+    pub data_source_id: String,
+    pub runtime: Handle,
+    pub event_sink: Sender<RuntimeHostEvent>,
+}
 
 /// Wasm runtime module
 pub struct WasmiModule {
+    _logger: Logger,
+    _config: WasmiModuleConfig,
     pub module: ModuleRef,
 }
 
 impl WasmiModule {
     /// Creates a new wasmi module
-    pub fn new(wasm_location: String, event_sink: Sender<RuntimeHostEvent>) -> Self {
-        WasmiModule {
-            module: WasmiModule::instantiate_wasmi_module(wasm_location, event_sink),
-        }
-    }
+    pub fn new(path: PathBuf, logger: &Logger, config: WasmiModuleConfig) -> Self {
+        let logger = logger.new(o!("component" => "WasmiModule"));
 
-    /// Create wasmi module instance using wasm, external functions and dependency resolver
-    pub fn instantiate_wasmi_module(
-        wasm_location: String,
-        event_sink: Sender<RuntimeHostEvent>,
-    ) -> ModuleRef {
-        let wasm_buffer = PathBuf::from(wasm_location);
-        let module =
-            parity_wasm::deserialize_file(&wasm_buffer).expect("Failed to deserialize wasm file.");
+        let module = parity_wasm::deserialize_file(&path).expect("Failed to deserialize WASM file");
         let loaded_module = Module::from_parity_wasm_module(module)
-            .expect("Invalid parity_wasm module; Wasmi could not interpret.");
+            .expect("Invalid parity_wasm module; Wasmi could not interpret");
 
         // Create new instance of externally hosted functions invoker
-        let mut external_functions = HostExternals { event_sink };
+        let mut external_functions = HostExternals {
+            data_source_id: config.data_source_id.clone(),
+            logger: logger.clone(),
+            runtime: config.runtime.clone(),
+            event_sink: config.event_sink.clone(),
+        };
 
         // Build import resolver
         let mut imports = ImportsBuilder::new();
-        imports.push_resolver("env", &RuntimeModuleImportResolver);
+        imports.push_resolver("env", &EnvModuleResolver);
+        imports.push_resolver("database", &DatabaseModuleResolver);
+        imports.push_resolver("ethereum", &EthereumModuleResolver);
 
         // Instantiate the runtime module using hosted functions and import resolver
-        ModuleInstance::new(&loaded_module, &imports)
-            .expect("Failed to instantiate module")
+        let module = ModuleInstance::new(&loaded_module, &imports)
+            .expect("Failed to instantiate WASM module")
             .run_start(&mut external_functions)
-            .expect("Failed to start module instance")
+            .expect("Failed to start WASM module instance");
+
+        WasmiModule {
+            _logger: logger,
+            _config: config,
+            module,
+        }
     }
 
     // Expose the allocate memory function exported from .wasm for memory management
     pub fn _allocate_memory(&self, size: i32) -> i32 {
         self.module
             .invoke_export("malloc", &[RuntimeValue::I32(size)], &mut NopExternals)
-            .expect("Failed to invoke memory allocation function.")
-            .expect("Function did not return a value.")
+            .expect("Failed to invoke memory allocation function")
+            .expect("Function did not return a value")
             .try_into::<i32>()
-            .expect("Function return value was not expected type, u32.")
+            .expect("Function return value was not expected type, u32")
     }
 }
 
@@ -83,57 +98,11 @@ impl WasmConverter {
     }
 }
 
-/// Store event senders that will be exposed to the wasm module
-pub struct Db {}
-
-impl Db {
-    /// Send Entity Created Event
-    pub fn create_entity(
-        sender: Sender<RuntimeHostEvent>,
-        data_source: String,
-        key: StoreKey,
-        entity: Entity,
-    ) -> i32 {
-        let id: i32 = key.id.parse().unwrap();
-        sender
-            .send(RuntimeHostEvent::EntityCreated(data_source, key, entity))
-            .wait()
-            .expect("Failed to forward runtime host event");
-        id
-    }
-
-    /// Send Entity Updated Event
-    pub fn update_entity(
-        sender: Sender<RuntimeHostEvent>,
-        data_source: String,
-        key: StoreKey,
-        entity: Entity,
-    ) -> i32 {
-        let id: i32 = key.id.parse().unwrap();
-        sender
-            .send(RuntimeHostEvent::EntityChanged(data_source, key, entity))
-            .wait()
-            .expect("Failed to forward runtime host event");
-        id
-    }
-
-    /// Send Entity Removed Event
-    pub fn remove_entity(
-        sender: Sender<RuntimeHostEvent>,
-        data_source: String,
-        key: StoreKey,
-    ) -> i32 {
-        let id: i32 = key.id.parse().unwrap();
-        sender
-            .send(RuntimeHostEvent::EntityRemoved(data_source, key))
-            .wait()
-            .expect("Failed to forward runtime host event");
-        id
-    }
-}
-
 /// Hosted functions for external use by wasm module
 pub struct HostExternals {
+    logger: Logger,
+    runtime: Handle,
+    data_source_id: String,
     event_sink: Sender<RuntimeHostEvent>,
 }
 
@@ -143,74 +112,160 @@ impl Externals for HostExternals {
         index: usize,
         args: RuntimeArgs,
     ) -> Result<Option<RuntimeValue>, Trap> {
+        let logger = self.logger.clone();
+
         match index {
-            CREATE_FUNC_INDEX => {
-                // Input: StoreKey and Entity
+            DATABASE_CREATE_FUNC_INDEX => {
+                println!("DATABASE_CREATE");
+
                 let store_key_ptr: u32 = args.nth_checked(0)?;
                 let store_key = WasmConverter::store_key_from_wasm(store_key_ptr);
                 let entity_ptr: u32 = args.nth_checked(1)?;
                 let entity = WasmConverter::entity_from_wasm(entity_ptr);
 
-                // Send an add entity event
-                let id =
-                    Db::create_entity(self.event_sink.clone(), "".to_string(), store_key, entity);
+                self.runtime.spawn(
+                    self.event_sink
+                        .clone()
+                        .send(RuntimeHostEvent::EntityCreated(
+                            self.data_source_id.clone(),
+                            store_key,
+                            entity,
+                        ))
+                        .map_err(move |e| {
+                            error!(logger, "Failed to forward runtime host event";
+                                        "error" => format!("{}", e));
+                        })
+                        .and_then(|_| Ok(())),
+                );
 
-                Ok(Some(RuntimeValue::I32(id)))
+                Ok(None)
             }
-            UPDATE_FUNC_INDEX => {
-                // Input: StoreKey and Entity
+            DATABASE_UPDATE_FUNC_INDEX => {
+                println!("DATABASE_UPDATE");
+
                 let store_key_ptr: u32 = args.nth_checked(0)?;
                 let store_key = WasmConverter::store_key_from_wasm(store_key_ptr);
                 let entity_ptr: u32 = args.nth_checked(1)?;
                 let entity = WasmConverter::entity_from_wasm(entity_ptr);
 
-                // Send an update entity event
-                let id =
-                    Db::update_entity(self.event_sink.clone(), "".to_string(), store_key, entity);
+                self.runtime.spawn(
+                    self.event_sink
+                        .clone()
+                        .send(RuntimeHostEvent::EntityChanged(
+                            self.data_source_id.clone(),
+                            store_key,
+                            entity,
+                        ))
+                        .map_err(move |e| {
+                            error!(logger, "Failed to forward runtime host event";
+                                   "error" => format!("{}", e));
+                        })
+                        .and_then(|_| Ok(())),
+                );
 
-                Ok(Some(RuntimeValue::I32(id)))
+                Ok(None)
             }
-            DELETE_FUNC_INDEX => {
-                // Input: StoreKey
+            DATABASE_DELETE_FUNC_INDEX => {
+                println!("DATABASE_DELETE");
+
                 let store_key_ptr: u32 = args.nth_checked(0)?;
                 let store_key = WasmConverter::store_key_from_wasm(store_key_ptr);
 
                 // Send a delete entity event
-                let id = Db::remove_entity(self.event_sink.clone(), "".to_string(), store_key);
+                self.runtime.spawn(
+                    self.event_sink
+                        .clone()
+                        .send(RuntimeHostEvent::EntityRemoved(
+                            self.data_source_id.clone(),
+                            store_key,
+                        ))
+                        .map_err(move |e| {
+                            error!(logger, "Failed to forward runtime host event";
+                               "error" => format!("{}", e));
+                        })
+                        .and_then(|_| Ok(())),
+                );
 
-                Ok(Some(RuntimeValue::I32(id)))
+                Ok(None)
             }
             _ => panic!("Unimplemented function at {}", index),
         }
     }
 }
 
-/// Resolver of the modules dependencies
-pub struct RuntimeModuleImportResolver;
+/// Env module resolver
+pub struct EnvModuleResolver;
 
-impl ModuleImportResolver for RuntimeModuleImportResolver {
+impl ModuleImportResolver for EnvModuleResolver {
     fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
-        let func_ref = match field_name {
-            "create" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
-                CREATE_FUNC_INDEX,
-            ),
-            "update" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
-                UPDATE_FUNC_INDEX,
-            ),
-            "delete" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                DELETE_FUNC_INDEX,
+        Ok(match field_name {
+            "abort" => FuncInstance::alloc_host(
+                Signature::new(
+                    &[
+                        ValueType::I32,
+                        ValueType::I32,
+                        ValueType::I32,
+                        ValueType::I32,
+                    ][..],
+                    None,
+                ),
+                ABORT_FUNC_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(
-                    "Export {} not found",
+                    "Export '{}' not found",
+                    field_name
+                )));
+            }
+        })
+    }
+}
+
+/// Database module resolver
+pub struct DatabaseModuleResolver;
+
+impl ModuleImportResolver for DatabaseModuleResolver {
+    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
+        Ok(match field_name {
+            "create" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32, ValueType::I32, ValueType::I32][..], None),
+                DATABASE_CREATE_FUNC_INDEX,
+            ),
+            "update" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32, ValueType::I32, ValueType::I32][..], None),
+                DATABASE_UPDATE_FUNC_INDEX,
+            ),
+            "delete" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32, ValueType::I32][..], None),
+                DATABASE_DELETE_FUNC_INDEX,
+            ),
+            _ => {
+                return Err(Error::Instantiation(format!(
+                    "Export '{}' not found",
                     field_name
                 )))
             }
-        };
-        Ok(func_ref)
+        })
+    }
+}
+
+/// Ethereum module resolver
+pub struct EthereumModuleResolver;
+
+impl ModuleImportResolver for EthereumModuleResolver {
+    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
+        Ok(match field_name {
+            "call" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                ETHEREUM_CALL_FUNC_INDEX,
+            ),
+            _ => {
+                return Err(Error::Instantiation(format!(
+                    "Export '{}' not found",
+                    field_name
+                )))
+            }
+        })
     }
 }
 
