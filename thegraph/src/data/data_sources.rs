@@ -1,6 +1,8 @@
+use std::path::{Path, PathBuf};
+
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Location {
-    pub path: String,
+    pub path: PathBuf,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -54,4 +56,16 @@ pub struct DataSourceDefinition {
     pub spec_version: String,
     pub schema: String,
     pub datasets: Vec<DataSet>,
+}
+
+impl DataSourceDefinition {
+    pub fn resolve_path(&self, path: &Path) -> PathBuf {
+        let data_source_file = PathBuf::from(self.location.as_str());
+        let parent = data_source_file.parent();
+        let is_relative = path.is_relative() || path.starts_with("./");
+        match (is_relative, parent) {
+            (true, Some(parent_path)) if parent_path.is_dir() => parent_path.join(path),
+            _ => path.clone().to_path_buf(),
+        }
+    }
 }
