@@ -27,7 +27,7 @@ use thegraph::components::{EventConsumer, EventProducer};
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
-use thegraph_runtime::{RuntimeHost as WASMRuntimeHost, RuntimeHostConfig};
+use thegraph_runtime::{RuntimeHost as WASMRuntimeHost, RuntimeHostBuilder, RuntimeHostConfig};
 use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
 
 use thegraph_local_node::LocalDataSourceProvider;
@@ -88,22 +88,12 @@ fn main() {
         LocalDataSourceProvider::new(&logger, core.handle(), data_source_definition_file.clone());
     let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
     let mut store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
+    let protected_store = Arc::new(Mutex::new(store));
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
     let ethereum_watcher = Arc::new(Mutex::new(thegraph_ethereum::EthereumWatcher::new()));
-    let runtime_manager = thegraph_core::RuntimeManager::new(&logger, core.handle());
-
-    // TODO: This should be turned into a runtime host builder that we pass to the
-    // runtime manager. The builder would be a common trait in `thegraph`, with a
-    // RuntimeHostBuilder implementation in `thegraph-runtime`.
-    // Create runtime host and connect it to Ethereum
-    let mut data_source_runtime_host = WASMRuntimeHost::new(
-        &logger,
-        core.handle(),
-        ethereum_watcher.clone(),
-        RuntimeHostConfig {
-            data_source_definition: data_source_definition_file.to_string(),
-        },
-    );
+    let runtime_host_builder = RuntimeHostBuilder::new(&logger, core.handle(), &ethereum_watcher, protected_store);
+    let runtime_manager =
+        thegraph_core::RuntimeManager::new(&logger, core.handle(), runtime_host_builder);
 
     // Forward data source events from the data source provider to the runtime manager
     let data_source_stream = data_source_provider.event_stream().unwrap();
@@ -155,8 +145,6 @@ fn main() {
             .and_then(|_| Ok(()))
     });
 
-    // Obtain a protected version of the store
-    let protected_store = Arc::new(Mutex::new(store));
 
     // Forward incoming queries from the GraphQL server to the query runner
     let mut query_runner =
