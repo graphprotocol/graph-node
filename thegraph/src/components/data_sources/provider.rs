@@ -1,5 +1,4 @@
 use futures::sync::mpsc::Receiver;
-use serde_yaml;
 
 use data::data_sources::DataSourceDefinition;
 use data::schema::Schema;

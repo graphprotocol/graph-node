@@ -5,7 +5,6 @@ use std::error::Error;
 use std::fmt;
 use std::iter::IntoIterator;
 
-use prelude::*;
 use schema::ast;
 
 #[derive(Debug)]
