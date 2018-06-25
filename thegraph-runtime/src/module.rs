@@ -271,25 +271,36 @@ impl ModuleImportResolver for EthereumModuleResolver {
 
 #[cfg(test)]
 mod tests {
-    use super::WasmiModule;
     use futures::prelude::*;
     use futures::sync::mpsc::channel;
     use module;
     use slog;
-    use thegraph::components::data_sources::RuntimeHostEvent;
-    use thegraph::components::store::StoreKey;
-    use thegraph::data::store::{Entity, Value};
+    use std::path::PathBuf;
+    use tokio_core;
     use wasmi::{NopExternals, RuntimeValue};
+
+    use super::{WasmiModule, WasmiModuleConfig};
 
     #[test]
     fn run_simple_function_exported_from_wasm_and_return_result() {
         let logger = slog::Logger::root(slog::Discard, o!());
-        let wasm_location = "test/add_fn.wasm";
+
+        let core = tokio_core::reactor::Core::new().unwrap();
+
+        let wasm_location = PathBuf::from("test/add_fn.wasm");
         let (sender, _receiver) = channel(10);
 
         debug!(logger, "Instantiate wasm module from file";
                "file_location" => format!("{:?}", wasm_location));
-        let main = WasmiModule::new(String::from(wasm_location), sender);
+        let main = WasmiModule::new(
+            wasm_location,
+            &logger,
+            WasmiModuleConfig {
+                data_source_id: String::from("example data source"),
+                runtime: core.handle(),
+                event_sink: sender,
+            },
+        );
 
         debug!(
             logger,
@@ -307,46 +318,5 @@ mod tests {
             .expect("Function return value was not expected type, u32.");
 
         assert_eq!(11 as i32, sum);
-    }
-
-    #[test]
-    fn exported_function_create_entity_method_emits_an_entity_created_event() {
-        let (sender, receiver) = channel(10);
-
-        // Build event data to send: data_source, StoreKey, Entity
-        let data_source = "memefactory".to_string();
-        let key = StoreKey {
-            entity: "test_type".to_string(),
-            id: 1.to_string(),
-        };
-
-        let mut entity = Entity::new();
-        entity.insert("Name".to_string(), Value::String("John".to_string()));
-
-        // Create EntityCreated event and send to channel
-        module::Db::create_entity(sender.clone(), data_source, key, entity);
-
-        // Consume receiver
-        let result = receiver
-            .into_future()
-            .wait()
-            .unwrap()
-            .0
-            .expect("No event found in receiver");
-
-        // Confirm receiver contains EntityCreated event with correct data_source and StoreKey
-        match result {
-            RuntimeHostEvent::EntityCreated(rec_data_source, rec_key, _rec_entity) => {
-                assert_eq!("memefactory".to_string(), rec_data_source);
-                assert_eq!(
-                    StoreKey {
-                        entity: "test_type".to_string(),
-                        id: 1.to_string(),
-                    },
-                    rec_key
-                );
-            }
-            _ => panic!("Unexpected Event recieved, expected RuntimeHostEvent::EntityCreated."),
-        }
     }
 }
