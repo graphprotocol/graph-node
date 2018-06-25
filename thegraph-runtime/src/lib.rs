@@ -5,6 +5,7 @@ extern crate slog;
 extern crate parity_wasm;
 extern crate thegraph;
 extern crate tokio_core;
+extern crate uuid;
 extern crate wasmi;
 
 mod asc_abi;

@@ -9,4 +9,5 @@ parity-wasm = "0.27"
 slog = "2.2.3"
 tokio-core = "0.1.6"
 thegraph = { path = "../thegraph" }
+uuid = { version = "0.6", features = ["v4"] }
 wasmi = "0.2.0"
