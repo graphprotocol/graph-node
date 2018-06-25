@@ -19,16 +19,12 @@ pub enum RuntimeHostEvent {
 }
 
 /// Common trait for runtime host implementations.
-pub trait RuntimeHost {
+pub trait RuntimeHost: EventProducer<RuntimeHostEvent> {
     /// Starts the underlying data source runtime.
     fn start(&mut self);
 
     /// Stops the underlying data source runtime.
     fn stop(&mut self);
-
-    /// Receiver from which others can read runtime events emitted by the host.
-    /// Can only be called once. Any consecutive calls will result in a StreamError.
-    fn event_stream(&mut self) -> Result<Receiver<RuntimeHostEvent>, StreamError>;
 
     /// The data source definition the runtime is for.
     fn data_source_definition(&self) -> &DataSourceDefinition;
