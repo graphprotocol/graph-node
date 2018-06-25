@@ -21,21 +21,24 @@ pub struct EthereumContractState {
 }
 
 /// A range to allow event subscriptions to limit the block numbers to consider.
+#[derive(Debug)]
 pub struct BlockNumberRange {
     pub from: Option<u64>,
     pub to: Option<u64>,
 }
 
 /// A subscription to a specific contract address, event signature and block range.
+#[derive(Debug)]
 pub struct EthereumEventSubscription {
     /// An ID that uniquely identifies the subscription (e.g. a GUID).
     pub subscription_id: String,
     pub address: Address,
-    pub event_signature: H256,
+    pub event_signature: String,
     pub range: BlockNumberRange,
 }
 
 /// An event logged for a specific contract address and event signature.
+#[derive(Debug)]
 pub struct EthereumEvent {
     pub address: Address,
     pub event_signature: H256,
