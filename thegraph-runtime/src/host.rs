@@ -1,7 +1,11 @@
+use ethereum_types::Address;
+use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog::Logger;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
+use uuid::Uuid;
 
 use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
@@ -9,7 +13,7 @@ use thegraph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
 
-use module::WasmiModule;
+use module::{WasmiModule, WasmiModuleConfig};
 
 pub struct RuntimeHostConfig {
     pub data_source_definition: DataSourceDefinition,
@@ -61,10 +65,10 @@ where
 {
     config: RuntimeHostConfig,
     logger: Logger,
-    _runtime: Handle,
+    runtime: Handle,
     event_sender: Sender<RuntimeHostEvent>,
     output: Option<Receiver<RuntimeHostEvent>>,
-    _ethereum_watcher: Arc<Mutex<T>>,
+    ethereum_watcher: Arc<Mutex<T>>,
     module: Option<WasmiModule>,
 }
 
@@ -83,12 +87,28 @@ where
         RuntimeHost {
             config,
             logger: logger.new(o!("component" => "RuntimeHost")),
-            _runtime: runtime,
+            runtime,
             event_sender,
             output: Some(event_receiver),
-            _ethereum_watcher: ethereum_watcher,
+            ethereum_watcher,
             module: None,
         }
+    }
+
+    fn subscribe_to_event(&mut self, subscription: EthereumEventSubscription) {
+        debug!(self.logger, "Subscribe to event"; "event" => format!("{:#?}", subscription));
+
+        let receiver = self.ethereum_watcher
+            .lock()
+            .unwrap()
+            .subscribe_to_event(subscription);
+
+        let logger = self.logger.clone();
+
+        self.runtime.spawn(receiver.for_each(move |event| {
+            debug!(logger, "Handle Ethereum event: {:?}", event);
+            Ok(())
+        }));
     }
 }
 
@@ -110,19 +130,68 @@ where
     fn start(&mut self) {
         info!(self.logger, "Start");
 
+        // Obtain the first data set (NOTE: We'll add support for multiple datasets soon).
+        let subscriptions: Vec<EthereumEventSubscription> = {
+            let dataset = self.config
+                .data_source_definition
+                .datasets
+                .first()
+                .expect("Data source must contain at least one data set");
+
+            // Obtain the contract address of the first data set
+            let address = Address::from_str(dataset.data.address.as_str())
+                .expect("Failed to parse contract address");
+
+            // Prepare subscriptions for all events
+            dataset
+                .mapping
+                .event_handlers
+                .iter()
+                .map(|event_handler| {
+                    let subscription_id = Uuid::new_v4().simple().to_string();
+
+                    EthereumEventSubscription {
+                        subscription_id: subscription_id.clone(),
+                        address,
+                        event_signature: event_handler.event.clone(),
+                        range: BlockNumberRange {
+                            from: Some(0),
+                            to: None,
+                        },
+                    }
+                })
+                .collect()
+        };
+
+        // Subscribe to the events
+        for subscription in subscriptions.into_iter() {
+            self.subscribe_to_event(subscription);
+        }
+
         // Obtain mapping location
-        let location = self.config
-            .data_source_definition
-            .datasets
-            .first()
-            .expect("Data source must contain at least one data set")
-            .mapping
-            .source
-            .path
-            .to_string();
+        let location = self.config.data_source_definition.resolve_path(
+            &self.config
+                .data_source_definition
+                .datasets
+                .first()
+                .unwrap()
+                .mapping
+                .source
+                .path,
+        );
+
+        info!(self.logger, "Load WASM runtime from"; "file" => location.to_str());
 
         // Load the mappings as a WASM module
-        self.module = Some(WasmiModule::new(location, self.event_sender.clone()));
+        self.module = Some(WasmiModule::new(
+            location,
+            &self.logger,
+            WasmiModuleConfig {
+                data_source_id: String::from("TODO DATA SOURCE ID"),
+                runtime: self.runtime.clone(),
+                event_sink: self.event_sender.clone(),
+            },
+        ));
     }
 
     fn stop(&mut self) {
