@@ -10,6 +10,7 @@ pub enum DataSourceDefinitionLoaderError {
     InvalidFormat,
     SchemaMissing,
     SchemaIOError(io::Error),
+    InvalidPath(PathBuf),
 }
 
 impl From<serde_yaml::Error> for DataSourceDefinitionLoaderError {

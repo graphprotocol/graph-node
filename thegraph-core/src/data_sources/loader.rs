@@ -50,9 +50,9 @@ impl LoaderTrait for DataSourceDefinitionLoader {
 
             // Resolve the schema path into a GraphQL SDL string
             let schema = raw_mapping
-                .get(&serde_yaml::Value::String(String::from("schema")))
-                .and_then(|schema| schema.get(&serde_yaml::Value::String(String::from("source"))))
-                .and_then(|source| source.get(&serde_yaml::Value::String(String::from("path"))))
+                .get(&serde_yaml::Value::from("schema"))
+                .and_then(|schema| schema.get(&serde_yaml::Value::from("source")))
+                .and_then(|source| source.get(&serde_yaml::Value::from("path")))
                 .and_then(|path| path.as_str())
                 .ok_or(DataSourceDefinitionLoaderError::SchemaMissing)
                 .map(|schema_path| self.resolve_path(path.parent(), Path::new(schema_path)))
@@ -66,8 +66,10 @@ impl LoaderTrait for DataSourceDefinitionLoader {
 
             // Inject the location of the data source into the definition
             raw_mapping.insert(
-                serde_yaml::Value::String(String::from("location")),
-                serde_yaml::Value::String(String::from(path.to_str().unwrap())),
+                serde_yaml::Value::from("location"),
+                serde_yaml::Value::from(path.clone()
+                    .to_str()
+                    .ok_or(DataSourceDefinitionLoaderError::InvalidPath(path))?),
             );
         }
 
