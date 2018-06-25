@@ -18,7 +18,7 @@ impl From<serde_yaml::Error> for DataSourceDefinitionLoaderError {
     }
 }
 
-/// Common trait for components that are able to `DataSourceDefinition`s.
+/// Common trait for components that are able to load `DataSourceDefinition`s.
 pub trait DataSourceDefinitionLoader {
     /// Loads a `DataSourceDefinition` from a local path.
     fn load_from_path(
