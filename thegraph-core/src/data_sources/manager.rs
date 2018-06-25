@@ -51,17 +51,19 @@ where
     /// Handle incoming events from data source providers.
     fn handle_data_source_events(&mut self, receiver: Receiver<DataSourceProviderEvent>) {
         let runtime = self.runtime.clone();
-
         let runtime_hosts = self.runtime_hosts.clone();
         let runtime_host_builder = self.runtime_host_builder.clone();
-
         let store = self.store.clone();
+        let logger = self.logger.clone();
 
         self.runtime.spawn(receiver.for_each(move |event| {
             let store = store.clone();
 
             match event {
                 DataSourceProviderEvent::DataSourceAdded(definition) => {
+                    info!(logger, "Data source created, host runtime";
+                          "location" => &definition.location);
+
                     // Create a new runtime host for the data source definition
                     let mut new_host = runtime_host_builder.lock().unwrap().build(definition);
 
