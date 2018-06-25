@@ -35,6 +35,8 @@ pub trait RuntimeHost {
 }
 
 pub trait RuntimeHostBuilder {
+    type Host: RuntimeHost;
+
     /// Build a new runtime host
-    fn create_host(&mut self, source_location: HostSourceFileLocation);
+    fn build(&mut self, data_source_definition: DataSourceDefinition) -> Self::Host;
 }
