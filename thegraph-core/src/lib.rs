@@ -6,6 +6,7 @@ extern crate serde;
 extern crate serde_yaml;
 extern crate thegraph;
 extern crate thegraph_graphql_utils;
+extern crate thegraph_runtime;
 extern crate tokio_core;
 
 mod data_sources;
