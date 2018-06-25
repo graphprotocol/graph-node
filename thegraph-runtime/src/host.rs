@@ -1,4 +1,3 @@
-use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog::Logger;
 use std::sync::{Arc, Mutex};
@@ -62,10 +61,10 @@ where
 {
     config: RuntimeHostConfig,
     logger: Logger,
-    runtime: Handle,
+    _runtime: Handle,
     event_sender: Sender<RuntimeHostEvent>,
     output: Option<Receiver<RuntimeHostEvent>>,
-    ethereum_watcher: Arc<Mutex<T>>,
+    _ethereum_watcher: Arc<Mutex<T>>,
     module: Option<WasmiModule>,
 }
 
@@ -84,10 +83,10 @@ where
         RuntimeHost {
             config,
             logger: logger.new(o!("component" => "RuntimeHost")),
-            runtime: runtime,
+            _runtime: runtime,
             event_sender,
             output: Some(event_receiver),
-            ethereum_watcher,
+            _ethereum_watcher: ethereum_watcher,
             module: None,
         }
     }

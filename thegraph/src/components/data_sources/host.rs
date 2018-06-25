@@ -1,8 +1,5 @@
-use futures::sync::mpsc::Receiver;
-
 use components::store::StoreKey;
 use prelude::*;
-use util::stream::StreamError;
 
 /// Type alias for data source IDs.
 type DataSourceID = String;
