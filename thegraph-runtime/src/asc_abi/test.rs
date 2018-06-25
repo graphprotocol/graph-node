@@ -40,6 +40,7 @@ impl TestModule {
     fn new(path: &str) -> Self {
         let mut imports = ImportsBuilder::new();
         imports.push_resolver("env", &DummyImportResolver);
+
         // Load .wasm file into Wasmi interpreter
         let module = &wasmi::Module::from_parity_wasm_module(
             parity_wasm::deserialize_file(path).expect("Failed to deserialize wasm"),

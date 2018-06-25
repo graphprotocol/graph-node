@@ -1,25 +1,26 @@
 use super::{AscHeap, AscPtr, AscType, AscValue};
 use std::mem::{self, size_of};
 
-///! All Rust that have with a direct correspondence to an ASc class,
+///! Rust types that have with a direct correspondence to an Asc class,
 ///! with their `AscType` implementations.
 
-/// ASc std ArrayBuffer: "a generic, fixed-length raw binary data buffer".
+/// Asc std ArrayBuffer: "a generic, fixed-length raw binary data buffer".
 /// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
 pub struct ArrayBuffer<T> {
     byte_length: u32,
-    // ASc allocators always align at 8 bytes, we already have 4 bytes from
+    // Asc allocators always align at 8 bytes, we already have 4 bytes from
     // `byte_length_size` so with 4 more bytes we align the contents at 8
-    // bytes. No ASc type has alignment greater than 8, so the
+    // bytes. No Asc type has alignment greater than 8, so the
     // elements in `content` will be aligned for any element type.
     _padding: [u8; 4],
-    // In ASc this slice is layed out inline with the ArrayBuffer.
+    // In Asc this slice is layed out inline with the ArrayBuffer.
     pub content: Box<[T]>,
 }
 
 impl<T: AscValue> ArrayBuffer<T> {
     pub(super) fn new(content: &[T]) -> Self {
-        // An `AscValue` has the same size in Rust and ASc so:
+
+        // An `AscValue` has the same size in Rust and Asc so:
         let byte_length = size_of::<T>() * content.len();
 
         assert!(
@@ -39,6 +40,7 @@ impl<T: AscValue> ArrayBuffer<T> {
 impl<T: AscValue> AscType for ArrayBuffer<T> {
     fn to_asc_bytes(&self) -> Vec<u8> {
         let mut asc_layout: Vec<u8> = Vec::new();
+
         // This is just `self.byte_length.to_bytes()` which is unstable.
         let byte_length: [u8; 4] = unsafe { mem::transmute(self.byte_length) };
         asc_layout.extend(&byte_length);
@@ -50,8 +52,9 @@ impl<T: AscValue> AscType for ArrayBuffer<T> {
         asc_layout
     }
 
-    /// The Rust representation of an ASc object as layed out in ASc memory.
+    /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+
         // Pointer for our current position within `asc_obj`,
         // initially at the start of the content,
         // skipping `byte_length` and the padding.
