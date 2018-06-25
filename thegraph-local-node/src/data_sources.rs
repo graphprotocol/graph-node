@@ -15,6 +15,7 @@ pub struct LocalDataSourceProvider {
     event_sink: Option<Sender<DataSourceProviderEvent>>,
     schema_event_sink: Option<Sender<SchemaEvent>>,
     runtime: Handle,
+    data_source: DataSourceDefinition,
     schema: Schema,
 }
 
@@ -22,12 +23,12 @@ impl LocalDataSourceProvider {
     pub fn new(logger: &slog::Logger, runtime: Handle, filename: &str) -> Self {
         // Load the data source definition
         let loader = thegraph_core::DataSourceDefinitionLoader::default();
-        let definition = loader
+        let data_source = loader
             .load_from_path(Path::new(filename).to_owned())
             .expect("Failed to load data source definition");
 
         // Parse the schema
-        let schema = graphql_parser::parse_schema(definition.schema.as_str())
+        let schema = graphql_parser::parse_schema(data_source.schema.as_str())
             .map(|document| Schema {
                 id: String::from("local-data-source-schema"),
                 document,
@@ -40,7 +41,8 @@ impl LocalDataSourceProvider {
             event_sink: None,
             schema_event_sink: None,
             runtime,
-            schema: schema,
+            data_source,
+            schema,
         }
     }
 }
@@ -48,14 +50,30 @@ impl LocalDataSourceProvider {
 impl DataSourceProviderTrait for LocalDataSourceProvider {
     fn event_stream(&mut self) -> Result<Receiver<DataSourceProviderEvent>, StreamError> {
         // If possible, create a new channel for streaming data source provider events
-        match self.event_sink {
+        let result = match self.event_sink {
             Some(_) => Err(StreamError::AlreadyCreated),
             None => {
                 let (sink, stream) = channel(100);
                 self.event_sink = Some(sink);
                 Ok(stream)
             }
+        };
+
+        // If the stream was set up successfully, push the data source into it
+        if result.is_ok() && self.event_sink.is_some() {
+            self.runtime.spawn(
+                self.event_sink
+                    .clone()
+                    .unwrap()
+                    .send(DataSourceProviderEvent::DataSourceAdded(
+                        self.data_source.clone(),
+                    ))
+                    .map_err(|e| panic!("Failed to forward data source: {}", e))
+                    .and_then(|_| Ok(())),
+            );
         }
+
+        result
     }
 
     fn schema_event_stream(&mut self) -> Result<Receiver<SchemaEvent>, StreamError> {
@@ -76,7 +94,7 @@ impl DataSourceProviderTrait for LocalDataSourceProvider {
                     .clone()
                     .unwrap()
                     .send(SchemaEvent::SchemaAdded(self.schema.clone()))
-                    .map_err(|e| panic!("Failed to forward the data source schema: {}", e))
+                    .map_err(|e| panic!("Failed to forward data source schema: {}", e))
                     .and_then(|_| Ok(())),
             );
         }
