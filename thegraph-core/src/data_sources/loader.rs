@@ -2,8 +2,9 @@ use serde_yaml;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-use thegraph::components::data_sources::{DataSourceDefinitionLoader as LoaderTrait,
-                                         DataSourceDefinitionLoaderError};
+use thegraph::components::data_sources::{
+    DataSourceDefinitionLoader as LoaderTrait, DataSourceDefinitionLoaderError,
+};
 use thegraph::data::data_sources::*;
 
 #[derive(Default)]
@@ -50,7 +51,8 @@ impl LoaderTrait for DataSourceDefinitionLoader {
             // Resolve the schema path into a GraphQL SDL string
             let schema = raw_mapping
                 .get(&serde_yaml::Value::String(String::from("schema")))
-                .and_then(|location| location.get(&serde_yaml::Value::String(String::from("path"))))
+                .and_then(|schema| schema.get(&serde_yaml::Value::String(String::from("source"))))
+                .and_then(|source| source.get(&serde_yaml::Value::String(String::from("path"))))
                 .and_then(|path| path.as_str())
                 .ok_or(DataSourceDefinitionLoaderError::SchemaMissing)
                 .map(|schema_path| self.resolve_path(path.parent(), Path::new(schema_path)))
@@ -60,6 +62,12 @@ impl LoaderTrait for DataSourceDefinitionLoader {
             raw_mapping.insert(
                 serde_yaml::Value::String(String::from("schema")),
                 serde_yaml::Value::String(schema),
+            );
+
+            // Inject the location of the data source into the definition
+            raw_mapping.insert(
+                serde_yaml::Value::String(String::from("location")),
+                serde_yaml::Value::String(String::from(path.to_str().unwrap())),
             );
         }
 
