@@ -1,7 +1,7 @@
 use futures::sync::mpsc::Receiver;
 
 use components::store::StoreKey;
-use data::store::Entity;
+use prelude::*;
 use util::stream::StreamError;
 
 /// Type alias for data source IDs.
@@ -29,10 +29,10 @@ pub trait RuntimeHost {
     /// Receiver from which others can read runtime events emitted by the host.
     /// Can only be called once. Any consecutive calls will result in a StreamError.
     fn event_stream(&mut self) -> Result<Receiver<RuntimeHostEvent>, StreamError>;
-}
 
-/// Type alias for Host Source location
-type HostSourceFileLocation = String;
+    /// The data source definition the runtime is for.
+    fn data_source_definition(&self) -> &DataSourceDefinition;
+}
 
 pub trait RuntimeHostBuilder {
     /// Build a new runtime host
