@@ -1,14 +1,15 @@
-use parity_wasm;
-use std::path::PathBuf;
-use thegraph::components::store as StoreComponents;
-use thegraph::data::store as StoreData;
-use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, Module, ModuleImportResolver,
-            ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue, Signature, Trap,
-            ValueType};
-
 use futures::prelude::*;
 use futures::sync::mpsc::Sender;
+use parity_wasm;
+use std::path::PathBuf;
+use wasmi::{
+    Error, Externals, FuncInstance, FuncRef, ImportsBuilder, Module, ModuleImportResolver,
+    ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue, Signature, Trap, ValueType,
+};
+
 use thegraph::components::data_sources::RuntimeHostEvent;
+use thegraph::components::store::StoreKey;
+use thegraph::prelude::*;
 
 // Set indexes for Store functions that will be exported with module
 const CREATE_FUNC_INDEX: usize = 0;
@@ -69,15 +70,15 @@ pub struct WasmConverter {}
 
 impl WasmConverter {
     // Put StoreKey into linear memory and return a u32 pointer
-    pub fn _storekey_to_memory(_key: StoreComponents::StoreKey) -> RuntimeValue {
+    pub fn _store_key_to_memory(_key: StoreKey) -> RuntimeValue {
         unimplemented!();
     }
     // Get StoreKey from .wasm pointer
-    pub fn storekey_from_wasm(_pointer: u32) -> StoreComponents::StoreKey {
+    pub fn store_key_from_wasm(_pointer: u32) -> StoreKey {
         unimplemented!();
     }
     // Get Entity from .wasm pointer
-    pub fn entity_from_wasm(_pointer: u32) -> StoreData::Entity {
+    pub fn entity_from_wasm(_pointer: u32) -> Entity {
         unimplemented!();
     }
 }
@@ -89,13 +90,13 @@ impl Db {
     /// Send Entity Created Event
     pub fn create_entity(
         sender: Sender<RuntimeHostEvent>,
-        datasource: String,
-        key: StoreComponents::StoreKey,
-        entity: StoreData::Entity,
+        data_source: String,
+        key: StoreKey,
+        entity: Entity,
     ) -> i32 {
         let id: i32 = key.id.parse().unwrap();
         sender
-            .send(RuntimeHostEvent::EntityCreated(datasource, key, entity))
+            .send(RuntimeHostEvent::EntityCreated(data_source, key, entity))
             .wait()
             .expect("Failed to forward runtime host event");
         id
@@ -104,13 +105,13 @@ impl Db {
     /// Send Entity Updated Event
     pub fn update_entity(
         sender: Sender<RuntimeHostEvent>,
-        datasource: String,
-        key: StoreComponents::StoreKey,
-        entity: StoreData::Entity,
+        data_source: String,
+        key: StoreKey,
+        entity: Entity,
     ) -> i32 {
         let id: i32 = key.id.parse().unwrap();
         sender
-            .send(RuntimeHostEvent::EntityChanged(datasource, key, entity))
+            .send(RuntimeHostEvent::EntityChanged(data_source, key, entity))
             .wait()
             .expect("Failed to forward runtime host event");
         id
@@ -119,12 +120,12 @@ impl Db {
     /// Send Entity Removed Event
     pub fn remove_entity(
         sender: Sender<RuntimeHostEvent>,
-        datasource: String,
-        key: StoreComponents::StoreKey,
+        data_source: String,
+        key: StoreKey,
     ) -> i32 {
         let id: i32 = key.id.parse().unwrap();
         sender
-            .send(RuntimeHostEvent::EntityRemoved(datasource, key))
+            .send(RuntimeHostEvent::EntityRemoved(data_source, key))
             .wait()
             .expect("Failed to forward runtime host event");
         id
@@ -145,49 +146,37 @@ impl Externals for HostExternals {
         match index {
             CREATE_FUNC_INDEX => {
                 // Input: StoreKey and Entity
-                let storekey_ptr: u32 = args.nth_checked(0)?;
-                let storekey: StoreComponents::StoreKey =
-                    WasmConverter::storekey_from_wasm(storekey_ptr);
+                let store_key_ptr: u32 = args.nth_checked(0)?;
+                let store_key = WasmConverter::store_key_from_wasm(store_key_ptr);
                 let entity_ptr: u32 = args.nth_checked(1)?;
-                let entity: StoreData::Entity = WasmConverter::entity_from_wasm(entity_ptr);
+                let entity = WasmConverter::entity_from_wasm(entity_ptr);
 
                 // Send an add entity event
-                let id = Db::create_entity(
-                    self.event_sink.clone(),
-                    "memefactory".to_string(),
-                    storekey,
-                    entity,
-                );
+                let id =
+                    Db::create_entity(self.event_sink.clone(), "".to_string(), store_key, entity);
 
                 Ok(Some(RuntimeValue::I32(id)))
             }
             UPDATE_FUNC_INDEX => {
                 // Input: StoreKey and Entity
-                let storekey_ptr: u32 = args.nth_checked(0)?;
-                let storekey: StoreComponents::StoreKey =
-                    WasmConverter::storekey_from_wasm(storekey_ptr);
+                let store_key_ptr: u32 = args.nth_checked(0)?;
+                let store_key = WasmConverter::store_key_from_wasm(store_key_ptr);
                 let entity_ptr: u32 = args.nth_checked(1)?;
-                let entity: StoreData::Entity = WasmConverter::entity_from_wasm(entity_ptr);
+                let entity = WasmConverter::entity_from_wasm(entity_ptr);
 
                 // Send an update entity event
-                let id = Db::update_entity(
-                    self.event_sink.clone(),
-                    "memefactory".to_string(),
-                    storekey,
-                    entity,
-                );
+                let id =
+                    Db::update_entity(self.event_sink.clone(), "".to_string(), store_key, entity);
 
                 Ok(Some(RuntimeValue::I32(id)))
             }
             DELETE_FUNC_INDEX => {
                 // Input: StoreKey
-                let storekey_ptr: u32 = args.nth_checked(0)?;
-                let storekey: StoreComponents::StoreKey =
-                    WasmConverter::storekey_from_wasm(storekey_ptr);
+                let store_key_ptr: u32 = args.nth_checked(0)?;
+                let store_key = WasmConverter::store_key_from_wasm(store_key_ptr);
 
                 // Send a delete entity event
-                let id =
-                    Db::remove_entity(self.event_sink.clone(), "memefactory".to_string(), storekey);
+                let id = Db::remove_entity(self.event_sink.clone(), "".to_string(), store_key);
 
                 Ok(Some(RuntimeValue::I32(id)))
             }
@@ -245,7 +234,7 @@ mod tests {
 
         debug!(logger, "Instantiate wasm module from file";
                "file_location" => format!("{:?}", wasm_location));
-        let main = WasmiModule::new(wasm_location, sender);
+        let main = WasmiModule::new(String::from(wasm_location), sender);
 
         debug!(
             logger,
@@ -269,8 +258,8 @@ mod tests {
     fn exported_function_create_entity_method_emits_an_entity_created_event() {
         let (sender, receiver) = channel(10);
 
-        // Build event data to send: datasource, StoreKey, Entity
-        let datasource = "memefactory".to_string();
+        // Build event data to send: data_source, StoreKey, Entity
+        let data_source = "memefactory".to_string();
         let key = StoreKey {
             entity: "test_type".to_string(),
             id: 1.to_string(),
@@ -280,7 +269,7 @@ mod tests {
         entity.insert("Name".to_string(), Value::String("John".to_string()));
 
         // Create EntityCreated event and send to channel
-        module::Db::create_entity(sender.clone(), datasource, key, entity);
+        module::Db::create_entity(sender.clone(), data_source, key, entity);
 
         // Consume receiver
         let result = receiver
@@ -290,10 +279,10 @@ mod tests {
             .0
             .expect("No event found in receiver");
 
-        // Confirm receiver contains EntityCreated event with correct datasource and StoreKey
+        // Confirm receiver contains EntityCreated event with correct data_source and StoreKey
         match result {
-            RuntimeHostEvent::EntityCreated(rec_datasource, rec_key, _rec_entity) => {
-                assert_eq!("memefactory".to_string(), rec_datasource);
+            RuntimeHostEvent::EntityCreated(rec_data_source, rec_key, _rec_entity) => {
+                assert_eq!("memefactory".to_string(), rec_data_source);
                 assert_eq!(
                     StoreKey {
                         entity: "test_type".to_string(),
