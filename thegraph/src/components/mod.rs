@@ -8,7 +8,7 @@
 //!
 //! The layers are not well defined, but it's expected that a higher-level
 //! component will make requests for a lower-level component to respond, and
-//! that a lower-level component will sent events to interested higher-level
+//! that a lower-level component will send events to interested higher-level
 //! components when it's state changes.
 //!
 //! A request/response interaction between C1 and C2 is made by C1 requiring an
