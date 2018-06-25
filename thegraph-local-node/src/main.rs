@@ -22,12 +22,11 @@ use std::sync::{Arc, Mutex};
 use tokio::prelude::*;
 use tokio_core::reactor::Core;
 
-use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::{EventConsumer, EventProducer};
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
-use thegraph_runtime::{RuntimeHost as WASMRuntimeHost, RuntimeHostBuilder, RuntimeHostConfig};
+use thegraph_runtime::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
 
 use thegraph_local_node::LocalDataSourceProvider;
@@ -63,7 +62,7 @@ fn main() {
     let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
 
     // Obtain data source related command-line arguments
-    let data_source_definition_file = matches.value_of("data-source").unwrap();
+    let data_source_path = matches.value_of("data-source").unwrap();
 
     debug!(logger, "Setting up Sentry");
 
@@ -85,15 +84,20 @@ fn main() {
 
     // Create system components
     let mut data_source_provider =
-        LocalDataSourceProvider::new(&logger, core.handle(), data_source_definition_file.clone());
+        LocalDataSourceProvider::new(&logger, core.handle(), data_source_path.clone());
     let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
-    let mut store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
+    let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let protected_store = Arc::new(Mutex::new(store));
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
     let ethereum_watcher = Arc::new(Mutex::new(thegraph_ethereum::EthereumWatcher::new()));
-    let runtime_host_builder = RuntimeHostBuilder::new(&logger, core.handle(), &ethereum_watcher, protected_store);
-    let runtime_manager =
-        thegraph_core::RuntimeManager::new(&logger, core.handle(), runtime_host_builder);
+    let runtime_host_builder =
+        WASMRuntimeHostBuilder::new(&logger, core.handle(), ethereum_watcher.clone());
+    let runtime_manager = thegraph_core::RuntimeManager::new(
+        &logger,
+        core.handle(),
+        protected_store.clone(),
+        runtime_host_builder,
+    );
 
     // Forward data source events from the data source provider to the runtime manager
     let data_source_stream = data_source_provider.event_stream().unwrap();
@@ -125,7 +129,9 @@ fn main() {
     core.handle().spawn({
         schema_stream
             .forward(
-                store
+                protected_store
+                    .lock()
+                    .unwrap()
                     .schema_provider_event_sink()
                     .fanout(graphql_server.schema_provider_event_sink())
                     .sink_map_err(|e| {
@@ -136,15 +142,16 @@ fn main() {
     });
 
     // Forward store events to the GraphQL server
-    let store_stream = store.event_stream().unwrap();
-    core.handle().spawn({
-        store_stream
-            .forward(graphql_server.store_event_sink().sink_map_err(|e| {
-                panic!("Failed to send store event to the GraphQL server: {:?}", e);
-            }))
-            .and_then(|_| Ok(()))
-    });
-
+    {
+        let store_stream = protected_store.lock().unwrap().event_stream().unwrap();
+        core.handle().spawn({
+            store_stream
+                .forward(graphql_server.store_event_sink().sink_map_err(|e| {
+                    panic!("Failed to send store event to the GraphQL server: {:?}", e);
+                }))
+                .and_then(|_| Ok(()))
+        });
+    }
 
     // Forward incoming queries from the GraphQL server to the query runner
     let mut query_runner =
@@ -158,45 +165,9 @@ fn main() {
             .and_then(|_| Ok(()))
     });
 
-    // Connect the runtime host to the store
-    core.handle().spawn({
-        data_source_runtime_host
-            .event_stream()
-            .unwrap()
-            .for_each(move |event| {
-                let mut store = protected_store.lock().unwrap();
-
-                match event {
-                    RuntimeHostEvent::EntityCreated(_, k, entity) => {
-                        store
-                            .set(k, entity)
-                            .expect("Failed to set entity in the store");
-                    }
-                    RuntimeHostEvent::EntityChanged(_, k, entity) => {
-                        store
-                            .set(k, entity)
-                            .expect("Failed to set entity in the store");
-                    }
-                    RuntimeHostEvent::EntityRemoved(_, k) => {
-                        store
-                            .delete(k)
-                            .expect("Failed to remove entity from the store");
-                    }
-                };
-                Ok(())
-            })
-            .and_then(|_| Ok(()))
-    });
-
-    // Start the runtime host
-    data_source_runtime_host.start();
-
     // Serve GraphQL server over HTTP
     let http_server = graphql_server
         .serve()
         .expect("Failed to start GraphQL server");
     core.run(http_server).unwrap();
-
-    // Stop the runtime host
-    data_source_runtime_host.stop();
 }
