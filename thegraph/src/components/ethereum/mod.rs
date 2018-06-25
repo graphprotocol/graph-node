@@ -1,5 +1,5 @@
-mod watcher;
+mod adapter;
 
-pub use self::watcher::{BlockNumberRange, EthereumAdapter, EthereumContractState,
+pub use self::adapter::{BlockNumberRange, EthereumAdapter, EthereumContractState,
                         EthereumContractStateError, EthereumContractStateRequest, EthereumEvent,
                         EthereumEventSubscription};
