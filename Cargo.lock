@@ -1628,7 +1628,6 @@ dependencies = [
  "parity-wasm 0.27.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "thegraph 0.1.0",
- "thegraph-store-postgres-diesel 0.1.0",
  "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "wasmi 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

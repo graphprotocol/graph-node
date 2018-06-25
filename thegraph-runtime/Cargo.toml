@@ -10,4 +10,3 @@ slog = "2.2.3"
 tokio-core = "0.1.6"
 thegraph = { path = "../thegraph" }
 wasmi = "0.2.0"
-thegraph-store-postgres-diesel = { path = "../thegraph-store-postgres-diesel" }
