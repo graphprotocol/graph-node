@@ -5,16 +5,18 @@ use tokio_core::reactor::Handle;
 
 use thegraph::components::data_sources::DataSourceProviderEvent;
 use thegraph::prelude::*;
+use thegraph_runtime::RuntimeHostBuilder;
 
 pub struct RuntimeManager {
     logger: Logger,
     runtime: Handle,
+    host_builder: RuntimeHostBuilder,
     input: Sender<DataSourceProviderEvent>,
 }
 
 impl RuntimeManager {
     /// Creates a new runtime manager.
-    pub fn new(logger: &Logger, runtime: Handle) -> Self {
+    pub fn new(logger: &Logger, runtime: Handle, host_builder: RuntimeHostBuilder) -> Self {
         let logger = logger.new(o!("component" => "RuntimeManager"));
 
         // Create channel for receiving data source provider events.
@@ -23,6 +25,7 @@ impl RuntimeManager {
         let mut manager = RuntimeManager {
             logger,
             runtime,
+            host_builder,
             input: data_source_sender,
         };
 
@@ -37,7 +40,8 @@ impl RuntimeManager {
         self.runtime.spawn(receiver.for_each(|event| {
             match event {
                 DataSourceProviderEvent::DataSourceAdded(definition) => {
-                    // TODO: Create runtime here.
+                    self.host_builder
+                        .create_host(definition.data_source.mapping.location.to_string());
                 }
                 _ => unimplemented!(),
             }
