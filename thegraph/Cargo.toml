@@ -15,3 +15,4 @@ slog-async = "2.3.0"
 slog-term = "2.4.0"
 tokio = "0.1.6"
 tokio-core = "0.1.17"
+web3 = { git = "https://github.com/tomusdrw/rust-web3" }

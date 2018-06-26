@@ -4,6 +4,7 @@ version = "0.1.0"
 
 [dependencies]
 ethereum-types = "0.3"
+ethabi = "5.1.1"
 futures = "0.1.21"
 serde_json = "1.0"
 thegraph = { path = "../thegraph" }
