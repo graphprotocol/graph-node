@@ -1,4 +1,4 @@
-use super::class::ArrayBuffer;
+use super::class::*;
 use super::{AscHeap, AscPtr};
 use ethereum_types::H160;
 use parity_wasm;
@@ -64,6 +64,15 @@ impl TestModule {
             memory,
         }
     }
+
+    fn takes_ptr_returns_ptr<T, U>(&self, fn_name: &str, arg: AscPtr<T>) -> AscPtr<U> {
+        self.module
+            .invoke_export(fn_name, &[RuntimeValue::from(arg)], &mut NopExternals)
+            .expect("call failed")
+            .expect("call returned nothing")
+            .try_into()
+            .expect("call did not return pointer")
+    }
 }
 
 impl AscHeap for TestModule {
@@ -94,17 +103,8 @@ fn abi_h160() {
     let module = TestModule::new("wasm_test/abi_classes.wasm");
     let address = H160::zero();
 
-    let new_address_obj: AscPtr<ArrayBuffer<u8>> = module
-        .module
-        .invoke_export(
-            "test_address",
-            &[RuntimeValue::from(module.asc_new(&address))],
-            &mut NopExternals,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return u32");
+    let new_address_obj: AscPtr<ArrayBuffer<u8>> =
+        module.takes_ptr_returns_ptr("test_address", module.asc_new(&address));
 
     // This should have 1 added to the first and last byte.
     let new_address: H160 = module.asc_get(new_address_obj);
@@ -113,4 +113,14 @@ fn abi_h160() {
         *new_address,
         [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
     )
+}
+
+#[test]
+fn string() {
+    let module = TestModule::new("wasm_test/abi_classes.wasm");
+    let string = "    漢字Double_Me🇧🇷  ";
+    let trimmed_string_obj: AscPtr<AscString> =
+        module.takes_ptr_returns_ptr("repeat_twice", module.asc_new(string));
+    let doubled_string: String = module.asc_get(trimmed_string_obj);
+    assert_eq!(doubled_string, string.repeat(2))
 }

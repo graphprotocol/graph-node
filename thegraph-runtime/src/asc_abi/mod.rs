@@ -5,9 +5,9 @@ use wasmi;
 
 pub mod asc_ptr;
 pub mod class;
-mod to_from;
 #[cfg(test)]
 mod test;
+mod to_from;
 
 ///! Facilities for creating and reading objects on the memory of an
 ///! AssemblyScript (Asc) WASM module. Objects are passed through
@@ -38,7 +38,7 @@ pub trait AscHeap: Sized {
     ///
     /// This operation is expensive as it requires a call to `raw_new` for every
     /// nested object.
-    fn asc_new<C, T>(&self, rust_obj: &T) -> AscPtr<C>
+    fn asc_new<C, T: ?Sized>(&self, rust_obj: &T) -> AscPtr<C>
     where
         C: AscType,
         T: ToAscObj<C>,
@@ -78,7 +78,6 @@ pub trait FromAscObj<C: AscType> {
 /// structs that are `#[repr(C)]` and whose fields are all `AscValue`.
 /// Special classes like `ArrayBuffer` use custom impls.
 pub trait AscType: Sized {
-
     /// Transform the Rust representation of this instance into an sequence of
     /// bytes that is precisely the memory layout of a corresponding Asc instance.
     fn to_asc_bytes(&self) -> Vec<u8> {

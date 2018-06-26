@@ -1,7 +1,6 @@
-use super::class::ArrayBuffer;
 use super::{AscHeap, AscType};
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::{self, size_of};
 use wasmi::{FromRuntimeValue, RuntimeValue};
 
 /// A pointer to an object in the Asc heap.
@@ -31,20 +30,16 @@ impl<C: AscType> AscPtr<C> {
     pub(super) fn alloc_obj<H: AscHeap>(asc_obj: &C, heap: &H) -> AscPtr<C> {
         AscPtr(heap.raw_new(&asc_obj.to_asc_bytes()).unwrap(), PhantomData)
     }
-}
 
-impl<T> AscPtr<ArrayBuffer<T>> {
-    pub(super) fn read_byte_length<H: AscHeap>(&self, heap: &H) -> u32 {
-
-        // The byte length is a u32 and is the first field.
-        let raw_length_bytes = heap.get(self.0, mem::size_of::<u32>() as u32).unwrap();
-
-        // Read the u32 bytes.
-        let mut byte_length_bytes: [u8; 4] = [0; 4];
-        byte_length_bytes.copy_from_slice(&raw_length_bytes);
+    /// Helper used by arrays and strings to read their length.
+    pub(super) fn read_u32<H: AscHeap>(&self, heap: &H) -> u32 {
+        // Read the bytes pointed to by `self` as the bytes of a `u32`.
+        let raw_bytes = heap.get(self.0, size_of::<u32>() as u32).unwrap();
+        let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
+        u32_bytes.copy_from_slice(&raw_bytes);
 
         // Get the u32 from the bytes. This is just `u32::from_bytes` which is unstable.
-        unsafe { mem::transmute(byte_length_bytes) }
+        unsafe { mem::transmute(u32_bytes) }
     }
 }
 

@@ -23,3 +23,8 @@ export function test_address(address: Address): Address {
   store<u8>(last_byte_ptr, last_byte + 1);
   return new_address
 }
+
+// Return the string repeated twice.
+export function repeat_twice(original: string): string {
+  return original.repeat(2)
+}
