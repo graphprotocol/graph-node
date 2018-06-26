@@ -1,12 +1,12 @@
 use super::{AscHeap, AscPtr, AscType, AscValue};
-use std::mem::{self, size_of};
+use std::mem::{self, size_of, size_of_val};
 
 ///! Rust types that have with a direct correspondence to an Asc class,
 ///! with their `AscType` implementations.
 
 /// Asc std ArrayBuffer: "a generic, fixed-length raw binary data buffer".
 /// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
-pub struct ArrayBuffer<T> {
+pub(crate) struct ArrayBuffer<T> {
     byte_length: u32,
     // Asc allocators always align at 8 bytes, we already have 4 bytes from
     // `byte_length_size` so with 4 more bytes we align the contents at 8
@@ -14,12 +14,11 @@ pub struct ArrayBuffer<T> {
     // elements in `content` will be aligned for any element type.
     _padding: [u8; 4],
     // In Asc this slice is layed out inline with the ArrayBuffer.
-    pub content: Box<[T]>,
+    pub(super) content: Box<[T]>,
 }
 
 impl<T: AscValue> ArrayBuffer<T> {
     pub(super) fn new(content: &[T]) -> Self {
-
         // An `AscValue` has the same size in Rust and Asc so:
         let byte_length = size_of::<T>() * content.len();
 
@@ -54,7 +53,6 @@ impl<T: AscValue> AscType for ArrayBuffer<T> {
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-
         // Pointer for our current position within `asc_obj`,
         // initially at the start of the content,
         // skipping `byte_length` and the padding.
@@ -71,11 +69,80 @@ impl<T: AscValue> AscType for ArrayBuffer<T> {
         ArrayBuffer::new(&content)
     }
 
-    /// Calculate the size of the `ArrayBuffer`.
     fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> u32 {
-        let byte_length = ptr.read_byte_length(heap);
+        let byte_length = ptr.read_u32(heap);
         let byte_length_size = size_of::<u32>() as u32;
         let padding_size = size_of::<u32>() as u32;
         byte_length_size + padding_size + byte_length
+    }
+}
+
+/// Asc std string: "Strings are encoded as UTF-16LE in AssemblyScript, and are
+/// prefixed with their length (in character codes) as a 32-bit integer". See
+/// https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#strings
+pub(crate) struct AscString {
+    // In number of UTF-16 code units (2 bytes each).
+    length: u32,
+    // The sequence of UTF-16LE code units that form the string.
+    pub(super) content: Box<[u16]>,
+}
+
+impl AscString {
+    pub(super) fn new(content: &[u16]) -> Self {
+        assert!(
+            size_of_val(content) <= u32::max_value() as usize,
+            "string cannot fit in WASM memory"
+        );
+
+        AscString {
+            length: content.len() as u32,
+            content: content.into(),
+        }
+    }
+}
+
+impl AscType for AscString {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        let mut asc_layout: Vec<u8> = Vec::new();
+
+        // This is just `self.length.to_bytes()` which is unstable.
+        let length: [u8; 4] = unsafe { mem::transmute(self.length) };
+        asc_layout.extend(&length);
+
+        // Write the code points, in little-endian (LE) order.
+        for &code_unit in self.content.iter() {
+            let low_byte = code_unit as u8;
+            let high_byte = (code_unit >> 8) as u8;
+            asc_layout.push(low_byte);
+            asc_layout.push(high_byte);
+        }
+
+        asc_layout
+    }
+
+    /// The Rust representation of an Asc object as layed out in Asc memory.
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        // Pointer for our current position within `asc_obj`,
+        // initially at the start of the content skipping `length`.
+        let mut offset = size_of::<u32>();
+
+        // Read the content.
+        let mut content = Vec::new();
+        while offset < asc_obj.len() {
+            let code_point_bytes = [asc_obj[offset], asc_obj[offset + 1]];
+
+            // This is just `u16::from_bytes` which is unstable.
+            let code_point = unsafe { mem::transmute(code_point_bytes) };
+            content.push(code_point);
+            offset += size_of::<u16>();
+        }
+        AscString::new(&content)
+    }
+
+    fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> u32 {
+        let length = ptr.read_u32(heap);
+        let length_size = size_of::<u32>() as u32;
+        let code_point_size = size_of::<u16>() as u32;
+        length_size + code_point_size * length
     }
 }
