@@ -17,6 +17,11 @@ mod test;
 ///! Implementations of `AscType` live in the `class` module.
 ///! Common implementations of `To`/`FromAscObj` live in the `to_from` module.
 
+/// WASM is little-endian, and for simplicity we currently assume that the host
+/// is also little-endian.
+#[cfg(target_endian = "big")]
+compile_error!("big-endian targets are currently unsupported");
+
 /// A type that can read and write to the Asc heap. Call `asc_new` and `asc_get`
 /// for reading and writing Rust structs from and to Asc.
 ///
