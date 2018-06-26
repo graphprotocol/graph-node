@@ -66,10 +66,9 @@ where
     config: RuntimeHostConfig,
     logger: Logger,
     runtime: Handle,
-    event_sender: Sender<RuntimeHostEvent>,
     output: Option<Receiver<RuntimeHostEvent>>,
     ethereum_watcher: Arc<Mutex<T>>,
-    module: Option<WasmiModule>,
+    module: WasmiModule,
 }
 
 impl<T> RuntimeHost<T>
@@ -82,16 +81,90 @@ where
         ethereum_watcher: Arc<Mutex<T>>,
         config: RuntimeHostConfig,
     ) -> Self {
+        let logger = logger.new(o!("component" => "RuntimeHost"));
+
+        // Create channel for sending runtime host events
         let (event_sender, event_receiver) = channel(100);
 
-        RuntimeHost {
+        // Obtain mapping location
+        let location = config.data_source_definition.resolve_path(
+            &config
+                .data_source_definition
+                .datasets
+                .first()
+                .unwrap()
+                .mapping
+                .source
+                .path,
+        );
+
+        info!(logger, "Load WASM runtime from"; "file" => location.to_str());
+
+        // Load the mappings as a WASM module
+        let module = WasmiModule::new(
+            location,
+            &logger,
+            WasmiModuleConfig {
+                data_source_id: String::from("TODO: DATA SOURCE ID"),
+                runtime: runtime.clone(),
+                event_sink: event_sender,
+            },
+        );
+
+        let mut host = RuntimeHost {
             config,
-            logger: logger.new(o!("component" => "RuntimeHost")),
+            logger,
             runtime,
-            event_sender,
             output: Some(event_receiver),
             ethereum_watcher,
-            module: None,
+            module,
+        };
+
+        host.subscribe_to_events();
+        host
+    }
+
+    /// Subscribe to all smart contract events of the first data set
+    /// in the data source definition.
+    ///
+    /// NOTE: We'll add support for multiple datasets soon
+    fn subscribe_to_events(&mut self) {
+        // Prepare subscriptions for the events
+        let subscriptions: Vec<EthereumEventSubscription> = {
+            let dataset = self.config
+                .data_source_definition
+                .datasets
+                .first()
+                .expect("Data source must contain at least one data set");
+
+            // Obtain the contract address of the first data set
+            let address = Address::from_str(dataset.data.address.as_str())
+                .expect("Failed to parse contract address");
+
+            // Prepare subscriptions for all events
+            dataset
+                .mapping
+                .event_handlers
+                .iter()
+                .map(|event_handler| {
+                    let subscription_id = Uuid::new_v4().simple().to_string();
+
+                    EthereumEventSubscription {
+                        subscription_id: subscription_id.clone(),
+                        address,
+                        event_signature: event_handler.event.clone(),
+                        range: BlockNumberRange {
+                            from: Some(0),
+                            to: None,
+                        },
+                    }
+                })
+                .collect()
+        };
+
+        // Subscribe to the events now
+        for subscription in subscriptions.into_iter() {
+            self.subscribe_to_event(subscription);
         }
     }
 
@@ -127,80 +200,6 @@ impl<T> RuntimeHostTrait for RuntimeHost<T>
 where
     T: EthereumWatcher,
 {
-    fn start(&mut self) {
-        info!(self.logger, "Start");
-
-        // Obtain the first data set (NOTE: We'll add support for multiple datasets soon).
-        let subscriptions: Vec<EthereumEventSubscription> = {
-            let dataset = self.config
-                .data_source_definition
-                .datasets
-                .first()
-                .expect("Data source must contain at least one data set");
-
-            // Obtain the contract address of the first data set
-            let address = Address::from_str(dataset.data.address.as_str())
-                .expect("Failed to parse contract address");
-
-            // Prepare subscriptions for all events
-            dataset
-                .mapping
-                .event_handlers
-                .iter()
-                .map(|event_handler| {
-                    let subscription_id = Uuid::new_v4().simple().to_string();
-
-                    EthereumEventSubscription {
-                        subscription_id: subscription_id.clone(),
-                        address,
-                        event_signature: event_handler.event.clone(),
-                        range: BlockNumberRange {
-                            from: Some(0),
-                            to: None,
-                        },
-                    }
-                })
-                .collect()
-        };
-
-        // Subscribe to the events
-        for subscription in subscriptions.into_iter() {
-            self.subscribe_to_event(subscription);
-        }
-
-        // Obtain mapping location
-        let location = self.config.data_source_definition.resolve_path(
-            &self.config
-                .data_source_definition
-                .datasets
-                .first()
-                .unwrap()
-                .mapping
-                .source
-                .path,
-        );
-
-        info!(self.logger, "Load WASM runtime from"; "file" => location.to_str());
-
-        // Load the mappings as a WASM module
-        self.module = Some(WasmiModule::new(
-            location,
-            &self.logger,
-            WasmiModuleConfig {
-                data_source_id: String::from("TODO DATA SOURCE ID"),
-                runtime: self.runtime.clone(),
-                event_sink: self.event_sender.clone(),
-            },
-        ));
-    }
-
-    fn stop(&mut self) {
-        info!(self.logger, "Stop");
-
-        // Drop the WASM module
-        self.module = None;
-    }
-
     fn data_source_definition(&self) -> &DataSourceDefinition {
         &self.config.data_source_definition
     }
