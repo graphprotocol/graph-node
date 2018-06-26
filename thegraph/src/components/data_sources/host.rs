@@ -7,22 +7,16 @@ type DataSourceID = String;
 /// Events emitted by a runtime host.
 #[derive(Debug, Clone)]
 pub enum RuntimeHostEvent {
-    // An entity should be created.
+    /// An entity should be created.
     EntityCreated(DataSourceID, StoreKey, Entity),
-    // An entity should be updated.
+    /// An entity should be updated.
     EntityChanged(DataSourceID, StoreKey, Entity),
-    // An entity should be removed.
+    /// An entity should be removed.
     EntityRemoved(DataSourceID, StoreKey),
 }
 
 /// Common trait for runtime host implementations.
 pub trait RuntimeHost: EventProducer<RuntimeHostEvent> {
-    /// Starts the underlying data source runtime.
-    fn start(&mut self);
-
-    /// Stops the underlying data source runtime.
-    fn stop(&mut self);
-
     /// The data source definition the runtime is for.
     fn data_source_definition(&self) -> &DataSourceDefinition;
 }
