@@ -113,6 +113,7 @@ pub trait AscType: Sized {
 pub trait AscValue: AscType + Copy + Default {}
 
 impl<T> AscType for AscPtr<T> {}
+impl AscType for bool {}
 impl AscType for i8 {}
 impl AscType for i16 {}
 impl AscType for i32 {}
@@ -123,6 +124,7 @@ impl AscType for u32 {}
 impl AscType for u64 {}
 
 impl<T> AscValue for AscPtr<T> {}
+impl AscValue for bool {}
 impl AscValue for i8 {}
 impl AscValue for i16 {}
 impl AscValue for i32 {}
