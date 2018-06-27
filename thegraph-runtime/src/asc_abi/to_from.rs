@@ -11,7 +11,7 @@ impl<T: AscValue> ToAscObj<ArrayBuffer<T>> for [T] {
 }
 
 impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for [T; 20] {
-    fn from_asc_obj<H: AscHeap>(array_buffer: &ArrayBuffer<T>, _: &H) -> Self {
+    fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<T>, _: &H) -> Self {
         assert_eq!(
             array_buffer.content.len(),
             20,
@@ -24,7 +24,7 @@ impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for [T; 20] {
 }
 
 impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for [T; 4] {
-    fn from_asc_obj<H: AscHeap>(array_buffer: &ArrayBuffer<T>, _: &H) -> Self {
+    fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<T>, _: &H) -> Self {
         assert_eq!(
             array_buffer.content.len(),
             4,
@@ -36,6 +36,12 @@ impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for [T; 4] {
     }
 }
 
+impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for Vec<T> {
+    fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<T>, _: &H) -> Self {
+        array_buffer.content.into()
+    }
+}
+
 impl ToAscObj<ArrayBuffer<u8>> for ethereum_types::H160 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u8> {
         self.0.to_asc_obj(heap)
@@ -43,7 +49,7 @@ impl ToAscObj<ArrayBuffer<u8>> for ethereum_types::H160 {
 }
 
 impl FromAscObj<ArrayBuffer<u8>> for ethereum_types::H160 {
-    fn from_asc_obj<H: AscHeap>(array_buffer: &ArrayBuffer<u8>, heap: &H) -> Self {
+    fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<u8>, heap: &H) -> Self {
         ethereum_types::H160(<[u8; 20]>::from_asc_obj(array_buffer, heap))
     }
 }
@@ -55,7 +61,7 @@ impl ToAscObj<AscString> for str {
 }
 
 impl FromAscObj<AscString> for String {
-    fn from_asc_obj<H: AscHeap>(asc_string: &AscString, _: &H) -> Self {
+    fn from_asc_obj<H: AscHeap>(asc_string: AscString, _: &H) -> Self {
         String::from_utf16(&asc_string.content).expect("asc string was not UTF-16")
     }
 }
@@ -67,7 +73,7 @@ impl ToAscObj<ArrayBuffer<u64>> for ethereum_types::U256 {
 }
 
 impl FromAscObj<ArrayBuffer<u64>> for ethereum_types::U256 {
-    fn from_asc_obj<H: AscHeap>(array_buffer: &ArrayBuffer<u64>, heap: &H) -> Self {
+    fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<u64>, heap: &H) -> Self {
         ethereum_types::U256(<[u64; 4]>::from_asc_obj(array_buffer, heap))
     }
 }
