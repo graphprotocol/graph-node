@@ -73,6 +73,24 @@ impl TestModule {
             .try_into()
             .expect("call did not return pointer")
     }
+
+    fn takes_ptr_ptr_returns_ptr<T, U, R>(
+        &self,
+        fn_name: &str,
+        arg1: AscPtr<T>,
+        arg2: AscPtr<U>,
+    ) -> AscPtr<R> {
+        self.module
+            .invoke_export(
+                fn_name,
+                &[RuntimeValue::from(arg1), RuntimeValue::from(arg2)],
+                &mut NopExternals,
+            )
+            .expect("call failed")
+            .expect("call returned nothing")
+            .try_into()
+            .expect("call did not return pointer")
+    }
 }
 
 impl AscHeap for TestModule {
@@ -136,4 +154,24 @@ fn abi_u256() {
     let new_uint: U256 = module.asc_get(new_uint_obj);
 
     assert_eq!(new_uint, U256([1, 0, 0, 1]))
+}
+
+#[test]
+fn abi_bytes_and_fixed_bytes() {
+    let module = TestModule::new("wasm_test/abi_classes.wasm");
+    let bytes1: Vec<u8> = vec![42, 45, 7, 245, 45];
+    let bytes2: Vec<u8> = vec![3, 12, 0, 1, 255];
+
+    let new_vec_obj: AscPtr<ArrayBuffer<u8>> = module.takes_ptr_ptr_returns_ptr(
+        "concat",
+        module.asc_new(&*bytes1),
+        module.asc_new(&*bytes2),
+    );
+
+    // This should be bytes1 and bytes2 concatenated.
+    let new_vec: Vec<u8> = module.asc_get(new_vec_obj);
+
+    let mut concated = bytes1;
+    concated.extend(bytes2);
+    assert_eq!(new_vec, concated);
 }

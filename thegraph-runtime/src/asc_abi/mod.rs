@@ -55,7 +55,7 @@ pub trait AscHeap: Sized {
         C: AscType,
         T: FromAscObj<C>,
     {
-        T::from_asc_obj(&asc_ptr.read_ptr(self), self)
+        T::from_asc_obj(asc_ptr.read_ptr(self), self)
     }
 }
 
@@ -66,7 +66,7 @@ pub trait ToAscObj<C: AscType> {
 
 /// Type that can be converted from an Asc object of class `C`.
 pub trait FromAscObj<C: AscType> {
-    fn from_asc_obj<H: AscHeap>(obj: &C, heap: &H) -> Self;
+    fn from_asc_obj<H: AscHeap>(obj: C, heap: &H) -> Self;
 }
 
 // `AscType` is not really public, implementors should live inside the `class` module.
