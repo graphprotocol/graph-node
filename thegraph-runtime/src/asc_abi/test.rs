@@ -1,6 +1,6 @@
 use super::class::*;
 use super::{AscHeap, AscPtr};
-use ethereum_types::H160;
+use ethereum_types::{H160, U256};
 use parity_wasm;
 use wasmi::{self, ImportsBuilder, MemoryRef, ModuleImportResolver, ModuleInstance, ModuleRef,
             NopExternals, RuntimeValue, Signature};
@@ -99,7 +99,6 @@ impl AscHeap for TestModule {
 
 #[test]
 fn abi_h160() {
-    // Load .wasm file into Wasmi interpreter
     let module = TestModule::new("wasm_test/abi_classes.wasm");
     let address = H160::zero();
 
@@ -110,8 +109,8 @@ fn abi_h160() {
     let new_address: H160 = module.asc_get(new_address_obj);
 
     assert_eq!(
-        *new_address,
-        [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+        new_address,
+        H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
     )
 }
 
@@ -123,4 +122,18 @@ fn string() {
         module.takes_ptr_returns_ptr("repeat_twice", module.asc_new(string));
     let doubled_string: String = module.asc_get(trimmed_string_obj);
     assert_eq!(doubled_string, string.repeat(2))
+}
+
+#[test]
+fn abi_u256() {
+    let module = TestModule::new("wasm_test/abi_classes.wasm");
+    let address = U256::zero();
+
+    let new_uint_obj: AscPtr<ArrayBuffer<u64>> =
+        module.takes_ptr_returns_ptr("test_uint", module.asc_new(&address));
+
+    // This should have 1 added to the first and last `u64`s.
+    let new_uint: U256 = module.asc_get(new_uint_obj);
+
+    assert_eq!(new_uint, U256([1, 0, 0, 1]))
 }
