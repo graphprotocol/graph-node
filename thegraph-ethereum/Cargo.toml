@@ -10,3 +10,6 @@ serde_json = "1.0"
 thegraph = { path = "../thegraph" }
 tokio-core = "0.1.6"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
+
+[dev-dependencies]
+jsonrpc-core = "8.0.1"
