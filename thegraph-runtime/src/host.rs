@@ -10,8 +10,9 @@ use uuid::Uuid;
 
 use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
-use thegraph::prelude::{RuntimeHost as RuntimeHostTrait,
-                        RuntimeHostBuilder as RuntimeHostBuilderTrait, *};
+use thegraph::prelude::{
+    RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
+};
 use thegraph::util;
 
 use module::{WasmiModule, WasmiModuleConfig};
@@ -128,7 +129,7 @@ where
     /// Subscribe to all smart contract events of the first data set
     /// in the data source definition.
     ///
-    /// NOTE: We'll add support for multiple datasets soon
+    /// NOTE: We'll add support for multiple datasets soon.
     fn subscribe_to_events(&mut self) {
         // Prepare subscriptions for the events
         let subscription_results: Vec<Result<EthereumEventSubscription, ()>> = {
@@ -154,11 +155,15 @@ where
                     let subscription_id = Uuid::new_v4().simple().to_string();
                     contract_result
                         .clone()
-                        .and_then(|contract| {
-                            util::ethereum::get_contract_event_by_signature(
+                        .map(|contract| {
+                            util::ethereum::contract_event_with_signature(
                                 &contract,
-                                &event_handler.event[..],
-                            ).ok_or(())
+                                event_handler.event.as_str(),
+                            ).expect(
+                                format!("Event not found in contract: {}", event_handler.event)
+                                    .as_str(),
+                            )
+                                .clone()
                         })
                         .map(|event| EthereumEventSubscription {
                             address,
