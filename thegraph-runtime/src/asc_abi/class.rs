@@ -146,3 +146,26 @@ impl AscType for AscString {
         length_size + code_point_size * length
     }
 }
+
+/// Growable array backed by an `ArrayBuffer`.
+/// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
+#[repr(C)]
+pub(crate) struct Array<T> {
+    buffer: AscPtr<ArrayBuffer<T>>,
+    length: u32,
+}
+
+impl<T: AscValue> Array<T> {
+    pub(super) fn new<H: AscHeap>(content: &[T], heap: &H) -> Self {
+        Array {
+            buffer: heap.asc_new(content),
+            length: content.len() as u32,
+        }
+    }
+
+    pub(super) fn get_buffer<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<T> {
+        self.buffer.read_ptr(heap)
+    }
+}
+
+impl<T> AscType for Array<T> {}

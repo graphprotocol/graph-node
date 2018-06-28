@@ -1,5 +1,5 @@
 use super::class::*;
-use super::{AscHeap, AscValue, FromAscObj, ToAscObj};
+use super::{AscHeap, AscPtr, AscType, AscValue, FromAscObj, ToAscObj};
 use ethereum_types;
 
 ///! Implementations of `ToAscObj` and `FromAscObj` for core Rust types.
@@ -75,5 +75,23 @@ impl ToAscObj<ArrayBuffer<u64>> for ethereum_types::U256 {
 impl FromAscObj<ArrayBuffer<u64>> for ethereum_types::U256 {
     fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<u64>, heap: &H) -> Self {
         ethereum_types::U256(<[u64; 4]>::from_asc_obj(array_buffer, heap))
+    }
+}
+
+impl<C: AscType, T: ToAscObj<C>> ToAscObj<Array<AscPtr<C>>> for [T] {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> Array<AscPtr<C>> {
+        let content: Vec<_> = self.iter().map(|x| heap.asc_new(x)).collect();
+        Array::new(&*content, heap)
+    }
+}
+
+impl<C: AscType, T: FromAscObj<C>> FromAscObj<Array<AscPtr<C>>> for Vec<T> {
+    fn from_asc_obj<H: AscHeap>(array: Array<AscPtr<C>>, heap: &H) -> Self {
+        array
+            .get_buffer(heap)
+            .content
+            .iter()
+            .map(|&x| heap.asc_get(x))
+            .collect()
     }
 }
