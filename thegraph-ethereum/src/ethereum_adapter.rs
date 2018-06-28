@@ -1,22 +1,17 @@
-use ethabi::{RawLog, Token};
+use ethabi::{Contract, Event, RawLog, Token};
+use ethereum_types::H256;
 use futures::prelude::*;
 use futures::stream::iter_ok;
 use std::time::Duration;
-use thegraph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use tiny_keccak::sha3_256;
 use tokio_core::reactor::Handle;
 use web3;
 use web3::api::CreateFilter;
 use web3::api::Web3;
-use web3::error::Error as Web3Error;
 use web3::helpers::CallResult;
 use web3::types::*;
 
-fn string_to_H256(string: &str) -> H256 {
-    let bytes = string.as_bytes();
-    let hash = sha3_256(bytes);
-    H256::from_slice(&hash[0..32])
-}
+use thegraph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 
 pub struct EthereumAdapterConfig<T: web3::Transport> {
     pub transport: T,
@@ -28,7 +23,7 @@ pub struct EthereumAdapter<T: web3::Transport> {
 }
 
 impl<T: web3::Transport> EthereumAdapter<T> {
-    pub fn new(config: EthereumAdapterConfig<T>, runtime: Handle) -> Self {
+    pub fn new(runtime: Handle, config: EthereumAdapterConfig<T>) -> Self {
         EthereumAdapter {
             eth_client: Web3::new(config.transport),
             runtime: runtime,
@@ -90,12 +85,12 @@ impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
         let call_data = request.function.encode_input(&request.args).unwrap();
         Box::new(
             self.call(request.address, Bytes(call_data), request.block_number)
-                .map_err(|_err| EthereumContractCallError::Failed)
+                .map_err(EthereumContractCallError::from)
                 .and_then(move |output| {
                     request
                         .function
                         .decode_output(&output.0)
-                        .map_err(|_err| EthereumContractCallError::Failed)
+                        .map_err(EthereumContractCallError::from)
                 }),
         )
     }
