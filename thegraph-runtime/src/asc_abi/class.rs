@@ -1,4 +1,5 @@
 use super::{AscHeap, AscPtr, AscType, AscValue};
+use ethabi;
 use std::mem::{self, size_of, size_of_val};
 
 ///! Rust types that have with a direct correspondence to an Asc class,
@@ -169,3 +170,54 @@ impl<T: AscValue> Array<T> {
 }
 
 impl<T> AscType for Array<T> {}
+
+/// In Asc, we represent a Rust enum as a discriminant `D`, which is an Asc enum
+/// so in Rust it's a `#[repr(u32)]` enum, plus an arbitrary `AscValue` payload.
+#[repr(C)]
+pub(crate) struct AscEnum<D: AscValue> {
+    pub discr: D,
+    pub payload: u64, // All `AscValue`s fit in 64 bits.
+}
+
+impl<D: AscValue> AscType for AscEnum<D> {}
+
+#[repr(u32)]
+#[derive(Copy, Clone)]
+pub(crate) enum TokenDiscr {
+    Address,
+    FixedBytes,
+    Bytes,
+    Int,
+    Uint,
+    Bool,
+    String,
+    FixedArray,
+    Array,
+}
+
+impl TokenDiscr {
+    pub(crate) fn get_discr(token: &ethabi::Token) -> Self {
+        match token {
+            ethabi::Token::Address(_) => TokenDiscr::Address,
+            ethabi::Token::FixedBytes(_) => TokenDiscr::FixedBytes,
+            ethabi::Token::Bytes(_) => TokenDiscr::Bytes,
+            ethabi::Token::Int(_) => TokenDiscr::Int,
+            ethabi::Token::Uint(_) => TokenDiscr::Uint,
+            ethabi::Token::Bool(_) => TokenDiscr::Bool,
+            ethabi::Token::String(_) => TokenDiscr::String,
+            ethabi::Token::FixedArray(_) => TokenDiscr::FixedArray,
+            ethabi::Token::Array(_) => TokenDiscr::Array,
+        }
+    }
+}
+
+impl Default for TokenDiscr {
+    fn default() -> Self {
+        TokenDiscr::Address
+    }
+}
+
+impl AscType for TokenDiscr {}
+impl AscValue for TokenDiscr {}
+
+pub(crate) type AscTokenArray = AscPtr<Array<AscPtr<AscEnum<TokenDiscr>>>>;

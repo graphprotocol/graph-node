@@ -41,6 +41,16 @@ impl<C: AscType> AscPtr<C> {
         // Get the u32 from the bytes. This is just `u32::from_bytes` which is unstable.
         unsafe { mem::transmute(u32_bytes) }
     }
+
+    /// Conversion to `u64` for use with `AscEnum`.
+    pub(super) fn to_payload(&self) -> u64 {
+        self.0 as u64
+    }
+
+    // Conversion from `u64` for use with `AscEnum`.
+    pub(super) fn from_payload(payload: u64) -> Self {
+        AscPtr(payload as u32, PhantomData)
+    }
 }
 
 impl<C> From<AscPtr<C>> for RuntimeValue {
