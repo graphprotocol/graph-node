@@ -26,6 +26,7 @@ pub struct WasmiModuleConfig {
     pub data_source_id: String,
     pub runtime: Handle,
     pub event_sink: Sender<RuntimeHostEvent>,
+    pub ethereum_watcher; Arc < Mutex < T > >,
 }
 
 /// Wasm runtime module
@@ -51,6 +52,7 @@ impl WasmiModule {
             logger: logger.clone(),
             runtime: config.runtime.clone(),
             event_sink: config.event_sink.clone(),
+            ethereum_watcher: config.ethereum_watcher.clone(),
         };
 
         // Build import resolver
@@ -235,8 +237,9 @@ impl Externals for HostExternals {
                 Ok(None)
             }
             ETHEREUM_CALL_FUNC_INDEX => {
-                let name: u32 = args.nth_checked(0)?;
+                let request_ptr: u32 = args.nth_checked(0)?;
                 unimplemented!();
+                self.ethereum_watcher.contract_state(WasmiModule::asc_get(request_ptr));
             }
             _ => panic!("Unimplemented function at {}", index),
         }

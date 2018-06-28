@@ -111,6 +111,7 @@ where
                 data_source_id: String::from("TODO: DATA SOURCE ID"),
                 runtime: runtime.clone(),
                 event_sink: event_sender,
+                ethereum_watcher: ethereum_watcher.clone(),
             },
         );
 
