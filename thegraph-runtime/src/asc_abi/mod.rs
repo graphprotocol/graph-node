@@ -122,6 +122,8 @@ impl AscType for u8 {}
 impl AscType for u16 {}
 impl AscType for u32 {}
 impl AscType for u64 {}
+impl AscType for f32 {}
+impl AscType for f64 {}
 
 impl<T> AscValue for AscPtr<T> {}
 impl AscValue for bool {}
@@ -133,3 +135,5 @@ impl AscValue for u8 {}
 impl AscValue for u16 {}
 impl AscValue for u32 {}
 impl AscValue for u64 {}
+impl AscValue for f32 {}
+impl AscValue for f64 {}
