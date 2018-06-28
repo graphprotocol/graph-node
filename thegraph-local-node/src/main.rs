@@ -56,6 +56,14 @@ fn main() {
                 .value_name("URL")
                 .help("Location of the Postgres database used for storing entities"),
         )
+        .arg(
+            Arg::with_name("ethereum-rpc")
+                .takes_value(true)
+                .required(true)
+                .long("ethereum-rpc")
+                .value_name("URL")
+                .help("Ethereum RPC endpoint"),
+        )
         .get_matches();
 
     // Safe to unwrap because a value is required by CLI
@@ -63,6 +71,9 @@ fn main() {
 
     // Obtain data source related command-line arguments
     let data_source_path = matches.value_of("data-source").unwrap();
+
+    // Obtain the Ethereum RPC endpoint
+    let ethereum_rpc = matches.value_of("ethereum-rpc").unwrap().to_string();
 
     debug!(logger, "Setting up Sentry");
 
@@ -90,13 +101,14 @@ fn main() {
     let protected_store = Arc::new(Mutex::new(store));
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
     let ethereum_watcher = thegraph_ethereum::EthereumAdapter::new(
-        thegraph_ethereum::EthereumAdapterConfig {
-            transport: thegraph_ethereum::transports::ipc::Ipc::with_event_loop(
-                &"insert_ipc_path_here"[..],
-                &core.handle(),
-            ).unwrap(),
-        },
         core.handle(),
+        thegraph_ethereum::EthereumAdapterConfig {
+            transport: thegraph_ethereum::transports::http::Http::with_event_loop(
+                ethereum_rpc.as_str(),
+                &core.handle(),
+                10,
+            ).expect("Failed to connect to Ethereum RPC endpoint"),
+        },
     );
     let runtime_host_builder = WASMRuntimeHostBuilder::new(
         &logger,
