@@ -13,6 +13,7 @@ serde_yaml = "0.7"
 slog = "2.2.3"
 slog-async = "2.3.0"
 slog-term = "2.4.0"
+tiny-keccak = "1.0"
 tokio = "0.1.6"
 tokio-core = "0.1.17"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
