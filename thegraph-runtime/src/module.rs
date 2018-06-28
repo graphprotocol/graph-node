@@ -4,14 +4,16 @@ use parity_wasm;
 use slog::Logger;
 use std::path::PathBuf;
 use tokio_core::reactor::Handle;
-use wasmi::{
-    Error, Externals, FuncInstance, FuncRef, ImportsBuilder, Module, ModuleImportResolver,
-    ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue, Signature, Trap, ValueType,
-};
+use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, MemoryRef, Module, ModuleImportResolver,
+            ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue, Signature, Trap,
+            ValueType};
 
 use thegraph::components::data_sources::RuntimeHostEvent;
+use thegraph::components::ethereum::*;
 use thegraph::components::store::StoreKey;
 use thegraph::prelude::*;
+
+use asc_abi::{AscHeap};
 
 // Indexes for exported host functions
 const ABORT_FUNC_INDEX: usize = 0;
@@ -31,6 +33,7 @@ pub struct WasmiModule {
     _logger: Logger,
     _config: WasmiModuleConfig,
     pub module: ModuleRef,
+    pub memory: MemoryRef
 }
 
 impl WasmiModule {
@@ -62,24 +65,65 @@ impl WasmiModule {
             .run_start(&mut external_functions)
             .expect("Failed to start WASM module instance");
 
+        // Provide access to the wasm runtime linear memory
+        let memory = module
+            .export_by_name("memory")
+            .expect("Failed to find memory export in the wasm module")
+            .as_memory()
+            .expect("Exported external value is not Memory")
+            .clone();
+
         WasmiModule {
             _logger: logger,
             _config: config,
             module,
+            memory
         }
     }
 
-    // Expose the allocate memory function exported from .wasm for memory management
-    pub fn _allocate_memory(&self, size: i32) -> i32 {
+    pub fn handle_ethereum_event(&mut self, event: EthereumEvent) {
+        // Asc_new() is not yet implemented for these types on master
+        // H256 implementation coming soon with PR #121
         self.module
-            .invoke_export("malloc", &[RuntimeValue::I32(size)], &mut NopExternals)
+            .invoke_export(
+                "call",
+                &[
+                    RuntimeValue::from(self.asc_new(&event.address)),
+                    RuntimeValue::from(self.asc_new(&event.event_signature)),
+                    RuntimeValue::from(self.asc_new(&event.block_hash)),
+                    RuntimeValue::from(self.asc_new(&event.params)),
+                ],
+                &mut NopExternals,
+            )
+            .expect("Failed to invoke call Ethereum event function");
+    }
+
+    // Expose the allocate memory function exported from .wasm for memory management
+    pub fn allocate_memory(&mut self, size: i32) -> u32 {
+        self.module
+            .invoke_export(
+                "allocate_memory",
+                &[RuntimeValue::I32(size)],
+                &mut NopExternals,
+            )
             .expect("Failed to invoke memory allocation function")
             .expect("Function did not return a value")
-            .try_into::<i32>()
-            .expect("Function return value was not expected type, u32")
+            .try_into::<u32>()
+            .expect("Function did not return u32")
     }
 }
 
+impl AscHeap for WasmiModule {
+    fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, Error> {
+        let address = self.allocate_memory(bytes.len() as i32);
+        self.memory.set(address, bytes)?;
+        Ok(address)
+    }
+
+    fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, Error> {
+        self.memory.get(offset, size as usize)
+    }
+}
 // Placeholder for deserializer module
 pub struct WasmConverter {}
 
@@ -106,6 +150,8 @@ pub struct HostExternals {
     event_sink: Sender<RuntimeHostEvent>,
 }
 
+// TODO: Add function for handling ethereum events from the ethereum watcher
+// .call<event>() already in the EthereumModuleResolver
 impl Externals for HostExternals {
     fn invoke_index(
         &mut self,
@@ -119,7 +165,7 @@ impl Externals for HostExternals {
                 println!("DATABASE_CREATE");
 
                 let store_key_ptr: u32 = args.nth_checked(0)?;
-                let store_key = WasmConverter::store_key_from_wasm(store_key_ptr);
+                let store_key = WasmiModule::store_key_from_wasm(store_key_ptr);
                 let entity_ptr: u32 = args.nth_checked(1)?;
                 let entity = WasmConverter::entity_from_wasm(entity_ptr);
 
@@ -144,7 +190,7 @@ impl Externals for HostExternals {
                 println!("DATABASE_UPDATE");
 
                 let store_key_ptr: u32 = args.nth_checked(0)?;
-                let store_key = WasmConverter::store_key_from_wasm(store_key_ptr);
+                let store_key = WasmiModule::store_key_from_wasm(store_key_ptr);
                 let entity_ptr: u32 = args.nth_checked(1)?;
                 let entity = WasmConverter::entity_from_wasm(entity_ptr);
 
@@ -187,6 +233,10 @@ impl Externals for HostExternals {
                 );
 
                 Ok(None)
+            }
+            ETHEREUM_CALL_FUNC_INDEX => {
+                let name: u32 = args.nth_checked(0)?;
+                unimplemented!();
             }
             _ => panic!("Unimplemented function at {}", index),
         }
@@ -271,9 +321,7 @@ impl ModuleImportResolver for EthereumModuleResolver {
 
 #[cfg(test)]
 mod tests {
-    use futures::prelude::*;
     use futures::sync::mpsc::channel;
-    use module;
     use slog;
     use std::path::PathBuf;
     use tokio_core;
