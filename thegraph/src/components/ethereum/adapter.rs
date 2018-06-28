@@ -1,6 +1,8 @@
 use ethabi::{Bytes, Error as ABIError, Event, Function, LogParam, Token};
 use ethereum_types::{Address, H256};
 use futures::{Future, Stream};
+use std::error::Error;
+use std::fmt;
 use web3::error::Error as Web3Error;
 use web3::types::BlockNumber;
 
@@ -50,7 +52,29 @@ impl From<ABIError> for EthereumContractCallError {
 #[derive(Debug)]
 pub enum EthereumSubscriptionError {
     RpcError(Web3Error),
-    ParseError(ABIError),
+    ABIError(ABIError),
+}
+
+impl Error for EthereumSubscriptionError {
+    fn description(&self) -> &str {
+        "Ethereum subscription error"
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        match self {
+            EthereumSubscriptionError::RpcError(ref e) => Some(e),
+            EthereumSubscriptionError::ABIError(ref e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for EthereumSubscriptionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            EthereumSubscriptionError::RpcError(e) => write!(f, "RPC error: {}", e),
+            EthereumSubscriptionError::ABIError(e) => write!(f, "ABI error: {}", e),
+        }
+    }
 }
 
 /// A range to allow event subscriptions to limit the block numbers to consider.
