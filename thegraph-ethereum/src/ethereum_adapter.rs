@@ -1,4 +1,4 @@
-use ethabi::RawLog;
+use ethabi::{RawLog, Token};
 use futures::prelude::*;
 use futures::stream::iter_ok;
 use std::time::Duration;
@@ -45,6 +45,23 @@ impl<T: web3::Transport> EthereumAdapter<T> {
             .build();
         self.eth_client.eth_filter().create_logs_filter(eth_filter)
     }
+
+    pub fn call(
+        &self,
+        contract_address: Address,
+        call_data: Bytes,
+        block_number: Option<BlockNumber>,
+    ) -> CallResult<Bytes, T::Out> {
+        let req = CallRequest {
+            from: None,
+            to: contract_address,
+            gas: None,
+            gas_price: None,
+            value: None,
+            data: Some(call_data),
+        };
+        self.eth_client.eth().call(req, block_number)
+    }
 }
 
 impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
@@ -57,6 +74,23 @@ impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
             block_hash: H256::new(),
             data: Vec::new(),
         })
+    }
+
+    fn contract_call(
+        &mut self,
+        request: EthereumContractCallRequest,
+    ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
+        let call_data = request.function.encode_input(&request.args).unwrap();
+        Box::new(
+            self.call(request.address, Bytes(call_data), request.block_number)
+                .map_err(|err| EthereumContractCallError::Failed)
+                .and_then(move |output| {
+                    request
+                        .function
+                        .decode_output(&output.0)
+                        .map_err(|err| EthereumContractCallError::Failed)
+                }),
+        )
     }
 
     fn subscribe_to_event(

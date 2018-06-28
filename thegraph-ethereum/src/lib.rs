@@ -7,15 +7,16 @@ extern crate web3;
 
 mod ethereum_adapter;
 
-pub use self::ethereum_adapter::EthereumAdapter;
-pub use self::ethereum_adapter::EthereumAdapterConfig;
+pub use self::ethereum_adapter::{EthereumAdapter, EthereumAdapterConfig};
 pub use web3::transports;
 
 #[cfg(test)]
 mod tests {
-    use ethabi::{Event, EventParam, ParamType};
+    use ethabi::{Event, EventParam, Function, Param, ParamType, Token};
     use ethereum_adapter::{EthereumAdapter, EthereumAdapterConfig};
-    use thegraph::components::ethereum::{BlockNumberRange, EthereumEventSubscription};
+    use std::str::FromStr;
+    use thegraph::components::ethereum::{BlockNumberRange, EthereumContractCallRequest,
+                                         EthereumEventSubscription};
     use thegraph::prelude::EthereumAdapter as EthereumAdapterTrait;
     use tokio_core::reactor::Core;
     use web3;
@@ -63,6 +64,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn event_logs() {
         let mut core = Core::new().unwrap();
         let tranport_result = transports::ipc::Ipc::with_event_loop(
@@ -126,5 +128,46 @@ mod tests {
                     })
             });
         core.run(work);
+    }
+
+    #[test]
+    fn contract_call() {
+        let mut core = Core::new().unwrap();
+        let tranport_result = transports::ipc::Ipc::with_event_loop(
+            &"/Users/aklempner/Library/Application Support/io.parity.ethereum/jsonrpc.ipc"[..],
+            &core.handle(),
+        );
+        let transport = tranport_result.unwrap();
+        let mut adapter = EthereumAdapter::new(
+            EthereumAdapterConfig {
+                transport: transport,
+            },
+            core.handle(),
+        );
+        let balance_of_function = Function {
+            name: "balanceOf".to_owned(),
+            inputs: vec![Param {
+                name: "_owner".to_owned(),
+                kind: ParamType::Address,
+            }],
+            outputs: vec![Param {
+                name: "balance".to_owned(),
+                kind: ParamType::Uint(256),
+            }],
+            constant: true,
+        };
+        let function = Function::from(balance_of_function);
+        let gnt_addr = Address::from_str("eF7FfF64389B814A946f3E92105513705CA6B990").unwrap();
+        let holder_addr = Address::from_str("00d04c4b12C4686305bb4F4fC93487CdFBa62580").unwrap();
+        let call_request = EthereumContractCallRequest {
+            address: gnt_addr,
+            block_number: None,
+            function: function,
+            args: vec![Token::Address(holder_addr)],
+        };
+        let work = adapter.contract_call(call_request);
+        let call_result = core.run(work).unwrap();
+
+        println!("Result from calling GNT.balanceOf(0x00d04c4b12C4686305bb4F4fC93487CdFBa62580): {:?}", call_result[0]);
     }
 }
