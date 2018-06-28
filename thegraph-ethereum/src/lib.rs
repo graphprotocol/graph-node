@@ -1,8 +1,8 @@
 extern crate ethabi;
+extern crate ethereum_types;
 extern crate futures;
 extern crate serde_json;
 extern crate thegraph;
-extern crate tiny_keccak;
 extern crate tokio_core;
 extern crate web3;
 
