@@ -3,6 +3,7 @@ use futures::future;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog::Logger;
+use std::fs;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
@@ -132,7 +133,7 @@ where
     /// NOTE: We'll add support for multiple datasets soon.
     fn subscribe_to_events(&mut self) {
         // Prepare subscriptions for the events
-        let subscription_results: Vec<Result<EthereumEventSubscription, ()>> = {
+        let subscription_results: Vec<EthereumEventSubscription> = {
             let dataset = self.config
                 .data_source_definition
                 .datasets
@@ -143,8 +144,21 @@ where
             let address = Address::from_str(dataset.data.address.as_str())
                 .expect("Failed to parse contract address");
 
-            let contract_result = Contract::load(dataset.data.structure.abi.as_bytes())
-                .map_err(|_err| error!(self.logger, "Failed to parse contract abi"));
+            // Load the main dataset contract
+            let contract_abi_path = dataset
+                .mapping
+                .abis
+                .iter()
+                .find(|abi| abi.name == dataset.data.structure.abi)
+                .map(|entry| {
+                    self.config
+                        .data_source_definition
+                        .resolve_path(&entry.source.path)
+                })
+                .expect("No ABI entry found for the main contract of the dataset");
+            let contract_abi_file = fs::File::open(contract_abi_path)
+                .expect("Contract ABI file does not exist or could not be opend for reading");
+            let contract = Contract::load(contract_abi_file).expect("Failed to parse contract ABI");
 
             // Prepare subscriptions for all events
             dataset
@@ -153,37 +167,29 @@ where
                 .iter()
                 .map(|event_handler| {
                     let subscription_id = Uuid::new_v4().simple().to_string();
-                    contract_result
-                        .clone()
-                        .map(|contract| {
-                            util::ethereum::contract_event_with_signature(
-                                &contract,
-                                event_handler.event.as_str(),
-                            ).expect(
-                                format!("Event not found in contract: {}", event_handler.event)
-                                    .as_str(),
-                            )
-                                .clone()
-                        })
-                        .map(|event| EthereumEventSubscription {
-                            address,
-                            event,
-                            range: BlockNumberRange {
-                                from: BlockNumber::Number(0),
-                                to: BlockNumber::Latest,
-                            },
-                            subscription_id: subscription_id.clone(),
-                        })
+                    let event = util::ethereum::contract_event_with_signature(
+                        &contract,
+                        event_handler.event.as_str(),
+                    ).expect(
+                        format!("Event not found in contract: {}", event_handler.event).as_str(),
+                    );
+
+                    EthereumEventSubscription {
+                        address,
+                        event: event.clone(),
+                        range: BlockNumberRange {
+                            from: BlockNumber::Number(0),
+                            to: BlockNumber::Latest,
+                        },
+                        subscription_id: subscription_id.clone(),
+                    }
                 })
                 .collect()
         };
 
         // Subscribe to the events now
-        for subscription_result in subscription_results.into_iter() {
-            match subscription_result {
-                Ok(subscription) => self.subscribe_to_event(subscription),
-                _ => warn!(self.logger, "Failed to call subscribe_to_event"),
-            }
+        for subscription in subscription_results.into_iter() {
+            self.subscribe_to_event(subscription);
         }
     }
 
