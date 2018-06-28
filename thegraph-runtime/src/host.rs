@@ -1,7 +1,7 @@
 use ethereum_types::Address;
 use futures::future;
 use futures::prelude::*;
-use futures::sync::mpsc::{channel, Receiver, Sender};
+use futures::sync::mpsc::{channel, Receiver};
 use slog::Logger;
 use std::fs;
 use std::str::FromStr;
@@ -201,17 +201,9 @@ where
             .unwrap()
             .subscribe_to_event(subscription);
 
-        let logger = self.logger.clone();
-        let logger2 = logger.clone();
-
-        self.runtime.spawn(
-            receiver
-                .for_each(move |event| {
-                    debug!(logger, "Handle Ethereum event: {:?}", event);
-                    Box::new(future::ok::<(), EthereumSubscriptionError>(()))
-                })
-                .map_err(move |err| error!(logger2, "Error subscribing to event: {:?}", err)),
-        );
+        self.runtime.spawn(receiver.for_each(|event| {
+            self.module.handle_ethereum_event(event);
+        }));
     }
 }
 
