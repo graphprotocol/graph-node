@@ -1,5 +1,6 @@
 use super::class::*;
 use super::{AscHeap, AscPtr, AscType, AscValue, FromAscObj, ToAscObj};
+use ethabi;
 use ethereum_types;
 
 ///! Implementations of `ToAscObj` and `FromAscObj` for core Rust types.
@@ -93,5 +94,66 @@ impl<C: AscType, T: FromAscObj<C>> FromAscObj<Array<AscPtr<C>>> for Vec<T> {
             .iter()
             .map(|&x| heap.asc_get(x))
             .collect()
+    }
+}
+
+impl ToAscObj<AscEnum<TokenDiscr>> for ethabi::Token {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEnum<TokenDiscr> {
+        use ethabi::Token::*;
+
+        let discr = TokenDiscr::get_discr(self);
+        let payload = match self {
+            Address(address) => heap.asc_new(address).to_payload(),
+            FixedBytes(bytes) | Bytes(bytes) => heap.asc_new(&**bytes).to_payload(),
+            Int(uint) | Uint(uint) => heap.asc_new(uint).to_payload(),
+            Bool(b) => *b as u64,
+            String(string) => heap.asc_new(&**string).to_payload(),
+            FixedArray(tokens) | Array(tokens) => heap.asc_new(&**tokens).to_payload(),
+        };
+
+        AscEnum { discr, payload }
+    }
+}
+
+impl FromAscObj<AscEnum<TokenDiscr>> for ethabi::Token {
+    fn from_asc_obj<H: AscHeap>(asc_enum: AscEnum<TokenDiscr>, heap: &H) -> Self {
+        use ethabi::Token;
+
+        let payload = asc_enum.payload;
+        match asc_enum.discr {
+            TokenDiscr::Bool => Token::Bool(payload != 0),
+            TokenDiscr::Address => {
+                let ptr: AscPtr<ArrayBuffer<u8>> = AscPtr::from_payload(payload);
+                Token::Address(heap.asc_get(ptr))
+            }
+            TokenDiscr::FixedBytes => {
+                let ptr: AscPtr<ArrayBuffer<u8>> = AscPtr::from_payload(payload);
+                Token::FixedBytes(heap.asc_get(ptr))
+            }
+            TokenDiscr::Bytes => {
+                let ptr: AscPtr<ArrayBuffer<u8>> = AscPtr::from_payload(payload);
+                Token::Bytes(heap.asc_get(ptr))
+            }
+            TokenDiscr::Int => {
+                let ptr: AscPtr<ArrayBuffer<u64>> = AscPtr::from_payload(payload);
+                Token::Int(heap.asc_get(ptr))
+            }
+            TokenDiscr::Uint => {
+                let ptr: AscPtr<ArrayBuffer<u64>> = AscPtr::from_payload(payload);
+                Token::Int(heap.asc_get(ptr))
+            }
+            TokenDiscr::String => {
+                let ptr: AscPtr<AscString> = AscPtr::from_payload(payload);
+                Token::String(heap.asc_get(ptr))
+            }
+            TokenDiscr::FixedArray => {
+                let ptr: AscTokenArray = AscPtr::from_payload(payload);
+                Token::FixedArray(heap.asc_get(ptr))
+            }
+            TokenDiscr::Array => {
+                let ptr: AscTokenArray = AscPtr::from_payload(payload);
+                Token::Array(heap.asc_get(ptr))
+            }
+        }
     }
 }

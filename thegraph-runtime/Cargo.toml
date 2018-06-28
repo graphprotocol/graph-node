@@ -11,3 +11,4 @@ tokio-core = "0.1.6"
 thegraph = { path = "../thegraph" }
 uuid = { version = "0.6", features = ["v4"] }
 wasmi = "0.2.0"
+ethabi = "5.1.1"

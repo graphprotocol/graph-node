@@ -74,8 +74,9 @@ pub trait FromAscObj<C: AscType> {
 /// A type that has a direct corespondence to an Asc type, which
 /// should be documented in a comment.
 ///
-/// The default impl will memcopy the struct as bytes, which is suitable for
-/// structs that are `#[repr(C)]` and whose fields are all `AscValue`.
+/// The default impl will memcopy the value as bytes, which is suitable for
+/// structs that are `#[repr(C)]` and whose fields are all `AscValue`,
+/// or Rust enums that are `#[repr(u32)]`.
 /// Special classes like `ArrayBuffer` use custom impls.
 pub trait AscType: Sized {
     /// Transform the Rust representation of this instance into an sequence of

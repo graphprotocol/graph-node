@@ -1701,6 +1701,7 @@ dependencies = [
 name = "thegraph-runtime"
 version = "0.1.0"
 dependencies = [
+ "ethabi 5.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ethereum-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
  "parity-wasm 0.27.6 (registry+https://github.com/rust-lang/crates.io-index)",

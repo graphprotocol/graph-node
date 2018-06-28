@@ -1,5 +1,6 @@
 use super::class::*;
 use super::{AscHeap, AscPtr};
+use ethabi::Token;
 use ethereum_types::{H160, U256};
 use parity_wasm;
 use wasmi::{self, ImportsBuilder, MemoryRef, ModuleImportResolver, ModuleInstance, ModuleRef,
@@ -174,4 +175,97 @@ fn abi_bytes_and_fixed_bytes() {
     let mut concated = bytes1;
     concated.extend(bytes2);
     assert_eq!(new_vec, concated);
+}
+
+/// Test a roundtrip Token -> Payload -> Token identity conversion through asc,
+/// and assert the final token is the same as the starting one.
+#[test]
+fn abi_ethabi_token_identity() {
+    let module = TestModule::new("wasm_test/abi_token.wasm");
+
+    // Token::Address
+    let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+    let token_address = Token::Address(address);
+
+    let new_address_obj: AscPtr<ArrayBuffer<u8>> =
+        module.takes_ptr_returns_ptr("token_to_address", module.asc_new(&token_address));
+
+    let new_token =
+        module.asc_get(module.takes_ptr_returns_ptr("token_from_address", new_address_obj));
+
+    assert_eq!(token_address, new_token);
+
+    // Token::Bytes
+    let token_bytes = Token::Bytes(vec![42, 45, 7, 245, 45]);
+
+    let new_bytes_obj: AscPtr<ArrayBuffer<u8>> =
+        module.takes_ptr_returns_ptr("token_to_bytes", module.asc_new(&token_bytes));
+
+    let new_token = module.asc_get(module.takes_ptr_returns_ptr("token_from_bytes", new_bytes_obj));
+
+    assert_eq!(token_bytes, new_token);
+
+    // Token::Int
+    let int_token = Token::Int(U256([256, 453452345, 0, 42]));
+
+    let new_int_obj: AscPtr<ArrayBuffer<u8>> =
+        module.takes_ptr_returns_ptr("token_to_int", module.asc_new(&int_token));
+
+    let new_token = module.asc_get(module.takes_ptr_returns_ptr("token_from_int", new_int_obj));
+
+    assert_eq!(int_token, new_token);
+
+    // Token::Bool
+    let token_bool = Token::Bool(true);
+
+    let boolean: bool = module
+        .module
+        .invoke_export(
+            "token_to_bool",
+            &[RuntimeValue::from(module.asc_new(&token_bool))],
+            &mut NopExternals,
+        )
+        .expect("call failed")
+        .expect("call returned nothing")
+        .try_into::<bool>()
+        .expect("call did not return bool");
+
+    let new_token = module.asc_get(
+        module
+            .module
+            .invoke_export(
+                "token_from_bool",
+                &[RuntimeValue::from(boolean as u32)],
+                &mut NopExternals,
+            )
+            .expect("call failed")
+            .expect("call returned nothing")
+            .try_into()
+            .expect("call did not return ptr"),
+    );
+
+    assert_eq!(token_bool, new_token);
+
+    // Token::String
+    let token_string = Token::String("漢字Go🇧🇷".into());
+
+    let new_string_obj: AscPtr<AscString> =
+        module.takes_ptr_returns_ptr("token_to_string", module.asc_new(&token_string));
+
+    let new_token =
+        module.asc_get(module.takes_ptr_returns_ptr("token_from_string", new_string_obj));
+
+    assert_eq!(token_string, new_token);
+
+    // Token::Array
+    let token_array = Token::Array(vec![token_address, token_bytes, token_bool]);
+    let token_array_nested = Token::Array(vec![token_string, token_array]);
+
+    let new_array_obj: AscTokenArray =
+        module.takes_ptr_returns_ptr("token_to_array", module.asc_new(&token_array_nested));
+
+    let new_token: Token =
+        module.asc_get(module.takes_ptr_returns_ptr("token_from_array", new_array_obj));
+
+    assert_eq!(new_token, token_array_nested);
 }
