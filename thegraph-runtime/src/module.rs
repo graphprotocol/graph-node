@@ -114,7 +114,7 @@ impl WasmiModule {
 }
 
 impl AscHeap for WasmiModule {
-    fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, Error> {
+    fn raw_new(&self, bytes: &[u8]) -> Result<u32, Error> {
         let address = self.allocate_memory(bytes.len() as i32);
         self.memory.set(address, bytes)?;
         Ok(address)
@@ -165,7 +165,7 @@ impl Externals for HostExternals {
                 println!("DATABASE_CREATE");
 
                 let store_key_ptr: u32 = args.nth_checked(0)?;
-                let store_key = WasmiModule::store_key_from_wasm(store_key_ptr);
+                let store_key = WasmConverter::store_key_from_wasm(store_key_ptr);
                 let entity_ptr: u32 = args.nth_checked(1)?;
                 let entity = WasmConverter::entity_from_wasm(entity_ptr);
 
@@ -190,7 +190,7 @@ impl Externals for HostExternals {
                 println!("DATABASE_UPDATE");
 
                 let store_key_ptr: u32 = args.nth_checked(0)?;
-                let store_key = WasmiModule::store_key_from_wasm(store_key_ptr);
+                let store_key = WasmConverter::store_key_from_wasm(store_key_ptr);
                 let entity_ptr: u32 = args.nth_checked(1)?;
                 let entity = WasmConverter::entity_from_wasm(entity_ptr);
 
