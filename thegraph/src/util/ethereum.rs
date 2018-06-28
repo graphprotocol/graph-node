@@ -3,7 +3,7 @@ use ethereum_types::H256;
 use tiny_keccak::Keccak;
 
 /// Hashes a string to a H256 hash.
-fn string_to_h256(s: &str) -> H256 {
+pub fn string_to_h256(s: &str) -> H256 {
     let mut result = [0u8; 32];
 
     let data: Vec<u8> = From::from(s);
