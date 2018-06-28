@@ -120,7 +120,7 @@ impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
                             topics: log.topics.clone(),
                             data: log.clone().data.0,
                         })
-                        .map_err(|err| EthereumSubscriptionError::ParseError(err))
+                        .map_err(|err| EthereumSubscriptionError::ABIError(err))
                         .map(|log_data| (log, log_data))
                 })
                 .map(move |(log, log_data)| EthereumEvent {
