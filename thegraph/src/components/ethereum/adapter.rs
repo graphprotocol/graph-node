@@ -1,4 +1,5 @@
-use ethabi::{Bytes, Event, EventParam, Function, LogParam, Token};
+use ethabi;
+use ethabi::{Bytes, Event, Function, LogParam, Token};
 use ethereum_types::{Address, H256};
 use futures::{Future, Stream};
 use web3::error::Error as Web3Error;
@@ -34,6 +35,12 @@ pub enum EthereumContractCallError {
     Failed,
 }
 
+#[derive(Debug)]
+pub enum EthereumSubscriptionError {
+    RpcError(Web3Error),
+    ParseError(ethabi::Error),
+}
+
 /// A range to allow event subscriptions to limit the block numbers to consider.
 #[derive(Debug)]
 pub struct BlockNumberRange {
@@ -47,7 +54,6 @@ pub struct EthereumEventSubscription {
     /// An ID that uniquely identifies the subscription (e.g. a GUID).
     pub subscription_id: String,
     pub address: Address,
-    pub event_signature: String,
     pub range: BlockNumberRange,
     pub event: Event,
 }
@@ -81,7 +87,7 @@ pub trait EthereumAdapter {
     fn subscribe_to_event(
         &mut self,
         subscription: EthereumEventSubscription,
-    ) -> Box<Stream<Item = EthereumEvent, Error = Web3Error>>;
+    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>>;
 
     /// Cancel a specific event subscription. Returns true when the subscription existed before.
     fn unsubscribe_from_event(&mut self, subscription_id: String) -> bool;

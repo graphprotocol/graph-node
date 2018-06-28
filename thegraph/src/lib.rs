@@ -10,6 +10,7 @@ extern crate serde_yaml;
 extern crate slog;
 extern crate slog_async;
 extern crate slog_term;
+extern crate tiny_keccak;
 extern crate tokio;
 extern crate tokio_core;
 extern crate web3;

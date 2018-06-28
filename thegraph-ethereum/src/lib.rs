@@ -2,6 +2,7 @@ extern crate ethabi;
 extern crate futures;
 extern crate serde_json;
 extern crate thegraph;
+extern crate tiny_keccak;
 extern crate tokio_core;
 extern crate web3;
 
@@ -168,6 +169,9 @@ mod tests {
         let work = adapter.contract_call(call_request);
         let call_result = core.run(work).unwrap();
 
-        println!("Result from calling GNT.balanceOf(0x00d04c4b12C4686305bb4F4fC93487CdFBa62580): {:?}", call_result[0]);
+        println!(
+            "Result from calling GNT.balanceOf(0x00d04c4b12C4686305bb4F4fC93487CdFBa62580): {:?}",
+            call_result[0]
+        );
     }
 }

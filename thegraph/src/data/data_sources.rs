@@ -7,7 +7,7 @@ pub struct Location {
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct DataStructure {
-    abi: String,
+    pub abi: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
