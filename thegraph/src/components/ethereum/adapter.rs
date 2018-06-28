@@ -1,6 +1,9 @@
-use ethabi::{Bytes, EventParam};
+use ethabi;
+use ethabi::{Bytes, Event, Function, LogParam, Token};
 use ethereum_types::{Address, H256};
-use futures::sync::mpsc::Receiver;
+use futures::{Future, Stream};
+use web3::error::Error as Web3Error;
+use web3::types::BlockNumber;
 
 /// A request for the state of a contract at a specific block hash and address.
 pub struct EthereumContractStateRequest {
@@ -20,11 +23,29 @@ pub struct EthereumContractState {
     pub data: Bytes,
 }
 
+pub struct EthereumContractCallRequest {
+    pub address: Address,
+    pub block_number: Option<BlockNumber>,
+    pub function: Function,
+    pub args: Vec<Token>,
+}
+
+#[derive(Debug)]
+pub enum EthereumContractCallError {
+    Failed,
+}
+
+#[derive(Debug)]
+pub enum EthereumSubscriptionError {
+    RpcError(Web3Error),
+    ParseError(ethabi::Error),
+}
+
 /// A range to allow event subscriptions to limit the block numbers to consider.
 #[derive(Debug)]
 pub struct BlockNumberRange {
-    pub from: Option<u64>,
-    pub to: Option<u64>,
+    pub from: BlockNumber,
+    pub to: BlockNumber,
 }
 
 /// A subscription to a specific contract address, event signature and block range.
@@ -33,8 +54,8 @@ pub struct EthereumEventSubscription {
     /// An ID that uniquely identifies the subscription (e.g. a GUID).
     pub subscription_id: String,
     pub address: Address,
-    pub event_signature: String,
     pub range: BlockNumberRange,
+    pub event: Event,
 }
 
 /// An event logged for a specific contract address and event signature.
@@ -43,7 +64,7 @@ pub struct EthereumEvent {
     pub address: Address,
     pub event_signature: H256,
     pub block_hash: H256,
-    pub params: Vec<EventParam>,
+    pub params: Vec<LogParam>,
 }
 
 /// Common trait for components that watch and manage access to Ethereum.
@@ -57,11 +78,16 @@ pub trait EthereumAdapter {
         request: EthereumContractStateRequest,
     ) -> Result<EthereumContractState, EthereumContractStateError>;
 
+    fn contract_call(
+        &mut self,
+        request: EthereumContractCallRequest,
+    ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>>;
+
     /// Subscribe to an event of a smart contract.
     fn subscribe_to_event(
         &mut self,
         subscription: EthereumEventSubscription,
-    ) -> Receiver<EthereumEvent>;
+    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>>;
 
     /// Cancel a specific event subscription. Returns true when the subscription existed before.
     fn unsubscribe_from_event(&mut self, subscription_id: String) -> bool;

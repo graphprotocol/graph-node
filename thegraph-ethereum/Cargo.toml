@@ -4,8 +4,10 @@ version = "0.1.0"
 
 [dependencies]
 ethereum-types = "0.3"
+ethabi = "5.1.1"
 futures = "0.1.21"
 serde_json = "1.0"
 thegraph = { path = "../thegraph" }
+tiny-keccak = "1.0"
 tokio-core = "0.1.6"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
