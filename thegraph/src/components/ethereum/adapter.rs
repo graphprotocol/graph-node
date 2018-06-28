@@ -1,5 +1,4 @@
-use ethabi;
-use ethabi::{Bytes, Event, Function, LogParam, Token};
+use ethabi::{Bytes, Error as ABIError, Event, Function, LogParam, Token};
 use ethereum_types::{Address, H256};
 use futures::{Future, Stream};
 use web3::error::Error as Web3Error;
@@ -32,13 +31,26 @@ pub struct EthereumContractCallRequest {
 
 #[derive(Debug)]
 pub enum EthereumContractCallError {
-    Failed,
+    CallError(Web3Error),
+    ABIError(ABIError),
+}
+
+impl From<Web3Error> for EthereumContractCallError {
+    fn from(e: Web3Error) -> Self {
+        EthereumContractCallError::CallError(e)
+    }
+}
+
+impl From<ABIError> for EthereumContractCallError {
+    fn from(e: ABIError) -> Self {
+        EthereumContractCallError::ABIError(e)
+    }
 }
 
 #[derive(Debug)]
 pub enum EthereumSubscriptionError {
     RpcError(Web3Error),
-    ParseError(ethabi::Error),
+    ParseError(ABIError),
 }
 
 /// A range to allow event subscriptions to limit the block numbers to consider.
