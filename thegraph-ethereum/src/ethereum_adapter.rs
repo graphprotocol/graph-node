@@ -3,6 +3,7 @@ use futures::prelude::*;
 use futures::stream::iter_ok;
 use std::time::Duration;
 use thegraph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
+use tiny_keccak::sha3_256;
 use tokio_core::reactor::Handle;
 use web3;
 use web3::api::CreateFilter;
@@ -10,6 +11,12 @@ use web3::api::Web3;
 use web3::error::Error as Web3Error;
 use web3::helpers::CallResult;
 use web3::types::*;
+
+fn string_to_H256(string: &str) -> H256 {
+    let bytes = string.as_bytes();
+    let hash = sha3_256(bytes);
+    H256::from_slice(&hash[0..32])
+}
 
 pub struct EthereumAdapterConfig<T: web3::Transport> {
     pub transport: T,
@@ -41,7 +48,7 @@ impl<T: web3::Transport> EthereumAdapter<T> {
         let eth_filter: Filter = filter_builder
             .from_block(subscription.range.from)
             .to_block(subscription.range.to)
-            .topics(Some(vec![subscription.event_signature]), None, None, None)
+            .topics(Some(vec![subscription.event.signature()]), None, None, None)
             .build();
         self.eth_client.eth_filter().create_logs_filter(eth_filter)
     }
@@ -67,7 +74,7 @@ impl<T: web3::Transport> EthereumAdapter<T> {
 impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
     fn contract_state(
         &mut self,
-        request: EthereumContractStateRequest,
+        _request: EthereumContractStateRequest,
     ) -> Result<EthereumContractState, EthereumContractStateError> {
         Ok(EthereumContractState {
             address: Address::new(),
@@ -83,12 +90,12 @@ impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
         let call_data = request.function.encode_input(&request.args).unwrap();
         Box::new(
             self.call(request.address, Bytes(call_data), request.block_number)
-                .map_err(|err| EthereumContractCallError::Failed)
+                .map_err(|_err| EthereumContractCallError::Failed)
                 .and_then(move |output| {
                     request
                         .function
                         .decode_output(&output.0)
-                        .map_err(|err| EthereumContractCallError::Failed)
+                        .map_err(|_err| EthereumContractCallError::Failed)
                 }),
         )
     }
@@ -96,35 +103,42 @@ impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
     fn subscribe_to_event(
         &mut self,
         subscription: EthereumEventSubscription,
-    ) -> Box<Stream<Item = EthereumEvent, Error = Web3Error>> {
+    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
         let event = subscription.event.clone();
         Box::new(
             self.event_filter(subscription)
+                .map_err(|err| EthereumSubscriptionError::RpcError(err))
                 .map(|base_filter| {
                     let past_logs_stream = base_filter
                         .logs()
-                        .map(|logs_vec| iter_ok::<_, web3::error::Error>(logs_vec))
+                        .map_err(|err| EthereumSubscriptionError::RpcError(err))
+                        .map(|logs_vec| iter_ok::<_, EthereumSubscriptionError>(logs_vec))
                         .flatten_stream();
-                    let future_logs_stream = base_filter.stream(Duration::from_millis(2000));
+                    let future_logs_stream = base_filter
+                        .stream(Duration::from_millis(2000))
+                        .map_err(|err| EthereumSubscriptionError::RpcError(err));
                     past_logs_stream.chain(future_logs_stream)
                 })
                 .flatten_stream()
-                .map(move |log| EthereumEvent {
+                .and_then(move |log| {
+                    event
+                        .parse_log(RawLog {
+                            topics: log.topics.clone(),
+                            data: log.clone().data.0,
+                        })
+                        .map_err(|err| EthereumSubscriptionError::ParseError(err))
+                        .map(|log_data| (log, log_data))
+                })
+                .map(move |(log, log_data)| EthereumEvent {
                     address: log.address,
                     event_signature: log.topics[0],
                     block_hash: log.block_hash.unwrap(),
-                    params: event
-                        .parse_log(RawLog {
-                            topics: log.topics.clone(),
-                            data: log.data.0,
-                        })
-                        .unwrap()
-                        .params,
+                    params: log_data.params,
                 }),
         )
     }
 
-    fn unsubscribe_from_event(&mut self, unique_id: String) -> bool {
+    fn unsubscribe_from_event(&mut self, _unique_id: String) -> bool {
         false
     }
 }

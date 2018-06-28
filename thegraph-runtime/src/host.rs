@@ -1,4 +1,5 @@
 use ethereum_types::Address;
+use futures::future;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog::Logger;
@@ -11,6 +12,7 @@ use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
 use thegraph::prelude::{RuntimeHost as RuntimeHostTrait,
                         RuntimeHostBuilder as RuntimeHostBuilderTrait, *};
+use thegraph::util;
 
 use module::{WasmiModule, WasmiModuleConfig};
 
@@ -129,7 +131,7 @@ where
     /// NOTE: We'll add support for multiple datasets soon
     fn subscribe_to_events(&mut self) {
         // Prepare subscriptions for the events
-        let subscriptions: Vec<EthereumEventSubscription> = {
+        let subscription_results: Vec<Result<EthereumEventSubscription, ()>> = {
             let dataset = self.config
                 .data_source_definition
                 .datasets
@@ -140,6 +142,9 @@ where
             let address = Address::from_str(dataset.data.address.as_str())
                 .expect("Failed to parse contract address");
 
+            let contract_result = Contract::load(dataset.data.structure.abi.as_bytes())
+                .map_err(|_err| error!(self.logger, "Failed to parse contract abi"));
+
             // Prepare subscriptions for all events
             dataset
                 .mapping
@@ -147,23 +152,33 @@ where
                 .iter()
                 .map(|event_handler| {
                     let subscription_id = Uuid::new_v4().simple().to_string();
-
-                    EthereumEventSubscription {
-                        subscription_id: subscription_id.clone(),
-                        address,
-                        event_signature: event_handler.event.clone(),
-                        range: BlockNumberRange {
-                            from: Some(0),
-                            to: None,
-                        },
-                    }
+                    contract_result
+                        .clone()
+                        .and_then(|contract| {
+                            util::ethereum::get_contract_event_by_signature(
+                                &contract,
+                                &event_handler.event[..],
+                            ).ok_or(())
+                        })
+                        .map(|event| EthereumEventSubscription {
+                            address,
+                            event,
+                            range: BlockNumberRange {
+                                from: BlockNumber::Number(0),
+                                to: BlockNumber::Latest,
+                            },
+                            subscription_id: subscription_id.clone(),
+                        })
                 })
                 .collect()
         };
 
         // Subscribe to the events now
-        for subscription in subscriptions.into_iter() {
-            self.subscribe_to_event(subscription);
+        for subscription_result in subscription_results.into_iter() {
+            match subscription_result {
+                Ok(subscription) => self.subscribe_to_event(subscription),
+                _ => warn!(self.logger, "Failed to call subscribe_to_event"),
+            }
         }
     }
 
@@ -176,11 +191,16 @@ where
             .subscribe_to_event(subscription);
 
         let logger = self.logger.clone();
+        let logger2 = logger.clone();
 
-        self.runtime.spawn(receiver.for_each(move |event| {
-            debug!(logger, "Handle Ethereum event: {:?}", event);
-            Ok(())
-        }));
+        self.runtime.spawn(
+            receiver
+                .for_each(move |event| {
+                    debug!(logger, "Handle Ethereum event: {:?}", event);
+                    Box::new(future::ok::<(), EthereumSubscriptionError>(()))
+                })
+                .map_err(move |err| error!(logger2, "Error subscribing to event: {:?}", err)),
+        );
     }
 }
 
