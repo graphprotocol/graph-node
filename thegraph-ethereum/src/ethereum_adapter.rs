@@ -1,9 +1,8 @@
-use ethabi::{Contract, Event, RawLog, Token};
+use ethabi::{RawLog, Token};
 use ethereum_types::H256;
 use futures::prelude::*;
 use futures::stream::iter_ok;
 use std::time::Duration;
-use tiny_keccak::sha3_256;
 use tokio_core::reactor::Handle;
 use web3;
 use web3::api::CreateFilter;
@@ -19,14 +18,14 @@ pub struct EthereumAdapterConfig<T: web3::Transport> {
 
 pub struct EthereumAdapter<T: web3::Transport> {
     eth_client: Web3<T>,
-    runtime: Handle,
+    _runtime: Handle,
 }
 
 impl<T: web3::Transport> EthereumAdapter<T> {
     pub fn new(runtime: Handle, config: EthereumAdapterConfig<T>) -> Self {
         EthereumAdapter {
             eth_client: Web3::new(config.transport),
-            runtime: runtime,
+            _runtime: runtime,
         }
     }
 
