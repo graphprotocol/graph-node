@@ -1704,6 +1704,7 @@ dependencies = [
  "ethabi 5.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ethereum-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
+ "nan-preserving-float 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "parity-wasm 0.27.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "thegraph 0.1.0",
