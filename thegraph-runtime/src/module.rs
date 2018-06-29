@@ -5,9 +5,11 @@ use slog::Logger;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
-use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, MemoryRef, Module,
-            ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs,
-            RuntimeValue, Signature, Trap, ValueType};
+use wasmi::{
+    Error, Externals, FuncInstance, FuncRef, ImportsBuilder, MemoryRef, Module,
+    ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue,
+    Signature, Trap, ValueType,
+};
 
 use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
@@ -15,6 +17,42 @@ use thegraph::components::store::StoreKey;
 use thegraph::prelude::*;
 
 use asc_abi::AscHeap;
+
+/// AssemblyScript-compatible WASM memory heap.
+#[derive(Clone)]
+struct WasmiAscHeap {
+    module: ModuleRef,
+    memory: MemoryRef,
+}
+
+impl WasmiAscHeap {
+    pub fn new(module: ModuleRef, memory: MemoryRef) -> Self {
+        WasmiAscHeap { module, memory }
+    }
+}
+
+impl AscHeap for WasmiAscHeap {
+    fn raw_new(&self, bytes: &[u8]) -> Result<u32, Error> {
+        let address = self.module
+            .invoke_export(
+                "allocate_memory",
+                &[RuntimeValue::I32(bytes.len() as i32)],
+                &mut NopExternals,
+            )
+            .expect("Failed to invoke memory allocation function")
+            .expect("Function did not return a value")
+            .try_into::<u32>()
+            .expect("Function did not return u32");
+
+        self.memory.set(address, bytes)?;
+
+        Ok(address)
+    }
+
+    fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, Error> {
+        self.memory.get(offset, size as usize)
+    }
+}
 
 // Indexes for exported host functions
 const ABORT_FUNC_INDEX: usize = 0;
@@ -30,11 +68,11 @@ pub struct WasmiModuleConfig<T> {
     pub ethereum_adapter: Arc<Mutex<T>>,
 }
 
-/// Wasm runtime module
+/// A WASM module based on wasmi that powers a data source runtime.
 pub struct WasmiModule {
-    _logger: Logger,
+    pub logger: Logger,
     pub module: ModuleRef,
-    pub memory: MemoryRef,
+    heap: WasmiAscHeap,
 }
 
 impl WasmiModule {
@@ -46,7 +84,7 @@ impl WasmiModule {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
         let module = parity_wasm::deserialize_file(&path).expect("Failed to deserialize WASM file");
-        let loaded_module = Module::from_parity_wasm_module(module)
+        let module = Module::from_parity_wasm_module(module)
             .expect("Invalid parity_wasm module; Wasmi could not interpret");
 
         // Build import resolver
@@ -56,22 +94,20 @@ impl WasmiModule {
         imports.push_resolver("ethereum", &EthereumModuleResolver);
 
         // Instantiate the runtime module using hosted functions and import resolver
-        let module = ModuleInstance::new(&loaded_module, &imports)
-            .expect("Failed to instantiate WASM module");
+        let module =
+            ModuleInstance::new(&module, &imports).expect("Failed to instantiate WASM module");
 
-        let ambient_module = module.not_started_instance().clone();
         // Provide access to the WASM runtime linear memory
-        let ambient_memory = ambient_module
+        let not_started_module = module.not_started_instance().clone();
+        let memory = not_started_module
             .export_by_name("memory")
-            .expect("Failed to find memory export in the wasm module")
+            .expect("Failed to find memory export in the WASM module")
             .as_memory()
-            .expect("Exported external value is not Memory")
+            .expect("Export \"memory\" has an invalid type")
             .clone();
 
-        let not_started_module = AscModule {
-            module: ambient_module,
-            memory: ambient_memory,
-        };
+        // Create a AssemblyScript-compatible WASM memory heap
+        let heap = WasmiAscHeap::new(not_started_module, memory);
 
         // Create new instance of externally hosted functions invoker
         let mut external_functions = HostExternals {
@@ -79,25 +115,18 @@ impl WasmiModule {
             logger: logger.clone(),
             runtime: config.runtime.clone(),
             event_sink: config.event_sink.clone(),
-            _module: not_started_module,
+            heap: heap.clone(),
             _ethereum_adapter: config.ethereum_adapter.clone(),
         };
 
-        let started_module = module
+        let module = module
             .run_start(&mut external_functions)
-            .expect("Failed to start WASM module instance")
-            .clone();
-        let started_memory = started_module
-            .export_by_name("memory")
-            .expect("Failed to find memory export in the wasm module")
-            .as_memory()
-            .expect("Exported external value is not Memory")
-            .clone();
+            .expect("Failed to start WASM module instance");
 
         WasmiModule {
-            _logger: logger,
-            module: started_module,
-            memory: started_memory,
+            logger,
+            module,
+            heap,
         }
     }
 
@@ -105,73 +134,6 @@ impl WasmiModule {
         self.module
             .invoke_export(handler_name, &[], &mut NopExternals)
             .expect("Failed to invoke call Ethereum event function");
-    }
-
-    /// Expose the `allocate_memory` function exported from WASM
-    pub fn _allocate_memory(&mut self, size: i32) -> u32 {
-        self.module
-            .invoke_export(
-                "allocate_memory",
-                &[RuntimeValue::I32(size)],
-                &mut NopExternals,
-            )
-            .expect("Failed to invoke memory allocation function")
-            .expect("Function did not return a value")
-            .try_into::<u32>()
-            .expect("Function did not return u32")
-    }
-}
-
-impl AscHeap for WasmiModule {
-    fn raw_new(&self, bytes: &[u8]) -> Result<u32, Error> {
-        //        let address = self.allocate_memory(bytes.len() as i32);
-
-        let address = self.module
-            .invoke_export(
-                "allocate_memory",
-                &[RuntimeValue::I32(bytes.len() as i32)],
-                &mut NopExternals,
-            )
-            .expect("Failed to invoke memory allocation function")
-            .expect("Function did not return a value")
-            .try_into::<u32>()
-            .expect("Function did not return u32");
-
-        self.memory.set(address, bytes)?;
-        Ok(address)
-    }
-
-    fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, Error> {
-        self.memory.get(offset, size as usize)
-    }
-}
-
-struct AscModule {
-    module: ModuleRef,
-    memory: MemoryRef,
-}
-
-impl AscHeap for AscModule {
-    fn raw_new(&self, bytes: &[u8]) -> Result<u32, Error> {
-        //        let address = self.allocate_memory(bytes.len() as i32);
-
-        let address = self.module
-            .invoke_export(
-                "allocate_memory",
-                &[RuntimeValue::I32(bytes.len() as i32)],
-                &mut NopExternals,
-            )
-            .expect("Failed to invoke memory allocation function")
-            .expect("Function did not return a value")
-            .try_into::<u32>()
-            .expect("Function did not return u32");
-
-        self.memory.set(address, bytes)?;
-        Ok(address)
-    }
-
-    fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, Error> {
-        self.memory.get(offset, size as usize)
     }
 }
 
@@ -199,8 +161,8 @@ pub struct HostExternals<T> {
     runtime: Handle,
     data_source_id: String,
     event_sink: Sender<RuntimeHostEvent>,
+    heap: WasmiAscHeap,
     _ethereum_adapter: Arc<Mutex<T>>,
-    _module: AscModule,
 }
 
 impl<T> Externals for HostExternals<T>
