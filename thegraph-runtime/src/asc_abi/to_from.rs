@@ -2,8 +2,9 @@ use super::class::*;
 use super::{AscHeap, AscPtr, AscType, AscValue, FromAscObj, ToAscObj};
 use ethabi;
 use ethereum_types;
+use thegraph::data::store;
 
-///! Implementations of `ToAscObj` and `FromAscObj` for core Rust types.
+///! Implementations of `ToAscObj` and `FromAscObj` for Rust types.
 
 impl<T: AscValue> ToAscObj<ArrayBuffer<T>> for [T] {
     fn to_asc_obj<H: AscHeap>(&self, _: &H) -> ArrayBuffer<T> {
@@ -147,13 +148,40 @@ impl FromAscObj<AscEnum<TokenKind>> for ethabi::Token {
                 Token::String(heap.asc_get(ptr))
             }
             TokenKind::FixedArray => {
-                let ptr: AscTokenArray = AscPtr::from_payload(payload);
+                let ptr: AscEnumArray<TokenKind> = AscPtr::from_payload(payload);
                 Token::FixedArray(heap.asc_get(ptr))
             }
             TokenKind::Array => {
-                let ptr: AscTokenArray = AscPtr::from_payload(payload);
+                let ptr: AscEnumArray<TokenKind> = AscPtr::from_payload(payload);
                 Token::Array(heap.asc_get(ptr))
             }
+        }
+    }
+}
+
+impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
+    fn from_asc_obj<H: AscHeap>(asc_enum: AscEnum<StoreValueKind>, heap: &H) -> Self {
+        use self::store::Value;
+        use ethabi::Token;
+
+        let payload = asc_enum.payload;
+        match asc_enum.kind {
+            StoreValueKind::String => {
+                let ptr: AscPtr<AscString> = AscPtr::from_payload(payload);
+                Value::String(heap.asc_get(ptr))
+            }
+            // This is just `i32::from_bytes` which is unstable.
+            StoreValueKind::Int => {
+                let int: i32 = unsafe { ::std::mem::transmute::<u32, i32>(payload as u32) };
+                Value::Int(int)
+            }
+            StoreValueKind::Float => Value::Float(f64::from_bits(payload as u64) as f32),
+            StoreValueKind::Bool => Value::Bool(payload != 0),
+            StoreValueKind::Array => {
+                let ptr: AscEnumArray<StoreValueKind> = AscPtr::from_payload(payload);
+                Value::List(heap.asc_get(ptr))
+            }
+            StoreValueKind::Null => Value::Null,
         }
     }
 }

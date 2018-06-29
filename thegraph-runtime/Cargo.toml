@@ -12,3 +12,4 @@ thegraph = { path = "../thegraph" }
 uuid = { version = "0.6", features = ["v4"] }
 wasmi = "0.2.0"
 ethabi = "5.1.1"
+nan-preserving-float = "0.1.0"

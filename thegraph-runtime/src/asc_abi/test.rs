@@ -2,6 +2,7 @@ use super::class::*;
 use super::{AscHeap, AscPtr};
 use ethabi::Token;
 use ethereum_types::{H160, U256};
+use nan_preserving_float::F32;
 use parity_wasm;
 use wasmi::{self, ImportsBuilder, MemoryRef, ModuleImportResolver, ModuleInstance, ModuleRef,
             NopExternals, RuntimeValue, Signature};
@@ -87,6 +88,15 @@ impl TestModule {
                 &[RuntimeValue::from(arg1), RuntimeValue::from(arg2)],
                 &mut NopExternals,
             )
+            .expect("call failed")
+            .expect("call returned nothing")
+            .try_into()
+            .expect("call did not return pointer")
+    }
+
+    fn takes_val_returns_ptr<T>(&self, fn_name: &str, val: RuntimeValue) -> AscPtr<T> {
+        self.module
+            .invoke_export(fn_name, &[val], &mut NopExternals)
             .expect("call failed")
             .expect("call returned nothing")
             .try_into()
@@ -231,17 +241,7 @@ fn abi_ethabi_token_identity() {
         .expect("call did not return bool");
 
     let new_token = module.asc_get(
-        module
-            .module
-            .invoke_export(
-                "token_from_bool",
-                &[RuntimeValue::from(boolean as u32)],
-                &mut NopExternals,
-            )
-            .expect("call failed")
-            .expect("call returned nothing")
-            .try_into()
-            .expect("call did not return ptr"),
+        module.takes_val_returns_ptr("token_from_bool", RuntimeValue::from(boolean as u32)),
     );
 
     assert_eq!(token_bool, new_token);
@@ -261,11 +261,75 @@ fn abi_ethabi_token_identity() {
     let token_array = Token::Array(vec![token_address, token_bytes, token_bool]);
     let token_array_nested = Token::Array(vec![token_string, token_array]);
 
-    let new_array_obj: AscTokenArray =
+    let new_array_obj: AscEnumArray<TokenKind> =
         module.takes_ptr_returns_ptr("token_to_array", module.asc_new(&token_array_nested));
 
     let new_token: Token =
         module.asc_get(module.takes_ptr_returns_ptr("token_from_array", new_array_obj));
 
     assert_eq!(new_token, token_array_nested);
+}
+
+#[test]
+fn abi_store_value() {
+    use thegraph::data::store::Value;
+
+    let module = TestModule::new("wasm_test/abi_store_value.wasm");
+
+    // Value::Null
+    let null_value_ptr: AscPtr<AscEnum<StoreValueKind>> = module
+        .module
+        .invoke_export("value_null", &[], &mut NopExternals)
+        .expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return ptr");
+    let null_value: Value = module.asc_get(null_value_ptr);
+    assert_eq!(null_value, Value::Null);
+
+    // Value::String
+    let string = "some string";
+    let new_value: Value =
+        module.asc_get(module.takes_ptr_returns_ptr("value_from_string", module.asc_new(string)));
+    assert_eq!(new_value, Value::from(string));
+
+    // Value::Int
+    let int = i32::min_value();
+    let new_value: Value =
+        module.asc_get(module.takes_val_returns_ptr("value_from_int", RuntimeValue::from(int)));
+    assert_eq!(new_value, Value::Int(int));
+
+    // Value::Float
+    let float: f32 = 3.14159001;
+    let float_runtime = RuntimeValue::F32(F32::from_float(float));
+    let new_value: Value =
+        module.asc_get(module.takes_val_returns_ptr("value_from_float", float_runtime));
+    assert_eq!(new_value, Value::Float(float));
+
+    // Value::Bool
+    let boolean = true;
+    let new_value: Value = module.asc_get(module.takes_val_returns_ptr(
+        "value_from_bool",
+        RuntimeValue::I32(if boolean { 1 } else { 0 }),
+    ));
+    assert_eq!(new_value, Value::Bool(boolean));
+
+    // Value::Array
+    let new_value: Value = module.asc_get(
+        module
+            .module
+            .invoke_export(
+                "array_from_values",
+                &[RuntimeValue::from(module.asc_new(string)), float_runtime],
+                &mut NopExternals,
+            )
+            .expect("call failed")
+            .expect("call returned nothing")
+            .try_into()
+            .expect("call did not return ptr"),
+    );
+    assert_eq!(
+        new_value,
+        Value::List(vec![Value::from(string), Value::Float(float)])
+    );
 }

@@ -182,6 +182,8 @@ pub(crate) struct AscEnum<D: AscValue> {
 
 impl<D: AscValue> AscType for AscEnum<D> {}
 
+pub(crate) type AscEnumArray<D> = AscPtr<Array<AscPtr<AscEnum<D>>>>;
+
 #[repr(u32)]
 #[derive(Copy, Clone)]
 pub(crate) enum TokenKind {
@@ -221,4 +223,22 @@ impl Default for TokenKind {
 impl AscType for TokenKind {}
 impl AscValue for TokenKind {}
 
-pub(crate) type AscTokenArray = AscPtr<Array<AscPtr<AscEnum<TokenKind>>>>;
+#[repr(u32)]
+#[derive(Copy, Clone)]
+pub enum StoreValueKind {
+    String,
+    Int,
+    Float,
+    Bool,
+    Array,
+    Null,
+}
+
+impl Default for StoreValueKind {
+    fn default() -> Self {
+        StoreValueKind::Null
+    }
+}
+
+impl AscType for StoreValueKind {}
+impl AscValue for StoreValueKind {}
