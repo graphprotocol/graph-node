@@ -5,11 +5,9 @@ use slog::Logger;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
-use wasmi::{
-    Error, Externals, FuncInstance, FuncRef, ImportsBuilder, MemoryRef, Module,
-    ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue,
-    Signature, Trap, ValueType,
-};
+use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, MemoryRef, Module,
+            ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals,
+            RuntimeArgs, RuntimeValue, Signature, Trap, ValueType};
 
 use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
@@ -51,30 +49,45 @@ impl WasmiModule {
         let loaded_module = Module::from_parity_wasm_module(module)
             .expect("Invalid parity_wasm module; Wasmi could not interpret");
 
+        // Build import resolver
+        let mut imports = ImportsBuilder::new();
+        imports.push_resolver("env", &EnvModuleResolver);
+        imports.push_resolver("database", &StoreModuleResolver);
+        imports.push_resolver("ethereum", &EthereumModuleResolver);
+
+        // Instantiate the runtime module using hosted functions and import resolver
+        let module = ModuleInstance::new(&loaded_module, &imports)
+            .expect("Failed to instantiate WASM module");
+
+        let ambient_module = module.not_started_instance().clone();
+        // Provide access to the WASM runtime linear memory
+        let ambient_memory = ambient_module
+            .export_by_name("memory")
+            .expect("Failed to find memory export in the wasm module")
+            .as_memory()
+            .expect("Exported external value is not Memory")
+            .clone();
+
+        let not_started_module = AscModule {
+            module: ambient_module,
+            memory: ambient_memory,
+        };
+
         // Create new instance of externally hosted functions invoker
         let mut external_functions = HostExternals {
             data_source_id: config.data_source_id.clone(),
             logger: logger.clone(),
             runtime: config.runtime.clone(),
             event_sink: config.event_sink.clone(),
-            ethereum_adapter: config.ethereum_adapter.clone(),
+            _module: not_started_module,
+            _ethereum_adapter: config.ethereum_adapter.clone(),
         };
 
-        // Build import resolver
-        let mut imports = ImportsBuilder::new();
-        imports.push_resolver("env", &EnvModuleResolver);
-        imports.push_resolver("database", &DatabaseModuleResolver);
-        imports.push_resolver("ethereum", &EthereumModuleResolver);
-
-        // Instantiate the runtime module using hosted functions and import resolver
-        let module = ModuleInstance::new(&loaded_module, &imports)
-            .expect("Failed to instantiate WASM module")
+        let started_module = module
             .run_start(&mut external_functions)
-            .expect("Failed to start WASM module instance");
-
-        // Provide access to the WASM runtime linear memory
-        let memory = module
-            .export_by_name("memory")
+            .expect("Failed to start WASM module instance")
+            .clone();
+        let started_memory = started_module.export_by_name("memory")
             .expect("Failed to find memory export in the wasm module")
             .as_memory()
             .expect("Exported external value is not Memory")
@@ -82,19 +95,19 @@ impl WasmiModule {
 
         WasmiModule {
             _logger: logger,
-            module,
-            memory,
+            module: started_module,
+            memory: started_memory
         }
     }
 
-    pub fn handle_ethereum_event(&mut self, handler_name: &str, event: EthereumEvent) {
+    pub fn handle_ethereum_event(&mut self, handler_name: &str, _event: EthereumEvent) {
         self.module
             .invoke_export(handler_name, &[], &mut NopExternals)
             .expect("Failed to invoke call Ethereum event function");
     }
 
     /// Expose the `allocate_memory` function exported from WASM
-    pub fn allocate_memory(&mut self, size: i32) -> u32 {
+    pub fn _allocate_memory(&mut self, size: i32) -> u32 {
         self.module
             .invoke_export(
                 "allocate_memory",
@@ -110,7 +123,48 @@ impl WasmiModule {
 
 impl AscHeap for WasmiModule {
     fn raw_new(&self, bytes: &[u8]) -> Result<u32, Error> {
-        let address = self.allocate_memory(bytes.len() as i32);
+        //        let address = self.allocate_memory(bytes.len() as i32);
+
+        let address = self.module
+            .invoke_export(
+                "allocate_memory",
+                &[RuntimeValue::I32(bytes.len() as i32)],
+                &mut NopExternals,
+            )
+            .expect("Failed to invoke memory allocation function")
+            .expect("Function did not return a value")
+            .try_into::<u32>()
+            .expect("Function did not return u32");
+
+        self.memory.set(address, bytes)?;
+        Ok(address)
+    }
+
+    fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, Error> {
+        self.memory.get(offset, size as usize)
+    }
+}
+
+struct AscModule {
+    module: ModuleRef,
+    memory: MemoryRef,
+}
+
+impl AscHeap for AscModule {
+    fn raw_new(&self, bytes: &[u8]) -> Result<u32, Error> {
+        //        let address = self.allocate_memory(bytes.len() as i32);
+
+        let address = self.module
+            .invoke_export(
+                "allocate_memory",
+                &[RuntimeValue::I32(bytes.len() as i32)],
+                &mut NopExternals,
+            )
+            .expect("Failed to invoke memory allocation function")
+            .expect("Function did not return a value")
+            .try_into::<u32>()
+            .expect("Function did not return u32");
+
         self.memory.set(address, bytes)?;
         Ok(address)
     }
@@ -144,7 +198,8 @@ pub struct HostExternals<T> {
     runtime: Handle,
     data_source_id: String,
     event_sink: Sender<RuntimeHostEvent>,
-    ethereum_adapter: Arc<Mutex<T>>,
+    _ethereum_adapter: Arc<Mutex<T>>,
+    _module: AscModule,
 }
 
 impl<T> Externals for HostExternals<T>
@@ -233,7 +288,7 @@ where
                 Ok(None)
             }
             ETHEREUM_CALL_FUNC_INDEX => {
-                let request_ptr: u32 = args.nth_checked(0)?;
+                let _request_ptr: u32 = args.nth_checked(0)?;
                 // TODO: self.ethereum_adapter.lock().unwrap().contract_call();
                 Ok(None)
             }
@@ -271,9 +326,9 @@ impl ModuleImportResolver for EnvModuleResolver {
 }
 
 /// Database module resolver
-pub struct DatabaseModuleResolver;
+pub struct StoreModuleResolver;
 
-impl ModuleImportResolver for DatabaseModuleResolver {
+impl ModuleImportResolver for StoreModuleResolver {
     fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
         Ok(match field_name {
             "create" => FuncInstance::alloc_host(
@@ -318,52 +373,61 @@ impl ModuleImportResolver for EthereumModuleResolver {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use futures::sync::mpsc::channel;
-    use slog;
-    use std::path::PathBuf;
-    use tokio_core;
-    use wasmi::{NopExternals, RuntimeValue};
-
-    use super::{WasmiModule, WasmiModuleConfig};
-
-    #[test]
-    fn run_simple_function_exported_from_wasm_and_return_result() {
-        let logger = slog::Logger::root(slog::Discard, o!());
-
-        let core = tokio_core::reactor::Core::new().unwrap();
-
-        let wasm_location = PathBuf::from("test/add_fn.wasm");
-        let (sender, _receiver) = channel(10);
-
-        debug!(logger, "Instantiate wasm module from file";
-               "file_location" => format!("{:?}", wasm_location));
-        let main = WasmiModule::new(
-            wasm_location,
-            &logger,
-            WasmiModuleConfig {
-                data_source_id: String::from("example data source"),
-                runtime: core.handle(),
-                event_sink: sender,
-            },
-        );
-
-        debug!(
-            logger,
-            "Invoke exported function, find the sum of two integers."
-        );
-        let sum = main.module
-            .invoke_export(
-                "add",
-                &[RuntimeValue::I32(8 as i32), RuntimeValue::I32(3 as i32)],
-                &mut NopExternals,
-            )
-            .expect("Failed to invoke memory allocation function.")
-            .expect("Function did not return a value.")
-            .try_into::<i32>()
-            .expect("Function return value was not expected type, u32.");
-
-        assert_eq!(11 as i32, sum);
-    }
-}
+//#[cfg(test)]
+//mod tests {
+//    use futures::sync::mpsc::channel;
+//    use slog;
+//    use std::path::PathBuf;
+//    use std::sync::{Arc, Mutex};
+//    use tokio_core;
+//    use wasmi::{NopExternals, RuntimeValue};
+//    extern crate thegraph_ethereum;
+//
+//    use super::{WasmiModule, WasmiModuleConfig};
+//
+//    #[test]
+//    fn run_simple_function_exported_from_wasm_and_return_result() {
+//        let logger = slog::Logger::root(slog::Discard, o!());
+//
+//        let core = tokio_core::reactor::Core::new().unwrap();
+//
+//        let wasm_location = PathBuf::from("test/add_fn.wasm");
+//        let (sender, _receiver) = channel(10);
+//
+//        debug!(logger, "Instantiate wasm module from file";
+//               "file_location" => format!("{:?}", wasm_location));
+//
+//        let ethereum_adapter = thegraph_ethereum::EthereumAdapter {
+//            eth_client: Web3::new(config.transport),
+//            _runtime: runtime,
+//        };
+//
+//        let main = WasmiModule::new(
+//            wasm_location,
+//            &logger,
+//            WasmiModuleConfig {
+//                data_source_id: String::from("example data source"),
+//                runtime: core.handle(),
+//                event_sink: sender,
+//                ethereum_adapter: Arc::new(Mutex::new(())),
+//            },
+//        );
+//
+//        debug!(
+//            logger,
+//            "Invoke exported function, find the sum of two integers."
+//        );
+//        let sum = main.module
+//            .invoke_export(
+//                "add",
+//                &[RuntimeValue::I32(8 as i32), RuntimeValue::I32(3 as i32)],
+//                &mut NopExternals,
+//            )
+//            .expect("Failed to invoke memory allocation function.")
+//            .expect("Function did not return a value.")
+//            .try_into::<i32>()
+//            .expect("Function return value was not expected type, u32.");
+//
+//        assert_eq!(11 as i32, sum);
+//    }
+//}
