@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, MemoryRef, Module,
-            ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals,
-            RuntimeArgs, RuntimeValue, Signature, Trap, ValueType};
+            ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs,
+            RuntimeValue, Signature, Trap, ValueType};
 
 use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
@@ -87,7 +87,8 @@ impl WasmiModule {
             .run_start(&mut external_functions)
             .expect("Failed to start WASM module instance")
             .clone();
-        let started_memory = started_module.export_by_name("memory")
+        let started_memory = started_module
+            .export_by_name("memory")
             .expect("Failed to find memory export in the wasm module")
             .as_memory()
             .expect("Exported external value is not Memory")
@@ -96,7 +97,7 @@ impl WasmiModule {
         WasmiModule {
             _logger: logger,
             module: started_module,
-            memory: started_memory
+            memory: started_memory,
         }
     }
 

@@ -2,9 +2,8 @@ use serde_yaml;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-use thegraph::components::data_sources::{
-    DataSourceDefinitionLoader as LoaderTrait, DataSourceDefinitionLoaderError,
-};
+use thegraph::components::data_sources::{DataSourceDefinitionLoader as LoaderTrait,
+                                         DataSourceDefinitionLoaderError};
 use thegraph::data::data_sources::*;
 
 #[derive(Default)]
