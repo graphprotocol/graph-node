@@ -47,7 +47,7 @@ mod tests {
                 transport: transport,
             },
         );
-        let balance_of_function = Function {
+        let balance_of = Function {
             name: "balanceOf".to_owned(),
             inputs: vec![Param {
                 name: "_owner".to_owned(),
@@ -59,7 +59,7 @@ mod tests {
             }],
             constant: true,
         };
-        let function = Function::from(balance_of_function);
+        let function = Function::from(balance_of);
         let gnt_addr = Address::from_str("eF7FfF64389B814A946f3E92105513705CA6B990").unwrap();
         let holder_addr = Address::from_str("00d04c4b12C4686305bb4F4fC93487CdFBa62580").unwrap();
         let call_request = EthereumContractCallRequest {
