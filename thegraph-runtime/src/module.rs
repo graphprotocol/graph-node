@@ -130,10 +130,19 @@ impl WasmiModule {
         }
     }
 
-    pub fn handle_ethereum_event(&mut self, handler_name: &str, _event: EthereumEvent) {
+    pub fn handle_ethereum_event(&mut self, handler_name: &str, event: EthereumEvent) {
         self.module
-            .invoke_export(handler_name, &[], &mut NopExternals)
-            .expect("Failed to invoke call Ethereum event function");
+            .invoke_export(
+                handler_name,
+                &[RuntimeValue::from(self.heap.asc_new(&event))],
+                &mut NopExternals,
+            )
+            .expect(
+                format!(
+                    "Failed to invoke call Ethereum event handler: {}",
+                    handler_name
+                ).as_str(),
+            );
     }
 }
 
