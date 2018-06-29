@@ -242,3 +242,28 @@ impl Default for StoreValueKind {
 
 impl AscType for StoreValueKind {}
 impl AscValue for StoreValueKind {}
+
+pub(crate) type AscTokenArray = AscPtr<Array<AscPtr<AscEnum<TokenKind>>>>;
+
+#[repr(C)]
+pub(crate) struct AscLogParam {
+    pub name: AscPtr<AscString>,
+    pub value: AscPtr<AscEnum<TokenKind>>,
+}
+
+impl AscType for AscLogParam {}
+
+pub(crate) type AscAddress = ArrayBuffer<u8>;
+pub(crate) type AscH256 = ArrayBuffer<u8>;
+
+pub(crate) type AscLogParamArray = Array<AscPtr<AscLogParam>>;
+
+#[repr(C)]
+pub(crate) struct AscEthereumEvent {
+    pub address: AscPtr<AscAddress>,
+    pub event_signature: AscPtr<AscH256>,
+    pub block_hash: AscPtr<AscH256>,
+    pub params: AscPtr<AscLogParamArray>,
+}
+
+impl AscType for AscEthereumEvent {}
