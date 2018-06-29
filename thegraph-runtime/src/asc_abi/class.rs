@@ -171,11 +171,12 @@ impl<T: AscValue> Array<T> {
 
 impl<T> AscType for Array<T> {}
 
-/// In Asc, we represent a Rust enum as a discriminant `D`, which is an Asc enum
-/// so in Rust it's a `#[repr(u32)]` enum, plus an arbitrary `AscValue` payload.
+/// In Asc, we represent a Rust enum as a discriminant `kind: D`, which is an
+/// Asc enum so in Rust it's a `#[repr(u32)]` enum, plus an arbitrary `AscValue`
+/// payload.
 #[repr(C)]
 pub(crate) struct AscEnum<D: AscValue> {
-    pub discr: D,
+    pub kind: D,
     pub payload: u64, // All `AscValue`s fit in 64 bits.
 }
 
@@ -183,7 +184,7 @@ impl<D: AscValue> AscType for AscEnum<D> {}
 
 #[repr(u32)]
 #[derive(Copy, Clone)]
-pub(crate) enum TokenDiscr {
+pub(crate) enum TokenKind {
     Address,
     FixedBytes,
     Bytes,
@@ -195,29 +196,29 @@ pub(crate) enum TokenDiscr {
     Array,
 }
 
-impl TokenDiscr {
-    pub(crate) fn get_discr(token: &ethabi::Token) -> Self {
+impl TokenKind {
+    pub(crate) fn get_kind(token: &ethabi::Token) -> Self {
         match token {
-            ethabi::Token::Address(_) => TokenDiscr::Address,
-            ethabi::Token::FixedBytes(_) => TokenDiscr::FixedBytes,
-            ethabi::Token::Bytes(_) => TokenDiscr::Bytes,
-            ethabi::Token::Int(_) => TokenDiscr::Int,
-            ethabi::Token::Uint(_) => TokenDiscr::Uint,
-            ethabi::Token::Bool(_) => TokenDiscr::Bool,
-            ethabi::Token::String(_) => TokenDiscr::String,
-            ethabi::Token::FixedArray(_) => TokenDiscr::FixedArray,
-            ethabi::Token::Array(_) => TokenDiscr::Array,
+            ethabi::Token::Address(_) => TokenKind::Address,
+            ethabi::Token::FixedBytes(_) => TokenKind::FixedBytes,
+            ethabi::Token::Bytes(_) => TokenKind::Bytes,
+            ethabi::Token::Int(_) => TokenKind::Int,
+            ethabi::Token::Uint(_) => TokenKind::Uint,
+            ethabi::Token::Bool(_) => TokenKind::Bool,
+            ethabi::Token::String(_) => TokenKind::String,
+            ethabi::Token::FixedArray(_) => TokenKind::FixedArray,
+            ethabi::Token::Array(_) => TokenKind::Array,
         }
     }
 }
 
-impl Default for TokenDiscr {
+impl Default for TokenKind {
     fn default() -> Self {
-        TokenDiscr::Address
+        TokenKind::Address
     }
 }
 
-impl AscType for TokenDiscr {}
-impl AscValue for TokenDiscr {}
+impl AscType for TokenKind {}
+impl AscValue for TokenKind {}
 
-pub(crate) type AscTokenArray = AscPtr<Array<AscPtr<AscEnum<TokenDiscr>>>>;
+pub(crate) type AscTokenArray = AscPtr<Array<AscPtr<AscEnum<TokenKind>>>>;
