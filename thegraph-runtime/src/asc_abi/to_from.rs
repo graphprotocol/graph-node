@@ -1,8 +1,11 @@
-use super::class::*;
-use super::{AscHeap, AscPtr, AscType, AscValue, FromAscObj, ToAscObj};
 use ethabi;
 use ethereum_types;
+
+use thegraph::components::ethereum::EthereumEvent;
 use thegraph::data::store;
+
+use super::class::*;
+use super::{AscHeap, AscPtr, AscType, AscValue, FromAscObj, ToAscObj};
 
 ///! Implementations of `ToAscObj` and `FromAscObj` for Rust types.
 
@@ -45,6 +48,12 @@ impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for Vec<T> {
 }
 
 impl ToAscObj<ArrayBuffer<u8>> for ethereum_types::H160 {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u8> {
+        self.0.to_asc_obj(heap)
+    }
+}
+
+impl ToAscObj<ArrayBuffer<u8>> for ethereum_types::H256 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u8> {
         self.0.to_asc_obj(heap)
     }
@@ -182,6 +191,26 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
                 Value::List(heap.asc_get(ptr))
             }
             StoreValueKind::Null => Value::Null,
+        }
+    }
+}
+
+impl ToAscObj<AscLogParam> for ethabi::LogParam {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscLogParam {
+        AscLogParam {
+            name: heap.asc_new(self.name.as_str()),
+            value: heap.asc_new(&self.value),
+        }
+    }
+}
+
+impl ToAscObj<AscEthereumEvent> for EthereumEvent {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEthereumEvent {
+        AscEthereumEvent {
+            address: heap.asc_new(&self.address),
+            event_signature: heap.asc_new(&self.event_signature),
+            block_hash: heap.asc_new(&self.block_hash),
+            params: heap.asc_new(self.params.as_slice()),
         }
     }
 }

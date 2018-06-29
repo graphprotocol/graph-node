@@ -115,7 +115,7 @@ impl WasmiModule {
             logger: logger.clone(),
             runtime: config.runtime.clone(),
             event_sink: config.event_sink.clone(),
-            heap: heap.clone(),
+            _heap: heap.clone(),
             _ethereum_adapter: config.ethereum_adapter.clone(),
         };
 
@@ -170,7 +170,7 @@ pub struct HostExternals<T> {
     runtime: Handle,
     data_source_id: String,
     event_sink: Sender<RuntimeHostEvent>,
-    heap: WasmiAscHeap,
+    _heap: WasmiAscHeap,
     _ethereum_adapter: Arc<Mutex<T>>,
 }
 
