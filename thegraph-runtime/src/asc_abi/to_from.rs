@@ -1,5 +1,8 @@
 use ethabi;
 use ethereum_types;
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::iter::FromIterator;
 
 use thegraph::components::ethereum::EthereumEvent;
 use thegraph::data::store;
@@ -171,7 +174,6 @@ impl FromAscObj<AscEnum<TokenKind>> for ethabi::Token {
 impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
     fn from_asc_obj<H: AscHeap>(asc_enum: AscEnum<StoreValueKind>, heap: &H) -> Self {
         use self::store::Value;
-        use ethabi::Token;
 
         let payload = asc_enum.payload;
         match asc_enum.kind {
@@ -212,5 +214,22 @@ impl ToAscObj<AscEthereumEvent> for EthereumEvent {
             block_hash: heap.asc_new(&self.block_hash),
             params: heap.asc_new(self.params.as_slice()),
         }
+    }
+}
+
+impl<K: AscType, V: AscType, T: FromAscObj<K>, U: FromAscObj<V>> FromAscObj<AscTypedMapEntry<K, V>>
+    for (T, U)
+{
+    fn from_asc_obj<H: AscHeap>(asc_entry: AscTypedMapEntry<K, V>, heap: &H) -> Self {
+        (heap.asc_get(asc_entry.key), heap.asc_get(asc_entry.value))
+    }
+}
+
+impl<K: AscType, V: AscType, T: FromAscObj<K> + Hash + Eq, U: FromAscObj<V>>
+    FromAscObj<AscTypedMap<K, V>> for HashMap<T, U>
+{
+    fn from_asc_obj<H: AscHeap>(asc_map: AscTypedMap<K, V>, heap: &H) -> Self {
+        let entries = Vec::<(T, U)>::from_asc_obj(asc_map.entries.read_ptr(heap), heap);
+        HashMap::from_iter(entries.into_iter())
     }
 }
