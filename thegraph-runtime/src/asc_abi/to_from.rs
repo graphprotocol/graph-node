@@ -229,7 +229,7 @@ impl<K: AscType, V: AscType, T: FromAscObj<K> + Hash + Eq, U: FromAscObj<V>>
     FromAscObj<AscTypedMap<K, V>> for HashMap<T, U>
 {
     fn from_asc_obj<H: AscHeap>(asc_map: AscTypedMap<K, V>, heap: &H) -> Self {
-        let entries = Vec::<(T, U)>::from_asc_obj(asc_map.entries.read_ptr(heap), heap);
+        let entries: Vec<(T, U)> = heap.asc_get(asc_map.entries);
         HashMap::from_iter(entries.into_iter())
     }
 }

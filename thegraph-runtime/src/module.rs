@@ -170,19 +170,20 @@ impl<T> HostExternals<T>
 where
     T: EthereumAdapter,
 {
+    /// function create(entity: string, id: string, data: Entity): void
     fn database_create(
         &self,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
-        data_ptr: AscPtr<AscTypedMap<AscString, AscEnum<StoreValueKind>>>,
+        data_ptr: AscPtr<AscEntity>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
 
         let store_key = StoreKey {
-            entity: entity,
-            id: id.clone(),
+            entity,
+            id,
         };
 
         let entity_data = Entity::from(data);
@@ -201,17 +202,18 @@ where
                     error!(logger, "Failed to forward runtime host event";
                                         "error" => format!("{}", e));
                 })
-                .and_then(|_| Ok(())),
+                .map(|_| ()),
         );
 
         Ok(None)
     }
 
+    /// function update(entity: string, id: string, data: Entity): void
     fn database_update(
         &self,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
-        data_ptr: AscPtr<AscTypedMap<AscString, AscEnum<StoreValueKind>>>,
+        data_ptr: AscPtr<AscEntity>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
@@ -244,6 +246,7 @@ where
         Ok(None)
     }
 
+    /// function remove(entity: string, id: string): void
     fn database_remove(
         &self,
         entity_ptr: AscPtr<AscString>,
