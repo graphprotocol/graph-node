@@ -282,3 +282,5 @@ pub(crate) struct AscTypedMap<K, V> {
 }
 
 impl<K, V> AscType for AscTypedMap<K, V> {}
+
+pub(crate) type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
