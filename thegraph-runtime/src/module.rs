@@ -69,18 +69,19 @@ pub struct WasmiModuleConfig<T> {
 }
 
 /// A WASM module based on wasmi that powers a data source runtime.
-pub struct WasmiModule {
+pub struct WasmiModule<T> {
     pub logger: Logger,
     pub module: ModuleRef,
+    externals: HostExternals<T>,
     heap: WasmiAscHeap,
 }
 
-impl WasmiModule {
+impl<T> WasmiModule<T>
+where
+    T: EthereumAdapter,
+{
     /// Creates a new wasmi module
-    pub fn new<T>(path: PathBuf, logger: &Logger, config: WasmiModuleConfig<T>) -> Self
-    where
-        T: EthereumAdapter,
-    {
+    pub fn new(path: PathBuf, logger: &Logger, config: WasmiModuleConfig<T>) -> Self {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
         let module = parity_wasm::deserialize_file(&path).expect("Failed to deserialize WASM file");
@@ -110,22 +111,23 @@ impl WasmiModule {
         let heap = WasmiAscHeap::new(not_started_module, memory);
 
         // Create new instance of externally hosted functions invoker
-        let mut external_functions = HostExternals {
+        let mut externals = HostExternals {
             data_source_id: config.data_source_id.clone(),
             logger: logger.clone(),
             runtime: config.runtime.clone(),
             event_sink: config.event_sink.clone(),
-            _heap: heap.clone(),
+            heap: heap.clone(),
             _ethereum_adapter: config.ethereum_adapter.clone(),
         };
 
         let module = module
-            .run_start(&mut external_functions)
+            .run_start(&mut externals)
             .expect("Failed to start WASM module instance");
 
         WasmiModule {
             logger,
             module,
+            externals,
             heap,
         }
     }
@@ -135,7 +137,7 @@ impl WasmiModule {
             .invoke_export(
                 handler_name,
                 &[RuntimeValue::from(self.heap.asc_new(&event))],
-                &mut NopExternals,
+                &mut self.externals,
             )
             .expect(
                 format!(
@@ -170,7 +172,7 @@ pub struct HostExternals<T> {
     runtime: Handle,
     data_source_id: String,
     event_sink: Sender<RuntimeHostEvent>,
-    _heap: WasmiAscHeap,
+    heap: WasmiAscHeap,
     _ethereum_adapter: Arc<Mutex<T>>,
 }
 
