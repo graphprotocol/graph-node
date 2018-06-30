@@ -2,6 +2,7 @@ use futures::prelude::*;
 use futures::sync::mpsc::Sender;
 use parity_wasm;
 use slog::Logger;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
@@ -196,12 +197,23 @@ where
 
         match index {
             DATABASE_CREATE_FUNC_INDEX => {
-                println!("DATABASE_CREATE");
+                let entity_ptr: AscPtr<AscString> = args.nth_checked(0)?;
+                let entity: String = self.heap.asc_get(entity_ptr);
 
-                let store_key_ptr: u32 = args.nth_checked(0)?;
-                let store_key = WasmConverter::store_key_from_wasm(store_key_ptr);
-                let entity_ptr: u32 = args.nth_checked(1)?;
-                let entity = WasmConverter::entity_from_wasm(entity_ptr);
+                let id_ptr: AscPtr<AscString> = args.nth_checked(1)?;
+                let id: String = self.heap.asc_get(id_ptr);
+
+                let store_key = StoreKey {
+                    entity: entity,
+                    id: id.clone(),
+                };
+
+                let data_ptr: AscPtr<
+                    AscTypedMap<AscString, AscEnum<StoreValueKind>>,
+                > = args.nth_checked(2)?;
+                let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
+
+                let entity_data = Entity::from(data);
 
                 self.runtime.spawn(
                     self.event_sink
@@ -209,7 +221,7 @@ where
                         .send(RuntimeHostEvent::EntityCreated(
                             self.data_source_id.clone(),
                             store_key,
-                            entity,
+                            entity_data,
                         ))
                         .map_err(move |e| {
                             error!(logger, "Failed to forward runtime host event";
