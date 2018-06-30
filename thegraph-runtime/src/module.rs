@@ -84,9 +84,14 @@ where
     pub fn new(path: PathBuf, logger: &Logger, config: WasmiModuleConfig<T>) -> Self {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
-        let module = parity_wasm::deserialize_file(&path).expect("Failed to deserialize WASM file");
-        let module = Module::from_parity_wasm_module(module)
-            .expect("Invalid parity_wasm module; Wasmi could not interpret");
+        let module = parity_wasm::deserialize_file(&path)
+            .expect(format!("Failed to deserialize WASM: {}", path.to_string_lossy()).as_str());
+        let module = Module::from_parity_wasm_module(module).expect(
+            format!(
+                "Wasmi could not interpret module loaded from file: {}",
+                path.to_string_lossy()
+            ).as_str(),
+        );
 
         // Build import resolver
         let mut imports = ImportsBuilder::new();
