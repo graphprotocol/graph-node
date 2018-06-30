@@ -243,8 +243,6 @@ impl Default for StoreValueKind {
 impl AscType for StoreValueKind {}
 impl AscValue for StoreValueKind {}
 
-pub(crate) type AscTokenArray = AscPtr<Array<AscPtr<AscEnum<TokenKind>>>>;
-
 #[repr(C)]
 pub(crate) struct AscLogParam {
     pub name: AscPtr<AscString>,
