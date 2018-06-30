@@ -16,7 +16,9 @@ use thegraph::components::ethereum::*;
 use thegraph::components::store::StoreKey;
 use thegraph::prelude::*;
 
-use asc_abi::AscHeap;
+use asc_abi::asc_ptr::*;
+use asc_abi::class::*;
+use asc_abi::*;
 
 /// AssemblyScript-compatible WASM memory heap.
 #[derive(Clone)]
@@ -58,7 +60,7 @@ impl AscHeap for WasmiAscHeap {
 const ABORT_FUNC_INDEX: usize = 0;
 const DATABASE_CREATE_FUNC_INDEX: usize = 1;
 const DATABASE_UPDATE_FUNC_INDEX: usize = 2;
-const DATABASE_DELETE_FUNC_INDEX: usize = 3;
+const DATABASE_REMOVE_FUNC_INDEX: usize = 3;
 const ETHEREUM_CALL_FUNC_INDEX: usize = 4;
 
 pub struct WasmiModuleConfig<T> {
@@ -243,11 +245,17 @@ where
 
                 Ok(None)
             }
-            DATABASE_DELETE_FUNC_INDEX => {
-                println!("DATABASE_DELETE");
+            DATABASE_REMOVE_FUNC_INDEX => {
+                let entity_ptr: AscPtr<AscString> = args.nth_checked(0)?;
+                let entity: String = self.heap.asc_get(entity_ptr);
 
-                let store_key_ptr: u32 = args.nth_checked(0)?;
-                let store_key = WasmConverter::store_key_from_wasm(store_key_ptr);
+                let id_ptr: AscPtr<AscString> = args.nth_checked(1)?;
+                let id: String = self.heap.asc_get(id_ptr);
+
+                let store_key = StoreKey {
+                    entity: entity,
+                    id: id,
+                };
 
                 // Send a delete entity event
                 self.runtime.spawn(
@@ -318,9 +326,9 @@ impl ModuleImportResolver for StoreModuleResolver {
                 Signature::new(&[ValueType::I32, ValueType::I32, ValueType::I32][..], None),
                 DATABASE_UPDATE_FUNC_INDEX,
             ),
-            "delete" => FuncInstance::alloc_host(
+            "remove" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32, ValueType::I32][..], None),
-                DATABASE_DELETE_FUNC_INDEX,
+                DATABASE_REMOVE_FUNC_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(
