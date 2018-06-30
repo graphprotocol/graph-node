@@ -156,24 +156,6 @@ where
     }
 }
 
-// Placeholder for deserializer module
-pub struct WasmConverter {}
-
-impl WasmConverter {
-    // Put StoreKey into linear memory and return a u32 pointer
-    pub fn _store_key_to_memory(_key: StoreKey) -> RuntimeValue {
-        unimplemented!();
-    }
-    // Get StoreKey from .wasm pointer
-    pub fn store_key_from_wasm(_pointer: u32) -> StoreKey {
-        unimplemented!();
-    }
-    // Get Entity from .wasm pointer
-    pub fn entity_from_wasm(_pointer: u32) -> Entity {
-        unimplemented!();
-    }
-}
-
 /// Hosted functions for external use by wasm module
 pub struct HostExternals<T> {
     logger: Logger,
@@ -304,8 +286,6 @@ where
         index: usize,
         args: RuntimeArgs,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let logger = self.logger.clone();
-
         match index {
             DATABASE_CREATE_FUNC_INDEX => self.database_create(
                 args.nth_checked(0)?,
