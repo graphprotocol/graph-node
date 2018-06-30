@@ -184,6 +184,117 @@ pub struct HostExternals<T> {
     _ethereum_adapter: Arc<Mutex<T>>,
 }
 
+impl<T> HostExternals<T>
+where
+    T: EthereumAdapter,
+{
+    fn database_create(
+        &self,
+        entity_ptr: AscPtr<AscString>,
+        id_ptr: AscPtr<AscString>,
+        data_ptr: AscPtr<AscTypedMap<AscString, AscEnum<StoreValueKind>>>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let entity: String = self.heap.asc_get(entity_ptr);
+        let id: String = self.heap.asc_get(id_ptr);
+        let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
+
+        let store_key = StoreKey {
+            entity: entity,
+            id: id.clone(),
+        };
+
+        let entity_data = Entity::from(data);
+
+        // Send an entity created event
+        let logger = self.logger.clone();
+        self.runtime.spawn(
+            self.event_sink
+                .clone()
+                .send(RuntimeHostEvent::EntityCreated(
+                    self.data_source_id.clone(),
+                    store_key,
+                    entity_data,
+                ))
+                .map_err(move |e| {
+                    error!(logger, "Failed to forward runtime host event";
+                                        "error" => format!("{}", e));
+                })
+                .and_then(|_| Ok(())),
+        );
+
+        Ok(None)
+    }
+
+    fn database_update(
+        &self,
+        entity_ptr: AscPtr<AscString>,
+        id_ptr: AscPtr<AscString>,
+        data_ptr: AscPtr<AscTypedMap<AscString, AscEnum<StoreValueKind>>>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let entity: String = self.heap.asc_get(entity_ptr);
+        let id: String = self.heap.asc_get(id_ptr);
+        let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
+
+        let store_key = StoreKey {
+            entity: entity,
+            id: id.clone(),
+        };
+
+        let entity_data = Entity::from(data);
+
+        // Send an entity changed event
+        let logger = self.logger.clone();
+        self.runtime.spawn(
+            self.event_sink
+                .clone()
+                .send(RuntimeHostEvent::EntityChanged(
+                    self.data_source_id.clone(),
+                    store_key,
+                    entity_data,
+                ))
+                .map_err(move |e| {
+                    error!(logger, "Failed to forward runtime host event";
+                                        "error" => format!("{}", e));
+                })
+                .and_then(|_| Ok(())),
+        );
+
+        Ok(None)
+    }
+
+    fn database_remove(
+        &self,
+        entity_ptr: AscPtr<AscString>,
+        id_ptr: AscPtr<AscString>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let entity: String = self.heap.asc_get(entity_ptr);
+        let id: String = self.heap.asc_get(id_ptr);
+
+        let store_key = StoreKey {
+            entity: entity,
+            id: id,
+        };
+
+        // Send an entity removed event
+        let logger = self.logger.clone();
+        self.runtime.spawn(
+            self.event_sink
+                .clone()
+                .send(RuntimeHostEvent::EntityRemoved(
+                    self.data_source_id.clone(),
+                    store_key,
+                ))
+                .map_err(move |e| {
+                    error!(logger, "Failed to forward runtime host event";
+                               "error" => format!("{}", e));
+                })
+                .and_then(|_| Ok(())),
+        );
+
+        Ok(None)
+    }
+}
+
 impl<T> Externals for HostExternals<T>
 where
     T: EthereumAdapter,
@@ -196,106 +307,18 @@ where
         let logger = self.logger.clone();
 
         match index {
-            DATABASE_CREATE_FUNC_INDEX => {
-                let entity_ptr: AscPtr<AscString> = args.nth_checked(0)?;
-                let entity: String = self.heap.asc_get(entity_ptr);
-
-                let id_ptr: AscPtr<AscString> = args.nth_checked(1)?;
-                let id: String = self.heap.asc_get(id_ptr);
-
-                let store_key = StoreKey {
-                    entity: entity,
-                    id: id.clone(),
-                };
-
-                let data_ptr: AscPtr<
-                    AscTypedMap<AscString, AscEnum<StoreValueKind>>,
-                > = args.nth_checked(2)?;
-                let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
-
-                let entity_data = Entity::from(data);
-
-                self.runtime.spawn(
-                    self.event_sink
-                        .clone()
-                        .send(RuntimeHostEvent::EntityCreated(
-                            self.data_source_id.clone(),
-                            store_key,
-                            entity_data,
-                        ))
-                        .map_err(move |e| {
-                            error!(logger, "Failed to forward runtime host event";
-                                        "error" => format!("{}", e));
-                        })
-                        .and_then(|_| Ok(())),
-                );
-
-                Ok(None)
-            }
-            DATABASE_UPDATE_FUNC_INDEX => {
-                let entity_ptr: AscPtr<AscString> = args.nth_checked(0)?;
-                let entity: String = self.heap.asc_get(entity_ptr);
-
-                let id_ptr: AscPtr<AscString> = args.nth_checked(1)?;
-                let id: String = self.heap.asc_get(id_ptr);
-
-                let store_key = StoreKey {
-                    entity: entity,
-                    id: id.clone(),
-                };
-
-                let data_ptr: AscPtr<
-                    AscTypedMap<AscString, AscEnum<StoreValueKind>>,
-                > = args.nth_checked(2)?;
-                let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
-
-                let entity_data = Entity::from(data);
-
-                self.runtime.spawn(
-                    self.event_sink
-                        .clone()
-                        .send(RuntimeHostEvent::EntityUpdated(
-                            self.data_source_id.clone(),
-                            store_key,
-                            entity_data,
-                        ))
-                        .map_err(move |e| {
-                            error!(logger, "Failed to forward runtime host event";
-                                        "error" => format!("{}", e));
-                        })
-                        .and_then(|_| Ok(())),
-                );
-
-                Ok(None)
-            }
+            DATABASE_CREATE_FUNC_INDEX => self.database_create(
+                args.nth_checked(0)?,
+                args.nth_checked(1)?,
+                args.nth_checked(2)?,
+            ),
+            DATABASE_UPDATE_FUNC_INDEX => self.database_update(
+                args.nth_checked(0)?,
+                args.nth_checked(1)?,
+                args.nth_checked(2)?,
+            ),
             DATABASE_REMOVE_FUNC_INDEX => {
-                let entity_ptr: AscPtr<AscString> = args.nth_checked(0)?;
-                let entity: String = self.heap.asc_get(entity_ptr);
-
-                let id_ptr: AscPtr<AscString> = args.nth_checked(1)?;
-                let id: String = self.heap.asc_get(id_ptr);
-
-                let store_key = StoreKey {
-                    entity: entity,
-                    id: id,
-                };
-
-                // Send a delete entity event
-                self.runtime.spawn(
-                    self.event_sink
-                        .clone()
-                        .send(RuntimeHostEvent::EntityRemoved(
-                            self.data_source_id.clone(),
-                            store_key,
-                        ))
-                        .map_err(move |e| {
-                            error!(logger, "Failed to forward runtime host event";
-                               "error" => format!("{}", e));
-                        })
-                        .and_then(|_| Ok(())),
-                );
-
-                Ok(None)
+                self.database_remove(args.nth_checked(0)?, args.nth_checked(1)?)
             }
             ETHEREUM_CALL_FUNC_INDEX => {
                 let _request_ptr: u32 = args.nth_checked(0)?;
