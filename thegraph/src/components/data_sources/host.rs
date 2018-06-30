@@ -5,7 +5,7 @@ use prelude::*;
 type DataSourceID = String;
 
 /// Events emitted by a runtime host.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeHostEvent {
     /// An entity should be created.
     EntityCreated(DataSourceID, StoreKey, Entity),
