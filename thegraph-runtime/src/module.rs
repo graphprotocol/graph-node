@@ -360,61 +360,118 @@ impl ModuleImportResolver for EthereumModuleResolver {
     }
 }
 
-//#[cfg(test)]
-//mod tests {
-//    use futures::sync::mpsc::channel;
-//    use slog;
-//    use std::path::PathBuf;
-//    use std::sync::{Arc, Mutex};
-//    use tokio_core;
-//    use wasmi::{NopExternals, RuntimeValue};
-//    extern crate thegraph_ethereum;
-//
-//    use super::{WasmiModule, WasmiModuleConfig};
-//
-//    #[test]
-//    fn run_simple_function_exported_from_wasm_and_return_result() {
-//        let logger = slog::Logger::root(slog::Discard, o!());
-//
-//        let core = tokio_core::reactor::Core::new().unwrap();
-//
-//        let wasm_location = PathBuf::from("test/add_fn.wasm");
-//        let (sender, _receiver) = channel(10);
-//
-//        debug!(logger, "Instantiate wasm module from file";
-//               "file_location" => format!("{:?}", wasm_location));
-//
-//        let ethereum_adapter = thegraph_ethereum::EthereumAdapter {
-//            eth_client: Web3::new(config.transport),
-//            _runtime: runtime,
-//        };
-//
-//        let main = WasmiModule::new(
-//            wasm_location,
-//            &logger,
-//            WasmiModuleConfig {
-//                data_source_id: String::from("example data source"),
-//                runtime: core.handle(),
-//                event_sink: sender,
-//                ethereum_adapter: Arc::new(Mutex::new(())),
-//            },
-//        );
-//
-//        debug!(
-//            logger,
-//            "Invoke exported function, find the sum of two integers."
-//        );
-//        let sum = main.module
-//            .invoke_export(
-//                "add",
-//                &[RuntimeValue::I32(8 as i32), RuntimeValue::I32(3 as i32)],
-//                &mut NopExternals,
-//            )
-//            .expect("Failed to invoke memory allocation function.")
-//            .expect("Function did not return a value.")
-//            .try_into::<i32>()
-//            .expect("Function return value was not expected type, u32.");
-//
-//        assert_eq!(11 as i32, sum);
-//    }
-//}
+#[cfg(test)]
+mod tests {
+    use ethabi::{LogParam, Token};
+    use ethereum_types::Address;
+    use futures::prelude::*;
+    use futures::sync::mpsc::channel;
+    use slog;
+    use std::collections::HashMap;
+    use std::iter::FromIterator;
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex};
+    use tokio_core;
+
+    use thegraph::components::data_sources::*;
+    use thegraph::components::ethereum::*;
+    use thegraph::components::store::*;
+    use thegraph::prelude::*;
+    use thegraph::util;
+
+    use super::{WasmiModule, WasmiModuleConfig};
+
+    #[derive(Default)]
+    struct MockEthereumAdapter {}
+
+    impl EthereumAdapter for MockEthereumAdapter {
+        fn contract_state(
+            &mut self,
+            _request: EthereumContractStateRequest,
+        ) -> Result<EthereumContractState, EthereumContractStateError> {
+            unimplemented!()
+        }
+
+        fn contract_call(
+            &mut self,
+            _request: EthereumContractCallRequest,
+        ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
+            unimplemented!()
+        }
+
+        fn subscribe_to_event(
+            &mut self,
+            _subscription: EthereumEventSubscription,
+        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
+            unimplemented!()
+        }
+
+        fn unsubscribe_from_event(&mut self, _subscription_id: String) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn call_event_handler_and_receive_database_event() {
+        // Load the example_event_handler.wasm test module. All this module does
+        // is implement an `handleExampleEvent` function that calls `database.create()`
+        // with sample data taken from the event parameters.
+        //
+        // This test verifies that the event is delivered and the example data
+        // is returned to the RuntimeHostEvent stream.
+
+        // Load the module
+        let logger = slog::Logger::root(slog::Discard, o!());
+        let mut core = tokio_core::reactor::Core::new().unwrap();
+        let path = PathBuf::from("test/example_event_handler.wasm");
+        let (sender, receiver) = channel(1);
+        let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
+        let mut module = WasmiModule::new(
+            path,
+            &logger,
+            WasmiModuleConfig {
+                data_source_id: String::from("example data source"),
+                runtime: core.handle(),
+                event_sink: sender,
+                ethereum_adapter: mock_ethereum_adapter,
+            },
+        );
+
+        // Create a mock Ethereum event
+        let ethereum_event = EthereumEvent {
+            address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
+            event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
+            block_hash: util::ethereum::string_to_h256("example block hash"),
+            params: vec![LogParam {
+                name: String::from("exampleParam"),
+                value: Token::String(String::from("some data")),
+            }],
+        };
+
+        // Call the event handler in the test module and pass the event to it
+        module.handle_ethereum_event("handleExampleEvent", ethereum_event);
+
+        // Expect a database create call to be made by the handler and a
+        // RuntimeHostEvent::EntityCreated event to be written to the event stream
+        let work = receiver.take(1).into_future();
+        let database_event = core.run(work)
+            .expect("No database event received from runtime")
+            .0
+            .expect("Database event must not be None");
+
+        // Verify that this event matches what the test module is sending
+        assert_eq!(
+            database_event,
+            RuntimeHostEvent::EntityCreated(
+                String::from("example data source"),
+                StoreKey {
+                    entity: String::from("ExampleEntity"),
+                    id: String::from("example id"),
+                },
+                Entity::from(HashMap::from_iter(
+                    vec![(String::from("exampleAttribute"), Value::from("some data"))].into_iter()
+                ))
+            )
+        );
+    }
+}
