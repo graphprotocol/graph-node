@@ -265,3 +265,20 @@ pub(crate) struct AscEthereumEvent {
 }
 
 impl AscType for AscEthereumEvent {}
+
+#[repr(C)]
+pub(crate) struct AscTypedMapEntry<K, V> {
+    pub key: AscPtr<K>,
+    pub value: AscPtr<V>,
+}
+
+impl<K, V> AscType for AscTypedMapEntry<K, V> {}
+
+pub(crate) type AscTypedMapEntryArray<K, V> = Array<AscPtr<AscTypedMapEntry<K, V>>>;
+
+#[repr(C)]
+pub(crate) struct AscTypedMap<K, V> {
+    pub entries: AscPtr<AscTypedMapEntryArray<K, V>>,
+}
+
+impl<K, V> AscType for AscTypedMap<K, V> {}
