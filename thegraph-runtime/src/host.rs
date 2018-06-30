@@ -11,8 +11,9 @@ use uuid::Uuid;
 use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
 use thegraph::data::data_sources::DataSet;
-use thegraph::prelude::{RuntimeHost as RuntimeHostTrait,
-                        RuntimeHostBuilder as RuntimeHostBuilderTrait, *};
+use thegraph::prelude::{
+    RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
+};
 use thegraph::util;
 
 use module::{WasmiModule, WasmiModuleConfig};
@@ -45,7 +46,7 @@ where
 
 impl<T> RuntimeHostBuilderTrait for RuntimeHostBuilder<T>
 where
-    T: EthereumAdapter,
+    T: EthereumAdapter + 'static,
 {
     type Host = RuntimeHost;
 
@@ -74,7 +75,7 @@ impl RuntimeHost {
         config: RuntimeHostConfig,
     ) -> Self
     where
-        T: EthereumAdapter,
+        T: EthereumAdapter + 'static,
     {
         let logger = logger.new(o!("component" => "RuntimeHost"));
 
@@ -129,10 +130,10 @@ impl RuntimeHost {
         logger: Logger,
         runtime: Handle,
         data_source: DataSourceDefinition,
-        module: WasmiModule,
+        module: WasmiModule<T>,
         ethereum_adapter: Arc<Mutex<T>>,
     ) where
-        T: EthereumAdapter,
+        T: EthereumAdapter + 'static,
     {
         info!(logger, "Subscribe to events");
 
@@ -207,12 +208,12 @@ impl RuntimeHost {
     fn subscribe_to_event<T>(
         logger: Logger,
         runtime: Handle,
-        module: Arc<Mutex<WasmiModule>>,
+        module: Arc<Mutex<WasmiModule<T>>>,
         ethereum_adapter: Arc<Mutex<T>>,
         dataset: Arc<DataSet>,
         subscription: EthereumEventSubscription,
     ) where
-        T: EthereumAdapter,
+        T: EthereumAdapter + 'static,
     {
         info!(logger, "Subscribe to event";
               "name" => format!("{:#?}", subscription.event.name));
