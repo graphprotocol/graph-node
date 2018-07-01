@@ -78,6 +78,37 @@ impl<T: AscValue> AscType for ArrayBuffer<T> {
     }
 }
 
+/// A typed, indexable view of an `ArrayBuffer` of Asc primitives. In Asc it's
+/// an abstract class with subclasses for each primitive, for example
+/// `Uint8Array` is `TypedArray<u8>`.
+///  See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
+#[repr(C)]
+pub(crate) struct TypedArray<T> {
+    pub buffer: AscPtr<ArrayBuffer<T>>,
+    byte_offset: u32,
+    byte_length: u32,
+}
+
+impl<T: AscValue> TypedArray<T> {
+    pub(crate) fn new<H: AscHeap>(content: &[T], heap: &H) -> Self {
+        let buffer = ArrayBuffer::new(content);
+        TypedArray {
+            buffer: AscPtr::alloc_obj(&buffer, heap),
+            byte_offset: 0,
+            byte_length: buffer.byte_length,
+        }
+    }
+
+    pub(crate) fn get_buffer<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<T> {
+        self.buffer.read_ptr(heap)
+    }
+}
+
+impl<T> AscType for TypedArray<T> {}
+
+pub(crate) type Uint8Array = TypedArray<u8>;
+pub(crate) type Uint64Array = TypedArray<u64>;
+
 /// Asc std string: "Strings are encoded as UTF-16LE in AssemblyScript, and are
 /// prefixed with their length (in character codes) as a 32-bit integer". See
 /// https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#strings
