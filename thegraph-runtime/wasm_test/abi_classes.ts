@@ -1,6 +1,6 @@
 import "allocator/arena";
 
-export { allocate_memory, free_memory };
+export { allocate_memory };
 
 // Sequence of 20 `u8`s.
 type Address = ArrayBuffer;
@@ -67,4 +67,58 @@ export function concat(bytes1: Bytes, bytes2: FixedBytes): Bytes {
   // Move bytes2.
   move_memory(concated_offset, bytes2_start, bytes2.byteLength);
   return concated;
+}
+
+// Sequence of 20 `u8`s.
+type AddressTyped = Uint8Array;
+
+// Clone the address to a new buffer, add 1 to the first and last bytes of the
+// address and return the new address.
+export function test_typed_array_address(address: AddressTyped): AddressTyped {
+  let new_address = address.subarray();
+
+  // Add 1 to the first and last bytes.
+  new_address[0] += 1;
+  new_address[address.length - 1] += 1;
+
+  return new_address
+}
+
+// Sequence of 4 `u64`s.
+type UintTyped = Uint64Array;
+
+// Clone the Uint to a new buffer, add 1 to the first and last `u64`s and return
+// the new Uint.
+export function test_typed_array_uint(address: UintTyped): UintTyped {
+  let new_address = address.subarray();
+
+  // Add 1 to the first and last bytes.
+  new_address[0] += 1;
+  new_address[address.length - 1] += 1;
+
+  return new_address
+}
+
+// Sequences of `u8`s.
+type FixedBytesTyped = Uint8Array;
+type BytesTyped = Uint8Array;
+
+// Concatenate two byte sequences into a new one.
+export function concat_typed_array(bytes1: BytesTyped, bytes2: FixedBytesTyped): BytesTyped {
+  let concated = new ArrayBuffer(bytes1.byteLength + bytes2.byteLength);
+  let concated_offset = changetype<usize>(concated) + array_buffer_header_size;
+  let bytes1_start = load<usize>(changetype<usize>(bytes1)) + array_buffer_header_size;
+  let bytes2_start = load<usize>(changetype<usize>(bytes2)) + array_buffer_header_size;
+
+  // Move bytes1.
+  move_memory(concated_offset, bytes1_start, bytes1.byteLength);
+  concated_offset += bytes1.byteLength
+
+  // Move bytes2.
+  move_memory(concated_offset, bytes2_start, bytes2.byteLength);
+
+  let new_typed_array = new Uint8Array(concated.byteLength);
+  store<usize>(changetype<usize>(new_typed_array), changetype<usize>(concated));
+
+  return new_typed_array;
 }

@@ -131,8 +131,23 @@ fn abi_h160() {
     let module = TestModule::new("wasm_test/abi_classes.wasm");
     let address = H160::zero();
 
+    // As an `ArrayBuffer`
+    let array_buffer: AscPtr<ArrayBuffer<u8>> = module.asc_new(&address);
     let new_address_obj: AscPtr<ArrayBuffer<u8>> =
-        module.takes_ptr_returns_ptr("test_address", module.asc_new(&address));
+        module.takes_ptr_returns_ptr("test_address", array_buffer);
+
+    // This should have 1 added to the first and last byte.
+    let new_address: H160 = module.asc_get(new_address_obj);
+
+    assert_eq!(
+        new_address,
+        H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
+    );
+
+    // As an `Uint8Array`
+    let array_buffer: AscPtr<Uint8Array> = module.asc_new(&address);
+    let new_address_obj: AscPtr<Uint8Array> =
+        module.takes_ptr_returns_ptr("test_typed_array_address", array_buffer);
 
     // This should have 1 added to the first and last byte.
     let new_address: H160 = module.asc_get(new_address_obj);
@@ -158,8 +173,20 @@ fn abi_u256() {
     let module = TestModule::new("wasm_test/abi_classes.wasm");
     let address = U256::zero();
 
+    // As an `ArrayBuffer`
+    let array_buffer: AscPtr<ArrayBuffer<u64>> = module.asc_new(&address);
     let new_uint_obj: AscPtr<ArrayBuffer<u64>> =
-        module.takes_ptr_returns_ptr("test_uint", module.asc_new(&address));
+        module.takes_ptr_returns_ptr("test_uint", array_buffer);
+
+    // This should have 1 added to the first and last `u64`s.
+    let new_uint: U256 = module.asc_get(new_uint_obj);
+
+    assert_eq!(new_uint, U256([1, 0, 0, 1]));
+
+    // As an `Uint64Array`
+    let array_buffer: AscPtr<Uint64Array> = module.asc_new(&address);
+    let new_uint_obj: AscPtr<Uint64Array> =
+        module.takes_ptr_returns_ptr("test_typed_array_uint", array_buffer);
 
     // This should have 1 added to the first and last `u64`s.
     let new_uint: U256 = module.asc_get(new_uint_obj);
@@ -173,17 +200,30 @@ fn abi_bytes_and_fixed_bytes() {
     let bytes1: Vec<u8> = vec![42, 45, 7, 245, 45];
     let bytes2: Vec<u8> = vec![3, 12, 0, 1, 255];
 
+    // As an `ArrayBuffer`
     let new_vec_obj: AscPtr<ArrayBuffer<u8>> = module.takes_ptr_ptr_returns_ptr(
         "concat",
-        module.asc_new(&*bytes1),
-        module.asc_new(&*bytes2),
+        module.asc_new::<ArrayBuffer<u8>, _>(&*bytes1),
+        module.asc_new::<ArrayBuffer<u8>, _>(&*bytes2),
     );
 
     // This should be bytes1 and bytes2 concatenated.
     let new_vec: Vec<u8> = module.asc_get(new_vec_obj);
 
-    let mut concated = bytes1;
-    concated.extend(bytes2);
+    let mut concated = bytes1.clone();
+    concated.extend(bytes2.clone());
+    assert_eq!(new_vec, concated);
+
+    // As an `Uint8Array`
+    let new_vec_obj: AscPtr<Uint8Array> = module.takes_ptr_ptr_returns_ptr(
+        "concat_typed_array",
+        module.asc_new::<Uint8Array, _>(&*bytes1),
+        module.asc_new::<Uint8Array, _>(&*bytes2),
+    );
+
+    // This should be bytes1 and bytes2 concatenated.
+    let new_vec: Vec<u8> = module.asc_get(new_vec_obj);
+
     assert_eq!(new_vec, concated);
 }
 

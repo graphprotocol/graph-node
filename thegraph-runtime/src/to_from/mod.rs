@@ -15,13 +15,14 @@ impl<T: AscValue> ToAscObj<ArrayBuffer<T>> for [T] {
     }
 }
 
+impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for Vec<T> {
+    fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<T>, _: &H) -> Self {
+        array_buffer.content.into()
+    }
+}
+
 impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for [T; 20] {
     fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<T>, _: &H) -> Self {
-        assert_eq!(
-            array_buffer.content.len(),
-            20,
-            "wrong ArrayBuffer length, expected 20"
-        );
         let mut array: [T; 20] = [T::default(); 20];
         array.copy_from_slice(&array_buffer.content);
         array
@@ -30,20 +31,37 @@ impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for [T; 20] {
 
 impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for [T; 4] {
     fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<T>, _: &H) -> Self {
-        assert_eq!(
-            array_buffer.content.len(),
-            4,
-            "wrong ArrayBuffer length, expected 4"
-        );
         let mut array: [T; 4] = [T::default(); 4];
         array.copy_from_slice(&array_buffer.content);
         array
     }
 }
 
-impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for Vec<T> {
-    fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<T>, _: &H) -> Self {
-        array_buffer.content.into()
+impl<T: AscValue> ToAscObj<TypedArray<T>> for [T] {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> TypedArray<T> {
+        TypedArray::new(self, heap)
+    }
+}
+
+impl<T: AscValue> FromAscObj<TypedArray<T>> for Vec<T> {
+    fn from_asc_obj<H: AscHeap>(typed_array: TypedArray<T>, heap: &H) -> Self {
+        typed_array.get_buffer(heap).content.into()
+    }
+}
+
+impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 20] {
+    fn from_asc_obj<H: AscHeap>(typed_array: TypedArray<T>, heap: &H) -> Self {
+        let mut array: [T; 20] = [T::default(); 20];
+        array.copy_from_slice(&typed_array.get_buffer(heap).content);
+        array
+    }
+}
+
+impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 4] {
+    fn from_asc_obj<H: AscHeap>(typed_array: TypedArray<T>, heap: &H) -> Self {
+        let mut array: [T; 4] = [T::default(); 4];
+        array.copy_from_slice(&typed_array.get_buffer(heap).content);
+        array
     }
 }
 
