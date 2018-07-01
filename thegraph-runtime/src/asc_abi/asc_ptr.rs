@@ -43,12 +43,12 @@ impl<C: AscType> AscPtr<C> {
     }
 
     /// Conversion to `u64` for use with `AscEnum`.
-    pub(super) fn to_payload(&self) -> u64 {
+    pub(crate) fn to_payload(&self) -> u64 {
         self.0 as u64
     }
 
     // Conversion from `u64` for use with `AscEnum`.
-    pub(super) fn from_payload(payload: u64) -> Self {
+    pub(crate) fn from_payload(payload: u64) -> Self {
         AscPtr(payload as u32, PhantomData)
     }
 }
