@@ -73,11 +73,11 @@ impl ToAscObj<AscEnum<TokenKind>> for ethabi::Token {
 
         let kind = TokenKind::get_kind(self);
         let payload = match self {
-            Address(address) => heap.asc_new::<ArrayBuffer<_>, _>(address).to_payload(),
+            Address(address) => heap.asc_new::<AscAddress, _>(address).to_payload(),
             FixedBytes(bytes) | Bytes(bytes) => {
-                heap.asc_new::<ArrayBuffer<_>, _>(&**bytes).to_payload()
+                heap.asc_new::<Uint8Array, _>(&**bytes).to_payload()
             }
-            Int(uint) | Uint(uint) => heap.asc_new::<ArrayBuffer<_>, _>(uint).to_payload(),
+            Int(uint) | Uint(uint) => heap.asc_new::<AscU256, _>(uint).to_payload(),
             Bool(b) => *b as u64,
             String(string) => heap.asc_new(&**string).to_payload(),
             FixedArray(tokens) | Array(tokens) => heap.asc_new(&**tokens).to_payload(),
@@ -95,23 +95,23 @@ impl FromAscObj<AscEnum<TokenKind>> for ethabi::Token {
         match asc_enum.kind {
             TokenKind::Bool => Token::Bool(payload != 0),
             TokenKind::Address => {
-                let ptr: AscPtr<ArrayBuffer<u8>> = AscPtr::from_payload(payload);
+                let ptr: AscPtr<AscAddress> = AscPtr::from_payload(payload);
                 Token::Address(heap.asc_get(ptr))
             }
             TokenKind::FixedBytes => {
-                let ptr: AscPtr<ArrayBuffer<u8>> = AscPtr::from_payload(payload);
+                let ptr: AscPtr<Uint8Array> = AscPtr::from_payload(payload);
                 Token::FixedBytes(heap.asc_get(ptr))
             }
             TokenKind::Bytes => {
-                let ptr: AscPtr<ArrayBuffer<u8>> = AscPtr::from_payload(payload);
+                let ptr: AscPtr<Uint8Array> = AscPtr::from_payload(payload);
                 Token::Bytes(heap.asc_get(ptr))
             }
             TokenKind::Int => {
-                let ptr: AscPtr<ArrayBuffer<u64>> = AscPtr::from_payload(payload);
+                let ptr: AscPtr<AscU256> = AscPtr::from_payload(payload);
                 Token::Int(heap.asc_get(ptr))
             }
             TokenKind::Uint => {
-                let ptr: AscPtr<ArrayBuffer<u64>> = AscPtr::from_payload(payload);
+                let ptr: AscPtr<AscU256> = AscPtr::from_payload(payload);
                 Token::Int(heap.asc_get(ptr))
             }
             TokenKind::String => {
