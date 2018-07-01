@@ -1,4 +1,4 @@
-use self::asc_ptr::AscPtr;
+pub use self::asc_ptr::AscPtr;
 use std::mem::size_of;
 use std::slice;
 use wasmi;
@@ -7,7 +7,6 @@ pub mod asc_ptr;
 pub mod class;
 #[cfg(test)]
 mod test;
-mod to_from;
 
 ///! Facilities for creating and reading objects on the memory of an
 ///! AssemblyScript (Asc) WASM module. Objects are passed through
@@ -15,7 +14,7 @@ mod to_from;
 ///! These methods take types that implement `To`/`FromAscObj` and are
 ///! therefore convertible to/from an `AscType`.
 ///! Implementations of `AscType` live in the `class` module.
-///! Common implementations of `To`/`FromAscObj` live in the `to_from` module.
+///! Implementations of `To`/`FromAscObj` live in the `to_from` module.
 
 /// WASM is little-endian, and for simplicity we currently assume that the host
 /// is also little-endian.

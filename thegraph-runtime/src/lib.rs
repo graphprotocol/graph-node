@@ -13,5 +13,6 @@ extern crate wasmi;
 mod asc_abi;
 mod host;
 mod module;
+mod to_from;
 
 pub use self::host::{RuntimeHost, RuntimeHostBuilder, RuntimeHostConfig};

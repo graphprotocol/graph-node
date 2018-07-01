@@ -15,11 +15,11 @@ pub(crate) struct ArrayBuffer<T> {
     // elements in `content` will be aligned for any element type.
     _padding: [u8; 4],
     // In Asc this slice is layed out inline with the ArrayBuffer.
-    pub(super) content: Box<[T]>,
+    pub content: Box<[T]>,
 }
 
 impl<T: AscValue> ArrayBuffer<T> {
-    pub(super) fn new(content: &[T]) -> Self {
+    pub fn new(content: &[T]) -> Self {
         // An `AscValue` has the same size in Rust and Asc so:
         let byte_length = size_of::<T>() * content.len();
 
@@ -85,11 +85,11 @@ pub(crate) struct AscString {
     // In number of UTF-16 code units (2 bytes each).
     length: u32,
     // The sequence of UTF-16LE code units that form the string.
-    pub(super) content: Box<[u16]>,
+    pub content: Box<[u16]>,
 }
 
 impl AscString {
-    pub(super) fn new(content: &[u16]) -> Self {
+    pub fn new(content: &[u16]) -> Self {
         assert!(
             size_of_val(content) <= u32::max_value() as usize,
             "string cannot fit in WASM memory"
@@ -157,14 +157,14 @@ pub(crate) struct Array<T> {
 }
 
 impl<T: AscValue> Array<T> {
-    pub(super) fn new<H: AscHeap>(content: &[T], heap: &H) -> Self {
+    pub fn new<H: AscHeap>(content: &[T], heap: &H) -> Self {
         Array {
             buffer: heap.asc_new(content),
             length: content.len() as u32,
         }
     }
 
-    pub(super) fn get_buffer<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<T> {
+    pub fn get_buffer<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<T> {
         self.buffer.read_ptr(heap)
     }
 }
