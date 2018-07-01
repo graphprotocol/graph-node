@@ -282,8 +282,8 @@ pub(crate) struct AscLogParam {
 
 impl AscType for AscLogParam {}
 
-pub(crate) type AscAddress = ArrayBuffer<u8>;
-pub(crate) type AscH256 = ArrayBuffer<u8>;
+pub(crate) type AscAddress = Uint8Array;
+pub(crate) type AscH256 = Uint8Array;
 
 pub(crate) type AscLogParamArray = Array<AscPtr<AscLogParam>>;
 
