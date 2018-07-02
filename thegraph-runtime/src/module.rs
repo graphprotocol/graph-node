@@ -63,6 +63,7 @@ const DATABASE_CREATE_FUNC_INDEX: usize = 1;
 const DATABASE_UPDATE_FUNC_INDEX: usize = 2;
 const DATABASE_REMOVE_FUNC_INDEX: usize = 3;
 const ETHEREUM_CALL_FUNC_INDEX: usize = 4;
+const TYPE_CONVERSION_BYTES32_TO_STRING_FUNC_INDEX: usize = 5;
 
 pub struct WasmiModuleConfig<T> {
     pub data_source_id: String,
@@ -101,6 +102,7 @@ where
         imports.push_resolver("env", &EnvModuleResolver);
         imports.push_resolver("database", &StoreModuleResolver);
         imports.push_resolver("ethereum", &EthereumModuleResolver);
+        imports.push_resolver("typeConversion", &TypeConversionModuleResolver);
 
         // Instantiate the runtime module using hosted functions and import resolver
         let module =
@@ -275,6 +277,16 @@ where
 
         Ok(None)
     }
+
+    /// function typeConversions.bytes32ToString(bytes: Bytes32): string
+    fn convert_bytes32_to_string(
+        &self,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let bytes: Vec<u8> = self.heap.asc_get(bytes_ptr);
+        let s = String::from_utf8_lossy(&*bytes).into_owned();
+        Ok(Some(RuntimeValue::from(self.heap.asc_new(s.as_str()))))
+    }
 }
 
 impl<T> Externals for HostExternals<T>
@@ -304,6 +316,9 @@ where
                 let _request_ptr: u32 = args.nth_checked(0)?;
                 // TODO: self.ethereum_adapter.lock().unwrap().contract_call();
                 Ok(None)
+            }
+            TYPE_CONVERSION_BYTES32_TO_STRING_FUNC_INDEX => {
+                self.convert_bytes32_to_string(args.nth_checked(0)?)
             }
             _ => panic!("Unimplemented function at {}", index),
         }
@@ -375,6 +390,26 @@ impl ModuleImportResolver for EthereumModuleResolver {
             "call" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 ETHEREUM_CALL_FUNC_INDEX,
+            ),
+            _ => {
+                return Err(Error::Instantiation(format!(
+                    "Export '{}' not found",
+                    field_name
+                )))
+            }
+        })
+    }
+}
+
+/// Types conversion module resolver
+pub struct TypeConversionModuleResolver;
+
+impl ModuleImportResolver for TypeConversionModuleResolver {
+    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
+        Ok(match field_name {
+            "bytes32ToString" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_BYTES32_TO_STRING_FUNC_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(
