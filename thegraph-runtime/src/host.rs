@@ -223,10 +223,13 @@ impl RuntimeHost {
             .unwrap()
             .subscribe_to_event(subscription);
 
+        let event_logger = logger.clone();
         let error_logger = logger.clone();
         runtime.spawn(
             receiver
                 .for_each(move |event| {
+                    info!(event_logger, "Ethereum event received");
+
                     let event_handler = dataset
                         .mapping
                         .event_handlers
@@ -236,6 +239,9 @@ impl RuntimeHost {
                                 == event.event_signature
                         })
                         .expect("Received an Ethereum event not mentioned in the data set");
+
+                    debug!(event_logger, "  Call event handler";
+                           "name" => &event_handler.handler);
 
                     module
                         .lock()
