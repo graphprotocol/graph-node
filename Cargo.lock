@@ -558,6 +558,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "hex"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "hostname"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1705,6 +1710,7 @@ dependencies = [
  "ethabi 5.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ethereum-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hex 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "nan-preserving-float 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "parity-wasm 0.27.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2292,6 +2298,7 @@ dependencies = [
 "checksum graphql-parser 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "8681ff26395c2bb5edfb31dcab2b68b0cf6b67c0f9a809f1822a2b79ecbb0e3a"
 "checksum h2 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "c91a0ee01fcf961ae004d88f1a77fc47dc5db6164f7d57605cc9f2c93d535686"
 "checksum heapsize 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "1679e6ea370dee694f91f1dc469bf94cf8f52051d147aec3e1f9497c6fc22461"
+"checksum hex 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "805026a5d0141ffc30abb3be3173848ad46a1b1664fe632428479619a3644d77"
 "checksum hostname 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "58fab6e177434b0bb4cd344a4dabaa5bd6d7a8d792b1885aebcae7af1091d1cb"
 "checksum http 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "75df369fd52c60635208a4d3e694777c099569b3dcf4844df8f652dc004644ab"
 "checksum httparse 1.2.4 (registry+https://github.com/rust-lang/crates.io-index)" = "c2f407128745b78abc95c0ffbe4e5d37427fdc0d45470710cfef8c44522a2e37"
