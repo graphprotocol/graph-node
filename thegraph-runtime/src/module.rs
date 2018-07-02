@@ -63,7 +63,7 @@ const DATABASE_CREATE_FUNC_INDEX: usize = 1;
 const DATABASE_UPDATE_FUNC_INDEX: usize = 2;
 const DATABASE_REMOVE_FUNC_INDEX: usize = 3;
 const ETHEREUM_CALL_FUNC_INDEX: usize = 4;
-const TYPE_CONVERSION_BYTES32_TO_STRING_FUNC_INDEX: usize = 5;
+const TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX: usize = 5;
 
 pub struct WasmiModuleConfig<T> {
     pub data_source_id: String,
@@ -278,14 +278,18 @@ where
         Ok(None)
     }
 
-    /// function typeConversions.bytes32ToString(bytes: Bytes32): string
-    fn convert_bytes32_to_string(
+    /// function typeConversions.bytesToString(bytes: Bytes): string
+    fn convert_bytes_to_string(
         &self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let bytes: Vec<u8> = self.heap.asc_get(bytes_ptr);
-        let s = String::from_utf8_lossy(&*bytes).into_owned();
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(s.as_str()))))
+        let s = String::from_utf8_lossy(&*bytes);
+        // The string may have been encoded in a fixed length
+        // buffer and padded with null characters, so trim
+        // trailing nulls.
+        let trimmed_s = s.trim_right_matches('\u{0000}');
+        Ok(Some(RuntimeValue::from(self.heap.asc_new(trimmed_s))))
     }
 }
 
@@ -317,8 +321,8 @@ where
                 // TODO: self.ethereum_adapter.lock().unwrap().contract_call();
                 Ok(None)
             }
-            TYPE_CONVERSION_BYTES32_TO_STRING_FUNC_INDEX => {
-                self.convert_bytes32_to_string(args.nth_checked(0)?)
+            TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX => {
+                self.convert_bytes_to_string(args.nth_checked(0)?)
             }
             _ => panic!("Unimplemented function at {}", index),
         }
@@ -409,7 +413,7 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
         Ok(match field_name {
             "bytes32ToString" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_BYTES32_TO_STRING_FUNC_INDEX,
+                TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(
