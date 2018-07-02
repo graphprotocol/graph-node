@@ -11,7 +11,8 @@ use thegraph::data::data_sources::*;
 pub struct DataSourceDefinitionLoader;
 
 impl DataSourceDefinitionLoader {
-    fn resolve_path(&self, parent: Option<&Path>, path: &Path) -> PathBuf {
+    fn resolve_path<P: AsRef<Path>>(&self, parent: Option<&Path>, path: P) -> PathBuf {
+        let path = path.as_ref();
         let is_relative = path.is_relative() || path.starts_with("./");
         match (is_relative, parent) {
             (true, Some(parent_path)) if parent_path.is_dir() => parent_path.join(path),
@@ -35,14 +36,14 @@ impl DataSourceDefinitionLoader {
 }
 
 impl LoaderTrait for DataSourceDefinitionLoader {
-    fn load_from_path(
+    fn load_from_path<P: AsRef<Path>>(
         &self,
-        path: PathBuf,
+        path: P,
     ) -> Result<DataSourceDefinition, DataSourceDefinitionLoaderError> {
+        let path = path.as_ref();
         // Read the YAML data from the definition file
         let file = File::open(&path).expect("Failed to open data source definition file");
-        let mut raw: serde_yaml::Value =
-            serde_yaml::from_reader(file).map_err(DataSourceDefinitionLoaderError::from)?;
+        let mut raw: serde_yaml::Value = serde_yaml::from_reader(file)?;
 
         {
             let raw_mapping = raw.as_mapping_mut()
@@ -55,7 +56,7 @@ impl LoaderTrait for DataSourceDefinitionLoader {
                 .and_then(|source| source.get(&serde_yaml::Value::from("path")))
                 .and_then(|path| path.as_str())
                 .ok_or(DataSourceDefinitionLoaderError::SchemaMissing)
-                .map(|schema_path| self.resolve_path(path.parent(), Path::new(schema_path)))
+                .map(|schema_path| self.resolve_path(path.parent(), schema_path))
                 .and_then(|path| self.load_schema_from_path(&path))?;
 
             // Replace the schema path with the SDL
@@ -73,13 +74,13 @@ impl LoaderTrait for DataSourceDefinitionLoader {
             // Inject the location of the data source into the definition
             raw_mapping.insert(
                 serde_yaml::Value::from("location"),
-                serde_yaml::Value::from(path.clone()
-                    .to_str()
-                    .ok_or(DataSourceDefinitionLoaderError::InvalidPath(path))?),
+                serde_yaml::Value::from(path.to_str().ok_or(
+                    DataSourceDefinitionLoaderError::InvalidPath(path.to_owned()),
+                )?),
             );
         }
 
         // Parse the YAML data into a DataSourceDefinition
-        serde_yaml::from_value(raw).map_err(DataSourceDefinitionLoaderError::from)
+        Ok(serde_yaml::from_value(raw)?)
     }
 }
