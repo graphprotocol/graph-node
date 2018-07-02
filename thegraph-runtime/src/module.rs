@@ -20,6 +20,7 @@ use thegraph::prelude::*;
 use asc_abi::asc_ptr::*;
 use asc_abi::class::*;
 use asc_abi::*;
+use hex;
 
 /// AssemblyScript-compatible WASM memory heap.
 #[derive(Clone)]
@@ -64,6 +65,7 @@ const DATABASE_UPDATE_FUNC_INDEX: usize = 2;
 const DATABASE_REMOVE_FUNC_INDEX: usize = 3;
 const ETHEREUM_CALL_FUNC_INDEX: usize = 4;
 const TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX: usize = 5;
+const TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX: usize = 6;
 
 pub struct WasmiModuleConfig<T> {
     pub data_source_id: String,
@@ -291,6 +293,21 @@ where
         let trimmed_s = s.trim_right_matches('\u{0000}');
         Ok(Some(RuntimeValue::from(self.heap.asc_new(trimmed_s))))
     }
+
+    /// Converts bytes to a hex string.
+    /// References:
+    /// https://godoc.org/github.com/ethereum/go-ethereum/common/hexutil#hdr-Encoding_Rules
+    /// https://github.com/ethereum/web3.js/blob/f98fe1462625a6c865125fecc9cb6b414f0a5e83/packages/web3-utils/src/utils.js#L283
+    ///
+    /// function typeConversions.bytesToHex(bytes: Bytes): string
+    fn bytes_to_hex(&self, bytes_ptr: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
+        let bytes: Vec<u8> = self.heap.asc_get(bytes_ptr);
+        // Even an empty string must be prefixed with `0x`.
+        // Encodes each byte as a two hex digits.
+        let hex_string = format!("0x{}", hex::encode(bytes));
+        let hex_string_obj = self.heap.asc_new(hex_string.as_str());
+        Ok(Some(RuntimeValue::from(hex_string_obj)))
+    }
 }
 
 impl<T> Externals for HostExternals<T>
@@ -324,6 +341,7 @@ where
             TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX => {
                 self.convert_bytes_to_string(args.nth_checked(0)?)
             }
+            TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX => self.bytes_to_hex(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -411,9 +429,13 @@ pub struct TypeConversionModuleResolver;
 impl ModuleImportResolver for TypeConversionModuleResolver {
     fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
         Ok(match field_name {
-            "bytes32ToString" => FuncInstance::alloc_host(
+            "bytesToString" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX,
+            ),
+            "bytesToHex" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(
