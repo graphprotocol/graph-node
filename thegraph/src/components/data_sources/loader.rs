@@ -1,6 +1,6 @@
 use serde_yaml;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use data::data_sources::DataSourceDefinition;
 
@@ -22,8 +22,8 @@ impl From<serde_yaml::Error> for DataSourceDefinitionLoaderError {
 /// Common trait for components that are able to load `DataSourceDefinition`s.
 pub trait DataSourceDefinitionLoader {
     /// Loads a `DataSourceDefinition` from a local path.
-    fn load_from_path(
+    fn load_from_path<P: AsRef<Path>>(
         &self,
-        path: PathBuf,
+        path: P,
     ) -> Result<DataSourceDefinition, DataSourceDefinitionLoaderError>;
 }

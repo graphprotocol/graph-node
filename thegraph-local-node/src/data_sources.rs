@@ -2,7 +2,6 @@ use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use graphql_parser;
 use slog;
-use std::path::Path;
 use tokio_core::reactor::Handle;
 
 use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
@@ -24,7 +23,7 @@ impl LocalDataSourceProvider {
         // Load the data source definition
         let loader = thegraph_core::DataSourceDefinitionLoader::default();
         let data_source = loader
-            .load_from_path(Path::new(filename).to_owned())
+            .load_from_path(filename)
             .expect("Failed to load data source definition");
 
         // Parse the schema
