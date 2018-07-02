@@ -170,7 +170,7 @@ impl<T> HostExternals<T>
 where
     T: EthereumAdapter,
 {
-    /// function create(entity: string, id: string, data: Entity): void
+    /// function database.create(entity: string, id: string, data: Entity): void
     fn database_create(
         &self,
         entity_ptr: AscPtr<AscString>,
@@ -181,10 +181,7 @@ where
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
 
-        let store_key = StoreKey {
-            entity,
-            id,
-        };
+        let store_key = StoreKey { entity, id };
 
         let entity_data = Entity::from(data);
 
@@ -208,7 +205,7 @@ where
         Ok(None)
     }
 
-    /// function update(entity: string, id: string, data: Entity): void
+    /// function database.update(entity: string, id: string, data: Entity): void
     fn database_update(
         &self,
         entity_ptr: AscPtr<AscString>,
@@ -246,7 +243,7 @@ where
         Ok(None)
     }
 
-    /// function remove(entity: string, id: string): void
+    /// function database.remove(entity: string, id: string): void
     fn database_remove(
         &self,
         entity_ptr: AscPtr<AscString>,
