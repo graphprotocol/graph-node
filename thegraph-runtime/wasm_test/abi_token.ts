@@ -1,15 +1,15 @@
 import "allocator/arena";
 
-export { allocate_memory, free_memory };
+export { allocate_memory };
 
 // Sequence of 20 `u8`s.
-type Address = ArrayBuffer;
+type Address = Uint8Array;
 
 // Sequences of `u8`s.
-type Bytes = ArrayBuffer;
+type Bytes = Uint8Array;
 
 // Sequence of 4 `u64`s.
-type Int = ArrayBuffer;
+type Int = Uint64Array;
 
 enum TokenKind {
     ADDRESS,
