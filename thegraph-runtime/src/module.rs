@@ -15,6 +15,7 @@ use wasmi::{
 use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
 use thegraph::components::store::StoreKey;
+use thegraph::data::data_sources::DataSet;
 use thegraph::prelude::*;
 
 use asc_abi::asc_ptr::*;
@@ -68,7 +69,8 @@ const TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX: usize = 5;
 const TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX: usize = 6;
 
 pub struct WasmiModuleConfig<T> {
-    pub data_source_id: String,
+    pub data_source: DataSourceDefinition,
+    pub data_set: DataSet,
     pub runtime: Handle,
     pub event_sink: Sender<RuntimeHostEvent>,
     pub ethereum_adapter: Arc<Mutex<T>>,
@@ -124,7 +126,8 @@ where
 
         // Create new instance of externally hosted functions invoker
         let mut externals = HostExternals {
-            data_source_id: config.data_source_id.clone(),
+            data_source: config.data_source,
+            data_set: config.data_set,
             logger: logger.clone(),
             runtime: config.runtime.clone(),
             event_sink: config.event_sink.clone(),
@@ -164,7 +167,8 @@ where
 pub struct HostExternals<T> {
     logger: Logger,
     runtime: Handle,
-    data_source_id: String,
+    data_source: DataSourceDefinition,
+    data_set: DataSet,
     event_sink: Sender<RuntimeHostEvent>,
     heap: WasmiAscHeap,
     _ethereum_adapter: Arc<Mutex<T>>,
@@ -195,7 +199,7 @@ where
             self.event_sink
                 .clone()
                 .send(RuntimeHostEvent::EntityCreated(
-                    self.data_source_id.clone(),
+                    self.data_source.id.clone(),
                     store_key,
                     entity_data,
                 ))
@@ -233,7 +237,7 @@ where
             self.event_sink
                 .clone()
                 .send(RuntimeHostEvent::EntityChanged(
-                    self.data_source_id.clone(),
+                    self.data_source.id.clone(),
                     store_key,
                     entity_data,
                 ))
@@ -267,7 +271,7 @@ where
             self.event_sink
                 .clone()
                 .send(RuntimeHostEvent::EntityRemoved(
-                    self.data_source_id.clone(),
+                    self.data_source.id.clone(),
                     store_key,
                 ))
                 .map_err(move |e| {
@@ -463,6 +467,7 @@ mod tests {
     use thegraph::components::data_sources::*;
     use thegraph::components::ethereum::*;
     use thegraph::components::store::*;
+    use thegraph::data::data_sources::*;
     use thegraph::prelude::*;
     use thegraph::util;
 
@@ -517,7 +522,34 @@ mod tests {
             path,
             &logger,
             WasmiModuleConfig {
-                data_source_id: String::from("example data source"),
+                data_source: DataSourceDefinition {
+                    id: String::from("example data source"),
+                    location: String::from("/path/to/example-data-source.yaml"),
+                    spec_version: String::from("0.1.0"),
+                    schema: String::from("type Foo {}"),
+                    datasets: vec![],
+                },
+                data_set: DataSet {
+                    data: Data {
+                        kind: String::from("ethereum/contract"),
+                        name: String::from("example data set"),
+                        address: String::from("0123123123"),
+                        structure: DataStructure {
+                            abi: String::from("123123"),
+                        },
+                    },
+                    mapping: Mapping {
+                        kind: String::from("ethereum/events"),
+                        api_version: String::from("0.1.0"),
+                        language: String::from("wasm/assemblyscript"),
+                        entities: vec![],
+                        abis: vec![],
+                        event_handlers: vec![],
+                        source: Location {
+                            path: PathBuf::from("/path/to/mapping.wasm"),
+                        },
+                    },
+                },
                 runtime: core.handle(),
                 event_sink: sender,
                 ethereum_adapter: mock_ethereum_adapter,

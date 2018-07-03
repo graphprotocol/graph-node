@@ -82,17 +82,18 @@ impl RuntimeHost {
         // Create channel for sending runtime host events
         let (event_sender, event_receiver) = channel(100);
 
+        // Obtain the first data set
+        let data_set = config
+            .data_source_definition
+            .datasets
+            .first()
+            .unwrap()
+            .clone();
+
         // Obtain mapping location
-        let location = config.data_source_definition.resolve_path(
-            &config
-                .data_source_definition
-                .datasets
-                .first()
-                .unwrap()
-                .mapping
-                .source
-                .path,
-        );
+        let location = config
+            .data_source_definition
+            .resolve_path(&data_set.mapping.source.path);
 
         info!(logger, "Load WASM runtime from"; "file" => location.to_str());
 
@@ -101,7 +102,8 @@ impl RuntimeHost {
             location,
             &logger,
             WasmiModuleConfig {
-                data_source_id: String::from("TODO: DATA SOURCE ID"),
+                data_source: config.data_source_definition.clone(),
+                data_set,
                 runtime: runtime.clone(),
                 event_sink: event_sender,
                 ethereum_adapter: ethereum_adapter.clone(),
@@ -125,7 +127,7 @@ impl RuntimeHost {
     /// Subscribe to all smart contract events of the first data set
     /// in the data source definition.
     ///
-    /// NOTE: We'll add support for multiple datasets soon.
+    /// NOTE: We'll add support for multiple data sets soon.
     fn subscribe_to_events<T>(
         logger: Logger,
         runtime: Handle,
@@ -188,7 +190,7 @@ impl RuntimeHost {
                 .collect()
         };
 
-        // Protect the module for concurrent access
+        // Protect variables for concurrent access
         let protected_module = Arc::new(Mutex::new(module));
         let protected_dataset = Arc::new(dataset);
 
