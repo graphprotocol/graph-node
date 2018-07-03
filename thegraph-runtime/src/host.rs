@@ -11,9 +11,8 @@ use uuid::Uuid;
 use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
 use thegraph::data::data_sources::DataSet;
-use thegraph::prelude::{
-    RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
-};
+use thegraph::prelude::{RuntimeHost as RuntimeHostTrait,
+                        RuntimeHostBuilder as RuntimeHostBuilderTrait, *};
 use thegraph::util;
 
 use module::{WasmiModule, WasmiModuleConfig};
@@ -50,7 +49,11 @@ where
 {
     type Host = RuntimeHost;
 
-    fn build(&mut self, data_source_definition: DataSourceDefinition) -> Self::Host {
+    fn build(
+        &mut self,
+        data_source_definition: DataSourceDefinition,
+        data_set: DataSet,
+    ) -> Self::Host {
         RuntimeHost::new(
             &self.logger,
             self.runtime.clone(),

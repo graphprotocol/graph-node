@@ -1,4 +1,3 @@
-use components::store::StoreKey;
 use prelude::*;
 
 /// Type alias for data source IDs.
@@ -24,6 +23,10 @@ pub trait RuntimeHost: EventProducer<RuntimeHostEvent> {
 pub trait RuntimeHostBuilder {
     type Host: RuntimeHost;
 
-    /// Build a new runtime host
-    fn build(&mut self, data_source_definition: DataSourceDefinition) -> Self::Host;
+    /// Build a new runtime host for a dataset.
+    fn build(
+        &mut self,
+        data_source_definition: DataSourceDefinition,
+        data_set: DataSet,
+    ) -> Self::Host;
 }

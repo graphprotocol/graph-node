@@ -56,6 +56,33 @@ impl RuntimeManager where {
         S: Store + 'static,
         T: RuntimeHostBuilder + 'static,
     {
+        // Handles each incoming event from the data source.
+        fn handle_event<S: Store + 'static>(store: Arc<Mutex<S>>, event: RuntimeHostEvent) {
+            match event {
+                RuntimeHostEvent::EntityCreated(_data_source_id, store_key, entity) => {
+                    store
+                        .lock()
+                        .unwrap()
+                        .set(store_key, entity)
+                        .expect("Failed to create entity in the store");
+                }
+                RuntimeHostEvent::EntityChanged(_data_source_id, store_key, entity) => {
+                    store
+                        .lock()
+                        .unwrap()
+                        .set(store_key, entity)
+                        .expect("Failed to update entity in the store");
+                }
+                RuntimeHostEvent::EntityRemoved(_data_source_id, store_key) => {
+                    store
+                        .lock()
+                        .unwrap()
+                        .delete(store_key)
+                        .expect("Failed to delete entity from the store");
+                }
+            }
+        }
+
         let mut runtime_hosts = vec![];
 
         runtime.clone().spawn(receiver.for_each(move |event| {
@@ -64,61 +91,26 @@ impl RuntimeManager where {
                     info!(logger, "Data source created, host runtime";
                           "location" => &definition.location);
 
-                    // Create a new runtime host for the data source definition
-                    let mut new_host = host_builder.build(definition);
+                    // Create a new runtime host for each data set in the data source definition
+                    let mut new_hosts = definition
+                        .datasets
+                        .iter()
+                        .map(|d| host_builder.build(definition.clone(), d.clone()));
 
                     // Forward events from the runtime host to the store; this
                     // Tokio task will terminate when the corresponding data source
                     // is removed and the host and its event sender are dropped
-                    let store = store.clone();
-                    runtime
-                        .clone()
-                        .spawn(
-                            new_host
-                                .take_event_stream()
-                                .unwrap()
-                                .for_each(move |event| {
-                                    match event {
-                                        RuntimeHostEvent::EntityCreated(
-                                            _data_source_id,
-                                            store_key,
-                                            entity,
-                                        ) => {
-                                            store
-                                                .lock()
-                                                .unwrap()
-                                                .set(store_key, entity)
-                                                .expect("Failed to create entity in the store");
-                                        }
-                                        RuntimeHostEvent::EntityChanged(
-                                            _data_source_id,
-                                            store_key,
-                                            entity,
-                                        ) => {
-                                            store
-                                                .lock()
-                                                .unwrap()
-                                                .set(store_key, entity)
-                                                .expect("Failed to update entity in the store");
-                                        }
-                                        RuntimeHostEvent::EntityRemoved(
-                                            _data_source_id,
-                                            store_key,
-                                        ) => {
-                                            store
-                                                .lock()
-                                                .unwrap()
-                                                .delete(store_key)
-                                                .expect("Failed to delete entity from the store");
-                                        }
-                                    }
-
-                                    Ok(())
-                                }),
-                        );
-
-                    // Add the new host to the list of managed runtime hosts
-                    runtime_hosts.push(new_host);
+                    for mut new_host in new_hosts {
+                        let store = store.clone();
+                        runtime.spawn(new_host.take_event_stream().unwrap().for_each(
+                            move |event| {
+                                handle_event(store.clone(), event);
+                                Ok(())
+                            },
+                        ));
+                        // Add the new host to the list of managed runtime hosts
+                        runtime_hosts.push(new_host);
+                    }
                 }
                 DataSourceProviderEvent::DataSourceRemoved(ref definition) => {
                     // Destroy all runtime hosts for this data source; this will
