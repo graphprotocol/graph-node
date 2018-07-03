@@ -51,6 +51,7 @@ pub struct DataSet {
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct DataSourceDefinition {
+    pub id: String,
     pub location: String,
     #[serde(rename = "specVersion")]
     pub spec_version: String,
