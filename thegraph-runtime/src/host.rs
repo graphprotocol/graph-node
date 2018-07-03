@@ -156,7 +156,7 @@ impl RuntimeHost {
             .map(|entry| data_source.resolve_path(&entry.source.path))
             .expect("No ABI entry found for the main contract of the dataset");
         let contract_abi_file = fs::File::open(contract_abi_path)
-            .expect("Contract ABI file does not exist or could not be opend for reading");
+            .expect("Contract ABI file does not exist or could not be opened for reading");
         let contract = Contract::load(contract_abi_file).expect("Failed to parse contract ABI");
 
         // Prepare subscriptions for the events
