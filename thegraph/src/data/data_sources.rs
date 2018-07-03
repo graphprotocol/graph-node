@@ -1,16 +1,16 @@
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct Location {
     pub path: PathBuf,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct DataStructure {
     pub abi: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct Data {
     pub kind: String,
     pub name: String,
@@ -18,19 +18,19 @@ pub struct Data {
     pub structure: DataStructure,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct MappingABI {
     pub name: String,
     pub source: Location,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct MappingEventHandler {
     pub event: String,
     pub handler: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct Mapping {
     pub kind: String,
     #[serde(rename = "apiVersion")]
@@ -43,7 +43,7 @@ pub struct Mapping {
     pub source: Location,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct DataSet {
     pub data: Data,
     pub mapping: Mapping,
