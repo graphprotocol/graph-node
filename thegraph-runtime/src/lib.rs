@@ -10,6 +10,7 @@ extern crate thegraph;
 extern crate tokio_core;
 extern crate uuid;
 extern crate wasmi;
+extern crate web3;
 
 mod asc_abi;
 mod host;
