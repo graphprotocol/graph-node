@@ -102,15 +102,14 @@ fn main() {
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let protected_store = Arc::new(Mutex::new(store));
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
+
+    // Create Ethereum adapter
+    let (_transport_event_loop, transport) =
+        thegraph_ethereum::transports::http::Http::new(ethereum_rpc.as_str())
+            .expect("Failed to connect to Ethereum RPC endpoint");
     let ethereum_watcher = thegraph_ethereum::EthereumAdapter::new(
         core.handle(),
-        thegraph_ethereum::EthereumAdapterConfig {
-            transport: thegraph_ethereum::transports::http::Http::with_event_loop(
-                ethereum_rpc.as_str(),
-                &core.handle(),
-                10,
-            ).expect("Failed to connect to Ethereum RPC endpoint"),
-        },
+        thegraph_ethereum::EthereumAdapterConfig { transport },
     );
     let runtime_host_builder = WASMRuntimeHostBuilder::new(
         &logger,
