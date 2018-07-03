@@ -1,4 +1,5 @@
 extern crate clap;
+extern crate env_logger;
 extern crate futures;
 extern crate thegraph_local_node;
 #[macro_use]
@@ -32,6 +33,7 @@ use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
 use thegraph_local_node::LocalDataSourceProvider;
 
 fn main() {
+    env_logger::init();
     let mut core = Core::new().unwrap();
     let logger = logger();
 
