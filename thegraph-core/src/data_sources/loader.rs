@@ -2,8 +2,9 @@ use serde_yaml;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-use thegraph::components::data_sources::{DataSourceDefinitionLoader as LoaderTrait,
-                                         DataSourceDefinitionLoaderError};
+use thegraph::components::data_sources::{
+    DataSourceDefinitionLoader as LoaderTrait, DataSourceDefinitionLoaderError,
+};
 use thegraph::data::data_sources::*;
 
 #[derive(Default)]
@@ -61,6 +62,12 @@ impl LoaderTrait for DataSourceDefinitionLoader {
             raw_mapping.insert(
                 serde_yaml::Value::String(String::from("schema")),
                 serde_yaml::Value::String(schema),
+            );
+
+            // Inject the ID of the data source into the definition
+            raw_mapping.insert(
+                serde_yaml::Value::from("id"),
+                serde_yaml::Value::from("TODO figure out the data source ID"),
             );
 
             // Inject the location of the data source into the definition
