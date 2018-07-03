@@ -1718,6 +1718,7 @@ dependencies = [
  "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "wasmi 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "web3 0.3.0 (git+https://github.com/tomusdrw/rust-web3)",
 ]
 
 [[package]]
