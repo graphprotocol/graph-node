@@ -316,3 +316,14 @@ pub(crate) struct AscTypedMap<K, V> {
 impl<K, V> AscType for AscTypedMap<K, V> {}
 
 pub(crate) type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
+
+#[repr(C)]
+pub(crate) struct AscUnresolvedContractCall {
+    pub block_hash: AscPtr<AscH256>,
+    pub contract_name: AscPtr<AscString>,
+    pub contract_address: AscPtr<AscAddress>,
+    pub function_name: AscPtr<AscString>,
+    pub function_args: AscPtr<Array<AscPtr<AscEnum<TokenKind>>>>,
+}
+
+impl AscType for AscUnresolvedContractCall {}

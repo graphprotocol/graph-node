@@ -17,3 +17,12 @@ mod module;
 mod to_from;
 
 pub use self::host::{RuntimeHost, RuntimeHostBuilder, RuntimeHostConfig};
+
+#[derive(Clone, Debug)]
+pub(crate) struct UnresolvedContractCall {
+    pub block_hash: ethereum_types::H256,
+    pub contract_name: String,
+    pub contract_address: ethereum_types::Address,
+    pub function_name: String,
+    pub function_args: Vec<ethabi::Token>,
+}

@@ -7,6 +7,8 @@ use thegraph::data::store;
 use asc_abi::class::*;
 use asc_abi::{AscHeap, AscPtr, FromAscObj, ToAscObj};
 
+use UnresolvedContractCall;
+
 impl ToAscObj<ArrayBuffer<u8>> for ethereum_types::H160 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u8> {
         self.0.to_asc_obj(heap)
@@ -178,6 +180,18 @@ impl ToAscObj<AscEthereumEvent> for EthereumEvent {
             event_signature: heap.asc_new(&self.event_signature),
             block_hash: heap.asc_new(&self.block_hash),
             params: heap.asc_new(self.params.as_slice()),
+        }
+    }
+}
+
+impl FromAscObj<AscUnresolvedContractCall> for UnresolvedContractCall {
+    fn from_asc_obj<H: AscHeap>(asc_call: AscUnresolvedContractCall, heap: &H) -> Self {
+        UnresolvedContractCall {
+            block_hash: heap.asc_get(asc_call.block_hash),
+            contract_name: heap.asc_get(asc_call.contract_name),
+            contract_address: heap.asc_get(asc_call.contract_address),
+            function_name: heap.asc_get(asc_call.function_name),
+            function_args: heap.asc_get(asc_call.function_args),
         }
     }
 }
