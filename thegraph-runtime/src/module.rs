@@ -3,6 +3,7 @@ use futures::sync::mpsc::Sender;
 use parity_wasm;
 use slog::Logger;
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
@@ -11,6 +12,7 @@ use wasmi::{
     ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue,
     Signature, Trap, ValueType,
 };
+use web3::types::BlockId;
 
 use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
@@ -18,6 +20,7 @@ use thegraph::components::store::StoreKey;
 use thegraph::data::data_sources::DataSet;
 use thegraph::prelude::*;
 
+use super::UnresolvedContractCall;
 use asc_abi::asc_ptr::*;
 use asc_abi::class::*;
 use asc_abi::*;
@@ -132,7 +135,7 @@ where
             runtime: config.runtime.clone(),
             event_sink: config.event_sink.clone(),
             heap: heap.clone(),
-            _ethereum_adapter: config.ethereum_adapter.clone(),
+            ethereum_adapter: config.ethereum_adapter.clone(),
         };
 
         let module = module
@@ -171,7 +174,7 @@ pub struct HostExternals<T> {
     data_set: DataSet,
     event_sink: Sender<RuntimeHostEvent>,
     heap: WasmiAscHeap,
-    _ethereum_adapter: Arc<Mutex<T>>,
+    ethereum_adapter: Arc<Mutex<T>>,
 }
 
 impl<T> HostExternals<T>
@@ -284,6 +287,67 @@ where
         Ok(None)
     }
 
+    /// function ethereum.call(call: SmartContractCall): Array<Token>
+    fn ethereum_call(
+        &self,
+        call_ptr: AscPtr<AscUnresolvedContractCall>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let unresolved_call: UnresolvedContractCall = self.heap.asc_get(call_ptr);
+
+        info!(self.logger, "Call smart contract";
+              "contract" => &unresolved_call.contract_name,
+              "function" => &unresolved_call.function_name);
+
+        // Obtain the path to the contract ABI
+        let abi_path = self.data_set
+            .mapping
+            .abis
+            .iter()
+            .find(|abi| abi.name == unresolved_call.contract_name)
+            .map(|entry| self.data_source.resolve_path(&entry.source.path))
+            .expect(
+                format!(
+                    "Unknown contract \"{}\" called from WASM runtime",
+                    unresolved_call.contract_name
+                ).as_str(),
+            );
+        let abi_file = fs::File::open(abi_path)
+            .expect("Contract ABI file does not exist or could not be opened for reading");
+        let contract = Contract::load(abi_file).expect("Failed to parse contract ABI");
+
+        let function = contract
+            .function(unresolved_call.function_name.as_str())
+            .expect(
+                format!(
+                    "Unknown function \"{}::{}\" called from WASM runtime",
+                    unresolved_call.contract_name, unresolved_call.function_name
+                ).as_str(),
+            );
+
+        let call = EthereumContractCall {
+            address: unresolved_call.contract_address,
+            block_id: BlockId::Hash(unresolved_call.block_hash),
+            function: function.clone(),
+            args: unresolved_call.function_args,
+        };
+
+        let result = self.ethereum_adapter
+            .lock()
+            .unwrap()
+            .contract_call(call)
+            .wait()
+            .expect(
+                format!(
+                    "Failed to call function \"{}::{}\"",
+                    unresolved_call.contract_name, unresolved_call.function_name
+                ).as_str(),
+            );
+
+        debug!(self.logger, "  Result: {:?}", result);
+
+        Ok(Some(RuntimeValue::from(self.heap.asc_new(&*result))))
+    }
+
     /// function typeConversions.bytesToString(bytes: Bytes): string
     fn convert_bytes_to_string(
         &self,
@@ -337,11 +401,7 @@ where
             DATABASE_REMOVE_FUNC_INDEX => {
                 self.database_remove(args.nth_checked(0)?, args.nth_checked(1)?)
             }
-            ETHEREUM_CALL_FUNC_INDEX => {
-                let _request_ptr: u32 = args.nth_checked(0)?;
-                // TODO: self.ethereum_adapter.lock().unwrap().contract_call();
-                Ok(None)
-            }
+            ETHEREUM_CALL_FUNC_INDEX => self.ethereum_call(args.nth_checked(0)?),
             TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX => {
                 self.convert_bytes_to_string(args.nth_checked(0)?)
             }
@@ -486,7 +546,7 @@ mod tests {
 
         fn contract_call(
             &mut self,
-            _request: EthereumContractCallRequest,
+            _call: EthereumContractCall,
         ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
             unimplemented!()
         }
