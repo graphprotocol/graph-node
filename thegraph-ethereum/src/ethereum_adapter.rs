@@ -1,12 +1,14 @@
 use ethabi::{RawLog, Token};
 use ethereum_types::H256;
+use futures::future;
 use futures::prelude::*;
 use futures::stream::iter_ok;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio_core::reactor::Handle;
 use web3;
 use web3::api::CreateFilter;
-use web3::api::Web3;
+use web3::api::{Eth, Web3};
 use web3::helpers::CallResult;
 use web3::types::*;
 
@@ -17,14 +19,14 @@ pub struct EthereumAdapterConfig<T: web3::Transport> {
 }
 
 pub struct EthereumAdapter<T: web3::Transport> {
-    eth_client: Web3<T>,
+    eth_client: Arc<Web3<T>>,
     _runtime: Handle,
 }
 
 impl<T: web3::Transport> EthereumAdapter<T> {
     pub fn new(runtime: Handle, config: EthereumAdapterConfig<T>) -> Self {
         EthereumAdapter {
-            eth_client: Web3::new(config.transport),
+            eth_client: Arc::new(Web3::new(config.transport)),
             _runtime: runtime,
         }
     }
@@ -47,8 +49,12 @@ impl<T: web3::Transport> EthereumAdapter<T> {
         self.eth_client.eth_filter().create_logs_filter(eth_filter)
     }
 
-    pub fn call(
-        &self,
+    pub fn block(&self, block_id: BlockId) -> CallResult<Block<H256>, T::Out> {
+        self.eth_client.eth().block(block_id)
+    }
+
+    fn call(
+        eth: Eth<T>,
         contract_address: Address,
         call_data: Bytes,
         block_number: Option<BlockNumber>,
@@ -61,33 +67,42 @@ impl<T: web3::Transport> EthereumAdapter<T> {
             value: None,
             data: Some(call_data),
         };
-        self.eth_client.eth().call(req, block_number)
+        eth.call(req, block_number)
     }
 }
 
 impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
-    fn contract_state(
-        &mut self,
-        _request: EthereumContractStateRequest,
-    ) -> Result<EthereumContractState, EthereumContractStateError> {
-        Ok(EthereumContractState {
-            address: Address::new(),
-            block_hash: H256::new(),
-            data: Vec::new(),
-        })
-    }
-
     fn contract_call(
         &mut self,
-        request: EthereumContractCallRequest,
+        call: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
-        let call_data = request.function.encode_input(&request.args).unwrap();
+        // Obtain a handle on the Ethereum client
+        let eth_client = self.eth_client.clone();
+
+        // Prepare for the function call, encoding the call parameters according
+        // to the ABI
+        let call_address = call.address;
+        let call_data = call.function.encode_input(&call.args).unwrap();
+
         Box::new(
-            self.call(request.address, Bytes(call_data), request.block_number)
+            // Resolve the block ID into a block number
+            self.block(call.block_id.clone())
                 .map_err(EthereumContractCallError::from)
+                .and_then(move |block| {
+                    // Make the actual function call
+                    Self::call(
+                        eth_client.eth(),
+                        call_address,
+                        Bytes(call_data),
+                        block
+                            .number
+                            .map(|number| number.as_u64())
+                            .map(BlockNumber::Number),
+                    ).map_err(EthereumContractCallError::from)
+                })
+                // Decode the return values according to the ABI
                 .and_then(move |output| {
-                    request
-                        .function
+                    call.function
                         .decode_output(&output.0)
                         .map_err(EthereumContractCallError::from)
                 }),
