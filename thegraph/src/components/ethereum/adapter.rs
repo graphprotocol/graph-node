@@ -4,7 +4,7 @@ use futures::{Future, Stream};
 use std::error::Error;
 use std::fmt;
 use web3::error::Error as Web3Error;
-use web3::types::BlockNumber;
+use web3::types::{BlockId, BlockNumber};
 
 /// A request for the state of a contract at a specific block hash and address.
 pub struct EthereumContractStateRequest {
@@ -24,9 +24,10 @@ pub struct EthereumContractState {
     pub data: Bytes,
 }
 
-pub struct EthereumContractCallRequest {
+#[derive(Clone, Debug)]
+pub struct EthereumContractCall {
     pub address: Address,
-    pub block_number: Option<BlockNumber>,
+    pub block_id: BlockId,
     pub function: Function,
     pub args: Vec<Token>,
 }
@@ -108,15 +109,10 @@ pub struct EthereumEvent {
 /// Implementations may be implemented against an in-process Ethereum node
 /// or a remote node over RPC.
 pub trait EthereumAdapter {
-    /// Obtain the state of a smart contract.
-    fn contract_state(
-        &mut self,
-        request: EthereumContractStateRequest,
-    ) -> Result<EthereumContractState, EthereumContractStateError>;
-
+    /// Call the function of a smart contract.
     fn contract_call(
         &mut self,
-        request: EthereumContractCallRequest,
+        call: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>>;
 
     /// Subscribe to an event of a smart contract.
