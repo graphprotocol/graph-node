@@ -31,6 +31,12 @@ impl FromAscObj<Uint8Array> for ethereum_types::H160 {
     }
 }
 
+impl FromAscObj<Uint8Array> for ethereum_types::H256 {
+    fn from_asc_obj<H: AscHeap>(typed_array: Uint8Array, heap: &H) -> Self {
+        ethereum_types::H256(<[u8; 32]>::from_asc_obj(typed_array, heap))
+    }
+}
+
 impl ToAscObj<ArrayBuffer<u8>> for ethereum_types::H256 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u8> {
         self.0.to_asc_obj(heap)
