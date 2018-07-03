@@ -21,6 +21,14 @@ impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for Vec<T> {
     }
 }
 
+impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for [T; 32] {
+    fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<T>, _: &H) -> Self {
+        let mut array: [T; 32] = [T::default(); 32];
+        array.copy_from_slice(&array_buffer.content);
+        array
+    }
+}
+
 impl<T: AscValue> FromAscObj<ArrayBuffer<T>> for [T; 20] {
     fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<T>, _: &H) -> Self {
         let mut array: [T; 20] = [T::default(); 20];
@@ -46,6 +54,14 @@ impl<T: AscValue> ToAscObj<TypedArray<T>> for [T] {
 impl<T: AscValue> FromAscObj<TypedArray<T>> for Vec<T> {
     fn from_asc_obj<H: AscHeap>(typed_array: TypedArray<T>, heap: &H) -> Self {
         typed_array.get_buffer(heap).content.into()
+    }
+}
+
+impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 32] {
+    fn from_asc_obj<H: AscHeap>(typed_array: TypedArray<T>, heap: &H) -> Self {
+        let mut array: [T; 32] = [T::default(); 32];
+        array.copy_from_slice(&typed_array.get_buffer(heap).content);
+        array
     }
 }
 
