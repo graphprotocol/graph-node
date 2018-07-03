@@ -39,6 +39,7 @@ impl MockDataSourceProvider {
         info!(self.logger, "Generate mock events");
 
         let mock_data_source = DataSourceDefinition {
+            id: String::from("mock data source"),
             location: String::from("/tmp/example-data-source.yaml"),
             spec_version: String::from("0.1"),
             schema: String::from("example schema"),
