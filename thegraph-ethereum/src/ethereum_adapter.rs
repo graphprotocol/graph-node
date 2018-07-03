@@ -49,8 +49,8 @@ impl<T: web3::Transport> EthereumAdapter<T> {
         self.eth_client.eth_filter().create_logs_filter(eth_filter)
     }
 
-    pub fn block(&self, block_id: BlockId) -> CallResult<Block<H256>, T::Out> {
-        self.eth_client.eth().block(block_id)
+    pub fn block(eth: Eth<T>, block_id: BlockId) -> CallResult<Block<H256>, T::Out> {
+        eth.block(block_id)
     }
 
     fn call(
@@ -86,7 +86,7 @@ impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
 
         Box::new(
             // Resolve the block ID into a block number
-            self.block(call.block_id.clone())
+            Self::block(eth_client.eth(), call.block_id.clone())
                 .map_err(EthereumContractCallError::from)
                 .and_then(move |block| {
                     // Make the actual function call
