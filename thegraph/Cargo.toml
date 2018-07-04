@@ -16,4 +16,4 @@ slog-term = "2.4.0"
 tiny-keccak = "1.0"
 tokio = "0.1.6"
 tokio-core = "0.1.17"
-web3 = { git = "https://github.com/jannis/rust-web3" }
+web3 = { git = "https://github.com/jannis/rust-web3", rev = "6ebcb64450fc7edb5074fe0bdf3fe7c431973fa2" }

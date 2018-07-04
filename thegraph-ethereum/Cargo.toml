@@ -9,7 +9,7 @@ futures = "0.1.21"
 serde_json = "1.0"
 thegraph = { path = "../thegraph" }
 tokio-core = "0.1.6"
-web3 = { git = "https://github.com/jannis/rust-web3" }
+web3 = { git = "https://github.com/jannis/rust-web3", rev = "6ebcb64450fc7edb5074fe0bdf3fe7c431973fa2" }
 
 [dev-dependencies]
 jsonrpc-core = "8.0.1"
