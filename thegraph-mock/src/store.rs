@@ -6,7 +6,6 @@ use tokio_core::reactor::Handle;
 use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::*;
 use thegraph::prelude::*;
-use thegraph::util::stream::StreamError;
 
 /// A mock `Store`.
 pub struct MockStore {
@@ -121,5 +120,35 @@ impl Store for MockStore {
 
         self.generate_mock_events();
         result
+    }
+}
+
+pub struct FakeStore;
+
+impl BasicStore for FakeStore {
+    fn get(&self, _: StoreKey) -> Result<Entity, ()> {
+        panic!("called FakeStore")
+    }
+
+    fn set(&mut self, _: StoreKey, _: Entity) -> Result<(), ()> {
+        panic!("called FakeStore")
+    }
+
+    fn delete(&mut self, _: StoreKey) -> Result<(), ()> {
+        panic!("called FakeStore")
+    }
+
+    fn find(&self, _: StoreQuery) -> Result<Vec<Entity>, ()> {
+        panic!("called FakeStore")
+    }
+}
+
+impl Store for FakeStore {
+    fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
+        panic!("called FakeStore")
+    }
+
+    fn event_stream(&mut self) -> Result<Receiver<StoreEvent>, StreamError> {
+        panic!("called FakeStore")
     }
 }

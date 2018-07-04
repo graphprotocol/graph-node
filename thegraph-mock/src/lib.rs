@@ -16,4 +16,4 @@ pub use self::data_sources::MockDataSourceProvider;
 pub use self::query::MockQueryRunner;
 pub use self::schema::MockSchemaProvider;
 pub use self::server::MockGraphQLServer;
-pub use self::store::MockStore;
+pub use self::store::{FakeStore, MockStore};

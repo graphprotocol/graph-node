@@ -33,17 +33,20 @@ pub mod util;
 /// ```
 pub mod prelude {
     pub use components::data_sources::{DataSourceDefinitionLoader, DataSourceProvider,
-                                       RuntimeHost, RuntimeHostBuilder, RuntimeManager};
+                                       DataSourceProviderEvent, RuntimeHost, RuntimeHostBuilder,
+                                       RuntimeHostEvent, RuntimeManager};
     pub use components::ethereum::EthereumAdapter;
     pub use components::query::QueryRunner;
-    pub use components::schema::SchemaProvider;
+    pub use components::schema::{SchemaProvider, SchemaProviderEvent};
     pub use components::server::GraphQLServer;
-    pub use components::store::{BasicStore, Store, StoreFilter, StoreOrder, StoreQuery, StoreRange};
+    pub use components::store::{BasicStore, Store, StoreEvent, StoreFilter, StoreKey, StoreOrder,
+                                StoreQuery, StoreRange};
     pub use components::{EventConsumer, EventProducer};
 
-    pub use data::data_sources::DataSourceDefinition;
+    pub use data::data_sources::{DataSet, DataSourceDefinition};
     pub use data::query::{Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue,
                           QueryVariables};
     pub use data::schema::Schema;
     pub use data::store::{Attribute, Entity, Value};
+    pub use util::stream::StreamError;
 }
