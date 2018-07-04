@@ -17,8 +17,10 @@ use thegraph::util;
 
 use module::{WasmiModule, WasmiModuleConfig};
 
+#[derive(Clone)]
 pub struct RuntimeHostConfig {
-    pub data_source_definition: DataSourceDefinition,
+    data_source_definition: DataSourceDefinition,
+    data_set: DataSet,
 }
 
 pub struct RuntimeHostBuilder<T>
@@ -60,6 +62,7 @@ where
             self.ethereum_adapter.clone(),
             RuntimeHostConfig {
                 data_source_definition,
+                data_set,
             },
         )
     }
@@ -85,18 +88,10 @@ impl RuntimeHost {
         // Create channel for sending runtime host events
         let (event_sender, event_receiver) = channel(100);
 
-        // Obtain the first data set
-        let data_set = config
-            .data_source_definition
-            .datasets
-            .first()
-            .unwrap()
-            .clone();
-
         // Obtain mapping location
         let location = config
             .data_source_definition
-            .resolve_path(&data_set.mapping.source.path);
+            .resolve_path(&config.data_set.mapping.source.path);
 
         info!(logger, "Load WASM runtime from"; "file" => location.to_str());
 
@@ -106,7 +101,7 @@ impl RuntimeHost {
             &logger,
             WasmiModuleConfig {
                 data_source: config.data_source_definition.clone(),
-                data_set,
+                data_set: config.data_set.clone(),
                 runtime: runtime.clone(),
                 event_sink: event_sender,
                 ethereum_adapter: ethereum_adapter.clone(),
@@ -116,25 +111,25 @@ impl RuntimeHost {
         Self::subscribe_to_events(
             logger,
             runtime,
-            config.data_source_definition.clone(),
+            &config.data_source_definition,
+            config.data_set.clone(),
             module,
             ethereum_adapter,
         );
 
         RuntimeHost {
-            config: config,
+            config,
             output: Some(event_receiver),
         }
     }
 
-    /// Subscribe to all smart contract events of the first data set
-    /// in the data source definition.
-    ///
-    /// NOTE: We'll add support for multiple data sets soon.
+    /// Subscribe to all smart contract events of `data_set` contained in
+    /// `data_source`.
     fn subscribe_to_events<T>(
         logger: Logger,
         runtime: Handle,
-        data_source: DataSourceDefinition,
+        data_source: &DataSourceDefinition,
+        data_set: DataSet,
         module: WasmiModule<T>,
         ethereum_adapter: Arc<Mutex<T>>,
     ) where
@@ -142,22 +137,16 @@ impl RuntimeHost {
     {
         info!(logger, "Subscribe to events");
 
-        let dataset = data_source
-            .datasets
-            .first()
-            .expect("Data source must contain at least one data set")
-            .clone();
-
         // Obtain the contract address of the first data set
-        let address = Address::from_str(dataset.data.address.as_str())
+        let address = Address::from_str(data_set.data.address.as_str())
             .expect("Failed to parse contract address");
 
         // Load the main dataset contract
-        let contract_abi_path = dataset
+        let contract_abi_path = data_set
             .mapping
             .abis
             .iter()
-            .find(|abi| abi.name == dataset.data.structure.abi)
+            .find(|abi| abi.name == data_set.data.structure.abi)
             .map(|entry| data_source.resolve_path(&entry.source.path))
             .expect("No ABI entry found for the main contract of the dataset");
         let contract_abi_file = fs::File::open(contract_abi_path)
@@ -167,7 +156,7 @@ impl RuntimeHost {
         // Prepare subscriptions for the events
         let subscription_results: Vec<EthereumEventSubscription> = {
             // Prepare subscriptions for all events
-            dataset
+            data_set
                 .mapping
                 .event_handlers
                 .iter()
@@ -195,7 +184,7 @@ impl RuntimeHost {
 
         // Protect variables for concurrent access
         let protected_module = Arc::new(Mutex::new(module));
-        let protected_dataset = Arc::new(dataset);
+        let protected_data_set = Arc::new(data_set);
 
         // Subscribe to the events now
         for subscription in subscription_results.into_iter() {
@@ -204,7 +193,7 @@ impl RuntimeHost {
                 runtime.clone(),
                 protected_module.clone(),
                 ethereum_adapter.clone(),
-                protected_dataset.clone(),
+                protected_data_set.clone(),
                 subscription,
             );
         }
