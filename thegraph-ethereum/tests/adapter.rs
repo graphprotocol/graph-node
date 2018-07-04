@@ -1,35 +1,60 @@
 extern crate ethabi;
 extern crate ethereum_types;
 extern crate futures;
+extern crate jsonrpc_core;
 extern crate serde_json;
 extern crate thegraph;
+extern crate thegraph_ethereum;
 extern crate tokio_core;
 extern crate web3;
-extern crate thegraph_ethereum;
-extern crate jsonrpc_core;
 
+use ethabi::{Function, Param, ParamType, Token};
 use futures::prelude::*;
 use futures::{failed, finished};
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::rc::Rc;
+use std::str::FromStr;
+use thegraph::components::ethereum::EthereumContractCall;
+use thegraph::prelude::EthereumAdapter as EthereumAdapterTrait;
+use thegraph_ethereum::{EthereumAdapter, EthereumAdapterConfig};
+use tokio_core::reactor::Core;
 use web3::error::{Error, ErrorKind};
 use web3::helpers::*;
-use web3::{RequestId, Transport};
-use thegraph_ethereum::{EthereumAdapter, EthereumAdapterConfig};
-use ethabi::{Function, Param, ParamType, Token};
-use std::str::FromStr;
-use thegraph::components::ethereum::EthereumContractCallRequest;
-use thegraph::prelude::EthereumAdapter as EthereumAdapterTrait;
-use tokio_core::reactor::Core;
 use web3::types::*;
+use web3::{RequestId, Transport};
 
 pub type Result<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
+
+fn mock_block() -> Block<U256> {
+    Block {
+        hash: Some(H256::default()),
+        parent_hash: H256::default(),
+        uncles_hash: H256::default(),
+        author: H160::default(),
+        state_root: H256::default(),
+        transactions_root: H256::default(),
+        receipts_root: H256::default(),
+        number: Some(U128::from(1)),
+        gas_used: U256::from(100),
+        gas_limit: U256::from(1000),
+        extra_data: Bytes(String::from("0x00").into_bytes()),
+        logs_bloom: H2048::default(),
+        timestamp: U256::from(100000),
+        difficulty: U256::from(10),
+        total_difficulty: U256::from(100),
+        seal_fields: vec![],
+        uncles: Vec::<H256>::default(),
+        transactions: Vec::<U256>::default(),
+        size: Some(U256::from(10000)),
+    }
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct TestTransport {
     asserted: usize,
-    requests: RefCell<Vec<(String, Vec<jsonrpc_core::Value>)>>,
-    response: RefCell<VecDeque<jsonrpc_core::Value>>,
+    requests: Rc<RefCell<Vec<(String, Vec<jsonrpc_core::Value>)>>>,
+    response: Rc<RefCell<VecDeque<jsonrpc_core::Value>>>,
 }
 
 impl Transport for TestTransport {
@@ -92,23 +117,18 @@ impl TestTransport {
     }
 }
 
-
-
 #[test]
 fn contract_call() {
     let mut core = Core::new().unwrap();
     let mut transport = TestTransport::default();
-    transport.set_response(jsonrpc_core::Value::String(format!(
+
+    transport.add_response(serde_json::to_value(mock_block()).unwrap());
+    transport.add_response(jsonrpc_core::Value::String(format!(
         "{:?}",
         H256::from(100000)
     )));
 
-    let mut adapter = EthereumAdapter::new(
-        core.handle(),
-        EthereumAdapterConfig {
-            transport: transport,
-        },
-    );
+    let mut adapter = EthereumAdapter::new(core.handle(), EthereumAdapterConfig { transport });
     let balance_of = Function {
         name: "balanceOf".to_owned(),
         inputs: vec![Param {
@@ -124,19 +144,14 @@ fn contract_call() {
     let function = Function::from(balance_of);
     let gnt_addr = Address::from_str("eF7FfF64389B814A946f3E92105513705CA6B990").unwrap();
     let holder_addr = Address::from_str("00d04c4b12C4686305bb4F4fC93487CdFBa62580").unwrap();
-    let call_request = EthereumContractCallRequest {
+    let call = EthereumContractCall {
         address: gnt_addr,
-        block_number: None,
+        block_id: BlockId::Number(BlockNumber::Latest),
         function: function,
         args: vec![Token::Address(holder_addr)],
     };
-    let work = adapter.contract_call(call_request);
+    let work = adapter.contract_call(call);
     let call_result = core.run(work).unwrap();
 
     assert_eq!(call_result[0], Token::Uint(U256::from(100000)));
-
-    println!(
-        "Result from calling GNT.balanceOf(0x00d04c4b12C4686305bb4F4fC93487CdFBa62580): {:?}",
-        call_result[0]
-    );
 }
