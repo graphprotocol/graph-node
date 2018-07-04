@@ -1,6 +1,5 @@
 use ethabi::{RawLog, Token};
 use ethereum_types::H256;
-use futures::future;
 use futures::prelude::*;
 use futures::stream::iter_ok;
 use std::sync::Arc;
