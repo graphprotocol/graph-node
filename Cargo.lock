@@ -1638,7 +1638,7 @@ dependencies = [
  "tiny-keccak 1.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
- "web3 0.3.0 (git+https://github.com/jannis/rust-web3)",
+ "web3 0.3.0 (git+https://github.com/jannis/rust-web3?rev=6ebcb64450fc7edb5074fe0bdf3fe7c431973fa2)",
 ]
 
 [[package]]
@@ -1667,7 +1667,7 @@ dependencies = [
  "serde_json 1.0.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "thegraph 0.1.0",
  "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
- "web3 0.3.0 (git+https://github.com/jannis/rust-web3)",
+ "web3 0.3.0 (git+https://github.com/jannis/rust-web3?rev=6ebcb64450fc7edb5074fe0bdf3fe7c431973fa2)",
 ]
 
 [[package]]
@@ -1752,7 +1752,7 @@ dependencies = [
  "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "wasmi 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "web3 0.3.0 (git+https://github.com/jannis/rust-web3)",
+ "web3 0.3.0 (git+https://github.com/jannis/rust-web3?rev=6ebcb64450fc7edb5074fe0bdf3fe7c431973fa2)",
 ]
 
 [[package]]
@@ -2159,7 +2159,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.3.0"
-source = "git+https://github.com/jannis/rust-web3#7b3cbc91e9291a96d32aa8198b24037df5902407"
+source = "git+https://github.com/jannis/rust-web3?rev=6ebcb64450fc7edb5074fe0bdf3fe7c431973fa2#6ebcb64450fc7edb5074fe0bdf3fe7c431973fa2"
 dependencies = [
  "arrayvec 0.4.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "error-chain 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2507,7 +2507,7 @@ dependencies = [
 "checksum void 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 "checksum want 0.0.4 (registry+https://github.com/rust-lang/crates.io-index)" = "a05d9d966753fa4b5c8db73fcab5eed4549cfe0e1e4e66911e5564a0085c35d1"
 "checksum wasmi 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "46df76793c28cd8f590d5667f540a81c1c245440a17b03560e381226e27cf348"
-"checksum web3 0.3.0 (git+https://github.com/jannis/rust-web3)" = "<none>"
+"checksum web3 0.3.0 (git+https://github.com/jannis/rust-web3?rev=6ebcb64450fc7edb5074fe0bdf3fe7c431973fa2)" = "<none>"
 "checksum websocket 0.20.2 (registry+https://github.com/rust-lang/crates.io-index)" = "eb277e7f4c23dc49176f74ae200e77651764efb2c25f56ad2d22623b63826369"
 "checksum which 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "e84a603e7e0b1ce1aa1ee2b109c7be00155ce52df5081590d1ffb93f4f515cb2"
 "checksum winapi 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)" = "167dc9d6949a9b857f3451275e911c3f44255842c1f7a76f33c55103a909087a"
