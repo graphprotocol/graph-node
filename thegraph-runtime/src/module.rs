@@ -70,6 +70,7 @@ const DATABASE_REMOVE_FUNC_INDEX: usize = 3;
 const ETHEREUM_CALL_FUNC_INDEX: usize = 4;
 const TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX: usize = 5;
 const TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX: usize = 6;
+const TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX: usize = 7;
 
 pub struct WasmiModuleConfig<T> {
     pub data_source: DataSourceDefinition,
@@ -362,6 +363,26 @@ where
         Ok(Some(RuntimeValue::from(self.heap.asc_new(trimmed_s))))
     }
 
+    /// function typeConversions.u64ArrayToHex(u64_array: Uint64Array): string
+    fn u64_array_to_hex(
+        &self,
+        u64_array_ptr: AscPtr<Uint64Array>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let u64_array: Vec<u64> = self.heap.asc_get(u64_array_ptr);
+        let mut bytes: Vec<u8> = Vec::new();
+        for x in u64_array {
+            // This is just `x.to_bytes()` which is unstable.
+            let x_bytes: [u8; 8] = unsafe { ::std::mem::transmute(x) };
+            bytes.extend(x_bytes.iter());
+        }
+
+        // Even an empty string must be prefixed with `0x`.
+        // Encodes each byte as a two hex digits.
+        let hex_string = format!("0x{}", hex::encode(bytes));
+        let hex_string_obj = self.heap.asc_new(hex_string.as_str());
+        Ok(Some(RuntimeValue::from(hex_string_obj)))
+    }
+
     /// Converts bytes to a hex string.
     /// References:
     /// https://godoc.org/github.com/ethereum/go-ethereum/common/hexutil#hdr-Encoding_Rules
@@ -370,6 +391,7 @@ where
     /// function typeConversions.bytesToHex(bytes: Bytes): string
     fn bytes_to_hex(&self, bytes_ptr: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
         let bytes: Vec<u8> = self.heap.asc_get(bytes_ptr);
+
         // Even an empty string must be prefixed with `0x`.
         // Encodes each byte as a two hex digits.
         let hex_string = format!("0x{}", hex::encode(bytes));
@@ -406,6 +428,9 @@ where
                 self.convert_bytes_to_string(args.nth_checked(0)?)
             }
             TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX => self.bytes_to_hex(args.nth_checked(0)?),
+            TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX => {
+                self.u64_array_to_hex(args.nth_checked(0)?)
+            }
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -500,6 +525,10 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
             "bytesToHex" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX,
+            ),
+            "u64ArrayToHex" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(
