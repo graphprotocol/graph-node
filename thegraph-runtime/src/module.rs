@@ -537,13 +537,6 @@ mod tests {
     struct MockEthereumAdapter {}
 
     impl EthereumAdapter for MockEthereumAdapter {
-        fn contract_state(
-            &mut self,
-            _request: EthereumContractStateRequest,
-        ) -> Result<EthereumContractState, EthereumContractStateError> {
-            unimplemented!()
-        }
-
         fn contract_call(
             &mut self,
             _call: EthereumContractCall,
