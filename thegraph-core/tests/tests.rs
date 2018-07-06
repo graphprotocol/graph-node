@@ -6,6 +6,7 @@ extern crate thegraph_core;
 extern crate thegraph_mock;
 extern crate thegraph_runtime;
 extern crate tokio_core;
+extern crate ipfs_api;
 
 use futures::stream::{self, Stream};
 use futures::{Future, Sink};
@@ -19,8 +20,10 @@ use thegraph_core::{DataSourceDefinitionLoader, RuntimeManager};
 use thegraph_mock::FakeStore;
 use thegraph_runtime::RuntimeHostBuilder;
 use tokio_core::reactor::Core;
+use ipfs_api::IpfsClient;
 
 #[test]
+#[ignore]
 fn multiple_data_sets_per_data_source() {
     struct MockEthereumAdapter {
         received_subscriptions: Vec<String>,
@@ -60,9 +63,10 @@ fn multiple_data_sets_per_data_source() {
 
     // Load a data source with two data sets, one listening for `ExampleEvent`
     // and the other for `ExampleEvent2`.
+    let ipfs_client = IpfsClient::default();
     let data_source = DataSourceDefinitionLoader
-        .load_from_path("tests/datasource-two-datasets/two-datasets.yaml")
-        .unwrap();
+        .load_from_ipfs("/ipfs/hash of tests/datasource-two-datasets/two-datasets.yaml", &ipfs_client)
+        .wait().expect("failed to load data source");
 
     // Send the new data source to the manager.
     manager
