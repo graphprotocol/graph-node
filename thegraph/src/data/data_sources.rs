@@ -4,7 +4,6 @@ use futures::prelude::*;
 use futures::stream;
 use parity_wasm;
 use parity_wasm::elements::Module;
-use serde_yaml;
 use std::error::Error;
 
 /// IPLD link.
@@ -12,6 +11,29 @@ use std::error::Error;
 pub struct Location {
     #[serde(rename = "/")]
     pub link: String,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct InnerRawSchema<S> {
+    pub source: S,
+}
+
+pub type UnresolvedRawSchema = InnerRawSchema<Location>;
+pub type RawSchema = InnerRawSchema<String>;
+
+impl UnresolvedRawSchema {
+    pub fn resolve(
+        self,
+        ipfs_client: &impl Ipfs,
+    ) -> impl Future<Item = RawSchema, Error = Box<Error + 'static>> {
+        ipfs_client
+            .cat_link(&self.source.link)
+            .and_then(|schema_bytes| {
+                Ok(RawSchema {
+                    source: String::from_utf8(schema_bytes)?,
+                })
+            })
+    }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -30,6 +52,7 @@ pub struct Data {
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct InnerMappingABI<C> {
     pub name: String,
+    #[serde(rename = "source")]
     pub contract: C,
 }
 
@@ -69,6 +92,7 @@ pub struct InnerMapping<C, W> {
     pub abis: Vec<InnerMappingABI<C>>,
     #[serde(rename = "eventHandlers")]
     pub event_handlers: Vec<MappingEventHandler>,
+    #[serde(rename = "source")]
     pub wasm_module: W,
 }
 
@@ -96,7 +120,6 @@ impl UnresolvedMapping {
                 .map(|unresolved_abi| unresolved_abi.resolve(ipfs_client)),
         ).collect()
             .join(
-                // resolve the module
                 ipfs_client
                     .cat_link(&wasm_module.link)
                     .and_then(|module_bytes| {
@@ -143,7 +166,7 @@ pub struct InnerDataSourceDefinition<S, D> {
     pub location: String,
     #[serde(rename = "specVersion")]
     pub spec_version: String,
-    pub schema: S,
+    pub schema: InnerRawSchema<S>,
     pub datasets: Vec<D>,
 }
 
@@ -154,7 +177,7 @@ impl<S, D> PartialEq for InnerDataSourceDefinition<S, D> {
     }
 }
 
-pub type UnresolvedDataSourceDefinition = InnerDataSourceDefinition<Location, Location>;
+pub type UnresolvedDataSourceDefinition = InnerDataSourceDefinition<Location, UnresolvedDataSet>;
 pub type DataSourceDefinition = InnerDataSourceDefinition<String, DataSet>;
 
 impl UnresolvedDataSourceDefinition {
@@ -174,23 +197,9 @@ impl UnresolvedDataSourceDefinition {
         stream::futures_ordered(
             datasets
                 .into_iter()
-                .map(|data_set_location| {
-                    ipfs_client
-                        .cat_link(&data_set_location.link)
-                        .and_then(move |data_set_bytes| {
-                            let unresolved_data_set: UnresolvedDataSet =
-                                serde_yaml::from_slice(&data_set_bytes)?;
-                            Ok(unresolved_data_set.resolve(ipfs_client))
-                        })
-                })
-                .map(Future::flatten),
+                .map(|data_set| data_set.resolve(ipfs_client)),
         ).collect()
-            .join(
-                // resolve the schema
-                ipfs_client
-                    .cat_link(&schema.link)
-                    .and_then(|schema_bytes| Ok(String::from_utf8(schema_bytes)?)),
-            )
+            .join(schema.resolve(ipfs_client))
             .map(|(datasets, schema)| DataSourceDefinition {
                 id,
                 location,
