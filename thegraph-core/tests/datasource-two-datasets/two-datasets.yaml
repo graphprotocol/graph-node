@@ -4,7 +4,7 @@ specVersion: 0.0.1
 schema:
   # Path to the local schema for this Data Source.
   source:
-    path: 'schema.graphql'
+    /: 'link to schema.graphql'
 # A single Data Source may comprise multiple Datasets.
 # Datasets are composed of Data, Structure & Mapping, which are intentionally
 # decoupled.
@@ -24,7 +24,7 @@ datasets:
       abis:
         - name: ExampleContract
           source:
-            path: abis/ExampleContract.json
+            /: 'link to abis/ExampleContract.json'
       eventHandlers:
           # This event will be subscribed to and trigger the handler function
           # each time it is emitted.
@@ -33,7 +33,7 @@ datasets:
           # by the WASM module.
           handler: handleExampleEvent
       source:
-        path: 'empty.wasm'
+        /: 'link to empty.wasm'
   - data:
       kind: ethereum/contract
       name: ExampleDataSet2
@@ -48,7 +48,7 @@ datasets:
       abis:
         - name: ExampleContract2
           source:
-            path: abis/ExampleContract2.json
+            /: 'link to abis/ExampleContract2.json'
       eventHandlers:
           # This event will be subscribed to and trigger the handler function
           # each time it is emitted.
@@ -57,4 +57,4 @@ datasets:
           # by the WASM module.
           handler: handleExampleEvent2
       source:
-        path: 'empty.wasm'
+        /: 'link to empty.wasm'
