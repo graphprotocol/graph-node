@@ -32,7 +32,7 @@ impl LocalDataSourceProvider {
             .load_from_ipfs(filename, ipfs_client)
             .map(move |data_source| {
                 // Parse the schema
-                let schema = graphql_parser::parse_schema(data_source.schema.as_str())
+                let schema = graphql_parser::parse_schema(data_source.schema.source.as_str())
                     .map(|document| Schema {
                         id: String::from("local-data-source-schema"),
                         document,
