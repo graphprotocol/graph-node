@@ -62,7 +62,8 @@ fn main() {
         .arg(
             Arg::with_name("ethereum-rpc")
                 .takes_value(true)
-                .required(false)
+                .required_unless_one(&["ethereum-ws", "ethereum-ipc"])
+                .conflicts_with_all(&["ethereum-ws", "ethereum-ipc"])
                 .long("ethereum-rpc")
                 .value_name("URL")
                 .help("Ethereum RPC endpoint"),
@@ -70,7 +71,8 @@ fn main() {
         .arg(
             Arg::with_name("ethereum-ws")
                 .takes_value(true)
-                .required(false)
+                .required_unless_one(&["ethereum-rpc", "ethereum-ipc"])
+                .conflicts_with_all(&["ethereum-rpc", "ethereum-ipc"])
                 .long("ethereum-ws")
                 .value_name("URL")
                 .help("Ethereum WebSocket endpoint"),
@@ -78,7 +80,8 @@ fn main() {
         .arg(
             Arg::with_name("ethereum-ipc")
                 .takes_value(true)
-                .required(false)
+                .required_unless_one(&["ethereum-rpc", "ethereum-ws"])
+                .conflicts_with_all(&["ethereum-rpc", "ethereum-ws"])
                 .long("ethereum-ipc")
                 .value_name("FILE")
                 .help("Ethereum IPC pipe"),
@@ -123,9 +126,11 @@ fn main() {
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
 
     // Create Ethereum adapter
-    let (_transport_event_loop, transport) =
-        Transport::preferred_transport(ethereum_rpc, ethereum_ipc, ethereum_ws)
-            .expect("One of --ethereum-rpc, --ethereum-ipc, --ethereum-ws must be provided");
+    let (_transport_event_loop, transport) = ethereum_ipc
+        .map(Transport::new_ipc)
+        .or(ethereum_ws.map(Transport::new_ws))
+        .or(ethereum_rpc.map(Transport::new_rpc))
+        .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
     let ethereum_watcher = thegraph_ethereum::EthereumAdapter::new(
         core.handle(),
         thegraph_ethereum::EthereumAdapterConfig { transport },

@@ -17,35 +17,28 @@ pub enum Transport {
 }
 
 impl Transport {
-    /// Uses the best of the given RPC, IPC and WS endpoints/paths.
-    pub fn preferred_transport(
-        rpc: Option<&str>,
-        ipc: Option<&str>,
-        ws: Option<&str>,
-    ) -> Option<(EventLoopHandle, Self)> {
-        match (rpc, ipc, ws) {
-            // IPC is fastest, so it is always preferred
-            (_, Some(s), _) => {
-                let (event_loop, transport) =
-                    ipc::Ipc::new(s).expect("Failed to connect to Ethereum RPC");
-                Some((event_loop, Transport::IPC(transport)))
-            }
-            // Next up is WebSockets, since they are guaranteed to support
-            // subscribing to new blocks and should be faster than HTTP as well
-            (_, _, Some(s)) => {
-                let (event_loop, transport) =
-                    ws::WebSocket::new(s).expect("Failed to connect to Ethereum WS");
-                Some((event_loop, Transport::WS(transport)))
-            }
-            // Last is JSON-RPC over HTTP; which doesn't always support subscribing
-            // to new blocks
-            (Some(s), _, _) => {
-                let (event_loop, transport) =
-                    http::Http::new(s).expect("Failed to connect to Ethereum WS");
-                Some((event_loop, Transport::RPC(transport)))
-            }
-            _ => None,
-        }
+    /// Creates an IPC transport.
+    pub fn new_ipc(ipc: &str) -> (EventLoopHandle, Self) {
+        ipc::Ipc::new(ipc)
+            .map(|(event_loop, transport)| (event_loop, Transport::IPC(transport)))
+            .expect("Failed to connect to Ethereum RPC")
+    }
+
+    /// Creates a WebSocket transport.
+    pub fn new_ws(ws: &str) -> (EventLoopHandle, Self) {
+        ws::WebSocket::new(ws)
+            .map(|(event_loop, transport)| (event_loop, Transport::WS(transport)))
+            .expect("Failed to connect to Ethereum WS")
+    }
+
+    /// Creates a JSON-RPC over HTTP transport.
+    ///
+    /// Note: JSON-RPC over HTTP doesn't always support subscribing to new
+    /// blocks (one such example is Infura's HTTP endpoint).
+    pub fn new_rpc(rpc: &str) -> (EventLoopHandle, Self) {
+        http::Http::new(rpc)
+            .map(|(event_loop, transport)| (event_loop, Transport::RPC(transport)))
+            .expect("Failed to connect to Ethereum WS")
     }
 }
 
