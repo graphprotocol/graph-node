@@ -26,6 +26,7 @@ use tokio_core::reactor::Core;
 use thegraph::components::{EventConsumer, EventProducer};
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
+use thegraph_ethereum::Transport;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
 use thegraph_runtime::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
@@ -61,10 +62,26 @@ fn main() {
         .arg(
             Arg::with_name("ethereum-rpc")
                 .takes_value(true)
-                .required(true)
+                .required(false)
                 .long("ethereum-rpc")
                 .value_name("URL")
                 .help("Ethereum RPC endpoint"),
+        )
+        .arg(
+            Arg::with_name("ethereum-ws")
+                .takes_value(true)
+                .required(false)
+                .long("ethereum-ws")
+                .value_name("URL")
+                .help("Ethereum WebSocket endpoint"),
+        )
+        .arg(
+            Arg::with_name("ethereum-ipc")
+                .takes_value(true)
+                .required(false)
+                .long("ethereum-ipc")
+                .value_name("FILE")
+                .help("Ethereum IPC pipe"),
         )
         .get_matches();
 
@@ -74,8 +91,10 @@ fn main() {
     // Obtain data source related command-line arguments
     let data_source_path = matches.value_of("data-source").unwrap();
 
-    // Obtain the Ethereum RPC endpoint
-    let ethereum_rpc = matches.value_of("ethereum-rpc").unwrap().to_string();
+    // Obtain the Ethereum RPC/WS/IPC transport locations
+    let ethereum_rpc = matches.value_of("ethereum-rpc");
+    let ethereum_ipc = matches.value_of("ethereum-ipc");
+    let ethereum_ws = matches.value_of("ethereum-ws");
 
     debug!(logger, "Setting up Sentry");
 
@@ -105,8 +124,8 @@ fn main() {
 
     // Create Ethereum adapter
     let (_transport_event_loop, transport) =
-        thegraph_ethereum::transports::http::Http::new(ethereum_rpc.as_str())
-            .expect("Failed to connect to Ethereum RPC endpoint");
+        Transport::preferred_transport(ethereum_rpc, ethereum_ipc, ethereum_ws)
+            .expect("One of --ethereum-rpc, --ethereum-ipc, --ethereum-ws must be provided");
     let ethereum_watcher = thegraph_ethereum::EthereumAdapter::new(
         core.handle(),
         thegraph_ethereum::EthereumAdapterConfig { transport },
