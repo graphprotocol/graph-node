@@ -6,6 +6,7 @@ extern crate thegraph_local_node;
 extern crate sentry;
 #[macro_use]
 extern crate slog;
+extern crate ipfs_api;
 extern crate thegraph;
 extern crate thegraph_core;
 extern crate thegraph_ethereum;
@@ -17,6 +18,7 @@ extern crate tokio;
 extern crate tokio_core;
 
 use clap::{App, Arg};
+use ipfs_api::IpfsClient;
 use sentry::integrations::panic::register_panic_handler;
 use std::env;
 use std::sync::{Arc, Mutex};
@@ -118,8 +120,15 @@ fn main() {
     info!(logger, "Starting up");
 
     // Create system components
-    let mut data_source_provider =
-        LocalDataSourceProvider::new(&logger, core.handle(), data_source_path.clone());
+    // FIXME: Take cli arg.
+    let ipfs_client = IpfsClient::default();
+    let mut data_source_provider = LocalDataSourceProvider::new(
+        logger.clone(),
+        core.handle(),
+        data_source_path.clone(),
+        &ipfs_client,
+    ).wait()
+        .expect("Failed to initialize LocalDataSourceProvider");
     let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let protected_store = Arc::new(Mutex::new(store));

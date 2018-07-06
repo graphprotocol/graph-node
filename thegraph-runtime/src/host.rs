@@ -2,7 +2,6 @@ use ethereum_types::Address;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver};
 use slog::Logger;
-use std::fs;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
@@ -88,16 +87,10 @@ impl RuntimeHost {
         // Create channel for sending runtime host events
         let (event_sender, event_receiver) = channel(100);
 
-        // Obtain mapping location
-        let location = config
-            .data_source_definition
-            .resolve_path(&config.data_set.mapping.source.path);
-
-        info!(logger, "Load WASM runtime from"; "file" => location.to_str());
+        info!(logger, "Loading WASM runtime from"; "data" => config.data_set.data.name.clone());
 
         // Load the mappings as a WASM module
         let module = WasmiModule::new(
-            location,
             &logger,
             WasmiModuleConfig {
                 data_source: config.data_source_definition.clone(),
@@ -111,7 +104,6 @@ impl RuntimeHost {
         Self::subscribe_to_events(
             logger,
             runtime,
-            &config.data_source_definition,
             config.data_set.clone(),
             module,
             ethereum_adapter,
@@ -128,7 +120,6 @@ impl RuntimeHost {
     fn subscribe_to_events<T>(
         logger: Logger,
         runtime: Handle,
-        data_source: &DataSourceDefinition,
         data_set: DataSet,
         module: WasmiModule<T>,
         ethereum_adapter: Arc<Mutex<T>>,
@@ -142,16 +133,14 @@ impl RuntimeHost {
             .expect("Failed to parse contract address");
 
         // Load the main dataset contract
-        let contract_abi_path = data_set
+        let contract = data_set
             .mapping
             .abis
             .iter()
             .find(|abi| abi.name == data_set.data.structure.abi)
-            .map(|entry| data_source.resolve_path(&entry.source.path))
-            .expect("No ABI entry found for the main contract of the dataset");
-        let contract_abi_file = fs::File::open(contract_abi_path)
-            .expect("Contract ABI file does not exist or could not be opened for reading");
-        let contract = Contract::load(contract_abi_file).expect("Failed to parse contract ABI");
+            .expect("No ABI entry found for the main contract of the dataset")
+            .contract
+            .clone();
 
         // Prepare subscriptions for the events
         let subscription_results: Vec<EthereumEventSubscription> = {

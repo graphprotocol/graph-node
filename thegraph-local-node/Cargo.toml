@@ -11,6 +11,7 @@ sentry = "0.3.1"
 slog = "2.2.3"
 tokio = "0.1.5"
 tokio-core = "0.1.17"
+ipfs-api = "0.5.0-alpha1"
 thegraph = { path = "../thegraph" }
 thegraph-core = { path = "../thegraph-core" }
 thegraph-ethereum = { path = "../thegraph-ethereum" }

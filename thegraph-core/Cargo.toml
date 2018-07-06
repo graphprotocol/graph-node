@@ -12,6 +12,7 @@ thegraph-runtime = { path = "../thegraph-runtime" }
 tokio-core = "0.1.17"
 serde = "1.0"
 serde_yaml = "0.7"
+ipfs-api = "0.5.0-alpha1"
 
 [dev-dependencies]
 ethabi = "5.1.1"

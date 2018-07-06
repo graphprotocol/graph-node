@@ -4,7 +4,8 @@ use graphql_parser;
 use slog;
 use tokio_core::reactor::Handle;
 
-use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
+use thegraph::components::data_sources::{DataSourceDefinitionLoaderError, DataSourceProviderEvent,
+                                         SchemaEvent};
 use thegraph::prelude::{DataSourceProvider as DataSourceProviderTrait, *};
 use thegraph::util::stream::StreamError;
 use thegraph_core;
@@ -19,30 +20,35 @@ pub struct LocalDataSourceProvider {
 }
 
 impl LocalDataSourceProvider {
-    pub fn new(logger: &slog::Logger, runtime: Handle, filename: &str) -> Self {
+    pub fn new<'a, T: Ipfs>(
+        logger: slog::Logger,
+        runtime: Handle,
+        filename: &str,
+        ipfs_client: &'a T,
+    ) -> impl Future<Item = Self, Error = DataSourceDefinitionLoaderError> + 'a {
         // Load the data source definition
         let loader = thegraph_core::DataSourceDefinitionLoader::default();
-        let data_source = loader
-            .load_from_path(filename)
-            .expect("Failed to load data source definition");
+        loader
+            .load_from_ipfs(filename, ipfs_client)
+            .map(move |data_source| {
+                // Parse the schema
+                let schema = graphql_parser::parse_schema(data_source.schema.as_str())
+                    .map(|document| Schema {
+                        id: String::from("local-data-source-schema"),
+                        document,
+                    })
+                    .expect("Failed to parse data source schema");
 
-        // Parse the schema
-        let schema = graphql_parser::parse_schema(data_source.schema.as_str())
-            .map(|document| Schema {
-                id: String::from("local-data-source-schema"),
-                document,
+                // Create the data source provider
+                LocalDataSourceProvider {
+                    _logger: logger.new(o!("component" => "LocalDataSourceProvider")),
+                    event_sink: None,
+                    schema_event_sink: None,
+                    runtime,
+                    data_source,
+                    schema,
+                }
             })
-            .expect("Failed to parse data source schema");
-
-        // Create the data source provider
-        LocalDataSourceProvider {
-            _logger: logger.new(o!("component" => "LocalDataSourceProvider")),
-            event_sink: None,
-            schema_event_sink: None,
-            runtime,
-            data_source,
-            schema,
-        }
     }
 }
 

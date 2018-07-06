@@ -8,6 +8,9 @@ extern crate serde_derive;
 extern crate serde_yaml;
 #[macro_use]
 extern crate slog;
+extern crate failure;
+extern crate ipfs_api;
+extern crate parity_wasm;
 extern crate slog_async;
 extern crate slog_term;
 extern crate tiny_keccak;
@@ -43,6 +46,7 @@ pub mod prelude {
                                 StoreQuery, StoreRange};
     pub use components::{EventConsumer, EventProducer};
 
+    pub use components::ipfs::Ipfs;
     pub use data::data_sources::{DataSet, DataSourceDefinition};
     pub use data::query::{Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue,
                           QueryVariables};
