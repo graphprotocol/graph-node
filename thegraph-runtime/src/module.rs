@@ -1,17 +1,12 @@
 use futures::prelude::*;
 use futures::sync::mpsc::Sender;
-use parity_wasm;
 use slog::Logger;
 use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
-use wasmi::{
-    Error, Externals, FuncInstance, FuncRef, ImportsBuilder, MemoryRef, Module,
-    ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue,
-    Signature, Trap, ValueType,
-};
+use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, MemoryRef, Module,
+            ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs,
+            RuntimeValue, Signature, Trap, ValueType};
 use web3::types::BlockId;
 
 use thegraph::components::data_sources::RuntimeHostEvent;
@@ -93,17 +88,16 @@ where
     T: EthereumAdapter,
 {
     /// Creates a new wasmi module
-    pub fn new(path: PathBuf, logger: &Logger, config: WasmiModuleConfig<T>) -> Self {
+    pub fn new(logger: &Logger, config: WasmiModuleConfig<T>) -> Self {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
-        let module = parity_wasm::deserialize_file(&path)
-            .expect(format!("Failed to deserialize WASM: {}", path.to_string_lossy()).as_str());
-        let module = Module::from_parity_wasm_module(module).expect(
-            format!(
-                "Wasmi could not interpret module loaded from file: {}",
-                path.to_string_lossy()
-            ).as_str(),
-        );
+        let module = Module::from_parity_wasm_module(config.data_set.mapping.wasm_module.clone())
+            .expect(
+                format!(
+                    "Wasmi could not interpret module of data set: {}",
+                    config.data_set.data.name
+                ).as_str(),
+            );
 
         // Build import resolver
         let mut imports = ImportsBuilder::new();
@@ -300,21 +294,19 @@ where
               "function" => &unresolved_call.function_name);
 
         // Obtain the path to the contract ABI
-        let abi_path = self.data_set
+        let contract = self.data_set
             .mapping
             .abis
             .iter()
             .find(|abi| abi.name == unresolved_call.contract_name)
-            .map(|entry| self.data_source.resolve_path(&entry.source.path))
             .expect(
                 format!(
                     "Unknown contract \"{}\" called from WASM runtime",
                     unresolved_call.contract_name
                 ).as_str(),
-            );
-        let abi_file = fs::File::open(abi_path)
-            .expect("Contract ABI file does not exist or could not be opened for reading");
-        let contract = Contract::load(abi_file).expect("Failed to parse contract ABI");
+            )
+            .contract
+            .clone();
 
         let function = contract
             .function(unresolved_call.function_name.as_str())
@@ -542,6 +534,8 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
 
 #[cfg(test)]
 mod tests {
+    extern crate parity_wasm;
+
     use ethabi::{LogParam, Token};
     use ethereum_types::Address;
     use futures::prelude::*;
@@ -549,7 +543,6 @@ mod tests {
     use slog;
     use std::collections::HashMap;
     use std::iter::FromIterator;
-    use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
     use tokio_core;
 
@@ -597,11 +590,11 @@ mod tests {
         // Load the module
         let logger = slog::Logger::root(slog::Discard, o!());
         let mut core = tokio_core::reactor::Core::new().unwrap();
-        let path = PathBuf::from("test/example_event_handler.wasm");
+        let wasm_module = parity_wasm::deserialize_file("test/example_event_handler.wasm")
+            .expect("Failed to deserialize wasm");
         let (sender, receiver) = channel(1);
         let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
         let mut module = WasmiModule::new(
-            path,
             &logger,
             WasmiModuleConfig {
                 data_source: DataSourceDefinition {
@@ -627,9 +620,7 @@ mod tests {
                         entities: vec![],
                         abis: vec![],
                         event_handlers: vec![],
-                        source: Location {
-                            path: PathBuf::from("/path/to/mapping.wasm"),
-                        },
+                        wasm_module,
                     },
                 },
                 runtime: core.handle(),

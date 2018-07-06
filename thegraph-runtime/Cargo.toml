@@ -5,7 +5,6 @@ version = "0.1.0"
 [dependencies]
 ethereum-types = "0.3"
 futures = "0.1.21"
-parity-wasm = "0.31"
 slog = "2.2.3"
 tokio-core = "0.1.6"
 thegraph = { path = "../thegraph" }
@@ -15,3 +14,6 @@ ethabi = "5.1.1"
 nan-preserving-float = "0.1.0"
 hex = "0.3.2"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
+
+[dev-dependencies]
+parity-wasm = "0.31"
