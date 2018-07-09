@@ -21,6 +21,8 @@ use clap::{App, Arg};
 use ipfs_api::IpfsClient;
 use sentry::integrations::panic::register_panic_handler;
 use std::env;
+use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use tokio::prelude::*;
 use tokio_core::reactor::Core;
@@ -50,8 +52,8 @@ fn main() {
                 .takes_value(true)
                 .required(true)
                 .long("data-source")
-                .value_name("FILE")
-                .help("Path to the data source definition file"),
+                .value_name("/ipfs/IPFS_HASH")
+                .help("Ipfs link to the data source definition file"),
         )
         .arg(
             Arg::with_name("postgres-url")
@@ -88,6 +90,14 @@ fn main() {
                 .value_name("FILE")
                 .help("Ethereum IPC pipe"),
         )
+        .arg(
+            Arg::with_name("ipfs")
+                .takes_value(true)
+                .required(true)
+                .long("ipfs")
+                .value_name("HOST:PORT")
+                .help("Http socket address of an ipfs daemon"),
+        )
         .get_matches();
 
     // Safe to unwrap because a value is required by CLI
@@ -100,6 +110,9 @@ fn main() {
     let ethereum_rpc = matches.value_of("ethereum-rpc");
     let ethereum_ipc = matches.value_of("ethereum-ipc");
     let ethereum_ws = matches.value_of("ethereum-ws");
+
+    let ipfs_socket_addr = SocketAddr::from_str(matches.value_of("ipfs").unwrap())
+        .expect("could not parse ipfs address, expected format is host:port");
 
     debug!(logger, "Setting up Sentry");
 
@@ -120,15 +133,17 @@ fn main() {
     info!(logger, "Starting up");
 
     // Create system components
-    // FIXME: Take cli arg.
-    let ipfs_client = IpfsClient::default();
-    let mut data_source_provider = LocalDataSourceProvider::new(
+    let runtime = core.handle();
+    let ipfs_client = IpfsClient::new(
+        &format!("{}", ipfs_socket_addr.ip()),
+        ipfs_socket_addr.port(),
+    ).expect("Failed to start ipfs client");
+    let mut data_source_provider = core.run(LocalDataSourceProvider::new(
         logger.clone(),
-        core.handle(),
+        runtime,
         data_source_path.clone(),
         &ipfs_client,
-    ).wait()
-        .expect("Failed to initialize LocalDataSourceProvider");
+    )).expect("Failed to initialize LocalDataSourceProvider");
     let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let protected_store = Arc::new(Mutex::new(store));
