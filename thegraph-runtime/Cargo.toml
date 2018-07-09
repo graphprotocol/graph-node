@@ -5,12 +5,12 @@ version = "0.1.0"
 [dependencies]
 ethereum-types = "0.3"
 futures = "0.1.21"
-parity-wasm = "0.27"
+parity-wasm = "0.31"
 slog = "2.2.3"
 tokio-core = "0.1.6"
 thegraph = { path = "../thegraph" }
 uuid = { version = "0.6", features = ["v4"] }
-wasmi = "0.2.0"
+wasmi = "0.3"
 ethabi = "5.1.1"
 nan-preserving-float = "0.1.0"
 hex = "0.3.2"
