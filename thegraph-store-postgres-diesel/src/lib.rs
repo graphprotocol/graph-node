@@ -14,5 +14,6 @@ extern crate tokio_core;
 pub mod db_schema;
 pub mod models;
 pub mod store;
+pub mod functions;
 
 pub use self::store::{Store, StoreConfig};
