@@ -30,10 +30,11 @@ impl LoaderTrait for DataSourceDefinitionLoader {
                         let raw_mapping = raw.as_mapping_mut()
                             .ok_or(DataSourceDefinitionLoaderError::InvalidFormat)?;
 
-                        // Inject the ID of the data source into the definition
+                        // Inject the IPFS hash as the ID of the data source
+                        // into the definition.
                         raw_mapping.insert(
                             serde_yaml::Value::from("id"),
-                            serde_yaml::Value::from("TODO figure out the data source ID"),
+                            serde_yaml::Value::from(ipfs_link.trim_left_matches("/ipfs/")),
                         );
 
                         // Inject the IPFS link as the location of the data
