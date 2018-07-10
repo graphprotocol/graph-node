@@ -25,7 +25,7 @@ use thegraph_runtime::RuntimeHostBuilder;
 use tokio_core::reactor::Core;
 
 #[test]
-//#[ignore]
+#[ignore]
 fn multiple_data_sets_per_data_source() {
     struct MockEthereumAdapter {
         received_subscriptions: Vec<String>,
