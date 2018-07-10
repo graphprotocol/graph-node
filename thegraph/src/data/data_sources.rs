@@ -14,12 +14,12 @@ pub struct Link {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct InnerRawSchema<S> {
+pub struct BaseRawSchema<S> {
     pub source: S,
 }
 
-pub type UnresolvedRawSchema = InnerRawSchema<Link>;
-pub type RawSchema = InnerRawSchema<String>;
+pub type UnresolvedRawSchema = BaseRawSchema<Link>;
+pub type RawSchema = BaseRawSchema<String>;
 
 impl UnresolvedRawSchema {
     pub fn resolve(
@@ -50,14 +50,14 @@ pub struct Data {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct InnerMappingABI<C> {
+pub struct BaseMappingABI<C> {
     pub name: String,
     #[serde(rename = "source")]
     pub contract: C,
 }
 
-pub type UnresolvedMappingABI = InnerMappingABI<Link>;
-pub type MappingABI = InnerMappingABI<Contract>;
+pub type UnresolvedMappingABI = BaseMappingABI<Link>;
+pub type MappingABI = BaseMappingABI<Contract>;
 
 impl UnresolvedMappingABI {
     pub fn resolve(
@@ -83,21 +83,21 @@ pub struct MappingEventHandler {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct InnerMapping<C, W> {
+pub struct BaseMapping<C, W> {
     pub kind: String,
     #[serde(rename = "apiVersion")]
     pub api_version: String,
     pub language: String,
     pub entities: Vec<String>,
-    pub abis: Vec<InnerMappingABI<C>>,
+    pub abis: Vec<BaseMappingABI<C>>,
     #[serde(rename = "eventHandlers")]
     pub event_handlers: Vec<MappingEventHandler>,
     #[serde(rename = "source")]
     pub runtime: W,
 }
 
-pub type UnresolvedMapping = InnerMapping<Link, Link>;
-pub type Mapping = InnerMapping<Contract, Module>;
+pub type UnresolvedMapping = BaseMapping<Link, Link>;
+pub type Mapping = BaseMapping<Contract, Module>;
 
 impl UnresolvedMapping {
     pub fn resolve(
@@ -140,13 +140,13 @@ impl UnresolvedMapping {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct InnerDataSet<C, W> {
+pub struct BaseDataSet<C, W> {
     pub data: Data,
-    pub mapping: InnerMapping<C, W>,
+    pub mapping: BaseMapping<C, W>,
 }
 
-pub type UnresolvedDataSet = InnerDataSet<Link, Link>;
-pub type DataSet = InnerDataSet<Contract, Module>;
+pub type UnresolvedDataSet = BaseDataSet<Link, Link>;
+pub type DataSet = BaseDataSet<Contract, Module>;
 
 impl UnresolvedDataSet {
     pub fn resolve(
@@ -161,24 +161,24 @@ impl UnresolvedDataSet {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct InnerDataSourceDefinition<S, D> {
+pub struct BaseDataSourceDefinition<S, D> {
     pub id: String,
     pub location: String,
     #[serde(rename = "specVersion")]
     pub spec_version: String,
-    pub schema: InnerRawSchema<S>,
+    pub schema: BaseRawSchema<S>,
     pub datasets: Vec<D>,
 }
 
 /// Consider two data sources to be equal if they come from the same IPLD link.
-impl<S, D> PartialEq for InnerDataSourceDefinition<S, D> {
+impl<S, D> PartialEq for BaseDataSourceDefinition<S, D> {
     fn eq(&self, other: &Self) -> bool {
         self.location == other.location
     }
 }
 
-pub type UnresolvedDataSourceDefinition = InnerDataSourceDefinition<Link, UnresolvedDataSet>;
-pub type DataSourceDefinition = InnerDataSourceDefinition<String, DataSet>;
+pub type UnresolvedDataSourceDefinition = BaseDataSourceDefinition<Link, UnresolvedDataSet>;
+pub type DataSourceDefinition = BaseDataSourceDefinition<String, DataSet>;
 
 impl UnresolvedDataSourceDefinition {
     pub fn resolve(
