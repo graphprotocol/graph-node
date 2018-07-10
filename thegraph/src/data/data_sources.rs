@@ -8,7 +8,7 @@ use std::error::Error;
 
 /// IPLD link.
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct Location {
+pub struct Link {
     #[serde(rename = "/")]
     pub link: String,
 }
@@ -18,7 +18,7 @@ pub struct InnerRawSchema<S> {
     pub source: S,
 }
 
-pub type UnresolvedRawSchema = InnerRawSchema<Location>;
+pub type UnresolvedRawSchema = InnerRawSchema<Link>;
 pub type RawSchema = InnerRawSchema<String>;
 
 impl UnresolvedRawSchema {
@@ -56,7 +56,7 @@ pub struct InnerMappingABI<C> {
     pub contract: C,
 }
 
-pub type UnresolvedMappingABI = InnerMappingABI<Location>;
+pub type UnresolvedMappingABI = InnerMappingABI<Link>;
 pub type MappingABI = InnerMappingABI<Contract>;
 
 impl UnresolvedMappingABI {
@@ -93,10 +93,10 @@ pub struct InnerMapping<C, W> {
     #[serde(rename = "eventHandlers")]
     pub event_handlers: Vec<MappingEventHandler>,
     #[serde(rename = "source")]
-    pub wasm_module: W,
+    pub runtime: W,
 }
 
-pub type UnresolvedMapping = InnerMapping<Location, Location>;
+pub type UnresolvedMapping = InnerMapping<Link, Link>;
 pub type Mapping = InnerMapping<Contract, Module>;
 
 impl UnresolvedMapping {
@@ -111,7 +111,7 @@ impl UnresolvedMapping {
             entities,
             abis,
             event_handlers,
-            wasm_module,
+            runtime,
         } = self;
 
         // resolve each abi
@@ -121,20 +121,20 @@ impl UnresolvedMapping {
         ).collect()
             .join(
                 ipfs_client
-                    .cat_link(&wasm_module.link)
+                    .cat_link(&runtime.link)
                     .and_then(|module_bytes| {
                         parity_wasm::deserialize_buffer(&module_bytes)
                             .map_err(|e| Box::new(e) as Box<Error>)
                     }),
             )
-            .map(|(abis, wasm_module)| Mapping {
+            .map(|(abis, runtime)| Mapping {
                 kind,
                 api_version,
                 language,
                 entities,
                 abis,
                 event_handlers,
-                wasm_module,
+                runtime,
             })
     }
 }
@@ -145,7 +145,7 @@ pub struct InnerDataSet<C, W> {
     pub mapping: InnerMapping<C, W>,
 }
 
-pub type UnresolvedDataSet = InnerDataSet<Location, Location>;
+pub type UnresolvedDataSet = InnerDataSet<Link, Link>;
 pub type DataSet = InnerDataSet<Contract, Module>;
 
 impl UnresolvedDataSet {
@@ -177,7 +177,7 @@ impl<S, D> PartialEq for InnerDataSourceDefinition<S, D> {
     }
 }
 
-pub type UnresolvedDataSourceDefinition = InnerDataSourceDefinition<Location, UnresolvedDataSet>;
+pub type UnresolvedDataSourceDefinition = InnerDataSourceDefinition<Link, UnresolvedDataSet>;
 pub type DataSourceDefinition = InnerDataSourceDefinition<String, DataSet>;
 
 impl UnresolvedDataSourceDefinition {

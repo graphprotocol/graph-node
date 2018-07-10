@@ -52,12 +52,12 @@ fn multiple_data_sets_per_data_source() {
         }
     }
 
-    /// Adds string to ipfs and returns link of the form `/ipfs/`.
+    /// Adds string to IPFS and returns link of the form `/ipfs/`.
     fn add(client: &IpfsClient, data: String) -> impl Future<Item = String, Error = ()> {
         client
             .add(Cursor::new(data))
             .map(|res| format!("/ipfs/{}", res.hash))
-            .map_err(|err| eprintln!("error adding to ipfs {}", err))
+            .map_err(|err| eprintln!("error adding to IPFS {}", err))
     }
 
     let mut core = Core::new().unwrap();

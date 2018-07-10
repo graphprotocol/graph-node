@@ -2,7 +2,6 @@ extern crate futures;
 extern crate graphql_parser;
 #[macro_use]
 extern crate slog;
-extern crate ipfs_api;
 extern crate serde;
 extern crate serde_yaml;
 extern crate thegraph;

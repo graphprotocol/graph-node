@@ -91,7 +91,7 @@ where
     pub fn new(logger: &Logger, config: WasmiModuleConfig<T>) -> Self {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
-        let module = Module::from_parity_wasm_module(config.data_set.mapping.wasm_module.clone())
+        let module = Module::from_parity_wasm_module(config.data_set.mapping.runtime.clone())
             .expect(
                 format!(
                     "Wasmi could not interpret module of data set: {}",
@@ -591,7 +591,7 @@ mod tests {
         // Load the module
         let logger = slog::Logger::root(slog::Discard, o!());
         let mut core = tokio_core::reactor::Core::new().unwrap();
-        let wasm_module = parity_wasm::deserialize_file("test/example_event_handler.wasm")
+        let runtime = parity_wasm::deserialize_file("test/example_event_handler.wasm")
             .expect("Failed to deserialize wasm");
         let (sender, receiver) = channel(1);
         let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
@@ -623,7 +623,7 @@ mod tests {
                         entities: vec![],
                         abis: vec![],
                         event_handlers: vec![],
-                        wasm_module,
+                        runtime,
                     },
                 },
                 runtime: core.handle(),

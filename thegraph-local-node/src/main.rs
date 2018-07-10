@@ -34,8 +34,7 @@ use thegraph_ethereum::Transport;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
 use thegraph_runtime::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
-
-use thegraph_local_node::LocalDataSourceProvider;
+use thegraph_local_node::{DataSourceProvider as IpfsDataSourceProvider};
 
 fn main() {
     env_logger::init();
@@ -52,8 +51,8 @@ fn main() {
                 .takes_value(true)
                 .required(true)
                 .long("data-source")
-                .value_name("/ipfs/IPFS_HASH")
-                .help("Ipfs link to the data source definition file"),
+                .value_name("IPFS_HASH")
+                .help("IPFS hash of the data source definition file"),
         )
         .arg(
             Arg::with_name("postgres-url")
@@ -96,7 +95,7 @@ fn main() {
                 .required(true)
                 .long("ipfs")
                 .value_name("HOST:PORT")
-                .help("Http socket address of an ipfs daemon"),
+                .help("HTTP address of an IPFS node"),
         )
         .get_matches();
 
@@ -104,7 +103,7 @@ fn main() {
     let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
 
     // Obtain data source related command-line arguments
-    let data_source_path = matches.value_of("data-source").unwrap();
+    let data_source_hash = matches.value_of("data-source").unwrap();
 
     // Obtain the Ethereum RPC/WS/IPC transport locations
     let ethereum_rpc = matches.value_of("ethereum-rpc");
@@ -112,7 +111,7 @@ fn main() {
     let ethereum_ws = matches.value_of("ethereum-ws");
 
     let ipfs_socket_addr = SocketAddr::from_str(matches.value_of("ipfs").unwrap())
-        .expect("could not parse ipfs address, expected format is host:port");
+        .expect("could not parse IPFS address, expected format is host:port");
 
     debug!(logger, "Setting up Sentry");
 
@@ -137,13 +136,13 @@ fn main() {
     let ipfs_client = IpfsClient::new(
         &format!("{}", ipfs_socket_addr.ip()),
         ipfs_socket_addr.port(),
-    ).expect("Failed to start ipfs client");
-    let mut data_source_provider = core.run(LocalDataSourceProvider::new(
+    ).expect("Failed to start IPFS client");
+    let mut data_source_provider = core.run(IpfsDataSourceProvider::new(
         logger.clone(),
         runtime,
-        data_source_path.clone(),
+        &format!("/ipfs/{}", data_source_hash.clone()),
         &ipfs_client,
-    )).expect("Failed to initialize LocalDataSourceProvider");
+    )).expect("Failed to initialize data source provider");
     let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let protected_store = Arc::new(Mutex::new(store));
