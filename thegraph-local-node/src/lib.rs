@@ -8,4 +8,4 @@ extern crate tokio_core;
 
 mod data_sources;
 
-pub use self::data_sources::LocalDataSourceProvider;
+pub use self::data_sources::DataSourceProvider;

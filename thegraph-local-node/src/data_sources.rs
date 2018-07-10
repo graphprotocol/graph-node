@@ -10,7 +10,7 @@ use thegraph::prelude::{DataSourceProvider as DataSourceProviderTrait, *};
 use thegraph::util::stream::StreamError;
 use thegraph_core;
 
-pub struct LocalDataSourceProvider {
+pub struct DataSourceProvider {
     _logger: slog::Logger,
     event_sink: Option<Sender<DataSourceProviderEvent>>,
     schema_event_sink: Option<Sender<SchemaEvent>>,
@@ -19,7 +19,7 @@ pub struct LocalDataSourceProvider {
     schema: Schema,
 }
 
-impl LocalDataSourceProvider {
+impl DataSourceProvider {
     pub fn new<'a, T: Ipfs>(
         logger: slog::Logger,
         runtime: Handle,
@@ -40,8 +40,8 @@ impl LocalDataSourceProvider {
                     .expect("Failed to parse data source schema");
 
                 // Create the data source provider
-                LocalDataSourceProvider {
-                    _logger: logger.new(o!("component" => "LocalDataSourceProvider")),
+                DataSourceProvider {
+                    _logger: logger.new(o!("component" => "DataSourceProvider")),
                     event_sink: None,
                     schema_event_sink: None,
                     runtime,
@@ -52,7 +52,7 @@ impl LocalDataSourceProvider {
     }
 }
 
-impl DataSourceProviderTrait for LocalDataSourceProvider {
+impl DataSourceProviderTrait for DataSourceProvider {
     fn event_stream(&mut self) -> Result<Receiver<DataSourceProviderEvent>, StreamError> {
         // If possible, create a new channel for streaming data source provider events
         let result = match self.event_sink {
