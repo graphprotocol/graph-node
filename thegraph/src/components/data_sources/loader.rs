@@ -1,4 +1,4 @@
-use components::ipfs::Ipfs;
+use components::link_resolver::LinkResolver;
 use data::data_sources::DataSourceDefinition;
 use futures::Future;
 use serde_yaml;
@@ -24,9 +24,9 @@ impl From<serde_yaml::Error> for DataSourceDefinitionLoaderError {
 /// Common trait for components that are able to load `DataSourceDefinition`s.
 pub trait DataSourceDefinitionLoader {
     /// Loads a `DataSourceDefinition` from IPFS.
-    fn load_from_ipfs<'a, T: Ipfs>(
+    fn load_from_ipfs<'a>(
         &self,
         ipfs_link: &str,
-        ipfs_client: &'a T,
+        ipfs_client: &'a impl LinkResolver,
     ) -> Box<Future<Item = DataSourceDefinition, Error = DataSourceDefinitionLoaderError> + 'a>;
 }

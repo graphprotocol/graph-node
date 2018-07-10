@@ -3,13 +3,15 @@ use futures::prelude::*;
 use ipfs_api;
 use std::error::Error;
 
-pub trait Ipfs {
-    fn cat_link(&self, link: &str) -> Box<Future<Item = Vec<u8>, Error = Box<Error>>>;
+/// Resolves links to data source definitions and resources referenced by them.
+pub trait LinkResolver {
+    /// Fetches the link contents as bytes.
+    fn cat(&self, link: &str) -> Box<Future<Item = Vec<u8>, Error = Box<Error>>>;
 }
 
-impl Ipfs for ipfs_api::IpfsClient {
+impl LinkResolver for ipfs_api::IpfsClient {
     /// Currently supports only links of the form `/ipfs/ipfs_hash`
-    fn cat_link(&self, link: &str) -> Box<Future<Item = Vec<u8>, Error = Box<Error>>> {
+    fn cat(&self, link: &str) -> Box<Future<Item = Vec<u8>, Error = Box<Error>>> {
         // Verify that the link is in the expected form `/ipfs/hash`.
         if !link.starts_with("/ipfs/") {
             return Box::new(

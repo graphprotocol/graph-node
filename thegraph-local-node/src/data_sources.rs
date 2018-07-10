@@ -20,11 +20,11 @@ pub struct DataSourceProvider {
 }
 
 impl DataSourceProvider {
-    pub fn new<'a, T: Ipfs>(
+    pub fn new<'a>(
         logger: slog::Logger,
         runtime: Handle,
         filename: &str,
-        ipfs_client: &'a T,
+        ipfs_client: &'a impl LinkResolver,
     ) -> impl Future<Item = Self, Error = DataSourceDefinitionLoaderError> + 'a {
         // Load the data source definition
         let loader = thegraph_core::DataSourceDefinitionLoader::default();

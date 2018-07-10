@@ -1,4 +1,4 @@
-use components::ipfs::Ipfs;
+use components::link_resolver::LinkResolver;
 use ethabi::Contract;
 use futures::prelude::*;
 use futures::stream;
@@ -24,10 +24,10 @@ pub type RawSchema = InnerRawSchema<String>;
 impl UnresolvedRawSchema {
     pub fn resolve(
         self,
-        ipfs_client: &impl Ipfs,
+        ipfs_client: &impl LinkResolver,
     ) -> impl Future<Item = RawSchema, Error = Box<Error + 'static>> {
         ipfs_client
-            .cat_link(&self.source.link)
+            .cat(&self.source.link)
             .and_then(|schema_bytes| {
                 Ok(RawSchema {
                     source: String::from_utf8(schema_bytes)?,
@@ -62,10 +62,10 @@ pub type MappingABI = InnerMappingABI<Contract>;
 impl UnresolvedMappingABI {
     pub fn resolve(
         self,
-        ipfs_client: &impl Ipfs,
+        ipfs_client: &impl LinkResolver,
     ) -> impl Future<Item = MappingABI, Error = Box<Error + 'static>> {
         ipfs_client
-            .cat_link(&self.contract.link)
+            .cat(&self.contract.link)
             .and_then(|contract_bytes| {
                 let contract = Contract::load(&*contract_bytes)?;
                 Ok(MappingABI {
@@ -102,7 +102,7 @@ pub type Mapping = InnerMapping<Contract, Module>;
 impl UnresolvedMapping {
     pub fn resolve(
         self,
-        ipfs_client: &impl Ipfs,
+        ipfs_client: &impl LinkResolver,
     ) -> impl Future<Item = Mapping, Error = Box<Error>> {
         let UnresolvedMapping {
             kind,
@@ -121,7 +121,7 @@ impl UnresolvedMapping {
         ).collect()
             .join(
                 ipfs_client
-                    .cat_link(&runtime.link)
+                    .cat(&runtime.link)
                     .and_then(|module_bytes| {
                         parity_wasm::deserialize_buffer(&module_bytes)
                             .map_err(|e| Box::new(e) as Box<Error>)
@@ -151,7 +151,7 @@ pub type DataSet = InnerDataSet<Contract, Module>;
 impl UnresolvedDataSet {
     pub fn resolve(
         self,
-        ipfs_client: &impl Ipfs,
+        ipfs_client: &impl LinkResolver,
     ) -> impl Future<Item = DataSet, Error = Box<Error>> {
         let UnresolvedDataSet { data, mapping } = self;
         mapping
@@ -183,7 +183,7 @@ pub type DataSourceDefinition = InnerDataSourceDefinition<String, DataSet>;
 impl UnresolvedDataSourceDefinition {
     pub fn resolve(
         self,
-        ipfs_client: &impl Ipfs,
+        ipfs_client: &impl LinkResolver,
     ) -> impl Future<Item = DataSourceDefinition, Error = Box<Error>> {
         let UnresolvedDataSourceDefinition {
             id,
