@@ -26,7 +26,7 @@ BEGIN
     CASE
     -- INSERT case
     WHEN $2 = 0 THEN
-     -- delete inserted row
+     -- Delete inserted row
       BEGIN
         EXECUTE
           'DELETE FROM entities WHERE (
@@ -35,7 +35,7 @@ BEGIN
             id = $3)'
         USING target_data_source, target_entity, target_entity_id;
 
-        -- row is already deleted
+        -- Row was already updated
         EXCEPTION
           WHEN no_data_found THEN
             NULL;
@@ -43,7 +43,7 @@ BEGIN
 
       -- UPDATE case
       WHEN $2 = 1 THEN
-        -- delete inserted row
+        -- Update row to previous state
         BEGIN
           EXECUTE
             'UPDATE entities SET DATA = $1 WHERE (
@@ -60,7 +60,7 @@ BEGIN
 
       -- DELETE case
       WHEN $2 = 2 THEN
-       -- delete inserted row
+       -- Insert deleted row
         BEGIN
           EXECUTE
             'INSERT INTO entities (id, data_source, entity, data)
@@ -71,7 +71,7 @@ BEGIN
             target_entity,
             target_data_before;
 
-          -- row is already deleted
+          -- row is already inserted
           EXCEPTION
             WHEN no_data_found THEN
               NULL;
