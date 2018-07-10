@@ -94,7 +94,7 @@ impl Store {
 
     /// Handles block reorganizations.
     /// Revert all store changes related to given set of blocks
-    /// Returns the nearest common ancestor
+    /// Returns the nearest common ancestor block
     fn _revert_chain(&mut self, _block_hashes: Vec<String>) -> String {
         unimplemented!();
     }
