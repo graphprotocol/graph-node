@@ -46,7 +46,7 @@ pub mod prelude {
                                 StoreQuery, StoreRange};
     pub use components::{EventConsumer, EventProducer};
 
-    pub use components::ipfs::Ipfs;
+    pub use components::link_resolver::LinkResolver;
     pub use data::data_sources::{DataSet, DataSourceDefinition};
     pub use data::query::{Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue,
                           QueryVariables};

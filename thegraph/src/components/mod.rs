@@ -53,7 +53,7 @@ pub mod server;
 /// Components dealing with storing entities.
 pub mod store;
 
-pub mod ipfs;
+pub mod link_resolver;
 
 /// Plug the outputs of `output` of type `E` to the matching inputs in `input`.
 /// This is a lazy operation, nothing will be sent until you spawn the returned

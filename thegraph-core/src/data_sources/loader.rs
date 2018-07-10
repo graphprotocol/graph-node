@@ -2,7 +2,7 @@ use futures::prelude::*;
 use serde_yaml;
 use thegraph::components::data_sources::{DataSourceDefinitionLoader as LoaderTrait,
                                          DataSourceDefinitionLoaderError};
-use thegraph::components::ipfs::Ipfs;
+use thegraph::components::link_resolver::LinkResolver;
 use thegraph::data::data_sources::*;
 
 #[derive(Default)]
@@ -11,16 +11,16 @@ pub struct DataSourceDefinitionLoader;
 impl LoaderTrait for DataSourceDefinitionLoader {
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
-    fn load_from_ipfs<'a, T: Ipfs>(
+    fn load_from_ipfs<'a>(
         &self,
         ipfs_link: &str,
-        ipfs_client: &'a T,
+        ipfs_client: &'a impl LinkResolver,
     ) -> Box<Future<Item = DataSourceDefinition, Error = DataSourceDefinitionLoaderError> + 'a>
     {
         let ipfs_link = ipfs_link.to_owned();
         Box::new(
             ipfs_client
-                .cat_link(&ipfs_link)
+                .cat(&ipfs_link)
                 .map_err(|e| DataSourceDefinitionLoaderError::ResolveError(e))
                 .and_then(move |file_bytes| {
                     let file = String::from_utf8(file_bytes.to_vec())
