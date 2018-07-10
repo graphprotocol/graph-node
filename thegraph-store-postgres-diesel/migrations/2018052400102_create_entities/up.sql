@@ -23,3 +23,12 @@ CREATE TABLE IF NOT EXISTS row_history (
      data_before JSONB,
      data_after JSONB
  );
+
+--FOREIGN KEYS
+ALTER TABLE row_history
+    ADD CONSTRAINT row_history_table_event_id_fk
+    FOREIGN KEY (event_id)
+    REFERENCES table_event_history(id)
+    MATCH FULL
+    ON DELETE CASCADE
+    ON UPDATE CASCADE;
