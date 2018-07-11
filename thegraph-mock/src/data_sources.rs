@@ -4,7 +4,7 @@ use graphql_parser;
 use slog;
 
 use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
-use thegraph::data::data_sources::RawSchema;
+use graphql_parser::schema::Document;
 use thegraph::prelude::*;
 use thegraph::util::stream::StreamError;
 
@@ -43,8 +43,9 @@ impl MockDataSourceProvider {
             id: String::from("mock data source"),
             location: String::from("/tmp/example-data-source.yaml"),
             spec_version: String::from("0.1"),
-            schema: RawSchema {
-                source: String::from("example schema"),
+            schema: Schema {
+                id: String::from("exampled id"),
+                document: Document { definitions: vec![] }
             },
             datasets: vec![],
         };

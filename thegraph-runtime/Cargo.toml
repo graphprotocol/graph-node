@@ -17,3 +17,4 @@ web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 
 [dev-dependencies]
 parity-wasm = "0.31"
+graphql-parser = "0.2.0"

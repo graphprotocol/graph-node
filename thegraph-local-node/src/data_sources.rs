@@ -1,6 +1,5 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use graphql_parser;
 use slog;
 use tokio_core::reactor::Handle;
 
@@ -16,7 +15,6 @@ pub struct DataSourceProvider {
     schema_event_sink: Option<Sender<SchemaEvent>>,
     runtime: Handle,
     data_source: DataSourceDefinition,
-    schema: Schema,
 }
 
 impl DataSourceProvider {
@@ -31,14 +29,6 @@ impl DataSourceProvider {
         loader
             .load_from_ipfs(filename, ipfs_client)
             .map(move |data_source| {
-                // Parse the schema
-                let schema = graphql_parser::parse_schema(data_source.schema.source.as_str())
-                    .map(|document| Schema {
-                        id: String::from("local-data-source-schema"),
-                        document,
-                    })
-                    .expect("Failed to parse data source schema");
-
                 // Create the data source provider
                 DataSourceProvider {
                     _logger: logger.new(o!("component" => "DataSourceProvider")),
@@ -46,7 +36,6 @@ impl DataSourceProvider {
                     schema_event_sink: None,
                     runtime,
                     data_source,
-                    schema,
                 }
             })
     }
@@ -98,7 +87,7 @@ impl DataSourceProviderTrait for DataSourceProvider {
                 self.schema_event_sink
                     .clone()
                     .unwrap()
-                    .send(SchemaEvent::SchemaAdded(self.schema.clone()))
+                    .send(SchemaEvent::SchemaAdded(self.data_source.schema.clone()))
                     .map_err(|e| panic!("Failed to forward data source schema: {}", e))
                     .and_then(|_| Ok(())),
             );
