@@ -17,15 +17,15 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::Instant;
 use thegraph::components::ethereum::*;
-use thegraph::prelude::{DataSourceDefinitionLoader as LoaderTrait, *};
+use thegraph::prelude::*;
 use thegraph::util::log::logger;
-use thegraph_core::{DataSourceDefinitionLoader, RuntimeManager};
+use thegraph_core::RuntimeManager;
 use thegraph_mock::FakeStore;
 use thegraph_runtime::RuntimeHostBuilder;
 use tokio_core::reactor::Core;
 
 #[test]
-//#[ignore]
+#[ignore]
 fn multiple_data_sets_per_data_source() {
     struct MockEthereumAdapter {
         received_subscriptions: Vec<String>,
@@ -64,7 +64,7 @@ fn multiple_data_sets_per_data_source() {
 
     // Replace "link to" placeholders in the data source definition with hashes
     // of files just added into a local IPFS daemon on port 5001.
-    let ipfs_client = IpfsClient::default();
+    let resolver = IpfsClient::default();
     let mut data_source_string =
         std::fs::read_to_string("tests/datasource-two-datasets/two-datasets.yaml").unwrap();
     for file in &[
@@ -74,13 +74,13 @@ fn multiple_data_sets_per_data_source() {
         "schema.graphql",
     ] {
         let link = core.run(add(
-            &ipfs_client,
+            &resolver,
             read_to_string(format!("tests/datasource-two-datasets/{}", file)).unwrap(),
         )).unwrap();
         data_source_string =
             data_source_string.replace(&format!("link to {}", file), &format!("/ipfs/{}", link));
     }
-    let data_source_link = core.run(add(&ipfs_client, data_source_string)).unwrap();
+    let data_source_link = core.run(add(&resolver, data_source_string)).unwrap();
 
     let logger = logger();
     let eth_adapter = Arc::new(Mutex::new(MockEthereumAdapter {
@@ -93,9 +93,12 @@ fn multiple_data_sets_per_data_source() {
 
     // Load a data source with two data sets, one listening for `ExampleEvent`
     // and the other for `ExampleEvent2`.
-    let data_source = core.run(
-        DataSourceDefinitionLoader.load_from_ipfs(&data_source_link, &ipfs_client),
-    ).expect("failed to load data source");
+    let data_source = core.run(DataSourceDefinition::resolve(
+        Link {
+            link: data_source_link,
+        },
+        &resolver,
+    )).expect("failed to load data source");
 
     // Send the new data source to the manager.
     manager
