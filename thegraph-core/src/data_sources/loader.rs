@@ -20,7 +20,7 @@ impl LoaderTrait for DataSourceDefinitionLoader {
         let ipfs_link = ipfs_link.to_owned();
         Box::new(
             ipfs_client
-                .cat(&ipfs_link)
+                .cat(&Link { link: ipfs_link.clone() })
                 .map_err(|e| DataSourceDefinitionLoaderError::ResolveError(e))
                 .and_then(move |file_bytes| {
                     let file = String::from_utf8(file_bytes.to_vec())

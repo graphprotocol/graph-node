@@ -27,7 +27,7 @@ impl SchemaData {
         ipfs_client: &impl LinkResolver,
     ) -> impl Future<Item = Schema, Error = Box<Error + 'static>> {
         ipfs_client
-            .cat(&self.source.link)
+            .cat(&self.source)
             .and_then(|schema_bytes| {
                 graphql_parser::parse_schema(&String::from_utf8(schema_bytes)?)
                     .map(|document| Schema {
@@ -67,7 +67,7 @@ impl UnresolvedMappingABI {
         ipfs_client: &impl LinkResolver,
     ) -> impl Future<Item = MappingABI, Error = Box<Error + 'static>> {
         ipfs_client
-            .cat(&self.contract.link)
+            .cat(&self.contract)
             .and_then(|contract_bytes| {
                 let contract = Contract::load(&*contract_bytes)?;
                 Ok(MappingABI {
@@ -123,7 +123,7 @@ impl UnresolvedMapping {
         ).collect()
             .join(
                 ipfs_client
-                    .cat(&runtime.link)
+                    .cat(&runtime)
                     .and_then(|module_bytes| {
                         parity_wasm::deserialize_buffer(&module_bytes)
                             .map_err(|e| Box::new(e) as Box<Error>)
