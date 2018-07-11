@@ -6,20 +6,22 @@ use prelude::*;
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
 pub trait Resolver: Clone {
     /// Resolves entities referenced by a parent object.
-    fn resolve_entities(
+    fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
-        entity: &q::Name,
+        field_definition: &s::Field,
+        object_type: &s::ObjectType,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> q::Value;
 
     /// Resolves an entity referenced by a parent object.
-    fn resolve_entity(
+    fn resolve_object(
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
-        entity: &q::Name,
+        field_definition: &s::Field,
+        object_type: &s::ObjectType,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> q::Value;
 
