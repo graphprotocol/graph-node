@@ -3,11 +3,10 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
 use tokio_core::reactor::Handle;
 
-use thegraph::components::data_sources::{DataSourceDefinitionLoaderError, DataSourceProviderEvent,
-                                         SchemaEvent};
+use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
+use thegraph::data::data_sources::DataSourceDefinitionResolveError;
 use thegraph::prelude::{DataSourceProvider as DataSourceProviderTrait, *};
 use thegraph::util::stream::StreamError;
-use thegraph_core;
 
 pub struct DataSourceProvider {
     _logger: slog::Logger,
@@ -21,23 +20,25 @@ impl DataSourceProvider {
     pub fn new<'a>(
         logger: slog::Logger,
         runtime: Handle,
-        filename: &str,
-        ipfs_client: &'a impl LinkResolver,
-    ) -> impl Future<Item = Self, Error = DataSourceDefinitionLoaderError> + 'a {
+        link: &str,
+        resolver: &'a impl LinkResolver,
+    ) -> impl Future<Item = Self, Error = DataSourceDefinitionResolveError> + 'a {
         // Load the data source definition
-        let loader = thegraph_core::DataSourceDefinitionLoader::default();
-        loader
-            .load_from_ipfs(filename, ipfs_client)
-            .map(move |data_source| {
-                // Create the data source provider
-                DataSourceProvider {
-                    _logger: logger.new(o!("component" => "DataSourceProvider")),
-                    event_sink: None,
-                    schema_event_sink: None,
-                    runtime,
-                    data_source,
-                }
-            })
+        DataSourceDefinition::resolve(
+            Link {
+                link: link.to_owned(),
+            },
+            resolver,
+        ).map(move |data_source| {
+            // Create the data source provider
+            DataSourceProvider {
+                _logger: logger.new(o!("component" => "DataSourceProvider")),
+                event_sink: None,
+                schema_event_sink: None,
+                runtime,
+                data_source,
+            }
+        })
     }
 }
 

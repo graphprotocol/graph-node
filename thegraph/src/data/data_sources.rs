@@ -7,7 +7,22 @@ use futures::stream;
 use graphql_parser;
 use parity_wasm;
 use parity_wasm::elements::Module;
+use serde_yaml;
 use std::error::Error;
+
+#[derive(Debug)]
+pub enum DataSourceDefinitionResolveError {
+    ParseError(serde_yaml::Error),
+    NonUtf8,
+    InvalidFormat,
+    ResolveError(Box<Error>),
+}
+
+impl From<serde_yaml::Error> for DataSourceDefinitionResolveError {
+    fn from(e: serde_yaml::Error) -> Self {
+        DataSourceDefinitionResolveError::ParseError(e)
+    }
+}
 
 /// IPLD link.
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -24,9 +39,9 @@ pub struct SchemaData {
 impl SchemaData {
     pub fn resolve(
         self,
-        ipfs_client: &impl LinkResolver,
+        resolver: &impl LinkResolver,
     ) -> impl Future<Item = Schema, Error = Box<Error + 'static>> {
-        ipfs_client.cat(&self.source).and_then(|schema_bytes| {
+        resolver.cat(&self.source).and_then(|schema_bytes| {
             graphql_parser::parse_schema(&String::from_utf8(schema_bytes)?)
                 .map(|document| Schema {
                     id: String::from("local-data-source-schema"),
@@ -63,9 +78,9 @@ pub type MappingABI = BaseMappingABI<Contract>;
 impl UnresolvedMappingABI {
     pub fn resolve(
         self,
-        ipfs_client: &impl LinkResolver,
+        resolver: &impl LinkResolver,
     ) -> impl Future<Item = MappingABI, Error = Box<Error + 'static>> {
-        ipfs_client.cat(&self.contract).and_then(|contract_bytes| {
+        resolver.cat(&self.contract).and_then(|contract_bytes| {
             let contract = Contract::load(&*contract_bytes)?;
             Ok(MappingABI {
                 name: self.name,
@@ -101,7 +116,7 @@ pub type Mapping = BaseMapping<Contract, Module>;
 impl UnresolvedMapping {
     pub fn resolve(
         self,
-        ipfs_client: &impl LinkResolver,
+        resolver: &impl LinkResolver,
     ) -> impl Future<Item = Mapping, Error = Box<Error>> {
         let UnresolvedMapping {
             kind,
@@ -116,9 +131,9 @@ impl UnresolvedMapping {
         // resolve each abi
         stream::futures_ordered(
             abis.into_iter()
-                .map(|unresolved_abi| unresolved_abi.resolve(ipfs_client)),
+                .map(|unresolved_abi| unresolved_abi.resolve(resolver)),
         ).collect()
-            .join(ipfs_client.cat(&runtime).and_then(|module_bytes| {
+            .join(resolver.cat(&runtime).and_then(|module_bytes| {
                 parity_wasm::deserialize_buffer(&module_bytes)
                     .map_err(|e| Box::new(e) as Box<Error>)
             }))
@@ -146,11 +161,11 @@ pub type DataSet = BaseDataSet<Contract, Module>;
 impl UnresolvedDataSet {
     pub fn resolve(
         self,
-        ipfs_client: &impl LinkResolver,
+        resolver: &impl LinkResolver,
     ) -> impl Future<Item = DataSet, Error = Box<Error>> {
         let UnresolvedDataSet { data, mapping } = self;
         mapping
-            .resolve(ipfs_client)
+            .resolve(resolver)
             .map(|mapping| DataSet { data, mapping })
     }
 }
@@ -175,10 +190,57 @@ impl<S, D> PartialEq for BaseDataSourceDefinition<S, D> {
 pub type UnresolvedDataSourceDefinition = BaseDataSourceDefinition<SchemaData, UnresolvedDataSet>;
 pub type DataSourceDefinition = BaseDataSourceDefinition<Schema, DataSet>;
 
+impl DataSourceDefinition {
+    /// Entry point for resolving a data source definition.
+    /// Right now the only supported links are of the form:
+    /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
+    pub fn resolve<'a, 'b>(
+        link: Link,
+        resolver: &'a impl LinkResolver,
+    ) -> Box<Future<Item = Self, Error = DataSourceDefinitionResolveError> + 'a> {
+        Box::new(
+            resolver
+                .cat(&link)
+                .map_err(|e| DataSourceDefinitionResolveError::ResolveError(e))
+                .and_then(move |file_bytes| {
+                    let file = String::from_utf8(file_bytes.to_vec())
+                        .map_err(|_| DataSourceDefinitionResolveError::NonUtf8)?;
+                    let mut raw: serde_yaml::Value = serde_yaml::from_str(&file)?;
+                    {
+                        let raw_mapping = raw.as_mapping_mut()
+                            .ok_or(DataSourceDefinitionResolveError::InvalidFormat)?;
+
+                        // Inject the IPFS hash as the ID of the data source
+                        // into the definition.
+                        raw_mapping.insert(
+                            serde_yaml::Value::from("id"),
+                            serde_yaml::Value::from(link.link.trim_left_matches("/ipfs/")),
+                        );
+
+                        // Inject the IPFS link as the location of the data
+                        // source into the definition
+                        raw_mapping.insert(
+                            serde_yaml::Value::from("location"),
+                            serde_yaml::Value::from(link.link),
+                        );
+                    }
+                    // Parse the YAML data into an UnresolvedDataSourceDefinition
+                    let unresolved: UnresolvedDataSourceDefinition = serde_yaml::from_value(raw)?;
+                    Ok(unresolved)
+                })
+                .and_then(move |unresolved| {
+                    unresolved
+                        .resolve(resolver)
+                        .map_err(|e| DataSourceDefinitionResolveError::ResolveError(e))
+                }),
+        )
+    }
+}
+
 impl UnresolvedDataSourceDefinition {
     pub fn resolve(
         self,
-        ipfs_client: &impl LinkResolver,
+        resolver: &impl LinkResolver,
     ) -> impl Future<Item = DataSourceDefinition, Error = Box<Error>> {
         let UnresolvedDataSourceDefinition {
             id,
@@ -192,9 +254,9 @@ impl UnresolvedDataSourceDefinition {
         stream::futures_ordered(
             datasets
                 .into_iter()
-                .map(|data_set| data_set.resolve(ipfs_client)),
+                .map(|data_set| data_set.resolve(resolver)),
         ).collect()
-            .join(schema.resolve(ipfs_client))
+            .join(schema.resolve(resolver))
             .map(|(datasets, schema)| DataSourceDefinition {
                 id,
                 location,

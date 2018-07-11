@@ -133,7 +133,7 @@ fn main() {
 
     // Create system components
     let runtime = core.handle();
-    let ipfs_client = IpfsClient::new(
+    let resolver = IpfsClient::new(
         &format!("{}", ipfs_socket_addr.ip()),
         ipfs_socket_addr.port(),
     ).expect("Failed to start IPFS client");
@@ -141,7 +141,7 @@ fn main() {
         logger.clone(),
         runtime,
         &format!("/ipfs/{}", data_source_hash.clone()),
-        &ipfs_client,
+        &resolver,
     )).expect("Failed to initialize data source provider");
     let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
