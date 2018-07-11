@@ -9,7 +9,7 @@ extern crate thegraph;
 extern crate thegraph_graphql_utils;
 
 use futures::sync::oneshot;
-use graphql_parser::query as q;
+use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 
 use thegraph::prelude::{Query, QueryResult, Schema};
@@ -21,21 +21,23 @@ use thegraph_graphql_utils::prelude::*;
 pub struct MockResolver;
 
 impl Resolver for MockResolver {
-    fn resolve_entities(
+    fn resolve_objects(
         &self,
         _parent: &Option<q::Value>,
         _field: &q::Name,
-        _entity: &q::Name,
+        _field_definition: &s::Field,
+        _object_type: &s::ObjectType,
         _arguments: &HashMap<&q::Name, q::Value>,
     ) -> q::Value {
         q::Value::Null
     }
 
-    fn resolve_entity(
+    fn resolve_object(
         &self,
         _parent: &Option<q::Value>,
         _field: &q::Name,
-        _entity: &q::Name,
+        _field_definition: &s::Field,
+        _object_type: &s::ObjectType,
         _arguments: &HashMap<&q::Name, q::Value>,
     ) -> q::Value {
         q::Value::Null

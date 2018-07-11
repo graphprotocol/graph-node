@@ -160,14 +160,7 @@ where
             // Remember whether or not we're introspecting now
             ctx.introspecting = introspecting;
 
-            match execute_field(
-                ctx,
-                object_type,
-                object_value,
-                &fields[0],
-                &field.field_type,
-                fields,
-            ) {
+            match execute_field(ctx, object_type, object_value, &fields[0], field, fields) {
                 Ok(v) => {
                     result_map.insert(response_key.to_owned(), v);
                 }
@@ -335,7 +328,7 @@ fn execute_field<'a, R1, R2>(
     object_type: &s::ObjectType,
     object_value: &Option<q::Value>,
     field: &'a q::Field,
-    field_type: &'a s::Type,
+    field_definition: &s::Field,
     fields: Vec<&'a q::Field>,
 ) -> Result<q::Value, QueryExecutionError>
 where
@@ -349,11 +342,12 @@ where
                 object_type,
                 object_value,
                 field,
-                field_type,
+                field_definition,
+                &field_definition.field_type,
                 &argument_values,
             )
         })
-        .and_then(|value| complete_value(ctx, field, field_type, fields, value))
+        .and_then(|value| complete_value(ctx, field, &field_definition.field_type, fields, value))
 }
 
 /// Resolves the value of a field.
@@ -362,6 +356,7 @@ fn resolve_field_value<'a, R1, R2>(
     object_type: &s::ObjectType,
     object_value: &Option<q::Value>,
     field: &q::Field,
+    field_definition: &s::Field,
     field_type: &s::Type,
     argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, QueryExecutionError>
@@ -375,20 +370,26 @@ where
             object_type,
             object_value,
             field,
+            field_definition,
             inner_type.as_ref(),
             argument_values,
         ),
 
-        s::Type::NamedType(ref name) => {
-            resolve_field_value_for_named_type(ctx, object_value, field, name, argument_values)
-        }
+        s::Type::NamedType(ref name) => resolve_field_value_for_named_type(
+            ctx,
+            object_value,
+            field,
+            field_definition,
+            name,
+            argument_values,
+        ),
 
         s::Type::ListType(inner_type) => resolve_field_value_for_list_type(
             ctx,
             object_type,
             object_value,
             field,
-            field_type,
+            field_definition,
             inner_type.as_ref(),
             argument_values,
         ),
@@ -400,6 +401,7 @@ fn resolve_field_value_for_named_type<'a, R1, R2>(
     ctx: ExecutionContext<'a, R1, R2>,
     object_value: &Option<q::Value>,
     field: &q::Field,
+    field_definition: &s::Field,
     type_name: &s::Name,
     argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, QueryExecutionError>
@@ -421,15 +423,21 @@ where
         // Let the resolver decide how the field (with the given object type)
         // is resolved into an entity based on the (potential) parent object
         s::TypeDefinition::Object(t) => if ctx.introspecting {
-            Ok(ctx.introspection_resolver.resolve_entity(
+            Ok(ctx.introspection_resolver.resolve_object(
                 object_value,
                 &field.name,
-                &t.name,
+                field_definition,
+                t,
                 argument_values,
             ))
         } else {
-            Ok(ctx.resolver
-                .resolve_entity(object_value, &field.name, &t.name, argument_values))
+            Ok(ctx.resolver.resolve_object(
+                object_value,
+                &field.name,
+                field_definition,
+                t,
+                argument_values,
+            ))
         },
 
         // Let the resolver decide how values in the resolved object value
@@ -470,7 +478,7 @@ fn resolve_field_value_for_list_type<'a, R1, R2>(
     object_type: &s::ObjectType,
     object_value: &Option<q::Value>,
     field: &q::Field,
-    field_type: &s::Type,
+    field_definition: &s::Field,
     inner_type: &s::Type,
     argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, QueryExecutionError>
@@ -484,7 +492,7 @@ where
             object_type,
             object_value,
             field,
-            field_type,
+            field_definition,
             inner_type,
             argument_values,
         ),
@@ -503,17 +511,19 @@ where
                 // Let the resolver decide how the list field (with the given item object type)
                 // is resolved into a entities based on the (potential) parent object
                 s::TypeDefinition::Object(t) => if ctx.introspecting {
-                    Ok(ctx.introspection_resolver.resolve_entities(
+                    Ok(ctx.introspection_resolver.resolve_objects(
                         object_value,
                         &field.name,
-                        &t.name,
+                        field_definition,
+                        t,
                         argument_values,
                     ))
                 } else {
-                    Ok(ctx.resolver.resolve_entities(
+                    Ok(ctx.resolver.resolve_objects(
                         object_value,
                         &field.name,
-                        &t.name,
+                        field_definition,
+                        t,
                         argument_values,
                     ))
                 },
