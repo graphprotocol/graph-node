@@ -1,10 +1,13 @@
 use components::link_resolver::LinkResolver;
 use ethabi::Contract;
 use futures::prelude::*;
+use data::schema::Schema;
 use futures::stream;
 use parity_wasm;
 use parity_wasm::elements::Module;
 use std::error::Error;
+use graphql_parser;
+use failure::Fail;
 
 /// IPLD link.
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -14,25 +17,24 @@ pub struct Link {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct BaseRawSchema<S> {
-    pub source: S,
+pub struct SchemaData {
+    pub source: Link,
 }
 
-pub type UnresolvedRawSchema = BaseRawSchema<Link>;
-pub type RawSchema = BaseRawSchema<String>;
-
-impl UnresolvedRawSchema {
+impl SchemaData {
     pub fn resolve(
         self,
         ipfs_client: &impl LinkResolver,
-    ) -> impl Future<Item = RawSchema, Error = Box<Error + 'static>> {
+    ) -> impl Future<Item = Schema, Error = Box<Error + 'static>> {
         ipfs_client
             .cat(&self.source.link)
             .and_then(|schema_bytes| {
-                Ok(RawSchema {
-                    source: String::from_utf8(schema_bytes)?,
+                graphql_parser::parse_schema(&String::from_utf8(schema_bytes)?)
+                    .map(|document| Schema {
+                        id: String::from("local-data-source-schema"),
+                        document,
+                    }).map_err(|e| Box::new(e.compat()) as Box<Error>)
                 })
-            })
     }
 }
 
@@ -166,7 +168,7 @@ pub struct BaseDataSourceDefinition<S, D> {
     pub location: String,
     #[serde(rename = "specVersion")]
     pub spec_version: String,
-    pub schema: BaseRawSchema<S>,
+    pub schema: S,
     pub datasets: Vec<D>,
 }
 
@@ -177,8 +179,8 @@ impl<S, D> PartialEq for BaseDataSourceDefinition<S, D> {
     }
 }
 
-pub type UnresolvedDataSourceDefinition = BaseDataSourceDefinition<Link, UnresolvedDataSet>;
-pub type DataSourceDefinition = BaseDataSourceDefinition<String, DataSet>;
+pub type UnresolvedDataSourceDefinition = BaseDataSourceDefinition<SchemaData, UnresolvedDataSet>;
+pub type DataSourceDefinition = BaseDataSourceDefinition<Schema, DataSet>;
 
 impl UnresolvedDataSourceDefinition {
     pub fn resolve(

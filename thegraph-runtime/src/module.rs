@@ -535,6 +535,7 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
 #[cfg(test)]
 mod tests {
     extern crate parity_wasm;
+    extern crate graphql_parser;
 
     use ethabi::{LogParam, Token};
     use ethereum_types::Address;
@@ -545,6 +546,8 @@ mod tests {
     use std::iter::FromIterator;
     use std::sync::{Arc, Mutex};
     use tokio_core;
+    use self::graphql_parser::schema::Document;
+
 
     use thegraph::components::data_sources::*;
     use thegraph::components::ethereum::*;
@@ -580,7 +583,6 @@ mod tests {
 
     #[test]
     fn call_event_handler_and_receive_database_event() {
-        use thegraph::data::data_sources::RawSchema;
         // Load the example_event_handler.wasm test module. All this module does
         // is implement an `handleExampleEvent` function that calls `database.create()`
         // with sample data taken from the event parameters.
@@ -602,8 +604,9 @@ mod tests {
                     id: String::from("example data source"),
                     location: String::from("/path/to/example-data-source.yaml"),
                     spec_version: String::from("0.1.0"),
-                    schema: RawSchema {
-                        source: String::from("type Foo {}"),
+                    schema: Schema {
+                        id: String::from("exampled id"),
+                        document: Document { definitions: vec![] }
                     },
                     datasets: vec![],
                 },
