@@ -1,5 +1,6 @@
 use graphql_parser::query;
 use std::collections::{BTreeMap, HashMap};
+use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 
 /// An entity attribute name is represented as a string.
@@ -124,5 +125,13 @@ impl Into<query::Value> for Entity {
 impl From<HashMap<Attribute, Value>> for Entity {
     fn from(m: HashMap<Attribute, Value>) -> Entity {
         Entity(m)
+    }
+}
+
+impl<'a> From<Vec<(&'a str, Value)>> for Entity {
+    fn from(entries: Vec<(&'a str, Value)>) -> Entity {
+        Entity::from(HashMap::from_iter(
+            entries.into_iter().map(|(k, v)| (String::from(k), v)),
+        ))
     }
 }
