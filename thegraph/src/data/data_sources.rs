@@ -1,13 +1,13 @@
 use components::link_resolver::LinkResolver;
-use ethabi::Contract;
-use futures::prelude::*;
 use data::schema::Schema;
+use ethabi::Contract;
+use failure::Fail;
+use futures::prelude::*;
 use futures::stream;
+use graphql_parser;
 use parity_wasm;
 use parity_wasm::elements::Module;
 use std::error::Error;
-use graphql_parser;
-use failure::Fail;
 
 /// IPLD link.
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -26,15 +26,14 @@ impl SchemaData {
         self,
         ipfs_client: &impl LinkResolver,
     ) -> impl Future<Item = Schema, Error = Box<Error + 'static>> {
-        ipfs_client
-            .cat(&self.source)
-            .and_then(|schema_bytes| {
-                graphql_parser::parse_schema(&String::from_utf8(schema_bytes)?)
-                    .map(|document| Schema {
-                        id: String::from("local-data-source-schema"),
-                        document,
-                    }).map_err(|e| Box::new(e.compat()) as Box<Error>)
+        ipfs_client.cat(&self.source).and_then(|schema_bytes| {
+            graphql_parser::parse_schema(&String::from_utf8(schema_bytes)?)
+                .map(|document| Schema {
+                    id: String::from("local-data-source-schema"),
+                    document,
                 })
+                .map_err(|e| Box::new(e.compat()) as Box<Error>)
+        })
     }
 }
 
@@ -66,15 +65,13 @@ impl UnresolvedMappingABI {
         self,
         ipfs_client: &impl LinkResolver,
     ) -> impl Future<Item = MappingABI, Error = Box<Error + 'static>> {
-        ipfs_client
-            .cat(&self.contract)
-            .and_then(|contract_bytes| {
-                let contract = Contract::load(&*contract_bytes)?;
-                Ok(MappingABI {
-                    name: self.name,
-                    contract,
-                })
+        ipfs_client.cat(&self.contract).and_then(|contract_bytes| {
+            let contract = Contract::load(&*contract_bytes)?;
+            Ok(MappingABI {
+                name: self.name,
+                contract,
             })
+        })
     }
 }
 
@@ -121,14 +118,10 @@ impl UnresolvedMapping {
             abis.into_iter()
                 .map(|unresolved_abi| unresolved_abi.resolve(ipfs_client)),
         ).collect()
-            .join(
-                ipfs_client
-                    .cat(&runtime)
-                    .and_then(|module_bytes| {
-                        parity_wasm::deserialize_buffer(&module_bytes)
-                            .map_err(|e| Box::new(e) as Box<Error>)
-                    }),
-            )
+            .join(ipfs_client.cat(&runtime).and_then(|module_bytes| {
+                parity_wasm::deserialize_buffer(&module_bytes)
+                    .map_err(|e| Box::new(e) as Box<Error>)
+            }))
             .map(|(abis, runtime)| Mapping {
                 kind,
                 api_version,

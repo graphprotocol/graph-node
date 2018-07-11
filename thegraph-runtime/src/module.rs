@@ -534,9 +534,10 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
 
 #[cfg(test)]
 mod tests {
-    extern crate parity_wasm;
     extern crate graphql_parser;
+    extern crate parity_wasm;
 
+    use self::graphql_parser::schema::Document;
     use ethabi::{LogParam, Token};
     use ethereum_types::Address;
     use futures::prelude::*;
@@ -546,8 +547,6 @@ mod tests {
     use std::iter::FromIterator;
     use std::sync::{Arc, Mutex};
     use tokio_core;
-    use self::graphql_parser::schema::Document;
-
 
     use thegraph::components::data_sources::*;
     use thegraph::components::ethereum::*;
@@ -606,7 +605,9 @@ mod tests {
                     spec_version: String::from("0.1.0"),
                     schema: Schema {
                         id: String::from("exampled id"),
-                        document: Document { definitions: vec![] }
+                        document: Document {
+                            definitions: vec![],
+                        },
                     },
                     datasets: vec![],
                 },
