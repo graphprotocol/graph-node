@@ -1,6 +1,6 @@
+use data::data_sources::Link;
 use failure;
 use futures::prelude::*;
-use data::data_sources::Link;
 use ipfs_api;
 use std::error::Error;
 

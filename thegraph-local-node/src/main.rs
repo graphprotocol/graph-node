@@ -32,9 +32,9 @@ use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_ethereum::Transport;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
+use thegraph_local_node::DataSourceProvider as IpfsDataSourceProvider;
 use thegraph_runtime::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
-use thegraph_local_node::{DataSourceProvider as IpfsDataSourceProvider};
 
 fn main() {
     env_logger::init();

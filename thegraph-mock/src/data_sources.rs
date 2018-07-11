@@ -3,8 +3,8 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use graphql_parser;
 use slog;
 
-use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
 use graphql_parser::schema::Document;
+use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
 use thegraph::prelude::*;
 use thegraph::util::stream::StreamError;
 
@@ -45,7 +45,9 @@ impl MockDataSourceProvider {
             spec_version: String::from("0.1"),
             schema: Schema {
                 id: String::from("exampled id"),
-                document: Document { definitions: vec![] }
+                document: Document {
+                    definitions: vec![],
+                },
             },
             datasets: vec![],
         };
