@@ -1,4 +1,9 @@
-CREATE OR REPLACE FUNCTION revert_row_event(INTEGER, INTEGER)
+/**************************************************************
+* CREATE REVERT FUNCTIONS
+**************************************************************/
+-- Given a store event identified by its event_id
+-- revert the row level changes made by each
+CREATE OR REPLACE FUNCTION revert_row_event(input_row_event_id INTEGER, input_operation_id INTEGER)
     RETURNS VOID AS
 $$
 DECLARE
@@ -21,11 +26,11 @@ BEGIN
         target_data_before,
         target_data_after
     FROM row_history rh
-    WHERE rh.id = $1;
+    WHERE rh.id = input_row_event_id;
 
     CASE
     -- INSERT case
-    WHEN $2 = 0 THEN
+    WHEN input_operation_id = 0 THEN
      -- Delete inserted row
       BEGIN
         EXECUTE
@@ -42,7 +47,7 @@ BEGIN
       END;
 
       -- UPDATE case
-      WHEN $2 = 1 THEN
+      WHEN input_operation_id = 1 THEN
         -- Update row to previous state
         BEGIN
           EXECUTE
@@ -59,7 +64,7 @@ BEGIN
         END;
 
       -- DELETE case
-      WHEN $2 = 2 THEN
+      WHEN input_operation_id = 2 THEN
        -- Insert deleted row
         BEGIN
           EXECUTE
@@ -80,12 +85,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION revert_transaction(event_id INTEGER)
+-- Given a store event identified by its event_id
+-- revert the row level changes made by each
+CREATE OR REPLACE FUNCTION revert_transaction(input_event_id INTEGER)
     RETURNS VOID AS
 $$
 DECLARE
-    row_id INTEGER;
-    operation_id INTEGER;
     row RECORD;
 BEGIN
   FOR row IN
@@ -94,24 +99,37 @@ BEGIN
         teh.op_id as op_id
       FROM row_history rh
       JOIN table_event_history teh ON teh.id=rh.event_id
-      WHERE teh.id = $1
+      WHERE teh.id = input_event_id
     LOOP
     PERFORM revert_row_event(row.id, row.op_id);
   END LOOP;
 END;
 $$ LANGUAGE plpgsql;
 
-
-CREATE OR REPLACE FUNCTION revert_transactions(INTEGER, INTEGER)
+-- Given a set of store events identified by their event_ids
+-- revert the row level changes made by each
+CREATE OR REPLACE FUNCTION revert_transaction_group(input_event_ids INTEGER[])
     RETURNS VOID AS
 $$
+DECLARE
+    row RECORD;
 BEGIN
-    NULL;
+  FOR row IN
+      SELECT
+        rh.id as id,
+        teh.op_id as op_id
+      FROM row_history rh
+      JOIN table_event_history teh ON teh.id=rh.event_id
+      WHERE teh.id = ANY(input_event_ids)
+    LOOP
+    PERFORM revert_row_event(row.id, row.op_id);
+  END LOOP;
 END;
 $$ LANGUAGE plpgsql;
 
-
-CREATE OR REPLACE FUNCTION revert_blocks(VARCHAR, VARCHAR)
+-- Revert to the row store events related to a particular block
+-- identified by it's block_hash
+CREATE OR REPLACE FUNCTION revert_block(block_hash VARCHAR)
     RETURNS VOID AS
 $$
 BEGIN
