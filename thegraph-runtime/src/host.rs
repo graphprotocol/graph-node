@@ -87,7 +87,7 @@ impl RuntimeHost {
         // Create channel for sending runtime host events
         let (event_sender, event_receiver) = channel(100);
 
-        info!(logger, "Loading WASM runtime from"; "data" => config.data_set.data.name.clone());
+        info!(logger, "Loading WASM runtime"; "data_set" => &config.data_set.data.name);
 
         // Load the mappings as a WASM module
         let module = WasmiModule::new(
