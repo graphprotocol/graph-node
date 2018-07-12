@@ -1,9 +1,14 @@
 /**************************************************************
 * CREATE REVERT FUNCTIONS
 **************************************************************/
--- Given a store event identified by its event_id
--- revert the row level changes made by each
-CREATE OR REPLACE FUNCTION revert_row_event(input_row_event_id INTEGER, input_operation_id INTEGER)
+
+/**************************************************************
+* REVERT ROW EVENT
+*
+* Revert a specific row level event
+* Parameters: row_history pkey (id) and the operation type
+**************************************************************/
+CREATE OR REPLACE FUNCTION revert_row_event(input_row_history_id INTEGER, input_operation_id INTEGER)
     RETURNS VOID AS
 $$
 DECLARE
@@ -26,7 +31,7 @@ BEGIN
         target_data_before,
         target_data_after
     FROM row_history rh
-    WHERE rh.id = input_row_event_id;
+    WHERE rh.id = input_row_history_id;
 
     CASE
     -- INSERT case
@@ -85,8 +90,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Given a store event identified by its event_id
--- revert the row level changes made by each
+/**************************************************************
+* REVERT TRANSACTION
+*
+* Get all row level events associated with a SQL transaction
+* For each row level event call revert_row_event()
+* Parameters: event_id
+**************************************************************/
 CREATE OR REPLACE FUNCTION revert_transaction(input_event_id INTEGER)
     RETURNS VOID AS
 $$
@@ -106,8 +116,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Given a set of store events identified by their event_ids
--- revert the row level changes made by each
+/**************************************************************
+* REVERT TRANSACTION GROUP
+*
+* Get all row level events associated with a set of SQL transactions
+* For each row level event call revert_row_event()
+* Parameters: array of event_id's
+**************************************************************/
 CREATE OR REPLACE FUNCTION revert_transaction_group(input_event_ids INTEGER[])
     RETURNS VOID AS
 $$
@@ -127,8 +142,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Revert to the row store events related to a particular block
--- identified by it's block_hash
+/**************************************************************
+* REVERT BLOCK
+*
+* Revert to the row store events related to a particular block
+* Parameters: block_hash
+**************************************************************/
 CREATE OR REPLACE FUNCTION revert_block(block_hash VARCHAR)
     RETURNS VOID AS
 $$

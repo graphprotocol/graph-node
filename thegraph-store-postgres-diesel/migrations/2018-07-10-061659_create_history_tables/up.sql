@@ -1,7 +1,7 @@
 /**************************************************************
 * CREATE TABLES
 **************************************************************/
--- Stores the metadata from each sql transaction
+-- Stores the metadata from each SQL transaction
 CREATE TABLE IF NOT EXISTS table_event_history (
     id SERIAL PRIMARY KEY,
     transaction_id BIGINT,
@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS table_event_history (
     op_id SMALLINT
 );
 
--- Stores the row level data and changes (1 or more per transaction)
+-- Stores the row level data and changes (1 or more per SQL transaction)
 CREATE TABLE IF NOT EXISTS row_history (
      id SERIAL PRIMARY KEY,
      event_id BIGINT NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS row_history (
  **************************************************************/
  -- Define relationship between table_event_history and row_history
 ALTER TABLE row_history
-    ADD CONSTRAINT row_history_table_event_id_fk
+    ADD CONSTRAINT row_history_event_id_fkey
     FOREIGN KEY (event_id)
     REFERENCES table_event_history(id)
     MATCH FULL
