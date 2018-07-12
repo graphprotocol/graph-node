@@ -2,8 +2,13 @@
 * CREATE TRIGGER FUNCTIONS
 **************************************************************/
 
--- Writes metadata of each transaction on the entities table
--- data written to table_event_history table */
+/**************************************************************
+* LOG TRANSACTION
+*
+* Writes metadata of each transaction on the entities table
+* Data is written to table_event_history
+* Called when before_transaction_trigger is fired
+**************************************************************/
 CREATE OR REPLACE FUNCTION log_transaction()
     RETURNS TRIGGER AS
 $$
@@ -26,8 +31,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Writes row level metadata and before & after state of `data` to row_history
--- Called when after_update_trigger is fired.
+/**************************************************************
+* LOG UPDATE
+*
+* Writes row level metadata and before & after state of `data` to row_history
+* Called when after_update_trigger is fired.
+**************************************************************/
 CREATE OR REPLACE FUNCTION log_update()
     RETURNS trigger AS
 $$
@@ -52,8 +61,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Writes out newly inserted row to row_history
--- Called when after_update_trigger is fired.
+/**************************************************************
+* LOG INSERT
+*
+* Writes out newly inserted row to row_history
+* Called when after_insert_trigger is fired.
+**************************************************************/
 CREATE OR REPLACE FUNCTION log_insert()
     RETURNS trigger AS
 $$
@@ -77,8 +90,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Writes deleted row to row_history
--- Called when after_update_trigger is fired.
+/**************************************************************
+* LOG DELETE
+*
+* Writes deleted row to row_history
+* Called when after_delete_trigger is fired.
+**************************************************************/
 CREATE OR REPLACE FUNCTION log_delete()
     RETURNS trigger AS
 $$
