@@ -2,11 +2,14 @@ use futures::prelude::*;
 use futures::sync::mpsc::Sender;
 use slog::Logger;
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
-use wasmi::{Error, Externals, FuncInstance, FuncRef, ImportsBuilder, MemoryRef, Module,
-            ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs,
-            RuntimeValue, Signature, Trap, ValueType};
+use wasmi::{
+    Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder, MemoryRef, Module,
+    ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue,
+    Signature, Trap, TrapKind, ValueType,
+};
 use web3::types::BlockId;
 
 use thegraph::components::data_sources::RuntimeHostEvent;
@@ -152,12 +155,24 @@ where
                 &[RuntimeValue::from(self.heap.asc_new(&event))],
                 &mut self.externals,
             )
-            .expect(
-                format!(
-                    "Failed to invoke call Ethereum event handler: {}",
-                    handler_name
-                ).as_str(),
-            );
+            .map_err(|e| {
+                warn!(self.logger, "Failed to handle Ethereum event";
+                      "handler" => &handler_name,
+                      "error" => format!("{}", e))
+            })
+            .unwrap_or_default();
+    }
+}
+
+/// Error raised in host functions.
+#[derive(Debug)]
+struct HostExternalsError(String);
+
+impl HostError for HostExternalsError {}
+
+impl fmt::Display for HostExternalsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -203,7 +218,7 @@ where
                 ))
                 .map_err(move |e| {
                     error!(logger, "Failed to forward runtime host event";
-                                        "error" => format!("{}", e));
+                           "error" => format!("{}", e));
                 })
                 .map(|_| ()),
         );
@@ -241,7 +256,7 @@ where
                 ))
                 .map_err(move |e| {
                     error!(logger, "Failed to forward runtime host event";
-                                        "error" => format!("{}", e));
+                           "error" => format!("{}", e));
                 })
                 .and_then(|_| Ok(())),
         );
@@ -274,7 +289,7 @@ where
                 ))
                 .map_err(move |e| {
                     error!(logger, "Failed to forward runtime host event";
-                               "error" => format!("{}", e));
+                           "error" => format!("{}", e));
                 })
                 .and_then(|_| Ok(())),
         );
@@ -299,46 +314,43 @@ where
             .abis
             .iter()
             .find(|abi| abi.name == unresolved_call.contract_name)
-            .expect(
+            .ok_or(Trap::new(TrapKind::Host(Box::new(HostExternalsError(
                 format!(
                     "Unknown contract \"{}\" called from WASM runtime",
                     unresolved_call.contract_name
-                ).as_str(),
-            )
+                ),
+            )))))?
             .contract
             .clone();
 
         let function = contract
             .function(unresolved_call.function_name.as_str())
-            .expect(
-                format!(
-                    "Unknown function \"{}::{}\" called from WASM runtime",
-                    unresolved_call.contract_name, unresolved_call.function_name
-                ).as_str(),
-            );
+            .map_err(|e| {
+                Trap::new(TrapKind::Host(Box::new(HostExternalsError(format!(
+                    "Unknown function \"{}::{}\" called from WASM runtime: {}",
+                    unresolved_call.contract_name, unresolved_call.function_name, e
+                )))))
+            })?;
 
         let call = EthereumContractCall {
-            address: unresolved_call.contract_address,
-            block_id: BlockId::Hash(unresolved_call.block_hash),
+            address: unresolved_call.contract_address.clone(),
+            block_id: BlockId::Hash(unresolved_call.block_hash.clone()),
             function: function.clone(),
-            args: unresolved_call.function_args,
+            args: unresolved_call.function_args.clone(),
         };
 
-        let result = self.ethereum_adapter
+        self.ethereum_adapter
             .lock()
             .unwrap()
             .contract_call(call)
             .wait()
-            .expect(
-                format!(
-                    "Failed to call function \"{}::{}\"",
-                    unresolved_call.contract_name, unresolved_call.function_name
-                ).as_str(),
-            );
-
-        debug!(self.logger, "  Result: {:?}", result);
-
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(&*result))))
+            .map(|result| Some(RuntimeValue::from(self.heap.asc_new(&*result))))
+            .map_err(|e| {
+                Trap::new(TrapKind::Host(Box::new(HostExternalsError(format!(
+                    "Failed to call function \"{}\" of contract \"{}\": {}",
+                    unresolved_call.contract_name, unresolved_call.function_name, e
+                )))))
+            })
     }
 
     /// function typeConversions.bytesToString(bytes: Bytes): string
@@ -388,6 +400,7 @@ where
         // Encodes each byte as a two hex digits.
         let hex_string = format!("0x{}", hex::encode(bytes));
         let hex_string_obj = self.heap.asc_new(hex_string.as_str());
+
         Ok(Some(RuntimeValue::from(hex_string_obj)))
     }
 }
