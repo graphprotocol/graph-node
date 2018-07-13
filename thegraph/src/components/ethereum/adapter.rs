@@ -38,6 +38,28 @@ pub enum EthereumContractCallError {
     ABIError(ABIError),
 }
 
+impl Error for EthereumContractCallError {
+    fn description(&self) -> &str {
+        "Ethereum contract call error"
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        match self {
+            EthereumContractCallError::CallError(ref e) => Some(e),
+            EthereumContractCallError::ABIError(ref e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for EthereumContractCallError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            EthereumContractCallError::CallError(e) => write!(f, "Call error: {}", e),
+            EthereumContractCallError::ABIError(e) => write!(f, "ABI error: {}", e),
+        }
+    }
+}
+
 impl From<Web3Error> for EthereumContractCallError {
     fn from(e: Web3Error) -> Self {
         EthereumContractCallError::CallError(e)
