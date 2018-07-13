@@ -3,15 +3,18 @@ extern crate serde_json;
 extern crate thegraph;
 extern crate thegraph_store_postgres_diesel;
 extern crate tokio_core;
+#[macro_use]
+extern crate slog;
 
 use diesel::pg::PgConnection;
 use diesel::*;
+use slog::Logger;
 use std::panic;
+use tokio_core::reactor::Core;
+
 use thegraph::components::store::{StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange};
 use thegraph::prelude::*;
-use thegraph::util::log::logger;
 use thegraph_store_postgres_diesel::{db_schema, Store as DieselStore, StoreConfig};
-use tokio_core::reactor::Core;
 
 /// Helper function to ensure and obtain the Postgres URL to use for testing.
 fn postgres_test_url() -> String {
@@ -58,7 +61,7 @@ fn create_test_entity(
 /// Inserts test data into the store.
 fn insert_test_data() {
     let core = Core::new().unwrap();
-    let logger = logger();
+    let logger = Logger::root(slog::Discard, o!());
     let url = postgres_test_url();
     let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
@@ -117,7 +120,7 @@ fn delete_entity() {
     run_test(|| {
         use db_schema::entities::dsl::*;
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
@@ -139,7 +142,7 @@ fn delete_entity() {
 fn get_entity() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
@@ -170,7 +173,7 @@ fn insert_entity() {
         use db_schema::entities::dsl::*;
 
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
@@ -197,7 +200,7 @@ fn insert_entity() {
 fn update_existing() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
@@ -233,7 +236,7 @@ fn update_existing() {
 fn find_string_contains() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -262,7 +265,7 @@ fn find_string_contains() {
 fn find_string_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -291,7 +294,7 @@ fn find_string_equal() {
 fn find_string_not_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -323,7 +326,7 @@ fn find_string_not_equal() {
 fn find_string_greater_than() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -355,7 +358,7 @@ fn find_string_greater_than() {
 fn find_string_less_than() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -387,7 +390,7 @@ fn find_string_less_than() {
 fn find_string_less_than_order_by_asc() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -428,7 +431,7 @@ fn find_string_less_than_order_by_asc() {
 fn find_string_less_than_order_by_desc() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -469,7 +472,7 @@ fn find_string_less_than_order_by_desc() {
 fn find_string_less_than_range() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -501,7 +504,7 @@ fn find_string_less_than_range() {
 fn find_string_multiple_and() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -533,7 +536,7 @@ fn find_string_multiple_and() {
 fn find_float_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -565,7 +568,7 @@ fn find_float_equal() {
 fn find_float_not_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -597,7 +600,7 @@ fn find_float_not_equal() {
 fn find_float_greater_than() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -629,7 +632,7 @@ fn find_float_greater_than() {
 fn find_float_less_than() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -661,7 +664,7 @@ fn find_float_less_than() {
 fn find_float_less_than_order_by_desc() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -693,7 +696,7 @@ fn find_float_less_than_order_by_desc() {
 fn find_float_less_than_range() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -724,7 +727,7 @@ fn find_float_less_than_range() {
 fn find_int_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -756,7 +759,7 @@ fn find_int_equal() {
 fn find_int_not_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -788,7 +791,7 @@ fn find_int_not_equal() {
 fn find_int_greater_than() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -820,7 +823,7 @@ fn find_int_greater_than() {
 fn find_int_greater_or_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -852,7 +855,7 @@ fn find_int_greater_or_equal() {
 fn find_int_less_than() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -884,7 +887,7 @@ fn find_int_less_than() {
 fn find_int_less_or_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -916,7 +919,7 @@ fn find_int_less_or_equal() {
 fn find_int_less_than_order_by_desc() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -948,7 +951,7 @@ fn find_int_less_than_order_by_desc() {
 fn find_int_less_than_range() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -980,7 +983,7 @@ fn find_int_less_than_range() {
 fn find_bool_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
@@ -1012,7 +1015,7 @@ fn find_bool_equal() {
 fn find_bool_not_equal() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
