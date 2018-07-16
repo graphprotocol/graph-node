@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS event_meta_data (
     id SERIAL PRIMARY KEY,
     db_transaction_id BIGINT NOT NULL,
     db_transaction_time TIMESTAMP NOT NULL,
-    op_id SMALLINT NOT NULL
+    op_id SMALLINT NOT NULL,
+    block_hash VARCHAR(40) DEFAULT NULL
 );
 
 -- Stores the row level data and changes (1 or more per SQL transaction)

@@ -14,18 +14,25 @@ CREATE OR REPLACE FUNCTION log_transaction()
 $$
 DECLARE
     operation_id SMALLINT;
+    block_hash VARCHAR;
 BEGIN
     CASE TG_OP
-        WHEN 'INSERT' THEN operation_id := 0;
-        WHEN 'UPDATE' THEN operation_id := 1;
-        WHEN 'DELETE' THEN operation_id := 2;
+        WHEN 'INSERT' THEN
+            operation_id := 0;
+            block_hash := NEW.latest_block_hash;
+        WHEN 'UPDATE' THEN
+            operation_id := 1;
+            block_hash := NEW.latest_block_hash;
+        WHEN 'DELETE' THEN
+            operation_id := 2;
+            block_hash := 'DELETE';
     END CASE;
 
     -- Insert postgres transaction info into event_meta_data
     INSERT INTO event_meta_data
-        (db_transaction_id, db_transaction_time, op_id)
+        (db_transaction_id, transaction_time, op_id, block_hash)
     VALUES
-        (txid_current(), statement_timestamp(), operation_id);
+        (txid_current(), statement_timestamp(), operation_id, block_hash);
 
     RETURN NULL;
 END;
@@ -50,9 +57,14 @@ BEGIN
     FROM event_meta_data
     WHERE
         db_transaction_id = txid_current();
-    is_reversion := FALSE;
 
-    -- Log entity change
+    IF NEW.latest_block_hash IS NULL THEN
+        is_reversion := TRUE;
+    ELSE
+        is_reversion := FALSE;
+    END IF;
+
+    -- Log row metadata and changes
     INSERT INTO entity_history
         (event_id, entity_id, data_source, entity, data_before, data_after, reversion)
     VALUES
@@ -80,11 +92,17 @@ BEGIN
     WHERE
         db_transaction_id = txid_current();
 
-    -- Log inserted entity
+    IF NEW.latest_block_hash IS NULL THEN
+        is_reversion := TRUE;
+    ELSE
+        is_reversion := FALSE;
+    END IF;
+
+    -- Log inserted row
     INSERT INTO entity_history
-        (event_id, entity_id, data_source, entity, data_before, data_after)
+        (event_id, entity_id, data_source, entity, data_before, data_after, reversion)
     VALUES
-        (event_id, NEW.id, NEW.data_source, NEW.entity, NULL, NEW.data);
+        (event_id, NEW.id, NEW.data_source, NEW.entity, NULL, NEW.data, is_reversion);
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
