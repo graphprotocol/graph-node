@@ -1,3 +1,4 @@
+use ethereum_types::{H160, H256, U256};
 use futures::prelude::*;
 use futures::sync::mpsc::Sender;
 use slog::Logger;
@@ -68,7 +69,12 @@ const DATABASE_REMOVE_FUNC_INDEX: usize = 3;
 const ETHEREUM_CALL_FUNC_INDEX: usize = 4;
 const TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX: usize = 5;
 const TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX: usize = 6;
-const TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX: usize = 7;
+const TYPE_CONVERSION_U64_ARRAY_TO_STRING_FUNC_INDEX: usize = 7;
+const TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX: usize = 8;
+const TYPE_CONVERSION_H256_TO_H160_FUNC_INDEX: usize = 9;
+const TYPE_CONVERSION_H160_TO_H256_FUNC_INDEX: usize = 10;
+const TYPE_CONVERSION_U256_TO_H160_FUNC_INDEX: usize = 11;
+const TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX: usize = 12;
 
 pub struct WasmiModuleConfig<T> {
     pub data_source: DataSourceDefinition,
@@ -353,7 +359,7 @@ where
             })
     }
 
-    /// function typeConversions.bytesToString(bytes: Bytes): string
+    /// function typeConversion.bytesToString(bytes: Bytes): string
     fn convert_bytes_to_string(
         &self,
         bytes_ptr: AscPtr<Uint8Array>,
@@ -367,7 +373,25 @@ where
         Ok(Some(RuntimeValue::from(self.heap.asc_new(trimmed_s))))
     }
 
-    /// function typeConversions.u64ArrayToHex(u64_array: Uint64Array): string
+    /// function typeConversion.u64ArrayToString(u64_array: U64Array): string
+    fn u64_array_to_string(
+        &self,
+        u64_array_ptr: AscPtr<Uint64Array>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let u64_array: Vec<u64> = self.heap.asc_get(u64_array_ptr);
+        let mut bytes: Vec<u8> = Vec::new();
+        for x in u64_array {
+            // This is just `x.to_bytes()` which is unstable.
+            let x_bytes: [u8; 8] = unsafe { ::std::mem::transmute(x) };
+            bytes.extend(x_bytes.iter());
+        }
+
+        let s = String::from_utf8_lossy(&*bytes);
+        let trimmed_s = s.trim_right_matches('\u{0000}');
+        Ok(Some(RuntimeValue::from(self.heap.asc_new(trimmed_s))))
+    }
+
+    /// function typeConversion.u64ArrayToHex(u64_array: U64Array): string
     fn u64_array_to_hex(
         &self,
         u64_array_ptr: AscPtr<Uint64Array>,
@@ -387,12 +411,45 @@ where
         Ok(Some(RuntimeValue::from(hex_string_obj)))
     }
 
+    /// function typeConversion.h256ToH160(h256: H256): H160
+    fn h256_to_h160(&self, h256_ptr: AscPtr<AscH256>) -> Result<Option<RuntimeValue>, Trap> {
+        let h256: H256 = self.heap.asc_get(h256_ptr);
+        let h160 = H160::from(h256);
+        let h160_obj: AscPtr<AscH160> = self.heap.asc_new(&h160);
+        Ok(Some(RuntimeValue::from(h160_obj)))
+    }
+
+    /// function typeConversion.h160ToH256(h160: H160): H256
+    fn h160_to_h256(&self, h160_ptr: AscPtr<AscH160>) -> Result<Option<RuntimeValue>, Trap> {
+        let h160: H160 = self.heap.asc_get(h160_ptr);
+        let h256 = H256::from(h160);
+        let h256_obj: AscPtr<AscH256> = self.heap.asc_new(&h256);
+        Ok(Some(RuntimeValue::from(h256_obj)))
+    }
+
+    /// function typeConversion.u256ToH160(u256: U256): H160
+    fn u256_to_h160(&self, u256_ptr: AscPtr<AscU256>) -> Result<Option<RuntimeValue>, Trap> {
+        let u256: U256 = self.heap.asc_get(u256_ptr);
+        let h256 = H256::from(u256);
+        let h160 = H160::from(h256);
+        let h160_obj: AscPtr<AscH160> = self.heap.asc_new(&h160);
+        Ok(Some(RuntimeValue::from(h160_obj)))
+    }
+
+    /// function typeConversion.u256ToH256(u256: U256): H256
+    fn u256_to_h256(&self, u256_ptr: AscPtr<AscU256>) -> Result<Option<RuntimeValue>, Trap> {
+        let u256: U256 = self.heap.asc_get(u256_ptr);
+        let h256 = H256::from(u256);
+        let h256_obj: AscPtr<AscH256> = self.heap.asc_new(&h256);
+        Ok(Some(RuntimeValue::from(h256_obj)))
+    }
+
     /// Converts bytes to a hex string.
     /// References:
     /// https://godoc.org/github.com/ethereum/go-ethereum/common/hexutil#hdr-Encoding_Rules
     /// https://github.com/ethereum/web3.js/blob/f98fe1462625a6c865125fecc9cb6b414f0a5e83/packages/web3-utils/src/utils.js#L283
     ///
-    /// function typeConversions.bytesToHex(bytes: Bytes): string
+    /// function typeConversion.bytesToHex(bytes: Bytes): string
     fn bytes_to_hex(&self, bytes_ptr: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
         let bytes: Vec<u8> = self.heap.asc_get(bytes_ptr);
 
@@ -433,9 +490,16 @@ where
                 self.convert_bytes_to_string(args.nth_checked(0)?)
             }
             TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX => self.bytes_to_hex(args.nth_checked(0)?),
+            TYPE_CONVERSION_U64_ARRAY_TO_STRING_FUNC_INDEX => {
+                self.u64_array_to_string(args.nth_checked(0)?)
+            }
             TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX => {
                 self.u64_array_to_hex(args.nth_checked(0)?)
             }
+            TYPE_CONVERSION_H256_TO_H160_FUNC_INDEX => self.h256_to_h160(args.nth_checked(0)?),
+            TYPE_CONVERSION_H160_TO_H256_FUNC_INDEX => self.h160_to_h256(args.nth_checked(0)?),
+            TYPE_CONVERSION_U256_TO_H160_FUNC_INDEX => self.u256_to_h160(args.nth_checked(0)?),
+            TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX => self.u256_to_h256(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -531,9 +595,29 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX,
             ),
+            "u64ArrayToString" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_U64_ARRAY_TO_STRING_FUNC_INDEX,
+            ),
             "u64ArrayToHex" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX,
+            ),
+            "h256ToH160" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_H256_TO_H160_FUNC_INDEX,
+            ),
+            "h160ToH256" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_H160_TO_H256_FUNC_INDEX,
+            ),
+            "u256ToH160" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_U256_TO_H160_FUNC_INDEX,
+            ),
+            "u256ToH256" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(

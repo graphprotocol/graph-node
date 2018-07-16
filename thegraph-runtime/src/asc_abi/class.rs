@@ -283,6 +283,7 @@ pub(crate) struct AscLogParam {
 impl AscType for AscLogParam {}
 
 pub(crate) type AscAddress = Uint8Array;
+pub(crate) type AscH160 = Uint8Array;
 pub(crate) type AscH256 = Uint8Array;
 pub(crate) type AscU256 = Uint64Array;
 
