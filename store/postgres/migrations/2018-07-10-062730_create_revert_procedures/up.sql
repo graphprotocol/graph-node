@@ -32,58 +32,39 @@ BEGIN
     WHERE entity_history.id = input_entity_history_id;
 
     CASE
-    -- INSERT case
-    WHEN input_operation_id = 0 THEN
-     -- Delete inserted row
-      BEGIN
-        EXECUTE
-          'DELETE FROM entities WHERE (
-            data_source = $1 AND
-            entity = $2 AND
-            id = $3)'
-        USING target_data_source, target_entity, target_entity_id;
+        -- INSERT case
+        WHEN input_operation_id = 0 THEN
+            -- Delete inserted row
+            BEGIN
+                EXECUTE
+                    'DELETE FROM entities WHERE (
+                        data_source = $1 AND
+                        entity = $2 AND
+                        id = $3)'
+                USING target_data_source, target_entity, target_entity_id;
 
-        -- Row was already updated
-        EXCEPTION
-          WHEN no_data_found THEN
-            NULL;
-      END;
+                -- Row was already updated
+                EXCEPTION
+                    WHEN no_data_found THEN
+                        NULL;
+            END;
 
-      -- UPDATE case
-      WHEN input_operation_id = 1 THEN
-        -- Update row to previous state
-        BEGIN
-          EXECUTE
-            'UPDATE entities SET DATA = $1 WHERE (
-              data_source = $2 AND
-              entity = $3 AND
-              id = $4)'
-          USING target_data_before, target_data_source, target_entity, target_entity_id;
-
-          -- error
-          EXCEPTION
-            WHEN others THEN
-              RAISE NOTICE 'Could not revert UPDATE';
-        END;
-
-      -- DELETE case
-      WHEN input_operation_id = 2 THEN
-       -- Insert deleted row
-        BEGIN
-          EXECUTE
-            'INSERT INTO entities (id, data_source, entity, data)
-              VALUES ($1, $2, $3, $4)'
-          USING
-            target_entity_id,
-            target_data_source,
-            target_entity,
-            target_data_before;
-
-          -- row is already inserted
-          EXCEPTION
-            WHEN no_data_found THEN
-              NULL;
-        END;
+        -- UPDATE or DELETE case
+        WHEN input_operation_id IN (1,2) THEN
+            -- Insert deleted row if not exists
+            -- If row exists perform update
+            BEGIN
+                EXECUTE
+                    'INSERT INTO entities (id, data_source, entity, data)
+                        VALUES ($1, $2, $3, $4)
+                        ON CONFLICT (id, data_source, entity) DO UPDATE
+                        SET data = $4'
+                USING
+                    target_entity_id,
+                    target_data_source,
+                    target_entity,
+                    target_data_before;
+            END;
     END CASE;
 END;
 $$ LANGUAGE plpgsql;
