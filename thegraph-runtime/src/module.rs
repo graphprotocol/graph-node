@@ -354,7 +354,7 @@ where
             .map_err(|e| {
                 Trap::new(TrapKind::Host(Box::new(HostExternalsError(format!(
                     "Failed to call function \"{}\" of contract \"{}\": {}",
-                    unresolved_call.contract_name, unresolved_call.function_name, e
+                    unresolved_call.function_name, unresolved_call.contract_name, e
                 )))))
             })
     }
