@@ -6,9 +6,9 @@
 * REVERT ROW EVENT
 *
 * Revert a specific row level event
-* Parameters: row_history pkey (id) and the operation type
+* Parameters: entity_history pkey (id) and operation type
 **************************************************************/
-CREATE OR REPLACE FUNCTION revert_row_event(input_row_history_id INTEGER, input_operation_id INTEGER)
+CREATE OR REPLACE FUNCTION revert_row_event(input_entity_history_id INTEGER, input_operation_id INTEGER)
     RETURNS VOID AS
 $$
 DECLARE
@@ -16,22 +16,19 @@ DECLARE
     target_data_source VARCHAR;
     target_entity VARCHAR;
     target_data_before JSONB;
-    target_data_after JSONB;
 BEGIN
     SELECT
-        rh.entity_id,
-        rh.data_source,
-        rh.entity,
-        rh.data_before,
-        rh.data_after
-      INTO
+        entity_id,
+        data_source,
+        entity,
+        data_before
+    INTO
         target_entity_id,
         target_data_source,
         target_entity,
-        target_data_before,
-        target_data_after
-    FROM row_history rh
-    WHERE rh.id = input_row_history_id;
+        target_data_before
+    FROM entity_history
+    WHERE entity_history.id = input_entity_history_id;
 
     CASE
     -- INSERT case
@@ -103,16 +100,18 @@ $$
 DECLARE
     row RECORD;
 BEGIN
-  FOR row IN
-      SELECT
-        rh.id as id,
-        teh.op_id as op_id
-      FROM row_history rh
-      JOIN table_event_history teh ON teh.id=rh.event_id
-      WHERE teh.id = input_event_id
-    LOOP
-    PERFORM revert_row_event(row.id, row.op_id);
-  END LOOP;
+    FOR row IN
+        SELECT
+            entity_history.id as id,
+            event_meta_data.op_id as op_id
+        FROM entity_history
+        JOIN event_meta_data ON
+            event_meta_data.id=entity_history.event_id
+        WHERE event_meta_data.id = input_event_id
+        ORDER BY entity_history.id DESC
+        LOOP
+            PERFORM revert_row_event(row.id, row.op_id);
+    END LOOP;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -129,23 +128,25 @@ $$
 DECLARE
     row RECORD;
 BEGIN
-  FOR row IN
-      SELECT
-        rh.id as id,
-        teh.op_id as op_id
-      FROM row_history rh
-      JOIN table_event_history teh ON teh.id=rh.event_id
-      WHERE teh.id = ANY(input_event_ids)
-    LOOP
-    PERFORM revert_row_event(row.id, row.op_id);
-  END LOOP;
+    FOR row IN
+        SELECT
+            entity_history.id as id,
+            event_meta_data.op_id as op_id
+        FROM entity_history
+        JOIN event_meta_data ON
+            event_meta_data.id=entity_history.event_id
+        WHERE event_meta_data.id = ANY(input_event_ids)
+        ORDER BY entity_history.id DESC
+        LOOP
+            PERFORM revert_row_event(row.id, row.op_id);
+    END LOOP;
 END;
 $$ LANGUAGE plpgsql;
 
 /**************************************************************
 * REVERT BLOCK
 *
-* Revert to the row store events related to a particular block
+* Revert the row store events related to a particular block
 * Parameters: block_hash
 **************************************************************/
 CREATE OR REPLACE FUNCTION revert_block(block_hash VARCHAR)
