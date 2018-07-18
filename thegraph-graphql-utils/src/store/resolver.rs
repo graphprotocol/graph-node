@@ -1,7 +1,6 @@
 use graphql_parser::{query as q, schema as s};
 use slog;
 use std::collections::HashMap;
-use std::iter::FromIterator;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
@@ -119,13 +118,8 @@ impl StoreResolver {
         query: &mut StoreQuery,
         parent: &Option<q::Value>,
         field_definition: &s::Field,
-        object_type: &s::ObjectType,
+        _object_type: &s::ObjectType,
     ) {
-        // Don't do this for derived fields
-        if Self::get_derived_from_directive(field_definition).is_some() {
-            return;
-        }
-
         if let Some(q::Value::Object(object)) = parent {
             // Create an `Or(Equals("id", ref_id1), ...)` filter that includes
             // all referenced IDs.
@@ -187,7 +181,7 @@ impl Resolver for StoreResolver {
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
-        field: &q::Name,
+        _field: &q::Name,
         field_definition: &s::Field,
         object_type: &s::ObjectType,
         arguments: &HashMap<&q::Name, q::Value>,
@@ -209,7 +203,9 @@ impl Resolver for StoreResolver {
         }
 
         // Add matching filter for reference fields
-        Self::add_filter_for_reference_field(&mut query, parent, field_definition, object_type);
+        if !is_derived {
+            Self::add_filter_for_reference_field(&mut query, parent, field_definition, object_type);
+        }
 
         let store = self.store.lock().unwrap();
         store
