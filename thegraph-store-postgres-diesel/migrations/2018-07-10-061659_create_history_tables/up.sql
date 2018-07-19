@@ -24,9 +24,9 @@ CREATE TABLE IF NOT EXISTS entity_history (
  /**************************************************************
  * ADD FOREIGN KEYS
  **************************************************************/
- -- Define relationship between table_event_history and row_history
+ -- Define relationship between event_meta_data and entity_history
 ALTER TABLE entity_history
-    ADD CONSTRAINT row_history_event_id_fkey
+    ADD CONSTRAINT entity_history_event_id_fkey
     FOREIGN KEY (event_id)
     REFERENCES event_meta_data(id)
     MATCH FULL

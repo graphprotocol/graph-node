@@ -23,7 +23,7 @@ BEGIN
 
     -- Insert postgres transaction info into event_meta_data
     INSERT INTO event_meta_data
-        (db_transaction_id, transaction_time, op_id)
+        (db_transaction_id, db_transaction_time, op_id)
     VALUES
         (txid_current(), statement_timestamp(), operation_id);
 
@@ -44,14 +44,15 @@ DECLARE
     event_id INTEGER;
     is_reversion BOOLEAN;
 BEGIN
-    -- Get corresponding table event id
+    -- Get corresponding event id
     SELECT
         id INTO event_id
     FROM event_meta_data
     WHERE
         db_transaction_id = txid_current();
     is_reversion := FALSE;
-    -- Log row metadata and changes
+
+    -- Log entity change
     INSERT INTO entity_history
         (event_id, entity_id, data_source, entity, data_before, data_after, reversion)
     VALUES
@@ -63,7 +64,7 @@ $$ LANGUAGE plpgsql;
 /**************************************************************
 * LOG INSERT
 *
-* Writes out newly inserted row to entity_history
+* Writes out newly inserted entity to entity_history
 * Called when after_insert_trigger is fired.
 **************************************************************/
 CREATE OR REPLACE FUNCTION log_insert()
@@ -72,14 +73,14 @@ $$
 DECLARE
     event_id INTEGER;
 BEGIN
-    -- Get corresponding table event id
+    -- Get corresponding event id
     SELECT
         id INTO event_id
     FROM event_meta_data
     WHERE
         db_transaction_id = txid_current();
 
-    -- Log inserted row
+    -- Log inserted entity
     INSERT INTO entity_history
         (event_id, entity_id, data_source, entity, data_before, data_after)
     VALUES
@@ -91,7 +92,7 @@ $$ LANGUAGE plpgsql;
 /**************************************************************
 * LOG DELETE
 *
-* Writes deleted row to entity_history
+* Writes deleted entity to entity_history
 * Called when after_delete_trigger is fired.
 **************************************************************/
 CREATE OR REPLACE FUNCTION log_delete()
@@ -100,14 +101,14 @@ $$
 DECLARE
     event_id INTEGER;
 BEGIN
-    -- Get corresponding table event id
+    -- Get corresponding event id
     SELECT
         id INTO event_id
     FROM event_meta_data
     WHERE
         db_transaction_id = txid_current();
 
-    -- Log content of deleted row
+    -- Log content of deleted entity
     INSERT INTO entity_history
         (event_id, entity_id, data_source, entity, data_before, data_after)
     VALUES

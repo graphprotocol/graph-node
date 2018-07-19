@@ -6,7 +6,8 @@
 * REVERT ROW EVENT
 *
 * Revert a specific row level event
-* Parameters: entity_history pkey (id) and operation type
+* Parameters: entity_history.id (primary key)
+*             operation_id
 **************************************************************/
 CREATE OR REPLACE FUNCTION revert_row_event(input_entity_history_id INTEGER, input_operation_id INTEGER)
     RETURNS VOID AS
