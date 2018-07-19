@@ -593,6 +593,86 @@ mod tests {
         }
     }
 
+    fn mock_data_source() -> DataSourceDefinition {
+        DataSourceDefinition {
+            id: String::from("example data source"),
+            location: String::from("/path/to/example-data-source.yaml"),
+            spec_version: String::from("0.1.0"),
+            schema: Schema {
+                id: String::from("exampled id"),
+                document: Document {
+                    definitions: vec![],
+                },
+            },
+            datasets: vec![],
+        }
+    }
+
+    fn mock_data_set() -> DataSet {
+        let runtime = parity_wasm::deserialize_file("test/example_event_handler.wasm")
+            .expect("Failed to deserialize wasm");
+
+        DataSet {
+            data: Data {
+                kind: String::from("ethereum/contract"),
+                name: String::from("example data set"),
+                address: String::from("0123123123"),
+                structure: DataStructure {
+                    abi: String::from("123123"),
+                },
+            },
+            mapping: Mapping {
+                kind: String::from("ethereum/events"),
+                api_version: String::from("0.1.0"),
+                language: String::from("wasm/assemblyscript"),
+                entities: vec![],
+                abis: vec![],
+                event_handlers: vec![],
+                runtime,
+            },
+        }
+    }
+
+    #[test]
+    fn call_invalid_event_handler_and_dont_crash() {
+        // This test passing means the module doesn't crash when an invalid
+        // event handler is called or when the event handler execution fails.
+
+        // Load the module
+        let logger = slog::Logger::root(slog::Discard, o!());
+        let core = tokio_core::reactor::Core::new().unwrap();
+        let (sender, _receiver) = channel(1);
+        let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
+        let mut module = WasmiModule::new(
+            &logger,
+            WasmiModuleConfig {
+                data_source: mock_data_source(),
+                data_set: mock_data_set(),
+                runtime: core.handle(),
+                event_sink: sender,
+                ethereum_adapter: mock_ethereum_adapter,
+            },
+        );
+
+        // Create a mock Ethereum event
+        let ethereum_event = EthereumEvent {
+            address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
+            event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
+            block_hash: util::ethereum::string_to_h256("example block hash"),
+            params: vec![LogParam {
+                name: String::from("exampleParam"),
+                value: Token::String(String::from("some data")),
+            }],
+        };
+
+        // Call a non-existent event handler in the test module; if the test hasn't
+        // crashed until now, it means it survives Ethereum event handler errors
+        assert_eq!(
+            module.handle_ethereum_event("handleNonExistentExampleEvent", ethereum_event),
+            ()
+        );
+    }
+
     #[test]
     fn call_event_handler_and_receive_database_event() {
         // Load the example_event_handler.wasm test module. All this module does
@@ -605,44 +685,13 @@ mod tests {
         // Load the module
         let logger = slog::Logger::root(slog::Discard, o!());
         let mut core = tokio_core::reactor::Core::new().unwrap();
-        let runtime = parity_wasm::deserialize_file("test/example_event_handler.wasm")
-            .expect("Failed to deserialize wasm");
         let (sender, receiver) = channel(1);
         let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
         let mut module = WasmiModule::new(
             &logger,
             WasmiModuleConfig {
-                data_source: DataSourceDefinition {
-                    id: String::from("example data source"),
-                    location: String::from("/path/to/example-data-source.yaml"),
-                    spec_version: String::from("0.1.0"),
-                    schema: Schema {
-                        id: String::from("exampled id"),
-                        document: Document {
-                            definitions: vec![],
-                        },
-                    },
-                    datasets: vec![],
-                },
-                data_set: DataSet {
-                    data: Data {
-                        kind: String::from("ethereum/contract"),
-                        name: String::from("example data set"),
-                        address: String::from("0123123123"),
-                        structure: DataStructure {
-                            abi: String::from("123123"),
-                        },
-                    },
-                    mapping: Mapping {
-                        kind: String::from("ethereum/events"),
-                        api_version: String::from("0.1.0"),
-                        language: String::from("wasm/assemblyscript"),
-                        entities: vec![],
-                        abis: vec![],
-                        event_handlers: vec![],
-                        runtime,
-                    },
-                },
+                data_source: mock_data_source(),
+                data_set: mock_data_set(),
                 runtime: core.handle(),
                 event_sink: sender,
                 ethereum_adapter: mock_ethereum_adapter,
