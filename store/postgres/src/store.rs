@@ -126,7 +126,7 @@ impl BasicStore for Store {
         &mut self,
         key: StoreKey,
         input_entity: Entity,
-        event_source: EventSource,
+        input_event_source: EventSource,
     ) -> Result<(), ()> {
         debug!(self.logger, "set"; "key" => format!("{:?}", key));
 
@@ -135,7 +135,7 @@ impl BasicStore for Store {
         // The data source is hardcoded at the moment
         let datasource: String = String::from("memefactory");
 
-        let block_identifier = match event_source {
+        let block_identifier = match input_event_source {
             EventSource::EthereumBlock(hash) => format!("{:#x}", hash),
             _ => String::from("OTHER"),
         };
@@ -151,6 +151,8 @@ impl BasicStore for Store {
         // Convert Entity hashmap to serde_json::Value for insert
         let entity_json: serde_json::Value =
             serde_json::to_value(&updated_entity).expect("Failed to serialize entity");
+
+        use db_schema::entities::dsl::*;
 
         // Insert entity, perform an update in case of a primary key conflict
         insert_into(entities)
