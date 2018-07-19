@@ -86,22 +86,18 @@ pub fn forward2<E: Clone, O: EventProducer<E>, I1: EventConsumer<E>, I2: EventCo
 
 /// A component that receives events of type `T`.
 pub trait EventConsumer<E> {
-    type EventSink: Sink<SinkItem = E, SinkError = ()>;
-
     /// Get the event sink.
     ///
     /// Avoid calling directly, prefer helpers such as `forward`.
-    fn event_sink(&self) -> Self::EventSink;
+    fn event_sink(&self) -> Box<Sink<SinkItem = E, SinkError = ()>>;
 }
 
 /// A component that outputs events of type `T`.
 pub trait EventProducer<E> {
-    type EventStream: Stream<Item = E, Error = ()>;
-
     /// Get the event stream. Because we use single-consumer semantics, the
     /// first caller will take the output stream and any further calls will
     /// return `None`.
     ///
     /// Avoid calling directly, prefer helpers such as `forward`.
-    fn take_event_stream(&mut self) -> Option<Self::EventStream>;
+    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = E, Error = ()>>>;
 }

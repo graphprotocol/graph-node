@@ -27,7 +27,8 @@ use std::sync::{Arc, Mutex};
 use tokio::prelude::*;
 use tokio_core::reactor::Core;
 
-use thegraph::components::{EventConsumer, EventProducer};
+use thegraph::components::forward;
+use thegraph::components::EventProducer;
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_ethereum::Transport;
@@ -171,29 +172,12 @@ fn main() {
     );
 
     // Forward data source events from the data source provider to the runtime manager
-    let data_source_stream = data_source_provider.event_stream().unwrap();
-    let runtime_manager_sink = runtime_manager.event_sink();
-    core.handle().spawn({
-        data_source_stream
-            .forward(runtime_manager_sink.sink_map_err(|e| {
-                panic!(
-                    "Failed to send data source event to the runtime manager: {:?}",
-                    e
-                );
-            }))
-            .and_then(|_| Ok(()))
-    });
+    core.handle()
+        .spawn(forward(&mut data_source_provider, &runtime_manager).unwrap());
 
     // Forward schema events from the data source provider to the schema provider
-    let schema_stream = data_source_provider.schema_event_stream().unwrap();
-    let schema_sink = schema_provider.event_sink();
-    core.handle().spawn({
-        schema_stream
-            .forward(schema_sink.sink_map_err(|e| {
-                panic!("Failed to send schema event to schema provider: {:?}", e);
-            }))
-            .and_then(|_| Ok(()))
-    });
+    core.handle()
+        .spawn(forward(&mut data_source_provider, &schema_provider).unwrap());
 
     // Forward schema events from the schema provider to the store and GraphQL server
     let schema_stream = schema_provider.take_event_stream().unwrap();

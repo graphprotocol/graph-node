@@ -125,10 +125,8 @@ impl RuntimeManager where {
 }
 
 impl EventConsumer<DataSourceProviderEvent> for RuntimeManager {
-    type EventSink = Box<Sink<SinkItem = DataSourceProviderEvent, SinkError = ()>>;
-
     /// Get the wrapped event sink.
-    fn event_sink(&self) -> Self::EventSink {
+    fn event_sink(&self) -> Box<Sink<SinkItem = DataSourceProviderEvent, SinkError = ()>> {
         let logger = self.logger.clone();
         Box::new(self.input.clone().sink_map_err(move |e| {
             error!(logger, "Component was dropped: {}", e);

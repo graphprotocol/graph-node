@@ -21,18 +21,16 @@ pub struct SchemaProvider {
 impl SchemaProviderTrait for SchemaProvider {}
 
 impl EventProducer<SchemaProviderEvent> for SchemaProvider {
-    type EventStream = Receiver<SchemaProviderEvent>;
-
-    fn take_event_stream(&mut self) -> Option<Self::EventStream> {
-        self.output.take()
+    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = SchemaProviderEvent, Error = ()>>> {
+        self.output
+            .take()
+            .map(|s| Box::new(s) as Box<Stream<Item = SchemaProviderEvent, Error = ()>>)
     }
 }
 
 impl EventConsumer<SchemaEvent> for SchemaProvider {
-    type EventSink = Box<Sink<SinkItem = SchemaEvent, SinkError = ()>>;
-
     /// Get the wrapped event sink.
-    fn event_sink(&self) -> Self::EventSink {
+    fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()>> {
         let logger = self.logger.clone();
         Box::new(self.input.clone().sink_map_err(move |e| {
             error!(logger, "MockSchemaProvider was dropped {}", e);
@@ -161,10 +159,11 @@ mod tests {
 
         // Expect one schema provider event to be emitted as a result
         let work = schema_stream.take(1).into_future();
-        let output_event = core.run(work)
-            .expect("Failed to receive schema provider event from the stream")
-            .0
-            .expect("Schema provider event must not be None");
+        let output_event = if let Ok(x) = core.run(work) {
+            x.0.expect("Schema provider event must not be None")
+        } else {
+            panic!("Failed to receive schema provider event from the stream")
+        };
 
         // Extract the output schema from the schema provider event
         let SchemaProviderEvent::SchemaChanged(output_schema) = output_event;
