@@ -155,12 +155,12 @@ where
                 &[RuntimeValue::from(self.heap.asc_new(&event))],
                 &mut self.externals,
             )
-            .map_err(|e| {
+            .unwrap_or_else(|e| {
                 warn!(self.logger, "Failed to handle Ethereum event";
                       "handler" => &handler_name,
-                      "error" => format!("{}", e))
-            })
-            .unwrap_or_default();
+                      "error" => format!("{}", e));
+                None
+            });
     }
 }
 
