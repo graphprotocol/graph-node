@@ -46,7 +46,6 @@ $$
 DECLARE
     event_id INTEGER;
     is_reversion BOOLEAN;
-    block_hash VARCHAR;
 BEGIN
     -- Get corresponding event id
     SELECT
@@ -55,13 +54,13 @@ BEGIN
     WHERE
         db_transaction_id = txid_current();
 
-    IF NEW.latest_block_hash IS NULL THEN
+    IF NEW.event_source IS NULL THEN
         is_reversion := TRUE;
     ELSE
         is_reversion := FALSE;
 
         UPDATE event_meta_data SET
-            block_hash = NEW.latest_block_hash
+            source = NEW.event_source
         WHERE db_transaction_id = txid_current();
     END IF;
 
@@ -87,7 +86,6 @@ $$
 DECLARE
     event_id INTEGER;
     is_reversion BOOLEAN;
-    block_hash VARCHAR;
 BEGIN
     -- Get corresponding event id
     SELECT
@@ -96,13 +94,13 @@ BEGIN
     WHERE
         db_transaction_id = txid_current();
 
-    IF NEW.latest_block_hash IS NULL THEN
+    IF NEW.event_source IS NULL THEN
         is_reversion := TRUE;
     ELSE
         is_reversion := FALSE;
 
         UPDATE event_meta_data SET
-            block_hash = NEW.latest_block_hash
+            source = NEW.event_source
         WHERE db_transaction_id = txid_current();
     END IF;
 

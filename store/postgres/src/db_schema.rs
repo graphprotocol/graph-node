@@ -4,6 +4,6 @@ table! {
         data_source -> Varchar,
         entity -> Varchar,
         data -> Jsonb,
-        latest_block_hash -> Varchar,
+        event_source -> Varchar,
     }
 }
