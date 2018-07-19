@@ -11,7 +11,7 @@ use serde_json;
 use slog;
 use tokio_core::reactor::Handle;
 
-use function::revert_block_group;
+use functions::revert_block_group;
 use graph::components::schema::SchemaProviderEvent;
 use graph::components::store::{Store as StoreTrait, *};
 use graph::data::store::*;
@@ -97,7 +97,7 @@ impl Store {
 
     /// Handles block reorganizations.
     /// Revert all store changes related to given set of blocks
-    fn _revert_chain(&mut self, block_hashes: Vec<String>) -> String {
+    fn _revert_chain(&mut self, block_hashes: Vec<String>) {
         revert_block_group(block_hashes);
     }
 }
@@ -122,7 +122,12 @@ impl BasicStore for Store {
             .map_err(|_| ())
     }
 
-    fn set(&mut self, key: StoreKey, input_entity: Entity) -> Result<(), ()> {
+    fn set(
+        &mut self,
+        key: StoreKey,
+        input_entity: Entity,
+        event_source: EventSource,
+    ) -> Result<(), ()> {
         debug!(self.logger, "set"; "key" => format!("{:?}", key));
 
         use db_schema::entities::dsl::*;
@@ -130,6 +135,10 @@ impl BasicStore for Store {
         // The data source is hardcoded at the moment
         let datasource: String = String::from("memefactory");
 
+        let block_identifier = match event_source {
+            EventSource::EthereumBlock(hash) => format!("{:#x}", hash),
+            _ => String::from("OTHER"),
+        };
         // Update the existing entity, if necessary
         let updated_entity = match self.get(key.clone()) {
             Ok(mut existing_entity) => {
@@ -150,6 +159,7 @@ impl BasicStore for Store {
                 entity.eq(&key.entity),
                 data_source.eq(&datasource),
                 data.eq(&entity_json),
+                latest_block_hash.eq(&block_identifier),
             ))
             .on_conflict((id, entity, data_source))
             .do_update()
@@ -158,6 +168,7 @@ impl BasicStore for Store {
                 entity.eq(&key.entity),
                 data_source.eq(&data_source),
                 data.eq(&entity_json),
+                latest_block_hash.eq(&block_identifier),
             ))
             .execute(&self.conn)
             .map(|_| ())

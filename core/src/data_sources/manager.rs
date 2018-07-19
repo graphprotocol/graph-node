@@ -6,6 +6,7 @@ use tokio_core::reactor::Handle;
 
 use graph::components::data_sources::DataSourceProviderEvent;
 use graph::components::data_sources::RuntimeHostEvent;
+use graph::components::store::EventSource;
 use graph::prelude::*;
 
 pub struct RuntimeManager {
@@ -63,7 +64,11 @@ impl RuntimeManager where {
                     store
                         .lock()
                         .unwrap()
-                        .set(store_key, entity)
+                        .set(
+                            store_key,
+                            entity,
+                            EventSource::LocalProcess(String::from("blockhash")),
+                        )
                         .expect("Failed to set entity in the store");
                 }
                 RuntimeHostEvent::EntityRemoved(_data_source_id, store_key) => {

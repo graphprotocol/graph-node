@@ -12,6 +12,7 @@ use graphql_parser::query as q;
 use slog::Logger;
 use std::sync::{Arc, Mutex};
 
+use graph::components::store::EventSource;
 use graph::prelude::*;
 use graph_graphql::prelude::*;
 
@@ -140,7 +141,7 @@ impl BasicStore for TestStore {
             .map_or(Err(()), |entity| Ok(entity.clone()))
     }
 
-    fn set(&mut self, _key: StoreKey, _entity: Entity) -> Result<(), ()> {
+    fn set(&mut self, _key: StoreKey, _entity: Entity, _block_hash: EventSource) -> Result<(), ()> {
         unimplemented!()
     }
 

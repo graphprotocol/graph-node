@@ -14,4 +14,6 @@ pub struct EntityTable {
     pub entity: String,
     #[sql_type = "Jsonb"]
     pub data: EntityJSON,
+    #[sql_type = "VarChar"]
+    pub latest_block_hash: String,
 }
