@@ -1,3 +1,4 @@
+use ethereum_types::H256;
 use futures::sync::mpsc::{Receiver, Sender};
 
 use components::schema::SchemaProviderEvent;
@@ -84,13 +85,19 @@ pub enum StoreEvent {
     EntityChanged(Entity),
 }
 
+pub enum EventSource {
+    EthereumBlock(H256),
+    LocalProcess(String),
+    Reorganization(String),
+}
+
 /// Common trait for store implementations that don't require interaction with the system.
 pub trait BasicStore {
     /// Looks up an entity using the given store key.
     fn get(&self, key: StoreKey) -> Result<Entity, ()>;
 
     /// Updates an entity using the given store key and entity data.
-    fn set(&mut self, key: StoreKey, entity: Entity) -> Result<(), ()>;
+    fn set(&mut self, key: StoreKey, entity: Entity, event_source: EventSource) -> Result<(), ()>;
 
     /// Deletes an entity using the given store key.
     fn delete(&mut self, key: StoreKey) -> Result<(), ()>;
