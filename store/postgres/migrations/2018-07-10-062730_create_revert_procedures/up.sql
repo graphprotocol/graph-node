@@ -214,8 +214,8 @@ BEGIN
         JOIN event_meta_data ON
             event_meta_data.id = entity_history.event_id
         WHERE (
+            entity_history.entity = input_entity AND
             entity_history.entity_id = input_entity_id AND
-            entity_history.event_id = input_event_id AND
             entity_history.data_source = input_data_source
             AND
             entity_history.event_id > input_event_id
