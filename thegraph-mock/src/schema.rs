@@ -18,18 +18,16 @@ pub struct MockSchemaProvider {
 impl SchemaProvider for MockSchemaProvider {}
 
 impl EventProducer<SchemaProviderEvent> for MockSchemaProvider {
-    type EventStream = Receiver<SchemaProviderEvent>;
-
-    fn take_event_stream(&mut self) -> Option<Self::EventStream> {
-        self.output.take()
+    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = SchemaProviderEvent, Error = ()>>> {
+        self.output
+            .take()
+            .map(|s| Box::new(s) as Box<Stream<Item = SchemaProviderEvent, Error = ()>>)
     }
 }
 
 impl EventConsumer<SchemaEvent> for MockSchemaProvider {
-    type EventSink = Box<Sink<SinkItem = SchemaEvent, SinkError = ()>>;
-
     /// Get the wrapped event sink.
-    fn event_sink(&self) -> Self::EventSink {
+    fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()>> {
         let logger = self.logger.clone();
         Box::new(self.input.clone().sink_map_err(move |e| {
             error!(logger, "MockSchemaProvider was dropped {}", e);

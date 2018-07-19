@@ -6,23 +6,30 @@ use slog;
 use graphql_parser::schema::Document;
 use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
 use thegraph::prelude::*;
-use thegraph::util::stream::StreamError;
 
 /// A mock `DataSourceProvider`.
 pub struct MockDataSourceProvider {
     logger: slog::Logger,
-    event_sink: Option<Sender<DataSourceProviderEvent>>,
-    schema_event_sink: Option<Sender<SchemaEvent>>,
+    event_sink: Sender<DataSourceProviderEvent>,
+    schema_event_sink: Sender<SchemaEvent>,
+    event_stream: Option<Receiver<DataSourceProviderEvent>>,
+    schema_event_stream: Option<Receiver<SchemaEvent>>,
     schemas: Vec<Schema>,
 }
 
 impl MockDataSourceProvider {
     /// Creates a new mock `DataSourceProvider`.
     pub fn new(logger: &slog::Logger) -> Self {
+        let (event_sink, event_stream) = channel(100);
+
+        let (schema_event_sink, schema_event_stream) = channel(100);
+
         MockDataSourceProvider {
             logger: logger.new(o!("component" => "MockDataSourceProvider")),
-            event_sink: None,
-            schema_event_sink: None,
+            event_sink,
+            schema_event_sink,
+            event_stream: Some(event_stream),
+            schema_event_stream: Some(schema_event_stream),
             schemas: vec![Schema {
                 id: "176dbd4fdeb8407b899be5d456ababc0".to_string(),
                 document: graphql_parser::parse_schema(
@@ -52,8 +59,8 @@ impl MockDataSourceProvider {
             datasets: vec![],
         };
 
-        let sink = self.event_sink.clone().unwrap();
-        sink.clone()
+        self.event_sink
+            .clone()
             .send(DataSourceProviderEvent::DataSourceAdded(mock_data_source))
             .wait()
             .unwrap();
@@ -63,10 +70,10 @@ impl MockDataSourceProvider {
     fn generate_mock_schema_events(&mut self) {
         info!(self.logger, "Generate mock schema events");
 
-        let sink = self.schema_event_sink.clone().unwrap();
-
         for schema in self.schemas.iter() {
-            sink.clone()
+            self.schema_event_sink
+                .clone()
+                .clone()
                 .send(SchemaEvent::SchemaAdded(schema.clone()))
                 .wait()
                 .unwrap();
@@ -74,34 +81,22 @@ impl MockDataSourceProvider {
     }
 }
 
-impl DataSourceProvider for MockDataSourceProvider {
-    fn event_stream(&mut self) -> Result<Receiver<DataSourceProviderEvent>, StreamError> {
-        // If possible, create a new channel for streaming data source provider events
-        let result = match self.event_sink {
-            Some(_) => Err(StreamError::AlreadyCreated),
-            None => {
-                let (sink, stream) = channel(100);
-                self.event_sink = Some(sink);
-                Ok(stream)
-            }
-        };
-
+impl EventProducer<DataSourceProviderEvent> for MockDataSourceProvider {
+    fn take_event_stream(
+        &mut self,
+    ) -> Option<Box<Stream<Item = DataSourceProviderEvent, Error = ()>>> {
         self.generate_mock_events();
-        result
+        self.event_stream
+            .take()
+            .map(|s| Box::new(s) as Box<Stream<Item = DataSourceProviderEvent, Error = ()>>)
     }
+}
 
-    fn schema_event_stream(&mut self) -> Result<Receiver<SchemaEvent>, StreamError> {
-        // If possible, create a new channel for streaming schema events
-        let result = match self.schema_event_sink {
-            Some(_) => Err(StreamError::AlreadyCreated),
-            None => {
-                let (sink, stream) = channel(100);
-                self.schema_event_sink = Some(sink);
-                Ok(stream)
-            }
-        };
-
+impl EventProducer<SchemaEvent> for MockDataSourceProvider {
+    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = SchemaEvent, Error = ()>>> {
         self.generate_mock_schema_events();
-        result
+        self.schema_event_stream
+            .take()
+            .map(|s| Box::new(s) as Box<Stream<Item = SchemaEvent, Error = ()>>)
     }
 }

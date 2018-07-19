@@ -238,10 +238,10 @@ impl RuntimeHost {
 }
 
 impl EventProducer<RuntimeHostEvent> for RuntimeHost {
-    type EventStream = Receiver<RuntimeHostEvent>;
-
-    fn take_event_stream(&mut self) -> Option<Self::EventStream> {
-        self.output.take()
+    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = RuntimeHostEvent, Error = ()>>> {
+        self.output
+            .take()
+            .map(|s| Box::new(s) as Box<Stream<Item = RuntimeHostEvent, Error = ()>>)
     }
 }
 

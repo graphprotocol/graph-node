@@ -1,19 +1,16 @@
 use futures::prelude::*;
-use futures::sync::mpsc::{channel, Receiver, Sender};
+use futures::sync::mpsc::{channel, Receiver};
 use slog;
 use tokio_core::reactor::Handle;
 
 use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
 use thegraph::data::data_sources::DataSourceDefinitionResolveError;
 use thegraph::prelude::{DataSourceProvider as DataSourceProviderTrait, *};
-use thegraph::util::stream::StreamError;
 
 pub struct DataSourceProvider {
     _logger: slog::Logger,
-    event_sink: Option<Sender<DataSourceProviderEvent>>,
-    schema_event_sink: Option<Sender<SchemaEvent>>,
-    runtime: Handle,
-    data_source: DataSourceDefinition,
+    event_stream: Option<Receiver<DataSourceProviderEvent>>,
+    schema_event_stream: Option<Receiver<SchemaEvent>>,
 }
 
 impl DataSourceProvider {
@@ -30,70 +27,53 @@ impl DataSourceProvider {
             },
             resolver,
         ).map(move |data_source| {
+            let schema = data_source.schema.clone();
+
+            let (event_sink, event_stream) = channel(100);
+
+            // Push the data source into the stream
+            runtime.spawn(
+                event_sink
+                    .send(DataSourceProviderEvent::DataSourceAdded(data_source))
+                    .map_err(|e| panic!("Failed to forward data source: {}", e))
+                    .map(|_| ()),
+            );
+
+            let (schema_event_sink, schema_event_stream) = channel(100);
+
+            // Push the schema into the stream
+            runtime.spawn(
+                schema_event_sink
+                    .send(SchemaEvent::SchemaAdded(schema))
+                    .map_err(|e| panic!("Failed to forward data source schema: {}", e))
+                    .map(|_| ()),
+            );
             // Create the data source provider
             DataSourceProvider {
                 _logger: logger.new(o!("component" => "DataSourceProvider")),
-                event_sink: None,
-                schema_event_sink: None,
-                runtime,
-                data_source,
+                event_stream: Some(event_stream),
+                schema_event_stream: Some(schema_event_stream),
             }
         })
     }
 }
 
-impl DataSourceProviderTrait for DataSourceProvider {
-    fn event_stream(&mut self) -> Result<Receiver<DataSourceProviderEvent>, StreamError> {
-        // If possible, create a new channel for streaming data source provider events
-        let result = match self.event_sink {
-            Some(_) => Err(StreamError::AlreadyCreated),
-            None => {
-                let (sink, stream) = channel(100);
-                self.event_sink = Some(sink);
-                Ok(stream)
-            }
-        };
+impl DataSourceProviderTrait for DataSourceProvider {}
 
-        // If the stream was set up successfully, push the data source into it
-        if result.is_ok() && self.event_sink.is_some() {
-            self.runtime.spawn(
-                self.event_sink
-                    .clone()
-                    .unwrap()
-                    .send(DataSourceProviderEvent::DataSourceAdded(
-                        self.data_source.clone(),
-                    ))
-                    .map_err(|e| panic!("Failed to forward data source: {}", e))
-                    .and_then(|_| Ok(())),
-            );
-        }
-
-        result
+impl EventProducer<DataSourceProviderEvent> for DataSourceProvider {
+    fn take_event_stream(
+        &mut self,
+    ) -> Option<Box<Stream<Item = DataSourceProviderEvent, Error = ()>>> {
+        self.event_stream
+            .take()
+            .map(|s| Box::new(s) as Box<Stream<Item = DataSourceProviderEvent, Error = ()>>)
     }
+}
 
-    fn schema_event_stream(&mut self) -> Result<Receiver<SchemaEvent>, StreamError> {
-        // If possible, create a new channel for streaming schema events
-        let result = match self.schema_event_sink {
-            Some(_) => Err(StreamError::AlreadyCreated),
-            None => {
-                let (sink, stream) = channel(100);
-                self.schema_event_sink = Some(sink);
-                Ok(stream)
-            }
-        };
-
-        // If the stream was set up successfully, push the schema into it
-        if result.is_ok() && self.schema_event_sink.is_some() {
-            self.runtime.spawn(
-                self.schema_event_sink
-                    .clone()
-                    .unwrap()
-                    .send(SchemaEvent::SchemaAdded(self.data_source.schema.clone()))
-                    .map_err(|e| panic!("Failed to forward data source schema: {}", e))
-                    .and_then(|_| Ok(())),
-            );
-        }
-
-        result
+impl EventProducer<SchemaEvent> for DataSourceProvider {
+    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = SchemaEvent, Error = ()>>> {
+        self.schema_event_stream
+            .take()
+            .map(|s| Box::new(s) as Box<Stream<Item = SchemaEvent, Error = ()>>)
     }
 }

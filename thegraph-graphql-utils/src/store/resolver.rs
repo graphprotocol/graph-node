@@ -195,8 +195,7 @@ impl Resolver for StoreResolver {
         // Return an empty list if we're dealing with a non-derived field that
         // holds an empty list of references; there's no point in querying the store
         // if the result will be empty anyway
-        if !is_derived
-            && parent.is_some()
+        if !is_derived && parent.is_some()
             && Self::references_field_is_empty(parent, &field_definition.name)
         {
             return q::Value::List(vec![]);
