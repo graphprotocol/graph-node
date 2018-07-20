@@ -20,11 +20,3 @@ sql_function! {
     SetConfig,
     (setting_name: Text, new_value: Text, is_local: Bool)
 }
-
-sql_function! {
-    fn current_setting(setting_name: Text) -> Text;
-}
-
-sql_function! {
-    fn set_config(setting_name: Text, new_value: Text, is_local: Bool);
-}
