@@ -248,7 +248,7 @@ BEGIN
         FROM entity_history
         JOIN event_meta_data ON
             entity_history.event_id = event_meta_data.id
-        WHERE event_meta_data.block_hash = input_block_hash
+        WHERE event_meta_data.source = input_block_hash
         GROUP BY
             entity_history.event_id
         ORDER BY entity_history.event_id DESC
@@ -265,7 +265,7 @@ BEGIN
         FROM entity_history
         JOIN event_meta_data ON
             entity_history.event_id = event_meta_data.id
-        WHERE event_meta_data.block_hash = input_block_hash
+        WHERE event_meta_data.source = input_block_hash
         GROUP BY
             entity_history.data_source,
             entity_history.entity,
@@ -293,10 +293,10 @@ DECLARE
 BEGIN
     FOR block_row IN
         SELECT
-            block_hash
+            source
         FROM event_meta_data
-        WHERE block_hash = ANY(input_block_hash_group)
-        GROUP BY block_hash
+        WHERE source = ANY(input_block_hash_group)
+        GROUP BY source
         ORDER BY id DESC
     LOOP
         FOR event_row IN
