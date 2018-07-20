@@ -6,9 +6,7 @@ steps:
     command: cargo fmt --all -- --write-mode=diff
   - label: Run tests
     command:
-    - cp -R "$HOME/$BUILDKITE_PIPELINE_SLUG-target" target || true
     - ./.buildkite/run-tests.sh
-    - cp -R target "$HOME/$BUILDKITE_PIPELINE_SLUG-target" || true
   - wait
   - label: Deploy to staging
     trigger: the-graph-network-staging-deployment
