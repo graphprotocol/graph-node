@@ -1,13 +1,19 @@
 use diesel::sql_types::*;
 
 sql_function! {
-    fn revert_block_group(block_hashes: Array<Text>);
+    revert_block,
+    RevertBlock,
+    (block_hash: Text)
 }
 
 sql_function! {
-    fn current_setting(setting_name: Text) -> Text;
+    current_setting,
+    CurrentSetting,
+    (setting_name: Text, missing_ok: Bool)
 }
 
 sql_function! {
-    fn set_config(setting_name: Text, new_value: Text, is_local: Bool);
+    set_config,
+    SetConfig,
+    (setting_name: Text, new_value: Text, is_local: Bool)
 }
