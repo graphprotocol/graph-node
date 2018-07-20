@@ -35,21 +35,26 @@ pub mod util;
 /// use thegraph::prelude::*;
 /// ```
 pub mod prelude {
-    pub use components::data_sources::{DataSourceProvider, DataSourceProviderEvent, RuntimeHost,
-                                       RuntimeHostBuilder, RuntimeHostEvent, RuntimeManager};
+    pub use components::data_sources::{
+        DataSourceProvider, DataSourceProviderEvent, RuntimeHost, RuntimeHostBuilder,
+        RuntimeHostEvent, RuntimeManager,
+    };
     pub use components::ethereum::EthereumAdapter;
     pub use components::query::QueryRunner;
     pub use components::schema::{SchemaProvider, SchemaProviderEvent};
     pub use components::server::GraphQLServer;
-    pub use components::store::{BasicStore, Store, StoreEvent, StoreFilter, StoreKey, StoreOrder,
-                                StoreQuery, StoreRange};
+    pub use components::store::{
+        BasicStore, Store, StoreEvent, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
+    };
     pub use components::{EventConsumer, EventProducer};
 
     pub use components::link_resolver::LinkResolver;
-    pub use data::data_sources::{DataSet, DataSourceDefinition, DataSourceDefinitionResolveError,
-                                 Link};
-    pub use data::query::{Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue,
-                          QueryVariables};
+    pub use data::data_sources::{
+        DataSet, DataSourceDefinition, DataSourceDefinitionResolveError, Link,
+    };
+    pub use data::query::{
+        Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue, QueryVariables,
+    };
     pub use data::schema::Schema;
     pub use data::store::{Attribute, Entity, Value};
     pub use util::stream::StreamError;

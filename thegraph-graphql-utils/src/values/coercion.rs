@@ -120,7 +120,9 @@ impl<'a> MaybeCoercible<&'a Type, &'a Name, Value, &'a TypeDefinition> for Maybe
 #[cfg(test)]
 mod tests {
     use graphql_parser::query::Value;
-    use graphql_parser::schema::{EnumType, EnumValue, InputObjectType, ScalarType, TypeDefinition};
+    use graphql_parser::schema::{
+        EnumType, EnumValue, InputObjectType, ScalarType, TypeDefinition,
+    };
     use graphql_parser::Pos;
     use std::collections::BTreeMap;
     use std::iter::FromIterator;
