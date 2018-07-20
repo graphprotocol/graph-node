@@ -5,8 +5,10 @@ use super::{AscHeap, AscPtr};
 use ethabi::Token;
 use ethereum_types::{H160, U256};
 use nan_preserving_float::F32;
-use wasmi::{self, ImportsBuilder, MemoryRef, ModuleImportResolver, ModuleInstance, ModuleRef,
-            NopExternals, RuntimeValue, Signature};
+use wasmi::{
+    self, ImportsBuilder, MemoryRef, ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals,
+    RuntimeValue, Signature,
+};
 
 struct TestModule {
     module: ModuleRef,
@@ -302,7 +304,7 @@ fn abi_ethabi_token_identity() {
     let token_array = Token::Array(vec![token_address, token_bytes, token_bool]);
     let token_array_nested = Token::Array(vec![token_string, token_array]);
 
-    let new_array_obj: AscEnumArray<TokenKind> =
+    let new_array_obj: AscEnumArray<EthereumValueKind> =
         module.takes_ptr_returns_ptr("token_to_array", module.asc_new(&token_array_nested));
 
     let new_token: Token =
