@@ -108,7 +108,12 @@ pub trait BasicStore {
     fn get(&self, key: StoreKey) -> Result<Entity, ()>;
 
     /// Updates an entity using the given store key and entity data.
-    fn set(&mut self, key: StoreKey, entity: Entity, event_source: EventSource) -> Result<(), ()>;
+    fn set(
+        &mut self,
+        key: StoreKey,
+        entity: Entity,
+        input_event_source: EventSource,
+    ) -> Result<(), ()>;
 
     /// Deletes an entity using the given store key.
     fn delete(&mut self, key: StoreKey, event_source: EventSource) -> Result<(), ()>;
