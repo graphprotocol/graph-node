@@ -109,9 +109,9 @@ DECLARE
     new_event_id INTEGER;
     is_reversion BOOLEAN;
 BEGIN
-    current_event_source := 'REVISION';
+    current_event_source := current_setting('vars.current_event_source', TRUE);
     IF (
-      current_event_source = 'REVISION'
+      current_event_source = 'REVERSION'
     )
     THEN
         is_reversion := TRUE;
@@ -130,7 +130,7 @@ BEGIN
         INSERT INTO event_meta_data
             (db_transaction_id, db_transaction_time, op_id, source)
         VALUES
-            (txid_current(), statement_timestamp(), 2, NULL)
+            (txid_current(), statement_timestamp(), 2, current_event_source)
         RETURNING event_meta_data.id INTO new_event_id;
     END IF;
 
