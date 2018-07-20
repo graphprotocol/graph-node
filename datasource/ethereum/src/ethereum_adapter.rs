@@ -142,6 +142,7 @@ impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
                     event_signature: log.topics[0],
                     block_hash: log.block_hash.unwrap(),
                     params: log_data.params,
+                    removed: log.is_removed(),
                 }),
         )
     }

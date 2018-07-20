@@ -863,6 +863,7 @@ mod tests {
                 name: String::from("exampleParam"),
                 value: Token::String(String::from("some data")),
             }],
+            removed: false
         };
 
         // Call the event handler in the test module and pass the event to it

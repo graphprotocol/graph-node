@@ -124,6 +124,7 @@ pub struct EthereumEvent {
     pub event_signature: H256,
     pub block_hash: H256,
     pub params: Vec<LogParam>,
+    pub removed: bool
 }
 
 /// Common trait for components that watch and manage access to Ethereum.
