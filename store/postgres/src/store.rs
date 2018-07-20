@@ -3,7 +3,7 @@ use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::sql_types::Text;
-use diesel::{delete, insert_into};
+use diesel::{delete, insert_into, result};
 use filter::store_filter;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
@@ -11,7 +11,7 @@ use serde_json;
 use slog;
 use tokio_core::reactor::Handle;
 
-use functions::revert_block_group;
+use functions::{current_setting, revert_block_group, set_config};
 use graph::components::schema::SchemaProviderEvent;
 use graph::components::store::{Store as StoreTrait, *};
 use graph::data::store::*;
@@ -97,7 +97,7 @@ impl Store {
 
     /// Handles block reorganizations.
     /// Revert all store changes related to given set of blocks
-    fn _revert_chain(&mut self, block_hashes: Vec<String>) {
+    pub fn revert_chain(block_hashes: Vec<String>) {
         revert_block_group(block_hashes);
     }
 }
@@ -135,7 +135,9 @@ impl BasicStore for Store {
         // The data source is hardcoded at the moment
         let datasource: String = String::from("memefactory");
 
+        // Convert event source to String for insert
         let block_identifier = match input_event_source {
+            // Use LowerHex to format hash as hex string with leading "0x"
             EventSource::EthereumBlock(hash) => format!("{:#x}", hash),
             _ => String::from("OTHER"),
         };
@@ -182,13 +184,22 @@ impl BasicStore for Store {
 
         use db_schema::entities::dsl::*;
 
-        // Delete from DB where rows match the ID and entity value;
-        // add data source here when meaningful
-        delete(
-            entities
-                .filter(id.eq(&key.id))
-                .filter(entity.eq(&key.entity)),
-        ).execute(&self.conn)
+        self.conn
+            .transaction::<usize, result::Error, _>(|| {
+                set_config(
+                    String::from("vars.current_event_source"),
+                    String::from("test"),
+                    false,
+                );
+
+                // Delete from DB where rows match the ID and entity value;
+                // add data source here when meaningful
+                delete(
+                    entities
+                        .filter(id.eq(&key.id))
+                        .filter(entity.eq(&key.entity)),
+                ).execute(&self.conn)
+            })
             .map(|_| ())
             .map_err(|_| ())
     }
