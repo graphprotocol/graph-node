@@ -105,8 +105,19 @@ CREATE OR REPLACE FUNCTION log_delete()
 $$
 DECLARE
     event_id INTEGER;
+    current_event_source  VARCHAR;
     new_event_id INTEGER;
+    is_reversion BOOLEAN;
 BEGIN
+    current_event_source := 'REVISION';
+    IF (
+      current_event_source = 'REVISION'
+    )
+    THEN
+        is_reversion := TRUE;
+    ELSE
+        is_reversion := FALSE;
+    END IF;
 
     SELECT id INTO event_id
     FROM event_meta_data
@@ -125,9 +136,9 @@ BEGIN
 
     -- Log content of deleted entity
     INSERT INTO entity_history
-        (event_id, entity_id, data_source, entity, data_before, data_after)
+        (event_id, entity_id, data_source, entity, data_before, data_after, reversion)
     VALUES
-        (COALESCE(new_event_id, event_id), OLD.id, OLD.data_source, OLD.entity, OlD.data, NULL);
+        (COALESCE(new_event_id, event_id), OLD.id, OLD.data_source, OLD.entity, OlD.data, NULL, is_reversion);
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
