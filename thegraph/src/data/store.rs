@@ -1,4 +1,5 @@
 use graphql_parser::query;
+use hex;
 use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
@@ -16,6 +17,9 @@ pub enum Value {
     Bool(bool),
     List(Vec<Value>),
     Null,
+
+    // Custom GraphQL scalars.
+    Bytes(Box<[u8]>),
 }
 
 impl Into<query::Value> for Value {
@@ -29,6 +33,7 @@ impl Into<query::Value> for Value {
             Value::List(values) => {
                 query::Value::List(values.into_iter().map(|value| value.into()).collect())
             }
+            Value::Bytes(bytes) => query::Value::String(format!("0x{}", hex::encode(bytes))),
         }
     }
 }

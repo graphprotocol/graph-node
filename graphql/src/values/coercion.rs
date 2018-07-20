@@ -58,7 +58,7 @@ impl<'a> MaybeCoercible<&'a TypeDefinition, &'a Name, Value, &'a TypeDefinition>
             // Accept enum values if they match a value in the enum type
             (TypeDefinition::Enum(t), value) => MaybeCoercibleValue(value).coerce(t, map_type),
 
-            // Try to coerce Boolean values
+            // Try to coerce Scalar values
             (TypeDefinition::Scalar(t), value) => MaybeCoercibleValue(value).coerce(t, map_type),
 
             // Try to coerce InputObject values
