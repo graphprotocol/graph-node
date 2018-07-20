@@ -36,6 +36,7 @@ BEGIN
         WHEN input_operation_id = 0 THEN
             -- Delete inserted row
             BEGIN
+                PERFORM set_config('vars.current_event_source', 'REV', FALSE);
                 EXECUTE
                     'DELETE FROM entities WHERE (
                         data_source = $1 AND
@@ -55,10 +56,10 @@ BEGIN
             -- If row exists perform update
             BEGIN
                 EXECUTE
-                    'INSERT INTO entities (id, data_source, entity, data)
-                        VALUES ($1, $2, $3, $4)
+                    'INSERT INTO entities (id, data_source, entity, data, event_source)
+                        VALUES ($1, $2, $3, $4, NULL)
                         ON CONFLICT (id, data_source, entity) DO UPDATE
-                        SET data = $4'
+                        SET data = $4, event_source = NULL'
                 USING
                     target_entity_id,
                     target_data_source,
@@ -161,10 +162,10 @@ BEGIN
             -- If row exists perform update
             BEGIN
                 EXECUTE
-                    'INSERT INTO entities (data_source, entity, id, data)
-                        VALUES ($1, $2, $3, $4)
+                    'INSERT INTO entities (data_source, entity, id, data, event_source)
+                        VALUES ($1, $2, $3, $4, NULL)
                         ON CONFLICT (data_source, entity, id) DO UPDATE
-                        SET data = $4'
+                        SET data = $4, event_source = NULL'
                 USING
                     target_data_source,
                     target_entity,
@@ -177,6 +178,7 @@ BEGIN
             -- Insert deleted row if not exists
             -- If row exists perform update
             BEGIN
+                PERFORM set_config('vars.current_event_source', 'REV', FALSE);
                 EXECUTE
                     'DELETE FROM entities WHERE (
                         data_source = $1 AND
@@ -258,7 +260,7 @@ BEGIN
 
     FOR entity_row IN
         SELECT
-            MIN(entity_history.event_id) as event_id,
+            MAX(entity_history.event_id) as event_id,
             entity_history.data_source as data_source,
             entity_history.entity as entity,
             entity_history.entity_id as entity_id
@@ -316,7 +318,7 @@ BEGIN
 
     FOR entity_row IN
         SELECT
-            MIN(entity_history.event_id) as event_id,
+            MAX(entity_history.event_id) as event_id,
             entity_history.data_source as data_source,
             entity_history.entity as entity,
             entity_history.entity_id as entity_id
