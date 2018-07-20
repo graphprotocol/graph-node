@@ -110,12 +110,9 @@ impl BasicStore for Store {
 
         use db_schema::entities::dsl::*;
 
-        // The subgraph hardcoded at the moment
-        let datasource: String = String::from("memefactory");
-
         // Use primary key fields to get the entity; deserialize the result JSON
         entities
-            .find((key.id, datasource, key.entity))
+            .find((key.id, key.data_source, key.entity))
             .select(data)
             .first::<serde_json::Value>(&self.conn)
             .map(|value| {
@@ -133,9 +130,6 @@ impl BasicStore for Store {
         debug!(self.logger, "set"; "key" => format!("{:?}", key));
 
         use db_schema::entities::dsl::*;
-
-        // The subgraph is hardcoded at the moment
-        let datasource: String = String::from("memefactory");
 
         // Update the existing entity, if necessary
         let updated_entity = match self.get(key.clone()) {
@@ -155,7 +149,7 @@ impl BasicStore for Store {
             .values((
                 id.eq(&key.id),
                 entity.eq(&key.entity),
-                subgraph.eq(&datasource),
+                subgraph.eq(&key.subgraph),
                 data.eq(&entity_json),
                 event_source.eq(&input_event_source.to_string()),
             ))
@@ -164,7 +158,7 @@ impl BasicStore for Store {
             .set((
                 id.eq(&key.id),
                 entity.eq(&key.entity),
-                subgraph.eq(&datasource),
+                subgraph.eq(&key.subgraph),
                 data.eq(&entity_json),
                 event_source.eq(&input_event_source.to_string()),
             ))
@@ -192,8 +186,9 @@ impl BasicStore for Store {
                 // add subgraph here when meaningful
                 delete(
                     entities
-                        .filter(id.eq(&key.id))
-                        .filter(entity.eq(&key.entity)),
+                        .filter(data_source.eq(&key.data_source))
+                        .filter(entity.eq(&key.entity))
+                        .filter(id.eq(&key.id)),
                 ).execute(&self.conn)
             })
             .map(|_| ())
@@ -203,13 +198,11 @@ impl BasicStore for Store {
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()> {
         use db_schema::entities::dsl::*;
 
-        // The subgraph is hard-coded at the moment
-        let _datasource: String = String::from("memefactory");
-
         // Create base boxed query; this will be added to based on the
         // query parameters provided
         let mut diesel_query = entities
             .filter(entity.eq(query.entity))
+            .filter(data_source.eq(query.data_source))
             .select(data)
             .into_boxed::<Pg>();
 

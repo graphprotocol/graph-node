@@ -73,7 +73,7 @@ cargo run -p graph-node -- \
   --subgraph IPFS_HASH
 ```
 
-This will also sping up GraphiQL interface at `http://127.0.0.1:8000/`
+This will also spins up a GraphiQL interface at `http://127.0.0.1:8000/`
 
 ### Command-line interface
 

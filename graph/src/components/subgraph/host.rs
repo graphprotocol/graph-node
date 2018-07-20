@@ -1,15 +1,12 @@
 use prelude::*;
 
-/// Type alias for subgraph IDs.
-type SubgraphID = String;
-
 /// Events emitted by a runtime host.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeHostEvent {
-    /// An entity should be create or updated.
-    EntitySet(SubgraphID, StoreKey, Entity),
+    /// An entity should be created or updated.
+    EntitySet(StoreKey, Entity),
     /// An entity should be removed.
-    EntityRemoved(SubgraphID, StoreKey),
+    EntityRemoved(StoreKey),
 }
 
 /// Common trait for runtime host implementations.

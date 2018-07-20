@@ -61,7 +61,7 @@ impl RuntimeManager where {
         // Handles each incoming event from the subgraph.
         fn handle_event<S: Store + 'static>(store: Arc<Mutex<S>>, event: RuntimeHostEvent) {
             match event {
-                RuntimeHostEvent::EntitySet(_subgraph_id, store_key, entity) => {
+                RuntimeHostEvent::EntitySet(store_key, entity) => {
                     store
                         .lock()
                         .unwrap()
@@ -72,7 +72,7 @@ impl RuntimeManager where {
                         )
                         .expect("Failed to set entity in the store");
                 }
-                RuntimeHostEvent::EntityRemoved(_subgraph_id, store_key) => {
+                RuntimeHostEvent::EntityRemoved(store_key) => {
                     store
                         .lock()
                         .unwrap()
