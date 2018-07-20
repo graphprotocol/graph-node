@@ -3,7 +3,7 @@ use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::sql_types::Text;
-use diesel::{delete, insert_into, result};
+use diesel::{delete, insert_into, result, select, sql_query};
 use filter::store_filter;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
@@ -11,7 +11,7 @@ use serde_json;
 use slog;
 use tokio_core::reactor::Handle;
 
-use functions::{revert_block_group, set_config};
+use functions::{current_setting, revert_block, set_config};
 use graph::components::schema::SchemaProviderEvent;
 use graph::components::store::{Store as StoreTrait, *};
 use graph::data::store::*;
@@ -97,8 +97,8 @@ impl Store {
 
     /// Handles block reorganizations.
     /// Revert all store changes related to given set of blocks
-    pub fn revert_chain(block_hashes: Vec<String>) {
-        revert_block_group(block_hashes);
+    pub fn revert_chain(&self, block_hash: String) {
+        let _reverted = select(revert_block(block_hash)).execute(&self.conn);
     }
 }
 
@@ -139,7 +139,7 @@ impl BasicStore for Store {
         let block_identifier = match input_event_source {
             // Use LowerHex to format hash as hex string with leading "0x"
             EventSource::EthereumBlock(hash) => format!("{:#x}", hash),
-            _ => String::from("OTHER"),
+            EventSource::LocalProcess(process) => process,
         };
         // Update the existing entity, if necessary
         let updated_entity = match self.get(key.clone()) {
@@ -187,11 +187,13 @@ impl BasicStore for Store {
         self.conn
             .transaction::<usize, result::Error, _>(|| {
                 // Set session variable current_event_source to revision
-                set_config(
-                    String::from("vars.current_event_source"),
-                    String::from("REVISION"),
-                    false,
-                );
+                // let _current_source = sql_query("SET vars.current_event_source TO 'REVISION'");
+
+                let _reverted = select(set_config("vars.current_event_source", "BLOOP", false))
+                    .execute(&self.conn);
+                // let setting =
+                //     select(current_setting("vars.current_event_source")).execute(&self.conn);
+                // println!("TESTTT {:?}", setting);
 
                 // Delete from DB where rows match the ID and entity value;
                 // add data source here when meaningful
