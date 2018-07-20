@@ -217,7 +217,7 @@ pub(crate) type AscEnumArray<D> = AscPtr<Array<AscPtr<AscEnum<D>>>>;
 
 #[repr(u32)]
 #[derive(Copy, Clone)]
-pub(crate) enum TokenKind {
+pub(crate) enum EthereumValueKind {
     Address,
     FixedBytes,
     Bytes,
@@ -229,30 +229,30 @@ pub(crate) enum TokenKind {
     Array,
 }
 
-impl TokenKind {
+impl EthereumValueKind {
     pub(crate) fn get_kind(token: &ethabi::Token) -> Self {
         match token {
-            ethabi::Token::Address(_) => TokenKind::Address,
-            ethabi::Token::FixedBytes(_) => TokenKind::FixedBytes,
-            ethabi::Token::Bytes(_) => TokenKind::Bytes,
-            ethabi::Token::Int(_) => TokenKind::Int,
-            ethabi::Token::Uint(_) => TokenKind::Uint,
-            ethabi::Token::Bool(_) => TokenKind::Bool,
-            ethabi::Token::String(_) => TokenKind::String,
-            ethabi::Token::FixedArray(_) => TokenKind::FixedArray,
-            ethabi::Token::Array(_) => TokenKind::Array,
+            ethabi::Token::Address(_) => EthereumValueKind::Address,
+            ethabi::Token::FixedBytes(_) => EthereumValueKind::FixedBytes,
+            ethabi::Token::Bytes(_) => EthereumValueKind::Bytes,
+            ethabi::Token::Int(_) => EthereumValueKind::Int,
+            ethabi::Token::Uint(_) => EthereumValueKind::Uint,
+            ethabi::Token::Bool(_) => EthereumValueKind::Bool,
+            ethabi::Token::String(_) => EthereumValueKind::String,
+            ethabi::Token::FixedArray(_) => EthereumValueKind::FixedArray,
+            ethabi::Token::Array(_) => EthereumValueKind::Array,
         }
     }
 }
 
-impl Default for TokenKind {
+impl Default for EthereumValueKind {
     fn default() -> Self {
-        TokenKind::Address
+        EthereumValueKind::Address
     }
 }
 
-impl AscType for TokenKind {}
-impl AscValue for TokenKind {}
+impl AscType for EthereumValueKind {}
+impl AscValue for EthereumValueKind {}
 
 #[repr(u32)]
 #[derive(Copy, Clone)]
@@ -277,7 +277,7 @@ impl AscValue for StoreValueKind {}
 #[repr(C)]
 pub(crate) struct AscLogParam {
     pub name: AscPtr<AscString>,
-    pub value: AscPtr<AscEnum<TokenKind>>,
+    pub value: AscPtr<AscEnum<EthereumValueKind>>,
 }
 
 impl AscType for AscLogParam {}
@@ -324,7 +324,7 @@ pub(crate) struct AscUnresolvedContractCall {
     pub contract_name: AscPtr<AscString>,
     pub contract_address: AscPtr<AscAddress>,
     pub function_name: AscPtr<AscString>,
-    pub function_args: AscPtr<Array<AscPtr<AscEnum<TokenKind>>>>,
+    pub function_args: AscPtr<Array<AscPtr<AscEnum<EthereumValueKind>>>>,
 }
 
 impl AscType for AscUnresolvedContractCall {}
