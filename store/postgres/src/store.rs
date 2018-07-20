@@ -11,7 +11,7 @@ use serde_json;
 use slog;
 use tokio_core::reactor::Handle;
 
-use functions::{current_setting, revert_block_group, set_config};
+use functions::{revert_block_group, set_config};
 use graph::components::schema::SchemaProviderEvent;
 use graph::components::store::{Store as StoreTrait, *};
 use graph::data::store::*;
@@ -186,9 +186,10 @@ impl BasicStore for Store {
 
         self.conn
             .transaction::<usize, result::Error, _>(|| {
+                // Set session variable current_event_source to revision
                 set_config(
                     String::from("vars.current_event_source"),
-                    String::from("test"),
+                    String::from("REVISION"),
                     false,
                 );
 
