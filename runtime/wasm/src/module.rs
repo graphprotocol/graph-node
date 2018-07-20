@@ -223,8 +223,13 @@ where
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
+        let data_source = self.data_source.id.clone();
+        let store_key = StoreKey {
+            data_source,
+            entity,
+            id,
+        };
 
-        let store_key = StoreKey { entity, id };
         let entity_data = Entity::from(data);
 
         // Send an entity set event
@@ -232,11 +237,7 @@ where
         self.runtime.spawn(
             self.event_sink
                 .clone()
-                .send(RuntimeHostEvent::EntitySet(
-                    self.subgraph.id.clone(),
-                    store_key,
-                    entity_data,
-                ))
+                .send(RuntimeHostEvent::EntitySet(store_key, entity_data))
                 .map_err(move |e| {
                     error!(logger, "Failed to forward runtime host event";
                            "error" => format!("{}", e));
@@ -257,10 +258,11 @@ where
         let _block_hash: H256 = self.heap.asc_get(block_hash_ptr);
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
-
+        let data_source: String = self.data_source.id.clone();
         let store_key = StoreKey {
-            entity: entity,
-            id: id,
+            data_source,
+            entity,
+            id,
         };
 
         // Send an entity removed event
@@ -268,10 +270,7 @@ where
         self.runtime.spawn(
             self.event_sink
                 .clone()
-                .send(RuntimeHostEvent::EntityRemoved(
-                    self.subgraph.id.clone(),
-                    store_key,
-                ))
+                .send(RuntimeHostEvent::EntityRemoved(store_key))
                 .map_err(move |e| {
                     error!(logger, "Failed to forward runtime host event";
                            "error" => format!("{}", e));
@@ -880,8 +879,8 @@ mod tests {
         assert_eq!(
             store_event,
             RuntimeHostEvent::EntitySet(
-                String::from("example subgraph"),
                 StoreKey {
+                    subgraph: String::from("example subgraph"),
                     entity: String::from("ExampleEntity"),
                     id: String::from("example id"),
                 },

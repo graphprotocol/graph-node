@@ -6,6 +6,7 @@ extern crate pretty_assertions;
 extern crate slog;
 extern crate graph;
 extern crate graph_graphql;
+extern crate graph_node;
 
 use futures::sync::oneshot;
 use graphql_parser::query as q;
@@ -15,9 +16,10 @@ use std::sync::{Arc, Mutex};
 use graph::components::store::EventSource;
 use graph::prelude::*;
 use graph_graphql::prelude::*;
+use graph_node::DataSourceProvider;
 
 fn test_schema() -> Schema {
-    Schema {
+    let schema = Schema {
         id: String::from("test-schema"),
         document: api_schema(&graphql_parser::parse_schema(
             "
@@ -45,7 +47,11 @@ fn test_schema() -> Schema {
             .expect(
             "Failed to derive API schema from test schema",
         ),
-    }
+    };
+    DataSourceProvider::add_package_id_directives(
+        &mut schema.clone(),
+        String::from("test_package_id"),
+    )
 }
 
 #[derive(Clone)]
