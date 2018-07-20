@@ -1,5 +1,6 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver};
+use graphql_parser::{schema, Pos};
 use slog;
 use tokio_core::reactor::Handle;
 
@@ -27,8 +28,8 @@ impl SubgraphProvider {
             },
             resolver,
         ).map(move |subgraph| {
-            let schema = subgraph.schema.clone();
-
+            let schema =
+                Self::add_subgraph_id_directives(&mut subgraph.schema.clone(), subgraph.id.clone());
             let (event_sink, event_stream) = channel(100);
 
             // Push the subgraph into the stream
@@ -55,6 +56,43 @@ impl SubgraphProvider {
                 schema_event_stream: Some(schema_event_stream),
             }
         })
+    }
+
+    // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the schema.
+    fn add_subgraph_id_directives(schema: &mut Schema, id: String) -> Schema {
+        for definition in schema.document.definitions.iter_mut() {
+            let subgraph_id_argument = (
+                schema::Name::from("id"),
+                schema::Value::String(subgraph.clone()),
+            );
+
+            let subgraph_id_directive = schema::Directive {
+                name: "subgraphId".to_string(),
+                position: Pos::default(),
+                arguments: vec![subgraph_id_argument],
+            };
+
+            match definition {
+                schema::Definition::TypeDefinition(ref mut type_definition) => {
+                    match type_definition {
+                        schema::TypeDefinition::Object(ref mut object_type) => {
+                            object_type.directives.push(subgraph_id_directive);
+                        }
+                        schema::TypeDefinition::Interface(ref mut interface_type) => {
+                            interface_type.directives.push(subgraph_id_directive);
+                        }
+                        schema::TypeDefinition::Enum(ref mut enum_type) => {
+                            enum_type.directives.push(subgraph_id_directive);
+                        }
+                        schema::TypeDefinition::Scalar(_scalar_type) => (),
+                        schema::TypeDefinition::InputObject(_input_object_type) => (),
+                        schema::TypeDefinition::Union(_union_type) => (),
+                    }
+                }
+                _ => (),
+            };
+        }
+        schema.clone()
     }
 }
 
