@@ -198,8 +198,7 @@ impl RuntimeHost {
     ) where
         T: EthereumAdapter + 'static,
     {
-        info!(logger, "Subscribe to event";
-              "name" => format!("{:#?}", subscription.event.name));
+        info!(logger, "Subscribe to event"; "name" => &subscription.event.name);
 
         let receiver = ethereum_adapter
             .lock()
