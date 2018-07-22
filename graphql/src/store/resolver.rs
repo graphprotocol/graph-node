@@ -186,7 +186,7 @@ impl Resolver for StoreResolver {
         object_type: &s::ObjectType,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> q::Value {
-        let mut query = build_query(&object_type.name, arguments);
+        let mut query = build_query(&object_type, arguments);
 
         // Add matching filter for derived fields
         let is_derived =
@@ -259,7 +259,7 @@ impl Resolver for StoreResolver {
                 _ => q::Value::Null,
             },
             _ => {
-                let mut query = build_query(&object_type.name, arguments);
+                let mut query = build_query(&object_type, arguments);
 
                 // Add matching filter for derived fields
                 Self::add_filter_for_derived_field(

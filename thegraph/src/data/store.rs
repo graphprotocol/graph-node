@@ -1,4 +1,5 @@
 use graphql_parser::query;
+use graphql_parser::schema;
 use hex;
 use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
@@ -17,9 +18,37 @@ pub enum Value {
     Bool(bool),
     List(Vec<Value>),
     Null,
-
-    // Custom GraphQL scalars.
+    /// In GraphQL, a hex string prefixed by `0x`.
     Bytes(Box<[u8]>),
+}
+
+impl Value {
+    pub fn from_query_value(value: &query::Value, ty: &schema::Type) -> Value {
+        use self::schema::Type::{ListType, NamedType};
+
+        match (value, ty) {
+            (query::Value::String(s), NamedType(n)) if n == "Bytes" => Value::Bytes(
+                hex::decode(s.trim_left_matches("0x"))
+                    .expect("Value is not a hex string")
+                    .into(),
+            ),
+            (query::Value::String(s), _) => Value::String(s.clone()),
+            (query::Value::Int(i), _) => Value::Int(i.to_owned()
+                .as_i64()
+                .expect("Unable to parse graphql_parser::query::Number into i64")
+                as i32),
+            (query::Value::Float(f), _) => Value::Float(f.to_owned() as f32),
+            (query::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
+            (query::Value::List(values), ListType(ty)) => Value::List(
+                values
+                    .iter()
+                    .map(|value| Self::from_query_value(value, ty))
+                    .collect(),
+            ),
+            (query::Value::Null, _) => Value::Null,
+            _ => unimplemented!(),
+        }
+    }
 }
 
 impl Into<query::Value> for Value {
@@ -34,43 +63,6 @@ impl Into<query::Value> for Value {
                 query::Value::List(values.into_iter().map(|value| value.into()).collect())
             }
             Value::Bytes(bytes) => query::Value::String(format!("0x{}", hex::encode(bytes))),
-        }
-    }
-}
-
-impl From<query::Value> for Value {
-    fn from(value: query::Value) -> Value {
-        match value {
-            query::Value::String(s) => Value::String(s),
-            query::Value::Int(i) => Value::Int(i.as_i64()
-                .expect("Unable to parse graphql_parser::query::Number into i64")
-                as i32),
-            query::Value::Float(f) => Value::Float(f as f32),
-            query::Value::Boolean(b) => Value::Bool(b),
-            query::Value::List(values) => {
-                Value::List(values.into_iter().map(|value| Value::from(value)).collect())
-            }
-            query::Value::Null => Value::Null,
-            _ => unimplemented!(),
-        }
-    }
-}
-
-impl<'a> From<&'a query::Value> for Value {
-    fn from(value: &'a query::Value) -> Value {
-        match value {
-            query::Value::String(s) => Value::String(s.to_owned()),
-            query::Value::Int(i) => Value::Int(i.to_owned()
-                .as_i64()
-                .expect("Unable to parse graphql_parser::query::Number into i64")
-                as i32),
-            query::Value::Float(f) => Value::Float(f.to_owned() as f32),
-            query::Value::Boolean(b) => Value::Bool(b.to_owned()),
-            query::Value::List(values) => {
-                Value::List(values.iter().map(|value| Value::from(value)).collect())
-            }
-            query::Value::Null => Value::Null,
-            _ => unimplemented!(),
         }
     }
 }

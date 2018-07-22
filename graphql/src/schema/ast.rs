@@ -1,5 +1,45 @@
 use graphql_parser::schema::*;
 
+pub(crate) enum FilterOp {
+    Not,
+    GreaterThan,
+    LessThan,
+    GreaterOrEqual,
+    LessThanOrEqual,
+    In,
+    NotIn,
+    Contains,
+    NotContains,
+    StartsWith,
+    NotStartsWith,
+    EndsWith,
+    NotEndsWith,
+    Equal,
+}
+
+/// Split a "name_eq" style name into an attribute ("name") and a filter op (`Equal`).
+pub(crate) fn parse_field_as_filter(key: &Name) -> (Name, FilterOp) {
+    let (suffix, op) = match key {
+        k if k.ends_with("_not") => ("_not", FilterOp::Not),
+        k if k.ends_with("_gt") => ("_gt", FilterOp::GreaterThan),
+        k if k.ends_with("_lt") => ("_lt", FilterOp::LessThan),
+        k if k.ends_with("_gte") => ("_gte", FilterOp::GreaterOrEqual),
+        k if k.ends_with("_lte") => ("_lte", FilterOp::LessThanOrEqual),
+        k if k.ends_with("_in") => ("_in", FilterOp::In),
+        k if k.ends_with("_not_in") => ("_not_in", FilterOp::NotIn),
+        k if k.ends_with("_contains") => ("_contains", FilterOp::Contains),
+        k if k.ends_with("_not_contains") => ("_not_contains", FilterOp::NotContains),
+        k if k.ends_with("_starts_with") => ("_starts_with", FilterOp::StartsWith),
+        k if k.ends_with("_ends_with") => ("_ends_with", FilterOp::EndsWith),
+        k if k.ends_with("_not_starts_with") => ("_not_starts_with", FilterOp::NotStartsWith),
+        k if k.ends_with("_not_ends_with") => ("_not_ends_with", FilterOp::NotEndsWith),
+        _ => ("", FilterOp::Equal),
+    };
+
+    // Strip the operator suffix to get the attribute.
+    (key.trim_right_matches(suffix).to_owned(), op)
+}
+
 /// Returns the root query type (if there is one).
 pub fn get_root_query_type(schema: &Document) -> Option<&ObjectType> {
     schema
