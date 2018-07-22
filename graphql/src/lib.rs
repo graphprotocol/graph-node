@@ -27,5 +27,5 @@ pub mod prelude {
     pub use super::query::{execute, ExecutionOptions, Resolver};
     pub use super::schema::{api_schema, APISchemaError};
     pub use super::store::{build_query, StoreResolver};
-    pub use super::values::{object_value, MaybeCoercible, MaybeCoercibleValue, SerializableValue};
+    pub use super::values::{object_value, MaybeCoercible, SerializableValue};
 }

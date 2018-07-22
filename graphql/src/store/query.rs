@@ -1,14 +1,17 @@
-use graphql_parser::query as q;
+use graphql_parser::{query as q, schema};
+use schema::ast;
 use std::collections::{BTreeMap, HashMap};
-
 use thegraph::prelude::*;
 
 /// Builds a StoreQuery from GraphQL arguments.
-pub fn build_query(entity: &q::Name, arguments: &HashMap<&q::Name, q::Value>) -> StoreQuery {
+pub fn build_query(
+    entity: &schema::ObjectType,
+    arguments: &HashMap<&q::Name, q::Value>,
+) -> StoreQuery {
     StoreQuery {
-        entity: entity.to_owned(),
+        entity: entity.name.to_owned(),
         range: build_range(arguments),
-        filter: build_filter(arguments),
+        filter: build_filter(entity, arguments),
         order_by: build_order_by(arguments),
         order_direction: build_order_direction(arguments),
     }
@@ -41,74 +44,63 @@ fn build_range(arguments: &HashMap<&q::Name, q::Value>) -> Option<StoreRange> {
 }
 
 /// Parses GraphQL arguments into a StoreFilter, if present.
-fn build_filter(arguments: &HashMap<&q::Name, q::Value>) -> Option<StoreFilter> {
+fn build_filter(
+    entity: &schema::ObjectType,
+    arguments: &HashMap<&q::Name, q::Value>,
+) -> Option<StoreFilter> {
     arguments
         .get(&"filter".to_string())
         .and_then(|value| match value {
-            q::Value::Object(ref object) => Some(object),
+            q::Value::Object(object) => Some(object),
             _ => None,
         })
-        .map(|object| build_filter_from_object(object))
+        .map(|object| build_filter_from_object(entity, object))
 }
 
 /// Parses a GraphQL input object into a StoreFilter, if present.
-fn build_filter_from_object(object: &BTreeMap<q::Name, q::Value>) -> StoreFilter {
+fn build_filter_from_object(
+    entity: &schema::ObjectType,
+    object: &BTreeMap<q::Name, q::Value>,
+) -> StoreFilter {
     StoreFilter::And(
         object
             .iter()
-            .map(|(k, v)| build_filter_from_key_value_pair(k, v))
+            .map(|(key, value)| {
+                use schema::ast::FilterOp::*;
+
+                let (attribute, op) = ast::parse_field_as_filter(key);
+
+                let field = ast::get_field_type(entity, &attribute)
+                    .expect("attribute does not belong to entity");
+                let ty = &field.field_type;
+                let store_value = Value::from_query_value(value, &ty);
+
+                match op {
+                    Not => StoreFilter::Not(attribute, store_value),
+                    GreaterThan => StoreFilter::GreaterThan(attribute, store_value),
+                    LessThan => StoreFilter::LessThan(attribute, store_value),
+                    GreaterOrEqual => StoreFilter::GreaterOrEqual(attribute, store_value),
+                    LessThanOrEqual => StoreFilter::LessThanOrEqual(attribute, store_value),
+                    In => StoreFilter::In(attribute, list_values(store_value)),
+                    NotIn => StoreFilter::NotIn(attribute, list_values(store_value)),
+                    Contains => StoreFilter::Contains(attribute, store_value),
+                    NotContains => StoreFilter::NotContains(attribute, store_value),
+                    StartsWith => StoreFilter::StartsWith(attribute, store_value),
+                    NotStartsWith => StoreFilter::NotStartsWith(attribute, store_value),
+                    EndsWith => StoreFilter::EndsWith(attribute, store_value),
+                    NotEndsWith => StoreFilter::NotEndsWith(attribute, store_value),
+                    Equal => StoreFilter::Equal(attribute, store_value),
+                }
+            })
             .collect::<Vec<StoreFilter>>(),
     )
 }
 
-/// Strips the operator suffix from an input object key such as name_eq.
-fn filter_attr(key: &q::Name, suffix: &'static str) -> String {
-    key.trim_right_matches(suffix).to_owned()
-}
-
-/// Parses a list of GraphQL values (if it is one) into a vector of entity attribute values.
-fn list_values(value: &q::Value) -> Vec<Value> {
+/// Parses a list of GraphQL values into a vector of entity attribute values.
+fn list_values(value: Value) -> Vec<Value> {
     match value {
-        q::Value::List(values) => values.iter().map(Value::from).collect(),
-        _ => vec![],
-    }
-}
-
-/// Parses a ("name_eq", some_value) style pair into a StoreFilter.
-fn build_filter_from_key_value_pair(key: &q::Name, value: &q::Value) -> StoreFilter {
-    match key {
-        s if s.ends_with("_not") => StoreFilter::Not(filter_attr(s, "_not"), value.into()),
-        s if s.ends_with("_gt") => StoreFilter::Not(filter_attr(s, "_gt"), value.into()),
-        s if s.ends_with("_lt") => StoreFilter::LessThan(filter_attr(s, "_lt"), value.into()),
-        s if s.ends_with("_gte") => {
-            StoreFilter::GreaterOrEqual(filter_attr(s, "_gte"), value.into())
-        }
-        s if s.ends_with("_lte") => {
-            StoreFilter::LessThanOrEqual(filter_attr(s, "_lte"), value.into())
-        }
-        s if s.ends_with("_in") => StoreFilter::In(filter_attr(s, "_in"), list_values(value)),
-        s if s.ends_with("_not_in") => {
-            StoreFilter::NotIn(filter_attr(s, "_not_in"), list_values(value))
-        }
-        s if s.ends_with("_contains") => {
-            StoreFilter::Contains(filter_attr(s, "_contains"), value.into())
-        }
-        s if s.ends_with("_not_contains") => {
-            StoreFilter::NotContains(filter_attr(s, "_not_contains"), value.into())
-        }
-        s if s.ends_with("_starts_with") => {
-            StoreFilter::StartsWith(filter_attr(s, "_starts_with"), value.into())
-        }
-        s if s.ends_with("_ends_with") => {
-            StoreFilter::EndsWith(filter_attr(s, "_ends_with"), value.into())
-        }
-        s if s.ends_with("_not_starts_with") => {
-            StoreFilter::NotStartsWith(filter_attr(s, "_not_starts_with"), value.into())
-        }
-        s if s.ends_with("_not_ends_with") => {
-            StoreFilter::NotEndsWith(filter_attr(s, "_not_ends_with"), value.into())
-        }
-        s => StoreFilter::Equal(s.to_owned(), value.into()),
+        Value::List(values) => values,
+        _ => panic!("value is not a list"),
     }
 }
 
@@ -135,7 +127,9 @@ fn build_order_direction(arguments: &HashMap<&q::Name, q::Value>) -> Option<Stor
 
 #[cfg(test)]
 mod tests {
-    use graphql_parser::query as q;
+    use graphql_parser::{
+        query as q, schema::{Field, ObjectType, Type},
+    };
     use std::collections::{BTreeMap, HashMap};
     use std::iter::FromIterator;
 
@@ -143,14 +137,43 @@ mod tests {
 
     use super::build_query;
 
+    fn default_object() -> ObjectType {
+        ObjectType {
+            position: Default::default(),
+            description: None,
+            name: String::new(),
+            implements_interfaces: vec![],
+            directives: vec![],
+            fields: vec![],
+        }
+    }
+
+    fn object(name: &str) -> ObjectType {
+        ObjectType {
+            name: name.to_owned(),
+            ..default_object()
+        }
+    }
+
+    fn field(name: &str, field_type: Type) -> Field {
+        Field {
+            position: Default::default(),
+            description: None,
+            name: name.to_owned(),
+            arguments: vec![],
+            field_type,
+            directives: vec![],
+        }
+    }
+
     #[test]
     fn builc_query_uses_the_entity_name() {
         assert_eq!(
-            build_query(&"Entity1".to_string(), &HashMap::new()).entity,
+            build_query(&object("Entity1"), &HashMap::new()).entity,
             "Entity1".to_string()
         );
         assert_eq!(
-            build_query(&"Entity2".to_string(), &HashMap::new()).entity,
+            build_query(&object("Entity2"), &HashMap::new()).entity,
             "Entity2".to_string()
         );
     }
@@ -158,11 +181,11 @@ mod tests {
     #[test]
     fn build_query_yields_no_order_if_order_arguments_are_missing() {
         assert_eq!(
-            build_query(&"Entity".to_string(), &HashMap::new()).order_by,
+            build_query(&default_object(), &HashMap::new()).order_by,
             None,
         );
         assert_eq!(
-            build_query(&"Entity".to_string(), &HashMap::new()).order_direction,
+            build_query(&default_object(), &HashMap::new()).order_direction,
             None,
         );
     }
@@ -171,7 +194,7 @@ mod tests {
     fn build_query_parses_order_by_from_enum_values_correctly() {
         assert_eq!(
             build_query(
-                &"Entity".to_string(),
+                &default_object(),
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
                 )
@@ -180,7 +203,7 @@ mod tests {
         );
         assert_eq!(
             build_query(
-                &"Entity".to_string(),
+                &default_object(),
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("email".to_string()))].into_iter()
                 )
@@ -193,7 +216,7 @@ mod tests {
     fn build_query_ignores_order_by_from_non_enum_values() {
         assert_eq!(
             build_query(
-                &"Entity".to_string(),
+                &default_object(),
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::String("name".to_string()))]
                         .into_iter()
@@ -203,7 +226,7 @@ mod tests {
         );
         assert_eq!(
             build_query(
-                &"Entity".to_string(),
+                &default_object(),
                 &HashMap::from_iter(
                     vec![(
                         &"orderBy".to_string(),
@@ -219,7 +242,7 @@ mod tests {
     fn build_query_parses_order_direction_from_enum_values_correctly() {
         assert_eq!(
             build_query(
-                &"Entity".to_string(),
+                &default_object(),
                 &HashMap::from_iter(
                     vec![(
                         &"orderDirection".to_string(),
@@ -231,7 +254,7 @@ mod tests {
         );
         assert_eq!(
             build_query(
-                &"Entity".to_string(),
+                &default_object(),
                 &HashMap::from_iter(
                     vec![(
                         &"orderDirection".to_string(),
@@ -243,7 +266,7 @@ mod tests {
         );
         assert_eq!(
             build_query(
-                &"Entity".to_string(),
+                &default_object(),
                 &HashMap::from_iter(
                     vec![(
                         &"orderDirection".to_string(),
@@ -259,7 +282,7 @@ mod tests {
     fn build_query_ignores_order_direction_from_non_enum_values() {
         assert_eq!(
             build_query(
-                &"Entity".to_string(),
+                &default_object(),
                 &HashMap::from_iter(
                     vec![(
                         &"orderDirection".to_string(),
@@ -271,7 +294,7 @@ mod tests {
         );
         assert_eq!(
             build_query(
-                &"Entity".to_string(),
+                &default_object(),
                 &HashMap::from_iter(
                     vec![(
                         &"orderDirection".to_string(),
@@ -285,54 +308,46 @@ mod tests {
 
     #[test]
     fn build_query_yields_no_range_if_none_is_present() {
-        assert_eq!(
-            build_query(&"Entity".to_string(), &HashMap::new()).range,
-            None,
-        );
+        assert_eq!(build_query(&default_object(), &HashMap::new()).range, None,);
     }
 
     #[test]
     fn build_query_yields_default_first_if_only_skip_is_present() {
-        // The following requires a new release of graphql_parser (> 0.2.0) that
-        // includes this already-merged PR:
-        // https://github.com/graphql-rust/graphql-parser/pull/13
-        //
-        // assert_eq!(
-        //     build_query(
-        //         &"Entity".to_string(),
-        //         &HashMap::from_iter(
-        //             vec![(&"skip".to_string(), q::Value::Int(Number::from(50)))].into_iter()
-        //         )
-        //     ).range,
-        //     Some(StoreRange {
-        //         first: 100,
-        //         skip: 50,
-        //     }),
-        // );
+        assert_eq!(
+            build_query(
+                &default_object(),
+                &HashMap::from_iter(
+                    vec![(&"skip".to_string(), q::Value::Int(q::Number::from(50)))].into_iter()
+                )
+            ).range,
+            Some(StoreRange {
+                first: 100,
+                skip: 50,
+            }),
+        );
     }
 
     #[test]
     fn build_query_yields_default_skip_if_only_first_is_present() {
-        // The following requires a new release of graphql_parser (> 0.2.0) that
-        // includes this already-merged PR:
-        // https://github.com/graphql-rust/graphql-parser/pull/13
-        //
-        // assert_eq!(
-        //     build_query(
-        //         &"Entity".to_string(),
-        //         &HashMap::from_iter(
-        //             vec![(&"first".to_string(), q::Value::Int(Number::from(70)))].into_iter()
-        //         )
-        //     ).range,
-        //     Some(StoreRange { first: 70, skip: 0 }),
-        // );
+        assert_eq!(
+            build_query(
+                &default_object(),
+                &HashMap::from_iter(
+                    vec![(&"first".to_string(), q::Value::Int(q::Number::from(70)))].into_iter()
+                )
+            ).range,
+            Some(StoreRange { first: 70, skip: 0 }),
+        );
     }
 
     #[test]
     fn build_query_yields_filters() {
         assert_eq!(
             build_query(
-                &"Entity".to_string(),
+                &ObjectType {
+                    fields: vec![field("name", Type::NamedType("string".to_owned()))],
+                    ..default_object()
+                },
                 &HashMap::from_iter(
                     vec![(
                         &"filter".to_string(),
@@ -340,7 +355,7 @@ mod tests {
                             "name_ends_with".to_string(),
                             q::Value::String("ello".to_string()),
                         )])),
-                    )].into_iter()
+                    )].into_iter(),
                 )
             ).filter,
             Some(StoreFilter::And(vec![StoreFilter::EndsWith(

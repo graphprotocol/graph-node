@@ -794,7 +794,7 @@ where
 /// Coerces a single argument value into a GraphQL value.
 fn coerce_argument_value<'a, R1, R2>(
     ctx: ExecutionContext<'a, R1, R2>,
-    field: &'a q::Field,
+    field: &q::Field,
     argument: &s::InputValue,
     value: &q::Value,
 ) -> Result<q::Value, QueryExecutionError>
@@ -802,22 +802,27 @@ where
     R1: Resolver,
     R2: Resolver,
 {
-    MaybeCoercibleValue(value)
-        .coerce(&argument.value_type, &|name| {
-            sast::get_named_type(
-                if ctx.introspecting {
-                    ctx.introspection_schema
-                } else {
-                    &ctx.schema.document
-                },
-                name,
-            )
-        })
-        .ok_or(QueryExecutionError::InvalidArgumentError(
+    use graphql_parser::schema::Name;
+    use values::coercion::coerce_value;
+
+    let resolver = |name: &Name| {
+        sast::get_named_type(
+            if ctx.introspecting {
+                ctx.introspection_schema
+            } else {
+                &ctx.schema.document
+            },
+            name,
+        )
+    };
+
+    coerce_value(&value, &argument.value_type, &resolver).ok_or_else(|| {
+        QueryExecutionError::InvalidArgumentError(
             field.position.clone(),
             argument.name.to_owned(),
             value.clone(),
-        ))
+        )
+    })
 }
 
 fn get_field_type<'a, R1, R2>(

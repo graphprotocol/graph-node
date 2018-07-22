@@ -8,7 +8,7 @@ pub mod coercion;
 /// Utilities for serializing GraphQL values with Serde.
 pub mod serialization;
 
-pub use self::coercion::{MaybeCoercible, MaybeCoercibleValue};
+pub use self::coercion::MaybeCoercible;
 pub use self::serialization::SerializableValue;
 
 /// Creates a `graphql_parser::query::Value::Object` from key/value pairs.

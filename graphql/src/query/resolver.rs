@@ -28,7 +28,7 @@ pub trait Resolver: Clone {
     /// Resolves an enum value for a given enum type.
     fn resolve_enum_value(&self, enum_type: &s::EnumType, value: Option<&q::Value>) -> q::Value {
         value
-            .and_then(|value| MaybeCoercibleValue(&value).coerce(enum_type, &|_| None))
+            .and_then(|value| value.coerce(enum_type))
             .unwrap_or(q::Value::Null)
     }
 
@@ -39,7 +39,7 @@ pub trait Resolver: Clone {
         value: Option<&q::Value>,
     ) -> q::Value {
         value
-            .and_then(|value| MaybeCoercibleValue(&value).coerce(scalar_type, &|_| None))
+            .and_then(|value| value.coerce(scalar_type))
             .unwrap_or(q::Value::Null)
     }
 
@@ -53,7 +53,7 @@ pub trait Resolver: Clone {
             .and_then(|values| {
                 let coerced_values: Vec<q::Value> = values
                     .iter()
-                    .filter_map(|value| MaybeCoercibleValue(&value).coerce(enum_type, &|_| None))
+                    .filter_map(|value| value.coerce(enum_type))
                     .collect();
 
                 if coerced_values.len() == values.len() {
@@ -79,7 +79,7 @@ pub trait Resolver: Clone {
             .and_then(|values| {
                 let coerced_values: Vec<q::Value> = values
                     .iter()
-                    .filter_map(|value| MaybeCoercibleValue(&value).coerce(scalar_type, &|_| None))
+                    .filter_map(|value| value.coerce(scalar_type))
                     .collect();
 
                 if coerced_values.len() == values.len() {

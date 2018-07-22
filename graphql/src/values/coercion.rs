@@ -1,42 +1,27 @@
 use graphql_parser::query::Value;
 use graphql_parser::schema::{EnumType, Name, ScalarType, Type, TypeDefinition};
 
-pub trait MaybeCoercible<T, N, V, U> {
-    fn coerce<F>(&self, using_type: T, map_type: &F) -> Option<V>
-    where
-        F: Fn(N) -> Option<U>;
+/// A GraphQL value that can be coerced according to a type.
+pub trait MaybeCoercible<T> {
+    fn coerce(&self, using_type: &T) -> Option<Value>;
 }
 
-/// A GraphQL value that can be coerced according to a type.
-#[derive(Debug)]
-pub struct MaybeCoercibleValue<'a>(pub &'a Value);
-
-impl<'a> MaybeCoercible<&'a EnumType, &'a Name, Value, &'a TypeDefinition>
-    for MaybeCoercibleValue<'a>
-{
-    fn coerce<F>(&self, using_type: &'a EnumType, _map_type: &F) -> Option<Value>
-    where
-        F: Fn(&'a Name) -> Option<&'a TypeDefinition>,
-    {
-        match self.0 {
+impl MaybeCoercible<EnumType> for Value {
+    fn coerce(&self, using_type: &EnumType) -> Option<Value> {
+        match self {
             Value::Enum(name) => using_type
                 .values
                 .iter()
                 .find(|value| &value.name == name)
-                .map(|_| self.0.clone()),
+                .map(|_| self.clone()),
             _ => None,
         }
     }
 }
 
-impl<'a> MaybeCoercible<&'a ScalarType, &'a Name, Value, &'a TypeDefinition>
-    for MaybeCoercibleValue<'a>
-{
-    fn coerce<F>(&self, using_type: &'a ScalarType, _map_type: &F) -> Option<Value>
-    where
-        F: Fn(&'a Name) -> Option<&'a TypeDefinition>,
-    {
-        match (using_type.name.as_str(), self.0) {
+impl MaybeCoercible<ScalarType> for Value {
+    fn coerce(&self, using_type: &ScalarType) -> Option<Value> {
+        match (using_type.name.as_str(), self) {
             ("Boolean", v @ Value::Boolean(_)) => Some(v.clone()),
             ("Float", v @ Value::Float(_)) => Some(v.clone()),
             ("Int", v @ Value::Int(_)) => Some(v.clone()),
@@ -47,23 +32,18 @@ impl<'a> MaybeCoercible<&'a ScalarType, &'a Name, Value, &'a TypeDefinition>
     }
 }
 
-impl<'a> MaybeCoercible<&'a TypeDefinition, &'a Name, Value, &'a TypeDefinition>
-    for MaybeCoercibleValue<'a>
-{
-    fn coerce<F>(&self, using_type: &'a TypeDefinition, map_type: &F) -> Option<Value>
-    where
-        F: Fn(&'a Name) -> Option<&'a TypeDefinition>,
-    {
-        match (using_type, self.0) {
+impl MaybeCoercible<TypeDefinition> for Value {
+    fn coerce(&self, using_type: &TypeDefinition) -> Option<Value> {
+        match (using_type, self) {
             // Accept enum values if they match a value in the enum type
-            (TypeDefinition::Enum(t), value) => MaybeCoercibleValue(value).coerce(t, map_type),
+            (TypeDefinition::Enum(t), value) => value.coerce(t),
 
             // Try to coerce Scalar values
-            (TypeDefinition::Scalar(t), value) => MaybeCoercibleValue(value).coerce(t, map_type),
+            (TypeDefinition::Scalar(t), value) => value.coerce(t),
 
             // Try to coerce InputObject values
             (TypeDefinition::InputObject(_), v) => match v {
-                Value::Object(_) => Some(self.0.clone()),
+                Value::Object(_) => Some(self.clone()),
                 _ => None,
             },
 
@@ -73,47 +53,43 @@ impl<'a> MaybeCoercible<&'a TypeDefinition, &'a Name, Value, &'a TypeDefinition>
     }
 }
 
-impl<'a> MaybeCoercible<&'a Type, &'a Name, Value, &'a TypeDefinition> for MaybeCoercibleValue<'a> {
-    fn coerce<F>(&self, using_type: &'a Type, map_type: &F) -> Option<Value>
-    where
-        F: Fn(&'a Name) -> Option<&'a TypeDefinition>,
-    {
-        match (using_type, self.0) {
-            // Null values cannot be coerced into non-null types
-            (Type::NonNullType(_), Value::Null) => None,
+/// `R` is a name resolver.
+pub(crate) fn coerce_value<'a, R>(value: &Value, ty: &Type, resolver: &R) -> Option<Value>
+where
+    R: Fn(&Name) -> Option<&'a TypeDefinition>,
+{
+    match (ty, value) {
+        // Null values cannot be coerced into non-null types
+        (Type::NonNullType(_), Value::Null) => None,
 
-            // Non-null values may be coercible into non-null types
-            (Type::NonNullType(t), _) => self.coerce(t.as_ref(), map_type),
+        // Non-null values may be coercible into non-null types
+        (Type::NonNullType(t), _) => coerce_value(value, t, resolver),
 
-            // Resolve named types, then try to coerce the value into the resolved type
-            (Type::NamedType(name), _) => match map_type(name) {
-                Some(t) => self.coerce(t, map_type),
-                None => None,
-            },
+        // Resolve named types, then try to coerce the value into the resolved type
+        (Type::NamedType(name), _) => resolver(name).and_then(|def| value.coerce(def)),
 
-            // List values may be coercible if they are empty or their values are coercible
-            // into the inner type
-            (Type::ListType(t), Value::List(values)) => if values.is_empty() {
-                Some(Value::List(values.clone()))
-            } else {
-                let mut coerced_values = vec![];
+        // List values may be coercible if they are empty or their values are coercible
+        // into the inner type
+        (Type::ListType(t), Value::List(ref values)) => if values.is_empty() {
+            Some(Value::List(values.clone()))
+        } else {
+            let mut coerced_values = vec![];
 
-                // Coerce the list values individually
-                for value in values {
-                    if let Some(v) = MaybeCoercibleValue(value).coerce(t.as_ref(), map_type) {
-                        coerced_values.push(v);
-                    } else {
-                        // Fail if not all values could be coerced
-                        return None;
-                    }
+            // Coerce the list values individually
+            for value in values {
+                if let Some(v) = coerce_value(value, t, resolver) {
+                    coerced_values.push(v);
+                } else {
+                    // Fail if not all values could be coerced
+                    return None;
                 }
+            }
 
-                Some(Value::List(coerced_values))
-            },
+            Some(Value::List(coerced_values))
+        },
 
-            // Everything else is unsupported for now
-            _ => unimplemented!(),
-        }
+        // Everything else is unsupported for now
+        _ => unimplemented!(),
     }
 }
 
@@ -127,7 +103,7 @@ mod tests {
     use std::collections::BTreeMap;
     use std::iter::FromIterator;
 
-    use super::{MaybeCoercible, MaybeCoercibleValue};
+    use super::MaybeCoercible;
 
     #[test]
     fn coercion_using_enum_type_definitions_is_correct() {
@@ -146,27 +122,23 @@ mod tests {
 
         // We can coerce from Value::Enum -> TypeDefinition::Enum if the variant is valid
         assert_eq!(
-            MaybeCoercibleValue(&Value::Enum("ValidVariant".to_string()))
-                .coerce(&enum_type, &|_| None),
+            Value::Enum("ValidVariant".to_string()).coerce(&enum_type),
             Some(Value::Enum("ValidVariant".to_string()))
         );
 
         // We cannot coerce from Value::Enum -> TypeDefinition::Enum if the variant is invalid
         assert_eq!(
-            MaybeCoercibleValue(&Value::Enum("InvalidVariant".to_string()))
-                .coerce(&enum_type, &|_| None),
+            Value::Enum("InvalidVariant".to_string()).coerce(&enum_type),
             None,
         );
 
         // We don't support going from Value::String -> TypeDefinition::Scalar(Enum)
         assert_eq!(
-            MaybeCoercibleValue(&Value::String("ValidVariant".to_string()))
-                .coerce(&enum_type, &|_| None),
+            Value::String("ValidVariant".to_string()).coerce(&enum_type),
             None,
         );
         assert_eq!(
-            MaybeCoercibleValue(&Value::String("InvalidVariant".to_string()))
-                .coerce(&enum_type, &|_| None),
+            Value::String("InvalidVariant".to_string()).coerce(&enum_type),
             None,
         );
     }
@@ -182,33 +154,21 @@ mod tests {
 
         // We can coerce from Value::Boolean -> TypeDefinition::Scalar(Boolean)
         assert_eq!(
-            MaybeCoercibleValue(&Value::Boolean(true)).coerce(&bool_type, &|_| None),
+            Value::Boolean(true).coerce(&bool_type),
             Some(Value::Boolean(true))
         );
         assert_eq!(
-            MaybeCoercibleValue(&Value::Boolean(false)).coerce(&bool_type, &|_| None),
+            Value::Boolean(false).coerce(&bool_type),
             Some(Value::Boolean(false))
         );
 
         // We don't support going from Value::String -> TypeDefinition::Scalar(Boolean)
-        assert_eq!(
-            MaybeCoercibleValue(&Value::String("true".to_string())).coerce(&bool_type, &|_| None),
-            None,
-        );
-        assert_eq!(
-            MaybeCoercibleValue(&Value::String("false".to_string())).coerce(&bool_type, &|_| None),
-            None,
-        );
+        assert_eq!(Value::String("true".to_string()).coerce(&bool_type), None,);
+        assert_eq!(Value::String("false".to_string()).coerce(&bool_type), None,);
 
         // We don't spport going from Value::Float -> TypeDefinition::Scalar(Boolean)
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Float(1.0)).coerce(&bool_type, &|_| None),
-            None,
-        );
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Float(0.0)).coerce(&bool_type, &|_| None),
-            None,
-        );
+        assert_eq!(Value::Float(1.0).coerce(&bool_type), None,);
+        assert_eq!(Value::Float(0.0).coerce(&bool_type), None,);
     }
 
     #[test]
@@ -222,34 +182,24 @@ mod tests {
 
         // We can coerce from Value::Float -> TypeDefinition::Scalar(Float)
         assert_eq!(
-            MaybeCoercibleValue(&Value::Float(23.7)).coerce(&float_type, &|_| None),
+            Value::Float(23.7).coerce(&float_type),
             Some(Value::Float(23.7))
         );
         assert_eq!(
-            MaybeCoercibleValue(&Value::Float(-5.879)).coerce(&float_type, &|_| None),
+            Value::Float(-5.879).coerce(&float_type),
             Some(Value::Float(-5.879))
         );
 
         // We don't support going from Value::String -> TypeDefinition::Scalar(Float)
+        assert_eq!(Value::String("23.7".to_string()).coerce(&float_type), None,);
         assert_eq!(
-            MaybeCoercibleValue(&Value::String("23.7".to_string())).coerce(&float_type, &|_| None),
-            None,
-        );
-        assert_eq!(
-            MaybeCoercibleValue(&Value::String("-5.879".to_string()))
-                .coerce(&float_type, &|_| None),
+            Value::String("-5.879".to_string()).coerce(&float_type),
             None,
         );
 
         // We don't spport going from Value::Boolean -> TypeDefinition::Scalar(Boolean)
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Boolean(true)).coerce(&float_type, &|_| None),
-            None,
-        );
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Boolean(false)).coerce(&float_type, &|_| None),
-            None,
-        );
+        assert_eq!(Value::Boolean(true).coerce(&float_type), None,);
+        assert_eq!(Value::Boolean(false).coerce(&float_type), None,);
     }
 
     #[test]
@@ -263,33 +213,21 @@ mod tests {
 
         // We can coerce from Value::String -> TypeDefinition::Scalar(String)
         assert_eq!(
-            MaybeCoercibleValue(&Value::String("foo".to_string())).coerce(&string_type, &|_| None),
+            Value::String("foo".to_string()).coerce(&string_type),
             Some(Value::String("foo".to_string()))
         );
         assert_eq!(
-            MaybeCoercibleValue(&Value::String("bar".to_string())).coerce(&string_type, &|_| None),
+            Value::String("bar".to_string()).coerce(&string_type),
             Some(Value::String("bar".to_string()))
         );
 
         // We don't support going from Value::Boolean -> TypeDefinition::Scalar(String)
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Boolean(true)).coerce(&string_type, &|_| None),
-            None,
-        );
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Boolean(false)).coerce(&string_type, &|_| None),
-            None,
-        );
+        assert_eq!(Value::Boolean(true).coerce(&string_type), None,);
+        assert_eq!(Value::Boolean(false).coerce(&string_type), None,);
 
         // We don't spport going from Value::Float -> TypeDefinition::Scalar(String)
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Float(23.7)).coerce(&string_type, &|_| None),
-            None,
-        );
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Float(-5.879)).coerce(&string_type, &|_| None),
-            None,
-        );
+        assert_eq!(Value::Float(23.7).coerce(&string_type), None,);
+        assert_eq!(Value::Float(-5.879).coerce(&string_type), None,);
     }
 
     #[test]
@@ -303,33 +241,21 @@ mod tests {
 
         // We can coerce from Value::String -> TypeDefinition::Scalar(ID)
         assert_eq!(
-            MaybeCoercibleValue(&Value::String("foo".to_string())).coerce(&string_type, &|_| None),
+            Value::String("foo".to_string()).coerce(&string_type),
             Some(Value::String("foo".to_string()))
         );
         assert_eq!(
-            MaybeCoercibleValue(&Value::String("bar".to_string())).coerce(&string_type, &|_| None),
+            Value::String("bar".to_string()).coerce(&string_type),
             Some(Value::String("bar".to_string()))
         );
 
         // We don't support going from Value::Boolean -> TypeDefinition::Scalar(ID)
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Boolean(true)).coerce(&string_type, &|_| None),
-            None,
-        );
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Boolean(false)).coerce(&string_type, &|_| None),
-            None,
-        );
+        assert_eq!(Value::Boolean(true).coerce(&string_type), None,);
+        assert_eq!(Value::Boolean(false).coerce(&string_type), None,);
 
         // We don't spport going from Value::Float -> TypeDefinition::Scalar(ID)
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Float(23.7)).coerce(&string_type, &|_| None),
-            None,
-        );
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Float(-5.879)).coerce(&string_type, &|_| None),
-            None,
-        );
+        assert_eq!(Value::Float(23.7).coerce(&string_type), None,);
+        assert_eq!(Value::Float(-5.879).coerce(&string_type), None,);
     }
 
     #[test]
@@ -350,41 +276,26 @@ mod tests {
             ].into_iter(),
         );
         assert_eq!(
-            MaybeCoercibleValue(&Value::Object(example_object.clone()))
-                .coerce(&input_object_type, &|_| None),
+            Value::Object(example_object.clone()).coerce(&input_object_type),
             Some(Value::Object(example_object))
         );
 
         // We don't support going from Value::String -> TypeDefinition::InputObject
         assert_eq!(
-            MaybeCoercibleValue(&Value::String("foo".to_string()))
-                .coerce(&input_object_type, &|_| None),
+            Value::String("foo".to_string()).coerce(&input_object_type),
             None,
         );
         assert_eq!(
-            MaybeCoercibleValue(&Value::String("bar".to_string()))
-                .coerce(&input_object_type, &|_| None),
+            Value::String("bar".to_string()).coerce(&input_object_type),
             None,
         );
 
         // We don't support going from Value::Boolean -> TypeDefinition::InputObject
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Boolean(true)).coerce(&input_object_type, &|_| None),
-            None,
-        );
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Boolean(false)).coerce(&input_object_type, &|_| None),
-            None,
-        );
+        assert_eq!(Value::Boolean(true).coerce(&input_object_type), None,);
+        assert_eq!(Value::Boolean(false).coerce(&input_object_type), None,);
 
         // We don't spport going from Value::Float -> TypeDefinition::InputObject
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Float(23.7)).coerce(&input_object_type, &|_| None),
-            None,
-        );
-        assert_eq!(
-            MaybeCoercibleValue(&Value::Float(-5.879)).coerce(&input_object_type, &|_| None),
-            None,
-        );
+        assert_eq!(Value::Float(23.7).coerce(&input_object_type), None,);
+        assert_eq!(Value::Float(-5.879).coerce(&input_object_type), None,);
     }
 }
