@@ -7,6 +7,6 @@ members = [
     "node",
     "runtime/wasm",
     "server/hyper",
-    "store/postgres-diesel",
+    "store/postgres",
     "thegraph",
 ]

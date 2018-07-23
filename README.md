@@ -20,7 +20,7 @@ Right now, this includes:
 - `mock` — A library providing mock implementations for all system components.
 - `runtime/wasm` — A library for running WASM data extraction scripts.
 - `server/hyper` — A library providing a GraphQL server based on Hyper.
-- `store/postgres-diesel` — A Postgres store with a GraphQL friendly interface
+- `store/postgres` — A Postgres store with a GraphQL friendly interface
   and audit logs.
 
 ## Prerequisites
