@@ -160,6 +160,11 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
                 Value::List(heap.asc_get(ptr))
             }
             StoreValueKind::Null => Value::Null,
+            StoreValueKind::Bytes => {
+                let ptr: AscPtr<Bytes> = AscPtr::from(payload);
+                let array: Vec<u8> = heap.asc_get(ptr);
+                Value::Bytes(array.into())
+            }
         }
     }
 }
