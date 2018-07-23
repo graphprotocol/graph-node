@@ -6,7 +6,7 @@ members = [
     "mock",
     "node",
     "runtime/wasm",
-    "server/hyper",
+    "server/http",
     "store/postgres",
     "thegraph",
 ]
