@@ -4,9 +4,9 @@ members = [
     "graphql",
     "node",
     "runtime/wasm",
+    "server/hyper",
     "thegraph",
     "thegraph-ethereum",
-    "thegraph-hyper",
     "thegraph-mock",
     "thegraph-store-postgres-diesel",
 ]
