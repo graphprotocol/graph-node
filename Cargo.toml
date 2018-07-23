@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "thegraph",
     "core",
+    "graphql",
+    "thegraph",
     "thegraph-ethereum",
-    "thegraph-graphql-utils",
     "thegraph-hyper",
     "thegraph-local-node",
     "thegraph-mock",

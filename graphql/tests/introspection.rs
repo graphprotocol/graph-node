@@ -4,17 +4,15 @@ extern crate futures;
 extern crate graphql_parser;
 #[macro_use]
 extern crate slog;
-
 extern crate thegraph;
-extern crate thegraph_graphql_utils;
+extern crate thegraph_graphql;
 
 use futures::sync::oneshot;
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 
 use thegraph::prelude::{Query, QueryResult, Schema};
-
-use thegraph_graphql_utils::prelude::*;
+use thegraph_graphql::prelude::*;
 
 /// Mock resolver used in tests that don't need a resolver.
 #[derive(Clone)]

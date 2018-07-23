@@ -1,5 +1,5 @@
 [package]
-name = "thegraph-graphql-utils"
+name = "thegraph-graphql"
 version = "0.1.0"
 
 [dependencies]
