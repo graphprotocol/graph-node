@@ -4,7 +4,7 @@ extern crate futures;
 extern crate jsonrpc_core;
 extern crate serde_json;
 extern crate thegraph;
-extern crate thegraph_ethereum;
+extern crate thegraph_datasource_ethereum;
 extern crate tokio_core;
 extern crate web3;
 
@@ -17,7 +17,7 @@ use std::rc::Rc;
 use std::str::FromStr;
 use thegraph::components::ethereum::EthereumContractCall;
 use thegraph::prelude::EthereumAdapter as EthereumAdapterTrait;
-use thegraph_ethereum::{EthereumAdapter, EthereumAdapterConfig};
+use thegraph_datasource_ethereum::{EthereumAdapter, EthereumAdapterConfig};
 use tokio_core::reactor::Core;
 use web3::error::{Error, ErrorKind};
 use web3::helpers::*;

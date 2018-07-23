@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "core",
+    "datasource/ethereum",
     "graphql",
     "mock",
     "node",
@@ -8,5 +9,4 @@ members = [
     "server/hyper",
     "store/postgres-diesel",
     "thegraph",
-    "thegraph-ethereum",
 ]
