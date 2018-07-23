@@ -13,5 +13,5 @@ thegraph = { path = "../thegraph" }
 [dev-dependencies]
 futures = "0.1.21"
 pretty_assertions = "0.5.1"
-thegraph-mock = { path = "../thegraph-mock" }
+thegraph-mock = { path = "../mock" }
 tokio-core = "0.1.17"
