@@ -13,7 +13,7 @@ extern crate thegraph_datasource_ethereum;
 extern crate thegraph_mock;
 extern crate thegraph_runtime_wasm;
 extern crate thegraph_server_hyper;
-extern crate thegraph_store_postgres_diesel;
+extern crate thegraph_store_postgres;
 extern crate tokio;
 extern crate tokio_core;
 
@@ -35,7 +35,7 @@ use thegraph_datasource_ethereum::Transport;
 use thegraph_node::DataSourceProvider as IpfsDataSourceProvider;
 use thegraph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use thegraph_server_hyper::GraphQLServer as HyperGraphQLServer;
-use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
+use thegraph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
     env_logger::init();

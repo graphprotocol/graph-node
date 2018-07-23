@@ -1,5 +1,5 @@
 [package]
-name = "thegraph-store-postgres-diesel"
+name = "thegraph-store-postgres"
 version = "0.1.0"
 
 [dependencies]
