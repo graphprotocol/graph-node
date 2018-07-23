@@ -9,7 +9,7 @@ RUN apt-get install python
 
 # Build all docs (dependencies and workspace crates)
 COPY . .
-RUN cd thegraph-local-node && cargo doc
+RUN cargo doc
 
 # Serve the docs over HTTP
 WORKDIR target/doc/

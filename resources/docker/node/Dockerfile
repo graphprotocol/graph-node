@@ -4,7 +4,7 @@ FROM rust:latest
 RUN apt-get update \
     && apt-get install -y clang libclang-dev
 
-# Copy, build, install and run thegraph-local-node
+# Copy, build, install and run thegraph-node
 COPY . .
-RUN cd thegraph-local-node && cargo install --bins
-CMD ["thegraph-local-node"]
+RUN cd node && cargo install --bins
+CMD ["thegraph-node"]

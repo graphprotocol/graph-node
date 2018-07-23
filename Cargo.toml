@@ -2,10 +2,10 @@
 members = [
     "core",
     "graphql",
+    "node",
     "thegraph",
     "thegraph-ethereum",
     "thegraph-hyper",
-    "thegraph-local-node",
     "thegraph-mock",
     "thegraph-runtime",
     "thegraph-store-postgres-diesel",
