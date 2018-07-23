@@ -15,9 +15,9 @@ ipfs-api = "0.5.0-alpha1"
 thegraph = { path = "../thegraph" }
 thegraph-core = { path = "../core" }
 thegraph-ethereum = { path = "../thegraph-ethereum" }
-thegraph-hyper = { path = "../thegraph-hyper" }
 thegraph-mock = { path = "../thegraph-mock" }
 thegraph-runtime-wasm = { path = "../runtime/wasm" }
+thegraph-server-hyper = { path = "../server/hyper" }
 thegraph-store-postgres-diesel = { path = "../thegraph-store-postgres-diesel" }
 
 [dev-dependencies]

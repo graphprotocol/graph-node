@@ -1786,23 +1786,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "thegraph-hyper"
-version = "0.1.0"
-dependencies = [
- "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
- "graphql-parser 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "http 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "hyper 0.12.5 (git+https://github.com/hyperium/hyper)",
- "serde 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_json 1.0.22 (registry+https://github.com/rust-lang/crates.io-index)",
- "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "thegraph 0.1.0",
- "thegraph-graphql 0.1.0",
- "tokio 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "thegraph-mock"
 version = "0.1.0"
 dependencies = [
@@ -1829,9 +1812,9 @@ dependencies = [
  "thegraph 0.1.0",
  "thegraph-core 0.1.0",
  "thegraph-ethereum 0.1.0",
- "thegraph-hyper 0.1.0",
  "thegraph-mock 0.1.0",
  "thegraph-runtime-wasm 0.1.0",
+ "thegraph-server-hyper 0.1.0",
  "thegraph-store-postgres-diesel 0.1.0",
  "tokio 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1854,6 +1837,23 @@ dependencies = [
  "uuid 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "wasmi 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "web3 0.3.0 (git+https://github.com/tomusdrw/rust-web3)",
+]
+
+[[package]]
+name = "thegraph-server-hyper"
+version = "0.1.0"
+dependencies = [
+ "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
+ "graphql-parser 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "http 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper 0.12.5 (git+https://github.com/hyperium/hyper)",
+ "serde 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_json 1.0.22 (registry+https://github.com/rust-lang/crates.io-index)",
+ "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thegraph 0.1.0",
+ "thegraph-graphql 0.1.0",
+ "tokio 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
