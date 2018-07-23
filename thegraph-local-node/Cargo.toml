@@ -13,7 +13,7 @@ tokio = "0.1.5"
 tokio-core = "0.1.17"
 ipfs-api = "0.5.0-alpha1"
 thegraph = { path = "../thegraph" }
-thegraph-core = { path = "../thegraph-core" }
+thegraph-core = { path = "../core" }
 thegraph-ethereum = { path = "../thegraph-ethereum" }
 thegraph-hyper = { path = "../thegraph-hyper" }
 thegraph-mock = { path = "../thegraph-mock" }

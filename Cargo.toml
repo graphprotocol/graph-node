@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "thegraph",
-    "thegraph-core",
+    "core",
     "thegraph-ethereum",
     "thegraph-graphql-utils",
     "thegraph-hyper",
