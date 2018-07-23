@@ -1,4 +1,4 @@
-use super::{AscHeap, AscType};
+use super::{class::EnumPayload, AscHeap, AscType};
 use std::marker::PhantomData;
 use std::mem::{self, size_of};
 use wasmi::{FromRuntimeValue, RuntimeValue};
@@ -46,11 +46,6 @@ impl<C: AscType> AscPtr<C> {
     pub(crate) fn to_payload(&self) -> u64 {
         self.0 as u64
     }
-
-    // Conversion from `u64` for use with `AscEnum`.
-    pub(crate) fn from_payload(payload: u64) -> Self {
-        AscPtr(payload as u32, PhantomData)
-    }
 }
 
 impl<C> From<AscPtr<C>> for RuntimeValue {
@@ -62,5 +57,11 @@ impl<C> From<AscPtr<C>> for RuntimeValue {
 impl<C> FromRuntimeValue for AscPtr<C> {
     fn from_runtime_value(val: RuntimeValue) -> Option<Self> {
         u32::from_runtime_value(val).map(|ptr| AscPtr(ptr, PhantomData))
+    }
+}
+
+impl<C> From<EnumPayload> for AscPtr<C> {
+    fn from(payload: EnumPayload) -> Self {
+        AscPtr(payload.0 as u32, PhantomData)
     }
 }

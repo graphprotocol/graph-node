@@ -202,13 +202,36 @@ impl<T: AscValue> Array<T> {
 
 impl<T> AscType for Array<T> {}
 
+/// Represents any `AscValue` since they all fit in 64 bits.
+#[repr(C)]
+pub(crate) struct EnumPayload(pub u64);
+
+impl From<EnumPayload> for i32 {
+    fn from(payload: EnumPayload) -> i32 {
+        // This is just `i32::from_bytes` which is unstable.
+        unsafe { ::std::mem::transmute::<u32, i32>(payload.0 as u32) }
+    }
+}
+
+impl From<EnumPayload> for f32 {
+    fn from(payload: EnumPayload) -> f32 {
+        f64::from_bits(payload.0) as f32
+    }
+}
+
+impl From<EnumPayload> for bool {
+    fn from(payload: EnumPayload) -> bool {
+        payload.0 != 0
+    }
+}
+
 /// In Asc, we represent a Rust enum as a discriminant `kind: D`, which is an
 /// Asc enum so in Rust it's a `#[repr(u32)]` enum, plus an arbitrary `AscValue`
 /// payload.
 #[repr(C)]
 pub(crate) struct AscEnum<D: AscValue> {
     pub kind: D,
-    pub payload: u64, // All `AscValue`s fit in 64 bits.
+    pub payload: EnumPayload,
 }
 
 impl<D: AscValue> AscType for AscEnum<D> {}

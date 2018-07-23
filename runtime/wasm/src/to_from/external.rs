@@ -91,7 +91,10 @@ impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
             FixedArray(tokens) | Array(tokens) => heap.asc_new(&**tokens).to_payload(),
         };
 
-        AscEnum { kind, payload }
+        AscEnum {
+            kind,
+            payload: EnumPayload(payload),
+        }
     }
 }
 
@@ -101,37 +104,37 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
 
         let payload = asc_enum.payload;
         match asc_enum.kind {
-            EthereumValueKind::Bool => Token::Bool(payload != 0),
+            EthereumValueKind::Bool => Token::Bool(bool::from(payload)),
             EthereumValueKind::Address => {
-                let ptr: AscPtr<AscAddress> = AscPtr::from_payload(payload);
+                let ptr: AscPtr<AscAddress> = AscPtr::from(payload);
                 Token::Address(heap.asc_get(ptr))
             }
             EthereumValueKind::FixedBytes => {
-                let ptr: AscPtr<Uint8Array> = AscPtr::from_payload(payload);
+                let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
                 Token::FixedBytes(heap.asc_get(ptr))
             }
             EthereumValueKind::Bytes => {
-                let ptr: AscPtr<Uint8Array> = AscPtr::from_payload(payload);
+                let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
                 Token::Bytes(heap.asc_get(ptr))
             }
             EthereumValueKind::Int => {
-                let ptr: AscPtr<AscU256> = AscPtr::from_payload(payload);
+                let ptr: AscPtr<AscU256> = AscPtr::from(payload);
                 Token::Int(heap.asc_get(ptr))
             }
             EthereumValueKind::Uint => {
-                let ptr: AscPtr<AscU256> = AscPtr::from_payload(payload);
+                let ptr: AscPtr<AscU256> = AscPtr::from(payload);
                 Token::Uint(heap.asc_get(ptr))
             }
             EthereumValueKind::String => {
-                let ptr: AscPtr<AscString> = AscPtr::from_payload(payload);
+                let ptr: AscPtr<AscString> = AscPtr::from(payload);
                 Token::String(heap.asc_get(ptr))
             }
             EthereumValueKind::FixedArray => {
-                let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from_payload(payload);
+                let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
                 Token::FixedArray(heap.asc_get(ptr))
             }
             EthereumValueKind::Array => {
-                let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from_payload(payload);
+                let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
                 Token::Array(heap.asc_get(ptr))
             }
         }
@@ -145,18 +148,15 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
         let payload = asc_enum.payload;
         match asc_enum.kind {
             StoreValueKind::String => {
-                let ptr: AscPtr<AscString> = AscPtr::from_payload(payload);
+                let ptr: AscPtr<AscString> = AscPtr::from(payload);
                 Value::String(heap.asc_get(ptr))
             }
             // This is just `i32::from_bytes` which is unstable.
-            StoreValueKind::Int => {
-                let int: i32 = unsafe { ::std::mem::transmute::<u32, i32>(payload as u32) };
-                Value::Int(int)
-            }
-            StoreValueKind::Float => Value::Float(f64::from_bits(payload as u64) as f32),
-            StoreValueKind::Bool => Value::Bool(payload != 0),
+            StoreValueKind::Int => Value::Int(i32::from(payload)),
+            StoreValueKind::Float => Value::Float(f32::from(payload)),
+            StoreValueKind::Bool => Value::Bool(bool::from(payload)),
             StoreValueKind::Array => {
-                let ptr: AscEnumArray<StoreValueKind> = AscPtr::from_payload(payload);
+                let ptr: AscEnumArray<StoreValueKind> = AscPtr::from(payload);
                 Value::List(heap.asc_get(ptr))
             }
             StoreValueKind::Null => Value::Null,
