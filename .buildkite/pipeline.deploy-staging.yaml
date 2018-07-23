@@ -1,7 +1,7 @@
 steps:
   - label: Build and push Docker image
     command: |
-      cp resources/docker/node/Dockerfile . \
+      cp deployment/docker/node/Dockerfile . \
       && gcloud container builds submit \
          --machine-type=n1-highcpu-8 \
          --timeout=30m \
@@ -12,8 +12,8 @@ steps:
       kubectl apply --force \
          --cluster=$BUILDKITE_TARGET_CLUSTER \
          --user=$BUILDKITE_TARGET_CLUSTER \
-         -f resources/kubernetes/node/deployment.yaml \
+         -f deployment/kubernetes/node/deployment.yaml \
       && kubectl apply \
          --cluster=$BUILDKITE_TARGET_CLUSTER \
          --user=$BUILDKITE_TARGET_CLUSTER \
-         -f resources/kubernetes/node/service.yaml
+         -f deployment/kubernetes/node/service.yaml
