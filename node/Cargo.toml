@@ -18,7 +18,7 @@ thegraph-ethereum = { path = "../thegraph-ethereum" }
 thegraph-mock = { path = "../thegraph-mock" }
 thegraph-runtime-wasm = { path = "../runtime/wasm" }
 thegraph-server-hyper = { path = "../server/hyper" }
-thegraph-store-postgres-diesel = { path = "../thegraph-store-postgres-diesel" }
+thegraph-store-postgres-diesel = { path = "../store/postgres-diesel" }
 
 [dev-dependencies]
 assert_cli = "0.6"

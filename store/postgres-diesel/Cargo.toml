@@ -9,6 +9,6 @@ diesel-dynamic-schema = { git = "https://github.com/diesel-rs/diesel-dynamic-sch
 futures = "0.1.21"
 slog = "2.2.3"
 serde_json = "1.0"
-thegraph = { path = "../thegraph" }
+thegraph = { path = "../../thegraph" }
 tokio = "0.1.6"
 tokio-core = "0.1.17"

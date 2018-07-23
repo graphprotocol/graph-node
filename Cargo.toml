@@ -5,8 +5,8 @@ members = [
     "node",
     "runtime/wasm",
     "server/hyper",
+    "store/postgres-diesel",
     "thegraph",
     "thegraph-ethereum",
     "thegraph-mock",
-    "thegraph-store-postgres-diesel",
 ]
