@@ -1,19 +1,19 @@
 steps:
   - label: Build and push Docker image
     command: |
-      cp resources/docker/thegraph-local-node/Dockerfile . \
+      cp resources/docker/node/Dockerfile . \
       && gcloud container builds submit \
          --machine-type=n1-highcpu-8 \
          --timeout=30m \
-         --tag gcr.io/the-graph-staging/thegraph-local-node .
+         --tag gcr.io/the-graph-staging/thegraph-node .
   - wait
-  - label: Deploy the local node
+  - label: Deploy the node
     command: |
       kubectl apply --force \
          --cluster=$BUILDKITE_TARGET_CLUSTER \
          --user=$BUILDKITE_TARGET_CLUSTER \
-         -f resources/kubernetes/thegraph-local-node/deployment.yaml \
+         -f resources/kubernetes/node/deployment.yaml \
       && kubectl apply \
          --cluster=$BUILDKITE_TARGET_CLUSTER \
          --user=$BUILDKITE_TARGET_CLUSTER \
-         -f resources/kubernetes/thegraph-local-node/service.yaml
+         -f resources/kubernetes/node/service.yaml

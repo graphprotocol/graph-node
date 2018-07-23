@@ -1,7 +1,7 @@
 extern crate clap;
 extern crate env_logger;
 extern crate futures;
-extern crate thegraph_local_node;
+extern crate thegraph_node;
 #[macro_use]
 extern crate sentry;
 #[macro_use]
@@ -33,7 +33,7 @@ use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_ethereum::Transport;
 use thegraph_hyper::GraphQLServer as HyperGraphQLServer;
-use thegraph_local_node::DataSourceProvider as IpfsDataSourceProvider;
+use thegraph_node::DataSourceProvider as IpfsDataSourceProvider;
 use thegraph_runtime::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use thegraph_store_postgres_diesel::{Store as DieselStore, StoreConfig};
 
@@ -43,10 +43,10 @@ fn main() {
     let logger = logger();
 
     // Setup CLI using Clap, provide general info and capture postgres url
-    let matches = App::new("thegraph-local-node")
+    let matches = App::new("thegraph-node")
         .version("0.1.0")
         .author("Graph Protocol, Inc.")
-        .about("Scalable queries for a decentralized future (local node)")
+        .about("Scalable queries for a decentralized future")
         .arg(
             Arg::with_name("data-source")
                 .takes_value(true)

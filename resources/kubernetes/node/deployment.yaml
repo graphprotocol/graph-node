@@ -1,20 +1,20 @@
 apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
-  name: thegraph-local-node
+  name: thegraph-node
 spec:
   selector:
     matchLabels:
-      app: thegraph-local-node
+      app: thegraph-node
   replicas: 1
   template:
     metadata:
       labels:
-        app: thegraph-local-node
+        app: thegraph-node
     spec:
       containers:
-        - name: thegraph-local-node
-          image: gcr.io/the-graph-staging/thegraph-local-node:latest
+        - name: thegraph-node
+          image: gcr.io/the-graph-staging/thegraph-node:latest
           ports:
             - name: http
               containerPort: 8000

@@ -1,7 +1,7 @@
 extern crate assert_cli;
 
 #[test]
-fn local_node_fails_to_start_without_postgres_url() {
+fn node_fails_to_start_without_postgres_url() {
     assert_cli::Assert::main_binary()
         .fails()
         .and()

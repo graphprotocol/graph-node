@@ -1,5 +1,5 @@
 [package]
-name = "thegraph-local-node"
+name = "thegraph-node"
 version = "0.1.0"
 
 [dependencies]
