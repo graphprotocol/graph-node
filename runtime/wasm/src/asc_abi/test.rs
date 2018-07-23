@@ -386,4 +386,11 @@ fn abi_store_value() {
         new_value,
         Value::List(vec![Value::from(string), Value::Float(float)])
     );
+
+    // Value::Bytes
+    let bytes: &[u8] = &[0, 2, 5];
+    let bytes_ptr: AscPtr<Bytes> = module.asc_new(bytes);
+    let new_value: Value =
+        module.asc_get(module.takes_ptr_returns_ptr("value_from_bytes", bytes_ptr));
+    assert_eq!(new_value, Value::Bytes(bytes.into()));
 }

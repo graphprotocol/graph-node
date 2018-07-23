@@ -204,7 +204,11 @@ impl<T> AscType for Array<T> {}
 
 /// Represents any `AscValue` since they all fit in 64 bits.
 #[repr(C)]
+#[derive(Copy, Clone, Default)]
 pub(crate) struct EnumPayload(pub u64);
+
+impl AscType for EnumPayload {}
+impl AscValue for EnumPayload {}
 
 impl From<EnumPayload> for i32 {
     fn from(payload: EnumPayload) -> i32 {
@@ -286,6 +290,7 @@ pub enum StoreValueKind {
     Bool,
     Array,
     Null,
+    Bytes,
 }
 
 impl Default for StoreValueKind {
@@ -305,6 +310,7 @@ pub(crate) struct AscLogParam {
 
 impl AscType for AscLogParam {}
 
+pub(crate) type Bytes = Uint8Array;
 pub(crate) type AscAddress = Uint8Array;
 pub(crate) type AscH160 = Uint8Array;
 pub(crate) type AscH256 = Uint8Array;

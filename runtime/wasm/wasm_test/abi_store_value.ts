@@ -9,10 +9,13 @@ enum ValueKind {
     BOOL,
     ARRAY,
     NULL,
+    BYTES,
 }
 
 // Big enough to fit any pointer or native `this.data`.
 type Payload = u64
+
+type Bytes = Uint8Array;
 
 export class Value {
     kind: ValueKind
@@ -61,5 +64,12 @@ export function array_from_values(str: string, float: f32): Value {
 export function value_null(): Value {
     let value = new Value();
     value.kind = ValueKind.NULL;
+    return value
+}
+
+export function value_from_bytes(bytes: Bytes): Value {
+    let value = new Value();
+    value.kind = ValueKind.BYTES;
+    value.data = bytes as u64;
     return value
 }
