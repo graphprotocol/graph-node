@@ -8,6 +8,8 @@ use std::ops::{Deref, DerefMut};
 /// An entity attribute name is represented as a string.
 pub type Attribute = String;
 
+pub const BYTES_SCALAR: &str = "Bytes";
+
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
@@ -27,7 +29,7 @@ impl Value {
         use self::schema::Type::{ListType, NamedType};
 
         match (value, ty) {
-            (query::Value::String(s), NamedType(n)) if n == "Bytes" => Value::Bytes(
+            (query::Value::String(s), NamedType(n)) if n == BYTES_SCALAR => Value::Bytes(
                 hex::decode(s.trim_left_matches("0x"))
                     .expect("Value is not a hex string")
                     .into(),
@@ -51,9 +53,9 @@ impl Value {
     }
 }
 
-impl Into<query::Value> for Value {
-    fn into(self) -> query::Value {
-        match self {
+impl From<Value> for query::Value {
+    fn from(value: Value) -> Self {
+        match value {
             Value::String(s) => query::Value::String(s.to_string()),
             Value::Int(i) => query::Value::Int(query::Number::from(i)),
             Value::Float(f) => query::Value::Float(f.into()),
@@ -145,4 +147,18 @@ impl<'a> From<Vec<(&'a str, Value)>> for Entity {
             entries.into_iter().map(|(k, v)| (String::from(k), v)),
         ))
     }
+}
+
+#[test]
+fn value_bytes() {
+    let graphql_value = query::Value::String("0x8f494c66afc1d3f8ac1b45df21f02a46".to_owned());
+    let ty = query::Type::NamedType(BYTES_SCALAR.to_owned());
+    let from_query = Value::from_query_value(&graphql_value, &ty);
+    assert_eq!(
+        from_query,
+        Value::Bytes(Box::new([
+            143, 73, 76, 102, 175, 193, 211, 248, 172, 27, 69, 223, 33, 240, 42, 70
+        ]))
+    );
+    assert_eq!(query::Value::from(from_query), graphql_value);
 }
