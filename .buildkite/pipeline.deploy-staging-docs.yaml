@@ -1,7 +1,7 @@
 steps:
   - label: Build and push Docker image
     command: |
-      cp resources/docker/thegraph-docs/Dockerfile . \
+      cp resources/docker/docs/Dockerfile . \
       && gcloud container builds submit \
          --machine-type=n1-highcpu-8 \
          --timeout=25m \
@@ -12,8 +12,8 @@ steps:
       kubectl apply --force \
          --cluster=$BUILDKITE_TARGET_CLUSTER \
          --user=$BUILDKITE_TARGET_CLUSTER \
-         -f resources/kubernetes/thegraph-docs/deployment.yaml \
+         -f resources/kubernetes/docs/deployment.yaml \
       && kubectl apply \
          --cluster=$BUILDKITE_TARGET_CLUSTER \
          --user=$BUILDKITE_TARGET_CLUSTER \
-         -f resources/kubernetes/thegraph-docs/service.yaml
+         -f resources/kubernetes/docs/service.yaml
