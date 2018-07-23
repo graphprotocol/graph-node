@@ -17,7 +17,7 @@ thegraph-core = { path = "../core" }
 thegraph-ethereum = { path = "../thegraph-ethereum" }
 thegraph-hyper = { path = "../thegraph-hyper" }
 thegraph-mock = { path = "../thegraph-mock" }
-thegraph-runtime = { path = "../thegraph-runtime" }
+thegraph-runtime-wasm = { path = "../runtime/wasm" }
 thegraph-store-postgres-diesel = { path = "../thegraph-store-postgres-diesel" }
 
 [dev-dependencies]
