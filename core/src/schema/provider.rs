@@ -9,7 +9,7 @@ use thegraph::components::schema::{SchemaProvider as SchemaProviderTrait, Schema
 use thegraph::components::{EventConsumer, EventProducer};
 use thegraph::data::schema::Schema;
 
-use thegraph_graphql_utils::prelude::*;
+use thegraph_graphql::prelude::*;
 
 /// Common schema provider implementation for The Graph.
 pub struct SchemaProvider {
@@ -132,7 +132,7 @@ mod tests {
     use thegraph::components::schema::SchemaProviderEvent;
     use thegraph::components::{EventConsumer, EventProducer};
     use thegraph::prelude::*;
-    use thegraph_graphql_utils::schema::ast;
+    use thegraph_graphql::schema::ast;
 
     use super::SchemaProvider as CoreSchemaProvider;
 

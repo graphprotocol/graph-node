@@ -5,7 +5,7 @@ extern crate pretty_assertions;
 #[macro_use]
 extern crate slog;
 extern crate thegraph;
-extern crate thegraph_graphql_utils;
+extern crate thegraph_graphql;
 
 use futures::sync::oneshot;
 use graphql_parser::query as q;
@@ -13,7 +13,7 @@ use slog::Logger;
 use std::sync::{Arc, Mutex};
 
 use thegraph::prelude::*;
-use thegraph_graphql_utils::prelude::*;
+use thegraph_graphql::prelude::*;
 
 fn test_schema() -> Schema {
     Schema {

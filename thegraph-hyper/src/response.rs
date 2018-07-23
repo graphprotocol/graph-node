@@ -6,7 +6,7 @@ use serde_json;
 
 use thegraph::components::server::GraphQLServerError;
 use thegraph::data::query::QueryResult;
-use thegraph_graphql_utils::prelude::SerializableValue;
+use thegraph_graphql::prelude::SerializableValue;
 
 /// Future for HTTP responses to GraphQL query requests.
 pub struct GraphQLResponse {

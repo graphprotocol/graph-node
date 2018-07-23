@@ -1749,7 +1749,7 @@ dependencies = [
  "serde_yaml 0.7.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "thegraph 0.1.0",
- "thegraph-graphql-utils 0.1.0",
+ "thegraph-graphql 0.1.0",
  "thegraph-mock 0.1.0",
  "thegraph-runtime 0.1.0",
  "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1770,7 +1770,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "thegraph-graphql-utils"
+name = "thegraph-graphql"
 version = "0.1.0"
 dependencies = [
  "Inflector 0.11.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1797,7 +1797,7 @@ dependencies = [
  "serde_json 1.0.22 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "thegraph 0.1.0",
- "thegraph-graphql-utils 0.1.0",
+ "thegraph-graphql 0.1.0",
  "tokio 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-core 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
