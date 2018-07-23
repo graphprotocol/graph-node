@@ -1756,7 +1756,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "thegraph-ethereum"
+name = "thegraph-datasource-ethereum"
 version = "0.1.0"
 dependencies = [
  "ethabi 5.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1811,7 +1811,7 @@ dependencies = [
  "slog 2.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "thegraph 0.1.0",
  "thegraph-core 0.1.0",
- "thegraph-ethereum 0.1.0",
+ "thegraph-datasource-ethereum 0.1.0",
  "thegraph-mock 0.1.0",
  "thegraph-runtime-wasm 0.1.0",
  "thegraph-server-hyper 0.1.0",

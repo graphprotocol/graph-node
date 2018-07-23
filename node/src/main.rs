@@ -9,7 +9,7 @@ extern crate slog;
 extern crate ipfs_api;
 extern crate thegraph;
 extern crate thegraph_core;
-extern crate thegraph_ethereum;
+extern crate thegraph_datasource_ethereum;
 extern crate thegraph_mock;
 extern crate thegraph_runtime_wasm;
 extern crate thegraph_server_hyper;
@@ -31,7 +31,7 @@ use thegraph::components::forward;
 use thegraph::components::EventProducer;
 use thegraph::prelude::*;
 use thegraph::util::log::logger;
-use thegraph_ethereum::Transport;
+use thegraph_datasource_ethereum::Transport;
 use thegraph_node::DataSourceProvider as IpfsDataSourceProvider;
 use thegraph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use thegraph_server_hyper::GraphQLServer as HyperGraphQLServer;
@@ -155,9 +155,9 @@ fn main() {
         .or(ethereum_ws.map(Transport::new_ws))
         .or(ethereum_rpc.map(Transport::new_rpc))
         .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
-    let ethereum_watcher = thegraph_ethereum::EthereumAdapter::new(
+    let ethereum_watcher = thegraph_datasource_ethereum::EthereumAdapter::new(
         core.handle(),
-        thegraph_ethereum::EthereumAdapterConfig { transport },
+        thegraph_datasource_ethereum::EthereumAdapterConfig { transport },
     );
     let runtime_host_builder = WASMRuntimeHostBuilder::new(
         &logger,

@@ -14,7 +14,7 @@ tokio-core = "0.1.17"
 ipfs-api = "0.5.0-alpha1"
 thegraph = { path = "../thegraph" }
 thegraph-core = { path = "../core" }
-thegraph-ethereum = { path = "../thegraph-ethereum" }
+thegraph-datasource-ethereum = { path = "../datasource/ethereum" }
 thegraph-mock = { path = "../mock" }
 thegraph-runtime-wasm = { path = "../runtime/wasm" }
 thegraph-server-hyper = { path = "../server/hyper" }
