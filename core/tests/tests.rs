@@ -5,7 +5,7 @@ extern crate slog;
 extern crate thegraph;
 extern crate thegraph_core;
 extern crate thegraph_mock;
-extern crate thegraph_runtime;
+extern crate thegraph_runtime_wasm;
 extern crate tokio_core;
 
 use futures::stream::{self, Stream};
@@ -21,7 +21,7 @@ use thegraph::prelude::*;
 use thegraph::util::log::logger;
 use thegraph_core::RuntimeManager;
 use thegraph_mock::FakeStore;
-use thegraph_runtime::RuntimeHostBuilder;
+use thegraph_runtime_wasm::RuntimeHostBuilder;
 use tokio_core::reactor::Core;
 
 #[test]

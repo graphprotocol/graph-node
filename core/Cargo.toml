@@ -8,7 +8,7 @@ graphql-parser = "0.2.0"
 slog = "2.2.3"
 thegraph = { path = "../thegraph" }
 thegraph-graphql = { path = "../graphql" }
-thegraph-runtime = { path = "../thegraph-runtime" }
+thegraph-runtime-wasm = { path = "../runtime/wasm" }
 tokio-core = "0.1.17"
 serde = "1.0"
 serde_yaml = "0.7"
