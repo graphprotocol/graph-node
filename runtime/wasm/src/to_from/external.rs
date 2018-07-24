@@ -120,7 +120,7 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
             }
             EthereumValueKind::Uint => {
                 let ptr: AscPtr<AscU256> = AscPtr::from_payload(payload);
-                Token::Int(heap.asc_get(ptr))
+                Token::Uint(heap.asc_get(ptr))
             }
             EthereumValueKind::String => {
                 let ptr: AscPtr<AscString> = AscPtr::from_payload(payload);
