@@ -89,11 +89,11 @@ impl BasicStore for MockStore {
         }
     }
 
-    fn set(&mut self, _key: StoreKey, _entity: Entity, _block_hash: EventSource) -> Result<(), ()> {
+    fn set(&mut self, _key: StoreKey, _entity: Entity, _source: EventSource) -> Result<(), ()> {
         unimplemented!();
     }
 
-    fn delete(&mut self, _key: StoreKey) -> Result<(), ()> {
+    fn delete(&mut self, _key: StoreKey, _source: EventSource) -> Result<(), ()> {
         unimplemented!();
     }
 
@@ -130,11 +130,11 @@ impl BasicStore for FakeStore {
         panic!("called FakeStore")
     }
 
-    fn set(&mut self, _: StoreKey, _: Entity, _block_hash: EventSource) -> Result<(), ()> {
+    fn set(&mut self, _: StoreKey, _: Entity, _source: EventSource) -> Result<(), ()> {
         panic!("called FakeStore")
     }
 
-    fn delete(&mut self, _: StoreKey) -> Result<(), ()> {
+    fn delete(&mut self, _: StoreKey, _source: EventSource) -> Result<(), ()> {
         panic!("called FakeStore")
     }
 

@@ -75,7 +75,10 @@ impl RuntimeManager where {
                     store
                         .lock()
                         .unwrap()
-                        .delete(store_key)
+                        .delete(
+                            store_key,
+                            EventSource::LocalProcess(String::from("blockhash")),
+                        )
                         .expect("Failed to delete entity from the store");
                 }
             }

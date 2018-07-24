@@ -141,11 +141,11 @@ impl BasicStore for TestStore {
             .map_or(Err(()), |entity| Ok(entity.clone()))
     }
 
-    fn set(&mut self, _key: StoreKey, _entity: Entity, _block_hash: EventSource) -> Result<(), ()> {
+    fn set(&mut self, _key: StoreKey, _entity: Entity, _source: EventSource) -> Result<(), ()> {
         unimplemented!()
     }
 
-    fn delete(&mut self, _key: StoreKey) -> Result<(), ()> {
+    fn delete(&mut self, _key: StoreKey, _source: EventSource) -> Result<(), ()> {
         unimplemented!()
     }
 
