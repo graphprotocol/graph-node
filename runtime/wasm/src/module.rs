@@ -453,7 +453,7 @@ where
     ) -> Result<Option<RuntimeValue>, Trap> {
         // Read as a U256 to use the convenient `to_little_endian` method.
         let int256: U256 = self.heap.asc_get(int256_ptr);
-        let mut buffer = [0; 256];
+        let mut buffer = [0; 32];
         int256.to_little_endian(&mut buffer);
         let big_int_obj: AscPtr<BigInt> = self.heap.asc_new(&buffer[..]);
         Ok(Some(RuntimeValue::from(big_int_obj)))
