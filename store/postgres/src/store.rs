@@ -130,12 +130,13 @@ impl BasicStore for Store {
         let datasource: String = String::from("memefactory");
 
         // Update the existing entity, if necessary
-        let updated_entity = self.get(key.clone())
-            .map(|mut existing_entity| {
-                existing_entity.merge(input_entity.clone());
+        let updated_entity = match self.get(key.clone()) {
+            Ok(mut existing_entity) => {
+                existing_entity.merge(input_entity);
                 existing_entity
-            })
-            .unwrap_or(input_entity);
+            }
+            Err(_) => input_entity,
+        };
 
         // Convert Entity hashmap to serde_json::Value for insert
         let entity_json: serde_json::Value =
