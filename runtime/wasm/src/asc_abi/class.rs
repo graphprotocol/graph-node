@@ -291,6 +291,7 @@ pub enum StoreValueKind {
     Array,
     Null,
     Bytes,
+    BigInt,
 }
 
 impl Default for StoreValueKind {
@@ -311,6 +312,8 @@ pub(crate) struct AscLogParam {
 impl AscType for AscLogParam {}
 
 pub(crate) type Bytes = Uint8Array;
+/// Big ints are represented in two's complement and in little-endian order.
+pub(crate) type BigInt = Uint8Array;
 pub(crate) type AscAddress = Uint8Array;
 pub(crate) type AscH160 = Uint8Array;
 pub(crate) type AscH256 = Uint8Array;

@@ -393,4 +393,14 @@ fn abi_store_value() {
     let new_value: Value =
         module.asc_get(module.takes_ptr_returns_ptr("value_from_bytes", bytes_ptr));
     assert_eq!(new_value, Value::Bytes(bytes.into()));
+
+    // Value::BigInt
+    let bytes: &[u8] = &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+    let bytes_ptr: AscPtr<Uint8Array> = module.asc_new(bytes);
+    let new_value: Value =
+        module.asc_get(module.takes_ptr_returns_ptr("value_from_bigint", bytes_ptr));
+    assert_eq!(
+        new_value,
+        Value::BigInt(::num_bigint::BigInt::from_signed_bytes_le(bytes))
+    );
 }
