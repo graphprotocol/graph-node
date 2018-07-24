@@ -268,6 +268,17 @@ fn abi_ethabi_token_identity() {
 
     assert_eq!(int_token, new_token);
 
+    // Token::Uint
+    let uint_token = Token::Uint(U256([256, 453452345, 0, 42]));
+
+    let new_uint_obj: AscPtr<ArrayBuffer<u8>> =
+        module.takes_ptr_returns_ptr("token_to_uint", module.asc_new(&uint_token));
+
+    let new_token = module.asc_get(module.takes_ptr_returns_ptr("token_from_uint", new_uint_obj));
+
+    assert_eq!(uint_token, new_token);
+    assert_ne!(uint_token, int_token);
+
     // Token::Bool
     let token_bool = Token::Bool(true);
 

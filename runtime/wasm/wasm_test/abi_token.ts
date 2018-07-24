@@ -10,6 +10,7 @@ type Bytes = Uint8Array;
 
 // Sequence of 4 `u64`s.
 type Int = Uint64Array;
+type Uint = Uint64Array;
 
 enum TokenKind {
     ADDRESS,
@@ -48,6 +49,12 @@ export function token_to_int(token: Token): Int {
     return changetype<Int>(token.data as u32)
 }
 
+export function token_to_uint(token: Token): Uint {
+    assert(token.kind == TokenKind.INT
+            || token.kind == TokenKind.UINT, "Token is not an int or uint.")
+    return changetype<Uint>(token.data as u32)
+}
+
 export function token_to_bool(token: Token): boolean {
     assert(token.kind == TokenKind.BOOL, "Token is not a boolean.")
     return token.data != 0
@@ -83,6 +90,13 @@ export function token_from_int(int: Int): Token {
     let token: Token;
     token.kind = TokenKind.INT;
     token.data = int as u64;
+    return token
+}
+
+export function token_from_uint(uint: Uint): Token {
+    let token: Token;
+    token.kind = TokenKind.UINT;
+    token.data = uint as u64;
     return token
 }
 
