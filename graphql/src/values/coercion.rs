@@ -32,6 +32,8 @@ impl MaybeCoercible<ScalarType> for Value {
             ("Int", v @ Value::Int(_)) => Some(v.clone()),
             ("String", v @ Value::String(_)) => Some(v.clone()),
             ("ID", v @ Value::String(_)) => Some(v.clone()),
+            ("Bytes", v @ Value::String(_)) => Some(v.clone()),
+            ("BigInt", v @ Value::String(_)) => Some(v.clone()),
             _ => None,
         }
     }
@@ -180,12 +182,7 @@ mod tests {
 
     #[test]
     fn coercion_using_float_type_definitions_is_correct() {
-        let float_type = TypeDefinition::Scalar(ScalarType {
-            name: "Float".to_string(),
-            description: None,
-            directives: vec![],
-            position: Pos::default(),
-        });
+        let float_type = TypeDefinition::Scalar(ScalarType::new("Float".to_string()));
 
         // We can coerce from Value::Float -> TypeDefinition::Scalar(Float)
         assert_eq!(
@@ -211,12 +208,7 @@ mod tests {
 
     #[test]
     fn coercion_using_string_type_definitions_is_correct() {
-        let string_type = TypeDefinition::Scalar(ScalarType {
-            name: "String".to_string(),
-            description: None,
-            directives: vec![],
-            position: Pos::default(),
-        });
+        let string_type = TypeDefinition::Scalar(ScalarType::new("String".to_string()));
 
         // We can coerce from Value::String -> TypeDefinition::Scalar(String)
         assert_eq!(
@@ -239,12 +231,7 @@ mod tests {
 
     #[test]
     fn coercion_using_id_type_definitions_is_correct() {
-        let string_type = TypeDefinition::Scalar(ScalarType {
-            name: "ID".to_string(),
-            description: None,
-            directives: vec![],
-            position: Pos::default(),
-        });
+        let string_type = TypeDefinition::Scalar(ScalarType::new("ID".to_owned()));
 
         // We can coerce from Value::String -> TypeDefinition::Scalar(ID)
         assert_eq!(
@@ -267,13 +254,8 @@ mod tests {
 
     #[test]
     fn coercion_using_input_object_type_definitions_is_correct() {
-        let input_object_type = TypeDefinition::InputObject(InputObjectType {
-            name: "InputObject".to_string(),
-            description: None,
-            directives: vec![],
-            position: Pos::default(),
-            fields: vec![],
-        });
+        let input_object_type =
+            TypeDefinition::InputObject(InputObjectType::new("InputObject".to_owned()));
 
         // We can coerce from Value::Object -> TypeDefinition::InputObject
         let example_object = BTreeMap::from_iter(
@@ -304,5 +286,27 @@ mod tests {
         // We don't spport going from Value::Float -> TypeDefinition::InputObject
         assert_eq!(Value::Float(23.7).coerce(&input_object_type), None,);
         assert_eq!(Value::Float(-5.879).coerce(&input_object_type), None,);
+    }
+
+    #[test]
+    fn coerce_big_int_scalar() {
+        let big_int_type = TypeDefinition::Scalar(ScalarType::new("BigInt".to_string()));
+
+        // We can coerce from Value::String -> TypeDefinition::Scalar(BigInt)
+        assert_eq!(
+            Value::String("1234".to_string()).coerce(&big_int_type),
+            Some(Value::String("1234".to_string()))
+        );
+    }
+
+    #[test]
+    fn coerce_bytes_scalar() {
+        let bytes_type = TypeDefinition::Scalar(ScalarType::new("Bytes".to_string()));
+
+        // We can coerce from Value::String -> TypeDefinition::Scalar(Bytes)
+        assert_eq!(
+            Value::String("0x21f".to_string()).coerce(&bytes_type),
+            Some(Value::String("0x21f".to_string()))
+        );
     }
 }
