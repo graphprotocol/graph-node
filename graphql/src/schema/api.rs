@@ -63,7 +63,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
 
 /// Adds built-in GraphQL scalar types (`Int`, `String` etc.) to the schema.
 fn add_builtin_scalar_types(schema: &mut Document) -> Result<(), APISchemaError> {
-    for name in ["Boolean", "ID", "Int", "Float", "String"].into_iter() {
+    for name in ["Boolean", "ID", "Int", "Float", "String", "Bytes", "BigInt"].into_iter() {
         match ast::get_named_type(schema, &name.to_string()) {
             None => {
                 let typedef = TypeDefinition::Scalar(ScalarType {
