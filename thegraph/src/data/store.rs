@@ -106,7 +106,7 @@ impl Entity {
         for (key, value) in update.0.into_iter() {
             match value {
                 Value::Null => self.remove(&key),
-                _ => self.insert(key.clone(), value.clone()),
+                _ => self.insert(key, value),
             };
         }
     }
