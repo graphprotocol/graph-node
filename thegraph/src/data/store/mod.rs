@@ -1,58 +1,19 @@
 use graphql_parser::query;
 use graphql_parser::schema;
-use hex;
-use num_bigint;
-use serde::{self, Deserialize, Serialize};
 
 use std::collections::{BTreeMap, HashMap};
-use std::fmt::{self, Display, Formatter};
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
+
+/// Custom scalars in GraphQL.
+pub mod scalar;
 
 /// An entity attribute name is represented as a string.
 pub type Attribute = String;
 
 pub const BYTES_SCALAR: &str = "Bytes";
 pub const BIG_INT_SCALAR: &str = "BigInt";
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct BigInt(num_bigint::BigInt);
-
-impl BigInt {
-    pub fn from_signed_bytes_le(bytes: &[u8]) -> Self {
-        BigInt(num_bigint::BigInt::from_signed_bytes_le(bytes))
-    }
-}
-
-impl Display for BigInt {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        self.0.fmt(f)
-    }
-}
-
-impl FromStr for BigInt {
-    type Err = <num_bigint::BigInt as FromStr>::Err;
-
-    fn from_str(s: &str) -> Result<BigInt, Self::Err> {
-        num_bigint::BigInt::from_str(s).map(|x| BigInt(x))
-    }
-}
-
-impl Serialize for BigInt {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.to_string().serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for BigInt {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        use serde::de::Error;
-
-        let decimal_string = String::deserialize(deserializer)?;
-        BigInt::from_str(&decimal_string).map_err(D::Error::custom)
-    }
-}
 
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -64,9 +25,8 @@ pub enum Value {
     Bool(bool),
     List(Vec<Value>),
     Null,
-    /// In GraphQL, a hex string prefixed by `0x`.
-    Bytes(Box<[u8]>),
-    BigInt(BigInt),
+    Bytes(scalar::Bytes),
+    BigInt(scalar::BigInt),
 }
 
 impl Value {
@@ -78,13 +38,11 @@ impl Value {
                 // Check if `ty` is a custom scalar type, otherwise assume it's
                 // just a string.
                 match n.as_str() {
-                    BYTES_SCALAR => Value::Bytes(
-                        hex::decode(s.trim_left_matches("0x"))
-                            .expect("Value is not a hex string")
-                            .into(),
-                    ),
+                    BYTES_SCALAR => {
+                        Value::Bytes(scalar::Bytes::from_str(s).expect("Value is not a hex string"))
+                    }
                     BIG_INT_SCALAR => {
-                        Value::BigInt(BigInt::from_str(s).expect("Value is not a number"))
+                        Value::BigInt(scalar::BigInt::from_str(s).expect("Value is not a number"))
                     }
                     _ => Value::String(s.clone()),
                 }
@@ -118,7 +76,7 @@ impl From<Value> for query::Value {
             Value::List(values) => {
                 query::Value::List(values.into_iter().map(|value| value.into()).collect())
             }
-            Value::Bytes(bytes) => query::Value::String(format!("0x{}", hex::encode(bytes))),
+            Value::Bytes(bytes) => query::Value::String(bytes.to_string()),
             Value::BigInt(number) => query::Value::String(number.to_string()),
         }
     }
@@ -211,9 +169,9 @@ fn value_bytes() {
     let from_query = Value::from_query_value(&graphql_value, &ty);
     assert_eq!(
         from_query,
-        Value::Bytes(Box::new([
-            143, 73, 76, 102, 175, 193, 211, 248, 172, 27, 69, 223, 33, 240, 42, 70
-        ]))
+        Value::Bytes(scalar::Bytes::from(
+            &[143, 73, 76, 102, 175, 193, 211, 248, 172, 27, 69, 223, 33, 240, 42, 70][..]
+        ))
     );
     assert_eq!(query::Value::from(from_query), graphql_value);
 }
@@ -226,7 +184,7 @@ fn value_bigint() {
     let from_query = Value::from_query_value(&graphql_value, &ty);
     assert_eq!(
         from_query,
-        Value::BigInt(BigInt::from_str(big_num).unwrap())
+        Value::BigInt(FromStr::from_str(big_num).unwrap())
     );
     assert_eq!(query::Value::from(from_query), graphql_value);
 }
