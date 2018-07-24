@@ -96,6 +96,20 @@ impl Entity {
     pub fn new() -> Self {
         Entity(HashMap::new())
     }
+
+    /// Merges an entity update `update` into this entity.
+    ///
+    /// If a key exists in both entities, the value from `update` is chosen.
+    /// If a key only exists on one entity, the value from that entity is chosen.
+    /// If a key is set to `Value::Null` in `update`, the key/value pair is removed.
+    pub fn merge(&mut self, update: Entity) {
+        for (key, value) in update.0.into_iter() {
+            match value {
+                Value::Null => self.remove(&key),
+                _ => self.insert(key.clone(), value.clone()),
+            };
+        }
+    }
 }
 
 impl Deref for Entity {
