@@ -14,6 +14,7 @@ use thegraph::components::schema::SchemaProviderEvent;
 use thegraph::components::store::{Store as StoreTrait, *};
 use thegraph::data::store::*;
 use thegraph::util::stream::StreamError;
+
 embed_migrations!("./migrations");
 
 /// Run all initial schema migrations.
@@ -125,12 +126,20 @@ impl BasicStore for Store {
 
         use db_schema::entities::dsl::*;
 
-        // Convert Entity hashmap to serde_json::Value for insert
-        let entity_json: serde_json::Value =
-            serde_json::to_value(&input_entity).expect("Failed to serialize entity");
-
         // The data source is hardcoded at the moment
         let datasource: String = String::from("memefactory");
+
+        // Update the existing entity, if necessary
+        let updated_entity = self.get(key.clone())
+            .map(|mut existing_entity| {
+                existing_entity.merge(input_entity.clone());
+                existing_entity
+            })
+            .unwrap_or(input_entity);
+
+        // Convert Entity hashmap to serde_json::Value for insert
+        let entity_json: serde_json::Value =
+            serde_json::to_value(&updated_entity).expect("Failed to serialize entity");
 
         // Insert entity, perform an update in case of a primary key conflict
         insert_into(entities)
