@@ -1,8 +1,11 @@
 use graphql_parser::query;
 use graphql_parser::schema;
 use hex;
-use num_bigint::BigInt;
+use num_bigint;
+use serde::{self, Deserialize, Serialize};
+
 use std::collections::{BTreeMap, HashMap};
+use std::fmt::{self, Display, Formatter};
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
@@ -12,6 +15,44 @@ pub type Attribute = String;
 
 pub const BYTES_SCALAR: &str = "Bytes";
 pub const BIG_INT_SCALAR: &str = "BigInt";
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BigInt(num_bigint::BigInt);
+
+impl BigInt {
+    pub fn from_signed_bytes_le(bytes: &[u8]) -> Self {
+        BigInt(num_bigint::BigInt::from_signed_bytes_le(bytes))
+    }
+}
+
+impl Display for BigInt {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        self.0.fmt(f)
+    }
+}
+
+impl FromStr for BigInt {
+    type Err = <num_bigint::BigInt as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<BigInt, Self::Err> {
+        num_bigint::BigInt::from_str(s).map(|x| BigInt(x))
+    }
+}
+
+impl Serialize for BigInt {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.to_string().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for BigInt {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+
+        let decimal_string = String::deserialize(deserializer)?;
+        BigInt::from_str(&decimal_string).map_err(D::Error::custom)
+    }
+}
 
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -78,7 +119,7 @@ impl From<Value> for query::Value {
                 query::Value::List(values.into_iter().map(|value| value.into()).collect())
             }
             Value::Bytes(bytes) => query::Value::String(format!("0x{}", hex::encode(bytes))),
-            Value::BigInt(number) => query::Value::String(format!("{}", number)),
+            Value::BigInt(number) => query::Value::String(number.to_string()),
         }
     }
 }
