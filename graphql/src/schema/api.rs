@@ -32,6 +32,15 @@ impl fmt::Display for APISchemaError {
     }
 }
 
+/// Converts the first character of a string to lowercase.
+fn lowercase_first_character(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        None => String::new(),
+        Some(first) => first.to_lowercase().chain(c).collect(),
+    }
+}
+
 /// Derives a full-fledged GraphQL API schema from an input schema.
 ///
 /// The input schema should only have type/enum/interface/union definitions
@@ -309,7 +318,7 @@ fn query_fields_for_type(_schema: &Document, type_name: &Name) -> Vec<Field> {
         Field {
             position: Pos::default(),
             description: None,
-            name: type_name.to_lowercase(),
+            name: lowercase_first_character(type_name.as_str()),
             arguments: vec![InputValue {
                 position: Pos::default(),
                 description: None,
@@ -324,7 +333,7 @@ fn query_fields_for_type(_schema: &Document, type_name: &Name) -> Vec<Field> {
         Field {
             position: Pos::default(),
             description: None,
-            name: type_name.to_plural().to_lowercase(),
+            name: lowercase_first_character(type_name.to_plural().as_str()),
             arguments: vec![
                 input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string())),
                 input_value(&"first".to_string(), "", Type::NamedType("Int".to_string())),
@@ -452,25 +461,26 @@ mod tests {
 
     #[test]
     fn api_schema_contains_object_fields_on_query_type() {
-        let input_schema = parse_schema("type User { id: ID!, name: String! }")
-            .expect("Failed to parse input schema");
+        let input_schema = parse_schema(
+            "type User { id: ID!, name: String! } type UserProfile { id: ID!, title: String! }",
+        ).expect("Failed to parse input schema");
         let schema = api_schema(&input_schema).expect("Failed to derived API schema");
 
         let query_type = ast::get_named_type(&schema, &"Query".to_string())
             .expect("Query type is missing in derived API schema");
 
-        let singular_field = match query_type {
-            TypeDefinition::Object(ref t) => ast::get_field_type(t, &"user".to_string()),
+        let user_singular_field = match query_type {
+            TypeDefinition::Object(t) => ast::get_field_type(t, &"user".to_string()),
             _ => None,
         }.expect("\"user\" field is missing on Query type");
 
         assert_eq!(
-            singular_field.field_type,
+            user_singular_field.field_type,
             Type::NamedType("User".to_string())
         );
 
         assert_eq!(
-            singular_field
+            user_singular_field
                 .arguments
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
@@ -478,20 +488,20 @@ mod tests {
             vec!["id".to_string()],
         );
 
-        let plural_field = match query_type {
-            TypeDefinition::Object(ref t) => ast::get_field_type(t, &"users".to_string()),
+        let user_plural_field = match query_type {
+            TypeDefinition::Object(t) => ast::get_field_type(t, &"users".to_string()),
             _ => None,
         }.expect("\"users\" field is missing on Query type");
 
         assert_eq!(
-            plural_field.field_type,
+            user_plural_field.field_type,
             Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
                 Box::new(Type::NamedType("User".to_string()))
             )))))
         );
 
         assert_eq!(
-            plural_field
+            user_plural_field
                 .arguments
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
@@ -508,6 +518,30 @@ mod tests {
             ].into_iter()
                 .map(|name| name.to_string())
                 .collect::<Vec<String>>()
+        );
+
+        let user_profile_singular_field =
+            match query_type {
+                TypeDefinition::Object(t) => ast::get_field_type(t, &"userProfile".to_string()),
+                _ => None,
+            }.expect("\"userProfile\" field is missing on Query type");
+
+        assert_eq!(
+            user_profile_singular_field.field_type,
+            Type::NamedType("UserProfile".to_string())
+        );
+
+        let user_profile_plural_field =
+            match query_type {
+                TypeDefinition::Object(t) => ast::get_field_type(t, &"userProfiles".to_string()),
+                _ => None,
+            }.expect("\"userProfiles\" field is missing on Query type");
+
+        assert_eq!(
+            user_profile_plural_field.field_type,
+            Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
+                Box::new(Type::NamedType("UserProfile".to_string()))
+            )))))
         );
     }
 
