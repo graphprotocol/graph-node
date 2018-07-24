@@ -32,15 +32,6 @@ impl fmt::Display for APISchemaError {
     }
 }
 
-/// Converts the first character of a string to lowercase.
-fn lowercase_first_character(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        None => String::new(),
-        Some(first) => first.to_lowercase().chain(c).collect(),
-    }
-}
-
 /// Derives a full-fledged GraphQL API schema from an input schema.
 ///
 /// The input schema should only have type/enum/interface/union definitions
@@ -318,7 +309,7 @@ fn query_fields_for_type(_schema: &Document, type_name: &Name) -> Vec<Field> {
         Field {
             position: Pos::default(),
             description: None,
-            name: lowercase_first_character(type_name.as_str()),
+            name: type_name.as_str().to_camel_case(),
             arguments: vec![InputValue {
                 position: Pos::default(),
                 description: None,
@@ -333,7 +324,7 @@ fn query_fields_for_type(_schema: &Document, type_name: &Name) -> Vec<Field> {
         Field {
             position: Pos::default(),
             description: None,
-            name: lowercase_first_character(type_name.to_plural().as_str()),
+            name: type_name.to_plural().to_camel_case(),
             arguments: vec![
                 input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string())),
                 input_value(&"first".to_string(), "", Type::NamedType("Int".to_string())),
