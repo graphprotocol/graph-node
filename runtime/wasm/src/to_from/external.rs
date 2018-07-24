@@ -168,7 +168,7 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
             StoreValueKind::BigInt => {
                 let ptr: AscPtr<BigInt> = AscPtr::from(payload);
                 let array: Vec<u8> = heap.asc_get(ptr);
-                Value::BigInt(::num_bigint::BigInt::from_signed_bytes_le(&array))
+                Value::BigInt(store::BigInt::from_signed_bytes_le(&array))
             }
         }
     }
