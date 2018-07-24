@@ -96,8 +96,8 @@ impl Store {
     }
 
     /// Handles block reorganizations.
-    /// Revert all store changes related to given set of blocks
-    pub fn revert_chain(&self, block_hash: String) {
+    /// Revert all store change events related to given block
+    pub fn revert_events(&self, block_hash: String) {
         select(revert_block(block_hash))
             .execute(&self.conn)
             .unwrap();

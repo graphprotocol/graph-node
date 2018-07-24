@@ -113,6 +113,21 @@ fn insert_test_data() {
     store
         .set(test_entity_3.0, test_entity_3.1, test_entity_3.2)
         .expect("Failed to insert test entity into the store");
+
+    let test_entity_3_2 = create_test_entity(
+        String::from("3"),
+        String::from("user"),
+        String::from("Shaqueeena".to_string()),
+        String::from("teeko@email.com".to_string()),
+        28 as i32,
+        111.7 as f32,
+        false,
+        String::from("znuyjijnezBiGFuZAW9Q"),
+    );
+
+    store
+        .set(test_entity_3_2.0, test_entity_3_2.1, test_entity_3_2.2)
+        .expect("Failed to insert test entity into the store");
 }
 
 /// Removes test data from the database behind the store.
@@ -138,11 +153,11 @@ fn delete_entity() {
             entity: String::from("user"),
             id: String::from("3"),
         };
-        store.delete(test_key).unwrap();
+        let source = EventSource::LocalProcess(String::from("delete_operation"));
+        store.delete(test_key, source).unwrap();
 
         //Get all ids in table
         let all_ids = entities.select(id).load::<String>(&store.conn).unwrap();
-
         // Check that that the deleted entity id is not present
         assert!(!all_ids.contains(&"3".to_string()));
     })
@@ -1118,16 +1133,61 @@ fn revert_block() {
             range: None,
         };
 
-        // Revert all events associated with event_source, "TA7xjCbrczBiGFuZAW9Q"
-        DieselStore::revert_chain(vec!["TA7xjCbrczBiGFuZAW9Q".to_string()]);
+        // Revert all events associated with event_source, "znuyjijnezBiGFuZAW9Q"
+        new_store.revert_events("znuyjijnezBiGFuZAW9Q".to_string());
 
         let result = new_store.find(this_query);
         assert!(result.is_ok());
 
-        // Check if the first user in the result vector is "Shaqueeena"
+        // Check if the first user in the result vector has email "queensha@email.com"
         let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Shaqueeena".to_string());
+        let returned_name = returned_entities[0].get(&"email".to_string());
+        println!("{:?}", &returned_name);
+        let test_value = Value::String("queensha@email.com".to_string());
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be one user returned in results
+        assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn revert_block_with_delete() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = logger();
+        let url = postgres_test_url();
+        let mut new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let this_query = StoreQuery {
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
+                "name".to_string(),
+                Value::String("Cindini".to_string()),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: None,
+        };
+
+        let del_key = StoreKey {
+            entity: "user".to_string(),
+            id: "2".to_string(),
+        };
+        let source = EventSource::LocalProcess(String::from("delete_operation"));
+        new_store.delete(del_key, source).unwrap();
+
+        // Revert all events associated with event_source, "b7kJ8ghP6PSITWx4lUZB"
+        new_store.revert_events("delete_operation".to_string());
+
+        let result = new_store.find(this_query);
+        assert!(result.is_ok());
+        println!("RESULT {:?}", &result);
+        // Check if "cindini@email.com" is in result set
+        let returned_entities = result.unwrap();
+        let returned_name = returned_entities[0].get(&"email".to_string());
+        println!("NAME {:?}", &returned_name);
+        let test_value = Value::String("dinici@email.com".to_string());
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
