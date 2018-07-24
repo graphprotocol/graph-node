@@ -233,6 +233,51 @@ fn update_existing() {
 }
 
 #[test]
+fn partially_update_existing() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+
+        let entity_key = StoreKey {
+            entity: String::from("user"),
+            id: String::from("1"),
+        };
+
+        let partial_entity = Entity::from(vec![
+            ("id", Value::from("1")),
+            ("name", Value::from("Johnny Boy")),
+            ("email", Value::Null),
+        ]);
+
+        let original_entity = store.get(entity_key.clone()).unwrap();
+
+        // Verify that the entity before updating is different from what we expect afterwards
+        assert_ne!(original_entity, partial_entity);
+
+        // Set test entity; as the entity already exists an update should be performed
+        store
+            .set(entity_key.clone(), partial_entity.clone())
+            .expect("Failed to update entity that already exists");
+
+        // Obtain the updated entity from the store
+        let updated_entity = store.get(entity_key).unwrap();
+
+        // Verify that the values of all attributes we have set were either unset
+        // (in the case of Value::Null) or updated to the new values
+        assert_eq!(updated_entity.get("id"), partial_entity.get("id"));
+        assert_eq!(updated_entity.get("user"), partial_entity.get("user"));
+        assert_eq!(updated_entity.get("email"), None);
+
+        // Verify that all attributes we have not set have remained at their old values
+        assert_eq!(updated_entity.get("age"), original_entity.get("age"));
+        assert_eq!(updated_entity.get("weight"), original_entity.get("weight"));
+        assert_eq!(updated_entity.get("coffee"), original_entity.get("coffee"));
+    })
+}
+
+#[test]
 fn find_string_contains() {
     run_test(|| {
         let core = Core::new().unwrap();
