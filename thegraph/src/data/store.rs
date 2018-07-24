@@ -1,14 +1,17 @@
 use graphql_parser::query;
 use graphql_parser::schema;
 use hex;
+use num_bigint::BigInt;
 use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 
 /// An entity attribute name is represented as a string.
 pub type Attribute = String;
 
 pub const BYTES_SCALAR: &str = "Bytes";
+pub const BIG_INT_SCALAR: &str = "BigInt";
 
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -22,6 +25,7 @@ pub enum Value {
     Null,
     /// In GraphQL, a hex string prefixed by `0x`.
     Bytes(Box<[u8]>),
+    BigInt(BigInt),
 }
 
 impl Value {
@@ -29,12 +33,21 @@ impl Value {
         use self::schema::Type::{ListType, NamedType};
 
         match (value, ty) {
-            (query::Value::String(s), NamedType(n)) if n == BYTES_SCALAR => Value::Bytes(
-                hex::decode(s.trim_left_matches("0x"))
-                    .expect("Value is not a hex string")
-                    .into(),
-            ),
-            (query::Value::String(s), _) => Value::String(s.clone()),
+            (query::Value::String(s), NamedType(n)) => {
+                // Check if `ty` is a custom scalar type, otherwise assume it's
+                // just a string.
+                match n.as_str() {
+                    BYTES_SCALAR => Value::Bytes(
+                        hex::decode(s.trim_left_matches("0x"))
+                            .expect("Value is not a hex string")
+                            .into(),
+                    ),
+                    BIG_INT_SCALAR => {
+                        Value::BigInt(BigInt::from_str(s).expect("Value is not a number"))
+                    }
+                    _ => Value::String(s.clone()),
+                }
+            }
             (query::Value::Int(i), _) => Value::Int(i.to_owned()
                 .as_i64()
                 .expect("Unable to parse graphql_parser::query::Number into i64")
@@ -65,6 +78,7 @@ impl From<Value> for query::Value {
                 query::Value::List(values.into_iter().map(|value| value.into()).collect())
             }
             Value::Bytes(bytes) => query::Value::String(format!("0x{}", hex::encode(bytes))),
+            Value::BigInt(number) => query::Value::String(format!("{}", number)),
         }
     }
 }
@@ -159,6 +173,19 @@ fn value_bytes() {
         Value::Bytes(Box::new([
             143, 73, 76, 102, 175, 193, 211, 248, 172, 27, 69, 223, 33, 240, 42, 70
         ]))
+    );
+    assert_eq!(query::Value::from(from_query), graphql_value);
+}
+
+#[test]
+fn value_bigint() {
+    let big_num = "340282366920938463463374607431768211456";
+    let graphql_value = query::Value::String(big_num.to_owned());
+    let ty = query::Type::NamedType(BIG_INT_SCALAR.to_owned());
+    let from_query = Value::from_query_value(&graphql_value, &ty);
+    assert_eq!(
+        from_query,
+        Value::BigInt(BigInt::from_str(big_num).unwrap())
     );
     assert_eq!(query::Value::from(from_query), graphql_value);
 }
