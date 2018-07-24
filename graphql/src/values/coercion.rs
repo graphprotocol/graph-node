@@ -9,6 +9,11 @@ pub trait MaybeCoercible<T> {
 impl MaybeCoercible<EnumType> for Value {
     fn coerce(&self, using_type: &EnumType) -> Option<Value> {
         match self {
+            Value::String(name) => using_type
+                .values
+                .iter()
+                .find(|value| &value.name == name)
+                .map(|_| Value::Enum(name.clone())),
             Value::Enum(name) => using_type
                 .values
                 .iter()
@@ -132,11 +137,13 @@ mod tests {
             None,
         );
 
-        // We don't support going from Value::String -> TypeDefinition::Scalar(Enum)
+        // We also support going from Value::String -> TypeDefinition::Scalar(Enum)
         assert_eq!(
             Value::String("ValidVariant".to_string()).coerce(&enum_type),
-            None,
+            Some(Value::Enum("ValidVariant".to_string())),
         );
+
+        // But we don't support invalid variants
         assert_eq!(
             Value::String("InvalidVariant".to_string()).coerce(&enum_type),
             None,
