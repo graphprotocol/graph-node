@@ -3,7 +3,7 @@ use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::sql_types::Text;
-use diesel::{delete, insert_into, result, select, sql_query};
+use diesel::{delete, insert_into, result, select};
 use filter::store_filter;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
@@ -11,7 +11,7 @@ use serde_json;
 use slog;
 use tokio_core::reactor::Handle;
 
-use functions::{current_setting, revert_block, set_config};
+use functions::{revert_block, set_config};
 use graph::components::schema::SchemaProviderEvent;
 use graph::components::store::{Store as StoreTrait, *};
 use graph::data::store::*;
@@ -98,7 +98,9 @@ impl Store {
     /// Handles block reorganizations.
     /// Revert all store changes related to given set of blocks
     pub fn revert_chain(&self, block_hash: String) {
-        let _reverted = select(revert_block(block_hash)).execute(&self.conn);
+        select(revert_block(block_hash))
+            .execute(&self.conn)
+            .unwrap();
     }
 }
 
@@ -179,21 +181,27 @@ impl BasicStore for Store {
             .map_err(|_| ())
     }
 
-    fn delete(&mut self, key: StoreKey) -> Result<(), ()> {
+    fn delete(&mut self, key: StoreKey, input_event_source: EventSource) -> Result<(), ()> {
         debug!(self.logger, "delete"; "key" => format!("{:?}", key));
 
         use db_schema::entities::dsl::*;
 
         self.conn
             .transaction::<usize, result::Error, _>(|| {
-                // Set session variable current_event_source to revision
-                // let _current_source = sql_query("SET vars.current_event_source TO 'REVISION'");
+                // Convert event source to String for insert
+                let block_identifier = match input_event_source {
+                    // Use LowerHex to format hash as hex string with leading "0x"
+                    EventSource::EthereumBlock(hash) => format!("{:#x}", hash),
+                    EventSource::LocalProcess(process) => process,
+                };
 
-                let _reverted = select(set_config("vars.current_event_source", "BLOOP", false))
-                    .execute(&self.conn);
-                // let setting =
-                //     select(current_setting("vars.current_event_source")).execute(&self.conn);
-                // println!("TESTTT {:?}", setting);
+                // Set session variable current_event_source to revision
+                select(set_config(
+                    "vars.current_event_source",
+                    block_identifier,
+                    false,
+                )).execute(&self.conn)
+                    .unwrap();
 
                 // Delete from DB where rows match the ID and entity value;
                 // add data source here when meaningful
