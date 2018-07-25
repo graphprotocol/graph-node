@@ -17,7 +17,7 @@ DECLARE
     is_reversion BOOLEAN;
 BEGIN
 
-    IF NEW.event_source IS NULL THEN
+    IF NEW.event_source = 'REVERSION' THEN
         is_reversion := TRUE;
     ELSE
         is_reversion := FALSE;
@@ -64,7 +64,7 @@ DECLARE
     is_reversion BOOLEAN;
 BEGIN
 
-    IF NEW.event_source IS NULL THEN
+    IF NEW.event_source = 'REVERSION' THEN
         is_reversion := TRUE;
     ELSE
         is_reversion := FALSE;
