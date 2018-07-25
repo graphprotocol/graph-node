@@ -3,7 +3,8 @@ name = "thegraph-store-postgres"
 version = "0.1.0"
 
 [dependencies]
-diesel = { version = "1.3.0", features = ["postgres", "serde_json"] }
+bigdecimal = "0.0.11"
+diesel = { version = "1.3.0", features = ["postgres", "serde_json", "numeric"] }
 diesel_migrations = "1.3.0"
 diesel-dynamic-schema = { git = "https://github.com/diesel-rs/diesel-dynamic-schema" }
 futures = "0.1.21"

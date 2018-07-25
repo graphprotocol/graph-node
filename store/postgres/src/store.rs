@@ -196,7 +196,11 @@ impl BasicStore for Store {
 
         // Add specified filter to query
         if let Some(filter) = query.filter {
-            diesel_query = store_filter(diesel_query, filter);
+            diesel_query = store_filter(diesel_query, filter).map_err(|e| {
+                error!(self.logger, "value does not support this filter";
+                                    "value" => format!("{:?}", e.value),
+                                    "filter" => e.filter)
+            })?;
         }
 
         // Add order by filters to query
