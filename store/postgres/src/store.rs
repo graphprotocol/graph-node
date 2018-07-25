@@ -96,7 +96,7 @@ impl Store {
     }
 
     /// Handles block reorganizations.
-    /// Revert all store change events related to given block
+    /// Revert all store events related to the given block
     pub fn revert_events(&self, block_hash: String) {
         select(revert_block(block_hash))
             .execute(&self.conn)
@@ -195,7 +195,7 @@ impl BasicStore for Store {
                     EventSource::LocalProcess(process) => process,
                 };
 
-                // Set session variable current_event_source to revision
+                // Set session variable to store the source of the event
                 select(set_config(
                     "vars.current_event_source",
                     block_identifier,
