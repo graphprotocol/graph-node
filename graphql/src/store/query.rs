@@ -80,7 +80,7 @@ fn build_filter_from_object(
                     GreaterThan => StoreFilter::GreaterThan(attribute, store_value),
                     LessThan => StoreFilter::LessThan(attribute, store_value),
                     GreaterOrEqual => StoreFilter::GreaterOrEqual(attribute, store_value),
-                    LessThanOrEqual => StoreFilter::LessThanOrEqual(attribute, store_value),
+                    LessOrEqual => StoreFilter::LessOrEqual(attribute, store_value),
                     In => StoreFilter::In(attribute, list_values(store_value)),
                     NotIn => StoreFilter::NotIn(attribute, list_values(store_value)),
                     Contains => StoreFilter::Contains(attribute, store_value),

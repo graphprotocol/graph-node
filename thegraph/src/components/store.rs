@@ -24,7 +24,7 @@ pub enum StoreFilter {
     GreaterThan(Attribute, Value),
     LessThan(Attribute, Value),
     GreaterOrEqual(Attribute, Value),
-    LessThanOrEqual(Attribute, Value),
+    LessOrEqual(Attribute, Value),
     In(Attribute, Vec<Value>),
     NotIn(Attribute, Vec<Value>),
     Contains(Attribute, Value),

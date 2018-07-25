@@ -937,7 +937,7 @@ fn find_int_less_or_equal() {
         let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::LessThanOrEqual(
+            filter: Some(StoreFilter::And(vec![StoreFilter::LessOrEqual(
                 "age".to_string(),
                 Value::Int(43 as i32),
             )])),
