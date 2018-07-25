@@ -293,8 +293,84 @@ fn store_filter_by_mode<'a>(
                 })
             }
         },
+        // Is `attribute` equal to some `v` in `query_values`?
+        StoreFilter::In(attribute, query_values) => {
+            query_values.into_iter().try_fold(query, |q, v| {
+                store_filter_by_mode(q, StoreFilter::Equal(attribute.clone(), v), FilterMode::Or)
+            })?
+        }
+        // Is `attribute` different from all `query_values`?
+        StoreFilter::NotIn(attribute, query_values) => {
+            query_values.into_iter().try_fold(query, |q, v| {
+                store_filter_by_mode(q, StoreFilter::Not(attribute.clone(), v), FilterMode::And)
+            })?
+        }
+        StoreFilter::StartsWith(..) | StoreFilter::NotStartsWith(..) => {
+            let (attribute, op, value) = match filter {
+                StoreFilter::StartsWith(attribute, value) => (attribute, "LIKE", value),
+                StoreFilter::NotStartsWith(attribute, value) => (attribute, "NOT LIKE", value),
+                _ => unreachable!(),
+            };
+            match value {
+                Value::String(query_value) => add_filter(
+                    query,
+                    filter_mode,
+                    sql("data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(op)
+                        .bind::<Text, _>(format!("{}%", query_value)),
+                ),
+                Value::List(_)
+                | Value::Null
+                | Value::Float(_)
+                | Value::Int(_)
+                | Value::Bool(_)
+                | Value::BigInt(_)
+                | Value::Bytes(_) => {
+                    return Err(UnsupportedFilter {
+                        filter: if op == "LIKE" {
+                            "starts_with"
+                        } else {
+                            "not_starts_with"
+                        }.to_owned(),
+                        value,
+                    })
+                }
+            }
+        }
 
-        // We will add support for more filters later
-        _ => unimplemented!(),
+        StoreFilter::EndsWith(..) | StoreFilter::NotEndsWith(..) => {
+            let (attribute, op, value) = match filter {
+                StoreFilter::StartsWith(attribute, value) => (attribute, "LIKE", value),
+                StoreFilter::NotStartsWith(attribute, value) => (attribute, "NOT LIKE", value),
+                _ => unreachable!(),
+            };
+            match value {
+                Value::String(query_value) => add_filter(
+                    query,
+                    filter_mode,
+                    sql("data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(op)
+                        .bind::<Text, _>(format!("%{}", query_value)),
+                ),
+                Value::List(_)
+                | Value::Null
+                | Value::Float(_)
+                | Value::Int(_)
+                | Value::Bool(_)
+                | Value::BigInt(_)
+                | Value::Bytes(_) => {
+                    return Err(UnsupportedFilter {
+                        filter: if op == "LIKE" {
+                            "ends_with"
+                        } else {
+                            "not_ends_with"
+                        }.to_owned(),
+                        value,
+                    })
+                }
+            }
+        }
     })
 }
