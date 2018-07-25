@@ -190,8 +190,8 @@ impl BasicStore for Store {
             .transaction::<usize, result::Error, _>(|| {
                 // Convert event source to String for insert
                 let block_identifier = match input_event_source {
-                    // Use LowerHex to format hash as hex string with leading "0x"
-                    EventSource::EthereumBlock(hash) => format!("{:#x}", hash),
+                    // Use LowerHex to format hash as hex string
+                    EventSource::EthereumBlock(hash) => format!("{:x}", hash),
                     EventSource::LocalProcess(process) => process,
                 };
 
