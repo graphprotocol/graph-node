@@ -52,7 +52,7 @@ pub(crate) fn store_filter<'a>(
             Value::Null | Value::Float(_) | Value::Int(_) | Value::Bool(_) | Value::BigInt(_) => {
                 return Err(UnsupportedFilter {
                     filter: "contains".to_owned(),
-                    value: value.clone(),
+                    value,
                 })
             }
         },
@@ -135,90 +135,59 @@ pub(crate) fn store_filter<'a>(
                 ),
             }
         }
-        StoreFilter::GreaterThan(attribute, value) => match value {
-            Value::String(query_value) => query.filter(
-                sql("data ->> ")
+        StoreFilter::GreaterThan(..)
+        | StoreFilter::LessThan(..)
+        | StoreFilter::GreaterOrEqual(..)
+        | StoreFilter::LessOrEqual(..) => {
+            let (attribute, op, value) = match filter {
+                StoreFilter::GreaterThan(attribute, value) => (attribute, ">", value),
+                StoreFilter::LessThan(attribute, value) => (attribute, "<", value),
+                StoreFilter::GreaterOrEqual(attribute, value) => (attribute, ">=", value),
+                StoreFilter::LessOrEqual(attribute, value) => (attribute, "<=", value),
+                _ => unreachable!(),
+            };
+            match value {
+                Value::String(query_value) => query.filter(
+                    sql("data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(op)
+                        .bind::<Text, _>(query_value),
+                ),
+                Value::Float(query_value) => query.filter(
+                    sql("(data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(")")
+                        .sql("::float")
+                        .sql(op)
+                        .bind::<Float, _>(query_value as f32),
+                ),
+                Value::Int(query_value) => query.filter(
+                    sql("(data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(")")
+                        .sql("::int")
+                        .sql(op)
+                        .bind::<Integer, _>(query_value),
+                ),
+                Value::BigInt(query_value) => query.filter(
+                    sql("(data ->> ")
                     .bind::<Text, _>(attribute)
-                    .sql(" > ")
-                    .bind::<Text, _>(query_value),
-            ),
-            Value::Float(query_value) => query.filter(
-                sql("(data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(")::float > ")
-                    .bind::<Float, _>(query_value as f32),
-            ),
-            Value::Int(query_value) => query.filter(
-                sql("(data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(")::int > ")
-                    .bind::<Integer, _>(query_value),
-            ),
-            _ => unimplemented!(),
-        },
-        StoreFilter::LessThan(attribute, value) => match value {
-            Value::String(query_value) => query.filter(
-                sql("data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(" < ")
-                    .bind::<Text, _>(query_value),
-            ),
-            Value::Float(query_value) => query.filter(
-                sql("(data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(")::float < ")
-                    .bind::<Float, _>(query_value as f32),
-            ),
-            Value::Int(query_value) => query.filter(
-                sql("(data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(")::int < ")
-                    .bind::<Integer, _>(query_value),
-            ),
-            _ => unimplemented!(),
-        },
-        StoreFilter::GreaterOrEqual(attribute, value) => match value {
-            Value::String(query_value) => query.filter(
-                sql("data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(" >= ")
-                    .bind::<Text, _>(query_value),
-            ),
-            Value::Float(query_value) => query.filter(
-                sql("(data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(")::float >= ")
-                    .bind::<Float, _>(query_value as f32),
-            ),
-            Value::Int(query_value) => query.filter(
-                sql("(data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(")::int >= ")
-                    .bind::<Integer, _>(query_value),
-            ),
-            _ => unimplemented!(),
-        },
-        StoreFilter::LessThanOrEqual(attribute, value) => match value {
-            Value::String(query_value) => query.filter(
-                sql("data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(" <= ")
-                    .bind::<Text, _>(query_value),
-            ),
-            Value::Float(query_value) => query.filter(
-                sql("(data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(")::float <= ")
-                    .bind::<Float, _>(query_value as f32),
-            ),
-            Value::Int(query_value) => query.filter(
-                sql("(data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(")::int <= ")
-                    .bind::<Integer, _>(query_value),
-            ),
-            _ => unimplemented!(),
-        },
+                .sql(")")
+                .sql("::numeric")
+                .sql(op)
+                // Using `BigDecimal::new(query_value.0, 0)` results in a
+                // mismatch of `bignum` versions, go through the string
+                // representation to work around that.
+                .bind::<Numeric, _>(BigDecimal::from_str(&query_value.to_string()).unwrap()),
+                ),
+                Value::Null | Value::Bool(_) | Value::List(_) | Value::Bytes(_) => {
+                    return Err(UnsupportedFilter {
+                        filter: op.to_owned(),
+                        value,
+                    })
+                }
+            }
+        }
         StoreFilter::NotContains(attribute, value) => match value {
             Value::String(query_value) => query.filter(
                 sql("data ->> ")
