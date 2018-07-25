@@ -153,7 +153,7 @@ fn delete_entity() {
             entity: String::from("user"),
             id: String::from("3"),
         };
-        let source = EventSource::LocalProcess(String::from("delete_operation"));
+        let source = EventSource::LocalProcess(String::from("test_delete_operation"));
         store.delete(test_key, source).unwrap();
 
         //Get all ids in table
@@ -279,13 +279,14 @@ fn partially_update_existing() {
         ]);
 
         let original_entity = store.get(entity_key.clone()).unwrap();
-
+        let block_hash = String::from("mcj8jfeh8cje8");
+        let event_source = EventSource::LocalProcess(String::from(block_hash));
         // Verify that the entity before updating is different from what we expect afterwards
         assert_ne!(original_entity, partial_entity);
 
         // Set test entity; as the entity already exists an update should be performed
         store
-            .set(entity_key.clone(), partial_entity.clone())
+            .set(entity_key.clone(), partial_entity.clone(), event_source)
             .expect("Failed to update entity that already exists");
 
         // Obtain the updated entity from the store
@@ -310,7 +311,7 @@ fn find_string_contains() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Contains(
@@ -321,7 +322,7 @@ fn find_string_contains() {
             order_direction: None,
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Make sure the first user in the result vector is "Cindini"
@@ -339,7 +340,7 @@ fn find_string_equal() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
@@ -350,7 +351,7 @@ fn find_string_equal() {
             order_direction: None,
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Make sure the first user in the result vector is "Cindini"
@@ -368,7 +369,7 @@ fn find_string_not_equal() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
@@ -379,7 +380,7 @@ fn find_string_not_equal() {
             order_direction: None,
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Cindini"; fail if it is
@@ -400,7 +401,7 @@ fn find_string_greater_than() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
@@ -411,7 +412,7 @@ fn find_string_greater_than() {
             order_direction: None,
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Cindini"; fail if it is
@@ -432,7 +433,7 @@ fn find_string_less_than() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
@@ -443,7 +444,7 @@ fn find_string_less_than() {
             order_direction: None,
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Cindini"; fail if it is
@@ -464,7 +465,7 @@ fn find_string_less_than_order_by_asc() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
@@ -475,7 +476,7 @@ fn find_string_less_than_order_by_asc() {
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let result = new_store
+        let result = store
             .find(this_query)
             .expect("Failed to fetch entities from the store");
 
@@ -505,7 +506,7 @@ fn find_string_less_than_order_by_desc() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
@@ -516,7 +517,7 @@ fn find_string_less_than_order_by_desc() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = new_store
+        let result = store
             .find(this_query)
             .expect("Failed to fetch entities from the store");
 
@@ -546,7 +547,7 @@ fn find_string_less_than_range() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
@@ -557,7 +558,7 @@ fn find_string_less_than_range() {
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 1, skip: 1 }),
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Johnton"
@@ -578,7 +579,7 @@ fn find_string_multiple_and() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![
@@ -589,7 +590,7 @@ fn find_string_multiple_and() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Cindini"
@@ -610,7 +611,7 @@ fn find_float_equal() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
@@ -621,7 +622,7 @@ fn find_float_equal() {
             order_direction: None,
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Johnton"
@@ -642,7 +643,7 @@ fn find_float_not_equal() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
@@ -653,7 +654,7 @@ fn find_float_not_equal() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Shaqueeena"
@@ -674,7 +675,7 @@ fn find_float_greater_than() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
@@ -685,7 +686,7 @@ fn find_float_greater_than() {
             order_direction: None,
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Johnton"
@@ -706,7 +707,7 @@ fn find_float_less_than() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
@@ -717,7 +718,7 @@ fn find_float_less_than() {
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Cindini";
@@ -738,7 +739,7 @@ fn find_float_less_than_order_by_desc() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
@@ -749,7 +750,7 @@ fn find_float_less_than_order_by_desc() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Shaqueeena"
@@ -770,7 +771,7 @@ fn find_float_less_than_range() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
@@ -781,7 +782,7 @@ fn find_float_less_than_range() {
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 1, skip: 1 }),
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
         // Check if the first user in the result vector is "Cindini"
         let returned_entities = result.unwrap();
@@ -801,7 +802,7 @@ fn find_int_equal() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
@@ -812,7 +813,7 @@ fn find_int_equal() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Shaqueeena"
@@ -833,7 +834,7 @@ fn find_int_not_equal() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
@@ -844,7 +845,7 @@ fn find_int_not_equal() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Shaqueeena"
@@ -865,7 +866,7 @@ fn find_int_greater_than() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
@@ -876,7 +877,7 @@ fn find_int_greater_than() {
             order_direction: None,
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Johnton"
@@ -897,7 +898,7 @@ fn find_int_greater_or_equal() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterOrEqual(
@@ -908,7 +909,7 @@ fn find_int_greater_or_equal() {
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Cindini"
@@ -929,7 +930,7 @@ fn find_int_less_than() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
@@ -940,7 +941,7 @@ fn find_int_less_than() {
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Cindini"
@@ -961,7 +962,7 @@ fn find_int_less_or_equal() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessOrEqual(
@@ -972,7 +973,7 @@ fn find_int_less_or_equal() {
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Cindini";
@@ -993,7 +994,7 @@ fn find_int_less_than_order_by_desc() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
@@ -1004,7 +1005,7 @@ fn find_int_less_than_order_by_desc() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Shaqueeena"
@@ -1025,7 +1026,7 @@ fn find_int_less_than_range() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
@@ -1036,7 +1037,7 @@ fn find_int_less_than_range() {
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 1, skip: 1 }),
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Johnton"
@@ -1057,7 +1058,7 @@ fn find_bool_equal() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
@@ -1068,7 +1069,7 @@ fn find_bool_equal() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Cindini"
@@ -1089,7 +1090,7 @@ fn find_bool_not_equal() {
         let core = Core::new().unwrap();
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
@@ -1100,7 +1101,7 @@ fn find_bool_not_equal() {
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector is "Johnton"
@@ -1119,9 +1120,9 @@ fn find_bool_not_equal() {
 fn revert_block() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
@@ -1134,9 +1135,10 @@ fn revert_block() {
         };
 
         // Revert all events associated with event_source, "znuyjijnezBiGFuZAW9Q"
-        new_store.revert_events("znuyjijnezBiGFuZAW9Q".to_string());
+        store.revert_events("znuyjijnezBiGFuZAW9Q".to_string());
 
-        let result = new_store.find(this_query);
+        println!("revert run success i think?");
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if the first user in the result vector has email "queensha@email.com"
@@ -1156,9 +1158,9 @@ fn revert_block() {
 fn revert_block_with_delete() {
     run_test(|| {
         let core = Core::new().unwrap();
-        let logger = logger();
+        let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let mut new_store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+        let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
@@ -1176,12 +1178,12 @@ fn revert_block_with_delete() {
             id: "2".to_string(),
         };
         let source = EventSource::LocalProcess(String::from("delete_operation"));
-        new_store.delete(del_key, source).unwrap();
+        store.delete(del_key, source).unwrap();
 
         // Revert all events associated with our custom event_source, "delete_operation"
-        new_store.revert_events("delete_operation".to_string());
+        store.revert_events("delete_operation".to_string());
 
-        let result = new_store.find(this_query);
+        let result = store.find(this_query);
         assert!(result.is_ok());
 
         // Check if "cindini@email.com" is in result set
@@ -1194,5 +1196,55 @@ fn revert_block_with_delete() {
 
         // There should be one entity returned in results
         assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn revert_block_with_partial_update() {
+    run_test(|| {
+        let core = Core::new().unwrap();
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
+
+        let entity_key = StoreKey {
+            entity: String::from("user"),
+            id: String::from("1"),
+        };
+
+        let partial_entity = Entity::from(vec![
+            ("id", Value::from("1")),
+            ("name", Value::from("Johnny Boy")),
+            ("email", Value::Null),
+        ]);
+
+        let original_entity = store.get(entity_key.clone()).unwrap();
+        let block_hash = String::from("mcj8jfeh8cje8");
+        let event_source = EventSource::LocalProcess(String::from(block_hash));
+
+        // Verify that the entity before updating is different from what we expect afterwards
+        assert_ne!(original_entity, partial_entity);
+
+        // Set test entity; as the entity already exists an update should be performed
+        store
+            .set(entity_key.clone(), partial_entity.clone(), event_source)
+            .expect("Failed to update entity that already exists");
+
+        //Perform revert operation, reversing the partial update
+        store.revert_events("mcj8jfeh8cje8".to_string());
+
+        // Obtain the reverted entity from the store
+        let reverted_entity = store.get(entity_key).unwrap();
+
+        // Verify that the values of all attributes we have updated have been
+        // reverted to their original values
+        assert_eq!(reverted_entity.get("id"), original_entity.get("id"));
+        assert_eq!(reverted_entity.get("user"), original_entity.get("user"));
+        assert_eq!(reverted_entity.get("email"), original_entity.get("email"));
+
+        // Verify that all attributes we did not update remain at their old values
+        assert_eq!(reverted_entity.get("age"), original_entity.get("age"));
+        assert_eq!(reverted_entity.get("weight"), original_entity.get("weight"));
+        assert_eq!(reverted_entity.get("coffee"), original_entity.get("coffee"));
     })
 }
