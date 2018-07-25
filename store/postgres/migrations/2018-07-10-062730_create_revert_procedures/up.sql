@@ -9,7 +9,7 @@
 * Parameters: entity_history.id (primary key)
 *             operation_id
 **************************************************************/
-CREATE OR REPLACE FUNCTION revert_row_event(input_entity_history_id INTEGER, input_operation_id INTEGER)
+CREATE OR REPLACE FUNCTION revert_entity_event(input_entity_history_id INTEGER, input_operation_id INTEGER)
     RETURNS VOID AS
 $$
 DECLARE
@@ -18,6 +18,7 @@ DECLARE
     target_entity VARCHAR;
     target_data_before JSONB;
 BEGIN
+    -- Get entity history event information and save into the declared variables
     SELECT
         entity_id,
         data_source,
@@ -74,16 +75,18 @@ $$ LANGUAGE plpgsql;
 * REVERT TRANSACTION
 *
 * Get all row level events associated with a SQL transaction
-* For each row level event call revert_row_event()
+* For each row level event call revert_entity_event()
 * Parameters: event_id
 **************************************************************/
 CREATE OR REPLACE FUNCTION revert_transaction(input_event_id INTEGER)
     RETURNS VOID AS
 $$
 DECLARE
-    row RECORD;
+    entity_history_row RECORD;
 BEGIN
-    FOR row IN
+    -- Loop through each record change even
+    FOR entity_history_row IN
+        -- Get all entity changes driven by given event
         SELECT
             entity_history.id as id,
             event_meta_data.op_id as op_id
@@ -92,8 +95,9 @@ BEGIN
             event_meta_data.id=entity_history.event_id
         WHERE event_meta_data.id = input_event_id
         ORDER BY entity_history.id DESC
+    -- Iterate over entity changes and revert each
     LOOP
-        PERFORM revert_row_event(row.id, row.op_id);
+        PERFORM revert_entity_event(row.id, row.op_id);
     END LOOP;
 END;
 $$ LANGUAGE plpgsql;
@@ -102,16 +106,16 @@ $$ LANGUAGE plpgsql;
 * REVERT TRANSACTION GROUP
 *
 * Get all row level events associated with a set of SQL transactions
-* For each row level event call revert_row_event()
+* For each row level event call revert_entity_event()
 * Parameters: array of event_id's
 **************************************************************/
 CREATE OR REPLACE FUNCTION revert_transaction_group(input_event_ids INTEGER[])
     RETURNS VOID AS
 $$
 DECLARE
-    row RECORD;
+    entity_history_row RECORD;
 BEGIN
-    FOR row IN
+    FOR entity_history_row IN
         SELECT
             entity_history.id as id,
             event_meta_data.op_id as op_id
@@ -121,7 +125,7 @@ BEGIN
         WHERE event_meta_data.id = ANY(input_event_ids)
         ORDER BY entity_history.id DESC
     LOOP
-        PERFORM revert_row_event(row.id, row.op_id);
+        PERFORM revert_entity_event(row.id, row.op_id);
     END LOOP;
 END;
 $$ LANGUAGE plpgsql;
@@ -175,9 +179,9 @@ BEGIN
 
         -- DELETE case
         WHEN input_operation_id = 2 THEN
-            -- Insert deleted row if not exists
-            -- If row exists perform update
+            -- Delete entity
             BEGIN
+                -- Set event source as "REVERSION"
                 PERFORM set_config('vars.current_event_source', 'REVERSION', FALSE);
                 EXECUTE
                     'DELETE FROM entities WHERE (
@@ -209,6 +213,7 @@ DECLARE
     entity_event_row RECORD;
 BEGIN
      FOR entity_event_row IN
+        -- Get all events that effect given entity and come after given event
         SELECT
             entity_history.id as id,
             event_meta_data.op_id as op_id
@@ -225,6 +230,7 @@ BEGIN
             entity_history.reversion = FALSE )
         ORDER BY entity_history.id ASC
     LOOP
+        -- For each event rerun the operation
         PERFORM rerun_row_event(entity_event_row.id, entity_event_row.op_id);
     END LOOP;
 END;
@@ -245,6 +251,7 @@ DECLARE
     entity_row RECORD;
 BEGIN
     FOR event_row IN
+        -- Get all events associated with the given block
         SELECT
             entity_history.event_id as event_id
         FROM entity_history
@@ -254,6 +261,7 @@ BEGIN
         GROUP BY
             entity_history.event_id
         ORDER BY entity_history.event_id DESC
+    -- For each event perform the reverse operation
     LOOP
         PERFORM revert_transaction(event_row.event_id::integer);
     END LOOP;

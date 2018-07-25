@@ -1170,6 +1170,7 @@ fn revert_block_with_delete() {
             range: None,
         };
 
+        //Delete an entity using custom event source "delete_operation"
         let del_key = StoreKey {
             entity: "user".to_string(),
             id: "2".to_string(),
@@ -1177,12 +1178,12 @@ fn revert_block_with_delete() {
         let source = EventSource::LocalProcess(String::from("delete_operation"));
         new_store.delete(del_key, source).unwrap();
 
-        // Revert all events associated with event_source, "b7kJ8ghP6PSITWx4lUZB"
+        // Revert all events associated with our custom event_source, "delete_operation"
         new_store.revert_events("delete_operation".to_string());
 
         let result = new_store.find(this_query);
         assert!(result.is_ok());
-        println!("RESULT {:?}", &result);
+
         // Check if "cindini@email.com" is in result set
         let returned_entities = result.unwrap();
         let returned_name = returned_entities[0].get(&"email".to_string());
@@ -1191,7 +1192,7 @@ fn revert_block_with_delete() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be one entity returned in results
         assert_eq!(1, returned_entities.len());
     })
 }
