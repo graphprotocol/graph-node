@@ -17,6 +17,7 @@ DECLARE
     target_data_source VARCHAR;
     target_entity VARCHAR;
     target_data_before JSONB;
+    reversion_identifier VARCHAR;
 BEGIN
     -- Get entity history event information and save into the declared variables
     SELECT
@@ -31,6 +32,8 @@ BEGIN
         target_data_before
     FROM entity_history
     WHERE entity_history.id = input_entity_history_id;
+
+    reversion_identifier := 'REVERSION';
 
     CASE
         -- INSERT case
@@ -58,14 +61,15 @@ BEGIN
             BEGIN
                 EXECUTE
                     'INSERT INTO entities (id, data_source, entity, data, event_source)
-                        VALUES ($1, $2, $3, $4, NULL)
+                        VALUES ($1, $2, $3, $4, $5)
                         ON CONFLICT (id, data_source, entity) DO UPDATE
-                        SET data = $4, event_source = NULL'
+                        SET data = $4, event_source = $5'
                 USING
                     target_entity_id,
                     target_data_source,
                     target_entity,
-                    target_data_before;
+                    target_data_before,
+                    reversion_identifier;
             END;
     END CASE;
 END;
@@ -97,7 +101,7 @@ BEGIN
         ORDER BY entity_history.id DESC
     -- Iterate over entity changes and revert each
     LOOP
-        PERFORM revert_entity_event(row.id, row.op_id);
+        PERFORM revert_entity_event(entity_history_row.id, entity_history_row.op_id);
     END LOOP;
 END;
 $$ LANGUAGE plpgsql;
