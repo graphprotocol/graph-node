@@ -12,6 +12,7 @@ extern crate tokio;
 extern crate tokio_core;
 
 pub mod db_schema;
+mod filter;
 pub mod functions;
 pub mod models;
 pub mod store;
