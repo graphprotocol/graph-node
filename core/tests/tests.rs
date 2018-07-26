@@ -64,7 +64,7 @@ fn multiple_data_sets_per_data_source() {
 
     // Replace "link to" placeholders in the data source definition with hashes
     // of files just added into a local IPFS daemon on port 5001.
-    let resolver = IpfsClient::default();
+    let resolver = Arc::new(IpfsClient::default());
     let mut data_source_string =
         std::fs::read_to_string("tests/datasource-two-datasets/two-datasets.yaml").unwrap();
     for file in &[
@@ -86,7 +86,12 @@ fn multiple_data_sets_per_data_source() {
     let eth_adapter = Arc::new(Mutex::new(MockEthereumAdapter {
         received_subscriptions: vec![],
     }));
-    let host_builder = RuntimeHostBuilder::new(&logger, core.handle(), eth_adapter.clone());
+    let host_builder = RuntimeHostBuilder::new(
+        &logger,
+        core.handle(),
+        eth_adapter.clone(),
+        resolver.clone(),
+    );
 
     let fake_store = Arc::new(Mutex::new(FakeStore));
     let manager = RuntimeManager::new(&logger, core.handle(), fake_store, host_builder);
@@ -97,7 +102,7 @@ fn multiple_data_sets_per_data_source() {
         Link {
             link: data_source_link,
         },
-        &resolver,
+        &*resolver,
     )).expect("failed to load data source");
 
     // Send the new data source to the manager.

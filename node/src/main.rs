@@ -163,6 +163,7 @@ fn main() {
         &logger,
         core.handle(),
         Arc::new(Mutex::new(ethereum_watcher)),
+        Arc::new(resolver),
     );
     let runtime_manager = thegraph_core::RuntimeManager::new(
         &logger,

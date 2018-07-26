@@ -1,6 +1,7 @@
 use ethereum_types::{H160, H256, U256};
 use futures::prelude::*;
 use futures::sync::mpsc::Sender;
+use serde_json;
 use slog::Logger;
 use std::collections::HashMap;
 use std::fmt;
@@ -76,29 +77,33 @@ const TYPE_CONVERSION_H160_TO_H256_FUNC_INDEX: usize = 10;
 const TYPE_CONVERSION_U256_TO_H160_FUNC_INDEX: usize = 11;
 const TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX: usize = 12;
 const TYPE_CONVERSION_INT256_TO_BIG_INT_FUNC_INDEX: usize = 13;
+const JSON_FROM_BYTES_FUNC_INDEX: usize = 14;
+const IPFS_CAT_FUNC_INDEX: usize = 15;
 
-pub struct WasmiModuleConfig<T> {
+pub struct WasmiModuleConfig<T, L> {
     pub data_source: DataSourceDefinition,
     pub data_set: DataSet,
     pub runtime: Handle,
     pub event_sink: Sender<RuntimeHostEvent>,
     pub ethereum_adapter: Arc<Mutex<T>>,
+    pub link_resolver: Arc<L>,
 }
 
 /// A WASM module based on wasmi that powers a data source runtime.
-pub struct WasmiModule<T> {
+pub struct WasmiModule<T, L> {
     pub logger: Logger,
     pub module: ModuleRef,
-    externals: HostExternals<T>,
+    externals: HostExternals<T, L>,
     heap: WasmiAscHeap,
 }
 
-impl<T> WasmiModule<T>
+impl<T, L> WasmiModule<T, L>
 where
     T: EthereumAdapter,
+    L: LinkResolver,
 {
     /// Creates a new wasmi module
-    pub fn new(logger: &Logger, config: WasmiModuleConfig<T>) -> Self {
+    pub fn new(logger: &Logger, config: WasmiModuleConfig<T, L>) -> Self {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
         let module = Module::from_parity_wasm_module(config.data_set.mapping.runtime.clone())
@@ -115,6 +120,8 @@ where
         imports.push_resolver("database", &StoreModuleResolver);
         imports.push_resolver("ethereum", &EthereumModuleResolver);
         imports.push_resolver("typeConversion", &TypeConversionModuleResolver);
+        imports.push_resolver("json", &JsonModuleResolver);
+        imports.push_resolver("ipfs", &IpfsModuleResolver);
 
         // Instantiate the runtime module using hosted functions and import resolver
         let module =
@@ -141,6 +148,7 @@ where
             event_sink: config.event_sink.clone(),
             heap: heap.clone(),
             ethereum_adapter: config.ethereum_adapter.clone(),
+            link_resolver: config.link_resolver.clone(),
         };
 
         let module = module
@@ -173,18 +181,22 @@ where
 
 /// Error raised in host functions.
 #[derive(Debug)]
-struct HostExternalsError(String);
+struct HostExternalsError<E>(E);
 
-impl HostError for HostExternalsError {}
+impl<E> HostError for HostExternalsError<E>
+where
+    E: fmt::Debug + fmt::Display + Send + Sync + 'static,
+{
+}
 
-impl fmt::Display for HostExternalsError {
+impl<E: fmt::Display> fmt::Display for HostExternalsError<E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
 /// Hosted functions for external use by wasm module
-pub struct HostExternals<T> {
+pub struct HostExternals<T, L> {
     logger: Logger,
     runtime: Handle,
     data_source: DataSourceDefinition,
@@ -192,11 +204,13 @@ pub struct HostExternals<T> {
     event_sink: Sender<RuntimeHostEvent>,
     heap: WasmiAscHeap,
     ethereum_adapter: Arc<Mutex<T>>,
+    link_resolver: Arc<L>,
 }
 
-impl<T> HostExternals<T>
+impl<T, L> HostExternals<T, L>
 where
     T: EthereumAdapter,
+    L: LinkResolver,
 {
     /// function database.create(blockHash: H256, entity: string, id: string, data: Entity): void
     fn database_create(
@@ -479,11 +493,31 @@ where
 
         Ok(Some(RuntimeValue::from(hex_string_obj)))
     }
+
+    // function json.fromBytes(bytes: Bytes): JSONValue
+    fn json_from_bytes(&self, bytes_ptr: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
+        let bytes: Vec<u8> = self.heap.asc_get(bytes_ptr);
+        let json: serde_json::Value = serde_json::from_reader(&*bytes).map_err(HostExternalsError)?;
+        let json_obj = self.heap.asc_new(&json);
+        Ok(Some(RuntimeValue::from(json_obj)))
+    }
+
+    // function ipfs.cat(link: String): Bytes
+    fn ipfs_cat(&self, link_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
+        let link = self.heap.asc_get(link_ptr);
+        let bytes = self.link_resolver
+            .cat(&Link { link })
+            .wait()
+            .map_err(|e| HostExternalsError(e.to_string()))?;
+        let bytes_obj: AscPtr<Uint8Array> = self.heap.asc_new(&*bytes);
+        Ok(Some(RuntimeValue::from(bytes_obj)))
+    }
 }
 
-impl<T> Externals for HostExternals<T>
+impl<T, L> Externals for HostExternals<T, L>
 where
     T: EthereumAdapter,
+    L: LinkResolver,
 {
     fn invoke_index(
         &mut self,
@@ -526,6 +560,8 @@ where
             TYPE_CONVERSION_INT256_TO_BIG_INT_FUNC_INDEX => {
                 self.int256_to_big_int(args.nth_checked(0)?)
             }
+            JSON_FROM_BYTES_FUNC_INDEX => self.json_from_bytes(args.nth_checked(0)?),
+            IPFS_CAT_FUNC_INDEX => self.ipfs_cat(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -675,6 +711,44 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
     }
 }
 
+struct JsonModuleResolver;
+
+impl ModuleImportResolver for JsonModuleResolver {
+    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
+        Ok(match field_name {
+            "fromBytes" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                JSON_FROM_BYTES_FUNC_INDEX,
+            ),
+            _ => {
+                return Err(Error::Instantiation(format!(
+                    "Export '{}' not found",
+                    field_name
+                )))
+            }
+        })
+    }
+}
+
+struct IpfsModuleResolver;
+
+impl ModuleImportResolver for IpfsModuleResolver {
+    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
+        Ok(match field_name {
+            "cat" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                IPFS_CAT_FUNC_INDEX,
+            ),
+            _ => {
+                return Err(Error::Instantiation(format!(
+                    "Export '{}' not found",
+                    field_name
+                )))
+            }
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate graphql_parser;
@@ -720,6 +794,14 @@ mod tests {
 
         fn unsubscribe_from_event(&mut self, _subscription_id: String) -> bool {
             false
+        }
+    }
+
+    struct FakeLinkResolver;
+
+    impl LinkResolver for FakeLinkResolver {
+        fn cat(&self, _: &Link) -> Box<Future<Item = Vec<u8>, Error = Box<::std::error::Error>>> {
+            unimplemented!()
         }
     }
 
@@ -781,6 +863,7 @@ mod tests {
                 runtime: core.handle(),
                 event_sink: sender,
                 ethereum_adapter: mock_ethereum_adapter,
+                link_resolver: Arc::new(FakeLinkResolver),
             },
         );
 
@@ -825,6 +908,7 @@ mod tests {
                 runtime: core.handle(),
                 event_sink: sender,
                 ethereum_adapter: mock_ethereum_adapter,
+                link_resolver: Arc::new(FakeLinkResolver),
             },
         );
 
