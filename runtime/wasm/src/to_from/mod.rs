@@ -87,6 +87,12 @@ impl ToAscObj<AscString> for str {
     }
 }
 
+impl ToAscObj<AscString> for String {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscString {
+        self.as_str().to_asc_obj(heap)
+    }
+}
+
 impl FromAscObj<AscString> for String {
     fn from_asc_obj<H: AscHeap>(asc_string: AscString, _: &H) -> Self {
         String::from_utf16(&asc_string.content).expect("asc string was not UTF-16")
@@ -116,6 +122,17 @@ impl<K: AscType, V: AscType, T: FromAscObj<K>, U: FromAscObj<V>> FromAscObj<AscT
 {
     fn from_asc_obj<H: AscHeap>(asc_entry: AscTypedMapEntry<K, V>, heap: &H) -> Self {
         (heap.asc_get(asc_entry.key), heap.asc_get(asc_entry.value))
+    }
+}
+
+impl<'a, 'b, K: AscType, V: AscType, T: ToAscObj<K>, U: ToAscObj<V>>
+    ToAscObj<AscTypedMapEntry<K, V>> for (&'a T, &'b U)
+{
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscTypedMapEntry<K, V> {
+        AscTypedMapEntry {
+            key: heap.asc_new(self.0),
+            value: heap.asc_new(self.1),
+        }
     }
 }
 
