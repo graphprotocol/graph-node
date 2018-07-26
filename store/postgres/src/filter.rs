@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
 use db_schema::entities;
-use diesel::dsl::{not, sql};
+use diesel::dsl::{self, sql};
 use diesel::expression::NonAggregate;
 use diesel::pg::Pg;
 use diesel::prelude::*;
@@ -63,47 +63,60 @@ fn store_filter_by_mode<'a>(
         StoreFilter::Or(filters) => filters
             .into_iter()
             .try_fold(query, |q, f| store_filter_by_mode(q, f, FilterMode::Or))?,
-        StoreFilter::Contains(attribute, value) => match value {
-            Value::String(query_value) => add_filter(
-                query,
-                filter_mode,
-                sql("data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(" LIKE ")
-                    .bind::<Text, _>(query_value),
-            ),
-            Value::Bytes(query_value) => add_filter(
-                query,
-                filter_mode,
-                sql("data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(" LIKE ")
-                    .bind::<Text, _>(query_value.to_string()),
-            ),
-            Value::List(query_value) => {
-                let query_array =
-                    serde_json::to_string(&query_value).expect("Failed to serialize Value");
-                add_filter(
+        StoreFilter::Contains(..) | StoreFilter::NotContains(..) => {
+            let (attribute, not, value) = match filter {
+                StoreFilter::Contains(attribute, value) => (attribute, false, value),
+                StoreFilter::NotContains(attribute, value) => (attribute, true, value),
+                _ => unreachable!(),
+            };
+            let op = if not { " NOT LIKE " } else { " LIKE " };
+            match value {
+                Value::String(query_value) => add_filter(
                     query,
                     filter_mode,
-                    // Is `query_array` contained in array `data ->> attribute`?
                     sql("data ->> ")
                         .bind::<Text, _>(attribute)
+                        .sql(op)
+                        .bind::<Text, _>(query_value),
+                ),
+                Value::Bytes(query_value) => add_filter(
+                    query,
+                    filter_mode,
+                    sql("data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(op)
+                        .bind::<Text, _>(query_value.to_string()),
+                ),
+                Value::List(query_value) => {
+                    let query_array =
+                        serde_json::to_string(&query_value).expect("Failed to serialize Value");
+                    // Is `query_array` contained in array `data ->> attribute`?
+                    let predicate = sql("data ->> ")
+                        .bind::<Text, _>(attribute)
                         .sql(" @> ")
-                        .bind::<Text, _>(query_array),
-                )
+                        .bind::<Text, _>(query_array);
+                    if not {
+                        add_filter(query, filter_mode, dsl::not(predicate))
+                    } else {
+                        add_filter(query, filter_mode, predicate)
+                    }
+                }
+                Value::Null
+                | Value::Float(_)
+                | Value::Int(_)
+                | Value::Bool(_)
+                | Value::BigInt(_) => {
+                    return Err(UnsupportedFilter {
+                        filter: if not { "not_contains" } else { "contains" }.to_owned(),
+                        value,
+                    })
+                }
             }
-            Value::Null | Value::Float(_) | Value::Int(_) | Value::Bool(_) | Value::BigInt(_) => {
-                return Err(UnsupportedFilter {
-                    filter: "contains".to_owned(),
-                    value,
-                })
-            }
-        },
+        }
         StoreFilter::Equal(..) | StoreFilter::Not(..) => {
             let (attribute, op, value) = match filter {
-                StoreFilter::Equal(attribute, value) => (attribute, "=", value),
-                StoreFilter::Not(attribute, value) => (attribute, "!=", value),
+                StoreFilter::Equal(attribute, value) => (attribute, " = ", value),
+                StoreFilter::Not(attribute, value) => (attribute, " != ", value),
                 _ => unreachable!(),
             };
 
@@ -200,10 +213,10 @@ fn store_filter_by_mode<'a>(
         | StoreFilter::GreaterOrEqual(..)
         | StoreFilter::LessOrEqual(..) => {
             let (attribute, op, value) = match filter {
-                StoreFilter::GreaterThan(attribute, value) => (attribute, ">", value),
-                StoreFilter::LessThan(attribute, value) => (attribute, "<", value),
-                StoreFilter::GreaterOrEqual(attribute, value) => (attribute, ">=", value),
-                StoreFilter::LessOrEqual(attribute, value) => (attribute, "<=", value),
+                StoreFilter::GreaterThan(attribute, value) => (attribute, " > ", value),
+                StoreFilter::LessThan(attribute, value) => (attribute, " < ", value),
+                StoreFilter::GreaterOrEqual(attribute, value) => (attribute, " >= ", value),
+                StoreFilter::LessOrEqual(attribute, value) => (attribute, " <= ", value),
                 _ => unreachable!(),
             };
             match value {
@@ -256,43 +269,6 @@ fn store_filter_by_mode<'a>(
                 }
             }
         }
-        StoreFilter::NotContains(attribute, value) => match value {
-            Value::String(query_value) => add_filter(
-                query,
-                filter_mode,
-                sql("data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(" NOT LIKE ")
-                    .bind::<Text, _>(query_value),
-            ),
-            Value::Bytes(query_value) => add_filter(
-                query,
-                filter_mode,
-                sql("data ->> ")
-                    .bind::<Text, _>(attribute)
-                    .sql(" NOT LIKE ")
-                    .bind::<Text, _>(query_value.to_string()),
-            ),
-            Value::List(query_value) => {
-                let query_array =
-                    serde_json::to_string(&query_value).expect("Failed to serialize Value");
-                add_filter(
-                    query,
-                    filter_mode,
-                    // Is `query_array` _not_ contained in array `data ->> attribute`?
-                    not(sql("data ->> ")
-                        .bind::<Text, _>(attribute)
-                        .sql(" @> ")
-                        .bind::<Text, _>(query_array)),
-                )
-            }
-            Value::Null | Value::Float(_) | Value::Int(_) | Value::Bool(_) | Value::BigInt(_) => {
-                return Err(UnsupportedFilter {
-                    filter: "not_contains".to_owned(),
-                    value,
-                })
-            }
-        },
         // Is `attribute` equal to some `v` in `query_values`?
         StoreFilter::In(attribute, query_values) => {
             query_values.into_iter().try_fold(query, |q, v| {
@@ -307,8 +283,8 @@ fn store_filter_by_mode<'a>(
         }
         StoreFilter::StartsWith(..) | StoreFilter::NotStartsWith(..) => {
             let (attribute, op, value) = match filter {
-                StoreFilter::StartsWith(attribute, value) => (attribute, "LIKE", value),
-                StoreFilter::NotStartsWith(attribute, value) => (attribute, "NOT LIKE", value),
+                StoreFilter::StartsWith(attribute, value) => (attribute, " LIKE ", value),
+                StoreFilter::NotStartsWith(attribute, value) => (attribute, " NOT LIKE ", value),
                 _ => unreachable!(),
             };
             match value {
@@ -328,7 +304,7 @@ fn store_filter_by_mode<'a>(
                 | Value::BigInt(_)
                 | Value::Bytes(_) => {
                     return Err(UnsupportedFilter {
-                        filter: if op == "LIKE" {
+                        filter: if op == " LIKE " {
                             "starts_with"
                         } else {
                             "not_starts_with"
@@ -341,8 +317,8 @@ fn store_filter_by_mode<'a>(
 
         StoreFilter::EndsWith(..) | StoreFilter::NotEndsWith(..) => {
             let (attribute, op, value) = match filter {
-                StoreFilter::StartsWith(attribute, value) => (attribute, "LIKE", value),
-                StoreFilter::NotStartsWith(attribute, value) => (attribute, "NOT LIKE", value),
+                StoreFilter::StartsWith(attribute, value) => (attribute, " LIKE ", value),
+                StoreFilter::NotStartsWith(attribute, value) => (attribute, " NOT LIKE ", value),
                 _ => unreachable!(),
             };
             match value {
@@ -362,7 +338,7 @@ fn store_filter_by_mode<'a>(
                 | Value::BigInt(_)
                 | Value::Bytes(_) => {
                     return Err(UnsupportedFilter {
-                        filter: if op == "LIKE" {
+                        filter: if op == " LIKE " {
                             "ends_with"
                         } else {
                             "not_ends_with"
