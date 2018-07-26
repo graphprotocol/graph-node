@@ -198,19 +198,20 @@ impl<T> HostExternals<T>
 where
     T: EthereumAdapter,
 {
-    /// function database.create(entity: string, id: string, data: Entity): void
+    /// function database.create(blockHash: H256, entity: string, id: string, data: Entity): void
     fn database_create(
         &self,
+        block_hash_ptr: AscPtr<AscH256>,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<AscEntity>,
     ) -> Result<Option<RuntimeValue>, Trap> {
+        let _block_hash: H256 = self.heap.asc_get(block_hash_ptr);
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
 
         let store_key = StoreKey { entity, id };
-
         let entity_data = Entity::from(data);
 
         // Send an entity created event
@@ -236,10 +237,12 @@ where
     /// function database.update(entity: string, id: string, data: Entity): void
     fn database_update(
         &self,
+        block_hash_ptr: AscPtr<AscH256>,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<AscEntity>,
     ) -> Result<Option<RuntimeValue>, Trap> {
+        let _block_hash: H256 = self.heap.asc_get(block_hash_ptr);
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
@@ -248,7 +251,6 @@ where
             entity: entity,
             id: id.clone(),
         };
-
         let entity_data = Entity::from(data);
 
         // Send an entity changed event
@@ -274,9 +276,11 @@ where
     /// function database.remove(entity: string, id: string): void
     fn database_remove(
         &self,
+        block_hash_ptr: AscPtr<AscH256>,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
+        let _block_hash: H256 = self.heap.asc_get(block_hash_ptr);
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
 
@@ -491,15 +495,19 @@ where
                 args.nth_checked(0)?,
                 args.nth_checked(1)?,
                 args.nth_checked(2)?,
+                args.nth_checked(3)?,
             ),
             DATABASE_UPDATE_FUNC_INDEX => self.database_update(
                 args.nth_checked(0)?,
                 args.nth_checked(1)?,
                 args.nth_checked(2)?,
+                args.nth_checked(3)?,
             ),
-            DATABASE_REMOVE_FUNC_INDEX => {
-                self.database_remove(args.nth_checked(0)?, args.nth_checked(1)?)
-            }
+            DATABASE_REMOVE_FUNC_INDEX => self.database_remove(
+                args.nth_checked(0)?,
+                args.nth_checked(1)?,
+                args.nth_checked(2)?,
+            ),
             ETHEREUM_CALL_FUNC_INDEX => self.ethereum_call(args.nth_checked(0)?),
             TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX => {
                 self.convert_bytes_to_string(args.nth_checked(0)?)
@@ -558,15 +566,31 @@ impl ModuleImportResolver for StoreModuleResolver {
     fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
         Ok(match field_name {
             "create" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32, ValueType::I32][..], None),
+                Signature::new(
+                    &[
+                        ValueType::I32,
+                        ValueType::I32,
+                        ValueType::I32,
+                        ValueType::I32,
+                    ][..],
+                    None,
+                ),
                 DATABASE_CREATE_FUNC_INDEX,
             ),
             "update" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32, ValueType::I32][..], None),
+                Signature::new(
+                    &[
+                        ValueType::I32,
+                        ValueType::I32,
+                        ValueType::I32,
+                        ValueType::I32,
+                    ][..],
+                    None,
+                ),
                 DATABASE_UPDATE_FUNC_INDEX,
             ),
             "remove" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32][..], None),
+                Signature::new(&[ValueType::I32, ValueType::I32, ValueType::I32][..], None),
                 DATABASE_REMOVE_FUNC_INDEX,
             ),
             _ => {
