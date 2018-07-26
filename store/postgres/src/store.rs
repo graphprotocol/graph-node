@@ -110,12 +110,9 @@ impl BasicStore for Store {
 
         use db_schema::entities::dsl::*;
 
-        // The data source hardcoded at the moment
-        let datasource: String = String::from("memefactory");
-
         // Use primary key fields to get the entity; deserialize the result JSON
         entities
-            .find((key.id, datasource, key.entity))
+            .find((key.id, key.data_source, key.entity))
             .select(data)
             .first::<serde_json::Value>(&self.conn)
             .map(|value| {
@@ -155,7 +152,7 @@ impl BasicStore for Store {
             .values((
                 id.eq(&key.id),
                 entity.eq(&key.entity),
-                data_source.eq(&datasource),
+                data_source.eq(&key.data_source),
                 data.eq(&entity_json),
                 event_source.eq(&input_event_source.to_string()),
             ))
@@ -196,8 +193,9 @@ impl BasicStore for Store {
                 // add data source here when meaningful
                 delete(
                     entities
-                        .filter(id.eq(&key.id))
-                        .filter(entity.eq(&key.entity)),
+                        .filter(data_source.eq(&key.data_source))
+                        .filter(entity.eq(&key.entity))
+                        .filter(id.eq(&key.id)),
                 ).execute(&self.conn)
             })
             .map(|_| ())
@@ -214,6 +212,7 @@ impl BasicStore for Store {
         // query parameters provided
         let mut diesel_query = entities
             .filter(entity.eq(query.entity))
+            .filter(data_source.eq(query.data_source))
             .select(data)
             .into_boxed::<Pg>();
 
