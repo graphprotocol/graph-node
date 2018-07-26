@@ -1,5 +1,6 @@
 extern crate ethereum_types;
 extern crate futures;
+extern crate serde_json;
 #[macro_use]
 extern crate slog;
 extern crate ethabi;

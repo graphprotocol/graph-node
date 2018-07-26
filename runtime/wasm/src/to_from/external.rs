@@ -1,5 +1,6 @@
 use ethabi;
 use ethereum_types;
+use serde_json;
 
 use thegraph::components::ethereum::EthereumEvent;
 use thegraph::data::store;
@@ -179,6 +180,34 @@ impl ToAscObj<AscLogParam> for ethabi::LogParam {
         AscLogParam {
             name: heap.asc_new(self.name.as_str()),
             value: heap.asc_new(&self.value),
+        }
+    }
+}
+
+impl ToAscObj<AscJson> for serde_json::Map<String, serde_json::Value> {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscJson {
+        AscTypedMap {
+            entries: heap.asc_new(&*self.iter().collect::<Vec<_>>()),
+        }
+    }
+}
+
+impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEnum<JsonValueKind> {
+        use serde_json::Value;
+
+        let payload = match self {
+            Value::Null => EnumPayload(0),
+            Value::Bool(b) => EnumPayload::from(*b),
+            Value::Number(number) => number.as_i64().expect("number does not fit in i64").into(),
+            Value::String(string) => heap.asc_new(string.as_str()).into(),
+            Value::Array(array) => heap.asc_new(array.as_slice()).into(),
+            Value::Object(object) => heap.asc_new(object).into(),
+        };
+
+        AscEnum {
+            kind: JsonValueKind::get_kind(self),
+            payload,
         }
     }
 }

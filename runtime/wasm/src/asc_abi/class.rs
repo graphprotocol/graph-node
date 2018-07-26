@@ -1,5 +1,6 @@
 use super::{AscHeap, AscPtr, AscType, AscValue};
 use ethabi;
+use serde_json;
 use std::mem::{self, size_of, size_of_val};
 
 ///! Rust types that have with a direct correspondence to an Asc class,
@@ -229,6 +230,19 @@ impl From<EnumPayload> for bool {
     }
 }
 
+impl From<bool> for EnumPayload {
+    fn from(b: bool) -> EnumPayload {
+        EnumPayload(if b { 1 } else { 0 })
+    }
+}
+
+impl From<i64> for EnumPayload {
+    fn from(x: i64) -> EnumPayload {
+        // This is just `u64::from_bytes` which is unstable.
+        EnumPayload(unsafe { ::std::mem::transmute::<i64, u64>(x) })
+    }
+}
+
 /// In Asc, we represent a Rust enum as a discriminant `kind: D`, which is an
 /// Asc enum so in Rust it's a `#[repr(u32)]` enum, plus an arbitrary `AscValue`
 /// payload.
@@ -349,6 +363,7 @@ pub(crate) struct AscTypedMap<K, V> {
 impl<K, V> AscType for AscTypedMap<K, V> {}
 
 pub(crate) type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
+pub(crate) type AscJson = AscTypedMap<AscString, AscEnum<JsonValueKind>>;
 
 #[repr(C)]
 pub(crate) struct AscUnresolvedContractCall {
@@ -360,3 +375,38 @@ pub(crate) struct AscUnresolvedContractCall {
 }
 
 impl AscType for AscUnresolvedContractCall {}
+
+#[repr(u32)]
+#[derive(Copy, Clone)]
+pub(crate) enum JsonValueKind {
+    Null,
+    Bool,
+    Number,
+    String,
+    Array,
+    Object,
+}
+
+impl Default for JsonValueKind {
+    fn default() -> Self {
+        JsonValueKind::Null
+    }
+}
+
+impl AscType for JsonValueKind {}
+impl AscValue for JsonValueKind {}
+
+impl JsonValueKind {
+    pub(crate) fn get_kind(token: &serde_json::Value) -> Self {
+        use serde_json::Value;
+
+        match token {
+            Value::Null => JsonValueKind::Null,
+            Value::Bool(_) => JsonValueKind::Bool,
+            Value::Number(_) => JsonValueKind::Number,
+            Value::String(_) => JsonValueKind::String,
+            Value::Array(_) => JsonValueKind::Array,
+            Value::Object(_) => JsonValueKind::Object,
+        }
+    }
+}

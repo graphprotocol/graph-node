@@ -65,3 +65,9 @@ impl<C> From<EnumPayload> for AscPtr<C> {
         AscPtr(payload.0 as u32, PhantomData)
     }
 }
+
+impl<C> From<AscPtr<C>> for EnumPayload {
+    fn from(x: AscPtr<C>) -> EnumPayload {
+        EnumPayload(x.0 as u64)
+    }
+}
