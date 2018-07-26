@@ -10,8 +10,8 @@ use diesel::query_builder::{BoxedSelectStatement, QueryFragment};
 use diesel::sql_types::{Bool, Float, Integer, Jsonb, Numeric, Text};
 use diesel::AppearsOnTable;
 
-use thegraph::components::store::StoreFilter;
-use thegraph::data::store::*;
+use graph::components::store::StoreFilter;
+use graph::data::store::*;
 
 use serde_json;
 

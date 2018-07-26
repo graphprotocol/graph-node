@@ -1,5 +1,5 @@
 [package]
-name = "thegraph-store-postgres"
+name = "graph-store-postgres"
 version = "0.1.0"
 
 [dependencies]
@@ -10,6 +10,6 @@ diesel-dynamic-schema = { git = "https://github.com/diesel-rs/diesel-dynamic-sch
 futures = "0.1.21"
 slog = "2.2.3"
 serde_json = "1.0"
-thegraph = { path = "../../thegraph" }
+graph = { path = "../../graph" }
 tokio = "0.1.6"
 tokio-core = "0.1.17"

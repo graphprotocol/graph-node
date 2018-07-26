@@ -8,5 +8,5 @@ members = [
     "runtime/wasm",
     "server/http",
     "store/postgres",
-    "thegraph",
+    "graph",
 ]

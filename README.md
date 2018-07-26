@@ -9,7 +9,7 @@ This repository contains the source code for The Graph node.
 Right now, this includes:
 
 - `node` — A local Graph node.
-- `thegraph` — A library providing traits for system components and types for
+- `graph` — A library providing traits for system components and types for
   common data.
 - `core` — A library providing implementations for core components, used by all
   nodes.
@@ -25,8 +25,8 @@ Right now, this includes:
 
 ## Prerequisites
 
-The network components of The Graph are written in Rust. In order to build and
-run this project you need to have Rust installed on your system:
+The Graph is written in Rust. In order to build and run this project you need
+to have Rust installed on your system:
 
 - [How to install Rust](https://www.rust-lang.org/en-US/install.html)
 
@@ -44,7 +44,7 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 
 ```
 USAGE:
-    thegraph-node
+    graph-node
       --data-source <IPFS_HASH>
       --ethereum-ipc <FILE>
         or --ethereum-rpc <URL>

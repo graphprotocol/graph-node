@@ -8,7 +8,7 @@ extern crate futures;
 #[macro_use]
 extern crate slog;
 extern crate serde_json;
-extern crate thegraph;
+extern crate graph;
 extern crate tokio;
 extern crate tokio_core;
 

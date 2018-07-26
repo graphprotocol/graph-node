@@ -1,7 +1,7 @@
 extern crate diesel;
 extern crate serde_json;
-extern crate thegraph;
-extern crate thegraph_store_postgres;
+extern crate graph;
+extern crate graph_store_postgres;
 extern crate tokio_core;
 #[macro_use]
 extern crate slog;
@@ -12,9 +12,9 @@ use slog::Logger;
 use std::panic;
 use tokio_core::reactor::Core;
 
-use thegraph::components::store::{StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange};
-use thegraph::prelude::*;
-use thegraph_store_postgres::{db_schema, Store as DieselStore, StoreConfig};
+use graph::components::store::{StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange};
+use graph::prelude::*;
+use graph_store_postgres::{db_schema, Store as DieselStore, StoreConfig};
 
 /// Helper function to ensure and obtain the Postgres URL to use for testing.
 fn postgres_test_url() -> String {

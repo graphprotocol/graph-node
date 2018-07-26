@@ -326,7 +326,7 @@ fn abi_ethabi_token_identity() {
 
 #[test]
 fn abi_store_value() {
-    use thegraph::data::store::Value;
+    use graph::data::store::Value;
 
     let module = TestModule::new("wasm_test/abi_store_value.wasm");
 
@@ -401,6 +401,6 @@ fn abi_store_value() {
         module.asc_get(module.takes_ptr_returns_ptr("value_from_bigint", bytes_ptr));
     assert_eq!(
         new_value,
-        Value::BigInt(::thegraph::data::store::scalar::BigInt::from_signed_bytes_le(bytes))
+        Value::BigInt(::graph::data::store::scalar::BigInt::from_signed_bytes_le(bytes))
     );
 }

@@ -1,6 +1,6 @@
 use graphql_parser::query::*;
 
-use thegraph::prelude::QueryExecutionError;
+use graph::prelude::QueryExecutionError;
 
 /// Returns the operation for the given name (or the only operation if no name is defined).
 pub fn get_operation<'a>(

@@ -14,11 +14,11 @@ use wasmi::{
 };
 use web3::types::BlockId;
 
-use thegraph::components::data_sources::RuntimeHostEvent;
-use thegraph::components::ethereum::*;
-use thegraph::components::store::StoreKey;
-use thegraph::data::data_sources::DataSet;
-use thegraph::prelude::*;
+use graph::components::data_sources::RuntimeHostEvent;
+use graph::components::ethereum::*;
+use graph::components::store::StoreKey;
+use graph::data::data_sources::DataSet;
+use graph::prelude::*;
 
 use super::UnresolvedContractCall;
 use asc_abi::asc_ptr::*;
@@ -707,12 +707,12 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use tokio_core;
 
-    use thegraph::components::data_sources::*;
-    use thegraph::components::ethereum::*;
-    use thegraph::components::store::*;
-    use thegraph::data::data_sources::*;
-    use thegraph::prelude::*;
-    use thegraph::util;
+    use graph::components::data_sources::*;
+    use graph::components::ethereum::*;
+    use graph::components::store::*;
+    use graph::data::data_sources::*;
+    use graph::prelude::*;
+    use graph::util;
 
     use super::{WasmiModule, WasmiModuleConfig};
 

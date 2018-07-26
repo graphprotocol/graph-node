@@ -1,19 +1,19 @@
 extern crate clap;
 extern crate env_logger;
 extern crate futures;
-extern crate thegraph_node;
+extern crate graph_node;
 #[macro_use]
 extern crate sentry;
 #[macro_use]
 extern crate slog;
 extern crate ipfs_api;
-extern crate thegraph;
-extern crate thegraph_core;
-extern crate thegraph_datasource_ethereum;
-extern crate thegraph_mock;
-extern crate thegraph_runtime_wasm;
-extern crate thegraph_server_http;
-extern crate thegraph_store_postgres;
+extern crate graph;
+extern crate graph_core;
+extern crate graph_datasource_ethereum;
+extern crate graph_mock;
+extern crate graph_runtime_wasm;
+extern crate graph_server_http;
+extern crate graph_store_postgres;
 extern crate tokio;
 extern crate tokio_core;
 
@@ -27,15 +27,15 @@ use std::sync::{Arc, Mutex};
 use tokio::prelude::*;
 use tokio_core::reactor::Core;
 
-use thegraph::components::forward;
-use thegraph::components::EventProducer;
-use thegraph::prelude::*;
-use thegraph::util::log::logger;
-use thegraph_datasource_ethereum::Transport;
-use thegraph_node::DataSourceProvider as IpfsDataSourceProvider;
-use thegraph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
-use thegraph_server_http::GraphQLServer as HyperGraphQLServer;
-use thegraph_store_postgres::{Store as DieselStore, StoreConfig};
+use graph::components::forward;
+use graph::components::EventProducer;
+use graph::prelude::*;
+use graph::util::log::logger;
+use graph_datasource_ethereum::Transport;
+use graph_node::DataSourceProvider as IpfsDataSourceProvider;
+use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
+use graph_server_http::GraphQLServer as HyperGraphQLServer;
+use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
     env_logger::init();
@@ -43,7 +43,7 @@ fn main() {
     let logger = logger();
 
     // Setup CLI using Clap, provide general info and capture postgres url
-    let matches = App::new("thegraph-node")
+    let matches = App::new("graph-node")
         .version("0.1.0")
         .author("Graph Protocol, Inc.")
         .about("Scalable queries for a decentralized future")
@@ -144,7 +144,7 @@ fn main() {
         &format!("/ipfs/{}", data_source_hash.clone()),
         &resolver,
     )).expect("Failed to initialize data source provider");
-    let mut schema_provider = thegraph_core::SchemaProvider::new(&logger, core.handle());
+    let mut schema_provider = graph_core::SchemaProvider::new(&logger, core.handle());
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let protected_store = Arc::new(Mutex::new(store));
     let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
@@ -155,9 +155,9 @@ fn main() {
         .or(ethereum_ws.map(Transport::new_ws))
         .or(ethereum_rpc.map(Transport::new_rpc))
         .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
-    let ethereum_watcher = thegraph_datasource_ethereum::EthereumAdapter::new(
+    let ethereum_watcher = graph_datasource_ethereum::EthereumAdapter::new(
         core.handle(),
-        thegraph_datasource_ethereum::EthereumAdapterConfig { transport },
+        graph_datasource_ethereum::EthereumAdapterConfig { transport },
     );
     let runtime_host_builder = WASMRuntimeHostBuilder::new(
         &logger,
@@ -165,7 +165,7 @@ fn main() {
         Arc::new(Mutex::new(ethereum_watcher)),
         Arc::new(resolver),
     );
-    let runtime_manager = thegraph_core::RuntimeManager::new(
+    let runtime_manager = graph_core::RuntimeManager::new(
         &logger,
         core.handle(),
         protected_store.clone(),
@@ -211,7 +211,7 @@ fn main() {
 
     // Forward incoming queries from the GraphQL server to the query runner
     let mut query_runner =
-        thegraph_core::QueryRunner::new(&logger, core.handle(), protected_store.clone());
+        graph_core::QueryRunner::new(&logger, core.handle(), protected_store.clone());
     let query_stream = graphql_server.query_stream().unwrap();
     core.handle().spawn({
         query_stream

@@ -5,8 +5,8 @@ use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use std::sync::{Arc, Mutex};
 
-use thegraph::components::server::GraphQLServerError;
-use thegraph::prelude::*;
+use graph::components::server::GraphQLServerError;
+use graph::prelude::*;
 
 use request::GraphQLRequest;
 use response::GraphQLResponse;
@@ -131,8 +131,8 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use tokio_core::reactor::Core;
 
-    use thegraph::data::query::QueryResult;
-    use thegraph::data::schema::Schema;
+    use graph::data::query::QueryResult;
+    use graph::data::schema::Schema;
 
     use super::GraphQLService;
     use test_utils;

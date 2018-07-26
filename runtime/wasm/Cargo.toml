@@ -1,5 +1,5 @@
 [package]
-name = "thegraph-runtime-wasm"
+name = "graph-runtime-wasm"
 version = "0.1.0"
 
 [dependencies]
@@ -12,7 +12,7 @@ num-bigint = "0.2.0"
 serde_json = "1.0"
 slog = "2.2.3"
 tokio-core = "0.1.6"
-thegraph = { path = "../../thegraph" }
+graph = { path = "../../graph" }
 uuid = { version = "0.6", features = ["v4"] }
 wasmi = "0.3"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }

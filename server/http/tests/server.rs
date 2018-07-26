@@ -5,8 +5,8 @@ extern crate hyper;
 extern crate serde_json;
 #[macro_use]
 extern crate slog;
-extern crate thegraph;
-extern crate thegraph_server_http;
+extern crate graph;
+extern crate graph_server_http;
 extern crate tokio;
 extern crate tokio_core;
 
@@ -18,11 +18,11 @@ use hyper::{Body, Client, Request};
 use std::collections::BTreeMap;
 use tokio_core::reactor::Core;
 
-use thegraph::components::schema::SchemaProviderEvent;
-use thegraph::prelude::*;
+use graph::components::schema::SchemaProviderEvent;
+use graph::prelude::*;
 
-use thegraph_server_http::test_utils;
-use thegraph_server_http::GraphQLServer as HyperGraphQLServer;
+use graph_server_http::test_utils;
+use graph_server_http::GraphQLServer as HyperGraphQLServer;
 
 /// Helper function that simulates running a single incoming query and then
 /// closing the query stream.

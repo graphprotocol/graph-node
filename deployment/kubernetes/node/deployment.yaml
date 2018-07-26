@@ -1,20 +1,20 @@
 apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
-  name: thegraph-node
+  name: graph-node
 spec:
   selector:
     matchLabels:
-      app: thegraph-node
+      app: graph-node
   replicas: 1
   template:
     metadata:
       labels:
-        app: thegraph-node
+        app: graph-node
     spec:
       containers:
-        - name: thegraph-node
-          image: gcr.io/the-graph-staging/thegraph-node:latest
+        - name: graph-node
+          image: gcr.io/the-graph-staging/graph-node:latest
           ports:
             - name: http
               containerPort: 8000
@@ -22,5 +22,5 @@ spec:
             - name: THEGRAPH_SENTRY_URL
               valueFrom:
                 secretKeyRef:
-                  name: thegraph-sentry-url
+                  name: graph-sentry-url
                   key: value

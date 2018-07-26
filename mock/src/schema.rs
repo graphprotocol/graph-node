@@ -3,10 +3,10 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog::Logger;
 use tokio_core::reactor::Handle;
 
-use thegraph::components::data_sources::SchemaEvent;
-use thegraph::components::schema::SchemaProviderEvent;
-use thegraph::components::{EventConsumer, EventProducer};
-use thegraph::prelude::*;
+use graph::components::data_sources::SchemaEvent;
+use graph::components::schema::SchemaProviderEvent;
+use graph::components::{EventConsumer, EventProducer};
+use graph::prelude::*;
 
 /// A mock `SchemaProvider`.
 pub struct MockSchemaProvider {

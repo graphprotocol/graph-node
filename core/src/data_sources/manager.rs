@@ -4,9 +4,9 @@ use slog::Logger;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
-use thegraph::components::data_sources::DataSourceProviderEvent;
-use thegraph::components::data_sources::RuntimeHostEvent;
-use thegraph::prelude::*;
+use graph::components::data_sources::DataSourceProviderEvent;
+use graph::components::data_sources::RuntimeHostEvent;
+use graph::prelude::*;
 
 pub struct RuntimeManager {
     logger: Logger,

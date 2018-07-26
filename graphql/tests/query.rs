@@ -4,16 +4,16 @@ extern crate graphql_parser;
 extern crate pretty_assertions;
 #[macro_use]
 extern crate slog;
-extern crate thegraph;
-extern crate thegraph_graphql;
+extern crate graph;
+extern crate graph_graphql;
 
 use futures::sync::oneshot;
 use graphql_parser::query as q;
 use slog::Logger;
 use std::sync::{Arc, Mutex};
 
-use thegraph::prelude::*;
-use thegraph_graphql::prelude::*;
+use graph::prelude::*;
+use graph_graphql::prelude::*;
 
 fn test_schema() -> Schema {
     Schema {

@@ -4,8 +4,8 @@ use slog;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
-use thegraph::prelude::{Query, QueryRunner as QueryRunnerTrait, Store};
-use thegraph_graphql::prelude::*;
+use graph::prelude::{Query, QueryRunner as QueryRunnerTrait, Store};
+use graph_graphql::prelude::*;
 
 /// Common query runner implementation for The Graph.
 pub struct QueryRunner<S> {

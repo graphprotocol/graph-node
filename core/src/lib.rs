@@ -4,9 +4,9 @@ extern crate graphql_parser;
 extern crate slog;
 extern crate serde;
 extern crate serde_yaml;
-extern crate thegraph;
-extern crate thegraph_graphql;
-extern crate thegraph_runtime_wasm;
+extern crate graph;
+extern crate graph_graphql;
+extern crate graph_runtime_wasm;
 extern crate tokio_core;
 
 mod data_sources;

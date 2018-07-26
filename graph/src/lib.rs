@@ -34,7 +34,7 @@ pub mod util;
 /// Add the following code to import all traits and data types listed below at once.
 ///
 /// ```
-/// use thegraph::prelude::*;
+/// use graph::prelude::*;
 /// ```
 pub mod prelude {
     pub use components::data_sources::{

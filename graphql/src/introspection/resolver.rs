@@ -2,7 +2,7 @@ use graphql_parser::{query as q, schema as s};
 use slog;
 use std::collections::{BTreeMap, HashMap};
 
-use thegraph::prelude::*;
+use graph::prelude::*;
 
 use prelude::*;
 use schema::ast as sast;

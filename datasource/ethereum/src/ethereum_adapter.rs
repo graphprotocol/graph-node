@@ -11,7 +11,7 @@ use web3::api::{Eth, Web3};
 use web3::helpers::CallResult;
 use web3::types::*;
 
-use thegraph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
+use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 
 pub struct EthereumAdapterConfig<T: web3::Transport> {
     pub transport: T,

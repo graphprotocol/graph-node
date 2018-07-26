@@ -4,8 +4,8 @@ use graphql_parser;
 use hyper::Chunk;
 use serde_json;
 
-use thegraph::components::server::GraphQLServerError;
-use thegraph::prelude::*;
+use graph::components::server::GraphQLServerError;
+use graph::prelude::*;
 
 /// Future for a query parsed from an HTTP request.
 pub struct GraphQLRequest {
@@ -92,7 +92,7 @@ mod tests {
     use hyper;
     use tokio_core::reactor::Core;
 
-    use thegraph::prelude::*;
+    use graph::prelude::*;
 
     use super::GraphQLRequest;
 

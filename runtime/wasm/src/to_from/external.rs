@@ -2,8 +2,8 @@ use ethabi;
 use ethereum_types;
 use serde_json;
 
-use thegraph::components::ethereum::EthereumEvent;
-use thegraph::data::store;
+use graph::components::ethereum::EthereumEvent;
+use graph::data::store;
 
 use asc_abi::class::*;
 use asc_abi::{AscHeap, AscPtr, FromAscObj, ToAscObj};

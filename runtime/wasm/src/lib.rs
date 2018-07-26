@@ -7,7 +7,7 @@ extern crate ethabi;
 extern crate hex;
 extern crate nan_preserving_float;
 extern crate num_bigint;
-extern crate thegraph;
+extern crate graph;
 extern crate tokio_core;
 extern crate uuid;
 extern crate wasmi;

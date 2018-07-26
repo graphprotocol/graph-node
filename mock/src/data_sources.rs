@@ -4,8 +4,8 @@ use graphql_parser;
 use slog;
 
 use graphql_parser::schema::Document;
-use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
-use thegraph::prelude::*;
+use graph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
+use graph::prelude::*;
 
 /// A mock `DataSourceProvider`.
 pub struct MockDataSourceProvider {
