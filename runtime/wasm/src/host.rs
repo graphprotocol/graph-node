@@ -23,31 +23,37 @@ pub struct RuntimeHostConfig {
     data_set: DataSet,
 }
 
-pub struct RuntimeHostBuilder<T>
-where
-    T: EthereumAdapter,
-{
+pub struct RuntimeHostBuilder<T, L> {
     logger: Logger,
     runtime: Handle,
     ethereum_adapter: Arc<Mutex<T>>,
+    link_resolver: Arc<L>,
 }
 
-impl<T> RuntimeHostBuilder<T>
+impl<T, L> RuntimeHostBuilder<T, L>
 where
     T: EthereumAdapter,
+    L: LinkResolver,
 {
-    pub fn new(logger: &Logger, runtime: Handle, ethereum_adapter: Arc<Mutex<T>>) -> Self {
+    pub fn new(
+        logger: &Logger,
+        runtime: Handle,
+        ethereum_adapter: Arc<Mutex<T>>,
+        link_resolver: Arc<L>,
+    ) -> Self {
         RuntimeHostBuilder {
             logger: logger.new(o!("component" => "RuntimeHostBuilder")),
             runtime,
             ethereum_adapter,
+            link_resolver,
         }
     }
 }
 
-impl<T> RuntimeHostBuilderTrait for RuntimeHostBuilder<T>
+impl<T, L> RuntimeHostBuilderTrait for RuntimeHostBuilder<T, L>
 where
     T: EthereumAdapter + 'static,
+    L: LinkResolver + 'static,
 {
     type Host = RuntimeHost;
 
@@ -60,6 +66,7 @@ where
             &self.logger,
             self.runtime.clone(),
             self.ethereum_adapter.clone(),
+            self.link_resolver.clone(),
             RuntimeHostConfig {
                 data_source_definition,
                 data_set,
@@ -74,14 +81,16 @@ pub struct RuntimeHost {
 }
 
 impl RuntimeHost {
-    pub fn new<T>(
+    pub fn new<T, L>(
         logger: &Logger,
         runtime: Handle,
         ethereum_adapter: Arc<Mutex<T>>,
+        link_resolver: Arc<L>,
         config: RuntimeHostConfig,
     ) -> Self
     where
         T: EthereumAdapter + 'static,
+        L: LinkResolver + 'static,
     {
         let logger = logger.new(o!("component" => "RuntimeHost"));
 
@@ -99,6 +108,7 @@ impl RuntimeHost {
                 runtime: runtime.clone(),
                 event_sink: event_sender,
                 ethereum_adapter: ethereum_adapter.clone(),
+                link_resolver: link_resolver.clone(),
             },
         );
 
@@ -118,14 +128,15 @@ impl RuntimeHost {
 
     /// Subscribe to all smart contract events of `data_set` contained in
     /// `data_source`.
-    fn subscribe_to_events<T>(
+    fn subscribe_to_events<T, L>(
         logger: Logger,
         runtime: Handle,
         data_set: DataSet,
-        module: WasmiModule<T>,
+        module: WasmiModule<T, L>,
         ethereum_adapter: Arc<Mutex<T>>,
     ) where
         T: EthereumAdapter + 'static,
+        L: LinkResolver + 'static,
     {
         info!(logger, "Subscribe to events");
 
@@ -189,15 +200,16 @@ impl RuntimeHost {
         }
     }
 
-    fn subscribe_to_event<T>(
+    fn subscribe_to_event<T, L>(
         logger: Logger,
         runtime: Handle,
-        module: Arc<Mutex<WasmiModule<T>>>,
+        module: Arc<Mutex<WasmiModule<T, L>>>,
         ethereum_adapter: Arc<Mutex<T>>,
         dataset: Arc<DataSet>,
         subscription: EthereumEventSubscription,
     ) where
         T: EthereumAdapter + 'static,
+        L: LinkResolver + 'static,
     {
         info!(logger, "Subscribe to event"; "name" => &subscription.event.name);
 
