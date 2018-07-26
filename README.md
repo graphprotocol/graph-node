@@ -96,3 +96,10 @@ This will watch your source directory and continuously do the following on chang
 1.  Build all packages in the workspace `target/`.
 2.  Generate docs for all packages in the workspace in `target/doc/`.
 3.  Automatically format all your source files.
+
+## License
+
+Copyright &copy; 2018 Graph Protocol, Inc. and contributors.
+
+The Graph is dual-licensed under the [MIT license](LICENSE-MIT) and the
+[Apache License, Version 2.0](LICENSE-APACHE).
