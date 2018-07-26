@@ -59,19 +59,12 @@ impl RuntimeManager where {
         // Handles each incoming event from the data source.
         fn handle_event<S: Store + 'static>(store: Arc<Mutex<S>>, event: RuntimeHostEvent) {
             match event {
-                RuntimeHostEvent::EntityCreated(_data_source_id, store_key, entity) => {
+                RuntimeHostEvent::EntitySet(_data_source_id, store_key, entity) => {
                     store
                         .lock()
                         .unwrap()
                         .set(store_key, entity)
-                        .expect("Failed to create entity in the store");
-                }
-                RuntimeHostEvent::EntityChanged(_data_source_id, store_key, entity) => {
-                    store
-                        .lock()
-                        .unwrap()
-                        .set(store_key, entity)
-                        .expect("Failed to update entity in the store");
+                        .expect("Failed to set entity in the store");
                 }
                 RuntimeHostEvent::EntityRemoved(_data_source_id, store_key) => {
                     store
