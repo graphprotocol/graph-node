@@ -1,5 +1,5 @@
 [package]
-name = "thegraph-node"
+name = "graph-node"
 version = "0.1.0"
 
 [dependencies]
@@ -12,13 +12,13 @@ slog = "2.2.3"
 tokio = "0.1.5"
 tokio-core = "0.1.17"
 ipfs-api = "0.5.0-alpha1"
-thegraph = { path = "../thegraph" }
-thegraph-core = { path = "../core" }
-thegraph-datasource-ethereum = { path = "../datasource/ethereum" }
-thegraph-mock = { path = "../mock" }
-thegraph-runtime-wasm = { path = "../runtime/wasm" }
-thegraph-server-http = { path = "../server/http" }
-thegraph-store-postgres = { path = "../store/postgres" }
+graph = { path = "../graph" }
+graph-core = { path = "../core" }
+graph-datasource-ethereum = { path = "../datasource/ethereum" }
+graph-mock = { path = "../mock" }
+graph-runtime-wasm = { path = "../runtime/wasm" }
+graph-server-http = { path = "../server/http" }
+graph-store-postgres = { path = "../store/postgres" }
 
 [dev-dependencies]
 assert_cli = "0.6"

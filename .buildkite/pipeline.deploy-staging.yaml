@@ -5,7 +5,7 @@ steps:
       && gcloud container builds submit \
          --machine-type=n1-highcpu-8 \
          --timeout=30m \
-         --tag gcr.io/the-graph-staging/thegraph-node .
+         --tag gcr.io/the-graph-staging/graph-node .
   - wait
   - label: Deploy the node
     command: |

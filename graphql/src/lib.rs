@@ -4,7 +4,7 @@ extern crate inflector;
 extern crate serde;
 #[macro_use]
 extern crate slog;
-extern crate thegraph;
+extern crate graph;
 
 /// Utilities for working with GraphQL schemas.
 pub mod schema;

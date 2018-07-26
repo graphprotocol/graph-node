@@ -5,7 +5,7 @@ steps:
       && gcloud container builds submit \
          --machine-type=n1-highcpu-8 \
          --timeout=25m \
-         --tag gcr.io/the-graph-staging/thegraph-docs .
+         --tag gcr.io/the-graph-staging/graph-docs .
   - wait
   - label: Deploy the docs
     command: |

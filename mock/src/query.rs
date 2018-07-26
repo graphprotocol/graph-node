@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio_core::reactor::Handle;
 
-use thegraph::prelude::*;
+use graph::prelude::*;
 
 /// A mock `QueryRunner`.
 pub struct MockQueryRunner<S> {

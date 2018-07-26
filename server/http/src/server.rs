@@ -9,12 +9,12 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
-use thegraph::components::schema::SchemaProviderEvent;
-use thegraph::components::store::StoreEvent;
-use thegraph::data::query::Query;
-use thegraph::data::schema::Schema;
-use thegraph::prelude::GraphQLServer as GraphQLServerTrait;
-use thegraph::util::stream::StreamError;
+use graph::components::schema::SchemaProviderEvent;
+use graph::components::store::StoreEvent;
+use graph::data::query::Query;
+use graph::data::schema::Schema;
+use graph::prelude::GraphQLServer as GraphQLServerTrait;
+use graph::util::stream::StreamError;
 
 use service::GraphQLService;
 

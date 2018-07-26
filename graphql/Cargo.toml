@@ -1,5 +1,5 @@
 [package]
-name = "thegraph-graphql"
+name = "graph-graphql"
 version = "0.1.0"
 
 [dependencies]
@@ -8,10 +8,10 @@ indexmap = "1.0"
 Inflector = "0.11.3"
 serde = "1.0"
 slog = "2.2.3"
-thegraph = { path = "../thegraph" }
+graph = { path = "../graph" }
 
 [dev-dependencies]
 futures = "0.1.21"
 pretty_assertions = "0.5.1"
-thegraph-mock = { path = "../mock" }
+graph-mock = { path = "../mock" }
 tokio-core = "0.1.17"

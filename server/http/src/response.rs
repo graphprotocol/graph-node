@@ -4,9 +4,9 @@ use hyper::{Body, Response};
 use serde::ser::*;
 use serde_json;
 
-use thegraph::components::server::GraphQLServerError;
-use thegraph::data::query::QueryResult;
-use thegraph_graphql::prelude::SerializableValue;
+use graph::components::server::GraphQLServerError;
+use graph::data::query::QueryResult;
+use graph_graphql::prelude::SerializableValue;
 
 /// Future for HTTP responses to GraphQL query requests.
 pub struct GraphQLResponse {
@@ -93,8 +93,8 @@ mod tests {
     use graphql_parser;
     use http::status::StatusCode;
     use std::collections::BTreeMap;
-    use thegraph::components::server::GraphQLServerError;
-    use thegraph::prelude::*;
+    use graph::components::server::GraphQLServerError;
+    use graph::prelude::*;
     use tokio_core::reactor::Core;
 
     use test_utils;

@@ -11,10 +11,10 @@ use serde_json;
 use slog;
 use tokio_core::reactor::Handle;
 
-use thegraph::components::schema::SchemaProviderEvent;
-use thegraph::components::store::{Store as StoreTrait, *};
-use thegraph::data::store::*;
-use thegraph::util::stream::StreamError;
+use graph::components::schema::SchemaProviderEvent;
+use graph::components::store::{Store as StoreTrait, *};
+use graph::data::store::*;
+use graph::util::stream::StreamError;
 
 embed_migrations!("./migrations");
 

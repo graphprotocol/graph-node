@@ -1,5 +1,5 @@
 [package]
-name = "thegraph-datasource-ethereum"
+name = "graph-datasource-ethereum"
 version = "0.1.0"
 
 [dependencies]
@@ -8,6 +8,6 @@ ethabi = "5.1.1"
 futures = "0.1.21"
 jsonrpc-core = "8.0.1"
 serde_json = "1.0"
-thegraph = { path = "../../thegraph" }
+graph = { path = "../../graph" }
 tokio-core = "0.1.6"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }

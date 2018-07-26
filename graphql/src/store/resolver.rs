@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
-use thegraph::components::store::*;
-use thegraph::prelude::{BasicStore, Value};
+use graph::components::store::*;
+use graph::prelude::{BasicStore, Value};
 
 use prelude::*;
 use query::ast as qast;

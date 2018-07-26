@@ -7,13 +7,13 @@ use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 use uuid::Uuid;
 
-use thegraph::components::data_sources::RuntimeHostEvent;
-use thegraph::components::ethereum::*;
-use thegraph::data::data_sources::DataSet;
-use thegraph::prelude::{
+use graph::components::data_sources::RuntimeHostEvent;
+use graph::components::ethereum::*;
+use graph::data::data_sources::DataSet;
+use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
-use thegraph::util;
+use graph::util;
 
 use module::{WasmiModule, WasmiModuleConfig};
 

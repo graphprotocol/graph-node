@@ -4,12 +4,12 @@ use slog::Logger;
 use std::collections::HashMap;
 use tokio_core::reactor::Handle;
 
-use thegraph::components::data_sources::SchemaEvent;
-use thegraph::components::schema::{SchemaProvider as SchemaProviderTrait, SchemaProviderEvent};
-use thegraph::components::{EventConsumer, EventProducer};
-use thegraph::data::schema::Schema;
+use graph::components::data_sources::SchemaEvent;
+use graph::components::schema::{SchemaProvider as SchemaProviderTrait, SchemaProviderEvent};
+use graph::components::{EventConsumer, EventProducer};
+use graph::data::schema::Schema;
 
-use thegraph_graphql::prelude::*;
+use graph_graphql::prelude::*;
 
 /// Common schema provider implementation for The Graph.
 pub struct SchemaProvider {
@@ -128,11 +128,11 @@ mod tests {
     use tokio_core::reactor::Core;
 
     use slog;
-    use thegraph::components::data_sources::SchemaEvent;
-    use thegraph::components::schema::SchemaProviderEvent;
-    use thegraph::components::{EventConsumer, EventProducer};
-    use thegraph::prelude::*;
-    use thegraph_graphql::schema::ast;
+    use graph::components::data_sources::SchemaEvent;
+    use graph::components::schema::SchemaProviderEvent;
+    use graph::components::{EventConsumer, EventProducer};
+    use graph::prelude::*;
+    use graph_graphql::schema::ast;
 
     use super::SchemaProvider as CoreSchemaProvider;
 

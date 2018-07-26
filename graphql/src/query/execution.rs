@@ -6,7 +6,7 @@ use std::cmp;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
-use thegraph::prelude::*;
+use graph::prelude::*;
 
 use prelude::*;
 use query::ast as qast;

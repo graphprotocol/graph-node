@@ -3,9 +3,9 @@ use futures::sync::mpsc::{channel, Receiver};
 use slog;
 use tokio_core::reactor::Handle;
 
-use thegraph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
-use thegraph::data::data_sources::DataSourceDefinitionResolveError;
-use thegraph::prelude::{DataSourceProvider as DataSourceProviderTrait, *};
+use graph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
+use graph::data::data_sources::DataSourceDefinitionResolveError;
+use graph::prelude::{DataSourceProvider as DataSourceProviderTrait, *};
 
 pub struct DataSourceProvider {
     _logger: slog::Logger,

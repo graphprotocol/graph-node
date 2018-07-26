@@ -2,10 +2,10 @@ extern crate ethabi;
 extern crate futures;
 extern crate ipfs_api;
 extern crate slog;
-extern crate thegraph;
-extern crate thegraph_core;
-extern crate thegraph_mock;
-extern crate thegraph_runtime_wasm;
+extern crate graph;
+extern crate graph_core;
+extern crate graph_mock;
+extern crate graph_runtime_wasm;
 extern crate tokio_core;
 
 use futures::stream::{self, Stream};
@@ -16,12 +16,12 @@ use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::Instant;
-use thegraph::components::ethereum::*;
-use thegraph::prelude::*;
-use thegraph::util::log::logger;
-use thegraph_core::RuntimeManager;
-use thegraph_mock::FakeStore;
-use thegraph_runtime_wasm::RuntimeHostBuilder;
+use graph::components::ethereum::*;
+use graph::prelude::*;
+use graph::util::log::logger;
+use graph_core::RuntimeManager;
+use graph_mock::FakeStore;
+use graph_runtime_wasm::RuntimeHostBuilder;
 use tokio_core::reactor::Core;
 
 #[test]

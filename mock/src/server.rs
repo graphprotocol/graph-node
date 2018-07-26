@@ -9,10 +9,10 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use tokio;
 
-use thegraph::components::schema::SchemaProviderEvent;
-use thegraph::components::store::StoreEvent;
-use thegraph::prelude::*;
-use thegraph::util::stream::StreamError;
+use graph::components::schema::SchemaProviderEvent;
+use graph::components::store::StoreEvent;
+use graph::prelude::*;
+use graph::util::stream::StreamError;
 
 #[derive(Debug)]
 pub struct MockServeError;

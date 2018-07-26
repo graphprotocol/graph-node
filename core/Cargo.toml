@@ -1,14 +1,14 @@
 [package]
-name = "thegraph-core"
+name = "graph-core"
 version = "0.1.0"
 
 [dependencies]
 futures = "0.1.21"
 graphql-parser = "0.2.0"
 slog = "2.2.3"
-thegraph = { path = "../thegraph" }
-thegraph-graphql = { path = "../graphql" }
-thegraph-runtime-wasm = { path = "../runtime/wasm" }
+graph = { path = "../graph" }
+graph-graphql = { path = "../graphql" }
+graph-runtime-wasm = { path = "../runtime/wasm" }
 tokio-core = "0.1.17"
 serde = "1.0"
 serde_yaml = "0.7"
@@ -16,4 +16,4 @@ serde_yaml = "0.7"
 [dev-dependencies]
 ethabi = "5.1.1"
 ipfs-api = "0.5.0-alpha1"
-thegraph-mock = { path = "../mock" }
+graph-mock = { path = "../mock" }
