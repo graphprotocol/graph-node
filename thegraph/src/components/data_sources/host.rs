@@ -6,10 +6,8 @@ type DataSourceID = String;
 /// Events emitted by a runtime host.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeHostEvent {
-    /// An entity should be created.
-    EntityCreated(DataSourceID, StoreKey, Entity),
-    /// An entity should be updated.
-    EntityChanged(DataSourceID, StoreKey, Entity),
+    /// An entity should be create or updated.
+    EntitySet(DataSourceID, StoreKey, Entity),
     /// An entity should be removed.
     EntityRemoved(DataSourceID, StoreKey),
 }
