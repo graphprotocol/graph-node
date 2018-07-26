@@ -64,21 +64,20 @@ impl AscHeap for WasmiAscHeap {
 
 // Indexes for exported host functions
 const ABORT_FUNC_INDEX: usize = 0;
-const DATABASE_CREATE_FUNC_INDEX: usize = 1;
-const DATABASE_UPDATE_FUNC_INDEX: usize = 2;
-const DATABASE_REMOVE_FUNC_INDEX: usize = 3;
-const ETHEREUM_CALL_FUNC_INDEX: usize = 4;
-const TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX: usize = 5;
-const TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX: usize = 6;
-const TYPE_CONVERSION_U64_ARRAY_TO_STRING_FUNC_INDEX: usize = 7;
-const TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX: usize = 8;
-const TYPE_CONVERSION_H256_TO_H160_FUNC_INDEX: usize = 9;
-const TYPE_CONVERSION_H160_TO_H256_FUNC_INDEX: usize = 10;
-const TYPE_CONVERSION_U256_TO_H160_FUNC_INDEX: usize = 11;
-const TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX: usize = 12;
-const TYPE_CONVERSION_INT256_TO_BIG_INT_FUNC_INDEX: usize = 13;
-const JSON_FROM_BYTES_FUNC_INDEX: usize = 14;
-const IPFS_CAT_FUNC_INDEX: usize = 15;
+const STORE_SET_FUNC_INDEX: usize = 1;
+const STORE_REMOVE_FUNC_INDEX: usize = 2;
+const ETHEREUM_CALL_FUNC_INDEX: usize = 3;
+const TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX: usize = 4;
+const TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX: usize = 5;
+const TYPE_CONVERSION_U64_ARRAY_TO_STRING_FUNC_INDEX: usize = 6;
+const TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX: usize = 7;
+const TYPE_CONVERSION_H256_TO_H160_FUNC_INDEX: usize = 8;
+const TYPE_CONVERSION_H160_TO_H256_FUNC_INDEX: usize = 9;
+const TYPE_CONVERSION_U256_TO_H160_FUNC_INDEX: usize = 10;
+const TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX: usize = 11;
+const TYPE_CONVERSION_INT256_TO_BIG_INT_FUNC_INDEX: usize = 12;
+const JSON_FROM_BYTES_FUNC_INDEX: usize = 13;
+const IPFS_CAT_FUNC_INDEX: usize = 14;
 
 pub struct WasmiModuleConfig<T, L> {
     pub data_source: DataSourceDefinition,
@@ -117,7 +116,7 @@ where
         // Build import resolver
         let mut imports = ImportsBuilder::new();
         imports.push_resolver("env", &EnvModuleResolver);
-        imports.push_resolver("database", &StoreModuleResolver);
+        imports.push_resolver("store", &StoreModuleResolver);
         imports.push_resolver("ethereum", &EthereumModuleResolver);
         imports.push_resolver("typeConversion", &TypeConversionModuleResolver);
         imports.push_resolver("json", &JsonModuleResolver);
@@ -212,8 +211,8 @@ where
     T: EthereumAdapter,
     L: LinkResolver,
 {
-    /// function database.create(blockHash: H256, entity: string, id: string, data: Entity): void
-    fn database_create(
+    /// function store.set(blockHash: H256, entity: string, id: string, data: Entity): void
+    fn store_set(
         &self,
         block_hash_ptr: AscPtr<AscH256>,
         entity_ptr: AscPtr<AscString>,
@@ -228,12 +227,12 @@ where
         let store_key = StoreKey { entity, id };
         let entity_data = Entity::from(data);
 
-        // Send an entity created event
+        // Send an entity set event
         let logger = self.logger.clone();
         self.runtime.spawn(
             self.event_sink
                 .clone()
-                .send(RuntimeHostEvent::EntityCreated(
+                .send(RuntimeHostEvent::EntitySet(
                     self.data_source.id.clone(),
                     store_key,
                     entity_data,
@@ -248,47 +247,8 @@ where
         Ok(None)
     }
 
-    /// function database.update(entity: string, id: string, data: Entity): void
-    fn database_update(
-        &self,
-        block_hash_ptr: AscPtr<AscH256>,
-        entity_ptr: AscPtr<AscString>,
-        id_ptr: AscPtr<AscString>,
-        data_ptr: AscPtr<AscEntity>,
-    ) -> Result<Option<RuntimeValue>, Trap> {
-        let _block_hash: H256 = self.heap.asc_get(block_hash_ptr);
-        let entity: String = self.heap.asc_get(entity_ptr);
-        let id: String = self.heap.asc_get(id_ptr);
-        let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
-
-        let store_key = StoreKey {
-            entity: entity,
-            id: id.clone(),
-        };
-        let entity_data = Entity::from(data);
-
-        // Send an entity changed event
-        let logger = self.logger.clone();
-        self.runtime.spawn(
-            self.event_sink
-                .clone()
-                .send(RuntimeHostEvent::EntityChanged(
-                    self.data_source.id.clone(),
-                    store_key,
-                    entity_data,
-                ))
-                .map_err(move |e| {
-                    error!(logger, "Failed to forward runtime host event";
-                           "error" => format!("{}", e));
-                })
-                .and_then(|_| Ok(())),
-        );
-
-        Ok(None)
-    }
-
-    /// function database.remove(entity: string, id: string): void
-    fn database_remove(
+    /// function store.remove(entity: string, id: string): void
+    fn store_remove(
         &self,
         block_hash_ptr: AscPtr<AscH256>,
         entity_ptr: AscPtr<AscString>,
@@ -525,19 +485,13 @@ where
         args: RuntimeArgs,
     ) -> Result<Option<RuntimeValue>, Trap> {
         match index {
-            DATABASE_CREATE_FUNC_INDEX => self.database_create(
+            STORE_SET_FUNC_INDEX => self.store_set(
                 args.nth_checked(0)?,
                 args.nth_checked(1)?,
                 args.nth_checked(2)?,
                 args.nth_checked(3)?,
             ),
-            DATABASE_UPDATE_FUNC_INDEX => self.database_update(
-                args.nth_checked(0)?,
-                args.nth_checked(1)?,
-                args.nth_checked(2)?,
-                args.nth_checked(3)?,
-            ),
-            DATABASE_REMOVE_FUNC_INDEX => self.database_remove(
+            STORE_REMOVE_FUNC_INDEX => self.store_remove(
                 args.nth_checked(0)?,
                 args.nth_checked(1)?,
                 args.nth_checked(2)?,
@@ -595,13 +549,13 @@ impl ModuleImportResolver for EnvModuleResolver {
     }
 }
 
-/// Database module resolver
+/// Store module resolver
 pub struct StoreModuleResolver;
 
 impl ModuleImportResolver for StoreModuleResolver {
     fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
         Ok(match field_name {
-            "create" => FuncInstance::alloc_host(
+            "set" => FuncInstance::alloc_host(
                 Signature::new(
                     &[
                         ValueType::I32,
@@ -611,23 +565,11 @@ impl ModuleImportResolver for StoreModuleResolver {
                     ][..],
                     None,
                 ),
-                DATABASE_CREATE_FUNC_INDEX,
-            ),
-            "update" => FuncInstance::alloc_host(
-                Signature::new(
-                    &[
-                        ValueType::I32,
-                        ValueType::I32,
-                        ValueType::I32,
-                        ValueType::I32,
-                    ][..],
-                    None,
-                ),
-                DATABASE_UPDATE_FUNC_INDEX,
+                STORE_SET_FUNC_INDEX,
             ),
             "remove" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32, ValueType::I32, ValueType::I32][..], None),
-                DATABASE_REMOVE_FUNC_INDEX,
+                STORE_REMOVE_FUNC_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(
@@ -887,9 +829,9 @@ mod tests {
     }
 
     #[test]
-    fn call_event_handler_and_receive_database_event() {
+    fn call_event_handler_and_receive_store_event() {
         // Load the example_event_handler.wasm test module. All this module does
-        // is implement an `handleExampleEvent` function that calls `database.create()`
+        // is implement an `handleExampleEvent` function that calls `store.set()`
         // with sample data taken from the event parameters.
         //
         // This test verifies that the event is delivered and the example data
@@ -926,18 +868,18 @@ mod tests {
         // Call the event handler in the test module and pass the event to it
         module.handle_ethereum_event("handleExampleEvent", ethereum_event);
 
-        // Expect a database create call to be made by the handler and a
-        // RuntimeHostEvent::EntityCreated event to be written to the event stream
+        // Expect a store set call to be made by the handler and a
+        // RuntimeHostEvent::EntitySet event to be written to the event stream
         let work = receiver.take(1).into_future();
-        let database_event = core.run(work)
-            .expect("No database event received from runtime")
+        let store_event = core.run(work)
+            .expect("No store event received from runtime")
             .0
-            .expect("Database event must not be None");
+            .expect("Store event must not be None");
 
         // Verify that this event matches what the test module is sending
         assert_eq!(
-            database_event,
-            RuntimeHostEvent::EntityCreated(
+            store_event,
+            RuntimeHostEvent::EntitySet(
                 String::from("example data source"),
                 StoreKey {
                     entity: String::from("ExampleEntity"),
