@@ -1107,24 +1107,16 @@ fn revert_block() {
         // There should be one user returned in results
         assert_eq!(1, returned_entities.len());
 
-        // Revert and test again to confirm idempotent nature of revert_events()
+        // Perform revert operation again to confirm idempotent nature of revert_events()
         let block_hash = "znuyjijnezBiGFuZAW9Q";
         let event_source =
             EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes())).to_string();
-
-        // Revert all events associated with event_source, "znuyjijnezBiGFuZAW9Q"
         store.revert_events(event_source);
-
         let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector has email "queensha@email.com"
         let returned_name = returned_entities[0].get(&String::from("email"));
         let test_value = Value::String(String::from("queensha@email.com"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be one user returned in results
-        assert_eq!(1, returned_entities.len());
     })
 }
 
@@ -1146,7 +1138,7 @@ fn revert_block_with_delete() {
             range: None,
         };
 
-        // Delete an entity using custom event source "delete_operation"
+        // Delete an entity using a randomly created event source
         let del_key = StoreKey {
             entity: String::from("user"),
             id: String::from("2"),
@@ -1157,7 +1149,7 @@ fn revert_block_with_delete() {
             .delete(del_key.clone(), event_source)
             .expect("Store.delete operation failed");
 
-        // Revert all events associated with our custom event_source, "delete_operation"
+        // Revert all events associated with our random event_source
         store.revert_events(revert_event_source);
 
         let returned_entities = store
@@ -1173,30 +1165,21 @@ fn revert_block_with_delete() {
         // There should be one entity returned in results
         assert_eq!(1, returned_entities.len());
 
-        // Revert and test again to confirm idempotent nature of revert_events()
-
-        // Delete an entity using custom event source "delete_operation"
+        // Perform revert operation again to confirm idempotent nature of revert_events()
+        // Delete an entity using a randomly created event source
         let event_source = EventSource::EthereumBlock(H256::random());
         let revert_event_source = event_source.to_string();
         store
             .delete(del_key.clone(), event_source)
             .expect("Store.delete operation failed");
-
-        // Revert all events associated with our custom event_source, "delete_operation"
         store.revert_events(revert_event_source);
-
         let returned_entities = store
             .find(this_query.clone())
             .expect("store.find operation failed");
-
-        // Check if "cindini@email.com" is in result set
         let returned_name = returned_entities[0].get(&String::from("email"));
         let test_value = Value::String(String::from("dinici@email.com"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be one entity returned in results
-        assert_eq!(1, returned_entities.len());
     })
 }
 
@@ -1240,15 +1223,10 @@ fn revert_block_with_partial_update() {
         // Verify that the entity has been returned to its original state
         assert_eq!(reverted_entity, original_entity);
 
-        // Revert and test again to confirm idempotent nature of revert_events()
-
-        // Perform revert operation, reversing the partial update
+        // Perform revert operation again and verify the same results to confirm the
+        // idempotent nature of the revert_events function
         store.revert_events(revert_event_source);
-
-        // Obtain the reverted entity from the store
         let reverted_entity = store.get(entity_key).unwrap();
-
-        // Verify that the entity has been returned to its original state
         assert_eq!(reverted_entity, original_entity);
     })
 }
