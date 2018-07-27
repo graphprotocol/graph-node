@@ -26,12 +26,15 @@ Right now, this includes:
 ## Prerequisites
 
 The Graph is written in Rust. In order to build and run this project you need
-to have Rust, PostgreSQL, IPFS and Ethereum node installed on your system:
+to have the following installed on your system:
 
 - [How to install Rust](https://www.rust-lang.org/en-US/install.html)
 - [PostgreSQL Downloads](https://www.postgresql.org/download/)
 - [Installing IPFS](https://ipfs.io/docs/install/)
+
+For Ethereum network data you can either run a local node or use Infura.io:
 - [Installing and running Ethereum node](https://ethereum.gitbooks.io/frontier-guide/content/getting_a_client.html)
+- [Infura.io](https://infura.io/)
 
 ## Getting Started
 
@@ -44,6 +47,7 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 ```
 
 ### Running a local node
+
 *Steps to set up Postgres*
 
 1. Set up: `initdb -D .postgres` (somewhere; creates a Postgres config in `.postgres/`)
