@@ -55,11 +55,11 @@ fn create_test_entity(
         id: id,
     };
     let mut test_entity = Entity::new();
-    test_entity.insert("name".to_string(), Value::String(name));
-    test_entity.insert("email".to_string(), Value::String(email));
-    test_entity.insert("age".to_string(), Value::Int(age));
-    test_entity.insert("weight".to_string(), Value::Float(weight));
-    test_entity.insert("coffee".to_string(), Value::Bool(coffee));
+    test_entity.insert(String::from("name"), Value::String(name));
+    test_entity.insert(String::from("email"), Value::String(email));
+    test_entity.insert(String::from("age"), Value::Int(age));
+    test_entity.insert(String::from("weight"), Value::Float(weight));
+    test_entity.insert(String::from("coffee"), Value::Bool(coffee));
     (
         test_key,
         test_entity,
@@ -105,8 +105,8 @@ fn insert_test_data() {
     let test_entity_3 = create_test_entity(
         String::from("3"),
         String::from("user"),
-        String::from("Shaqueeena".to_string()),
-        String::from("queensha@email.com".to_string()),
+        String::from("Shaqueeena"),
+        String::from("queensha@email.com"),
         28 as i32,
         111.7 as f32,
         false,
@@ -119,8 +119,8 @@ fn insert_test_data() {
     let test_entity_3_2 = create_test_entity(
         String::from("3"),
         String::from("user"),
-        String::from("Shaqueeena".to_string()),
-        String::from("teeko@email.com".to_string()),
+        String::from("Shaqueeena"),
+        String::from("teeko@email.com"),
         28 as i32,
         111.7 as f32,
         false,
@@ -161,7 +161,7 @@ fn delete_entity() {
         //Get all ids in table
         let all_ids = entities.select(id).load::<String>(&store.conn).unwrap();
         // Check that that the deleted entity id is not present
-        assert!(!all_ids.contains(&"3".to_string()));
+        assert!(!all_ids.contains(&String::from("3")));
     })
 }
 
@@ -180,14 +180,14 @@ fn get_entity() {
         let result = store.get(key).unwrap();
 
         let mut expected_entity = Entity::new();
-        expected_entity.insert("name".to_string(), Value::String("Johnton".to_string()));
+        expected_entity.insert(String::from("name"), Value::String(String::from("Johnton")));
         expected_entity.insert(
-            "email".to_string(),
-            Value::String("tonofjohn@email.com".to_string()),
+            String::from("email"),
+            Value::String(String::from("tonofjohn@email.com")),
         );
-        expected_entity.insert("age".to_string(), Value::Int(67 as i32));
-        expected_entity.insert("weight".to_string(), Value::Float(184.4 as f32));
-        expected_entity.insert("coffee".to_string(), Value::Bool(false));
+        expected_entity.insert(String::from("age"), Value::Int(67 as i32));
+        expected_entity.insert(String::from("weight"), Value::Float(184.4 as f32));
+        expected_entity.insert(String::from("coffee"), Value::Bool(false));
 
         // Check that the expected entity was returned
         assert_eq!(result, expected_entity);
@@ -207,8 +207,8 @@ fn insert_entity() {
         let test_entity_1 = create_test_entity(
             String::from("7"),
             String::from("user"),
-            String::from("Wanjon".to_string()),
-            String::from("wanawana@email.com".to_string()),
+            String::from("Wanjon"),
+            String::from("wanawana@email.com"),
             76 as i32,
             111.7 as f32,
             true,
@@ -220,7 +220,7 @@ fn insert_entity() {
 
         // Check that new record is in the store
         let all_ids = entities.select(id).load::<String>(&store.conn).unwrap();
-        assert!(all_ids.iter().any(|x| x == &"7".to_string()));
+        assert!(all_ids.iter().any(|x| x == &String::from("7")));
     })
 }
 
@@ -240,8 +240,8 @@ fn update_existing() {
         let test_entity_1 = create_test_entity(
             String::from("1"),
             String::from("user"),
-            String::from("Wanjon".to_string()),
-            String::from("wanawana@email.com".to_string()),
+            String::from("Wanjon"),
+            String::from("wanawana@email.com"),
             76 as i32,
             111.7 as f32,
             true,
@@ -316,21 +316,18 @@ fn find_string_contains() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Contains(
-                "name".to_string(),
-                Value::String("%ind%".to_string()),
+                String::from("name"),
+                Value::String(String::from("%ind%")),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Make sure the first user in the result vector is "Cindini"
-        let returned_entity = &result.unwrap()[0];
-        let returned_name = returned_entity.get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
-        assert!(returned_name.is_some());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert_eq!(&test_value, returned_name.unwrap());
     })
 }
@@ -345,21 +342,18 @@ fn find_string_equal() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
-                "name".to_string(),
-                Value::String("Cindini".to_string()),
+                String::from("name"),
+                Value::String(String::from("Cindini")),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Make sure the first user in the result vector is "Cindini"
-        let returned_entity = &result.unwrap()[0];
-        let returned_name = returned_entity.get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
-        assert!(returned_name.is_some());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert_eq!(&test_value, returned_name.unwrap());
     })
 }
@@ -374,20 +368,18 @@ fn find_string_not_equal() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
-                "name".to_string(),
-                Value::String("Cindini".to_string()),
+                String::from("name"),
+                Value::String(String::from("Cindini")),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"; fail if it is
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert!(returned_name.is_some());
         assert_ne!(&test_value, returned_name.unwrap());
 
@@ -406,20 +398,18 @@ fn find_string_greater_than() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
-                "name".to_string(),
-                Value::String("Kundi".to_string()),
+                String::from("name"),
+                Value::String(String::from("Kundi")),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"; fail if it is
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert!(returned_name.is_some());
         assert_ne!(&test_value, returned_name.unwrap());
 
@@ -438,20 +428,18 @@ fn find_string_less_than() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
-                "name".to_string(),
-                Value::String("Kundi".to_string()),
+                String::from("name"),
+                Value::String(String::from("Kundi")),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"; fail if it is
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert!(returned_name.is_some());
         assert_ne!(&test_value, returned_name.unwrap());
 
@@ -470,8 +458,8 @@ fn find_string_less_than_order_by_asc() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
-                "name".to_string(),
-                Value::String("Kundi".to_string()),
+                String::from("name"),
+                Value::String(String::from("Kundi")),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Ascending),
@@ -487,15 +475,15 @@ fn find_string_less_than_order_by_asc() {
             .iter()
             .map(|entity| {
                 entity
-                    .get(&"name".to_string())
+                    .get(&String::from("name"))
                     .expect("Entity without \"name\" attribute returned")
             })
             .collect();
         assert_eq!(
             names,
             vec![
-                &Value::String("Cindini".to_string()),
-                &Value::String("Johnton".to_string()),
+                &Value::String(String::from("Cindini")),
+                &Value::String(String::from("Johnton")),
             ]
         );
     })
@@ -511,8 +499,8 @@ fn find_string_less_than_order_by_desc() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
-                "name".to_string(),
-                Value::String("Kundi".to_string()),
+                String::from("name"),
+                Value::String(String::from("Kundi")),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
@@ -528,15 +516,15 @@ fn find_string_less_than_order_by_desc() {
             .iter()
             .map(|entity| {
                 entity
-                    .get(&"name".to_string())
+                    .get(&String::from("name"))
                     .expect("Entity without \"name\" attribute returned")
             })
             .collect();
         assert_eq!(
             names,
             vec![
-                &Value::String("Johnton".to_string()),
-                &Value::String("Cindini".to_string()),
+                &Value::String(String::from("Johnton")),
+                &Value::String(String::from("Cindini")),
             ]
         );
     })
@@ -552,20 +540,18 @@ fn find_string_less_than_range() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
-                "name".to_string(),
-                Value::String("ZZZ".to_string()),
+                String::from("name"),
+                Value::String(String::from("ZZZ")),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 1, skip: 1 }),
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Johnton".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Johnton"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -584,20 +570,18 @@ fn find_string_multiple_and() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![
-                StoreFilter::LessThan("name".to_string(), Value::String("Cz".to_string())),
-                StoreFilter::Equal("name".to_string(), Value::String("Cindini".to_string())),
+                StoreFilter::LessThan(String::from("name"), Value::String(String::from("Cz"))),
+                StoreFilter::Equal(String::from("name"), Value::String(String::from("Cindini"))),
             ])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -616,20 +600,18 @@ fn find_float_equal() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
-                "weight".to_string(),
+                String::from("weight"),
                 Value::Float(184.4 as f32),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Johnton".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Johnton"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -648,20 +630,18 @@ fn find_float_not_equal() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
-                "weight".to_string(),
+                String::from("weight"),
                 Value::Float(184.4 as f32),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Shaqueeena".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Shaqueeena"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -680,20 +660,18 @@ fn find_float_greater_than() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
-                "weight".to_string(),
+                String::from("weight"),
                 Value::Float(160 as f32),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Johnton".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Johnton"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -712,20 +690,18 @@ fn find_float_less_than() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
-                "weight".to_string(),
+                String::from("weight"),
                 Value::Float(160 as f32),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini";
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -744,20 +720,18 @@ fn find_float_less_than_order_by_desc() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
-                "weight".to_string(),
+                String::from("weight"),
                 Value::Float(160 as f32),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Shaqueeena".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Shaqueeena"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -776,19 +750,17 @@ fn find_float_less_than_range() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
-                "weight".to_string(),
+                String::from("weight"),
                 Value::Float(161 as f32),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 1, skip: 1 }),
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
         // Check if the first user in the result vector is "Cindini"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -807,20 +779,18 @@ fn find_int_equal() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
-                "age".to_string(),
+                String::from("age"),
                 Value::Int(67 as i32),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Johnton".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Johnton"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -839,20 +809,18 @@ fn find_int_not_equal() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
-                "age".to_string(),
+                String::from("age"),
                 Value::Int(67 as i32),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Shaqueeena".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Shaqueeena"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -871,20 +839,18 @@ fn find_int_greater_than() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
-                "age".to_string(),
+                String::from("age"),
                 Value::Int(43 as i32),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Johnton".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Johnton"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -903,20 +869,18 @@ fn find_int_greater_or_equal() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterOrEqual(
-                "age".to_string(),
+                String::from("age"),
                 Value::Int(43 as i32),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -935,20 +899,18 @@ fn find_int_less_than() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
-                "age".to_string(),
+                String::from("age"),
                 Value::Int(50 as i32),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -967,20 +929,18 @@ fn find_int_less_or_equal() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessOrEqual(
-                "age".to_string(),
+                String::from("age"),
                 Value::Int(43 as i32),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini";
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -999,20 +959,18 @@ fn find_int_less_than_order_by_desc() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
-                "age".to_string(),
+                String::from("age"),
                 Value::Int(50 as i32),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Shaqueeena".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Shaqueeena"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -1031,20 +989,18 @@ fn find_int_less_than_range() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
-                "age".to_string(),
+                String::from("age"),
                 Value::Int(67 as i32),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 1, skip: 1 }),
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -1063,20 +1019,18 @@ fn find_bool_equal() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
-                "coffee".to_string(),
+                String::from("coffee"),
                 Value::Bool(true),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Cindini".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -1095,20 +1049,18 @@ fn find_bool_not_equal() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
-                "coffee".to_string(),
+                String::from("coffee"),
                 Value::Bool(true),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store.find(this_query).expect("store.find query failed");
 
         // Check if the first user in the result vector is "Johnton"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"name".to_string());
-        let test_value = Value::String("Johnton".to_string());
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Johnton"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -1127,8 +1079,8 @@ fn revert_block() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
-                "name".to_string(),
-                Value::String("Shaqueeena".to_string()),
+                String::from("name"),
+                Value::String(String::from("Shaqueeena")),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
@@ -1136,20 +1088,38 @@ fn revert_block() {
         };
 
         let block_hash = "znuyjijnezBiGFuZAW9Q";
-        let event_source = EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes())).to_string();
+        let event_source =
+            EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes())).to_string();
 
         // Revert all events associated with event_source, "znuyjijnezBiGFuZAW9Q"
-        store.revert_events("znuyjijnezBiGFuZAW9Q".to_string());
+        store.revert_events(event_source);
 
-        println!("revert run success i think?");
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store
+            .find(this_query.clone())
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector has email "queensha@email.com"
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"email".to_string());
-        println!("{:?}", &returned_name);
-        let test_value = Value::String("queensha@email.com".to_string());
+        let returned_name = returned_entities[0].get(&String::from("email"));
+        let test_value = Value::String(String::from("queensha@email.com"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be one user returned in results
+        assert_eq!(1, returned_entities.len());
+
+        // Revert and test again to confirm idempotent nature of revert_events()
+        let block_hash = "znuyjijnezBiGFuZAW9Q";
+        let event_source =
+            EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes())).to_string();
+
+        // Revert all events associated with event_source, "znuyjijnezBiGFuZAW9Q"
+        store.revert_events(event_source);
+
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
+
+        // Check if the first user in the result vector has email "queensha@email.com"
+        let returned_name = returned_entities[0].get(&String::from("email"));
+        let test_value = Value::String(String::from("queensha@email.com"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -1168,36 +1138,60 @@ fn revert_block_with_delete() {
         let this_query = StoreQuery {
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
-                "name".to_string(),
-                Value::String("Cindini".to_string()),
+                String::from("name"),
+                Value::String(String::from("Cindini")),
             )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
 
-        //Delete an entity using custom event source "delete_operation"
+        // Delete an entity using custom event source "delete_operation"
         let del_key = StoreKey {
-            entity: "user".to_string(),
-            id: "2".to_string(),
+            entity: String::from("user"),
+            id: String::from("2"),
         };
         let event_source = EventSource::EthereumBlock(H256::random());
         let revert_event_source = event_source.to_string();
         store
-            .delete(del_key, event_source)
+            .delete(del_key.clone(), event_source)
             .expect("Store.delete operation failed");
 
         // Revert all events associated with our custom event_source, "delete_operation"
-        store.revert_events("delete_operation".to_string());
+        store.revert_events(revert_event_source);
 
-        let result = store.find(this_query);
-        assert!(result.is_ok());
+        let returned_entities = store
+            .find(this_query.clone())
+            .expect("store.find operation failed");
 
         // Check if "cindini@email.com" is in result set
-        let returned_entities = result.unwrap();
-        let returned_name = returned_entities[0].get(&"email".to_string());
-        println!("NAME {:?}", &returned_name);
-        let test_value = Value::String("dinici@email.com".to_string());
+        let returned_name = returned_entities[0].get(&String::from("email"));
+        let test_value = Value::String(String::from("dinici@email.com"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be one entity returned in results
+        assert_eq!(1, returned_entities.len());
+
+        // Revert and test again to confirm idempotent nature of revert_events()
+
+        // Delete an entity using custom event source "delete_operation"
+        let event_source = EventSource::EthereumBlock(H256::random());
+        let revert_event_source = event_source.to_string();
+        store
+            .delete(del_key.clone(), event_source)
+            .expect("Store.delete operation failed");
+
+        // Revert all events associated with our custom event_source, "delete_operation"
+        store.revert_events(revert_event_source);
+
+        let returned_entities = store
+            .find(this_query.clone())
+            .expect("store.find operation failed");
+
+        // Check if "cindini@email.com" is in result set
+        let returned_name = returned_entities[0].get(&String::from("email"));
+        let test_value = Value::String(String::from("dinici@email.com"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -1234,8 +1228,19 @@ fn revert_block_with_partial_update() {
 
         // Set test entity; as the entity already exists an update should be performed
         store
-            .set(entity_key.clone(), partial_entity.clone(), event_source)
+            .set(entity_key.clone(), partial_entity, event_source)
             .expect("Failed to update entity that already exists");
+
+        // Perform revert operation, reversing the partial update
+        store.revert_events(revert_event_source.clone());
+
+        // Obtain the reverted entity from the store
+        let reverted_entity = store.get(entity_key.clone()).unwrap();
+
+        // Verify that the entity has been returned to its original state
+        assert_eq!(reverted_entity, original_entity);
+
+        // Revert and test again to confirm idempotent nature of revert_events()
 
         // Perform revert operation, reversing the partial update
         store.revert_events(revert_event_source);
@@ -1243,15 +1248,7 @@ fn revert_block_with_partial_update() {
         // Obtain the reverted entity from the store
         let reverted_entity = store.get(entity_key).unwrap();
 
-        // Verify that the values of all attributes we have updated have been
-        // reverted to their original values
-        assert_eq!(reverted_entity.get("id"), original_entity.get("id"));
-        assert_eq!(reverted_entity.get("user"), original_entity.get("user"));
-        assert_eq!(reverted_entity.get("email"), original_entity.get("email"));
-
-        // Verify that all attributes we did not update remain at their old values
-        assert_eq!(reverted_entity.get("age"), original_entity.get("age"));
-        assert_eq!(reverted_entity.get("weight"), original_entity.get("weight"));
-        assert_eq!(reverted_entity.get("coffee"), original_entity.get("coffee"));
+        // Verify that the entity has been returned to its original state
+        assert_eq!(reverted_entity, original_entity);
     })
 }
