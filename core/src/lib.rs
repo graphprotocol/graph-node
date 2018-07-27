@@ -1,3 +1,4 @@
+extern crate ethereum_types;
 extern crate futures;
 extern crate graphql_parser;
 #[macro_use]

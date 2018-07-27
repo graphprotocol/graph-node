@@ -1,3 +1,4 @@
+use ethereum_types::H256;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog::Logger;
@@ -67,7 +68,7 @@ impl RuntimeManager where {
                         .set(
                             store_key,
                             entity,
-                            EventSource::LocalProcess(String::from("blockhash")),
+                            EventSource::EthereumBlock(H256::random()),
                         )
                         .expect("Failed to set entity in the store");
                 }
@@ -75,10 +76,7 @@ impl RuntimeManager where {
                     store
                         .lock()
                         .unwrap()
-                        .delete(
-                            store_key,
-                            EventSource::LocalProcess(String::from("blockhash")),
-                        )
+                        .delete(store_key, EventSource::EthereumBlock(H256::random()))
                         .expect("Failed to delete entity from the store");
                 }
             }
