@@ -3,6 +3,7 @@ use futures::sync::mpsc::{Receiver, Sender};
 
 use components::schema::SchemaProviderEvent;
 use data::store::*;
+use std::fmt;
 use util::stream::StreamError;
 
 /// Key by which an individual entity in the store can be accessed.
@@ -85,9 +86,20 @@ pub enum StoreEvent {
     EntityChanged(Entity),
 }
 
+/// The source of the events being sent to the store
 pub enum EventSource {
     EthereumBlock(H256),
-    LocalProcess(String),
+}
+
+// Implementing the display trait also provides a ToString trait implementation
+impl fmt::Display for EventSource {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let printable_source = match *self {
+            // Use LowerHex to format hash as hex string
+            EventSource::EthereumBlock(hash) => format!("{:x}", hash),
+        };
+        write!(f, "{}", printable_source)
+    }
 }
 
 /// Common trait for store implementations that don't require interaction with the system.
