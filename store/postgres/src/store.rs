@@ -128,9 +128,11 @@ impl BasicStore for Store {
         &mut self,
         key: StoreKey,
         input_entity: Entity,
-        event_source: EventSource,
+        input_event_source: EventSource,
     ) -> Result<(), ()> {
         debug!(self.logger, "set"; "key" => format!("{:?}", key));
+
+        use db_schema::entities::dsl::*;
 
         // The data source is hardcoded at the moment
         let datasource: String = String::from("memefactory");
@@ -148,50 +150,44 @@ impl BasicStore for Store {
         let entity_json: serde_json::Value =
             serde_json::to_value(&updated_entity).expect("Failed to serialize entity");
 
-        // Use db_schema::entities::dsl::*;
-        use db_schema::entities;
-
-        let source = &event_source.to_string();
-
         // Insert entity, perform an update in case of a primary key conflict
-        insert_into(entities::table)
+        insert_into(entities)
             .values((
-                entities::columns::id.eq(&key.id),
-                entities::columns::entity.eq(&key.entity),
-                entities::columns::data_source.eq(&datasource),
-                entities::columns::data.eq(&entity_json),
-                entities::columns::event_source.eq(&event_source.to_string()),
+                id.eq(&key.id),
+                entity.eq(&key.entity),
+                data_source.eq(&datasource),
+                data.eq(&entity_json),
+                event_source.eq(&input_event_source.to_string()),
             ))
             .on_conflict((
-                entities::columns::id,
-                entities::columns::entity,
-                entities::columns::data_source,
+                id,
+                entity,
+                data_source,
             ))
             .do_update()
             .set((
-                entities::columns::id.eq(&key.id),
-                entities::columns::entity.eq(&key.entity),
-                entities::columns::data_source.eq(&datasource),
-                entities::columns::data.eq(&entity_json),
-                entities::columns::event_source.eq(&event_source.to_string()),
+                id.eq(&key.id),
+                entity.eq(&key.entity),
+                data_source.eq(&datasource),
+                data.eq(&entity_json),
+                event_source.eq(&input_event_source.to_string()),
             ))
             .execute(&self.conn)
             .map(|_| ())
             .map_err(|_| ())
     }
 
-    fn delete(&mut self, key: StoreKey, event_source: EventSource) -> Result<(), ()> {
+    fn delete(&mut self, key: StoreKey, input_event_source: EventSource) -> Result<(), ()> {
         debug!(self.logger, "delete"; "key" => format!("{:?}", key));
 
-        //        use db_schema::entities::dsl::*;
-        use db_schema::entities;
+        use db_schema::entities::dsl::*;
 
         self.conn
             .transaction::<usize, result::Error, _>(|| {
                 // Set session variable to store the source of the event
                 select(set_config(
                     "vars.current_event_source",
-                    event_source.to_string(),
+                    input_event_source.to_string(),
                     false,
                 )).execute(&self.conn)
                     .unwrap();
@@ -199,9 +195,9 @@ impl BasicStore for Store {
                 // Delete from DB where rows match the ID and entity value;
                 // add data source here when meaningful
                 delete(
-                    entities::table
-                        .filter(entities::columns::id.eq(&key.id))
-                        .filter(entities::columns::entity.eq(&key.entity)),
+                    entities
+                        .filter(id.eq(&key.id))
+                        .filter(entity.eq(&key.entity)),
                 ).execute(&self.conn)
             })
             .map(|_| ())
@@ -209,15 +205,14 @@ impl BasicStore for Store {
     }
 
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()> {
-        use db_schema::entities::columns::*;
-        use db_schema::*;
+        use db_schema::entities::dsl::*;
 
         // The data source is hard-coded at the moment
         let _datasource: String = String::from("memefactory");
 
         // Create base boxed query; this will be added to based on the
         // query parameters provided
-        let mut diesel_query = entities::table
+        let mut diesel_query = entities
             .filter(entity.eq(query.entity))
             .select(data)
             .into_boxed::<Pg>();

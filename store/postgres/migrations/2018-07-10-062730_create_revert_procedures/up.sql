@@ -126,7 +126,7 @@ BEGIN
         FROM entity_history
         JOIN event_meta_data ON
             event_meta_data.id=entity_history.event_id
-        WHERE event_meta_data.id = ANY(event_id_to_reverts)
+        WHERE event_meta_data.id = ANY(event_id_to_revert)
         ORDER BY entity_history.id DESC
     LOOP
         PERFORM revert_entity_event(row.id, row.op_id);
