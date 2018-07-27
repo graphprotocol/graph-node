@@ -1,4 +1,5 @@
 extern crate diesel;
+extern crate ethereum_types;
 extern crate serde_json;
 extern crate graph;
 extern crate graph_store_postgres;
@@ -8,6 +9,7 @@ extern crate slog;
 
 use diesel::pg::PgConnection;
 use diesel::*;
+use ethereum_types::H256;
 use slog::Logger;
 use std::panic;
 use tokio_core::reactor::Core;
@@ -61,7 +63,7 @@ fn create_test_entity(
     (
         test_key,
         test_entity,
-        EventSource::LocalProcess(String::from(block_hash)),
+        EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes())),
     )
 }
 
@@ -153,7 +155,7 @@ fn delete_entity() {
             entity: String::from("user"),
             id: String::from("3"),
         };
-        let source = EventSource::LocalProcess(String::from("test_delete_operation"));
+        let source = EventSource::EthereumBlock(H256::random());
         store.delete(test_key, source).unwrap();
 
         //Get all ids in table
@@ -279,8 +281,7 @@ fn partially_update_existing() {
         ]);
 
         let original_entity = store.get(entity_key.clone()).unwrap();
-        let block_hash = String::from("mcj8jfeh8cje8");
-        let event_source = EventSource::LocalProcess(String::from(block_hash));
+        let event_source = EventSource::EthereumBlock(H256::random());
         // Verify that the entity before updating is different from what we expect afterwards
         assert_ne!(original_entity, partial_entity);
 
@@ -1134,6 +1135,9 @@ fn revert_block() {
             range: None,
         };
 
+        let block_hash = "znuyjijnezBiGFuZAW9Q";
+        let event_source = EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes())).to_string();
+
         // Revert all events associated with event_source, "znuyjijnezBiGFuZAW9Q"
         store.revert_events("znuyjijnezBiGFuZAW9Q".to_string());
 
@@ -1177,8 +1181,11 @@ fn revert_block_with_delete() {
             entity: "user".to_string(),
             id: "2".to_string(),
         };
-        let source = EventSource::LocalProcess(String::from("delete_operation"));
-        store.delete(del_key, source).unwrap();
+        let event_source = EventSource::EthereumBlock(H256::random());
+        let revert_event_source = event_source.to_string();
+        store
+            .delete(del_key, event_source)
+            .expect("Store.delete operation failed");
 
         // Revert all events associated with our custom event_source, "delete_operation"
         store.revert_events("delete_operation".to_string());
@@ -1219,8 +1226,8 @@ fn revert_block_with_partial_update() {
         ]);
 
         let original_entity = store.get(entity_key.clone()).unwrap();
-        let block_hash = String::from("mcj8jfeh8cje8");
-        let event_source = EventSource::LocalProcess(String::from(block_hash));
+        let event_source = EventSource::EthereumBlock(H256::random());
+        let revert_event_source = event_source.to_string();
 
         // Verify that the entity before updating is different from what we expect afterwards
         assert_ne!(original_entity, partial_entity);
@@ -1230,8 +1237,8 @@ fn revert_block_with_partial_update() {
             .set(entity_key.clone(), partial_entity.clone(), event_source)
             .expect("Failed to update entity that already exists");
 
-        //Perform revert operation, reversing the partial update
-        store.revert_events("mcj8jfeh8cje8".to_string());
+        // Perform revert operation, reversing the partial update
+        store.revert_events(revert_event_source);
 
         // Obtain the reverted entity from the store
         let reverted_entity = store.get(entity_key).unwrap();
