@@ -65,7 +65,6 @@ DECLARE
     new_event_id INTEGER;
     is_reversion BOOLEAN;
 BEGIN
-
     -- Sets the is_reversion variable for differentiating between Ethereum events and block reorg events
     IF NEW.event_source = 'REVERSION' THEN
         is_reversion := TRUE;
