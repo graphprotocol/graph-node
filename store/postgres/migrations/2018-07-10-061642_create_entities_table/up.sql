@@ -6,6 +6,6 @@ CREATE TABLE IF NOT EXISTS entities (
      data_source VARCHAR NOT NULL,
      entity VARCHAR NOT NULL,
      data jsonb NOT NULL,
-     event_source VARCHAR(40) DEFAULT NULL,
+     event_source VARCHAR DEFAULT NULL,
      PRIMARY KEY (id, data_source, entity)
  );
