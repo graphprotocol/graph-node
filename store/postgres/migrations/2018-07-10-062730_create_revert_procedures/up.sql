@@ -9,7 +9,7 @@
 * Parameters: entity_history.id (primary key)
 *             operation_id
 **************************************************************/
-CREATE OR REPLACE FUNCTION revert_entity_event(input_entity_history_id INTEGER, input_operation_id INTEGER)
+CREATE OR REPLACE FUNCTION revert_entity_event(entity_history_id INTEGER, operation_id INTEGER)
     RETURNS VOID AS
 $$
 DECLARE
@@ -31,13 +31,13 @@ BEGIN
         target_entity,
         target_data_before
     FROM entity_history
-    WHERE entity_history.id = input_entity_history_id;
+    WHERE entity_history.id = entity_history_id;
 
     reversion_identifier := 'REVERSION';
 
     CASE
         -- INSERT case
-        WHEN input_operation_id = 0 THEN
+        WHEN operation_id = 0 THEN
             -- Delete inserted row
             BEGIN
                 PERFORM set_config('vars.current_event_source', 'REVERSION', FALSE);
@@ -55,7 +55,7 @@ BEGIN
             END;
 
         -- UPDATE or DELETE case
-        WHEN input_operation_id IN (1,2) THEN
+        WHEN operation_id IN (1,2) THEN
             -- Insert deleted row if not exists
             -- If row exists perform update
             BEGIN
@@ -82,7 +82,7 @@ $$ LANGUAGE plpgsql;
 * For each row level event call revert_entity_event()
 * Parameters: event_id
 **************************************************************/
-CREATE OR REPLACE FUNCTION revert_transaction(input_event_id INTEGER)
+CREATE OR REPLACE FUNCTION revert_transaction(event_id_to_revert INTEGER)
     RETURNS VOID AS
 $$
 DECLARE
@@ -97,7 +97,7 @@ BEGIN
         FROM entity_history
         JOIN event_meta_data ON
             event_meta_data.id=entity_history.event_id
-        WHERE event_meta_data.id = input_event_id
+        WHERE event_meta_data.id = event_id_to_revert
         ORDER BY entity_history.id DESC
     -- Iterate over entity changes and revert each
     LOOP
@@ -113,7 +113,7 @@ $$ LANGUAGE plpgsql;
 * For each row level event call revert_entity_event()
 * Parameters: array of event_id's
 **************************************************************/
-CREATE OR REPLACE FUNCTION revert_transaction_group(input_event_ids INTEGER[])
+CREATE OR REPLACE FUNCTION revert_transaction_group(event_ids_to_revert INTEGER[])
     RETURNS VOID AS
 $$
 DECLARE
@@ -126,7 +126,7 @@ BEGIN
         FROM entity_history
         JOIN event_meta_data ON
             event_meta_data.id=entity_history.event_id
-        WHERE event_meta_data.id = ANY(input_event_ids)
+        WHERE event_meta_data.id = ANY(event_id_to_reverts)
         ORDER BY entity_history.id DESC
     LOOP
         PERFORM revert_entity_event(row.id, row.op_id);
@@ -140,7 +140,7 @@ $$ LANGUAGE plpgsql;
 * Rerun a specific row level event
 * Parameters: entity_history pkey (id) and operation type
 **************************************************************/
-CREATE OR REPLACE FUNCTION rerun_row_event(input_entity_history_id INTEGER, input_operation_id INTEGER)
+CREATE OR REPLACE FUNCTION rerun_entity_history_event(entity_history_id INTEGER, operation_id INTEGER)
     RETURNS VOID AS
 $$
 DECLARE
@@ -161,11 +161,11 @@ BEGIN
         target_entity,
         target_data_after
     FROM entity_history
-    WHERE entity_history.id = input_entity_history_id;
+    WHERE entity_history.id = entity_history_id;
 
     CASE
         -- INSERT or UPDATE case
-        WHEN input_operation_id IN (0,1) THEN
+        WHEN operation_id IN (0,1) THEN
             -- Re insert row
             -- If row exists perform update
             BEGIN
@@ -182,7 +182,7 @@ BEGIN
             END;
 
         -- DELETE case
-        WHEN input_operation_id = 2 THEN
+        WHEN operation_id = 2 THEN
             -- Delete entity
             BEGIN
                 -- Set event source as "REVERSION"
@@ -210,13 +210,13 @@ $$ LANGUAGE plpgsql;
               event_id of revert event
 **************************************************************/
 CREATE OR REPLACE FUNCTION rerun_entity(
-    input_event_id INTEGER, input_data_source VARCHAR, input_entity VARCHAR, input_entity_id VARCHAR)
+    event_id_to_rerun INTEGER, data_source_to_rerun VARCHAR, entity_to_rerun VARCHAR, entity_id_to_rerun VARCHAR)
     RETURNS VOID AS
 $$
 DECLARE
-    entity_event_row RECORD;
+    entity_history_event RECORD;
 BEGIN
-     FOR entity_event_row IN
+     FOR entity_history_event IN
         -- Get all events that effect given entity and come after given event
         SELECT
             entity_history.id as id,
@@ -225,17 +225,17 @@ BEGIN
         JOIN event_meta_data ON
             event_meta_data.id = entity_history.event_id
         WHERE (
-            entity_history.entity = input_entity AND
-            entity_history.entity_id = input_entity_id AND
-            entity_history.data_source = input_data_source
+            entity_history.entity = entity_to_rerun AND
+            entity_history.entity_id = entity_id_to_rerun AND
+            entity_history.data_source = data_source_to_rerun
             AND
-            entity_history.event_id > input_event_id
+            entity_history.event_id > event_i_to_rerund
             AND
             entity_history.reversion = FALSE )
         ORDER BY entity_history.id ASC
     LOOP
         -- For each event rerun the operation
-        PERFORM rerun_row_event(entity_event_row.id, entity_event_row.op_id);
+        PERFORM rerun_entity_history_event(entity_history_event.id, entity_history_event.op_id);
     END LOOP;
 END;
 $$ LANGUAGE plpgsql;
@@ -247,7 +247,7 @@ $$ LANGUAGE plpgsql;
 * Rerun all of an entities changes that come after the row store events related to that block
 * Parameters: block_hash
 **************************************************************/
-CREATE OR REPLACE FUNCTION revert_block(input_block_hash VARCHAR)
+CREATE OR REPLACE FUNCTION revert_block(block_hash_to_revert VARCHAR)
     RETURNS VOID AS
 $$
 DECLARE
@@ -261,7 +261,7 @@ BEGIN
         FROM entity_history
         JOIN event_meta_data ON
             entity_history.event_id = event_meta_data.id
-        WHERE event_meta_data.source = input_block_hash
+        WHERE event_meta_data.source = block_hash_to_revert
         GROUP BY
             entity_history.event_id
         ORDER BY entity_history.event_id DESC
@@ -279,7 +279,7 @@ $$ LANGUAGE plpgsql;
 * for each block in the set run the revert block function
 * Parameters: array of block_hash's
 **************************************************************/
-CREATE OR REPLACE FUNCTION revert_block_group(input_block_hash_group VARCHAR[])
+CREATE OR REPLACE FUNCTION revert_block_group(block_hash_group VARCHAR[])
     RETURNS VOID AS
 $$
 DECLARE
@@ -291,7 +291,7 @@ BEGIN
         SELECT
             source
         FROM event_meta_data
-        WHERE source = ANY(input_block_hash_group)
+        WHERE source = ANY(block_hash_group)
         GROUP BY source
         ORDER BY id DESC
     LOOP

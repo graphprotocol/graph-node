@@ -128,11 +128,9 @@ impl BasicStore for Store {
         &mut self,
         key: StoreKey,
         input_entity: Entity,
-        input_event_source: EventSource,
+        event_source: EventSource,
     ) -> Result<(), ()> {
         debug!(self.logger, "set"; "key" => format!("{:?}", key));
-
-        use db_schema::entities::dsl::*;
 
         // The data source is hardcoded at the moment
         let datasource: String = String::from("memefactory");
@@ -156,32 +154,37 @@ impl BasicStore for Store {
         let source = &event_source.to_string();
 
         // Insert entity, perform an update in case of a primary key conflict
-        insert_into(entities)
+        insert_into(entities::table)
             .values((
-                id.eq(&key.id),
-                entity.eq(&key.entity),
-                data_source.eq(&datasource),
-                data.eq(&entity_json),
-                event_source.eq(&block_identifier),
+                entities::columns::id.eq(&key.id),
+                entities::columns::entity.eq(&key.entity),
+                entities::columns::data_source.eq(&datasource),
+                entities::columns::data.eq(&entity_json),
+                entities::columns::event_source.eq(&event_source.to_string()),
             ))
-            .on_conflict((id, entity, data_source))
+            .on_conflict((
+                entities::columns::id,
+                entities::columns::entity,
+                entities::columns::data_source,
+            ))
             .do_update()
             .set((
-                id.eq(&key.id),
-                entity.eq(&key.entity),
-                data_source.eq(&data_source),
-                data.eq(&entity_json),
-                event_source.eq(&block_identifier),
+                entities::columns::id.eq(&key.id),
+                entities::columns::entity.eq(&key.entity),
+                entities::columns::data_source.eq(&datasource),
+                entities::columns::data.eq(&entity_json),
+                entities::columns::event_source.eq(&event_source.to_string()),
             ))
             .execute(&self.conn)
             .map(|_| ())
             .map_err(|_| ())
     }
 
-    fn delete(&mut self, key: StoreKey, input_event_source: EventSource) -> Result<(), ()> {
+    fn delete(&mut self, key: StoreKey, event_source: EventSource) -> Result<(), ()> {
         debug!(self.logger, "delete"; "key" => format!("{:?}", key));
 
-        use db_schema::entities::dsl::*;
+        //        use db_schema::entities::dsl::*;
+        use db_schema::entities;
 
         self.conn
             .transaction::<usize, result::Error, _>(|| {
@@ -196,9 +199,9 @@ impl BasicStore for Store {
                 // Delete from DB where rows match the ID and entity value;
                 // add data source here when meaningful
                 delete(
-                    entities
-                        .filter(id.eq(&key.id))
-                        .filter(entity.eq(&key.entity)),
+                    entities::table
+                        .filter(entities::columns::id.eq(&key.id))
+                        .filter(entities::columns::entity.eq(&key.entity)),
                 ).execute(&self.conn)
             })
             .map(|_| ())

@@ -7,6 +7,8 @@
 *
 * Writes row level metadata and before & after state of `data` to entity_history
 * Called when after_update_trigger is fired.
+* Logs information after all insert, update, delete events
+* Revert events are marked with the reversion boolean field
 **************************************************************/
 CREATE OR REPLACE FUNCTION log_update()
     RETURNS trigger AS
@@ -16,7 +18,7 @@ DECLARE
     new_event_id INTEGER;
     is_reversion BOOLEAN;
 BEGIN
-
+    -- Sets the is_reversion variable for differentiating between Ethereum events and block reorg events
     IF NEW.event_source = 'REVERSION' THEN
         is_reversion := TRUE;
     ELSE
@@ -30,7 +32,7 @@ BEGIN
     new_event_id := null;
 
     IF event_id IS NULL THEN
-        -- Insert postgres transaction info into event_meta_data
+        -- Log information on the postgres transaction for later use in revert operations
         INSERT INTO event_meta_data
             (db_transaction_id, db_transaction_time, op_id, source)
         VALUES
@@ -38,7 +40,7 @@ BEGIN
         RETURNING event_meta_data.id INTO new_event_id;
     END IF;
 
-    -- Log row metadata and changes
+    -- Log row metadata and changes, specify whether event was an original ethereum event or a reversion
     INSERT INTO entity_history
         (event_id, entity_id, data_source, entity, data_before, data_after, reversion)
     VALUES
@@ -64,6 +66,7 @@ DECLARE
     is_reversion BOOLEAN;
 BEGIN
 
+    -- Sets the is_reversion variable for differentiating between Ethereum events and block reorg events
     IF NEW.event_source = 'REVERSION' THEN
         is_reversion := TRUE;
     ELSE
@@ -77,7 +80,7 @@ BEGIN
     new_event_id := null;
 
     IF event_id IS NULL THEN
-        -- Insert postgres transaction info into event_meta_data
+        -- Log information on the postgres transaction for later use in revert operations
         INSERT INTO event_meta_data
             (db_transaction_id, db_transaction_time, op_id, source)
         VALUES
@@ -109,7 +112,10 @@ DECLARE
     new_event_id INTEGER;
     is_reversion BOOLEAN;
 BEGIN
+    -- Use session level setting to get the event_source for the current transaction
     current_event_source := current_setting('vars.current_event_source', TRUE);
+
+    -- Sets the is_reversion variable for differentiating between Ethereum events and block reorg events
     IF (
       current_event_source = 'REVERSION'
     )
@@ -126,7 +132,7 @@ BEGIN
     new_event_id := null;
 
     IF event_id IS NULL THEN
-        -- Insert postgres transaction info into event_meta_data
+        -- Log information on the postgres transaction for later use in revert operations
         INSERT INTO event_meta_data
             (db_transaction_id, db_transaction_time, op_id, source)
         VALUES
