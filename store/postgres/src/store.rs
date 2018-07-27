@@ -137,12 +137,6 @@ impl BasicStore for Store {
         // The data source is hardcoded at the moment
         let datasource: String = String::from("memefactory");
 
-        // Convert event source to String for insert
-        let block_identifier = match input_event_source {
-            // Use LowerHex to format hash as hex string with leading "0x"
-            EventSource::EthereumBlock(hash) => format!("{:#x}", hash),
-            EventSource::LocalProcess(process) => process,
-        };
         // Update the existing entity, if necessary
         let updated_entity = match self.get(key.clone()) {
             Ok(mut existing_entity) => {
@@ -156,7 +150,10 @@ impl BasicStore for Store {
         let entity_json: serde_json::Value =
             serde_json::to_value(&updated_entity).expect("Failed to serialize entity");
 
-        use db_schema::entities::dsl::*;
+        // Use db_schema::entities::dsl::*;
+        use db_schema::entities;
+
+        let source = &event_source.to_string();
 
         // Insert entity, perform an update in case of a primary key conflict
         insert_into(entities)
@@ -188,17 +185,10 @@ impl BasicStore for Store {
 
         self.conn
             .transaction::<usize, result::Error, _>(|| {
-                // Convert event source to String for insert
-                let block_identifier = match input_event_source {
-                    // Use LowerHex to format hash as hex string
-                    EventSource::EthereumBlock(hash) => format!("{:x}", hash),
-                    EventSource::LocalProcess(process) => process,
-                };
-
                 // Set session variable to store the source of the event
                 select(set_config(
                     "vars.current_event_source",
-                    block_identifier,
+                    event_source.to_string(),
                     false,
                 )).execute(&self.conn)
                     .unwrap();
