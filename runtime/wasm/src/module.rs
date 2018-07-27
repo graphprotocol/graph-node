@@ -818,6 +818,7 @@ mod tests {
                 name: String::from("exampleParam"),
                 value: Token::String(String::from("some data")),
             }],
+            removed: false,
         };
 
         // Call a non-existent event handler in the test module; if the test hasn't
@@ -863,7 +864,7 @@ mod tests {
                 name: String::from("exampleParam"),
                 value: Token::String(String::from("some data")),
             }],
-            removed: false
+            removed: false,
         };
 
         // Call the event handler in the test module and pass the event to it

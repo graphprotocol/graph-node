@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use thegraph::components::data_sources::RuntimeHostEvent;
 use thegraph::components::ethereum::*;
-use thegraph::data::data_sources::{DataSet, MappingEventHandler};
+use thegraph::data::data_sources::DataSet;
 use thegraph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
@@ -225,8 +225,11 @@ impl RuntimeHost {
                 .for_each(move |event| {
                     info!(event_logger, "Ethereum event received");
 
-                    let event_handler = match event.removed {
-                        false => dataset
+                    if event.removed {
+                        info!(event_logger, "Event removed";
+                              "block" => event.block_hash.to_string());
+                    } else {
+                        let event_handler = dataset
                             .mapping
                             .event_handlers
                             .iter()
@@ -235,22 +238,17 @@ impl RuntimeHost {
                                     == event.event_signature
                             })
                             .expect("Received an Ethereum event not mentioned in the data set")
-                            .to_owned(),
-                        true => {
-                            (MappingEventHandler {
-                                event: "event_removed".to_owned(),
-                                handler: "reorg_handler".to_owned(),
-                            }.to_owned())
-                        }
-                    };
+                            .to_owned();
 
-                    debug!(event_logger, "  Call event handler";
-                           "name" => &event_handler.handler);
+                        debug!(event_logger, "  Call event handler";
+                               "name" => &event_handler.handler);
 
-                    module
-                        .lock()
-                        .unwrap()
-                        .handle_ethereum_event(event_handler.handler.as_str(), event);
+                        module
+                            .lock()
+                            .unwrap()
+                            .handle_ethereum_event(event_handler.handler.as_str(), event);
+                    }
+
                     Ok(())
                 })
                 .map_err(move |e| error!(error_logger, "Event subscription failed: {}", e)),
