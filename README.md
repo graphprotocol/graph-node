@@ -26,9 +26,12 @@ Right now, this includes:
 ## Prerequisites
 
 The Graph is written in Rust. In order to build and run this project you need
-to have Rust installed on your system:
+to have Rust, PostgreSQL, IPFS and Ethereum node installed on your system:
 
 - [How to install Rust](https://www.rust-lang.org/en-US/install.html)
+- [PostgreSQL Downloads](https://www.postgresql.org/download/)
+- [Installing IPFS](https://ipfs.io/docs/install/)
+- [Installing and running Ethereum node](https://ethereum.gitbooks.io/frontier-guide/content/getting_a_client.html)
 
 ## Getting Started
 
@@ -41,6 +44,29 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 ```
 
 ### Running a local node
+*Steps to set up Postgres*
+
+1. Set up: `initdb -D .postgres` (somewhere; creates a Postgres config in `.postgres/`)
+2. Start: `pg_ctl -D .postgres start` (or `postgres -D .postgres`?)
+3. Create database: `createdb decentraland`
+4. Delete database (whenever you want): `dropdb decentraland`
+5. Log in to the database `psql decentraland` (edited)
+
+*Start the Graph node*
+
+1. Install IPFS and run `ipfs init` followed by `ipfs daemon`
+2. Install and start Postgres and create a decentraland db with `createdb decentraland`
+2. Clone https://github.com/graphprotocol/decentraland and build it with `yarn build-ipfs --verbosity debug` -> remember/copy the IPFS hash
+3. Clone https://github.com/graphprotocol/graph-node and run it with
+
+Once you have all the dependencies setup you can run the following:
+```
+cargo run -p thegraph-node -- \
+  --postgres-url postgresql://localhost:5432/decentraland \
+  --ethereum-ws wss://mainnet.infura.io/_ws \
+  --ipfs 127.0.0.1:5001 \
+  --data-source IPFS_HASH
+```
 
 ```
 USAGE:
