@@ -33,6 +33,7 @@ to have the following installed on your system:
 - [Installing IPFS](https://ipfs.io/docs/install/)
 
 For Ethereum network data you can either run a local node or use Infura.io:
+
 - [Installing and running Ethereum node](https://ethereum.gitbooks.io/frontier-guide/content/getting_a_client.html)
 - [Infura.io](https://infura.io/)
 
@@ -40,7 +41,7 @@ For Ethereum network data you can either run a local node or use Infura.io:
 
 ### Environment Variables
 
-The Graph supports, and in some cases requires, the following environment variables:
+The Graph supports the following environment variables:
 
 ```
 THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
