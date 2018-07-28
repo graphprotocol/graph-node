@@ -9,6 +9,7 @@ pub fn build_query(
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> StoreQuery {
     StoreQuery {
+        data_source: build_data_source_id(arguments).unwrap(),
         entity: entity.name.to_owned(),
         range: build_range(arguments),
         filter: build_filter(entity, arguments),
@@ -167,7 +168,7 @@ mod tests {
     }
 
     #[test]
-    fn builc_query_uses_the_entity_name() {
+    fn build_query_uses_the_entity_name() {
         assert_eq!(
             build_query(&object("Entity1"), &HashMap::new()).entity,
             "Entity1".to_string()
