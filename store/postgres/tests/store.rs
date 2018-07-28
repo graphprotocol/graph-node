@@ -1172,6 +1172,7 @@ fn revert_block_with_delete() {
 
         // Delete an entity using a randomly created event source
         let del_key = StoreKey {
+            data_source: String::from("test-data-source"),
             entity: String::from("user"),
             id: String::from("2"),
         };
@@ -1224,6 +1225,7 @@ fn revert_block_with_partial_update() {
         let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
         let entity_key = StoreKey {
+            data_source: String::from("test-data-source"),
             entity: String::from("user"),
             id: String::from("1"),
         };
@@ -1260,56 +1262,5 @@ fn revert_block_with_partial_update() {
         store.revert_events(revert_event_source);
         let reverted_entity = store.get(entity_key).unwrap();
         assert_eq!(reverted_entity, original_entity);
-    })
-}
-
-#[test]
-fn revert_block_with_partial_update() {
-    run_test(|| {
-        let core = Core::new().unwrap();
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
-
-        let entity_key = StoreKey {
-            data_source: String::from("test-data-source"),
-            entity: String::from("user"),
-            id: String::from("1"),
-        };
-
-        let partial_entity = Entity::from(vec![
-            ("id", Value::from("1")),
-            ("name", Value::from("Johnny Boy")),
-            ("email", Value::Null),
-        ]);
-
-        let original_entity = store.get(entity_key.clone()).unwrap();
-        let block_hash = String::from("mcj8jfeh8cje8");
-        let event_source = EventSource::LocalProcess(String::from(block_hash));
-
-        // Verify that the entity before updating is different from what we expect afterwards
-        assert_ne!(original_entity, partial_entity);
-
-        // Set test entity; as the entity already exists an update should be performed
-        store
-            .set(entity_key.clone(), partial_entity.clone(), event_source)
-            .expect("Failed to update entity that already exists");
-
-        //Perform revert operation, reversing the partial update
-        store.revert_events("mcj8jfeh8cje8".to_string());
-
-        // Obtain the reverted entity from the store
-        let reverted_entity = store.get(entity_key).unwrap();
-
-        // Verify that the values of all attributes we have updated have been
-        // reverted to their original values
-        assert_eq!(reverted_entity.get("id"), original_entity.get("id"));
-        assert_eq!(reverted_entity.get("user"), original_entity.get("user"));
-        assert_eq!(reverted_entity.get("email"), original_entity.get("email"));
-
-        // Verify that all attributes we did not update remain at their old values
-        assert_eq!(reverted_entity.get("age"), original_entity.get("age"));
-        assert_eq!(reverted_entity.get("weight"), original_entity.get("weight"));
-        assert_eq!(reverted_entity.get("coffee"), original_entity.get("coffee"));
     })
 }

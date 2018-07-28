@@ -238,7 +238,6 @@ where
             self.event_sink
                 .clone()
                 .send(RuntimeHostEvent::EntitySet(
-                    self.data_source.id.clone(),
                     store_key,
                     entity_data,
                 ))
@@ -885,8 +884,8 @@ mod tests {
         assert_eq!(
             store_event,
             RuntimeHostEvent::EntitySet(
-                String::from("example data source"),
                 StoreKey {
+                    data_source: String::from("example data source"),
                     entity: String::from("ExampleEntity"),
                     id: String::from("example id"),
                 },
