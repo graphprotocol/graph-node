@@ -1,5 +1,6 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver};
+use graphql_parser::{Pos, schema};
 use slog;
 use tokio_core::reactor::Handle;
 
@@ -27,8 +28,7 @@ impl DataSourceProvider {
             },
             resolver,
         ).map(move |data_source| {
-            let schema = data_source.schema.clone();
-
+            let schema = DataSourceProvider::add_package_id_directives(&mut data_source.schema.clone(), data_source.id.clone());
             let (event_sink, event_stream) = channel(100);
 
             // Push the data source into the stream
@@ -48,6 +48,7 @@ impl DataSourceProvider {
                     .map_err(|e| panic!("Failed to forward data source schema: {}", e))
                     .map(|_| ()),
             );
+
             // Create the data source provider
             DataSourceProvider {
                 _logger: logger.new(o!("component" => "DataSourceProvider")),
@@ -56,8 +57,37 @@ impl DataSourceProvider {
             }
         })
     }
+
+    // Add directive containing the data source id (package id) for:
+    // Object type definitions, interface type definitions, and enum type definitions
+    fn add_package_id_directives(schema: &mut Schema, package: String) -> Schema {
+        for definition in schema.document.definitions.iter_mut() {
+            let package_id_argument: Vec<(schema::Name, schema::Value)> = vec![("id".to_string(), schema::Value::String(package.clone()))];
+            let package_id_directive = schema::Directive { name: "packageId".to_string(), position: Pos::default(), arguments: package_id_argument };
+            match definition {
+                schema::Definition::TypeDefinition(ref mut type_definition) => match type_definition {
+                    schema::TypeDefinition::Object(ref mut object_type) => {
+                        object_type.directives.push(package_id_directive);
+                    },
+                    schema::TypeDefinition::Interface(ref mut interface_type) => {
+                        interface_type.directives.push(package_id_directive);
+                    },
+                    schema::TypeDefinition::Enum(ref mut enum_type) => {
+                        enum_type.directives.push(package_id_directive);
+                    },
+                    schema::TypeDefinition::Scalar(_scalar_type) => (),
+                    schema::TypeDefinition::InputObject(_input_object_type) => (),
+                    schema::TypeDefinition::Union(_union_type) => (),
+                },
+                _ => (),
+            };
+        }
+        schema.clone()
+    }
 }
 
+// iterate over all object type, interface type, and enum type definitions and add packageId directive
+// with an `id: "the data source has here" argument to each type
 impl DataSourceProviderTrait for DataSourceProvider {}
 
 impl EventProducer<DataSourceProviderEvent> for DataSourceProvider {

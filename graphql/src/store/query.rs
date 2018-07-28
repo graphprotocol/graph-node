@@ -9,7 +9,7 @@ pub fn build_query(
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> StoreQuery {
     StoreQuery {
-        data_source: build_data_source_id(arguments).unwrap(),
+        data_source: build_data_source_id(entity).expect("build_data_source_id_failed"),
         entity: entity.name.to_owned(),
         range: build_range(arguments),
         filter: build_filter(entity, arguments),
@@ -124,6 +124,14 @@ fn build_order_direction(arguments: &HashMap<&q::Name, q::Value>) -> Option<Stor
             q::Value::Enum(name) if name == "desc" => Some(StoreOrder::Descending),
             _ => None,
         })
+}
+
+/// Parses the data_source from the ObjectType directives
+fn build_data_source_id(entity: &schema::ObjectType) -> Option<String> {
+    entity.clone().directives
+        .into_iter().find(|directive| directive.name == "packageId".to_string())
+        .and_then(|directive| directive.arguments.into_iter().find(|(name, _value)| name == &"id".to_string()))
+        .and_then(|argument| match argument.1 {schema::Value::String(id) => Some(id), _ => None})
 }
 
 #[cfg(test)]
