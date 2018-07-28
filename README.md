@@ -62,16 +62,18 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 1. Install IPFS and run `ipfs init` followed by `ipfs daemon`
 2. Install and start Postgres and create a decentraland db with `createdb decentraland`
 2. Clone https://github.com/graphprotocol/decentraland and build it with `yarn build-ipfs --verbosity debug` -> remember/copy the IPFS hash
-3. Clone https://github.com/graphprotocol/graph-node and run it with
+3. Clone https://github.com/graphprotocol/graph-node and run `cargo build`
 
 Once you have all the dependencies setup you can run the following:
 ```
-cargo run -p thegraph-node -- \
+cargo run -p graph-node -- \
   --postgres-url postgresql://localhost:5432/decentraland \
   --ethereum-ws wss://mainnet.infura.io/_ws \
   --ipfs 127.0.0.1:5001 \
   --data-source IPFS_HASH
 ```
+
+This will also sping up GraphiQL interface at `http://127.0.0.1:8000/`
 
 ```
 USAGE:
