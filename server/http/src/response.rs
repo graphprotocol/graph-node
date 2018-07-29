@@ -90,11 +90,11 @@ impl Future for GraphQLResponse {
 mod tests {
     use super::GraphQLResponse;
     use futures::sync::oneshot;
+    use graph::components::server::GraphQLServerError;
+    use graph::prelude::*;
     use graphql_parser;
     use http::status::StatusCode;
     use std::collections::BTreeMap;
-    use graph::components::server::GraphQLServerError;
-    use graph::prelude::*;
     use tokio_core::reactor::Core;
 
     use test_utils;

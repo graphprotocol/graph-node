@@ -70,15 +70,17 @@ cargo run -p graph-node -- \
   --postgres-url postgresql://localhost:5432/decentraland \
   --ethereum-ws wss://mainnet.infura.io/_ws \
   --ipfs 127.0.0.1:5001 \
-  --data-source IPFS_HASH
+  --subgraph IPFS_HASH
 ```
 
 This will also sping up GraphiQL interface at `http://127.0.0.1:8000/`
 
+### Command-line interface
+
 ```
 USAGE:
     graph-node
-      --data-source <IPFS_HASH>
+      --subgraph <IPFS_HASH>
       --ethereum-ipc <FILE>
         or --ethereum-rpc <URL>
         or --ethereum-ws <URL>
@@ -90,7 +92,7 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-        --data-source <IPFS_HASH>    IPFS hash of the data source definition file
+        --subgraph <IPFS_HASH>       IPFS hash of the subgraph manifest
         --ethereum-ipc <FILE>        Ethereum IPC pipe
         --ethereum-rpc <URL>         Ethereum RPC endpoint
         --ethereum-ws <URL>          Ethereum WebSocket endpoint

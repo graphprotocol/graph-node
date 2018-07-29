@@ -9,7 +9,7 @@ pub struct EntityTable {
     #[sql_type = "VarChar"]
     pub id: String,
     #[sql_type = "VarChar"]
-    pub data_source: String,
+    pub subgraph: String,
     #[sql_type = "VarChar"]
     pub entity: String,
     #[sql_type = "Jsonb"]

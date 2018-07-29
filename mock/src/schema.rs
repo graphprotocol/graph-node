@@ -3,8 +3,8 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog::Logger;
 use tokio_core::reactor::Handle;
 
-use graph::components::data_sources::SchemaEvent;
 use graph::components::schema::SchemaProviderEvent;
+use graph::components::subgraph::SchemaEvent;
 use graph::components::{EventConsumer, EventProducer};
 use graph::prelude::*;
 
@@ -42,26 +42,26 @@ impl MockSchemaProvider {
         let logger = logger.new(o!("component" => "MockSchemaProvider"));
         info!(logger, "Building a `MockSchemaProvider`");
 
-        // Create a channel for receiving events from the data source provider.
-        let (data_source_sender, data_source_recv) = channel(100);
+        // Create a channel for receiving events from the subgraph provider.
+        let (subgraph_sender, subgraph_recv) = channel(100);
         // Create a channel for broadcasting changes to the schema.
         let (schema_sender, schema_recv) = channel(100);
 
-        // Spawn the internal handler for any incoming events from the data source provider.
+        // Spawn the internal handler for any incoming events from the subgraph provider.
         runtime.spawn(Self::schema_event_handler(
             logger.clone(),
-            data_source_recv,
+            subgraph_recv,
             schema_sender,
         ));
 
         MockSchemaProvider {
             logger,
-            input: data_source_sender,
+            input: subgraph_sender,
             output: Some(schema_recv),
         }
     }
 
-    // A task that handles incoming events from the data source provider, updates
+    // A task that handles incoming events from the subgraph provider, updates
     // the schema and pushes the result to listeners. Any panics here crash the
     // component, do be careful.
     fn schema_event_handler(
@@ -75,7 +75,7 @@ impl MockSchemaProvider {
             info!(logger, "Received schema event"; "event" => format!("{:?}", event));
             info!(logger, "Combining schemas");
 
-            // Mock processing the event from the data source provider
+            // Mock processing the event from the subgraph provider
             match event {
                 SchemaEvent::SchemaAdded(schema) | SchemaEvent::SchemaRemoved(schema) => {
                     SchemaProviderEvent::SchemaChanged(Some(schema))

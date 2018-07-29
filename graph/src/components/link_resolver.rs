@@ -1,10 +1,10 @@
-use data::data_sources::Link;
+use data::subgraph::Link;
 use failure;
 use futures::prelude::*;
 use ipfs_api;
 use std::error::Error;
 
-/// Resolves links to data source definitions and resources referenced by them.
+/// Resolves links to subgraph manifests and resources referenced by them.
 pub trait LinkResolver {
     /// Fetches the link contents as bytes.
     fn cat(&self, link: &Link) -> Box<Future<Item = Vec<u8>, Error = Box<Error>>>;

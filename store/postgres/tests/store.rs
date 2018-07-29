@@ -1,8 +1,8 @@
 extern crate diesel;
 extern crate ethereum_types;
-extern crate serde_json;
 extern crate graph;
 extern crate graph_store_postgres;
+extern crate serde_json;
 extern crate tokio_core;
 #[macro_use]
 extern crate slog;

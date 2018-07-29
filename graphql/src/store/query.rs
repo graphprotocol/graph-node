@@ -1,7 +1,7 @@
+use graph::prelude::*;
 use graphql_parser::{query as q, schema};
 use schema::ast;
 use std::collections::{BTreeMap, HashMap};
-use graph::prelude::*;
 
 /// Builds a StoreQuery from GraphQL arguments.
 pub fn build_query(

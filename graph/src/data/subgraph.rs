@@ -11,16 +11,16 @@ use serde_yaml;
 use std::error::Error;
 
 #[derive(Debug)]
-pub enum DataSourceDefinitionResolveError {
+pub enum SubgraphManifestResolveError {
     ParseError(serde_yaml::Error),
     NonUtf8,
     InvalidFormat,
     ResolveError(Box<Error>),
 }
 
-impl From<serde_yaml::Error> for DataSourceDefinitionResolveError {
+impl From<serde_yaml::Error> for SubgraphManifestResolveError {
     fn from(e: serde_yaml::Error) -> Self {
-        DataSourceDefinitionResolveError::ParseError(e)
+        SubgraphManifestResolveError::ParseError(e)
     }
 }
 
@@ -33,7 +33,7 @@ pub struct Link {
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct SchemaData {
-    pub source: Link,
+    pub file: Link,
 }
 
 impl SchemaData {
@@ -41,34 +41,26 @@ impl SchemaData {
         self,
         resolver: &impl LinkResolver,
     ) -> impl Future<Item = Schema, Error = Box<Error + 'static>> {
-        resolver.cat(&self.source).and_then(|schema_bytes| {
+        let id = self.file.link.clone();
+
+        resolver.cat(&self.file).and_then(|schema_bytes| {
             graphql_parser::parse_schema(&String::from_utf8(schema_bytes)?)
-                .map(|document| Schema {
-                    id: String::from("local-data-source-schema"),
-                    document,
-                })
+                .map(|document| Schema { id, document })
                 .map_err(|e| Box::new(e.compat()) as Box<Error>)
         })
     }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct DataStructure {
-    pub abi: String,
-}
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct Data {
-    pub kind: String,
-    pub name: String,
+pub struct Source {
     pub address: String,
-    pub structure: DataStructure,
+    pub abi: String,
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct BaseMappingABI<C> {
     pub name: String,
-    #[serde(rename = "source")]
+    #[serde(rename = "file")]
     pub contract: C,
 }
 
@@ -106,7 +98,7 @@ pub struct BaseMapping<C, W> {
     pub abis: Vec<BaseMappingABI<C>>,
     #[serde(rename = "eventHandlers")]
     pub event_handlers: Vec<MappingEventHandler>,
-    #[serde(rename = "source")]
+    #[serde(rename = "file")]
     pub runtime: W,
 }
 
@@ -150,67 +142,78 @@ impl UnresolvedMapping {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct BaseDataSet<C, W> {
-    pub data: Data,
+pub struct BaseDataSource<C, W> {
+    pub kind: String,
+    pub name: String,
+    pub source: Source,
     pub mapping: BaseMapping<C, W>,
 }
 
-pub type UnresolvedDataSet = BaseDataSet<Link, Link>;
-pub type DataSet = BaseDataSet<Contract, Module>;
+pub type UnresolvedDataSource = BaseDataSource<Link, Link>;
+pub type DataSource = BaseDataSource<Contract, Module>;
 
-impl UnresolvedDataSet {
+impl UnresolvedDataSource {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
-    ) -> impl Future<Item = DataSet, Error = Box<Error>> {
-        let UnresolvedDataSet { data, mapping } = self;
-        mapping
-            .resolve(resolver)
-            .map(|mapping| DataSet { data, mapping })
+    ) -> impl Future<Item = DataSource, Error = Box<Error>> {
+        let UnresolvedDataSource {
+            kind,
+            name,
+            source,
+            mapping,
+        } = self;
+        mapping.resolve(resolver).map(|mapping| DataSource {
+            kind,
+            name,
+            source,
+            mapping,
+        })
     }
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct BaseDataSourceDefinition<S, D> {
+pub struct BaseSubgraphManifest<S, D> {
     pub id: String,
     pub location: String,
     #[serde(rename = "specVersion")]
     pub spec_version: String,
     pub schema: S,
-    pub datasets: Vec<D>,
+    #[serde(rename = "dataSources")]
+    pub data_sources: Vec<D>,
 }
 
-/// Consider two data sources to be equal if they come from the same IPLD link.
-impl<S, D> PartialEq for BaseDataSourceDefinition<S, D> {
+/// Consider two subgraphs to be equal if they come from the same IPLD link.
+impl<S, D> PartialEq for BaseSubgraphManifest<S, D> {
     fn eq(&self, other: &Self) -> bool {
         self.location == other.location
     }
 }
 
-pub type UnresolvedDataSourceDefinition = BaseDataSourceDefinition<SchemaData, UnresolvedDataSet>;
-pub type DataSourceDefinition = BaseDataSourceDefinition<Schema, DataSet>;
+pub type UnresolvedSubgraphManifest = BaseSubgraphManifest<SchemaData, UnresolvedDataSource>;
+pub type SubgraphManifest = BaseSubgraphManifest<Schema, DataSource>;
 
-impl DataSourceDefinition {
-    /// Entry point for resolving a data source definition.
+impl SubgraphManifest {
+    /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
     pub fn resolve<'a, 'b>(
         link: Link,
         resolver: &'a impl LinkResolver,
-    ) -> Box<Future<Item = Self, Error = DataSourceDefinitionResolveError> + 'a> {
+    ) -> Box<Future<Item = Self, Error = SubgraphManifestResolveError> + 'a> {
         Box::new(
             resolver
                 .cat(&link)
-                .map_err(|e| DataSourceDefinitionResolveError::ResolveError(e))
+                .map_err(|e| SubgraphManifestResolveError::ResolveError(e))
                 .and_then(move |file_bytes| {
                     let file = String::from_utf8(file_bytes.to_vec())
-                        .map_err(|_| DataSourceDefinitionResolveError::NonUtf8)?;
+                        .map_err(|_| SubgraphManifestResolveError::NonUtf8)?;
                     let mut raw: serde_yaml::Value = serde_yaml::from_str(&file)?;
                     {
                         let raw_mapping = raw.as_mapping_mut()
-                            .ok_or(DataSourceDefinitionResolveError::InvalidFormat)?;
+                            .ok_or(SubgraphManifestResolveError::InvalidFormat)?;
 
-                        // Inject the IPFS hash as the ID of the data source
+                        // Inject the IPFS hash as the ID of the subgraph
                         // into the definition.
                         raw_mapping.insert(
                             serde_yaml::Value::from("id"),
@@ -224,45 +227,45 @@ impl DataSourceDefinition {
                             serde_yaml::Value::from(link.link),
                         );
                     }
-                    // Parse the YAML data into an UnresolvedDataSourceDefinition
-                    let unresolved: UnresolvedDataSourceDefinition = serde_yaml::from_value(raw)?;
+                    // Parse the YAML data into an UnresolvedSubgraphManifest
+                    let unresolved: UnresolvedSubgraphManifest = serde_yaml::from_value(raw)?;
                     Ok(unresolved)
                 })
                 .and_then(move |unresolved| {
                     unresolved
                         .resolve(resolver)
-                        .map_err(|e| DataSourceDefinitionResolveError::ResolveError(e))
+                        .map_err(|e| SubgraphManifestResolveError::ResolveError(e))
                 }),
         )
     }
 }
 
-impl UnresolvedDataSourceDefinition {
+impl UnresolvedSubgraphManifest {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
-    ) -> impl Future<Item = DataSourceDefinition, Error = Box<Error>> {
-        let UnresolvedDataSourceDefinition {
+    ) -> impl Future<Item = SubgraphManifest, Error = Box<Error>> {
+        let UnresolvedSubgraphManifest {
             id,
             location,
             spec_version,
             schema,
-            datasets,
+            data_sources,
         } = self;
 
         // resolve each data set
         stream::futures_ordered(
-            datasets
+            data_sources
                 .into_iter()
                 .map(|data_set| data_set.resolve(resolver)),
         ).collect()
             .join(schema.resolve(resolver))
-            .map(|(datasets, schema)| DataSourceDefinition {
+            .map(|(data_sources, schema)| SubgraphManifest {
                 id,
                 location,
                 spec_version,
                 schema,
-                datasets,
+                data_sources,
             })
     }
 }
