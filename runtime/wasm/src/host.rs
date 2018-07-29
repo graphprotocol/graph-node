@@ -7,9 +7,9 @@ use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 use uuid::Uuid;
 
-use graph::components::data_sources::RuntimeHostEvent;
 use graph::components::ethereum::*;
-use graph::data::data_sources::DataSet;
+use graph::components::subgraph::RuntimeHostEvent;
+use graph::data::subgraph::DataSource;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
@@ -19,8 +19,8 @@ use module::{WasmiModule, WasmiModuleConfig};
 
 #[derive(Clone)]
 pub struct RuntimeHostConfig {
-    data_source_definition: DataSourceDefinition,
-    data_set: DataSet,
+    subgraph_manifest: SubgraphManifest,
+    data_source: DataSource,
 }
 
 pub struct RuntimeHostBuilder<T, L> {
@@ -59,8 +59,8 @@ where
 
     fn build(
         &mut self,
-        data_source_definition: DataSourceDefinition,
-        data_set: DataSet,
+        subgraph_manifest: SubgraphManifest,
+        data_source: DataSource,
     ) -> Self::Host {
         RuntimeHost::new(
             &self.logger,
@@ -68,8 +68,8 @@ where
             self.ethereum_adapter.clone(),
             self.link_resolver.clone(),
             RuntimeHostConfig {
-                data_source_definition,
-                data_set,
+                subgraph_manifest,
+                data_source,
             },
         )
     }
@@ -97,14 +97,14 @@ impl RuntimeHost {
         // Create channel for sending runtime host events
         let (event_sender, event_receiver) = channel(100);
 
-        info!(logger, "Loading WASM runtime"; "data_set" => &config.data_set.data.name);
+        info!(logger, "Loading WASM runtime"; "data_source" => &config.data_source.name);
 
         // Load the mappings as a WASM module
         let module = WasmiModule::new(
             &logger,
             WasmiModuleConfig {
-                data_source: config.data_source_definition.clone(),
-                data_set: config.data_set.clone(),
+                subgraph: config.subgraph_manifest.clone(),
+                data_source: config.data_source.clone(),
                 runtime: runtime.clone(),
                 event_sink: event_sender,
                 ethereum_adapter: ethereum_adapter.clone(),
@@ -115,7 +115,7 @@ impl RuntimeHost {
         Self::subscribe_to_events(
             logger,
             runtime,
-            config.data_set.clone(),
+            config.data_source.clone(),
             module,
             ethereum_adapter,
         );
@@ -126,12 +126,12 @@ impl RuntimeHost {
         }
     }
 
-    /// Subscribe to all smart contract events of `data_set` contained in
-    /// `data_source`.
+    /// Subscribe to all smart contract events of `data_source` contained in
+    /// `subgraph`.
     fn subscribe_to_events<T, L>(
         logger: Logger,
         runtime: Handle,
-        data_set: DataSet,
+        data_source: DataSource,
         module: WasmiModule<T, L>,
         ethereum_adapter: Arc<Mutex<T>>,
     ) where
@@ -141,15 +141,15 @@ impl RuntimeHost {
         info!(logger, "Subscribe to events");
 
         // Obtain the contract address of the first data set
-        let address = Address::from_str(data_set.data.address.as_str())
+        let address = Address::from_str(data_source.source.address.as_str())
             .expect("Failed to parse contract address");
 
         // Load the main dataset contract
-        let contract = data_set
+        let contract = data_source
             .mapping
             .abis
             .iter()
-            .find(|abi| abi.name == data_set.data.structure.abi)
+            .find(|abi| abi.name == data_source.source.abi)
             .expect("No ABI entry found for the main contract of the dataset")
             .contract
             .clone();
@@ -157,7 +157,7 @@ impl RuntimeHost {
         // Prepare subscriptions for the events
         let subscription_results: Vec<EthereumEventSubscription> = {
             // Prepare subscriptions for all events
-            data_set
+            data_source
                 .mapping
                 .event_handlers
                 .iter()
@@ -185,7 +185,7 @@ impl RuntimeHost {
 
         // Protect variables for concurrent access
         let protected_module = Arc::new(Mutex::new(module));
-        let protected_data_set = Arc::new(data_set);
+        let protected_data_source = Arc::new(data_source);
 
         // Subscribe to the events now
         for subscription in subscription_results.into_iter() {
@@ -194,7 +194,7 @@ impl RuntimeHost {
                 runtime.clone(),
                 protected_module.clone(),
                 ethereum_adapter.clone(),
-                protected_data_set.clone(),
+                protected_data_source.clone(),
                 subscription,
             );
         }
@@ -205,7 +205,7 @@ impl RuntimeHost {
         runtime: Handle,
         module: Arc<Mutex<WasmiModule<T, L>>>,
         ethereum_adapter: Arc<Mutex<T>>,
-        dataset: Arc<DataSet>,
+        dataset: Arc<DataSource>,
         subscription: EthereumEventSubscription,
     ) where
         T: EthereumAdapter + 'static,
@@ -265,7 +265,7 @@ impl EventProducer<RuntimeHostEvent> for RuntimeHost {
 }
 
 impl RuntimeHostTrait for RuntimeHost {
-    fn data_source_definition(&self) -> &DataSourceDefinition {
-        &self.config.data_source_definition
+    fn subgraph_manifest(&self) -> &SubgraphManifest {
+        &self.config.subgraph_manifest
     }
 }

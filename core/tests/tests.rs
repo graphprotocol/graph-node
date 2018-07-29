@@ -1,32 +1,32 @@
 extern crate ethabi;
 extern crate futures;
-extern crate ipfs_api;
-extern crate slog;
 extern crate graph;
 extern crate graph_core;
 extern crate graph_mock;
 extern crate graph_runtime_wasm;
+extern crate ipfs_api;
+extern crate slog;
 extern crate tokio_core;
 
 use futures::stream::{self, Stream};
 use futures::{Future, Sink};
-use ipfs_api::IpfsClient;
-use std::fs::read_to_string;
-use std::io::Cursor;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use std::time::Instant;
 use graph::components::ethereum::*;
 use graph::prelude::*;
 use graph::util::log::logger;
 use graph_core::RuntimeManager;
 use graph_mock::FakeStore;
 use graph_runtime_wasm::RuntimeHostBuilder;
+use ipfs_api::IpfsClient;
+use std::fs::read_to_string;
+use std::io::Cursor;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use std::time::Instant;
 use tokio_core::reactor::Core;
 
 #[test]
 #[ignore]
-fn multiple_data_sets_per_data_source() {
+fn multiple_data_sources_per_subgraph() {
     struct MockEthereumAdapter {
         received_subscriptions: Vec<String>,
     }
@@ -62,11 +62,11 @@ fn multiple_data_sets_per_data_source() {
 
     let mut core = Core::new().unwrap();
 
-    // Replace "link to" placeholders in the data source definition with hashes
+    // Replace "link to" placeholders in the subgraph manifest with hashes
     // of files just added into a local IPFS daemon on port 5001.
     let resolver = Arc::new(IpfsClient::default());
-    let mut data_source_string =
-        std::fs::read_to_string("tests/datasource-two-datasets/two-datasets.yaml").unwrap();
+    let mut subgraph_string =
+        std::fs::read_to_string("tests/subgraph-two-datasources/two-datasources.yaml").unwrap();
     for file in &[
         "abis/ExampleContract.json",
         "abis/ExampleContract2.json",
@@ -75,12 +75,12 @@ fn multiple_data_sets_per_data_source() {
     ] {
         let link = core.run(add(
             &resolver,
-            read_to_string(format!("tests/datasource-two-datasets/{}", file)).unwrap(),
+            read_to_string(format!("tests/subgraph-two-datasources/{}", file)).unwrap(),
         )).unwrap();
-        data_source_string =
-            data_source_string.replace(&format!("link to {}", file), &format!("/ipfs/{}", link));
+        subgraph_string =
+            subgraph_string.replace(&format!("link to {}", file), &format!("/ipfs/{}", link));
     }
-    let data_source_link = core.run(add(&resolver, data_source_string)).unwrap();
+    let subgraph_link = core.run(add(&resolver, subgraph_string)).unwrap();
 
     let logger = logger();
     let eth_adapter = Arc::new(Mutex::new(MockEthereumAdapter {
@@ -96,19 +96,19 @@ fn multiple_data_sets_per_data_source() {
     let fake_store = Arc::new(Mutex::new(FakeStore));
     let manager = RuntimeManager::new(&logger, core.handle(), fake_store, host_builder);
 
-    // Load a data source with two data sets, one listening for `ExampleEvent`
+    // Load a subgraph with two data sets, one listening for `ExampleEvent`
     // and the other for `ExampleEvent2`.
-    let data_source = core.run(DataSourceDefinition::resolve(
+    let subgraph = core.run(SubgraphManifest::resolve(
         Link {
-            link: data_source_link,
+            link: subgraph_link,
         },
         &*resolver,
-    )).expect("failed to load data source");
+    )).expect("failed to load subgraph");
 
-    // Send the new data source to the manager.
+    // Send the new subgraph to the manager.
     manager
         .event_sink()
-        .send(DataSourceProviderEvent::DataSourceAdded(data_source))
+        .send(SubgraphProviderEvent::SubgraphAdded(subgraph))
         .wait()
         .unwrap();
 

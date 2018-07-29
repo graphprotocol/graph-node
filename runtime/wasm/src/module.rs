@@ -14,10 +14,10 @@ use wasmi::{
 };
 use web3::types::BlockId;
 
-use graph::components::data_sources::RuntimeHostEvent;
 use graph::components::ethereum::*;
 use graph::components::store::StoreKey;
-use graph::data::data_sources::DataSet;
+use graph::components::subgraph::RuntimeHostEvent;
+use graph::data::subgraph::DataSource;
 use graph::prelude::*;
 
 use super::UnresolvedContractCall;
@@ -80,15 +80,15 @@ const JSON_FROM_BYTES_FUNC_INDEX: usize = 13;
 const IPFS_CAT_FUNC_INDEX: usize = 14;
 
 pub struct WasmiModuleConfig<T, L> {
-    pub data_source: DataSourceDefinition,
-    pub data_set: DataSet,
+    pub subgraph: SubgraphManifest,
+    pub data_source: DataSource,
     pub runtime: Handle,
     pub event_sink: Sender<RuntimeHostEvent>,
     pub ethereum_adapter: Arc<Mutex<T>>,
     pub link_resolver: Arc<L>,
 }
 
-/// A WASM module based on wasmi that powers a data source runtime.
+/// A WASM module based on wasmi that powers a subgraph runtime.
 pub struct WasmiModule<T, L> {
     pub logger: Logger,
     pub module: ModuleRef,
@@ -105,11 +105,11 @@ where
     pub fn new(logger: &Logger, config: WasmiModuleConfig<T, L>) -> Self {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
-        let module = Module::from_parity_wasm_module(config.data_set.mapping.runtime.clone())
+        let module = Module::from_parity_wasm_module(config.data_source.mapping.runtime.clone())
             .expect(
                 format!(
                     "Wasmi could not interpret module of data set: {}",
-                    config.data_set.data.name
+                    config.data_source.name
                 ).as_str(),
             );
 
@@ -140,8 +140,8 @@ where
 
         // Create new instance of externally hosted functions invoker
         let mut externals = HostExternals {
+            subgraph: config.subgraph,
             data_source: config.data_source,
-            data_set: config.data_set,
             logger: logger.clone(),
             runtime: config.runtime.clone(),
             event_sink: config.event_sink.clone(),
@@ -198,8 +198,8 @@ impl<E: fmt::Display> fmt::Display for HostExternalsError<E> {
 pub struct HostExternals<T, L> {
     logger: Logger,
     runtime: Handle,
-    data_source: DataSourceDefinition,
-    data_set: DataSet,
+    subgraph: SubgraphManifest,
+    data_source: DataSource,
     event_sink: Sender<RuntimeHostEvent>,
     heap: WasmiAscHeap,
     ethereum_adapter: Arc<Mutex<T>>,
@@ -233,7 +233,7 @@ where
             self.event_sink
                 .clone()
                 .send(RuntimeHostEvent::EntitySet(
-                    self.data_source.id.clone(),
+                    self.subgraph.id.clone(),
                     store_key,
                     entity_data,
                 ))
@@ -269,7 +269,7 @@ where
             self.event_sink
                 .clone()
                 .send(RuntimeHostEvent::EntityRemoved(
-                    self.data_source.id.clone(),
+                    self.subgraph.id.clone(),
                     store_key,
                 ))
                 .map_err(move |e| {
@@ -294,7 +294,7 @@ where
               "function" => &unresolved_call.function_name);
 
         // Obtain the path to the contract ABI
-        let contract = self.data_set
+        let contract = self.data_source
             .mapping
             .abis
             .iter()
@@ -707,10 +707,10 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use tokio_core;
 
-    use graph::components::data_sources::*;
     use graph::components::ethereum::*;
     use graph::components::store::*;
-    use graph::data::data_sources::*;
+    use graph::components::subgraph::*;
+    use graph::data::subgraph::*;
     use graph::prelude::*;
     use graph::util;
 
@@ -747,10 +747,10 @@ mod tests {
         }
     }
 
-    fn mock_data_source() -> DataSourceDefinition {
-        DataSourceDefinition {
-            id: String::from("example data source"),
-            location: String::from("/path/to/example-data-source.yaml"),
+    fn mock_subgraph() -> SubgraphManifest {
+        SubgraphManifest {
+            id: String::from("example subgraph"),
+            location: String::from("/path/to/example-subgraph.yaml"),
             spec_version: String::from("0.1.0"),
             schema: Schema {
                 id: String::from("exampled id"),
@@ -758,22 +758,20 @@ mod tests {
                     definitions: vec![],
                 },
             },
-            datasets: vec![],
+            data_sources: vec![],
         }
     }
 
-    fn mock_data_set() -> DataSet {
+    fn mock_data_source() -> DataSource {
         let runtime = parity_wasm::deserialize_file("test/example_event_handler.wasm")
             .expect("Failed to deserialize wasm");
 
-        DataSet {
-            data: Data {
-                kind: String::from("ethereum/contract"),
-                name: String::from("example data set"),
+        DataSource {
+            kind: String::from("ethereum/contract"),
+            name: String::from("example data set"),
+            source: Source {
                 address: String::from("0123123123"),
-                structure: DataStructure {
-                    abi: String::from("123123"),
-                },
+                abi: String::from("123123"),
             },
             mapping: Mapping {
                 kind: String::from("ethereum/events"),
@@ -800,8 +798,8 @@ mod tests {
         let mut module = WasmiModule::new(
             &logger,
             WasmiModuleConfig {
+                subgraph: mock_subgraph(),
                 data_source: mock_data_source(),
-                data_set: mock_data_set(),
                 runtime: core.handle(),
                 event_sink: sender,
                 ethereum_adapter: mock_ethereum_adapter,
@@ -846,8 +844,8 @@ mod tests {
         let mut module = WasmiModule::new(
             &logger,
             WasmiModuleConfig {
+                subgraph: mock_subgraph(),
                 data_source: mock_data_source(),
-                data_set: mock_data_set(),
                 runtime: core.handle(),
                 event_sink: sender,
                 ethereum_adapter: mock_ethereum_adapter,
@@ -882,7 +880,7 @@ mod tests {
         assert_eq!(
             store_event,
             RuntimeHostEvent::EntitySet(
-                String::from("example data source"),
+                String::from("example subgraph"),
                 StoreKey {
                     entity: String::from("ExampleEntity"),
                     id: String::from("example id"),

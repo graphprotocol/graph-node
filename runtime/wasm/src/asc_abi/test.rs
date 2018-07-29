@@ -401,6 +401,8 @@ fn abi_store_value() {
         module.asc_get(module.takes_ptr_returns_ptr("value_from_bigint", bytes_ptr));
     assert_eq!(
         new_value,
-        Value::BigInt(::graph::data::store::scalar::BigInt::from_signed_bytes_le(bytes))
+        Value::BigInt(::graph::data::store::scalar::BigInt::from_signed_bytes_le(
+            bytes
+        ))
     );
 }

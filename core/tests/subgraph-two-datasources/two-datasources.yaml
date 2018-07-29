@@ -1,0 +1,43 @@
+specVersion: 0.0.1
+schema:
+  file:
+    /: 'link to schema.graphql'
+dataSources:
+- kind: ethereum/contract
+  name: ExampleDataSource
+  source:
+    address: "22843e74c59580b3eaf6c233fa67d8b7c561a835"
+    abi: ExampleContract
+  mapping:
+    kind: ethereum/events
+    apiVersion: 0.0.1
+    language: wasm/assemblyscript
+    entities: []
+    abis:
+    - name: ExampleContract
+      file:
+        /: 'link to abis/ExampleContract.json'
+    eventHandlers:
+    - event: ExampleEvent(string)
+      handler: handleExampleEvent
+    file:
+      /: 'link to empty.wasm'
+- kind: ethereum/contract
+  name: ExampleDataSource2
+  source:
+    address: "22222e74c59580b3eaf6c233fa67d8b7c561a835"
+    abi: ExampleContract2
+  mapping:
+    kind: ethereum/events
+    apiVersion: 0.0.1
+    language: wasm/assemblyscript
+    entities: []
+    abis:
+    - name: ExampleContract2
+      file:
+        /: 'link to abis/ExampleContract2.json'
+    eventHandlers:
+    - event: ExampleEvent2(string)
+      handler: handleExampleEvent2
+    file:
+      /: 'link to empty.wasm'

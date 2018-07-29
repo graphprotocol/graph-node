@@ -42,9 +42,9 @@ BEGIN
 
     -- Log row metadata and changes, specify whether event was an original ethereum event or a reversion
     INSERT INTO entity_history
-        (event_id, entity_id, data_source, entity, data_before, data_after, reversion)
+        (event_id, entity_id, subgraph, entity, data_before, data_after, reversion)
     VALUES
-        (COALESCE(new_event_id, event_id), OLD.id, OLD.data_source, OLD.entity, OLD.data, NEW.data, is_reversion);
+        (COALESCE(new_event_id, event_id), OLD.id, OLD.subgraph, OLD.entity, OLD.data, NEW.data, is_reversion);
 
     RETURN NULL;
 END;
@@ -89,9 +89,9 @@ BEGIN
 
     -- Log inserted row
     INSERT INTO entity_history
-        (event_id, entity_id, data_source, entity, data_before, data_after, reversion)
+        (event_id, entity_id, subgraph, entity, data_before, data_after, reversion)
     VALUES
-        (COALESCE(new_event_id, event_id), NEW.id, NEW.data_source, NEW.entity, NULL, NEW.data, is_reversion);
+        (COALESCE(new_event_id, event_id), NEW.id, NEW.subgraph, NEW.entity, NULL, NEW.data, is_reversion);
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
@@ -141,9 +141,9 @@ BEGIN
 
     -- Log content of deleted entity
     INSERT INTO entity_history
-        (event_id, entity_id, data_source, entity, data_before, data_after, reversion)
+        (event_id, entity_id, subgraph, entity, data_before, data_after, reversion)
     VALUES
-        (COALESCE(new_event_id, event_id), OLD.id, OLD.data_source, OLD.entity, OlD.data, NULL, is_reversion);
+        (COALESCE(new_event_id, event_id), OLD.id, OLD.subgraph, OLD.entity, OlD.data, NULL, is_reversion);
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;

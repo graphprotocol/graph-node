@@ -1,7 +1,7 @@
 table! {
-    entities (id, data_source, entity) {
+    entities (id, subgraph, entity) {
         id -> Varchar,
-        data_source -> Varchar,
+        subgraph -> Varchar,
         entity -> Varchar,
         data -> Jsonb,
         event_source -> Varchar,

@@ -1,6 +1,6 @@
 use super::{EventConsumer, EventProducer};
 
-use super::data_sources::SchemaEvent;
+use super::subgraph::SchemaEvent;
 use data::schema::Schema;
 
 /// Events emitted by [SchemaProvider](trait.SchemaProvider.html) implementations.
@@ -11,7 +11,7 @@ pub enum SchemaProviderEvent {
 }
 
 /// A `SchemaProvider` is responsible for spawning a task that listens to the
-/// changes in the underlining data source providers (`EventConsumer`) and
+/// changes in the underlining subgraph providers (`EventConsumer`) and
 /// consolidates the received data into a single schema which is then
 /// broadcasted to higher-level consumers (`EventProducer`), such as query runners
 /// and the GraphQL server itself.
