@@ -51,7 +51,7 @@ fn build_filter(
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> Option<StoreFilter> {
     arguments
-        .get(&"filter".to_string())
+        .get(&"where".to_string())
         .and_then(|value| match value {
             q::Value::Object(object) => Some(object),
             _ => None,
@@ -380,7 +380,7 @@ mod tests {
                 },
                 &HashMap::from_iter(
                     vec![(
-                        &"filter".to_string(),
+                        &"where".to_string(),
                         q::Value::Object(BTreeMap::from_iter(vec![(
                             "name_ends_with".to_string(),
                             q::Value::String("ello".to_string()),
