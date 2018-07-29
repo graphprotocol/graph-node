@@ -9,8 +9,8 @@ use util::stream::StreamError;
 /// Key by which an individual entity in the store can be accessed.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct StoreKey {
-    // ID of the data source
-    pub data_source: String,
+    // ID of the subgraph.
+    pub subgraph: String,
 
     /// Name of the entity type.
     pub entity: String,
@@ -60,8 +60,8 @@ pub struct StoreRange {
 /// A query for entities in a store.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StoreQuery {
-    // ID of the data source
-    pub data_source: String,
+    // ID of the subgraph.
+    pub subgraph: String,
 
     /// The name of the entity type.
     pub entity: String,

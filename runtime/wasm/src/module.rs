@@ -108,7 +108,7 @@ where
         let module = Module::from_parity_wasm_module(config.data_source.mapping.runtime.clone())
             .expect(
                 format!(
-                    "Wasmi could not interpret module of data set: {}",
+                    "Wasmi could not interpret module of data source: {}",
                     config.data_source.name
                 ).as_str(),
             );
@@ -223,9 +223,8 @@ where
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
-        let data_source = self.data_source.id.clone();
         let store_key = StoreKey {
-            data_source,
+            subgraph: self.subgraph.id.clone(),
             entity,
             id,
         };
@@ -258,9 +257,8 @@ where
         let _block_hash: H256 = self.heap.asc_get(block_hash_ptr);
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
-        let data_source: String = self.data_source.id.clone();
         let store_key = StoreKey {
-            data_source,
+            subgraph: self.subgraph.id.clone(),
             entity,
             id,
         };
@@ -767,7 +765,7 @@ mod tests {
 
         DataSource {
             kind: String::from("ethereum/contract"),
-            name: String::from("example data set"),
+            name: String::from("example data source"),
             source: Source {
                 address: String::from("0123123123"),
                 abi: String::from("123123"),

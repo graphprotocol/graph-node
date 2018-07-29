@@ -112,7 +112,7 @@ impl BasicStore for Store {
 
         // Use primary key fields to get the entity; deserialize the result JSON
         entities
-            .find((key.id, key.data_source, key.entity))
+            .find((key.id, key.subgraph, key.entity))
             .select(data)
             .first::<serde_json::Value>(&self.conn)
             .map(|value| {
@@ -182,11 +182,10 @@ impl BasicStore for Store {
                 )).execute(&self.conn)
                     .unwrap();
 
-                // Delete from DB where rows match the ID and entity value;
-                // add subgraph here when meaningful
+                // Delete from DB where rows match the subgraph ID, entity name and ID
                 delete(
                     entities
-                        .filter(data_source.eq(&key.data_source))
+                        .filter(subgraph.eq(&key.subgraph))
                         .filter(entity.eq(&key.entity))
                         .filter(id.eq(&key.id)),
                 ).execute(&self.conn)
@@ -202,7 +201,7 @@ impl BasicStore for Store {
         // query parameters provided
         let mut diesel_query = entities
             .filter(entity.eq(query.entity))
-            .filter(data_source.eq(query.data_source))
+            .filter(subgraph.eq(query.subgraph))
             .select(data)
             .into_boxed::<Pg>();
 
