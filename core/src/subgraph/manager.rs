@@ -5,14 +5,14 @@ use slog::Logger;
 use std::sync::{Arc, Mutex};
 use tokio_core::reactor::Handle;
 
-use graph::components::data_sources::DataSourceProviderEvent;
-use graph::components::data_sources::RuntimeHostEvent;
 use graph::components::store::EventSource;
+use graph::components::subgraph::RuntimeHostEvent;
+use graph::components::subgraph::SubgraphProviderEvent;
 use graph::prelude::*;
 
 pub struct RuntimeManager {
     logger: Logger,
-    input: Sender<DataSourceProviderEvent>,
+    input: Sender<SubgraphProviderEvent>,
 }
 
 impl RuntimeManager where {
@@ -29,39 +29,39 @@ impl RuntimeManager where {
     {
         let logger = logger.new(o!("component" => "RuntimeManager"));
 
-        // Create channel for receiving data source provider events.
-        let (data_source_sender, data_source_receiver) = channel(100);
+        // Create channel for receiving subgraph provider events.
+        let (subgraph_sender, subgraph_receiver) = channel(100);
 
-        // Handle incoming events from the data source provider.
-        Self::handle_data_source_events(
+        // Handle incoming events from the subgraph provider.
+        Self::handle_subgraph_events(
             logger.clone(),
             runtime,
             store,
             host_builder,
-            data_source_receiver,
+            subgraph_receiver,
         );
 
         RuntimeManager {
             logger,
-            input: data_source_sender,
+            input: subgraph_sender,
         }
     }
 
-    /// Handle incoming events from data source providers.
-    fn handle_data_source_events<S, T>(
+    /// Handle incoming events from subgraph providers.
+    fn handle_subgraph_events<S, T>(
         logger: Logger,
         runtime: Handle,
         store: Arc<Mutex<S>>,
         mut host_builder: T,
-        receiver: Receiver<DataSourceProviderEvent>,
+        receiver: Receiver<SubgraphProviderEvent>,
     ) where
         S: Store + 'static,
         T: RuntimeHostBuilder + 'static,
     {
-        // Handles each incoming event from the data source.
+        // Handles each incoming event from the subgraph.
         fn handle_event<S: Store + 'static>(store: Arc<Mutex<S>>, event: RuntimeHostEvent) {
             match event {
-                RuntimeHostEvent::EntitySet(_data_source_id, store_key, entity) => {
+                RuntimeHostEvent::EntitySet(_subgraph_id, store_key, entity) => {
                     store
                         .lock()
                         .unwrap()
@@ -72,7 +72,7 @@ impl RuntimeManager where {
                         )
                         .expect("Failed to set entity in the store");
                 }
-                RuntimeHostEvent::EntityRemoved(_data_source_id, store_key) => {
+                RuntimeHostEvent::EntityRemoved(_subgraph_id, store_key) => {
                     store
                         .lock()
                         .unwrap()
@@ -86,18 +86,18 @@ impl RuntimeManager where {
 
         runtime.clone().spawn(receiver.for_each(move |event| {
             match event {
-                DataSourceProviderEvent::DataSourceAdded(definition) => {
-                    info!(logger, "Data source created, host runtime";
-                          "location" => &definition.location);
+                SubgraphProviderEvent::SubgraphAdded(manifest) => {
+                    info!(logger, "Host mapping runtimes for subgraph";
+                          "location" => &manifest.location);
 
-                    // Create a new runtime host for each data set in the data source definition
-                    let mut new_hosts = definition
-                        .datasets
+                    // Create a new runtime host for each data source in the subgraph manifest
+                    let mut new_hosts = manifest
+                        .data_sources
                         .iter()
-                        .map(|d| host_builder.build(definition.clone(), d.clone()));
+                        .map(|d| host_builder.build(manifest.clone(), d.clone()));
 
                     // Forward events from the runtime host to the store; this
-                    // Tokio task will terminate when the corresponding data source
+                    // Tokio task will terminate when the corresponding subgraph
                     // is removed and the host and its event sender are dropped
                     for mut new_host in new_hosts {
                         let store = store.clone();
@@ -111,10 +111,10 @@ impl RuntimeManager where {
                         runtime_hosts.push(new_host);
                     }
                 }
-                DataSourceProviderEvent::DataSourceRemoved(ref definition) => {
-                    // Destroy all runtime hosts for this data source; this will
+                SubgraphProviderEvent::SubgraphRemoved(ref manifest) => {
+                    // Destroy all runtime hosts for this subgraph; this will
                     // also terminate the host's event stream
-                    runtime_hosts.retain(|host| host.data_source_definition() != definition);
+                    runtime_hosts.retain(|host| host.subgraph_manifest() != manifest);
                 }
             }
 
@@ -123,9 +123,9 @@ impl RuntimeManager where {
     }
 }
 
-impl EventConsumer<DataSourceProviderEvent> for RuntimeManager {
+impl EventConsumer<SubgraphProviderEvent> for RuntimeManager {
     /// Get the wrapped event sink.
-    fn event_sink(&self) -> Box<Sink<SinkItem = DataSourceProviderEvent, SinkError = ()>> {
+    fn event_sink(&self) -> Box<Sink<SinkItem = SubgraphProviderEvent, SinkError = ()>> {
         let logger = self.logger.clone();
         Box::new(self.input.clone().sink_map_err(move |e| {
             error!(logger, "Component was dropped: {}", e);

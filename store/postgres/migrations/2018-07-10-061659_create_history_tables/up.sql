@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS entity_history (
      id SERIAL PRIMARY KEY,
      event_id BIGINT NOT NULL,
      entity_id VARCHAR NOT NULL,
-     data_source VARCHAR NOT NULL,
+     subgraph VARCHAR NOT NULL,
      entity VARCHAR NOT NULL,
      data_before JSONB,
      data_after JSONB,

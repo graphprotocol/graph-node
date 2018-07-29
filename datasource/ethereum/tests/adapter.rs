@@ -1,23 +1,23 @@
 extern crate ethabi;
 extern crate ethereum_types;
 extern crate futures;
-extern crate jsonrpc_core;
-extern crate serde_json;
 extern crate graph;
 extern crate graph_datasource_ethereum;
+extern crate jsonrpc_core;
+extern crate serde_json;
 extern crate tokio_core;
 extern crate web3;
 
 use ethabi::{Function, Param, ParamType, Token};
 use futures::prelude::*;
 use futures::{failed, finished};
+use graph::components::ethereum::EthereumContractCall;
+use graph::prelude::EthereumAdapter as EthereumAdapterTrait;
+use graph_datasource_ethereum::{EthereumAdapter, EthereumAdapterConfig};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 use std::str::FromStr;
-use graph::components::ethereum::EthereumContractCall;
-use graph::prelude::EthereumAdapter as EthereumAdapterTrait;
-use graph_datasource_ethereum::{EthereumAdapter, EthereumAdapterConfig};
 use tokio_core::reactor::Core;
 use web3::error::{Error, ErrorKind};
 use web3::helpers::*;

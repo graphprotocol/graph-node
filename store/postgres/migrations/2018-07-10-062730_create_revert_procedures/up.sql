@@ -14,7 +14,7 @@ CREATE OR REPLACE FUNCTION revert_entity_event(entity_history_id INTEGER, operat
 $$
 DECLARE
     target_entity_id VARCHAR;
-    target_data_source VARCHAR;
+    target_subgraph VARCHAR;
     target_entity VARCHAR;
     target_data_before JSONB;
     reversion_identifier VARCHAR;
@@ -22,12 +22,12 @@ BEGIN
     -- Get entity history event information and save into the declared variables
     SELECT
         entity_id,
-        data_source,
+        subgraph,
         entity,
         data_before
     INTO
         target_entity_id,
-        target_data_source,
+        target_subgraph,
         target_entity,
         target_data_before
     FROM entity_history
@@ -43,10 +43,10 @@ BEGIN
                 PERFORM set_config('vars.current_event_source', 'REVERSION', FALSE);
                 EXECUTE
                     'DELETE FROM entities WHERE (
-                        data_source = $1 AND
+                        subgraph = $1 AND
                         entity = $2 AND
                         id = $3)'
-                USING target_data_source, target_entity, target_entity_id;
+                USING target_subgraph, target_entity, target_entity_id;
 
                 -- Row was already updated
                 EXCEPTION
@@ -60,13 +60,13 @@ BEGIN
             -- If row exists perform update
             BEGIN
                 EXECUTE
-                    'INSERT INTO entities (id, data_source, entity, data, event_source)
+                    'INSERT INTO entities (id, subgraph, entity, data, event_source)
                         VALUES ($1, $2, $3, $4, $5)
-                        ON CONFLICT (id, data_source, entity) DO UPDATE
+                        ON CONFLICT (id, subgraph, entity) DO UPDATE
                         SET data = $4, event_source = $5'
                 USING
                     target_entity_id,
-                    target_data_source,
+                    target_subgraph,
                     target_entity,
                     target_data_before,
                     reversion_identifier;
@@ -145,19 +145,19 @@ CREATE OR REPLACE FUNCTION rerun_entity_history_event(entity_history_id INTEGER,
 $$
 DECLARE
     target_entity_id VARCHAR;
-    target_data_source VARCHAR;
+    target_subgraph VARCHAR;
     target_entity VARCHAR;
     target_data_after JSONB;
 BEGIN
     SELECT
         entity_id,
-        data_source,
+        subgraph,
         entity,
         data_before,
         data_after
     INTO
         target_entity_id,
-        target_data_source,
+        target_subgraph,
         target_entity,
         target_data_after
     FROM entity_history
@@ -170,12 +170,12 @@ BEGIN
             -- If row exists perform update
             BEGIN
                 EXECUTE
-                    'INSERT INTO entities (data_source, entity, id, data, event_source)
+                    'INSERT INTO entities (subgraph, entity, id, data, event_source)
                         VALUES ($1, $2, $3, $4, "REVERSION")
-                        ON CONFLICT (data_source, entity, id) DO UPDATE
+                        ON CONFLICT (subgraph, entity, id) DO UPDATE
                         SET data = $4, event_source = NULL'
                 USING
-                    target_data_source,
+                    target_subgraph,
                     target_entity,
                     target_entity_id,
                     target_data_after;
@@ -189,11 +189,11 @@ BEGIN
                 PERFORM set_config('vars.current_event_source', 'REVERSION', FALSE);
                 EXECUTE
                     'DELETE FROM entities WHERE (
-                        data_source = $1 AND
+                        subgraph = $1 AND
                         entity = $2 AND
                         id = $3)'
                 USING
-                    target_data_source,
+                    target_subgraph,
                     target_entity,
                     target_entity_id;
             END;
@@ -206,11 +206,11 @@ $$ LANGUAGE plpgsql;
 *
 * Rerun all events for a specific entity
 * avoiding any revert or uncled events
-* Parameters: entity pkey -> (entity_id, data_source, entity)
+* Parameters: entity pkey -> (entity_id, subgraph, entity)
               event_id of revert event
 **************************************************************/
 CREATE OR REPLACE FUNCTION rerun_entity(
-    event_id_to_rerun INTEGER, data_source_to_rerun VARCHAR, entity_to_rerun VARCHAR, entity_id_to_rerun VARCHAR)
+    event_id_to_rerun INTEGER, subgraph_to_rerun VARCHAR, entity_to_rerun VARCHAR, entity_id_to_rerun VARCHAR)
     RETURNS VOID AS
 $$
 DECLARE
@@ -227,7 +227,7 @@ BEGIN
         WHERE (
             entity_history.entity = entity_to_rerun AND
             entity_history.entity_id = entity_id_to_rerun AND
-            entity_history.data_source = data_source_to_rerun
+            entity_history.subgraph = subgraph_to_rerun
             AND
             entity_history.event_id > event_i_to_rerund
             AND

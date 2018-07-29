@@ -6,7 +6,6 @@ extern crate graph_node;
 extern crate sentry;
 #[macro_use]
 extern crate slog;
-extern crate ipfs_api;
 extern crate graph;
 extern crate graph_core;
 extern crate graph_datasource_ethereum;
@@ -14,6 +13,7 @@ extern crate graph_mock;
 extern crate graph_runtime_wasm;
 extern crate graph_server_http;
 extern crate graph_store_postgres;
+extern crate ipfs_api;
 extern crate tokio;
 extern crate tokio_core;
 
@@ -32,7 +32,7 @@ use graph::components::EventProducer;
 use graph::prelude::*;
 use graph::util::log::logger;
 use graph_datasource_ethereum::Transport;
-use graph_node::DataSourceProvider as IpfsDataSourceProvider;
+use graph_node::SubgraphProvider as IpfsSubgraphProvider;
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as HyperGraphQLServer;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
@@ -48,12 +48,12 @@ fn main() {
         .author("Graph Protocol, Inc.")
         .about("Scalable queries for a decentralized future")
         .arg(
-            Arg::with_name("data-source")
+            Arg::with_name("subgraph")
                 .takes_value(true)
                 .required(true)
-                .long("data-source")
+                .long("subgraph")
                 .value_name("IPFS_HASH")
-                .help("IPFS hash of the data source definition file"),
+                .help("IPFS hash of the subgraph manifest"),
         )
         .arg(
             Arg::with_name("postgres-url")
@@ -103,8 +103,8 @@ fn main() {
     // Safe to unwrap because a value is required by CLI
     let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
 
-    // Obtain data source related command-line arguments
-    let data_source_hash = matches.value_of("data-source").unwrap();
+    // Obtain subgraph related command-line arguments
+    let subgraph_hash = matches.value_of("subgraph").unwrap();
 
     // Obtain the Ethereum RPC/WS/IPC transport locations
     let ethereum_rpc = matches.value_of("ethereum-rpc");
@@ -138,12 +138,12 @@ fn main() {
         &format!("{}", ipfs_socket_addr.ip()),
         ipfs_socket_addr.port(),
     ).expect("Failed to start IPFS client");
-    let mut data_source_provider = core.run(IpfsDataSourceProvider::new(
+    let mut subgraph_provider = core.run(IpfsSubgraphProvider::new(
         logger.clone(),
         runtime,
-        &format!("/ipfs/{}", data_source_hash.clone()),
+        &format!("/ipfs/{}", subgraph_hash.clone()),
         &resolver,
-    )).expect("Failed to initialize data source provider");
+    )).expect("Failed to initialize subgraph provider");
     let mut schema_provider = graph_core::SchemaProvider::new(&logger, core.handle());
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
     let protected_store = Arc::new(Mutex::new(store));
@@ -172,13 +172,13 @@ fn main() {
         runtime_host_builder,
     );
 
-    // Forward data source events from the data source provider to the runtime manager
+    // Forward subgraph events from the subgraph provider to the runtime manager
     core.handle()
-        .spawn(forward(&mut data_source_provider, &runtime_manager).unwrap());
+        .spawn(forward(&mut subgraph_provider, &runtime_manager).unwrap());
 
-    // Forward schema events from the data source provider to the schema provider
+    // Forward schema events from the subgraph provider to the schema provider
     core.handle()
-        .spawn(forward(&mut data_source_provider, &schema_provider).unwrap());
+        .spawn(forward(&mut subgraph_provider, &schema_provider).unwrap());
 
     // Forward schema events from the schema provider to the store and GraphQL server
     let schema_stream = schema_provider.take_event_stream().unwrap();

@@ -4,8 +4,8 @@ use slog::Logger;
 use std::collections::HashMap;
 use tokio_core::reactor::Handle;
 
-use graph::components::data_sources::SchemaEvent;
 use graph::components::schema::{SchemaProvider as SchemaProviderTrait, SchemaProviderEvent};
+use graph::components::subgraph::SchemaEvent;
 use graph::components::{EventConsumer, EventProducer};
 use graph::data::schema::Schema;
 
@@ -43,22 +43,22 @@ impl SchemaProvider {
     pub fn new(logger: &Logger, runtime: Handle) -> Self {
         let logger = logger.new(o!("component" => "SchemaProvider"));
 
-        // Create a channel for receiving events from the data source provider.
-        let (data_source_sender, data_source_recv) = channel(100);
+        // Create a channel for receiving events from the subgraph provider.
+        let (subgraph_sender, subgraph_recv) = channel(100);
         // Create a channel for broadcasting changes to the schema.
         let (schema_sender, schema_recv) = channel(100);
 
-        // Spawn the internal handler for any incoming events from the data source provider.
+        // Spawn the internal handler for any incoming events from the subgraph provider.
         runtime.spawn(Self::schema_event_handler(
             logger.clone(),
-            data_source_recv,
+            subgraph_recv,
             schema_sender,
         ));
 
         // Return the new schema provider
         SchemaProvider {
             logger,
-            input: data_source_sender,
+            input: subgraph_sender,
             output: Some(schema_recv),
         }
     }
@@ -88,7 +88,7 @@ impl SchemaProvider {
                 // Derive a full-fledged API schema from the first input schema
                 //
                 // NOTE: For the moment, we're simply picking the first schema
-                // we can find in the map. Once we support multiple data sources,
+                // we can find in the map. Once we support multiple subgraphs,
                 // this would be where we combine them into one and also detect
                 // conflicts
                 combined_schema = input_schemas.values().next().and_then(|schema| {
@@ -108,7 +108,7 @@ impl SchemaProvider {
 
                 // Forward the new combined schema to them through the event channel
                 info!(logger, "Forwarding the combined schema");
-                // Mock processing the event from the data source provider
+                // Mock processing the event from the subgraph provider
                 SchemaProviderEvent::SchemaChanged(combined_schema.clone())
             })
             .forward(output.sink_map_err(move |e| {
@@ -127,12 +127,12 @@ mod tests {
     use graphql_parser;
     use tokio_core::reactor::Core;
 
-    use slog;
-    use graph::components::data_sources::SchemaEvent;
     use graph::components::schema::SchemaProviderEvent;
+    use graph::components::subgraph::SchemaEvent;
     use graph::components::{EventConsumer, EventProducer};
     use graph::prelude::*;
     use graph_graphql::schema::ast;
+    use slog;
 
     use super::SchemaProvider as CoreSchemaProvider;
 

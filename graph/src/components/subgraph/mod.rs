@@ -4,4 +4,4 @@ mod provider;
 
 pub use self::host::{RuntimeHost, RuntimeHostBuilder, RuntimeHostEvent};
 pub use self::manager::RuntimeManager;
-pub use self::provider::{DataSourceProvider, DataSourceProviderEvent, SchemaEvent};
+pub use self::provider::{SchemaEvent, SubgraphProvider, SubgraphProviderEvent};

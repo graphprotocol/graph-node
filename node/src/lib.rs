@@ -6,6 +6,6 @@ extern crate graph;
 extern crate graph_core;
 extern crate tokio_core;
 
-mod data_sources;
+mod subgraph;
 
-pub use self::data_sources::DataSourceProvider;
+pub use self::subgraph::SubgraphProvider;

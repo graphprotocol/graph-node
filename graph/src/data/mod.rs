@@ -1,5 +1,5 @@
-/// Data types for dealing with data sources.
-pub mod data_sources;
+/// Data types for dealing with subgraphs.
+pub mod subgraph;
 
 /// Data types for dealing with GraphQL queries.
 pub mod query;
