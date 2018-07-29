@@ -59,12 +59,10 @@ impl SubgraphProvider {
     }
 
     // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the schema.
-    fn add_subgraph_id_directives(schema: &mut Schema, id: String) -> Schema {
+    pub fn add_subgraph_id_directives(schema: &mut Schema, id: String) -> Schema {
         for definition in schema.document.definitions.iter_mut() {
-            let subgraph_id_argument = (
-                schema::Name::from("id"),
-                schema::Value::String(subgraph.clone()),
-            );
+            let subgraph_id_argument =
+                (schema::Name::from("id"), schema::Value::String(id.clone()));
 
             let subgraph_id_directive = schema::Directive {
                 name: "subgraphId".to_string(),

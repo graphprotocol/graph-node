@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use graph::components::store::EventSource;
 use graph::prelude::*;
 use graph_graphql::prelude::*;
-use graph_node::DataSourceProvider;
+use graph_node::SubgraphProvider;
 
 fn test_schema() -> Schema {
     let schema = Schema {
@@ -48,10 +48,7 @@ fn test_schema() -> Schema {
             "Failed to derive API schema from test schema",
         ),
     };
-    DataSourceProvider::add_package_id_directives(
-        &mut schema.clone(),
-        String::from("test_package_id"),
-    )
+    SubgraphProvider::add_subgraph_id_directives(&mut schema.clone(), String::from("test_subgraph"))
 }
 
 #[derive(Clone)]
