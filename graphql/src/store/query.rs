@@ -1,7 +1,7 @@
+use graph::prelude::*;
 use graphql_parser::{query as q, schema};
 use schema::ast;
 use std::collections::{BTreeMap, HashMap};
-use graph::prelude::*;
 
 /// Builds a StoreQuery from GraphQL arguments.
 pub fn build_query(
@@ -128,16 +128,27 @@ fn build_order_direction(arguments: &HashMap<&q::Name, q::Value>) -> Option<Stor
 
 /// Parses the data_source from the ObjectType directives
 fn build_data_source_id(entity: &schema::ObjectType) -> Option<String> {
-    entity.clone().directives
-        .into_iter().find(|directive| directive.name == "packageId".to_string())
-        .and_then(|directive| directive.arguments.into_iter().find(|(name, _value)| name == &"id".to_string()))
-        .and_then(|argument| match argument.1 {schema::Value::String(id) => Some(id), _ => None})
+    entity
+        .clone()
+        .directives
+        .into_iter()
+        .find(|directive| directive.name == "packageId".to_string())
+        .and_then(|directive| {
+            directive
+                .arguments
+                .into_iter()
+                .find(|(name, _value)| name == &"id".to_string())
+        })
+        .and_then(|argument| match argument.1 {
+            schema::Value::String(id) => Some(id),
+            _ => None,
+        })
 }
 
 #[cfg(test)]
 mod tests {
     use graphql_parser::{
-        query as q, schema::{Field, ObjectType, Type},
+        Pos, query as q, schema, schema::{Directive, Field, Name, ObjectType, Type},
     };
     use std::collections::{BTreeMap, HashMap};
     use std::iter::FromIterator;
@@ -147,12 +158,19 @@ mod tests {
     use super::build_query;
 
     fn default_object() -> ObjectType {
+        let package_id_argument: Vec<(Name, schema::Value)> =
+            vec![("id".to_string(), schema::Value::String("QmZ5dsusHwD1PEbx6L4dLCWkDsk1BLhrx9mPsGyPvTxPCM".to_string()))];
+        let package_id_directive = Directive {
+            name: "packageId".to_string(),
+            position: Pos::default(),
+            arguments: package_id_argument,
+        };
         ObjectType {
             position: Default::default(),
             description: None,
             name: String::new(),
             implements_interfaces: vec![],
-            directives: vec![],
+            directives: vec![package_id_directive],
             fields: vec![],
         }
     }
