@@ -153,11 +153,7 @@ impl BasicStore for Store {
                 data.eq(&entity_json),
                 event_source.eq(&input_event_source.to_string()),
             ))
-            .on_conflict((
-                id,
-                entity,
-                data_source,
-            ))
+            .on_conflict((id, entity, data_source))
             .do_update()
             .set((
                 id.eq(&key.id),

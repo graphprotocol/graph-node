@@ -1,8 +1,8 @@
 extern crate diesel;
 extern crate ethereum_types;
-extern crate serde_json;
 extern crate graph;
 extern crate graph_store_postgres;
+extern crate serde_json;
 extern crate tokio_core;
 #[macro_use]
 extern crate slog;
@@ -1175,8 +1175,7 @@ fn revert_block_with_delete() {
         };
 
         let block_hash = "test_block_to_revert";
-        let event_source =
-            EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes()));
+        let event_source = EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes()));
         let revert_event_source = event_source.to_string();
         store
             .delete(del_key.clone(), event_source)
@@ -1201,8 +1200,7 @@ fn revert_block_with_delete() {
         // Perform revert operation again to confirm idempotent nature of revert_events()
         // Delete an entity using a randomly created event source
         let block_hash = "test_block_to_revert";
-        let event_source =
-            EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes()));
+        let event_source = EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes()));
         let revert_event_source = event_source.to_string();
         store
             .delete(del_key.clone(), event_source)

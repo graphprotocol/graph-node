@@ -237,10 +237,7 @@ where
         self.runtime.spawn(
             self.event_sink
                 .clone()
-                .send(RuntimeHostEvent::EntitySet(
-                    store_key,
-                    entity_data,
-                ))
+                .send(RuntimeHostEvent::EntitySet(store_key, entity_data))
                 .map_err(move |e| {
                     error!(logger, "Failed to forward runtime host event";
                            "error" => format!("{}", e));

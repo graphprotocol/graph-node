@@ -3,9 +3,9 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use graphql_parser;
 use slog;
 
-use graphql_parser::schema::Document;
 use graph::components::data_sources::{DataSourceProviderEvent, SchemaEvent};
 use graph::prelude::*;
+use graphql_parser::schema::Document;
 
 /// A mock `DataSourceProvider`.
 pub struct MockDataSourceProvider {

@@ -6,7 +6,6 @@ extern crate graph_node;
 extern crate sentry;
 #[macro_use]
 extern crate slog;
-extern crate ipfs_api;
 extern crate graph;
 extern crate graph_core;
 extern crate graph_datasource_ethereum;
@@ -14,6 +13,7 @@ extern crate graph_mock;
 extern crate graph_runtime_wasm;
 extern crate graph_server_http;
 extern crate graph_store_postgres;
+extern crate ipfs_api;
 extern crate tokio;
 extern crate tokio_core;
 

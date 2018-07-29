@@ -1,6 +1,6 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver};
-use graphql_parser::{Pos, schema};
+use graphql_parser::{schema, Pos};
 use slog;
 use tokio_core::reactor::Handle;
 
@@ -88,7 +88,7 @@ impl DataSourceProvider {
                     schema::TypeDefinition::Union(_union_type) => (),
                 }
             }
-        };
+        }
         schema.clone()
     }
 }

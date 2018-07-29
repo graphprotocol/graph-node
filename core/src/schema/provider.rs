@@ -127,12 +127,12 @@ mod tests {
     use graphql_parser;
     use tokio_core::reactor::Core;
 
-    use slog;
     use graph::components::data_sources::SchemaEvent;
     use graph::components::schema::SchemaProviderEvent;
     use graph::components::{EventConsumer, EventProducer};
     use graph::prelude::*;
     use graph_graphql::schema::ast;
+    use slog;
 
     use super::SchemaProvider as CoreSchemaProvider;
 

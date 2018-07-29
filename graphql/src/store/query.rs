@@ -148,7 +148,7 @@ fn build_data_source_id(entity: &schema::ObjectType) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use graphql_parser::{
-        Pos, query as q, schema, schema::{Directive, Field, Name, ObjectType, Type},
+        query as q, schema, schema::{Directive, Field, Name, ObjectType, Type}, Pos,
     };
     use std::collections::{BTreeMap, HashMap};
     use std::iter::FromIterator;
@@ -158,8 +158,10 @@ mod tests {
     use super::build_query;
 
     fn default_object() -> ObjectType {
-        let package_id_argument: Vec<(Name, schema::Value)> =
-            vec![("id".to_string(), schema::Value::String("QmZ5dsusHwD1PEbx6L4dLCWkDsk1BLhrx9mPsGyPvTxPCM".to_string()))];
+        let package_id_argument: Vec<(Name, schema::Value)> = vec![(
+            "id".to_string(),
+            schema::Value::String("QmZ5dsusHwD1PEbx6L4dLCWkDsk1BLhrx9mPsGyPvTxPCM".to_string()),
+        )];
         let package_id_directive = Directive {
             name: "packageId".to_string(),
             position: Pos::default(),

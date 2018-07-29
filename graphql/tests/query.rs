@@ -5,8 +5,8 @@ extern crate pretty_assertions;
 #[macro_use]
 extern crate slog;
 extern crate graph;
-extern crate graph_node;
 extern crate graph_graphql;
+extern crate graph_node;
 
 use futures::sync::oneshot;
 use graphql_parser::query as q;
@@ -15,8 +15,8 @@ use std::sync::{Arc, Mutex};
 
 use graph::components::store::EventSource;
 use graph::prelude::*;
-use graph_node::DataSourceProvider;
 use graph_graphql::prelude::*;
+use graph_node::DataSourceProvider;
 
 fn test_schema() -> Schema {
     let schema = Schema {

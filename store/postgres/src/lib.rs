@@ -7,8 +7,8 @@ extern crate diesel_migrations;
 extern crate futures;
 #[macro_use]
 extern crate slog;
-extern crate serde_json;
 extern crate graph;
+extern crate serde_json;
 extern crate tokio;
 extern crate tokio_core;
 
