@@ -131,9 +131,6 @@ impl BasicStore for Store {
 
         use db_schema::entities::dsl::*;
 
-        // The data source is hardcoded at the moment
-        let datasource: String = String::from("memefactory");
-
         // Update the existing entity, if necessary
         let updated_entity = match self.get(key.clone()) {
             Ok(mut existing_entity) => {
@@ -165,7 +162,7 @@ impl BasicStore for Store {
             .set((
                 id.eq(&key.id),
                 entity.eq(&key.entity),
-                data_source.eq(&datasource),
+                data_source.eq(&key.data_source),
                 data.eq(&entity_json),
                 event_source.eq(&input_event_source.to_string()),
             ))
@@ -204,9 +201,6 @@ impl BasicStore for Store {
 
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()> {
         use db_schema::entities::dsl::*;
-
-        // The data source is hard-coded at the moment
-        let _datasource: String = String::from("memefactory");
 
         // Create base boxed query; this will be added to based on the
         // query parameters provided

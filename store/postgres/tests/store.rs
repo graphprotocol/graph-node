@@ -153,7 +153,7 @@ fn delete_entity() {
         let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
         let test_key = StoreKey {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             id: String::from("3"),
         };
@@ -162,6 +162,7 @@ fn delete_entity() {
 
         //Get all ids in table
         let all_ids = entities.select(id).load::<String>(&store.conn).unwrap();
+
         // Check that that the deleted entity id is not present
         assert!(!all_ids.contains(&String::from("3")));
     })
@@ -176,7 +177,7 @@ fn get_entity() {
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
         let key = StoreKey {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             id: String::from("1"),
         };
@@ -236,7 +237,7 @@ fn update_existing() {
         let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
         let entity_key = StoreKey {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             id: String::from("1"),
         };
@@ -274,7 +275,7 @@ fn partially_update_existing() {
         let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
         let entity_key = StoreKey {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             id: String::from("1"),
         };
@@ -319,7 +320,7 @@ fn find_string_contains() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Contains(
                 String::from("name"),
@@ -346,7 +347,7 @@ fn find_string_equal() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("name"),
@@ -373,7 +374,7 @@ fn find_string_not_equal() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
                 String::from("name"),
@@ -404,7 +405,7 @@ fn find_string_greater_than() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
                 String::from("name"),
@@ -435,7 +436,7 @@ fn find_string_less_than() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("name"),
@@ -466,7 +467,7 @@ fn find_string_less_than_order_by_asc() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("name"),
@@ -508,7 +509,7 @@ fn find_string_less_than_order_by_desc() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("name"),
@@ -550,7 +551,7 @@ fn find_string_less_than_range() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("name"),
@@ -581,7 +582,7 @@ fn find_string_multiple_and() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![
                 StoreFilter::LessThan(String::from("name"), Value::String(String::from("Cz"))),
@@ -612,7 +613,7 @@ fn find_float_equal() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("weight"),
@@ -643,7 +644,7 @@ fn find_float_not_equal() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
                 String::from("weight"),
@@ -674,7 +675,7 @@ fn find_float_greater_than() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
                 String::from("weight"),
@@ -705,7 +706,7 @@ fn find_float_less_than() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("weight"),
@@ -736,7 +737,7 @@ fn find_float_less_than_order_by_desc() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("weight"),
@@ -767,7 +768,7 @@ fn find_float_less_than_range() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("weight"),
@@ -797,7 +798,7 @@ fn find_int_equal() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("age"),
@@ -828,7 +829,7 @@ fn find_int_not_equal() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
                 String::from("age"),
@@ -859,7 +860,7 @@ fn find_int_greater_than() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
                 String::from("age"),
@@ -890,7 +891,7 @@ fn find_int_greater_or_equal() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterOrEqual(
                 String::from("age"),
@@ -921,7 +922,7 @@ fn find_int_less_than() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("age"),
@@ -952,7 +953,7 @@ fn find_int_less_or_equal() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessOrEqual(
                 String::from("age"),
@@ -983,7 +984,7 @@ fn find_int_less_than_order_by_desc() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("age"),
@@ -1014,7 +1015,7 @@ fn find_int_less_than_range() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("age"),
@@ -1045,7 +1046,7 @@ fn find_bool_equal() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("coffee"),
@@ -1076,7 +1077,7 @@ fn find_bool_not_equal() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
                 String::from("coffee"),
@@ -1107,7 +1108,7 @@ fn revert_block() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("name"),
@@ -1139,10 +1140,6 @@ fn revert_block() {
         assert_eq!(1, returned_entities.len());
 
         // Perform revert operation again to confirm idempotent nature of revert_events()
-        let block_hash = "znuyjijnezBiGFuZAW9Q";
-        let event_source =
-            EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes())).to_string();
-        store.revert_events(event_source);
         let returned_entities = store.find(this_query).expect("store.find operation failed");
         let returned_name = returned_entities[0].get(&String::from("email"));
         let test_value = Value::String(String::from("queensha@email.com"));
@@ -1159,7 +1156,7 @@ fn revert_block_with_delete() {
         let url = postgres_test_url();
         let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
         let this_query = StoreQuery {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("name"),
@@ -1172,11 +1169,14 @@ fn revert_block_with_delete() {
 
         // Delete an entity using a randomly created event source
         let del_key = StoreKey {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             id: String::from("2"),
         };
-        let event_source = EventSource::EthereumBlock(H256::random());
+
+        let block_hash = "test_block_to_revert";
+        let event_source =
+            EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes()));
         let revert_event_source = event_source.to_string();
         store
             .delete(del_key.clone(), event_source)
@@ -1200,7 +1200,9 @@ fn revert_block_with_delete() {
 
         // Perform revert operation again to confirm idempotent nature of revert_events()
         // Delete an entity using a randomly created event source
-        let event_source = EventSource::EthereumBlock(H256::random());
+        let block_hash = "test_block_to_revert";
+        let event_source =
+            EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes()));
         let revert_event_source = event_source.to_string();
         store
             .delete(del_key.clone(), event_source)
@@ -1225,7 +1227,7 @@ fn revert_block_with_partial_update() {
         let mut store = DieselStore::new(StoreConfig { url }, &logger, core.handle());
 
         let entity_key = StoreKey {
-            data_source: String::from("test-data-source"),
+            data_source: String::from("test_data_source"),
             entity: String::from("user"),
             id: String::from("1"),
         };
