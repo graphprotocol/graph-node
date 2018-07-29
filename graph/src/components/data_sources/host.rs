@@ -1,8 +1,5 @@
 use prelude::*;
 
-/// Type alias for data source IDs.
-type DataSourceID = String;
-
 /// Events emitted by a runtime host.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeHostEvent {

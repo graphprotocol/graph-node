@@ -73,7 +73,7 @@ cargo run -p graph-node -- \
   --data-source IPFS_HASH
 ```
 
-This will also sping up GraphiQL interface at `http://127.0.0.1:8000/`
+This will also spring up a GraphiQL interface at `http://127.0.0.1:8000/`
 
 ```
 USAGE:
