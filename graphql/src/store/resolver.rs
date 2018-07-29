@@ -238,7 +238,7 @@ impl Resolver for StoreResolver {
             let store = self.store.lock().unwrap();
             return store
                 .get(StoreKey {
-                    data_source: String::from("stub_data_source"),
+                    subgraph: String::from("stub_subgraph"),
                     entity: object_type.name.to_owned(),
                     id: id.to_owned(),
                 })
@@ -252,7 +252,7 @@ impl Resolver for StoreResolver {
                     .lock()
                     .unwrap()
                     .get(StoreKey {
-                        data_source: String::from("stub_data_source"),
+                        subgraph: String::from("stub_subgraph"),
                         entity: object_type.name.to_owned(),
                         id: id.to_owned(),
                     })
