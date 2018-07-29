@@ -12,6 +12,7 @@ pub mod scalar;
 /// An entity attribute name is represented as a string.
 pub type Attribute = String;
 
+pub const ID: &str = "ID";
 pub const BYTES_SCALAR: &str = "Bytes";
 pub const BIG_INT_SCALAR: &str = "BigInt";
 
@@ -31,9 +32,19 @@ pub enum Value {
 
 impl Value {
     pub fn from_query_value(value: &query::Value, ty: &schema::Type) -> Value {
-        use self::schema::Type::{ListType, NamedType};
+        use self::schema::Type::{ListType, NamedType, NonNullType};
 
         match (value, ty) {
+            // When dealing with non-null types, use the inner type to convert the value
+            (value, NonNullType(t)) => Value::from_query_value(value, t),
+
+            (query::Value::List(values), ListType(ty)) => Value::List(
+                values
+                    .iter()
+                    .map(|value| Self::from_query_value(value, ty))
+                    .collect(),
+            ),
+
             (query::Value::String(s), NamedType(n)) => {
                 // Check if `ty` is a custom scalar type, otherwise assume it's
                 // just a string.
@@ -53,12 +64,6 @@ impl Value {
                 as i32),
             (query::Value::Float(f), _) => Value::Float(f.to_owned() as f32),
             (query::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
-            (query::Value::List(values), ListType(ty)) => Value::List(
-                values
-                    .iter()
-                    .map(|value| Self::from_query_value(value, ty))
-                    .collect(),
-            ),
             (query::Value::Null, _) => Value::Null,
             _ => unimplemented!(),
         }
