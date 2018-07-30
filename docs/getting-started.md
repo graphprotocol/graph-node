@@ -14,7 +14,7 @@ In order to do anything useful with The Graph, you'll need to define a *subgraph
 Once you've defined your subgraph you can then deploy it to your locally running Graph Node (and in the future to The Graph network).
 
 ## 3 Defining your Subgraph
-The subgraph is defined as a YAML file called a *subgraph manifest*. See [here](https://github.com/graphprotocol/graph-cli/blob/master/examples/example-event-handler/data-source.yaml) for an example, or [here]() for the full subgraph manifest specification.
+The subgraph is defined as a YAML file called a *subgraph manifest*. See [here](https://github.com/graphprotocol/graph-cli/blob/master/examples/example-event-handler/data-source.yaml) for an example, or [here](graphql-api.md) for the full subgraph manifest specification.
 
 The logical first places to start defining your subgraph are the GraphQL schema and which smart contracts will be indexed. This will enable you to start writing mappings against the schema and smart contracts. Our toolchain is javascript-based so you'll want to define these in a new repo or a directory with it's own `package.json`.
 
@@ -56,7 +56,7 @@ query {
 }
 ```
 
-See the [Schema API]() for a complete reference on defining your schema for The Graph.
+See the [Schema API](graphql-api.md#3-schema) for a complete reference on defining your schema for The Graph.
 
 Once you've completed your schema, add the path of the schema to the top level `schema` key in your subgraph manifest.
 
@@ -167,7 +167,7 @@ Follow the instructions in the [Graph Node README](https://github.com/graphproto
 ## 5 Query your local Graph Node
 With your subgraph deployed to your locally running Graph Node, visit http://127.0.0.1:8000/ to open up a [Graphiql](https://github.com/graphql/graphiql) interface where you can explore your deployed GraphQL API for your subgraph by issuing queries and viewing the schema.
 
-See the  [Query API]() for a complete reference on how to query your subgraph's entities.
+See the [Query API](graphql-api.md#1-queries) for a complete reference on how to query your subgraph's entities.
 
 #### Example
 Query all `Token` entities:
