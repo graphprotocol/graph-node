@@ -48,18 +48,19 @@ There are two repos relevant to building on The Graph:
 1. [Graph CLI](https://github.com/graphprotocol/graph-cli) - A CLI for building and compiling projects which are deployed to Graph Node.
 
 ## 1.4 Roadmap
-✅ = Feature complete
-
-✅\* = Feature complete. Additional testing required.
 
 🔨 = In Progress
+
+🛠 = Feature complete. Additional testing required.
+
+✅ = Feature complete
 
 
 | Feature |  Status |
 | ------- |  :------: |
 | **Ethereum** |    |
 | Indexing Smart Contract Events | ✅ |
-| Handle chain reorganizations | ✅* |
+| Handle chain reorganizations | 🛠 |
 | **Mappings** |    |
 | WASM-based mappings| ✅ |
 | TypeScript-to-WASM toolchain | ✅ |
