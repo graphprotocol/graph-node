@@ -34,6 +34,8 @@ This Graph Node implementation also lays a solid foundation upon which a decentr
 
 The Graph must be run alongside a running IPFS node, Ethereum node and a store (Postgres, in this initial implementation).
 
+![Data Flow Diagram](images/TheGraph_DataFlowDiagram.png)
+
 The high level data flow is as follows:
 1. A decentralized application creates/modifies data on Ethereum through a transaction to a smart contract.
 2. The smart contract emits one or more events (logs) while processing the transaction.
