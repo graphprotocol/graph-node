@@ -12,6 +12,8 @@ Read more on [why we created The Graph](why-graph.md)
 ### 1.2 How does it work?
 The Graph must be run alongside a running IPFS node, Ethereum node and a store (Postgres, in this initial implementation).
 
+![Data Flow Diagram](/images/TheGraph_DataFlowDiagram.png)
+
 The high level data flow is as follows:
 1. A decentralized application creates/modifies data on Ethereum through a transaction to a smart contract.
 2. The smart contract emits one or more events (logs) while processing the transaction.
