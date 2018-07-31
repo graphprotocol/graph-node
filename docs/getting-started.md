@@ -18,17 +18,9 @@ However, other questions are more difficult to answer:
 
 For this you would need to process all [`Birth` events](https://github.com/dapperlabs/cryptokitties-bounty/blob/master/contracts/KittyBase.sol#L15) and then call the [`ownerOf` method](https://github.com/dapperlabs/cryptokitties-bounty/blob/master/contracts/KittyOwnership.sol#L144) for each cryptokitty that has been born into existence. (An alternate approach could involve processing all [`Transfer` events] and filtering on the most recent transfer for each cryptokitty in existence).
 
-The point is that even for this relatively simple question, it is already impossible for a decentralized application (dApp) running in a browser to get an answer performantly.
+The point is that even for this relatively simple question, it would take hours to days for a decentralized application (dApp) running in a browser to get an answer. Indexing and caching data off blockchains is hard. There are weird edge cases around finality, chain reorganizations, uncled blocks, etc.
 
-The way that projects solve this today is through building and hosting custom, centralized indexing and caching servers running SQL databases.
-
-*This is the dirty secret of "decentralized" applications, as of 2018*: They almost all have significant chunks of brittle, centralized infrastructure as a part of their stack. This isn't through laziness or negligence on the part of developers, the equivalent decentralized infrastructure to support indexing and caching of blockchain data simply hasn't matured yet.
-
-Worse yet, indexing and caching data off blockchains is hard. There are weird edge cases around finality, chain reorganizations, uncled blocks, hard forks, etc. And if each project has to reinvent the wheel with respect to indexing and caching just to build their specific dApp, the pace of dApp development in the ecosystem is likely to remain at a crawl.
-
-The Graph solves this today by implementing an open source node implementation, [Graph Node](../README.md), which handles indexing and caching of data off blockchains, which the entire community can contribute to and leverage. It can be hosted on centralized infrastructure to provide a more robust centralized implementation of the indexing and caching infrastructure which exists today. It exposes this functionality through a tastefully designed GraphQL endpoint.
-
-This Graph Node implementation also lays a solid foundation upon which a decentralized network of nodes (called The Graph) may handle indexing and caching - operating like a public utility upon which to build unstoppable decentralized applications in the future.
+The Graph solves this today by implementing an open source node implementation, [Graph Node](../README.md), which handles indexing and caching of data off blockchains, which the entire community can contribute to and leverage. It exposes this functionality through a GraphQL API.
 
 ### 1.2 How does it work?
 
@@ -54,16 +46,16 @@ There are two repos relevant to building on The Graph:
 ## 2 Getting started overview
 To deploy a GraphQL endpoint serving blockchain data to your Graph Node we will walk through the following steps:
 
-1. [Create a subgraph project and manifest](# 3 Defining your subgraph)
-1. [Define a GraphQL schema](# 3.1 Defining your GraphQL schema)
-1. [Define your Ethereum source data](# 3.2 Defining your source data)
-1. [Generate types to write your mappings](# 3.3 Generate types for your mapping with the Graph-CLI)
-1. [Compile your subgraph and mappings](# 4.1 Compile your mappings)
-1. [Deploy your subgraph manifest to IPFS](# 4.2 Deploy your mappings to IPFS)
-1. [Deploy your subgraph to Graph Node](# 4.3 Deploy your subgraph to your local Graph Node)
-1. [Query your newly deployed GraphQL API](# 5 Query your local Graph Node)
-1. ?????????????????
-1. [Profit!](# 6 Buidl 🚀)
+1. [Create a subgraph project and manifest](#3-Defining-your-subgraph)
+1. [Define a GraphQL schema](#3.1-Defining-your-GraphQL-schema)
+1. [Define your Ethereum source data](#3.2-Defining-your-source-data)
+1. [Generate types to write your mappings](#3.3 Generate types for your mapping with the Graph-CLI)
+1. [Compile your subgraph and mappings](#4.1-Compile-your-mappings)
+1. [Deploy your subgraph manifest to IPFS](#4.2-Deploy-your-mappings-to-IPFS)
+1. [Deploy your subgraph to Graph Node](#4.3-Deploy-your-subgraph-to-your-local-Graph-Node)
+1. [Query your newly deployed GraphQL API](#5-Query-your-local-Graph-Node)
+1. ???
+1. [Profit!](#6-Buidl-🚀)
 
 ## 3 Defining your Subgraph
 In The Graph, we refer to your project's GraphQL endpoint as a *subgraph*, because once deployed to the decentralized network, it will be just one subset of a global GraphQL endpoint.
