@@ -8,9 +8,9 @@
 
 Graph Node is an open source Rust implementation of the key backend infrastructure piece that sources blockchain events to deterministically update queryable datastores.
 
-## Quick Start
-
 For detailed instructions and more context check out [Getting Started Guide](docs/getting-started.md).
+
+## Quick Start
 
 ### Prerequisites
 
@@ -34,7 +34,7 @@ For Ethereum network data you can either run a local node or use Infura.io:
 2. Start: `pg_ctl -D .postgres start` (or `postgres -D .postgres`?)
 3. Create database: `createdb decentraland`
 4. Delete database (whenever you want): `dropdb decentraland`
-5. Log in to the database `psql decentraland` (edited)
+5. Log in to the database `psql decentraland`
 
 *Start the Graph node*
 
