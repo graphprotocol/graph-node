@@ -10,7 +10,7 @@ Graph Node is an open source Rust implementation of the key backend infrastructu
 
 ## Quick Start
 
-For detailed Getting Started guide check out getting-started.md.
+For detailed instructions and more context check out [Getting Started Guide](docs/getting-started.md).
 
 ### Prerequisites
 
@@ -133,7 +133,7 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 
 ## Contributing
 
-Please check CONTRIBUTING.md for development flow and conventions we use.
+Please check [CONTRIBUTING.md](CONTRIBUTING.md) for development flow and conventions we use.
 
 ## License
 
