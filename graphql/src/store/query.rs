@@ -128,7 +128,7 @@ fn build_order_direction(arguments: &HashMap<&q::Name, q::Value>) -> Option<Stor
 }
 
 /// Parses the subgraph ID from the ObjectType directives.
-fn build_subgraph_id(entity: &schema::ObjectType) -> Option<String> {
+pub fn build_subgraph_id(entity: &schema::ObjectType) -> Option<String> {
     entity
         .clone()
         .directives
