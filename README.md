@@ -28,14 +28,14 @@ Right now, this includes:
 The Graph is written in Rust. In order to build and run this project you need
 to have the following installed on your system:
 
-- [How to install Rust](https://www.rust-lang.org/en-US/install.html)
-- [PostgreSQL Downloads](https://www.postgresql.org/download/)
-- [Installing IPFS](https://ipfs.io/docs/install/)
+- Rust - [How to install Rust](https://www.rust-lang.org/en-US/install.html)
+- PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/)
+- IPFS – [Installing IPFS](https://ipfs.io/docs/install/)
 
 For Ethereum network data you can either run a local node or use Infura.io:
 
-- [Installing and running Ethereum node](https://ethereum.gitbooks.io/frontier-guide/content/getting_a_client.html)
-- [Infura.io](https://infura.io/)
+- Local node – [Installing and running Ethereum node](https://ethereum.gitbooks.io/frontier-guide/content/getting_a_client.html)
+- Infura infra – [Infura.io](https://infura.io/)
 
 ## Getting Started
 
@@ -100,37 +100,9 @@ OPTIONS:
         --postgres-url <URL>         Location of the Postgres database used for storing entities
 ```
 
-### Developing
+## CONTRIBUTING
 
-Install development helpers:
-
-```sh
-cargo install cargo-watch
-rustup component add rustfmt-preview
-```
-
-Set environment variables:
-
-```sh
-# Only required when testing the Diesel/Postgres store
-export THEGRAPH_STORE_POSTGRES_DIESEL_URL=<Postgres database URL>
-```
-
-While developing, a useful command to run in the background is this:
-
-```sh
-cargo watch                       \
-    -x "fmt -all"                 \
-    -x check                      \
-    -x "test -- --test-threads=1" \
-    -x "doc --no-deps"
-```
-
-This will watch your source directory and continuously do the following on changes:
-
-1.  Build all packages in the workspace `target/`.
-2.  Generate docs for all packages in the workspace in `target/doc/`.
-3.  Automatically format all your source files.
+Please check CONTRIBUTING.md for development flow and conventions we use.
 
 ## License
 
