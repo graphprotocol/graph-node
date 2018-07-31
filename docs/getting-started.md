@@ -75,14 +75,27 @@ There are two repos relevant to building on The Graph:
 
 
 ## 2 Getting started overview
-In order to do anything useful with The Graph, you'll need to define a *subgraph* which specifies the GraphQL schema for your dApp, the source data on blockchain your dApp will use (i.e. an Ethereum smart contract) and a mapping which transforms and loads your data into a store with your specific schema.
+To deploy a GraphQL endpoint serving blockchain data to your Graph Node we will walk through the following steps:
 
-Once you've defined your subgraph you can then deploy it to your locally running Graph Node (and in the future to The Graph network).
+1. [Create a subgraph project and manifest](# 3 Defining your subgraph)
+1. [Define a GraphQL schema](# 3.1 Defining your GraphQL schema)
+1. [Define your Ethereum source data](# 3.2 Defining your source data)
+1. [Generate types to write your mappings](# 3.3 Generate types for your mapping with the Graph-CLI)
+1. [Compile your subgraph and mappings](# 4.1 Compile your mappings)
+1. [Deploy your subgraph manifest to IPFS](# 4.2 Deploy your mappings to IPFS)
+1. [Deploy your subgraph to Graph Node](# 4.3 Deploy your subgraph to your local Graph Node)
+1. [Query your newly deployed GraphQL API](# 5 Query your local Graph Node)
+1. ?????????????????
+1. [Profit!](# 6 Buidl 🚀)
 
 ## 3 Defining your Subgraph
-The subgraph is defined as a YAML file called a *subgraph manifest*. See [here](https://github.com/graphprotocol/graph-cli/blob/master/examples/example-event-handler/subgraph.yaml) for an example, or [here](graphql-api.md) for the full subgraph manifest specification.
+In The Graph, we refer to your project's GraphQL endpoint as a *subgraph*, because once deployed to the decentralized network, it will be just one subset of a global GraphQL endpoint.
 
-The logical first places to start defining your subgraph are the GraphQL schema and which smart contracts will be indexed. This will enable you to start writing mappings against the schema and smart contracts. Our toolchain is javascript-based so you'll want to define these in a new repo or a directory with it's own `package.json`.
+The subgraph is defined as a YAML file called a *subgraph manifest*. See [here](https://github.com/graphprotocol/graph-cli/blob/master/examples/example-event-handler/subgraph.yaml) for an example, or [here](graphql-api.md) for the full subgraph manifest specification. It comprises a schema, source data and mappings which are used to deploy your endpoint.
+
+The subgraph manifest is typically placed into a *subgraph* directory. We'll also add a `package.json` and `tsconfig.json` in the directory, to take advantage of our Javascript-based build toolchain using the Graph CLI.
+
+Before proceeding, follow the instructions in the [Graph CLI Readme](https://github.com/graphprotocol/graph-cli/) for setting up your subgraph directory.
 
 ### 3.1 Defining your GraphQL schema
 GraphQL schemas are defined using the GraphQL interface definition language (IDL). If you've never written a GraphQL schema, we recommend checking out a [quick primer](https://graphql.org/learn/schema/#type-language) on the GraphQL type system.
@@ -164,16 +177,12 @@ dataSources:
 ```
 
 ### 3.3 Generate types for your mapping with the Graph-CLI
-Using `yarn` or `npm` (the examples in this doc use `yarn`) install [The Graph CLI](https://github.com/graphprotocol/graph-cli) directly into your subgraph project.
-
-Follow the instructions in the repo's README for setting up your `tsconfig.json` and `package.json` scripts.
-
-Then, in your shell run:
+In your subgraph directory, run the following command:
 ```shell
 yarn run codegen
 ```
 
-What this command does is it looks at the contract ABIs defined in your `dataSources` manifests, and for the respective mapping it generates TypeScript types (actually AssemblyScript types, but more on that later) for the smart contracts your mappings script will interface with, including the types of public methods and events.
+What this command does is it looks at the contract ABIs defined in your subgraph manifest, and for each datasource it generates TypeScript types (actually AssemblyScript types, but more on that later) for the smart contracts your mappings script will interface with, including the types of public methods and events.
 
 This is incredibly useful for writing correct mappings, as well as improving developer productivity using the TypeScript language support in your favorite editor or IDE.
 
