@@ -46,16 +46,16 @@ There are two repos relevant to building on The Graph:
 ## 2 Getting started overview
 To deploy a GraphQL endpoint serving blockchain data to your Graph Node we will walk through the following steps:
 
-1. [Create a subgraph project and manifest](#3-Defining-your-subgraph)
-1. [Define a GraphQL schema](#3.1-Defining-your-GraphQL-schema)
-1. [Define your Ethereum source data](#3.2-Defining-your-source-data)
-1. [Generate types to write your mappings](#3.3 Generate types for your mapping with the Graph-CLI)
-1. [Compile your subgraph and mappings](#4.1-Compile-your-mappings)
-1. [Deploy your subgraph manifest to IPFS](#4.2-Deploy-your-mappings-to-IPFS)
-1. [Deploy your subgraph to Graph Node](#4.3-Deploy-your-subgraph-to-your-local-Graph-Node)
-1. [Query your newly deployed GraphQL API](#5-Query-your-local-Graph-Node)
+1. [Create a subgraph project and manifest](3-defining-your-subgraph)
+1. [Define a GraphQL schema](#31-Defining-your-GraphQL-schema)
+1. [Define your Ethereum source data](#32-defining-your-source-data)
+1. [Generate types to write your mappings](#33-generate-types-for-your-mapping-with-the-graph-cli)
+1. [Compile your subgraph and mappings](#41-compile-your-mappings)
+1. [Deploy your subgraph manifest to IPFS](#42-deploy-your-mappings-to-ipfs)
+1. [Deploy your subgraph to Graph Node](#43-deploy-your-subgraph-to-your-local-graph-node)
+1. [Query your newly deployed GraphQL API](#5-query-your-local-graph-node)
 1. ???
-1. [Profit!](#6-Buidl-🚀)
+1. [Profit!](#6-buidl-)
 
 ## 3 Defining your Subgraph
 In The Graph, we refer to your project's GraphQL endpoint as a *subgraph*, because once deployed to the decentralized network, it will be just one subset of a global GraphQL endpoint.
