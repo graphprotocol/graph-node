@@ -30,19 +30,11 @@ For Ethereum network data you can either run a local node or use Infura.io:
 
 ### Running a local node
 
-*Steps to set up Postgres*
-
-1. Set up: `initdb -D .postgres` (somewhere; creates a Postgres config in `.postgres/`)
-2. Start: `pg_ctl -D .postgres start` (or `postgres -D .postgres`?)
-3. Create database: `createdb decentraland`
-4. Delete database (whenever you want): `dropdb decentraland`
-5. Log in to the database `psql decentraland`
-
 *Start the Graph Node*
 
 1. Install IPFS and run `ipfs init` followed by `ipfs daemon`
-2. Install and start Postgres and create a decentraland db with `createdb decentraland`
-2. Clone https://github.com/graphprotocol/decentraland and build it with `yarn build-ipfs --verbosity debug` -> remember/copy the IPFS hash
+2. Install and start Postgres and create a adchain-subgraph db with `createdb adchain-subgraph`
+2. Clone https://github.com/graphprotocol/adchain-subgraph and build it with `yarn build-ipfs --verbosity debug` -> remember/copy the IPFS hash
 3. Clone https://github.com/graphprotocol/graph-node and run `cargo build`
 
 Once you have all the dependencies setup you can run the following:
