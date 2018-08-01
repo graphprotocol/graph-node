@@ -38,7 +38,7 @@ For Ethereum network data you can either run a local node or use Infura.io:
 Once you have all the dependencies setup you can run the following:
 ```
 cargo run -p graph-node -- \
-  --postgres-url postgresql://localhost:5432/decentraland \
+  --postgres-url postgresql://localhost:5432/adchain-subgraph \
   --ethereum-ws wss://mainnet.infura.io/_ws \
   --ipfs 127.0.0.1:5001 \
   --subgraph IPFS_HASH
