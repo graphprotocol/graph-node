@@ -6,9 +6,11 @@
 
 [The Graph](https://thegraph.com/) is a protocol for building decentralized applications quickly on Ethereum and IPFS using GraphQL.
 
-Graph Node is an open source Rust implementation of the key backend infrastructure piece that sources blockchain events to deterministically update queryable datastores.
+Graph Node is an open source Rust implementation that event-sources the Ethereum blockchain to deterministically update a datastore which can be queried via the GraphQL endpoint.
 
-For detailed instructions and more context check out [Getting Started Guide](docs/getting-started.md).
+For detailed instructions and more context check out the [Getting Started Guide](docs/getting-started.md).
+
+*Note: this project is heavily WIP and until it reaches v1.0 the API is subject to change in breaking ways without notice.*
 
 ## Quick Start
 
@@ -36,7 +38,7 @@ For Ethereum network data you can either run a local node or use Infura.io:
 4. Delete database (whenever you want): `dropdb decentraland`
 5. Log in to the database `psql decentraland`
 
-*Start the Graph node*
+*Start the Graph Node*
 
 1. Install IPFS and run `ipfs init` followed by `ipfs daemon`
 2. Install and start Postgres and create a decentraland db with `createdb decentraland`
