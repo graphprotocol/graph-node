@@ -5,7 +5,7 @@
 
 ### 1.1 What is the Graph?
 
-The Graph is a decentralized protocol for indexing and processing queries against data from blockchains, starting with Ethereum. It makes it possible to query for data that is difficult or impossible to query for directly.
+The Graph is a decentralized protocol for indexing and querying data from blockchains, starting with Ethereum. It makes it possible to query for data that is difficult or impossible to query for directly.
 
 For example, with the popular Cryptokitties dApp which implements the [ERC-721 Non-Fungible Token (NFT)](https://github.com/ethereum/eips/issues/721) standard, it is relatively straight forward to ask the following questions:
 > How many cryptokitties does a specific Ethereum account own?
@@ -18,9 +18,9 @@ However, other questions are more difficult to answer:
 
 For this you would need to process all [`Birth` events](https://github.com/dapperlabs/cryptokitties-bounty/blob/master/contracts/KittyBase.sol#L15) and then call the [`ownerOf` method](https://github.com/dapperlabs/cryptokitties-bounty/blob/master/contracts/KittyOwnership.sol#L144) for each cryptokitty that has been born into existence. (An alternate approach could involve processing all [`Transfer` events] and filtering on the most recent transfer for each cryptokitty in existence).
 
-The point is that even for this relatively simple question, it would take hours to days for a decentralized application (dApp) running in a browser to get an answer. Indexing and caching data off blockchains is hard. There are weird edge cases around finality, chain reorganizations, uncled blocks, etc.
+Even for this relatively simple question, it would take hours to days for a decentralized application (dApp) running in a browser to get an answer. Indexing and caching data off blockchains is hard. There are edge cases around finality, chain reorganizations, uncled blocks, etc.
 
-The Graph solves this today by implementing an open source node implementation, [Graph Node](../README.md), which handles indexing and caching of data off blockchains, which the entire community can contribute to and leverage. It exposes this functionality through a GraphQL API.
+The Graph solves this today by providing an open source node implementation, [Graph Node](../README.md), which handles indexing and caching of blockchain data, which the entire community can contribute to and leverage. It exposes this functionality through a GraphQL API.
 
 ### 1.2 How does it work?
 
@@ -118,7 +118,7 @@ schema:
 ### 3.2 Defining your source data
 Each data source in your subgraph is comprised of data on blockchain (i.e. an Ethereum smart contract) and a mapping which transforms and loads that data onto The Graph.
 
-These are defined the top-level `dataSources` key in the subgraph manifest.
+These are defined in the top-level `dataSources` key in the subgraph manifest.
 
 ##### Example
 Defining a data source which is a smart contract implementing the ERC20 interface:
