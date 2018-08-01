@@ -28,12 +28,10 @@ For Ethereum network data you can either run a local node or use Infura.io:
 - Local node – [Installing and running Ethereum node](https://ethereum.gitbooks.io/frontier-guide/content/getting_a_client.html)
 - Infura infra – [Infura.io](https://infura.io/)
 
-### Running a local node
-
-*Start the Graph Node*
+### Running a local Graph Node
 
 1. Install IPFS and run `ipfs init` followed by `ipfs daemon`
-2. Install and start Postgres and create a adchain-subgraph db with `createdb adchain-subgraph`
+2. Install PostgreSQL and run `initdb -D .postgres` followed by `createdb adchain-subgraph`
 2. Clone https://github.com/graphprotocol/adchain-subgraph and build it with `yarn build-ipfs --verbosity debug` -> remember/copy the IPFS hash
 3. Clone https://github.com/graphprotocol/graph-node and run `cargo build`
 
