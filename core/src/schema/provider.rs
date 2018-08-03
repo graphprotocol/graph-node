@@ -1,8 +1,8 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use graph::tokio;
 use slog::Logger;
 use std::collections::HashMap;
-use tokio_core::reactor::Handle;
 
 use graph::components::schema::{SchemaProvider as SchemaProviderTrait, SchemaProviderEvent};
 use graph::components::subgraph::SchemaEvent;
@@ -21,16 +21,18 @@ pub struct SchemaProvider {
 impl SchemaProviderTrait for SchemaProvider {}
 
 impl EventProducer<SchemaProviderEvent> for SchemaProvider {
-    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = SchemaProviderEvent, Error = ()>>> {
+    fn take_event_stream(
+        &mut self,
+    ) -> Option<Box<Stream<Item = SchemaProviderEvent, Error = ()> + Send>> {
         self.output
             .take()
-            .map(|s| Box::new(s) as Box<Stream<Item = SchemaProviderEvent, Error = ()>>)
+            .map(|s| Box::new(s) as Box<Stream<Item = SchemaProviderEvent, Error = ()> + Send>)
     }
 }
 
 impl EventConsumer<SchemaEvent> for SchemaProvider {
     /// Get the wrapped event sink.
-    fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()>> {
+    fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()> + Send> {
         let logger = self.logger.clone();
         Box::new(self.input.clone().sink_map_err(move |e| {
             error!(logger, "MockSchemaProvider was dropped {}", e);
@@ -40,7 +42,7 @@ impl EventConsumer<SchemaEvent> for SchemaProvider {
 
 impl SchemaProvider {
     /// Spawns the provider and returns it's input and output handles.
-    pub fn new(logger: &Logger, runtime: Handle) -> Self {
+    pub fn new(logger: &Logger) -> Self {
         let logger = logger.new(o!("component" => "SchemaProvider"));
 
         // Create a channel for receiving events from the subgraph provider.
@@ -49,7 +51,7 @@ impl SchemaProvider {
         let (schema_sender, schema_recv) = channel(100);
 
         // Spawn the internal handler for any incoming events from the subgraph provider.
-        runtime.spawn(Self::schema_event_handler(
+        tokio::spawn(Self::schema_event_handler(
             logger.clone(),
             subgraph_recv,
             schema_sender,
@@ -123,13 +125,10 @@ impl SchemaProvider {
 
 #[cfg(test)]
 mod tests {
-    use futures::prelude::*;
     use graphql_parser;
-    use tokio_core::reactor::Core;
 
     use graph::components::schema::SchemaProviderEvent;
     use graph::components::subgraph::SchemaEvent;
-    use graph::components::{EventConsumer, EventProducer};
     use graph::prelude::*;
     use graph_graphql::schema::ast;
     use slog;
@@ -138,47 +137,50 @@ mod tests {
 
     #[test]
     fn emits_a_combined_schema_after_one_schema_is_added() {
-        let mut core = Core::new().unwrap();
+        tokio::run(future::lazy(|| {
+            Ok({
+                // Set up the schema provider
+                let logger = slog::Logger::root(slog::Discard, o!());
+                let mut schema_provider = CoreSchemaProvider::new(&logger);
+                let schema_sink = schema_provider.event_sink();
+                let schema_stream = schema_provider.take_event_stream().unwrap();
 
-        // Set up the schema provider
-        let logger = slog::Logger::root(slog::Discard, o!());
-        let mut schema_provider = CoreSchemaProvider::new(&logger, core.handle());
-        let schema_sink = schema_provider.event_sink();
-        let schema_stream = schema_provider.take_event_stream().unwrap();
+                // Create an input schema event
+                let input_doc =
+                    graphql_parser::parse_schema("type User { name: String! }").unwrap();
+                let input_schema = Schema {
+                    id: "input-schema".to_string(),
+                    document: input_doc,
+                };
+                let input_event = SchemaEvent::SchemaAdded(input_schema.clone());
 
-        // Create an input schema event
-        let input_doc = graphql_parser::parse_schema("type User { name: String! }").unwrap();
-        let input_schema = Schema {
-            id: "input-schema".to_string(),
-            document: input_doc,
-        };
-        let input_event = SchemaEvent::SchemaAdded(input_schema.clone());
+                // Send the input schema event to the schema provider
+                schema_sink.send(input_event).wait().unwrap();
 
-        // Send the input schema event to the schema provider
-        schema_sink.send(input_event).wait().unwrap();
+                // Expect one schema provider event to be emitted as a result
+                let work = schema_stream.take(1).into_future();
+                let output_event = if let Ok(x) = work.wait() {
+                    x.0.expect("Schema provider event must not be None")
+                } else {
+                    panic!("Failed to receive schema provider event from the stream")
+                };
 
-        // Expect one schema provider event to be emitted as a result
-        let work = schema_stream.take(1).into_future();
-        let output_event = if let Ok(x) = core.run(work) {
-            x.0.expect("Schema provider event must not be None")
-        } else {
-            panic!("Failed to receive schema provider event from the stream")
-        };
+                // Extract the output schema from the schema provider event
+                let SchemaProviderEvent::SchemaChanged(output_schema) = output_event;
+                let output_schema = output_schema.expect("Combined schema must not be None");
 
-        // Extract the output schema from the schema provider event
-        let SchemaProviderEvent::SchemaChanged(output_schema) = output_event;
-        let output_schema = output_schema.expect("Combined schema must not be None");
+                assert_eq!(output_schema.id, input_schema.id);
 
-        assert_eq!(output_schema.id, input_schema.id);
+                // The output schema must include the input schema types
+                assert_eq!(
+                    ast::get_named_type(&input_schema.document, &"User".to_string()),
+                    ast::get_named_type(&output_schema.document, &"User".to_string())
+                );
 
-        // The output schema must include the input schema types
-        assert_eq!(
-            ast::get_named_type(&input_schema.document, &"User".to_string()),
-            ast::get_named_type(&output_schema.document, &"User".to_string())
-        );
-
-        // The output schema must include a Query type
-        ast::get_named_type(&output_schema.document, &"Query".to_string())
-            .expect("Query type missing in output schema");
+                // The output schema must include a Query type
+                ast::get_named_type(&output_schema.document, &"Query".to_string())
+                    .expect("Query type missing in output schema");
+            })
+        }))
     }
 }

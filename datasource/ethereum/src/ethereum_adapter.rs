@@ -4,7 +4,6 @@ use futures::prelude::*;
 use futures::stream::iter_ok;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio_core::reactor::Handle;
 use web3;
 use web3::api::CreateFilter;
 use web3::api::{Eth, Web3};
@@ -19,14 +18,12 @@ pub struct EthereumAdapterConfig<T: web3::Transport> {
 
 pub struct EthereumAdapter<T: web3::Transport> {
     eth_client: Arc<Web3<T>>,
-    _runtime: Handle,
 }
 
 impl<T: web3::Transport> EthereumAdapter<T> {
-    pub fn new(runtime: Handle, config: EthereumAdapterConfig<T>) -> Self {
+    pub fn new(config: EthereumAdapterConfig<T>) -> Self {
         EthereumAdapter {
             eth_client: Arc::new(Web3::new(config.transport)),
-            _runtime: runtime,
         }
     }
 
@@ -70,7 +67,7 @@ impl<T: web3::Transport> EthereumAdapter<T> {
     }
 }
 
-impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
+impl<T: web3::Transport + Send + Sync + 'static> EthereumAdapterTrait for EthereumAdapter<T> {
     fn contract_call(
         &mut self,
         call: EthereumContractCall,
@@ -115,16 +112,16 @@ impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
         let event = subscription.event.clone();
         Box::new(
             self.event_filter(subscription)
-                .map_err(|err| EthereumSubscriptionError::RpcError(err))
+                .map_err(EthereumSubscriptionError::from)
                 .map(|base_filter| {
                     let past_logs_stream = base_filter
                         .logs()
-                        .map_err(|err| EthereumSubscriptionError::RpcError(err))
+                        .map_err(EthereumSubscriptionError::from)
                         .map(|logs_vec| iter_ok::<_, EthereumSubscriptionError>(logs_vec))
                         .flatten_stream();
                     let future_logs_stream = base_filter
                         .stream(Duration::from_millis(2000))
-                        .map_err(|err| EthereumSubscriptionError::RpcError(err));
+                        .map_err(EthereumSubscriptionError::from);
                     past_logs_stream.chain(future_logs_stream)
                 })
                 .flatten_stream()
@@ -134,7 +131,7 @@ impl<T: 'static + web3::Transport> EthereumAdapterTrait for EthereumAdapter<T> {
                             topics: log.topics.clone(),
                             data: log.clone().data.0,
                         })
-                        .map_err(|err| EthereumSubscriptionError::ABIError(err))
+                        .map_err(EthereumSubscriptionError::from)
                         .map(|log_data| (log, log_data))
                 })
                 .map(move |(log, log_data)| EthereumEvent {

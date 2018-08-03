@@ -4,7 +4,6 @@ use indexmap::IndexMap;
 use slog;
 use std::cmp;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Arc;
 
 use graph::prelude::*;
 

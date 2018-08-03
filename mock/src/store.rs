@@ -1,7 +1,5 @@
-use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog;
-use tokio_core::reactor::Handle;
 
 use graph::components::schema::SchemaProviderEvent;
 use graph::components::store::*;
@@ -12,13 +10,12 @@ pub struct MockStore {
     logger: slog::Logger,
     event_sink: Option<Sender<StoreEvent>>,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
-    runtime: Handle,
     entities: Vec<Entity>,
 }
 
 impl MockStore {
     /// Creates a new mock `Store`.
-    pub fn new(logger: &slog::Logger, runtime: Handle) -> Self {
+    pub fn new(logger: &slog::Logger) -> Self {
         // Create a channel for handling incoming schema provider events
         let (sink, stream) = channel(100);
 
@@ -36,7 +33,6 @@ impl MockStore {
             logger: logger.new(o!("component" => "MockStore")),
             event_sink: None,
             schema_provider_event_sink: sink,
-            runtime,
             entities,
         };
 
@@ -50,7 +46,7 @@ impl MockStore {
     /// Handles incoming schema provider events.
     fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaProviderEvent>) {
         let logger = self.logger.clone();
-        self.runtime.spawn(stream.for_each(move |event| {
+        tokio::spawn(stream.for_each(move |event| {
             info!(logger, "Received schema provider event: {:?}", event);
             Ok(())
         }));

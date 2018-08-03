@@ -6,7 +6,6 @@ use slog::Logger;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
-use tokio_core::reactor::Handle;
 use wasmi::{
     Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder, MemoryRef, Module,
     ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue,
@@ -82,10 +81,21 @@ const IPFS_CAT_FUNC_INDEX: usize = 14;
 pub struct WasmiModuleConfig<T, L> {
     pub subgraph: SubgraphManifest,
     pub data_source: DataSource,
-    pub runtime: Handle,
     pub event_sink: Sender<RuntimeHostEvent>,
     pub ethereum_adapter: Arc<Mutex<T>>,
     pub link_resolver: Arc<L>,
+}
+
+impl<T, L> Clone for WasmiModuleConfig<T, L> {
+    fn clone(&self) -> Self {
+        WasmiModuleConfig {
+            subgraph: self.subgraph.clone(),
+            data_source: self.data_source.clone(),
+            event_sink: self.event_sink.clone(),
+            ethereum_adapter: self.ethereum_adapter.clone(),
+            link_resolver: self.link_resolver.clone(),
+        }
+    }
 }
 
 /// A WASM module based on wasmi that powers a subgraph runtime.
@@ -143,7 +153,6 @@ where
             subgraph: config.subgraph,
             data_source: config.data_source,
             logger: logger.clone(),
-            runtime: config.runtime.clone(),
             event_sink: config.event_sink.clone(),
             heap: heap.clone(),
             ethereum_adapter: config.ethereum_adapter.clone(),
@@ -197,7 +206,6 @@ impl<E: fmt::Display> fmt::Display for HostExternalsError<E> {
 /// Hosted functions for external use by wasm module
 pub struct HostExternals<T, L> {
     logger: Logger,
-    runtime: Handle,
     subgraph: SubgraphManifest,
     data_source: DataSource,
     event_sink: Sender<RuntimeHostEvent>,
@@ -233,16 +241,15 @@ where
 
         // Send an entity set event
         let logger = self.logger.clone();
-        self.runtime.spawn(
-            self.event_sink
-                .clone()
-                .send(RuntimeHostEvent::EntitySet(store_key, entity_data))
-                .map_err(move |e| {
-                    error!(logger, "Failed to forward runtime host event";
-                           "error" => format!("{}", e));
-                })
-                .map(|_| ()),
-        );
+        self.event_sink
+            .clone()
+            .send(RuntimeHostEvent::EntitySet(store_key, entity_data))
+            .map_err(move |e| {
+                error!(logger, "Failed to forward runtime host event";
+                        "error" => format!("{}", e));
+            })
+            .wait()
+            .ok();
 
         Ok(None)
     }
@@ -265,16 +272,16 @@ where
 
         // Send an entity removed event
         let logger = self.logger.clone();
-        self.runtime.spawn(
-            self.event_sink
-                .clone()
-                .send(RuntimeHostEvent::EntityRemoved(store_key))
-                .map_err(move |e| {
-                    error!(logger, "Failed to forward runtime host event";
-                           "error" => format!("{}", e));
-                })
-                .and_then(|_| Ok(())),
-        );
+        self.event_sink
+            .clone()
+            .send(RuntimeHostEvent::EntityRemoved(store_key))
+            .map_err(move |e| {
+                error!(logger, "Failed to forward runtime host event";
+                        "error" => format!("{}", e));
+            })
+            .and_then(|_| Ok(()))
+            .wait()
+            .ok();
 
         Ok(None)
     }
@@ -690,19 +697,18 @@ impl ModuleImportResolver for IpfsModuleResolver {
 
 #[cfg(test)]
 mod tests {
+    extern crate failure;
     extern crate graphql_parser;
     extern crate parity_wasm;
 
     use self::graphql_parser::schema::Document;
     use ethabi::{LogParam, Token};
     use ethereum_types::Address;
-    use futures::prelude::*;
     use futures::sync::mpsc::channel;
     use slog;
     use std::collections::HashMap;
     use std::iter::FromIterator;
-    use std::sync::{Arc, Mutex};
-    use tokio_core;
+    use std::sync::Mutex;
 
     use graph::components::ethereum::*;
     use graph::components::store::*;
@@ -739,7 +745,7 @@ mod tests {
     struct FakeLinkResolver;
 
     impl LinkResolver for FakeLinkResolver {
-        fn cat(&self, _: &Link) -> Box<Future<Item = Vec<u8>, Error = Box<::std::error::Error>>> {
+        fn cat(&self, _: &Link) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send> {
             unimplemented!()
         }
     }
@@ -789,7 +795,6 @@ mod tests {
 
         // Load the module
         let logger = slog::Logger::root(slog::Discard, o!());
-        let core = tokio_core::reactor::Core::new().unwrap();
         let (sender, _receiver) = channel(1);
         let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
         let mut module = WasmiModule::new(
@@ -797,7 +802,6 @@ mod tests {
             WasmiModuleConfig {
                 subgraph: mock_subgraph(),
                 data_source: mock_data_source(),
-                runtime: core.handle(),
                 event_sink: sender,
                 ethereum_adapter: mock_ethereum_adapter,
                 link_resolver: Arc::new(FakeLinkResolver),
@@ -826,66 +830,69 @@ mod tests {
 
     #[test]
     fn call_event_handler_and_receive_store_event() {
-        // Load the example_event_handler.wasm test module. All this module does
-        // is implement an `handleExampleEvent` function that calls `store.set()`
-        // with sample data taken from the event parameters.
-        //
-        // This test verifies that the event is delivered and the example data
-        // is returned to the RuntimeHostEvent stream.
+        tokio::run(future::lazy(|| {
+            Ok({
+                // Load the example_event_handler.wasm test module. All this module does
+                // is implement an `handleExampleEvent` function that calls `store.set()`
+                // with sample data taken from the event parameters.
+                //
+                // This test verifies that the event is delivered and the example data
+                // is returned to the RuntimeHostEvent stream.
 
-        // Load the module
-        let logger = slog::Logger::root(slog::Discard, o!());
-        let mut core = tokio_core::reactor::Core::new().unwrap();
-        let (sender, receiver) = channel(1);
-        let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
-        let mut module = WasmiModule::new(
-            &logger,
-            WasmiModuleConfig {
-                subgraph: mock_subgraph(),
-                data_source: mock_data_source(),
-                runtime: core.handle(),
-                event_sink: sender,
-                ethereum_adapter: mock_ethereum_adapter,
-                link_resolver: Arc::new(FakeLinkResolver),
-            },
-        );
+                // Load the module
+                let logger = slog::Logger::root(slog::Discard, o!());
+                let (sender, receiver) = channel(1);
+                let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
+                let mut module = WasmiModule::new(
+                    &logger,
+                    WasmiModuleConfig {
+                        subgraph: mock_subgraph(),
+                        data_source: mock_data_source(),
+                        event_sink: sender,
+                        ethereum_adapter: mock_ethereum_adapter,
+                        link_resolver: Arc::new(FakeLinkResolver),
+                    },
+                );
 
-        // Create a mock Ethereum event
-        let ethereum_event = EthereumEvent {
-            address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
-            event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
-            block_hash: util::ethereum::string_to_h256("example block hash"),
-            params: vec![LogParam {
-                name: String::from("exampleParam"),
-                value: Token::String(String::from("some data")),
-            }],
-            removed: false,
-        };
+                // Create a mock Ethereum event
+                let ethereum_event = EthereumEvent {
+                    address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
+                    event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
+                    block_hash: util::ethereum::string_to_h256("example block hash"),
+                    params: vec![LogParam {
+                        name: String::from("exampleParam"),
+                        value: Token::String(String::from("some data")),
+                    }],
+                    removed: false,
+                };
 
-        // Call the event handler in the test module and pass the event to it
-        module.handle_ethereum_event("handleExampleEvent", ethereum_event);
+                // Call the event handler in the test module and pass the event to it
+                module.handle_ethereum_event("handleExampleEvent", ethereum_event);
 
-        // Expect a store set call to be made by the handler and a
-        // RuntimeHostEvent::EntitySet event to be written to the event stream
-        let work = receiver.take(1).into_future();
-        let store_event = core.run(work)
-            .expect("No store event received from runtime")
-            .0
-            .expect("Store event must not be None");
+                // Expect a store set call to be made by the handler and a
+                // RuntimeHostEvent::EntitySet event to be written to the event stream
+                let work = receiver.take(1).into_future();
+                let store_event = work.wait()
+                    .expect("No store event received from runtime")
+                    .0
+                    .expect("Store event must not be None");
 
-        // Verify that this event matches what the test module is sending
-        assert_eq!(
-            store_event,
-            RuntimeHostEvent::EntitySet(
-                StoreKey {
-                    subgraph: String::from("example subgraph"),
-                    entity: String::from("ExampleEntity"),
-                    id: String::from("example id"),
-                },
-                Entity::from(HashMap::from_iter(
-                    vec![(String::from("exampleAttribute"), Value::from("some data"))].into_iter()
-                ))
-            )
-        );
+                // Verify that this event matches what the test module is sending
+                assert_eq!(
+                    store_event,
+                    RuntimeHostEvent::EntitySet(
+                        StoreKey {
+                            subgraph: String::from("example subgraph"),
+                            entity: String::from("ExampleEntity"),
+                            id: String::from("example id"),
+                        },
+                        Entity::from(HashMap::from_iter(
+                            vec![(String::from("exampleAttribute"), Value::from("some data"))]
+                                .into_iter()
+                        ))
+                    )
+                );
+            })
+        }))
     }
 }

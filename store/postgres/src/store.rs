@@ -7,9 +7,9 @@ use diesel::{delete, insert_into, result, select};
 use filter::store_filter;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use graph::tokio;
 use serde_json;
 use slog;
-use tokio_core::reactor::Handle;
 
 use functions::{revert_block, set_config};
 use graph::components::schema::SchemaProviderEvent;
@@ -47,14 +47,13 @@ pub struct StoreConfig {
 pub struct Store {
     event_sink: Option<Sender<StoreEvent>>,
     logger: slog::Logger,
-    runtime: Handle,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
     _config: StoreConfig,
     pub conn: PgConnection,
 }
 
 impl Store {
-    pub fn new(config: StoreConfig, logger: &slog::Logger, runtime: Handle) -> Self {
+    pub fn new(config: StoreConfig, logger: &slog::Logger) -> Self {
         // Create a store-specific logger
         let logger = logger.new(o!("component" => "Store"));
 
@@ -75,7 +74,6 @@ impl Store {
             logger,
             event_sink: None,
             schema_provider_event_sink: sink,
-            runtime,
             _config: config,
             conn: conn,
         };
@@ -89,7 +87,7 @@ impl Store {
 
     /// Handles incoming schema provider events.
     fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaProviderEvent>) {
-        self.runtime.spawn(stream.for_each(move |_| {
+        tokio::spawn(stream.for_each(move |_| {
             // We are currently not doing anything in response to schema events
             Ok(())
         }));

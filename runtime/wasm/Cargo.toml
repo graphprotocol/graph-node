@@ -11,12 +11,12 @@ nan-preserving-float = "0.1.0"
 num-bigint = "0.2.0"
 serde_json = "1.0"
 slog = "2.2.3"
-tokio-core = "0.1.6"
 graph = { path = "../../graph" }
 uuid = { version = "0.6", features = ["v4"] }
 wasmi = "0.3"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 
 [dev-dependencies]
+failure = "0.1.2"
 graphql-parser = "0.2.0"
 parity-wasm = "0.31"

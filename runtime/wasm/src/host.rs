@@ -4,7 +4,7 @@ use futures::sync::mpsc::{channel, Receiver};
 use slog::Logger;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use tokio_core::reactor::Handle;
+use std::thread;
 use uuid::Uuid;
 
 use graph::components::ethereum::*;
@@ -25,7 +25,6 @@ pub struct RuntimeHostConfig {
 
 pub struct RuntimeHostBuilder<T, L> {
     logger: Logger,
-    runtime: Handle,
     ethereum_adapter: Arc<Mutex<T>>,
     link_resolver: Arc<L>,
 }
@@ -35,15 +34,9 @@ where
     T: EthereumAdapter,
     L: LinkResolver,
 {
-    pub fn new(
-        logger: &Logger,
-        runtime: Handle,
-        ethereum_adapter: Arc<Mutex<T>>,
-        link_resolver: Arc<L>,
-    ) -> Self {
+    pub fn new(logger: &Logger, ethereum_adapter: Arc<Mutex<T>>, link_resolver: Arc<L>) -> Self {
         RuntimeHostBuilder {
             logger: logger.new(o!("component" => "RuntimeHostBuilder")),
-            runtime,
             ethereum_adapter,
             link_resolver,
         }
@@ -52,8 +45,8 @@ where
 
 impl<T, L> RuntimeHostBuilderTrait for RuntimeHostBuilder<T, L>
 where
-    T: EthereumAdapter + 'static,
-    L: LinkResolver + 'static,
+    T: EthereumAdapter,
+    L: LinkResolver,
 {
     type Host = RuntimeHost;
 
@@ -64,7 +57,6 @@ where
     ) -> Self::Host {
         RuntimeHost::new(
             &self.logger,
-            self.runtime.clone(),
             self.ethereum_adapter.clone(),
             self.link_resolver.clone(),
             RuntimeHostConfig {
@@ -83,42 +75,40 @@ pub struct RuntimeHost {
 impl RuntimeHost {
     pub fn new<T, L>(
         logger: &Logger,
-        runtime: Handle,
         ethereum_adapter: Arc<Mutex<T>>,
         link_resolver: Arc<L>,
         config: RuntimeHostConfig,
     ) -> Self
     where
-        T: EthereumAdapter + 'static,
-        L: LinkResolver + 'static,
+        T: EthereumAdapter,
+        L: LinkResolver,
     {
         let logger = logger.new(o!("component" => "RuntimeHost"));
 
         // Create channel for sending runtime host events
         let (event_sender, event_receiver) = channel(100);
 
+        let wasmi_config = WasmiModuleConfig {
+            subgraph: config.subgraph_manifest.clone(),
+            data_source: config.data_source.clone(),
+            event_sink: event_sender,
+            ethereum_adapter: ethereum_adapter.clone(),
+            link_resolver: link_resolver.clone(),
+        };
+
         info!(logger, "Loading WASM runtime"; "data_source" => &config.data_source.name);
 
-        // Load the mappings as a WASM module
-        let module = WasmiModule::new(
-            &logger,
-            WasmiModuleConfig {
-                subgraph: config.subgraph_manifest.clone(),
-                data_source: config.data_source.clone(),
-                runtime: runtime.clone(),
-                event_sink: event_sender,
-                ethereum_adapter: ethereum_adapter.clone(),
-                link_resolver: link_resolver.clone(),
-            },
-        );
+        // wasmi modules are not `Send` therefore they cannot be scheduled by
+        // the regular tokio executor, so we create a dedicated thread inside
+        // which we may wait on futures.
+        thread::spawn(move || {
+            let data_source = wasmi_config.data_source.clone();
 
-        Self::subscribe_to_events(
-            logger,
-            runtime,
-            config.data_source.clone(),
-            module,
-            ethereum_adapter,
-        );
+            // Load the mappings as a WASM module
+            let module = WasmiModule::new(&logger, wasmi_config);
+
+            Self::subscribe_to_events(&logger, data_source, module, ethereum_adapter);
+        });
 
         RuntimeHost {
             config,
@@ -129,8 +119,7 @@ impl RuntimeHost {
     /// Subscribe to all smart contract events of `data_source` contained in
     /// `subgraph`.
     fn subscribe_to_events<T, L>(
-        logger: Logger,
-        runtime: Handle,
+        logger: &Logger,
         data_source: DataSource,
         module: WasmiModule<T, L>,
         ethereum_adapter: Arc<Mutex<T>>,
@@ -191,7 +180,6 @@ impl RuntimeHost {
         for subscription in subscription_results.into_iter() {
             Self::subscribe_to_event(
                 logger.clone(),
-                runtime.clone(),
                 protected_module.clone(),
                 ethereum_adapter.clone(),
                 protected_data_source.clone(),
@@ -202,7 +190,6 @@ impl RuntimeHost {
 
     fn subscribe_to_event<T, L>(
         logger: Logger,
-        runtime: Handle,
         module: Arc<Mutex<WasmiModule<T, L>>>,
         ethereum_adapter: Arc<Mutex<T>>,
         dataset: Arc<DataSource>,
@@ -220,47 +207,50 @@ impl RuntimeHost {
 
         let event_logger = logger.clone();
         let error_logger = logger.clone();
-        runtime.spawn(
-            receiver
-                .for_each(move |event| {
-                    info!(event_logger, "Ethereum event received");
 
-                    if event.removed {
-                        info!(event_logger, "Event removed";
+        receiver
+            .for_each(move |event| {
+                info!(event_logger, "Ethereum event received");
+
+                if event.removed {
+                    info!(event_logger, "Event removed";
                               "block" => event.block_hash.to_string());
-                    } else {
-                        let event_handler = dataset
-                            .mapping
-                            .event_handlers
-                            .iter()
-                            .find(|event_handler| {
-                                util::ethereum::string_to_h256(event_handler.event.as_str())
-                                    == event.event_signature
-                            })
-                            .expect("Received an Ethereum event not mentioned in the data set")
-                            .to_owned();
+                } else {
+                    let event_handler = dataset
+                        .mapping
+                        .event_handlers
+                        .iter()
+                        .find(|event_handler| {
+                            util::ethereum::string_to_h256(event_handler.event.as_str())
+                                == event.event_signature
+                        })
+                        .expect("Received an Ethereum event not mentioned in the data set")
+                        .to_owned();
 
-                        debug!(event_logger, "  Call event handler";
+                    debug!(event_logger, "  Call event handler";
                                "name" => &event_handler.handler);
 
-                        module
-                            .lock()
-                            .unwrap()
-                            .handle_ethereum_event(event_handler.handler.as_str(), event);
-                    }
+                    module
+                        .lock()
+                        .unwrap()
+                        .handle_ethereum_event(event_handler.handler.as_str(), event);
+                }
 
-                    Ok(())
-                })
-                .map_err(move |e| error!(error_logger, "Event subscription failed: {}", e)),
-        );
+                Ok(())
+            })
+            .map_err(move |e| error!(error_logger, "Event subscription failed: {}", e))
+            .wait()
+            .ok();
     }
 }
 
 impl EventProducer<RuntimeHostEvent> for RuntimeHost {
-    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = RuntimeHostEvent, Error = ()>>> {
+    fn take_event_stream(
+        &mut self,
+    ) -> Option<Box<Stream<Item = RuntimeHostEvent, Error = ()> + Send>> {
         self.output
             .take()
-            .map(|s| Box::new(s) as Box<Stream<Item = RuntimeHostEvent, Error = ()>>)
+            .map(|s| Box::new(s) as Box<Stream<Item = RuntimeHostEvent, Error = ()> + Send>)
     }
 }
 

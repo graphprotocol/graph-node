@@ -6,9 +6,7 @@ extern crate graph_mock;
 extern crate graph_runtime_wasm;
 extern crate ipfs_api;
 extern crate slog;
-extern crate tokio_core;
 
-use futures::stream::{self, Stream};
 use futures::{Future, Sink};
 use graph::components::ethereum::*;
 use graph::prelude::*;
@@ -19,10 +17,9 @@ use graph_runtime_wasm::RuntimeHostBuilder;
 use ipfs_api::IpfsClient;
 use std::fs::read_to_string;
 use std::io::Cursor;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
-use tokio_core::reactor::Core;
 
 #[test]
 #[ignore]
@@ -60,8 +57,6 @@ fn multiple_data_sources_per_subgraph() {
             .map_err(|err| eprintln!("error adding to IPFS {}", err))
     }
 
-    let mut core = Core::new().unwrap();
-
     // Replace "link to" placeholders in the subgraph manifest with hashes
     // of files just added into a local IPFS daemon on port 5001.
     let resolver = Arc::new(IpfsClient::default());
@@ -73,37 +68,34 @@ fn multiple_data_sources_per_subgraph() {
         "empty.wasm",
         "schema.graphql",
     ] {
-        let link = core.run(add(
+        let link = add(
             &resolver,
             read_to_string(format!("tests/subgraph-two-datasources/{}", file)).unwrap(),
-        )).unwrap();
+        ).wait()
+            .unwrap();
         subgraph_string =
             subgraph_string.replace(&format!("link to {}", file), &format!("/ipfs/{}", link));
     }
-    let subgraph_link = core.run(add(&resolver, subgraph_string)).unwrap();
+    let subgraph_link = add(&resolver, subgraph_string).wait().unwrap();
 
     let logger = logger();
     let eth_adapter = Arc::new(Mutex::new(MockEthereumAdapter {
         received_subscriptions: vec![],
     }));
-    let host_builder = RuntimeHostBuilder::new(
-        &logger,
-        core.handle(),
-        eth_adapter.clone(),
-        resolver.clone(),
-    );
+    let host_builder = RuntimeHostBuilder::new(&logger, eth_adapter.clone(), resolver.clone());
 
     let fake_store = Arc::new(Mutex::new(FakeStore));
-    let manager = RuntimeManager::new(&logger, core.handle(), fake_store, host_builder);
+    let manager = RuntimeManager::new(&logger, fake_store, host_builder);
 
     // Load a subgraph with two data sets, one listening for `ExampleEvent`
     // and the other for `ExampleEvent2`.
-    let subgraph = core.run(SubgraphManifest::resolve(
+    let subgraph = SubgraphManifest::resolve(
         Link {
             link: subgraph_link,
         },
-        &*resolver,
-    )).expect("failed to load subgraph");
+        resolver,
+    ).wait()
+        .expect("failed to load subgraph");
 
     // Send the new subgraph to the manager.
     manager
@@ -117,7 +109,7 @@ fn multiple_data_sources_per_subgraph() {
     let start_time = Instant::now();
     let max_wait = Duration::from_secs(1);
     while eth_adapter.lock().unwrap().received_subscriptions != ["ExampleEvent", "ExampleEvent2"] {
-        core.turn(Some(max_wait));
+        ::std::thread::yield_now();
         if Instant::now().duration_since(start_time) > max_wait {
             panic!("Test failed, events not subscribed to.")
         }

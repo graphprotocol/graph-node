@@ -8,8 +8,6 @@ extern crate serde_json;
 extern crate slog;
 extern crate graph;
 extern crate graph_graphql;
-extern crate tokio;
-extern crate tokio_core;
 
 mod request;
 mod response;

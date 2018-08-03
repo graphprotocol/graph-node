@@ -239,8 +239,10 @@ impl Resolver for StoreResolver {
             let store = self.store.lock().unwrap();
             return store
                 .get(StoreKey {
-                    subgraph: build_subgraph_id(object_type)
-                        .expect(format!("Failed to get subgraph ID from type: {}", object_type.name).as_str()),
+                    subgraph: build_subgraph_id(object_type).expect(
+                        format!("Failed to get subgraph ID from type: {}", object_type.name)
+                            .as_str(),
+                    ),
                     entity: object_type.name.to_owned(),
                     id: id.to_owned(),
                 })
@@ -254,8 +256,10 @@ impl Resolver for StoreResolver {
                     .lock()
                     .unwrap()
                     .get(StoreKey {
-                        subgraph: build_subgraph_id(object_type)
-                            .expect(format!("Failed to get subgraph ID from type: {}", object_type.name).as_str()),
+                        subgraph: build_subgraph_id(object_type).expect(
+                            format!("Failed to get subgraph ID from type: {}", object_type.name)
+                                .as_str(),
+                        ),
                         entity: object_type.name.to_owned(),
                         id: id.to_owned(),
                     })

@@ -4,7 +4,6 @@ extern crate futures;
 extern crate graph;
 extern crate jsonrpc_core;
 extern crate serde_json;
-extern crate tokio_core;
 
 /// Re-export of the `web3` crate.
 pub extern crate web3;

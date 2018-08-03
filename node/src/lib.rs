@@ -4,7 +4,6 @@ extern crate graphql_parser;
 extern crate slog;
 extern crate graph;
 extern crate graph_core;
-extern crate tokio_core;
 
 mod subgraph;
 

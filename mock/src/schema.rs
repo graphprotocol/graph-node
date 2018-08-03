@@ -1,7 +1,5 @@
-use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog::Logger;
-use tokio_core::reactor::Handle;
 
 use graph::components::schema::SchemaProviderEvent;
 use graph::components::subgraph::SchemaEvent;
@@ -18,16 +16,18 @@ pub struct MockSchemaProvider {
 impl SchemaProvider for MockSchemaProvider {}
 
 impl EventProducer<SchemaProviderEvent> for MockSchemaProvider {
-    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = SchemaProviderEvent, Error = ()>>> {
+    fn take_event_stream(
+        &mut self,
+    ) -> Option<Box<Stream<Item = SchemaProviderEvent, Error = ()> + Send>> {
         self.output
             .take()
-            .map(|s| Box::new(s) as Box<Stream<Item = SchemaProviderEvent, Error = ()>>)
+            .map(|s| Box::new(s) as Box<Stream<Item = SchemaProviderEvent, Error = ()> + Send>)
     }
 }
 
 impl EventConsumer<SchemaEvent> for MockSchemaProvider {
     /// Get the wrapped event sink.
-    fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()>> {
+    fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()> + Send> {
         let logger = self.logger.clone();
         Box::new(self.input.clone().sink_map_err(move |e| {
             error!(logger, "MockSchemaProvider was dropped {}", e);
@@ -38,7 +38,7 @@ impl EventConsumer<SchemaEvent> for MockSchemaProvider {
 /// A mock implementor of `SchemaProvider`.
 impl MockSchemaProvider {
     /// Spawns the provider and returns it's input and output handles.
-    pub fn new(logger: &Logger, runtime: Handle) -> Self {
+    pub fn new(logger: &Logger) -> Self {
         let logger = logger.new(o!("component" => "MockSchemaProvider"));
         info!(logger, "Building a `MockSchemaProvider`");
 
@@ -48,7 +48,7 @@ impl MockSchemaProvider {
         let (schema_sender, schema_recv) = channel(100);
 
         // Spawn the internal handler for any incoming events from the subgraph provider.
-        runtime.spawn(Self::schema_event_handler(
+        tokio::spawn(Self::schema_event_handler(
             logger.clone(),
             subgraph_recv,
             schema_sender,

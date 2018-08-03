@@ -5,7 +5,6 @@ extern crate graph;
 extern crate graph_datasource_ethereum;
 extern crate jsonrpc_core;
 extern crate serde_json;
-extern crate tokio_core;
 extern crate web3;
 
 use ethabi::{Function, Param, ParamType, Token};
@@ -14,11 +13,9 @@ use futures::{failed, finished};
 use graph::components::ethereum::EthereumContractCall;
 use graph::prelude::EthereumAdapter as EthereumAdapterTrait;
 use graph_datasource_ethereum::{EthereumAdapter, EthereumAdapterConfig};
-use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::rc::Rc;
 use std::str::FromStr;
-use tokio_core::reactor::Core;
+use std::sync::{Arc, Mutex};
 use web3::error::{Error, ErrorKind};
 use web3::helpers::*;
 use web3::types::*;
@@ -53,8 +50,8 @@ fn mock_block() -> Block<U256> {
 #[derive(Debug, Default, Clone)]
 pub struct TestTransport {
     asserted: usize,
-    requests: Rc<RefCell<Vec<(String, Vec<jsonrpc_core::Value>)>>>,
-    response: Rc<RefCell<VecDeque<jsonrpc_core::Value>>>,
+    requests: Arc<Mutex<Vec<(String, Vec<jsonrpc_core::Value>)>>>,
+    response: Arc<Mutex<VecDeque<jsonrpc_core::Value>>>,
 }
 
 impl Transport for TestTransport {
@@ -66,12 +63,12 @@ impl Transport for TestTransport {
         params: Vec<jsonrpc_core::Value>,
     ) -> (RequestId, jsonrpc_core::Call) {
         let request = build_request(1, method, params.clone());
-        self.requests.borrow_mut().push((method.into(), params));
-        (self.requests.borrow().len(), request)
+        self.requests.lock().unwrap().push((method.into(), params));
+        (self.requests.lock().unwrap().len(), request)
     }
 
     fn send(&self, id: RequestId, request: jsonrpc_core::Call) -> Result<jsonrpc_core::Value> {
-        match self.response.borrow_mut().pop_front() {
+        match self.response.lock().unwrap().pop_front() {
             Some(response) => Box::new(finished(response)),
             None => {
                 println!("Unexpected request (id: {:?}): {:?}", id, request);
@@ -83,11 +80,11 @@ impl Transport for TestTransport {
 
 impl TestTransport {
     pub fn set_response(&mut self, value: jsonrpc_core::Value) {
-        *self.response.borrow_mut() = vec![value].into();
+        *self.response.lock().unwrap() = vec![value].into();
     }
 
     pub fn add_response(&mut self, value: jsonrpc_core::Value) {
-        self.response.borrow_mut().push_back(value);
+        self.response.lock().unwrap().push_back(value);
     }
 
     pub fn assert_request(&mut self, method: &str, params: &[String]) {
@@ -95,7 +92,8 @@ impl TestTransport {
         self.asserted += 1;
 
         let (m, p) = self.requests
-            .borrow()
+            .lock()
+            .unwrap()
             .get(idx)
             .expect("Expected result.")
             .clone();
@@ -107,7 +105,7 @@ impl TestTransport {
     }
 
     pub fn assert_no_more_requests(&mut self) {
-        let requests = self.requests.borrow();
+        let requests = self.requests.lock().unwrap();
         assert_eq!(
             self.asserted,
             requests.len(),
@@ -119,7 +117,6 @@ impl TestTransport {
 
 #[test]
 fn contract_call() {
-    let mut core = Core::new().unwrap();
     let mut transport = TestTransport::default();
 
     transport.add_response(serde_json::to_value(mock_block()).unwrap());
@@ -128,7 +125,7 @@ fn contract_call() {
         H256::from(100000)
     )));
 
-    let mut adapter = EthereumAdapter::new(core.handle(), EthereumAdapterConfig { transport });
+    let mut adapter = EthereumAdapter::new(EthereumAdapterConfig { transport });
     let balance_of = Function {
         name: "balanceOf".to_owned(),
         inputs: vec![Param {
@@ -150,8 +147,7 @@ fn contract_call() {
         function: function,
         args: vec![Token::Address(holder_addr)],
     };
-    let work = adapter.contract_call(call);
-    let call_result = core.run(work).unwrap();
+    let call_result = adapter.contract_call(call).wait().unwrap();
 
     assert_eq!(call_result[0], Token::Uint(U256::from(100000)));
 }
