@@ -5,7 +5,7 @@ use tiny_keccak::Keccak;
 /// Hashes a string to a H256 hash.
 pub fn string_to_h256(s: &str) -> H256 {
     let mut result = [0u8; 32];
-
+    let ss = &s.replace(" ", "")[..];
     let data: Vec<u8> = From::from(s);
     let mut sponge = Keccak::new_keccak256();
     sponge.update(&data);
