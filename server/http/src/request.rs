@@ -1,4 +1,3 @@
-use futures::prelude::*;
 use futures::sync::oneshot;
 use graphql_parser;
 use hyper::Chunk;
@@ -90,7 +89,6 @@ impl Future for GraphQLRequest {
 mod tests {
     use graphql_parser;
     use hyper;
-    use tokio_core::reactor::Core;
 
     use graph::prelude::*;
 
@@ -100,55 +98,50 @@ mod tests {
 
     #[test]
     fn rejects_invalid_json() {
-        let mut core = Core::new().unwrap();
         let schema = Schema {
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(hyper::Chunk::from("!@#)%"), Some(schema));
-        let result = core.run(request);
-        result.expect_err("Should reject invalid JSON");
+        request.wait().expect_err("Should reject invalid JSON");
     }
 
     #[test]
     fn rejects_json_without_query_field() {
-        let mut core = Core::new().unwrap();
         let schema = Schema {
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(hyper::Chunk::from("{}"), Some(schema));
-        let result = core.run(request);
-        result.expect_err("Should reject JSON without query field");
+        request
+            .wait()
+            .expect_err("Should reject JSON without query field");
     }
 
     #[test]
     fn rejects_json_with_non_string_query_field() {
-        let mut core = Core::new().unwrap();
         let schema = Schema {
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": 5}"), Some(schema));
-        let result = core.run(request);
-        result.expect_err("Should reject JSON with a non-string query field");
+        request
+            .wait()
+            .expect_err("Should reject JSON with a non-string query field");
     }
 
     #[test]
     fn rejects_broken_queries() {
-        let mut core = Core::new().unwrap();
         let schema = Schema {
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": \"foo\"}"), Some(schema));
-        let result = core.run(request);
-        result.expect_err("Should reject broken queries");
+        request.wait().expect_err("Should reject broken queries");
     }
 
     #[test]
     fn accepts_valid_queries() {
-        let mut core = Core::new().unwrap();
         let schema = Schema {
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
@@ -157,8 +150,7 @@ mod tests {
             hyper::Chunk::from("{\"query\": \"{ user { name } }\"}"),
             Some(schema),
         );
-        let result = core.run(request);
-        let (query, _) = result.expect("Should accept valid queries");
+        let (query, _) = request.wait().expect("Should accept valid queries");
         assert_eq!(
             query.document,
             graphql_parser::parse_query("{ user { name } }").unwrap()
@@ -167,7 +159,6 @@ mod tests {
 
     #[test]
     fn accepts_null_variables() {
-        let mut core = Core::new().unwrap();
         let schema = Schema {
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
@@ -182,8 +173,7 @@ mod tests {
             ),
             Some(schema),
         );
-        let result = core.run(request);
-        let (query, _) = result.expect("Should accept null variables");
+        let (query, _) = request.wait().expect("Should accept null variables");
 
         let expected_query = graphql_parser::parse_query("{ user { name } }").unwrap();
         assert_eq!(query.document, expected_query);
@@ -192,7 +182,6 @@ mod tests {
 
     #[test]
     fn rejects_non_map_variables() {
-        let mut core = Core::new().unwrap();
         let schema = Schema {
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
@@ -207,13 +196,11 @@ mod tests {
             ),
             Some(schema),
         );
-        let result = core.run(request);
-        result.expect_err("Should reject non-map variables");
+        request.wait().expect_err("Should reject non-map variables");
     }
 
     #[test]
     fn parses_variables() {
-        let mut core = Core::new().unwrap();
         let schema = Schema {
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
@@ -228,8 +215,7 @@ mod tests {
             ),
             Some(schema),
         );
-        let result = core.run(request);
-        let (query, _) = result.expect("Should accept valid queries");
+        let (query, _) = request.wait().expect("Should accept valid queries");
 
         let expected_query = graphql_parser::parse_query("{ user { name } }").unwrap();
         let mut expected_variables = QueryVariables::new();

@@ -74,21 +74,10 @@ impl From<ABIError> for EthereumContractCallError {
 
 #[derive(Debug)]
 pub enum EthereumSubscriptionError {
+    // Because `Web3Error` and `ABIError` are not `Sync`,
+    // we have to wrap them in mutexes.
     RpcError(Web3Error),
     ABIError(ABIError),
-}
-
-impl Error for EthereumSubscriptionError {
-    fn description(&self) -> &str {
-        "Ethereum subscription error"
-    }
-
-    fn cause(&self) -> Option<&Error> {
-        match self {
-            EthereumSubscriptionError::RpcError(ref e) => Some(e),
-            EthereumSubscriptionError::ABIError(ref e) => Some(e),
-        }
-    }
 }
 
 impl fmt::Display for EthereumSubscriptionError {
@@ -97,6 +86,18 @@ impl fmt::Display for EthereumSubscriptionError {
             EthereumSubscriptionError::RpcError(e) => write!(f, "RPC error: {}", e),
             EthereumSubscriptionError::ABIError(e) => write!(f, "ABI error: {}", e),
         }
+    }
+}
+
+impl From<Web3Error> for EthereumSubscriptionError {
+    fn from(err: Web3Error) -> EthereumSubscriptionError {
+        EthereumSubscriptionError::RpcError(err)
+    }
+}
+
+impl From<ABIError> for EthereumSubscriptionError {
+    fn from(err: ABIError) -> EthereumSubscriptionError {
+        EthereumSubscriptionError::ABIError(err)
     }
 }
 
@@ -131,7 +132,7 @@ pub struct EthereumEvent {
 ///
 /// Implementations may be implemented against an in-process Ethereum node
 /// or a remote node over RPC.
-pub trait EthereumAdapter {
+pub trait EthereumAdapter: Send + 'static {
     /// Call the function of a smart contract.
     fn contract_call(
         &mut self,

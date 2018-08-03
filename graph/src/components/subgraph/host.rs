@@ -10,12 +10,12 @@ pub enum RuntimeHostEvent {
 }
 
 /// Common trait for runtime host implementations.
-pub trait RuntimeHost: EventProducer<RuntimeHostEvent> {
+pub trait RuntimeHost: EventProducer<RuntimeHostEvent> + Send {
     /// The subgraph definition the runtime is for.
     fn subgraph_manifest(&self) -> &SubgraphManifest;
 }
 
-pub trait RuntimeHostBuilder {
+pub trait RuntimeHostBuilder: Send + 'static {
     type Host: RuntimeHost;
 
     /// Build a new runtime host for a dataset.

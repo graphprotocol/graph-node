@@ -1,9 +1,7 @@
 use ethereum_types::H256;
-use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use slog::Logger;
 use std::sync::{Arc, Mutex};
-use tokio_core::reactor::Handle;
 
 use graph::components::store::EventSource;
 use graph::components::subgraph::RuntimeHostEvent;
@@ -17,15 +15,10 @@ pub struct RuntimeManager {
 
 impl RuntimeManager where {
     /// Creates a new runtime manager.
-    pub fn new<S, T>(
-        logger: &Logger,
-        runtime: Handle,
-        store: Arc<Mutex<S>>,
-        host_builder: T,
-    ) -> Self
+    pub fn new<S, T>(logger: &Logger, store: Arc<Mutex<S>>, host_builder: T) -> Self
     where
         S: Store + 'static,
-        T: RuntimeHostBuilder + 'static,
+        T: RuntimeHostBuilder,
     {
         let logger = logger.new(o!("component" => "RuntimeManager"));
 
@@ -33,13 +26,7 @@ impl RuntimeManager where {
         let (subgraph_sender, subgraph_receiver) = channel(100);
 
         // Handle incoming events from the subgraph provider.
-        Self::handle_subgraph_events(
-            logger.clone(),
-            runtime,
-            store,
-            host_builder,
-            subgraph_receiver,
-        );
+        Self::handle_subgraph_events(logger.clone(), store, host_builder, subgraph_receiver);
 
         RuntimeManager {
             logger,
@@ -50,13 +37,12 @@ impl RuntimeManager where {
     /// Handle incoming events from subgraph providers.
     fn handle_subgraph_events<S, T>(
         logger: Logger,
-        runtime: Handle,
         store: Arc<Mutex<S>>,
         mut host_builder: T,
         receiver: Receiver<SubgraphProviderEvent>,
     ) where
         S: Store + 'static,
-        T: RuntimeHostBuilder + 'static,
+        T: RuntimeHostBuilder,
     {
         // Handles each incoming event from the subgraph.
         fn handle_event<S: Store + 'static>(store: Arc<Mutex<S>>, event: RuntimeHostEvent) {
@@ -84,7 +70,7 @@ impl RuntimeManager where {
 
         let mut runtime_hosts = vec![];
 
-        runtime.clone().spawn(receiver.for_each(move |event| {
+        tokio::spawn(receiver.for_each(move |event| {
             match event {
                 SubgraphProviderEvent::SubgraphAdded(manifest) => {
                     info!(logger, "Host mapping runtimes for subgraph";
@@ -101,7 +87,7 @@ impl RuntimeManager where {
                     // is removed and the host and its event sender are dropped
                     for mut new_host in new_hosts {
                         let store = store.clone();
-                        runtime.spawn(new_host.take_event_stream().unwrap().for_each(
+                        tokio::spawn(new_host.take_event_stream().unwrap().for_each(
                             move |event| {
                                 handle_event(store.clone(), event);
                                 Ok(())
@@ -119,13 +105,13 @@ impl RuntimeManager where {
             }
 
             Ok(())
-        }))
+        }));
     }
 }
 
 impl EventConsumer<SubgraphProviderEvent> for RuntimeManager {
     /// Get the wrapped event sink.
-    fn event_sink(&self) -> Box<Sink<SinkItem = SubgraphProviderEvent, SinkError = ()>> {
+    fn event_sink(&self) -> Box<Sink<SinkItem = SubgraphProviderEvent, SinkError = ()> + Send> {
         let logger = self.logger.clone();
         Box::new(self.input.clone().sink_map_err(move |e| {
             error!(logger, "Component was dropped: {}", e);

@@ -1,21 +1,23 @@
 use components::link_resolver::LinkResolver;
 use data::schema::Schema;
 use ethabi::Contract;
-use failure::Fail;
-use futures::prelude::*;
+use failure;
+use failure::SyncFailure;
 use futures::stream;
 use graphql_parser;
 use parity_wasm;
 use parity_wasm::elements::Module;
 use serde_yaml;
-use std::error::Error;
+use tokio::prelude::*;
+
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum SubgraphManifestResolveError {
     ParseError(serde_yaml::Error),
     NonUtf8,
     InvalidFormat,
-    ResolveError(Box<Error>),
+    ResolveError(failure::Error),
 }
 
 impl From<serde_yaml::Error> for SubgraphManifestResolveError {
@@ -40,13 +42,14 @@ impl SchemaData {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
-    ) -> impl Future<Item = Schema, Error = Box<Error + 'static>> {
+    ) -> impl Future<Item = Schema, Error = failure::Error> + Send {
         let id = self.file.link.clone();
 
         resolver.cat(&self.file).and_then(|schema_bytes| {
-            graphql_parser::parse_schema(&String::from_utf8(schema_bytes)?)
-                .map(|document| Schema { id, document })
-                .map_err(|e| Box::new(e.compat()) as Box<Error>)
+            Ok(
+                graphql_parser::parse_schema(&String::from_utf8(schema_bytes)?)
+                    .map(|document| Schema { id, document })?,
+            )
         })
     }
 }
@@ -71,9 +74,9 @@ impl UnresolvedMappingABI {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
-    ) -> impl Future<Item = MappingABI, Error = Box<Error + 'static>> {
+    ) -> impl Future<Item = MappingABI, Error = failure::Error> + Send {
         resolver.cat(&self.contract).and_then(|contract_bytes| {
-            let contract = Contract::load(&*contract_bytes)?;
+            let contract = Contract::load(&*contract_bytes).map_err(SyncFailure::new)?;
             Ok(MappingABI {
                 name: self.name,
                 contract,
@@ -109,7 +112,7 @@ impl UnresolvedMapping {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
-    ) -> impl Future<Item = Mapping, Error = Box<Error>> {
+    ) -> impl Future<Item = Mapping, Error = failure::Error> + Send {
         let UnresolvedMapping {
             kind,
             api_version,
@@ -125,10 +128,11 @@ impl UnresolvedMapping {
             abis.into_iter()
                 .map(|unresolved_abi| unresolved_abi.resolve(resolver)),
         ).collect()
-            .join(resolver.cat(&runtime).and_then(|module_bytes| {
-                parity_wasm::deserialize_buffer(&module_bytes)
-                    .map_err(|e| Box::new(e) as Box<Error>)
-            }))
+            .join(
+                resolver
+                    .cat(&runtime)
+                    .and_then(|module_bytes| Ok(parity_wasm::deserialize_buffer(&module_bytes)?)),
+            )
             .map(|(abis, runtime)| Mapping {
                 kind,
                 api_version,
@@ -156,7 +160,7 @@ impl UnresolvedDataSource {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
-    ) -> impl Future<Item = DataSource, Error = Box<Error>> {
+    ) -> impl Future<Item = DataSource, Error = failure::Error> {
         let UnresolvedDataSource {
             kind,
             name,
@@ -197,46 +201,44 @@ impl SubgraphManifest {
     /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
-    pub fn resolve<'a, 'b>(
+    pub fn resolve(
         link: Link,
-        resolver: &'a impl LinkResolver,
-    ) -> Box<Future<Item = Self, Error = SubgraphManifestResolveError> + 'a> {
-        Box::new(
-            resolver
-                .cat(&link)
-                .map_err(|e| SubgraphManifestResolveError::ResolveError(e))
-                .and_then(move |file_bytes| {
-                    let file = String::from_utf8(file_bytes.to_vec())
-                        .map_err(|_| SubgraphManifestResolveError::NonUtf8)?;
-                    let mut raw: serde_yaml::Value = serde_yaml::from_str(&file)?;
-                    {
-                        let raw_mapping = raw.as_mapping_mut()
-                            .ok_or(SubgraphManifestResolveError::InvalidFormat)?;
+        resolver: Arc<impl LinkResolver>,
+    ) -> impl Future<Item = Self, Error = SubgraphManifestResolveError> + Send {
+        resolver
+            .cat(&link)
+            .map_err(|e| SubgraphManifestResolveError::ResolveError(e))
+            .and_then(move |file_bytes| {
+                let file = String::from_utf8(file_bytes.to_vec())
+                    .map_err(|_| SubgraphManifestResolveError::NonUtf8)?;
+                let mut raw: serde_yaml::Value = serde_yaml::from_str(&file)?;
+                {
+                    let raw_mapping = raw.as_mapping_mut()
+                        .ok_or(SubgraphManifestResolveError::InvalidFormat)?;
 
-                        // Inject the IPFS hash as the ID of the subgraph
-                        // into the definition.
-                        raw_mapping.insert(
-                            serde_yaml::Value::from("id"),
-                            serde_yaml::Value::from(link.link.trim_left_matches("/ipfs/")),
-                        );
+                    // Inject the IPFS hash as the ID of the subgraph
+                    // into the definition.
+                    raw_mapping.insert(
+                        serde_yaml::Value::from("id"),
+                        serde_yaml::Value::from(link.link.trim_left_matches("/ipfs/")),
+                    );
 
-                        // Inject the IPFS link as the location of the data
-                        // source into the definition
-                        raw_mapping.insert(
-                            serde_yaml::Value::from("location"),
-                            serde_yaml::Value::from(link.link),
-                        );
-                    }
-                    // Parse the YAML data into an UnresolvedSubgraphManifest
-                    let unresolved: UnresolvedSubgraphManifest = serde_yaml::from_value(raw)?;
-                    Ok(unresolved)
-                })
-                .and_then(move |unresolved| {
-                    unresolved
-                        .resolve(resolver)
-                        .map_err(|e| SubgraphManifestResolveError::ResolveError(e))
-                }),
-        )
+                    // Inject the IPFS link as the location of the data
+                    // source into the definition
+                    raw_mapping.insert(
+                        serde_yaml::Value::from("location"),
+                        serde_yaml::Value::from(link.link),
+                    );
+                }
+                // Parse the YAML data into an UnresolvedSubgraphManifest
+                let unresolved: UnresolvedSubgraphManifest = serde_yaml::from_value(raw)?;
+                Ok(unresolved)
+            })
+            .and_then(move |unresolved| {
+                unresolved
+                    .resolve(&*resolver)
+                    .map_err(|e| SubgraphManifestResolveError::ResolveError(e))
+            })
     }
 }
 
@@ -244,7 +246,7 @@ impl UnresolvedSubgraphManifest {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
-    ) -> impl Future<Item = SubgraphManifest, Error = Box<Error>> {
+    ) -> impl Future<Item = SubgraphManifest, Error = failure::Error> {
         let UnresolvedSubgraphManifest {
             id,
             location,

@@ -1,13 +1,10 @@
-use futures::prelude::*;
-use futures::stream;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use futures::sync::oneshot;
 use graphql_parser;
 use slog;
 use std::error::Error;
 use std::fmt;
-use std::sync::{Arc, Mutex};
-use tokio;
+use std::sync::Mutex;
 
 use graph::components::schema::SchemaProviderEvent;
 use graph::components::store::StoreEvent;

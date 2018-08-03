@@ -7,13 +7,13 @@ use slog;
 use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, Mutex};
-use tokio_core::reactor::Handle;
 
 use graph::components::schema::SchemaProviderEvent;
 use graph::components::store::StoreEvent;
 use graph::data::query::Query;
 use graph::data::schema::Schema;
 use graph::prelude::GraphQLServer as GraphQLServerTrait;
+use graph::tokio;
 use graph::util::stream::StreamError;
 
 use service::GraphQLService;
@@ -46,13 +46,12 @@ pub struct GraphQLServer {
     query_sink: Option<Sender<Query>>,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
     store_event_sink: Sender<StoreEvent>,
-    runtime: Handle,
     schema: Arc<Mutex<Option<Schema>>>,
 }
 
 impl GraphQLServer {
     /// Creates a new GraphQL server.
-    pub fn new(logger: &slog::Logger, runtime: Handle) -> Self {
+    pub fn new(logger: &slog::Logger) -> Self {
         // Create channels for handling incoming events from the schema provider and the store
         let (store_sink, store_stream) = channel(100);
         let (schema_provider_sink, schema_provider_stream) = channel(100);
@@ -63,7 +62,6 @@ impl GraphQLServer {
             query_sink: None,
             schema_provider_event_sink: schema_provider_sink,
             store_event_sink: store_sink,
-            runtime,
             schema: Arc::new(Mutex::new(None)),
         };
 
@@ -80,7 +78,7 @@ impl GraphQLServer {
         let logger = self.logger.clone();
         let schema = self.schema.clone();
 
-        self.runtime.spawn(stream.for_each(move |event| {
+        tokio::spawn(stream.for_each(move |event| {
             info!(logger, "Received schema provider event");
 
             let SchemaProviderEvent::SchemaChanged(new_schema) = event;
@@ -95,7 +93,7 @@ impl GraphQLServer {
     fn handle_store_events(&mut self, stream: Receiver<StoreEvent>) {
         let logger = self.logger.clone();
 
-        self.runtime.spawn(stream.for_each(move |event| {
+        tokio::spawn(stream.for_each(move |event| {
             info!(logger, "Received store event"; "event" => format!("{:?}",  event));
             Ok(())
         }));

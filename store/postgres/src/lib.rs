@@ -9,8 +9,6 @@ extern crate futures;
 extern crate slog;
 extern crate graph;
 extern crate serde_json;
-extern crate tokio;
-extern crate tokio_core;
 
 pub mod db_schema;
 mod filter;

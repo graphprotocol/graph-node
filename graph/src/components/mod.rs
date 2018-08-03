@@ -60,10 +60,10 @@ pub mod link_resolver;
 /// future. Returns `Some` in the first call and `None` on any further calls.
 ///
 /// See `Stream::forward` for details.
-pub fn forward<E, O: EventProducer<E>, I: EventConsumer<E>>(
+pub fn forward<E: Send, O: EventProducer<E>, I: EventConsumer<E>>(
     output: &mut O,
     input: &I,
-) -> Option<impl Future<Item = (), Error = ()>> {
+) -> Option<impl Future<Item = (), Error = ()> + Send> {
     output
         .take_event_stream()
         .map(|stream| stream.forward(input.event_sink()).map(|_| ()))
@@ -72,11 +72,16 @@ pub fn forward<E, O: EventProducer<E>, I: EventConsumer<E>>(
 /// Like `forward`, but forwards outputs to two components by cloning the
 /// events. If you need more, create more versions of this or manipulate
 /// `event_sink()` and `take_event_stream()` directly.
-pub fn forward2<E: Clone, O: EventProducer<E>, I1: EventConsumer<E>, I2: EventConsumer<E>>(
+pub fn forward2<
+    E: Clone + Send,
+    O: EventProducer<E>,
+    I1: EventConsumer<E>,
+    I2: EventConsumer<E>,
+>(
     output: &mut O,
     input1: &I1,
     input2: &I2,
-) -> Option<impl Future<Item = (), Error = ()>> {
+) -> Option<impl Future<Item = (), Error = ()> + Send> {
     output.take_event_stream().map(|stream| {
         stream
             .forward(input1.event_sink().fanout(input2.event_sink()))
@@ -89,7 +94,7 @@ pub trait EventConsumer<E> {
     /// Get the event sink.
     ///
     /// Avoid calling directly, prefer helpers such as `forward`.
-    fn event_sink(&self) -> Box<Sink<SinkItem = E, SinkError = ()>>;
+    fn event_sink(&self) -> Box<Sink<SinkItem = E, SinkError = ()> + Send>;
 }
 
 /// A component that outputs events of type `T`.
@@ -99,5 +104,5 @@ pub trait EventProducer<E> {
     /// return `None`.
     ///
     /// Avoid calling directly, prefer helpers such as `forward`.
-    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = E, Error = ()>>>;
+    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = E, Error = ()> + Send>>;
 }

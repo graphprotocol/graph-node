@@ -10,7 +10,6 @@ slog = "2.2.3"
 graph = { path = "../graph" }
 graph-graphql = { path = "../graphql" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
-tokio-core = "0.1.17"
 serde = "1.0"
 serde_yaml = "0.7"
 

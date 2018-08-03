@@ -84,19 +84,19 @@ impl MockSubgraphProvider {
 impl EventProducer<SubgraphProviderEvent> for MockSubgraphProvider {
     fn take_event_stream(
         &mut self,
-    ) -> Option<Box<Stream<Item = SubgraphProviderEvent, Error = ()>>> {
+    ) -> Option<Box<Stream<Item = SubgraphProviderEvent, Error = ()> + Send>> {
         self.generate_mock_events();
         self.event_stream
             .take()
-            .map(|s| Box::new(s) as Box<Stream<Item = SubgraphProviderEvent, Error = ()>>)
+            .map(|s| Box::new(s) as Box<Stream<Item = SubgraphProviderEvent, Error = ()> + Send>)
     }
 }
 
 impl EventProducer<SchemaEvent> for MockSubgraphProvider {
-    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = SchemaEvent, Error = ()>>> {
+    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = SchemaEvent, Error = ()> + Send>> {
         self.generate_mock_schema_events();
         self.schema_event_stream
             .take()
-            .map(|s| Box::new(s) as Box<Stream<Item = SchemaEvent, Error = ()>>)
+            .map(|s| Box::new(s) as Box<Stream<Item = SchemaEvent, Error = ()> + Send>)
     }
 }

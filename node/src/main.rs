@@ -14,21 +14,15 @@ extern crate graph_runtime_wasm;
 extern crate graph_server_http;
 extern crate graph_store_postgres;
 extern crate ipfs_api;
-extern crate tokio;
-extern crate tokio_core;
 
 use clap::{App, Arg};
 use ipfs_api::IpfsClient;
-use sentry::integrations::panic::register_panic_handler;
 use std::env;
 use std::net::SocketAddr;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
-use tokio::prelude::*;
-use tokio_core::reactor::Core;
+use std::sync::Mutex;
 
 use graph::components::forward;
-use graph::components::EventProducer;
 use graph::prelude::*;
 use graph::util::log::logger;
 use graph_datasource_ethereum::Transport;
@@ -38,8 +32,12 @@ use graph_server_http::GraphQLServer as HyperGraphQLServer;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
+    // Run `async_main` inside the context of an executor.
+    tokio::run(future::lazy(|| async_main()))
+}
+
+fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     env_logger::init();
-    let mut core = Core::new().unwrap();
     let logger = logger();
 
     // Setup CLI using Clap, provide general info and capture postgres url
@@ -128,61 +126,55 @@ fn main() {
             ..Default::default()
         },
     ));
-    register_panic_handler();
+    sentry::integrations::panic::register_panic_handler();
 
     info!(logger, "Starting up");
 
     // Create system components
-    let runtime = core.handle();
-    let resolver = IpfsClient::new(
-        &format!("{}", ipfs_socket_addr.ip()),
-        ipfs_socket_addr.port(),
-    ).expect("Failed to start IPFS client");
-    let mut subgraph_provider = core.run(IpfsSubgraphProvider::new(
+    let resolver = Arc::new(
+        IpfsClient::new(
+            &format!("{}", ipfs_socket_addr.ip()),
+            ipfs_socket_addr.port(),
+        ).expect("Failed to start IPFS client"),
+    );
+    let (mut subgraph_provider, subgraph_provider_events) = IpfsSubgraphProvider::new(
         logger.clone(),
-        runtime,
         &format!("/ipfs/{}", subgraph_hash.clone()),
-        &resolver,
-    )).expect("Failed to initialize subgraph provider");
-    let mut schema_provider = graph_core::SchemaProvider::new(&logger, core.handle());
-    let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger, core.handle());
+        resolver.clone(),
+    );
+    tokio::spawn(subgraph_provider_events.map_err(|_| ()));
+
+    let mut schema_provider = graph_core::SchemaProvider::new(&logger);
+    let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger);
     let protected_store = Arc::new(Mutex::new(store));
-    let mut graphql_server = HyperGraphQLServer::new(&logger, core.handle());
+    let mut graphql_server = HyperGraphQLServer::new(&logger);
 
     // Create Ethereum adapter
-    let (_transport_event_loop, transport) = ethereum_ipc
+    let (transport_event_loop, transport) = ethereum_ipc
         .map(Transport::new_ipc)
         .or(ethereum_ws.map(Transport::new_ws))
         .or(ethereum_rpc.map(Transport::new_rpc))
         .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
+    // If we drop the event loop the transport will stop working. For now it's
+    // fine to just leak it.
+    std::mem::forget(transport_event_loop);
     let ethereum_watcher = graph_datasource_ethereum::EthereumAdapter::new(
-        core.handle(),
         graph_datasource_ethereum::EthereumAdapterConfig { transport },
     );
-    let runtime_host_builder = WASMRuntimeHostBuilder::new(
-        &logger,
-        core.handle(),
-        Arc::new(Mutex::new(ethereum_watcher)),
-        Arc::new(resolver),
-    );
-    let runtime_manager = graph_core::RuntimeManager::new(
-        &logger,
-        core.handle(),
-        protected_store.clone(),
-        runtime_host_builder,
-    );
+    let runtime_host_builder =
+        WASMRuntimeHostBuilder::new(&logger, Arc::new(Mutex::new(ethereum_watcher)), resolver);
+    let runtime_manager =
+        graph_core::RuntimeManager::new(&logger, protected_store.clone(), runtime_host_builder);
 
     // Forward subgraph events from the subgraph provider to the runtime manager
-    core.handle()
-        .spawn(forward(&mut subgraph_provider, &runtime_manager).unwrap());
+    tokio::spawn(forward(&mut subgraph_provider, &runtime_manager).unwrap());
 
     // Forward schema events from the subgraph provider to the schema provider
-    core.handle()
-        .spawn(forward(&mut subgraph_provider, &schema_provider).unwrap());
+    tokio::spawn(forward(&mut subgraph_provider, &schema_provider).unwrap());
 
     // Forward schema events from the schema provider to the store and GraphQL server
     let schema_stream = schema_provider.take_event_stream().unwrap();
-    core.handle().spawn({
+    tokio::spawn(
         schema_stream
             .forward(
                 protected_store
@@ -194,36 +186,35 @@ fn main() {
                         panic!("Failed to send event to store and server: {:?}", e);
                     }),
             )
-            .and_then(|_| Ok(()))
-    });
+            .and_then(|_| Ok(())),
+    );
 
     // Forward store events to the GraphQL server
     {
         let store_stream = protected_store.lock().unwrap().event_stream().unwrap();
-        core.handle().spawn({
+        tokio::spawn(
             store_stream
                 .forward(graphql_server.store_event_sink().sink_map_err(|e| {
                     panic!("Failed to send store event to the GraphQL server: {:?}", e);
                 }))
-                .and_then(|_| Ok(()))
-        });
+                .and_then(|_| Ok(())),
+        );
     }
 
     // Forward incoming queries from the GraphQL server to the query runner
-    let mut query_runner =
-        graph_core::QueryRunner::new(&logger, core.handle(), protected_store.clone());
+    let mut query_runner = graph_core::QueryRunner::new(&logger, protected_store.clone());
     let query_stream = graphql_server.query_stream().unwrap();
-    core.handle().spawn({
+    tokio::spawn(
         query_stream
             .forward(query_runner.query_sink().sink_map_err(|e| {
                 panic!("Failed to send query to query runner: {:?}", e);
             }))
-            .and_then(|_| Ok(()))
-    });
+            .and_then(|_| Ok(())),
+    );
 
     // Serve GraphQL server over HTTP
     let http_server = graphql_server
         .serve()
         .expect("Failed to start GraphQL server");
-    core.run(http_server).unwrap();
+    http_server
 }

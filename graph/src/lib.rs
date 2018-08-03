@@ -16,8 +16,7 @@ extern crate parity_wasm;
 extern crate slog_async;
 extern crate slog_term;
 extern crate tiny_keccak;
-extern crate tokio;
-extern crate tokio_core;
+pub extern crate tokio;
 extern crate web3;
 
 /// Traits and types for all system components.
@@ -37,7 +36,13 @@ pub mod util;
 /// use graph::prelude::*;
 /// ```
 pub mod prelude {
+    pub use tokio;
+    pub use tokio::prelude::*;
+
+    pub use std::sync::Arc;
+
     pub use components::ethereum::EthereumAdapter;
+    pub use components::link_resolver::LinkResolver;
     pub use components::query::QueryRunner;
     pub use components::schema::{SchemaProvider, SchemaProviderEvent};
     pub use components::server::GraphQLServer;
@@ -50,7 +55,6 @@ pub mod prelude {
     };
     pub use components::{EventConsumer, EventProducer};
 
-    pub use components::link_resolver::LinkResolver;
     pub use data::query::{
         Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue, QueryVariables,
     };

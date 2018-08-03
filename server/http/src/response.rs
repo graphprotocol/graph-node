@@ -1,4 +1,4 @@
-use futures::prelude::*;
+use graph::tokio::prelude::*;
 use http::status::StatusCode;
 use hyper::{Body, Response};
 use serde::ser::*;
@@ -95,69 +95,58 @@ mod tests {
     use graphql_parser;
     use http::status::StatusCode;
     use std::collections::BTreeMap;
-    use tokio_core::reactor::Core;
 
     use test_utils;
 
     #[test]
     fn generates_500_for_internal_errors() {
-        let mut core = Core::new().unwrap();
         let future = GraphQLResponse::new(Err(GraphQLServerError::from("Some error")));
-        let response = core.run(future).expect("Should generate a response");
-        test_utils::assert_error_response(&mut core, response, StatusCode::INTERNAL_SERVER_ERROR);
+        let response = future.wait().expect("Should generate a response");
+        test_utils::assert_error_response(response, StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[test]
     fn generates_401_for_client_errors() {
-        let mut core = Core::new().unwrap();
         let error = GraphQLServerError::ClientError(String::from("foo"));
         let future = GraphQLResponse::new(Err(error));
-        let response = core.run(future).expect("Should generate a response");
-        test_utils::assert_error_response(&mut core, response, StatusCode::BAD_REQUEST);
+        let response = future.wait().expect("Should generate a response");
+        test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
     }
 
     #[test]
     fn generates_401_for_query_errors() {
-        let mut core = Core::new().unwrap();
         let parse_error = graphql_parser::parse_query("<>?><").unwrap_err();
         let query_error = QueryError::from(parse_error);
         let future = GraphQLResponse::new(Err(GraphQLServerError::from(query_error)));
-        let response = core.run(future).expect("Should generate a response");
-        test_utils::assert_error_response(&mut core, response, StatusCode::BAD_REQUEST);
+        let response = future.wait().expect("Should generate a response");
+        test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
     }
 
     #[test]
     fn generates_200_for_query_results() {
-        let mut core = Core::new().unwrap();
         let data = graphql_parser::query::Value::Object(BTreeMap::new());
         let query_result = QueryResult::new(Some(data));
         let future = GraphQLResponse::new(Ok(query_result));
-        let response = core.run(future).expect("Should generate a response");
-        test_utils::assert_successful_response(&mut core, response);
+        let response = future.wait().expect("Should generate a response");
+        test_utils::assert_successful_response(response);
     }
 
     #[test]
     fn generates_valid_json_for_an_empty_result() {
-        let mut core = Core::new().unwrap();
         let data = graphql_parser::query::Value::Object(BTreeMap::new());
         let query_result = QueryResult::new(Some(data));
         let future = GraphQLResponse::new(Ok(query_result));
-        let response = core.run(future).expect("Should generate a response");
-        let data = test_utils::assert_successful_response(&mut core, response);
+        let response = future.wait().expect("Should generate a response");
+        let data = test_utils::assert_successful_response(response);
         assert!(data.is_empty());
     }
 
     #[test]
     fn generates_valid_json_when_canceled() {
-        let mut core = Core::new().unwrap();
         let err = GraphQLServerError::Canceled(oneshot::Canceled);
         let future = GraphQLResponse::new(Err(err));
-        let response = core.run(future).expect("Should generate a response");
-        let errors = test_utils::assert_error_response(
-            &mut core,
-            response,
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
+        let response = future.wait().expect("Should generate a response");
+        let errors = test_utils::assert_error_response(response, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(errors.len(), 1);
 
         let message = errors[0]
@@ -173,12 +162,10 @@ mod tests {
 
     #[test]
     fn generates_valid_json_for_client_error() {
-        let mut core = Core::new().unwrap();
         let err = GraphQLServerError::ClientError(String::from("Something went wrong"));
         let future = GraphQLResponse::new(Err(err));
-        let response = core.run(future).expect("Should generate a response");
-        let errors =
-            test_utils::assert_error_response(&mut core, response, StatusCode::BAD_REQUEST);
+        let response = future.wait().expect("Should generate a response");
+        let errors = test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
         assert_eq!(errors.len(), 1);
 
         let message = errors[0]
@@ -194,15 +181,13 @@ mod tests {
 
     #[test]
     fn generates_valid_json_for_query_error() {
-        let mut core = Core::new().unwrap();
         let parse_error =
             graphql_parser::parse_query("<><?").expect_err("Should fail parsing an invalid query");
         let query_error = QueryError::from(parse_error);
         let err = GraphQLServerError::QueryError(query_error);
         let future = GraphQLResponse::new(Err(err));
-        let response = core.run(future).expect("Should generate a response");
-        let errors =
-            test_utils::assert_error_response(&mut core, response, StatusCode::BAD_REQUEST);
+        let response = future.wait().expect("Should generate a response");
+        let errors = test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
         assert_eq!(errors.len(), 1);
 
         let message = errors[0]
@@ -251,15 +236,10 @@ mod tests {
 
     #[test]
     fn generates_valid_json_for_internal_error() {
-        let mut core = Core::new().unwrap();
         let err = GraphQLServerError::InternalError(String::from("Something went wrong"));
         let future = GraphQLResponse::new(Err(err));
-        let response = core.run(future).expect("Should generate a response");
-        let errors = test_utils::assert_error_response(
-            &mut core,
-            response,
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
+        let response = future.wait().expect("Should generate a response");
+        let errors = test_utils::assert_error_response(response, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(errors.len(), 1);
 
         let message = errors[0]
