@@ -195,14 +195,12 @@ Before `set` may be called a `Store` instance must be created by calling `bind` 
 
 The eventHandlers functions return `void`. The only way that entities may be added to the The Graph is by calling `Store.set()`. `Store.set()` may be called multiple times in an event handler.
 
+**Note** `Store.set()` will only set the entity attributes that have explicitly been set on the `Entity`. Attributes which are not explicitly set, or unset by calling `Entity.unset(<attribute>)`, will not be overwritten.
+
 ## 4 Build
-### 4.1 Compile your mappings
-To compile your mappings run `yarn build` in your subgraph directory.
 
-This is useful for verifying that your mappings and subgraph manifest were written correctly.
-
-### 4.2 Deploy your mappings to IPFS
-In order to deploy your subgraph to your Graph Node, the subgraph manifest will first need to be deployed to IPFS (along with all linked files).
+### 4.1 Build and deploy your mappings to IPFS
+In order to deploy your subgraph to your Graph Node, the subgraph manifest will first need to be built and deployed to IPFS (along with all linked files).
 
 Follow the instructions [here](https://ipfs.io/docs/getting-started/) to start a locally running IPFS daemon.
 
@@ -212,7 +210,7 @@ This will compile your mappings, and deploy the mappings, schema and the subgrap
 
 You can pass that content hash into `ipfs cat` to view your subgraph manifest with files paths replaced by IPLD links.
 
-### 4.3 Deploy your subgraph to your local Graph Node
+### 4.2 Deploy your subgraph to your local Graph Node
 Follow the instructions in the [Graph Node README](https://github.com/graphprotocol/graph-node) for deploying your subgraph to a locally running Graph Node using your subgraph's IPFS content hash.
 
 ## 5 Query your local Graph Node
