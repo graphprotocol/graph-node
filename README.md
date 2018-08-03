@@ -19,7 +19,7 @@ For detailed instructions and more context check out the [Getting Started Guide]
 To build and run this project you need
 to have the following installed on your system:
 
-- Rust - [How to install Rust](https://www.rust-lang.org/en-US/install.html)
+- Rust (latest stable) - [How to install Rust](https://www.rust-lang.org/en-US/install.html)
 - PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/)
 - IPFS – [Installing IPFS](https://ipfs.io/docs/install/)
 
