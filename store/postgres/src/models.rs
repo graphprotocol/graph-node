@@ -1,6 +1,6 @@
 use diesel::sql_types::Jsonb;
 use diesel::sql_types::VarChar;
-use serde_json;
+use graph::serde_json;
 
 pub type EntityJSON = serde_json::Value;
 

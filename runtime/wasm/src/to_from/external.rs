@@ -1,6 +1,6 @@
 use ethabi;
 use ethereum_types;
-use serde_json;
+use graph::serde_json;
 
 use graph::components::ethereum::EthereumEvent;
 use graph::data::store;
@@ -194,7 +194,7 @@ impl ToAscObj<AscJson> for serde_json::Map<String, serde_json::Value> {
 
 impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEnum<JsonValueKind> {
-        use serde_json::Value;
+        use graph::serde_json::Value;
 
         let payload = match self {
             Value::Null => EnumPayload(0),

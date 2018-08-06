@@ -5,7 +5,6 @@ extern crate futures;
 extern crate lazy_static;
 extern crate graph;
 extern crate graph_store_postgres;
-extern crate serde_json;
 
 use diesel::pg::PgConnection;
 use diesel::*;

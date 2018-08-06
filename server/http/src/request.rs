@@ -1,7 +1,7 @@
 use futures::sync::oneshot;
+use graph::serde_json;
 use graphql_parser;
 use hyper::Chunk;
-use serde_json;
 
 use graph::components::server::GraphQLServerError;
 use graph::prelude::*;

@@ -4,7 +4,6 @@ extern crate futures;
 extern crate graph;
 extern crate graph_datasource_ethereum;
 extern crate jsonrpc_core;
-extern crate serde_json;
 extern crate web3;
 
 use ethabi::{Function, Param, ParamType, Token};
@@ -12,6 +11,7 @@ use futures::prelude::*;
 use futures::{failed, finished};
 use graph::components::ethereum::EthereumContractCall;
 use graph::prelude::EthereumAdapter as EthereumAdapterTrait;
+use graph::serde_json;
 use graph_datasource_ethereum::{EthereumAdapter, EthereumAdapterConfig};
 use std::collections::VecDeque;
 use std::str::FromStr;

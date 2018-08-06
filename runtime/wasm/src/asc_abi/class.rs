@@ -1,6 +1,6 @@
 use super::{AscHeap, AscPtr, AscType, AscValue};
 use ethabi;
-use serde_json;
+use graph::serde_json;
 use std::mem::{self, size_of, size_of_val};
 
 ///! Rust types that have with a direct correspondence to an Asc class,
@@ -398,7 +398,7 @@ impl AscValue for JsonValueKind {}
 
 impl JsonValueKind {
     pub(crate) fn get_kind(token: &serde_json::Value) -> Self {
-        use serde_json::Value;
+        use graph::serde_json::Value;
 
         match token {
             Value::Null => JsonValueKind::Null,

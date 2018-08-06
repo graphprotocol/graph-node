@@ -1,8 +1,8 @@
+use graph::serde_json;
 use graph::tokio::prelude::*;
 use http::status::StatusCode;
 use hyper::{Body, Response};
 use serde::ser::*;
-use serde_json;
 
 use graph::components::server::GraphQLServerError;
 use graph::data::query::QueryResult;

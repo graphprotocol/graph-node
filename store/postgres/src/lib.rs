@@ -6,7 +6,6 @@ extern crate diesel_dynamic_schema;
 extern crate diesel_migrations;
 extern crate futures;
 extern crate graph;
-extern crate serde_json;
 
 pub mod db_schema;
 mod filter;

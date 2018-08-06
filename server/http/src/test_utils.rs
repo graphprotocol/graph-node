@@ -1,7 +1,7 @@
+use graph::serde_json;
 use graph::tokio::prelude::*;
 use http::StatusCode;
 use hyper::{Body, Response};
-use serde_json;
 
 /// Asserts that the response is a successful GraphQL response; returns its `"data"` field.
 pub fn assert_successful_response(

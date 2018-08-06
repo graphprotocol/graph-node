@@ -6,8 +6,8 @@ use diesel::sql_types::Text;
 use diesel::{delete, insert_into, result, select};
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use graph::serde_json;
 use graph::tokio;
-use serde_json;
 
 use functions::{revert_block, set_config};
 
