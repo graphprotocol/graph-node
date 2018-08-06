@@ -1,9 +1,7 @@
 use data::subgraph::Link;
 use failure;
-use failure::SyncFailure;
 use futures::prelude::*;
 use ipfs_api;
-//use std::error::Error;
 
 /// Resolves links to subgraph manifests and resources referenced by them.
 pub trait LinkResolver: Send + Sync + 'static {
@@ -27,10 +25,7 @@ impl LinkResolver for ipfs_api::IpfsClient {
             self.cat(path)
                 .concat2()
                 .map(|x| x.to_vec())
-                // FIXME: `SyncFailure` will no longer be necessary once
-                // https://github.com/ferristseng/rust-ipfs-api/pull/17
-                // is merged and published.
-                .map_err(|e| failure::Error::from(SyncFailure::new(e))),
+                .map_err(|e| failure::Error::from(e)),
         )
     }
 }
