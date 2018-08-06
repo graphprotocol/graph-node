@@ -14,14 +14,14 @@ Any data format which has a well-defined 1:1 mapping with [IPLD Canonical Format
 | Field  | Type | Description   |
 | --- | --- | --- |
 | **specVersion** | *String*   | A semver version indicating which version of this API is being used.|
-| **schema**   | [*Schema*](## 1.4 Schema) | The GraphQL schema of this subgraph|
-| **dataSources**| [*[Data Source Spec]*](## 1.5 Data Source)| Each Data Source spec defines data which will be ingested, and transformation logic to derive the state of the subgraph's entities based on the source data.|
+| **schema**   | [*Schema*](#14-schema) | The GraphQL schema of this subgraph|
+| **dataSources**| [*Data Source Spec*](#15-data-source)| Each Data Source spec defines data which will be ingested, and transformation logic to derive the state of the subgraph's entities based on the source data.|
 
 ## 1.4 Schema
 
 | Field | Type | Description |
 | --- | --- | --- |
-| **file**| [*Path*](## 1.6 Path) | The path of the GraphQL IDL file, either locally or on IPFS |
+| **file**| [*Path*](#16-path) | The path of the GraphQL IDL file, either locally or on IPFS |
 
 ## 1.5 Data Source
 
@@ -29,8 +29,8 @@ Any data format which has a well-defined 1:1 mapping with [IPLD Canonical Format
 | --- | --- | --- |
 | **kind** | *String | The type of data source. Possible values: *ethereum/contract*|
 | **name** | *String* | The name of the source data. Will be used to generate APIs in mapping, and also for self-documentation purposes |
-| **source** | [*EthereumContractSource*](### 1.5.1 EthereumContractSource) | The source data on a blockchain such as Ethereum |
-| **mapping** | [*Mapping*](### 1.5.2 Mapping) | The transformation logic applied to the data prior to being indexed |
+| **source** | [*EthereumContractSource*](#151-ethereumcontractsource) | The source data on a blockchain such as Ethereum |
+| **mapping** | [*Mapping*](#152-mapping) | The transformation logic applied to the data prior to being indexed |
 
 ### 1.5.1 EthereumContractSource
 
@@ -41,7 +41,7 @@ Any data format which has a well-defined 1:1 mapping with [IPLD Canonical Format
 
 ### 1.5.2 Mapping
 The `mapping` field may be one of the following supported mapping manifests:
- - [Ethereum Events Mapping](#### 1.5.2.1 Ethereum Events Mapping)
+ - [Ethereum Events Mapping](#1521-ethereum-events-mapping)
 
 #### 1.5.2.1 Ethereum Events Mapping
 
@@ -53,7 +53,7 @@ The `mapping` field may be one of the following supported mapping manifests:
 | **entities** | *[String]* | A list of entities which will be ingested as part of this mapping. Must correspond to names of entities in the GraphQL IDL |
 | **abis** | *ABI* | ABIs for the contract classes which should be generated in the Mapping ABI. Name is also used to reference the ABI elsewhere in the manifest |
 | **eventHandlers** | *EventHandler* | Handlers for specific events, which will be defined in the mapping script |
-| **file** | [*Path*](## 1.6 Path) | The path of the mapping script |
+| **file** | [*Path*](#16-path) | The path of the mapping script |
 
 #### 1.5.2.2 EventHandler
 
