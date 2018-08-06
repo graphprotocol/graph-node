@@ -29,4 +29,4 @@ set_up
 trap tear_down EXIT
 
 # Run the test suite
-cargo test -- --test-threads=1
+cargo test
