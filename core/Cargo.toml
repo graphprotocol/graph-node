@@ -15,5 +15,5 @@ serde_yaml = "0.7"
 
 [dev-dependencies]
 ethabi = "5.1.1"
-ipfs-api = "0.5.0-alpha1"
+ipfs-api = "0.5.0-alpha2"
 graph-mock = { path = "../mock" }

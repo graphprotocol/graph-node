@@ -3,10 +3,12 @@ use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use hyper;
 use hyper::Server;
+
 use slog;
 use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, Mutex};
+use std::net::{Ipv4Addr, SocketAddrV4};
 
 use graph::components::schema::SchemaProviderEvent;
 use graph::components::store::StoreEvent;
@@ -22,6 +24,7 @@ use service::GraphQLService;
 #[derive(Debug)]
 pub enum GraphQLServeError {
     OrphanError,
+    BindError(hyper::Error),
 }
 
 impl Error for GraphQLServeError {
@@ -37,6 +40,12 @@ impl Error for GraphQLServeError {
 impl fmt::Display for GraphQLServeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "OrphanError: No component set up to handle the queries")
+    }
+}
+
+impl From<hyper::Error> for GraphQLServeError {
+    fn from(err: hyper::Error) -> Self {
+        GraphQLServeError::BindError(err)
     }
 }
 
@@ -123,14 +132,14 @@ impl GraphQLServerTrait for GraphQLServer {
         }
     }
 
-    fn serve(&mut self) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
+    fn serve(&mut self, port: u16) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
         let logger = self.logger.clone();
 
-        // We will listen on port 8000
-        let addr = "0.0.0.0:8000".parse().unwrap();
+        let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
 
         // Only launch the GraphQL server if there is a component that will handle incoming queries
-        let query_sink = self.query_sink
+        let query_sink = self
+            .query_sink
             .as_ref()
             .ok_or(GraphQLServeError::OrphanError)?;
 
@@ -144,7 +153,7 @@ impl GraphQLServerTrait for GraphQLServer {
         };
 
         // Create a task to run the server and handle HTTP requests
-        let task = Server::bind(&addr)
+        let task = Server::try_bind(&addr.into())?
             .serve(new_service)
             .map_err(move |e| error!(logger, "Server error"; "error" => format!("{}", e)));
 

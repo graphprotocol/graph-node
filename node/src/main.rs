@@ -212,9 +212,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             .and_then(|_| Ok(())),
     );
 
-    // Serve GraphQL server over HTTP
+    // Serve GraphQL server over HTTP. We will listen on port 8000.
     let http_server = graphql_server
-        .serve()
+        .serve(8000)
         .expect("Failed to start GraphQL server");
     http_server
 }

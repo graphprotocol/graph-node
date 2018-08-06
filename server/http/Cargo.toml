@@ -6,9 +6,12 @@ version = "0.1.0"
 futures = "0.1.21"
 graphql-parser = "0.2.0"
 http = "0.1.5"
-hyper = { git = "https://github.com/hyperium/hyper", branch = "master" }
+hyper = "0.12.7"
 serde = "1.0"
 serde_json = "1.0"
 slog = "2.2.3"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
+
+[dev-dependencies]
+tokio-executor = "0.1.2"
