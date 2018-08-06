@@ -1,5 +1,7 @@
 extern crate diesel;
 extern crate ethereum_types;
+#[macro_use]
+extern crate lazy_static;
 extern crate graph;
 extern crate graph_store_postgres;
 extern crate serde_json;
@@ -11,6 +13,7 @@ use diesel::*;
 use ethereum_types::H256;
 use slog::Logger;
 use std::panic;
+use std::sync::Mutex;
 
 use graph::components::store::{
     EventSource, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
@@ -26,11 +29,16 @@ fn postgres_test_url() -> String {
         .unwrap()
 }
 
+lazy_static! {
+    static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
+}
+
 /// Test harness for running database integration tests.
 fn run_test<T>(test: T) -> ()
 where
     T: FnOnce() -> () + Send + 'static + panic::UnwindSafe,
 {
+    let _test_lock = TEST_MUTEX.lock().unwrap();
     tokio::run(future::lazy(|| {
         Ok({
             insert_test_data();

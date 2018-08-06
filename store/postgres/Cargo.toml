@@ -12,3 +12,6 @@ futures = "0.1.21"
 slog = "2.2.3"
 serde_json = "1.0"
 graph = { path = "../../graph" }
+
+[dev-dependencies]
+lazy_static = "1.1"
