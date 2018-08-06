@@ -1,6 +1,6 @@
 use ethereum_types::{H160, H256, U256};
 use futures::sync::mpsc::Sender;
-use serde_json;
+use graph::serde_json;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};

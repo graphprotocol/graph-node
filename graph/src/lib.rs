@@ -13,6 +13,7 @@ pub extern crate slog;
 extern crate failure;
 extern crate ipfs_api;
 extern crate parity_wasm;
+pub extern crate serde_json;
 extern crate slog_async;
 extern crate slog_term;
 extern crate tiny_keccak;

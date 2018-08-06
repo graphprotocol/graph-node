@@ -13,7 +13,7 @@ use diesel::AppearsOnTable;
 use graph::components::store::StoreFilter;
 use graph::data::store::*;
 
-use serde_json;
+use graph::serde_json;
 
 pub(crate) struct UnsupportedFilter {
     pub filter: String,

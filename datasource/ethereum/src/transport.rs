@@ -1,6 +1,6 @@
 use futures::prelude::*;
+use graph::serde_json::Value;
 use jsonrpc_core::types::Call;
-use serde_json::Value;
 use web3;
 use web3::transports::http;
 use web3::transports::ipc;

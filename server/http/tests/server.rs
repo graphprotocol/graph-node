@@ -4,7 +4,6 @@ extern crate graph_server_http;
 extern crate graphql_parser;
 extern crate http;
 extern crate hyper;
-extern crate serde_json;
 extern crate tokio_executor;
 
 use futures::prelude::*;

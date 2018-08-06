@@ -5,7 +5,6 @@ extern crate graphql_parser;
 extern crate http;
 extern crate hyper;
 extern crate serde;
-extern crate serde_json;
 
 mod request;
 mod response;
