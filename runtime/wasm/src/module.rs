@@ -40,7 +40,8 @@ impl WasmiAscHeap {
 
 impl AscHeap for WasmiAscHeap {
     fn raw_new(&self, bytes: &[u8]) -> Result<u32, Error> {
-        let address = self.module
+        let address = self
+            .module
             .invoke_export(
                 "allocate_memory",
                 &[RuntimeValue::I32(bytes.len() as i32)],
@@ -191,11 +192,9 @@ where
 #[derive(Debug)]
 struct HostExternalsError<E>(E);
 
-impl<E> HostError for HostExternalsError<E>
-where
-    E: fmt::Debug + fmt::Display + Send + Sync + 'static,
-{
-}
+impl<E> HostError for HostExternalsError<E> where
+    E: fmt::Debug + fmt::Display + Send + Sync + 'static
+{}
 
 impl<E: fmt::Display> fmt::Display for HostExternalsError<E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -298,7 +297,8 @@ where
               "function" => &unresolved_call.function_name);
 
         // Obtain the path to the contract ABI
-        let contract = self.data_source
+        let contract = self
+            .data_source
             .mapping
             .abis
             .iter()
@@ -469,7 +469,8 @@ where
     // function ipfs.cat(link: String): Bytes
     fn ipfs_cat(&self, link_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
         let link = self.heap.asc_get(link_ptr);
-        let bytes = self.link_resolver
+        let bytes = self
+            .link_resolver
             .cat(&Link { link })
             .wait()
             .map_err(|e| HostExternalsError(e.to_string()))?;
@@ -872,7 +873,8 @@ mod tests {
                 // Expect a store set call to be made by the handler and a
                 // RuntimeHostEvent::EntitySet event to be written to the event stream
                 let work = receiver.take(1).into_future();
-                let store_event = work.wait()
+                let store_event = work
+                    .wait()
                     .expect("No store event received from runtime")
                     .0
                     .expect("Store event must not be None");

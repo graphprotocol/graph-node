@@ -7,8 +7,8 @@ use hyper::Server;
 use slog;
 use std::error::Error;
 use std::fmt;
-use std::sync::{Arc, Mutex};
 use std::net::{Ipv4Addr, SocketAddrV4};
+use std::sync::{Arc, Mutex};
 
 use graph::components::schema::SchemaProviderEvent;
 use graph::components::store::StoreEvent;
@@ -132,7 +132,10 @@ impl GraphQLServerTrait for GraphQLServer {
         }
     }
 
-    fn serve(&mut self, port: u16) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
+    fn serve(
+        &mut self,
+        port: u16,
+    ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
         let logger = self.logger.clone();
 
         let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);

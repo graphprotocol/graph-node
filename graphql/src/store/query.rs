@@ -149,7 +149,9 @@ pub fn build_subgraph_id(entity: &schema::ObjectType) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use graphql_parser::{
-        query as q, schema, schema::{Directive, Field, ObjectType, Type}, Pos,
+        query as q, schema,
+        schema::{Directive, Field, ObjectType, Type},
+        Pos,
     };
     use std::collections::{BTreeMap, HashMap};
     use std::iter::FromIterator;

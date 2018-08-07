@@ -58,10 +58,12 @@ impl Value {
                     _ => Value::String(s.clone()),
                 }
             }
-            (query::Value::Int(i), _) => Value::Int(i.to_owned()
-                .as_i64()
-                .expect("Unable to parse graphql_parser::query::Number into i64")
-                as i32),
+            (query::Value::Int(i), _) => Value::Int(
+                i.to_owned()
+                    .as_i64()
+                    .expect("Unable to parse graphql_parser::query::Number into i64")
+                    as i32,
+            ),
             (query::Value::Float(f), _) => Value::Float(f.to_owned() as f32),
             (query::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
             (query::Value::Null, _) => Value::Null,

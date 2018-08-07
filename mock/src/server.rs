@@ -113,7 +113,10 @@ impl GraphQLServer for MockGraphQLServer {
         }
     }
 
-    fn serve(&mut self, _port: u16) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
+    fn serve(
+        &mut self,
+        _port: u16,
+    ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
         // Only launch the GraphQL server if there is a component that will handle incoming queries
         let query_sink = self.query_sink.clone().ok_or_else(|| MockServeError)?;
         let schema = self.schema.clone();

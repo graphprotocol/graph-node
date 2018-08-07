@@ -25,7 +25,8 @@ impl Future for GraphQLRequest {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         // Fail if no schema is available
-        let schema = self.schema
+        let schema = self
+            .schema
             .clone()
             .ok_or(GraphQLServerError::InternalError(
                 "No schema available to query".to_string(),
@@ -36,13 +37,15 @@ impl Future for GraphQLRequest {
             .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))?;
 
         // Ensure the JSON data is an object
-        let obj = json.as_object()
+        let obj = json
+            .as_object()
             .ok_or(GraphQLServerError::ClientError(String::from(
                 "Request data is not an object",
             )))?;
 
         // Ensure the JSON data has a "query" field
-        let query_value = obj.get("query")
+        let query_value = obj
+            .get("query")
             .ok_or(GraphQLServerError::ClientError(String::from(
                 "The \"query\" field missing in request data",
             )))?;

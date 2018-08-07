@@ -91,14 +91,16 @@ impl TestTransport {
         let idx = self.asserted;
         self.asserted += 1;
 
-        let (m, p) = self.requests
+        let (m, p) = self
+            .requests
             .lock()
             .unwrap()
             .get(idx)
             .expect("Expected result.")
             .clone();
         assert_eq!(&m, method);
-        let p: Vec<String> = p.into_iter()
+        let p: Vec<String> = p
+            .into_iter()
             .map(|p| serde_json::to_string(&p).unwrap())
             .collect();
         assert_eq!(p, params);

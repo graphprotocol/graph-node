@@ -102,5 +102,8 @@ pub trait GraphQLServer {
     fn query_stream(&mut self) -> Result<Receiver<Query>, StreamError>;
 
     /// Creates a new Tokio task that, when spawned, brings up the GraphQL server.
-    fn serve(&mut self, port: u16) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError>;
+    fn serve(
+        &mut self,
+        port: u16,
+    ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError>;
 }

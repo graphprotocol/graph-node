@@ -212,7 +212,8 @@ mod tests {
                 let data = test_utils::assert_successful_response(response);
 
                 // The body should match the simulated query result
-                let name = data.get("name")
+                let name = data
+                    .get("name")
                     .expect("Query result data has no \"name\" field")
                     .as_str()
                     .expect("Query result field \"name\" is not a string");
