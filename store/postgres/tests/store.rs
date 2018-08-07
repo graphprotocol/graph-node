@@ -1,5 +1,6 @@
 extern crate diesel;
 extern crate ethereum_types;
+extern crate futures;
 #[macro_use]
 extern crate lazy_static;
 extern crate graph;
@@ -11,6 +12,7 @@ extern crate slog;
 use diesel::pg::PgConnection;
 use diesel::*;
 use ethereum_types::H256;
+use futures::sync::oneshot;
 use slog::Logger;
 use std::panic;
 use std::sync::Mutex;
@@ -39,14 +41,16 @@ where
     T: FnOnce() -> () + Send + 'static + panic::UnwindSafe,
 {
     let _test_lock = TEST_MUTEX.lock().unwrap();
+    let (sender, receiver) = oneshot::channel(); 
     tokio::run(future::lazy(|| {
-        Ok({
             insert_test_data();
             let result = panic::catch_unwind(|| test());
             remove_test_data();
-            result.expect("Failed to run test");
-        })
-    }))
+            sender.send(result).map_err(|_| ())
+    }));
+
+    // Unwrap in the main thread where a panic will fail the test.
+    receiver.wait().unwrap().expect("Failed to run test");
 }
 
 /// Creates a test entity.
