@@ -109,7 +109,8 @@ impl TestModule {
 
 impl AscHeap for TestModule {
     fn raw_new(&self, bytes: &[u8]) -> Result<u32, wasmi::Error> {
-        let addr = self.module
+        let addr = self
+            .module
             .invoke_export(
                 "allocate_memory",
                 &[RuntimeValue::I32(bytes.len() as i32)],

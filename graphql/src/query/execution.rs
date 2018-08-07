@@ -310,7 +310,8 @@ where
 
         // The fragment also applies to an object type if its type is a union that
         // the object type is one of the possible types for
-        Some(s::TypeDefinition::Union(ut)) => ut.types
+        Some(s::TypeDefinition::Union(ut)) => ut
+            .types
             .iter()
             .find(|name| name == &&object_type.name)
             .map(|_| true)
@@ -443,7 +444,8 @@ where
         // map to values of GraphQL enums
         s::TypeDefinition::Enum(t) => match object_value {
             Some(q::Value::Object(o)) => if ctx.introspecting {
-                Ok(ctx.introspection_resolver
+                Ok(ctx
+                    .introspection_resolver
                     .resolve_enum_value(t, o.get(&field.name)))
             } else {
                 Ok(ctx.resolver.resolve_enum_value(t, o.get(&field.name)))
@@ -455,7 +457,8 @@ where
         // map to values of GraphQL scalars
         s::TypeDefinition::Scalar(t) => match object_value {
             Some(q::Value::Object(o)) => if ctx.introspecting {
-                Ok(ctx.introspection_resolver
+                Ok(ctx
+                    .introspection_resolver
                     .resolve_scalar_value(t, o.get(&field.name)))
             } else {
                 Ok(ctx.resolver.resolve_scalar_value(t, o.get(&field.name)))
@@ -531,7 +534,8 @@ where
                 // map to values of GraphQL enums
                 s::TypeDefinition::Enum(t) => match object_value {
                     Some(q::Value::Object(o)) => if ctx.introspecting {
-                        Ok(ctx.introspection_resolver
+                        Ok(ctx
+                            .introspection_resolver
                             .resolve_enum_values(t, o.get(&field.name)))
                     } else {
                         Ok(ctx.resolver.resolve_enum_values(t, o.get(&field.name)))
@@ -543,7 +547,8 @@ where
                 // map to values of GraphQL scalars
                 s::TypeDefinition::Scalar(t) => match object_value {
                     Some(q::Value::Object(o)) => if ctx.introspecting {
-                        Ok(ctx.introspection_resolver
+                        Ok(ctx
+                            .introspection_resolver
                             .resolve_scalar_values(t, o.get(&field.name)))
                     } else {
                         Ok(ctx.resolver.resolve_scalar_values(t, o.get(&field.name)))

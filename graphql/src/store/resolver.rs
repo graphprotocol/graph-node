@@ -252,7 +252,8 @@ impl Resolver for StoreResolver {
 
         match parent {
             Some(q::Value::Object(parent_object)) => match parent_object.get(field) {
-                Some(q::Value::String(id)) => self.store
+                Some(q::Value::String(id)) => self
+                    .store
                     .lock()
                     .unwrap()
                     .get(StoreKey {

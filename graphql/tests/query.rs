@@ -21,8 +21,9 @@ use graph_node::SubgraphProvider;
 fn test_schema() -> Schema {
     let schema = Schema {
         id: String::from("test-schema"),
-        document: api_schema(&graphql_parser::parse_schema(
-            "
+        document: api_schema(
+            &graphql_parser::parse_schema(
+                "
             type Musician {
                 id: ID!
                 name: String!
@@ -43,10 +44,8 @@ fn test_schema() -> Schema {
                 writtenBy: Musician!
             }
             ",
-        ).expect("Test schema invalid"))
-            .expect(
-            "Failed to derive API schema from test schema",
-        ),
+            ).expect("Test schema invalid"),
+        ).expect("Failed to derive API schema from test schema"),
     };
     SubgraphProvider::add_subgraph_id_directives(&mut schema.clone(), String::from("test_subgraph"))
 }

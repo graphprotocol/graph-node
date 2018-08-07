@@ -41,17 +41,17 @@ where
     T: FnOnce() -> () + Send + 'static + panic::UnwindSafe,
 {
     // Lock regardless of poisoning.
-    let _test_lock =  match TEST_MUTEX.lock() {
+    let _test_lock = match TEST_MUTEX.lock() {
         Ok(guard) => guard,
         Err(err) => err.into_inner(),
     };
 
-    let (sender, receiver) = oneshot::channel(); 
+    let (sender, receiver) = oneshot::channel();
     tokio::run(future::lazy(|| {
-            insert_test_data();
-            let result = panic::catch_unwind(|| test());
-            remove_test_data();
-            sender.send(result).map_err(|_| ())
+        insert_test_data();
+        let result = panic::catch_unwind(|| test());
+        remove_test_data();
+        sender.send(result).map_err(|_| ())
     }));
 
     // Unwrap in the main thread where a panic will fail the test.

@@ -140,11 +140,13 @@ impl Serialize for QueryError {
                 let (a, b) = parts[0].split_at(colon_pos);
 
                 // Find the line and column numbers and convert them to u32
-                let line: u32 = a.matches(char::is_numeric)
+                let line: u32 = a
+                    .matches(char::is_numeric)
                     .collect::<String>()
                     .parse()
                     .unwrap();
-                let column: u32 = b.matches(char::is_numeric)
+                let column: u32 = b
+                    .matches(char::is_numeric)
                     .collect::<String>()
                     .parse()
                     .unwrap();

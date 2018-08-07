@@ -213,7 +213,8 @@ impl SubgraphManifest {
                     .map_err(|_| SubgraphManifestResolveError::NonUtf8)?;
                 let mut raw: serde_yaml::Value = serde_yaml::from_str(&file)?;
                 {
-                    let raw_mapping = raw.as_mapping_mut()
+                    let raw_mapping = raw
+                        .as_mapping_mut()
                         .ok_or(SubgraphManifestResolveError::InvalidFormat)?;
 
                     // Inject the IPFS hash as the ID of the subgraph
