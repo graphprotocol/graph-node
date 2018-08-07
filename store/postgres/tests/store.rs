@@ -40,7 +40,12 @@ fn run_test<T>(test: T) -> ()
 where
     T: FnOnce() -> () + Send + 'static + panic::UnwindSafe,
 {
-    let _test_lock = TEST_MUTEX.lock().unwrap();
+    // Lock regardless of poisoning.
+    let _test_lock =  match TEST_MUTEX.lock() {
+        Ok(guard) => guard,
+        Err(err) => err.into_inner(),
+    };
+
     let (sender, receiver) = oneshot::channel(); 
     tokio::run(future::lazy(|| {
             insert_test_data();
