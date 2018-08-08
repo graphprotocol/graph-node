@@ -212,19 +212,45 @@ fn field_scalar_filter_input_values(
     field: &Field,
     field_type: &ScalarType,
 ) -> Vec<InputValue> {
-    vec![
-        Some(input_value(
-            &field.name,
+
+    // Create where filters depending on field type
+    let filters = match field_type.name.as_ref() {
+        "BigInt" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
+        "Boolean" => vec!["", "not", "in", "not_in"],
+        "Bytes" => vec!["", "not", "in", "not_in", "contains", "not_contains"],
+        "Float" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
+        "ID" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
+        "Int" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
+        "List" => vec!["", "not", "in", "not_in", "contains", "not_contains"],
+        "String" => vec![
             "",
-            Type::NamedType(field_type.name.to_owned()),
-        )),
-        Some(input_value(
-            &field.name,
             "not",
-            Type::NamedType(field_type.name.to_owned()),
-        )),
-    ].into_iter()
-        .filter_map(|value_opt| value_opt)
+            "gt",
+            "lt",
+            "gte",
+            "lte",
+            "in",
+            "not_in",
+            "contains",
+            "not_contains",
+            "starts_with",
+            "not_starts_with",
+            "ends_with",
+            "not_ends_with",
+        ],
+        _ => vec!["", "not"],
+    };
+
+    // Create vector of input values out of the filter types
+    filters
+        .into_iter()
+        .filter_map(|filter_type| {
+            Some(input_value(
+                &field.name,
+                filter_type,
+                Type::NamedType(field_type.name.to_owned()),
+            ))
+        })
         .collect()
 }
 
