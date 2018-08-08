@@ -317,8 +317,8 @@ fn store_filter_by_mode<'a>(
 
         StoreFilter::EndsWith(..) | StoreFilter::NotEndsWith(..) => {
             let (attribute, op, value) = match filter {
-                StoreFilter::StartsWith(attribute, value) => (attribute, " LIKE ", value),
-                StoreFilter::NotStartsWith(attribute, value) => (attribute, " NOT LIKE ", value),
+                StoreFilter::EndsWith(attribute, value) => (attribute, " LIKE ", value),
+                StoreFilter::NotEndsWith(attribute, value) => (attribute, " NOT LIKE ", value),
                 _ => unreachable!(),
             };
             match value {
