@@ -199,7 +199,7 @@ impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
         let payload = match self {
             Value::Null => EnumPayload(0),
             Value::Bool(b) => EnumPayload::from(*b),
-            Value::Number(number) => number.as_i64().expect("number does not fit in i64").into(),
+            Value::Number(number) => heap.asc_new(&*number.to_string()).into(),
             Value::String(string) => heap.asc_new(string.as_str()).into(),
             Value::Array(array) => heap.asc_new(array.as_slice()).into(),
             Value::Object(object) => heap.asc_new(object).into(),

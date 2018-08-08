@@ -12,6 +12,10 @@ impl BigInt {
     pub fn from_signed_bytes_le(bytes: &[u8]) -> Self {
         BigInt(num_bigint::BigInt::from_signed_bytes_le(bytes))
     }
+
+    pub fn to_signed_bytes_le(&self) -> Vec<u8> {
+        self.0.to_signed_bytes_le()
+    }
 }
 
 impl Display for BigInt {
