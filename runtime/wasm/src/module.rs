@@ -1,9 +1,12 @@
 use ethereum_types::{H160, H256, U256};
 use futures::sync::mpsc::Sender;
 use graph::serde_json;
+use nan_preserving_float::F64;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Arc, Mutex};
+use std::str::FromStr;
+use std::sync::Mutex;
+
 use wasmi::{
     Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder, MemoryRef, Module,
     ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue,
@@ -14,6 +17,7 @@ use web3::types::BlockId;
 use graph::components::ethereum::*;
 use graph::components::store::StoreKey;
 use graph::components::subgraph::RuntimeHostEvent;
+use graph::data::store::scalar;
 use graph::data::subgraph::DataSource;
 use graph::prelude::*;
 
@@ -75,7 +79,11 @@ const TYPE_CONVERSION_U256_TO_H160_FUNC_INDEX: usize = 10;
 const TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX: usize = 11;
 const TYPE_CONVERSION_INT256_TO_BIG_INT_FUNC_INDEX: usize = 12;
 const JSON_FROM_BYTES_FUNC_INDEX: usize = 13;
-const IPFS_CAT_FUNC_INDEX: usize = 14;
+const JSON_TO_I64_FUNC_INDEX: usize = 14;
+const JSON_TO_U64_FUNC_INDEX: usize = 15;
+const JSON_TO_F64_FUNC_INDEX: usize = 16;
+const JSON_TO_BIG_INT_FUNC_INDEX: usize = 17;
+const IPFS_CAT_FUNC_INDEX: usize = 18;
 
 pub struct WasmiModuleConfig<T, L> {
     pub subgraph: SubgraphManifest,
@@ -202,6 +210,10 @@ impl<E: fmt::Display> fmt::Display for HostExternalsError<E> {
     }
 }
 
+fn host_error(message: String) -> Trap {
+    Trap::new(TrapKind::Host(Box::new(HostExternalsError(message))))
+}
+
 /// Hosted functions for external use by wasm module
 pub struct HostExternals<T, L> {
     logger: Logger,
@@ -303,22 +315,20 @@ where
             .abis
             .iter()
             .find(|abi| abi.name == unresolved_call.contract_name)
-            .ok_or(Trap::new(TrapKind::Host(Box::new(HostExternalsError(
-                format!(
-                    "Unknown contract \"{}\" called from WASM runtime",
-                    unresolved_call.contract_name
-                ),
-            )))))?
+            .ok_or(host_error(format!(
+                "Unknown contract \"{}\" called from WASM runtime",
+                unresolved_call.contract_name
+            )))?
             .contract
             .clone();
 
         let function = contract
             .function(unresolved_call.function_name.as_str())
             .map_err(|e| {
-                Trap::new(TrapKind::Host(Box::new(HostExternalsError(format!(
+                host_error(format!(
                     "Unknown function \"{}::{}\" called from WASM runtime: {}",
                     unresolved_call.contract_name, unresolved_call.function_name, e
-                )))))
+                ))
             })?;
 
         let call = EthereumContractCall {
@@ -335,10 +345,10 @@ where
             .wait()
             .map(|result| Some(RuntimeValue::from(self.heap.asc_new(&*result))))
             .map_err(|e| {
-                Trap::new(TrapKind::Host(Box::new(HostExternalsError(format!(
+                host_error(format!(
                     "Failed to call function \"{}\" of contract \"{}\": {}",
                     unresolved_call.function_name, unresolved_call.contract_name, e
-                )))))
+                ))
             })
     }
 
@@ -458,7 +468,7 @@ where
         Ok(Some(RuntimeValue::from(hex_string_obj)))
     }
 
-    // function json.fromBytes(bytes: Bytes): JSONValue
+    /// function json.fromBytes(bytes: Bytes): JSONValue
     fn json_from_bytes(&self, bytes_ptr: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
         let bytes: Vec<u8> = self.heap.asc_get(bytes_ptr);
         let json: serde_json::Value = serde_json::from_reader(&*bytes).map_err(HostExternalsError)?;
@@ -466,7 +476,7 @@ where
         Ok(Some(RuntimeValue::from(json_obj)))
     }
 
-    // function ipfs.cat(link: String): Bytes
+    /// function ipfs.cat(link: String): Bytes
     fn ipfs_cat(&self, link_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
         let link = self.heap.asc_get(link_ptr);
         let bytes = self
@@ -476,6 +486,43 @@ where
             .map_err(|e| HostExternalsError(e.to_string()))?;
         let bytes_obj: AscPtr<Uint8Array> = self.heap.asc_new(&*bytes);
         Ok(Some(RuntimeValue::from(bytes_obj)))
+    }
+
+    /// Expects a decimal string.
+    /// function json.toI64(json: String): i64
+    fn json_to_i64(&self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
+        let json: String = self.heap.asc_get(json_ptr);
+        let number = i64::from_str(&json)
+            .map_err(|_| host_error(format!("JSON `{}` cannot be parsed as i64", json)))?;
+        Ok(Some(RuntimeValue::from(number)))
+    }
+
+    /// Expects a decimal string.
+    /// function json.toU64(json: String): u64
+    fn json_to_u64(&self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
+        let json: String = self.heap.asc_get(json_ptr);
+        let number = u64::from_str(&json)
+            .map_err(|_| host_error(format!("JSON `{}` cannot be parsed as u64", json)))?;
+        Ok(Some(RuntimeValue::from(number)))
+    }
+
+    /// Expects a decimal string.
+    /// function json.toF64(json: String): f64
+    fn json_to_f64(&self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
+        let json: String = self.heap.asc_get(json_ptr);
+        let number = f64::from_str(&json)
+            .map_err(|_| host_error(format!("JSON `{}` cannot be parsed as f64", json)))?;
+        Ok(Some(RuntimeValue::from(F64::from(number))))
+    }
+
+    /// Expects a decimal string.
+    /// function json.toBigInt(json: String): BigInt
+    fn json_to_big_int(&self, json: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
+        let json: String = self.heap.asc_get(json);
+        let big_int = scalar::BigInt::from_str(&json)
+            .map_err(|_| host_error(format!("JSON `{}` is not a decimal string", json)))?;
+        let big_int_ptr: AscPtr<BigInt> = self.heap.asc_new(&*big_int.to_signed_bytes_le());
+        Ok(Some(RuntimeValue::from(big_int_ptr)))
     }
 }
 
@@ -517,6 +564,10 @@ where
                 self.int256_to_big_int(args.nth_checked(0)?)
             }
             JSON_FROM_BYTES_FUNC_INDEX => self.json_from_bytes(args.nth_checked(0)?),
+            JSON_TO_I64_FUNC_INDEX => self.json_to_i64(args.nth_checked(0)?),
+            JSON_TO_U64_FUNC_INDEX => self.json_to_u64(args.nth_checked(0)?),
+            JSON_TO_F64_FUNC_INDEX => self.json_to_f64(args.nth_checked(0)?),
+            JSON_TO_BIG_INT_FUNC_INDEX => self.json_to_big_int(args.nth_checked(0)?),
             IPFS_CAT_FUNC_INDEX => self.ipfs_cat(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         }
@@ -655,6 +706,22 @@ impl ModuleImportResolver for JsonModuleResolver {
             "fromBytes" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 JSON_FROM_BYTES_FUNC_INDEX,
+            ),
+            "toI64" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I64)),
+                JSON_TO_I64_FUNC_INDEX,
+            ),
+            "toU64" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I64)),
+                JSON_TO_U64_FUNC_INDEX,
+            ),
+            "toF64" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::F64)),
+                JSON_TO_F64_FUNC_INDEX,
+            ),
+            "toBigInt" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                JSON_TO_BIG_INT_FUNC_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(
