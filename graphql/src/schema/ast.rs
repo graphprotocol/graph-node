@@ -25,14 +25,14 @@ pub(crate) fn parse_field_as_filter(key: &Name) -> (Name, FilterOp) {
         k if k.ends_with("_lt") => ("_lt", FilterOp::LessThan),
         k if k.ends_with("_gte") => ("_gte", FilterOp::GreaterOrEqual),
         k if k.ends_with("_lte") => ("_lte", FilterOp::LessOrEqual),
-        k if k.ends_with("_in") => ("_in", FilterOp::In),
         k if k.ends_with("_not_in") => ("_not_in", FilterOp::NotIn),
-        k if k.ends_with("_contains") => ("_contains", FilterOp::Contains),
+        k if k.ends_with("_in") => ("_in", FilterOp::In),
         k if k.ends_with("_not_contains") => ("_not_contains", FilterOp::NotContains),
-        k if k.ends_with("_starts_with") => ("_starts_with", FilterOp::StartsWith),
-        k if k.ends_with("_ends_with") => ("_ends_with", FilterOp::EndsWith),
+        k if k.ends_with("_contains") => ("_contains", FilterOp::Contains),
         k if k.ends_with("_not_starts_with") => ("_not_starts_with", FilterOp::NotStartsWith),
         k if k.ends_with("_not_ends_with") => ("_not_ends_with", FilterOp::NotEndsWith),
+        k if k.ends_with("_starts_with") => ("_starts_with", FilterOp::StartsWith),
+        k if k.ends_with("_ends_with") => ("_ends_with", FilterOp::EndsWith),
         _ => ("", FilterOp::Equal),
     };
 
