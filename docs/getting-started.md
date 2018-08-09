@@ -185,11 +185,8 @@ There is also a global `Store` class which has a `set` method for setting the va
 
 It expects the name of an entity type, the id of the entity and the `Entity` itself.
 
-Before `set` may be called a `Store` instance must be created by calling `bind` to bind the `Store` instance to a specific block hash. All store transactions created with this `Store` instance will be associated with that block hash.
-
 ##### Example
 ```typescript
-  let store = Store.bind(event.blockHash)
   store.set('Token', tokenId, token)
 ```
 

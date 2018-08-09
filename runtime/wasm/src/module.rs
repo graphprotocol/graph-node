@@ -156,6 +156,7 @@ where
             heap: heap.clone(),
             ethereum_adapter: config.ethereum_adapter.clone(),
             link_resolver: config.link_resolver.clone(),
+            block_hash: H256::zero(),
         };
 
         let module = module
@@ -171,6 +172,7 @@ where
     }
 
     pub fn handle_ethereum_event(&mut self, handler_name: &str, event: EthereumEvent) {
+        self.externals.block_hash = event.block_hash.clone();
         self.module
             .invoke_export(
                 handler_name,
@@ -209,6 +211,8 @@ pub struct HostExternals<T, L> {
     heap: WasmiAscHeap,
     ethereum_adapter: Arc<Mutex<T>>,
     link_resolver: Arc<L>,
+    // Block hash of the event being mapped.
+    block_hash: H256,
 }
 
 impl<T, L> HostExternals<T, L>
@@ -216,15 +220,14 @@ where
     T: EthereumAdapter,
     L: LinkResolver,
 {
-    /// function store.set(blockHash: H256, entity: string, id: string, data: Entity): void
+    /// function store.set(entity: string, id: string, data: Entity): void
     fn store_set(
         &self,
-        block_hash_ptr: AscPtr<AscH256>,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<AscEntity>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let _block_hash: H256 = self.heap.asc_get(block_hash_ptr);
+        let _block_hash: H256 = self.block_hash.clone();
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
@@ -254,11 +257,10 @@ where
     /// function store.remove(entity: string, id: string): void
     fn store_remove(
         &self,
-        block_hash_ptr: AscPtr<AscH256>,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let _block_hash: H256 = self.heap.asc_get(block_hash_ptr);
+        let _block_hash: H256 = self.block_hash.clone();
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let store_key = StoreKey {
@@ -492,13 +494,10 @@ where
                 args.nth_checked(0)?,
                 args.nth_checked(1)?,
                 args.nth_checked(2)?,
-                args.nth_checked(3)?,
             ),
-            STORE_REMOVE_FUNC_INDEX => self.store_remove(
-                args.nth_checked(0)?,
-                args.nth_checked(1)?,
-                args.nth_checked(2)?,
-            ),
+            STORE_REMOVE_FUNC_INDEX => {
+                self.store_remove(args.nth_checked(0)?, args.nth_checked(1)?)
+            }
             ETHEREUM_CALL_FUNC_INDEX => self.ethereum_call(args.nth_checked(0)?),
             TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX => {
                 self.convert_bytes_to_string(args.nth_checked(0)?)
@@ -559,19 +558,11 @@ impl ModuleImportResolver for StoreModuleResolver {
     fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
         Ok(match field_name {
             "set" => FuncInstance::alloc_host(
-                Signature::new(
-                    &[
-                        ValueType::I32,
-                        ValueType::I32,
-                        ValueType::I32,
-                        ValueType::I32,
-                    ][..],
-                    None,
-                ),
+                Signature::new(&[ValueType::I32, ValueType::I32, ValueType::I32][..], None),
                 STORE_SET_FUNC_INDEX,
             ),
             "remove" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32, ValueType::I32][..], None),
+                Signature::new(&[ValueType::I32, ValueType::I32][..], None),
                 STORE_REMOVE_FUNC_INDEX,
             ),
             _ => {
