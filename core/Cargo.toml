@@ -6,7 +6,6 @@ version = "0.1.0"
 ethereum-types = "0.3"
 futures = "0.1.21"
 graphql-parser = "0.2.0"
-slog = "2.2.3"
 graph = { path = "../graph" }
 graph-graphql = { path = "../graphql" }
 graph-runtime-wasm = { path = "../runtime/wasm" }

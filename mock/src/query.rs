@@ -1,6 +1,5 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use graphql_parser::query as gqlq;
-use slog;
 use std::collections::BTreeMap;
 
 use graph::prelude::*;

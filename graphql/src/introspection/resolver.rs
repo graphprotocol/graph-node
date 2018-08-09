@@ -1,5 +1,4 @@
 use graphql_parser::{query as q, schema as s};
-use slog;
 use std::collections::{BTreeMap, HashMap};
 
 use graph::prelude::*;

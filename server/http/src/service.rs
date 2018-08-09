@@ -1,7 +1,7 @@
 use futures::sync::mpsc::Sender;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use graph::components::server::GraphQLServerError;
 use graph::prelude::*;

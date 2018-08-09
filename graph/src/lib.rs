@@ -9,7 +9,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_yaml;
 #[macro_use]
-extern crate slog;
+pub extern crate slog;
 extern crate failure;
 extern crate ipfs_api;
 extern crate parity_wasm;
@@ -36,6 +36,12 @@ pub mod util;
 /// use graph::prelude::*;
 /// ```
 pub mod prelude {
+    // Glob import from `slog` to re-export the macros, but prevent
+    // `slog::Result` from shadowing `Result`. Rust 2018 will have proper macro
+    // imports then we can remove `slog::*` in favor of something fine-grained.
+    pub use slog;
+    pub use slog::*;
+    pub use std::result::Result;
     pub use tokio;
     pub use tokio::prelude::*;
 
@@ -50,8 +56,8 @@ pub mod prelude {
         BasicStore, Store, StoreEvent, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
     };
     pub use components::subgraph::{
-        RuntimeHost, RuntimeHostBuilder, RuntimeHostEvent, RuntimeManager, SubgraphProvider,
-        SubgraphProviderEvent,
+        RuntimeHost, RuntimeHostBuilder, RuntimeHostEvent, RuntimeManager, SchemaEvent,
+        SubgraphProvider, SubgraphProviderEvent,
     };
     pub use components::{EventConsumer, EventProducer};
 

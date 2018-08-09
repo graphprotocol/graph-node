@@ -1,7 +1,6 @@
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use indexmap::IndexMap;
-use slog;
 use std::cmp;
 use std::collections::{BTreeMap, HashMap, HashSet};
 

@@ -1,14 +1,12 @@
-use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use slog;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
-use graph::prelude::{tokio, Query, QueryRunner as QueryRunnerTrait, Store};
+use graph::prelude::{QueryRunner as QueryRunnerTrait, *};
 use graph_graphql::prelude::*;
 
 /// Common query runner implementation for The Graph.
 pub struct QueryRunner<S> {
-    logger: slog::Logger,
+    logger: Logger,
     query_sink: Sender<Query>,
     store: Arc<Mutex<S>>,
 }
@@ -18,7 +16,7 @@ where
     S: Store + Sized + 'static,
 {
     /// Creates a new query runner.
-    pub fn new(logger: &slog::Logger, store: Arc<Mutex<S>>) -> Self {
+    pub fn new(logger: &Logger, store: Arc<Mutex<S>>) -> Self {
         let (sink, stream) = channel(100);
         let runner = QueryRunner {
             logger: logger.new(o!("component" => "QueryRunner")),

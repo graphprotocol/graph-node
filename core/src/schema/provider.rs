@@ -1,13 +1,7 @@
-use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use graph::tokio;
-use slog::Logger;
 use std::collections::HashMap;
 
-use graph::components::schema::{SchemaProvider as SchemaProviderTrait, SchemaProviderEvent};
-use graph::components::subgraph::SchemaEvent;
-use graph::components::{EventConsumer, EventProducer};
-use graph::data::schema::Schema;
+use graph::prelude::{SchemaProvider as SchemaProviderTrait, *};
 
 use graph_graphql::prelude::*;
 
@@ -127,11 +121,8 @@ impl SchemaProvider {
 mod tests {
     use graphql_parser;
 
-    use graph::components::schema::SchemaProviderEvent;
-    use graph::components::subgraph::SchemaEvent;
     use graph::prelude::*;
     use graph_graphql::schema::ast;
-    use slog;
 
     use super::SchemaProvider as CoreSchemaProvider;
 
@@ -140,7 +131,7 @@ mod tests {
         tokio::run(future::lazy(|| {
             Ok({
                 // Set up the schema provider
-                let logger = slog::Logger::root(slog::Discard, o!());
+                let logger = Logger::root(slog::Discard, o!());
                 let mut schema_provider = CoreSchemaProvider::new(&logger);
                 let schema_sink = schema_provider.event_sink();
                 let schema_stream = schema_provider.take_event_stream().unwrap();

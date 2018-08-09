@@ -1,7 +1,6 @@
 use ethereum_types::H256;
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use slog::Logger;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use graph::components::store::EventSource;
 use graph::components::subgraph::RuntimeHostEvent;

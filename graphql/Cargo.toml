@@ -7,7 +7,6 @@ graphql-parser = "0.2.0"
 indexmap = "1.0"
 Inflector = "0.11.3"
 serde = "1.0"
-slog = "2.2.3"
 graph = { path = "../graph" }
 
 [dev-dependencies]

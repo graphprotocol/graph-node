@@ -1,9 +1,5 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use slog::Logger;
 
-use graph::components::schema::SchemaProviderEvent;
-use graph::components::subgraph::SchemaEvent;
-use graph::components::{EventConsumer, EventProducer};
 use graph::prelude::*;
 
 /// A mock `SchemaProvider`.

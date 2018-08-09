@@ -2,16 +2,13 @@ extern crate futures;
 extern crate graphql_parser;
 #[macro_use]
 extern crate pretty_assertions;
-#[macro_use]
-extern crate slog;
 extern crate graph;
 extern crate graph_graphql;
 extern crate graph_node;
 
 use futures::sync::oneshot;
 use graphql_parser::query as q;
-use slog::Logger;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use graph::components::store::EventSource;
 use graph::prelude::*;

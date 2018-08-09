@@ -8,7 +8,6 @@ env_logger = "0.5.10"
 futures = "0.1.21"
 graphql-parser = "0.2.1"
 sentry = "0.3.1"
-slog = "2.2.3"
 ipfs-api = "0.5.0-alpha2"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }

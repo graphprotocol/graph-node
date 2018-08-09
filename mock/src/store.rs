@@ -1,7 +1,5 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use slog;
 
-use graph::components::schema::SchemaProviderEvent;
 use graph::components::store::*;
 use graph::prelude::*;
 
