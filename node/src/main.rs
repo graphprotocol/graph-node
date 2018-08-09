@@ -4,8 +4,6 @@ extern crate futures;
 extern crate graph_node;
 #[macro_use]
 extern crate sentry;
-#[macro_use]
-extern crate slog;
 extern crate graph;
 extern crate graph_core;
 extern crate graph_datasource_ethereum;

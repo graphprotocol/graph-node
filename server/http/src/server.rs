@@ -1,22 +1,17 @@
-use futures::future;
-use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use hyper;
 use hyper::Server;
 
-use slog;
 use std::error::Error;
 use std::fmt;
 use std::net::{Ipv4Addr, SocketAddrV4};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use graph::components::schema::SchemaProviderEvent;
 use graph::components::store::StoreEvent;
 use graph::data::query::Query;
 use graph::data::schema::Schema;
-use graph::prelude::GraphQLServer as GraphQLServerTrait;
-use graph::tokio;
-use graph::util::stream::StreamError;
+use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
 
 use service::GraphQLService;
 

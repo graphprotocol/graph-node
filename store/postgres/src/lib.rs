@@ -5,8 +5,6 @@ extern crate diesel_dynamic_schema;
 #[macro_use]
 extern crate diesel_migrations;
 extern crate futures;
-#[macro_use]
-extern crate slog;
 extern crate graph;
 extern crate serde_json;
 

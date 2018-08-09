@@ -1,6 +1,5 @@
 use ethereum_types::Address;
 use futures::sync::mpsc::{channel, Receiver};
-use slog::Logger;
 use std::str::FromStr;
 use std::sync::Mutex;
 use std::thread;

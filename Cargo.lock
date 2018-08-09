@@ -588,7 +588,6 @@ dependencies = [
  "ipfs-api 0.5.0-alpha2 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_yaml 0.7.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "slog 2.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -617,7 +616,6 @@ dependencies = [
  "indexmap 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "pretty_assertions 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
- "slog 2.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -627,7 +625,6 @@ dependencies = [
  "futures 0.1.23 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.1.0",
  "graphql-parser 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "slog 2.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -648,7 +645,6 @@ dependencies = [
  "graphql-parser 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "ipfs-api 0.5.0-alpha2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sentry 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "slog 2.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -666,7 +662,6 @@ dependencies = [
  "num-bigint 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "parity-wasm 0.31.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.24 (registry+https://github.com/rust-lang/crates.io-index)",
- "slog 2.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "wasmi 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "web3 0.3.1 (git+https://github.com/tomusdrw/rust-web3)",
@@ -684,7 +679,6 @@ dependencies = [
  "hyper 0.12.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.24 (registry+https://github.com/rust-lang/crates.io-index)",
- "slog 2.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-executor 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -701,7 +695,6 @@ dependencies = [
  "graph 0.1.0",
  "lazy_static 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.24 (registry+https://github.com/rust-lang/crates.io-index)",
- "slog 2.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

@@ -6,14 +6,11 @@ extern crate lazy_static;
 extern crate graph;
 extern crate graph_store_postgres;
 extern crate serde_json;
-#[macro_use]
-extern crate slog;
 
 use diesel::pg::PgConnection;
 use diesel::*;
 use ethereum_types::H256;
 use futures::sync::oneshot;
-use slog::Logger;
 use std::panic;
 use std::sync::Mutex;
 

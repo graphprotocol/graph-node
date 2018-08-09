@@ -1,7 +1,6 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use futures::sync::oneshot;
 use graphql_parser;
-use slog;
 use std::error::Error;
 use std::fmt;
 use std::sync::Mutex;
@@ -32,7 +31,7 @@ impl fmt::Display for MockServeError {
 
 /// A mock `GraphQLServer`.
 pub struct MockGraphQLServer {
-    logger: slog::Logger,
+    logger: Logger,
     query_sink: Option<Sender<Query>>,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
     store_event_sink: Sender<StoreEvent>,
@@ -41,7 +40,7 @@ pub struct MockGraphQLServer {
 
 impl MockGraphQLServer {
     /// Creates a new mock `GraphQLServer`.
-    pub fn new(logger: &slog::Logger) -> Self {
+    pub fn new(logger: &Logger) -> Self {
         // Create channels for handling incoming events from the schema provider and the store
         let (store_sink, store_stream) = channel(100);
         let (schema_provider_sink, schema_provider_stream) = channel(100);

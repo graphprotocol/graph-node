@@ -1,8 +1,6 @@
 use ethereum_types::{H160, H256, U256};
-use futures::prelude::*;
 use futures::sync::mpsc::Sender;
 use serde_json;
-use slog::Logger;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -706,7 +704,6 @@ mod tests {
     use ethabi::{LogParam, Token};
     use ethereum_types::Address;
     use futures::sync::mpsc::channel;
-    use slog;
     use std::collections::HashMap;
     use std::iter::FromIterator;
     use std::sync::Mutex;

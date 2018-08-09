@@ -1,13 +1,11 @@
+extern crate ethabi;
 extern crate ethereum_types;
 extern crate futures;
-extern crate serde_json;
-#[macro_use]
-extern crate slog;
-extern crate ethabi;
 extern crate graph;
 extern crate hex;
 extern crate nan_preserving_float;
 extern crate num_bigint;
+extern crate serde_json;
 extern crate uuid;
 extern crate wasmi;
 extern crate web3;

@@ -1,9 +1,6 @@
-use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver};
 use graphql_parser::{schema, Pos};
-use slog;
 
-use graph::components::subgraph::{SchemaEvent, SubgraphProviderEvent};
 use graph::data::subgraph::SubgraphManifestResolveError;
 use graph::prelude::{SubgraphProvider as SubgraphProviderTrait, *};
 

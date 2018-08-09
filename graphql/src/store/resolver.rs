@@ -1,11 +1,10 @@
 use graphql_parser::{query as q, schema as s};
-use slog;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
 use graph::components::store::*;
-use graph::prelude::{BasicStore, Value};
+use graph::prelude::{slog::*, BasicStore, Value};
 
 use prelude::*;
 use query::ast as qast;
@@ -15,12 +14,12 @@ use store::query::build_subgraph_id;
 /// A resolver that fetches entities from a `Store`.
 #[derive(Clone)]
 pub struct StoreResolver {
-    logger: slog::Logger,
+    logger: Logger,
     store: Arc<Mutex<BasicStore>>,
 }
 
 impl StoreResolver {
-    pub fn new(logger: &slog::Logger, store: Arc<Mutex<BasicStore>>) -> Self {
+    pub fn new(logger: &Logger, store: Arc<Mutex<BasicStore>>) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,

@@ -5,17 +5,14 @@ use diesel::prelude::*;
 use diesel::sql_types::Text;
 use diesel::{delete, insert_into, result, select};
 use filter::store_filter;
-use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use graph::tokio;
 use serde_json;
-use slog;
 
 use functions::{revert_block, set_config};
-use graph::components::schema::SchemaProviderEvent;
-use graph::components::store::{Store as StoreTrait, *};
-use graph::data::store::*;
-use graph::util::stream::StreamError;
+
+use graph::components::store::{EventSource, Store as StoreTrait};
+use graph::prelude::*;
 
 embed_migrations!("./migrations");
 

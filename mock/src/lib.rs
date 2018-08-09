@@ -1,8 +1,6 @@
 extern crate futures;
-extern crate graphql_parser;
-#[macro_use]
-extern crate slog;
 extern crate graph;
+extern crate graphql_parser;
 
 mod query;
 mod schema;

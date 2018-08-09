@@ -5,7 +5,6 @@ extern crate graph_core;
 extern crate graph_mock;
 extern crate graph_runtime_wasm;
 extern crate ipfs_api;
-extern crate slog;
 
 use futures::{Future, Sink};
 use graph::components::ethereum::*;
