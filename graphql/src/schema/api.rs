@@ -212,9 +212,7 @@ fn field_scalar_filter_input_values(
     field: &Field,
     field_type: &ScalarType,
 ) -> Vec<InputValue> {
-
-    // Create where filters depending on field type
-    let filters = match field_type.name.as_ref() {
+    match field_type.name.as_ref() {
         "BigInt" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
         "Boolean" => vec!["", "not", "in", "not_in"],
         "Bytes" => vec!["", "not", "in", "not_in", "contains", "not_contains"],
@@ -239,17 +237,13 @@ fn field_scalar_filter_input_values(
             "not_ends_with",
         ],
         _ => vec!["", "not"],
-    };
-
-    // Create vector of input values out of the filter types
-    filters
-        .into_iter()
-        .filter_map(|filter_type| {
-            Some(input_value(
+    }.into_iter()
+        .map(|filter_type| {
+            input_value(
                 &field.name,
                 filter_type,
                 Type::NamedType(field_type.name.to_owned()),
-            ))
+            )
         })
         .collect()
 }
@@ -469,8 +463,30 @@ mod tests {
                 .iter()
                 .map(|field| field.name.to_owned())
                 .collect::<Vec<String>>(),
-            ["id", "id_not", "name", "name_not"]
-                .iter()
+            [
+                "id",
+                "id_not",
+                "id_gt",
+                "id_lt",
+                "id_gte",
+                "id_lte",
+                "id_in",
+                "id_not_in",
+                "name",
+                "name_not",
+                "name_gt",
+                "name_lt",
+                "name_gte",
+                "name_lte",
+                "name_in",
+                "name_not_in",
+                "name_contains",
+                "name_not_contains",
+                "name_starts_with",
+                "name_not_starts_with",
+                "name_ends_with",
+                "name_not_ends_with"
+            ].iter()
                 .map(|name| name.to_string())
                 .collect::<Vec<String>>()
         );
