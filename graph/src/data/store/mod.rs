@@ -45,6 +45,13 @@ impl Value {
                     .collect(),
             ),
 
+            (query::Value::List(values), NamedType(n)) => Value::List(
+                values
+                    .iter()
+                    .map(|value| Self::from_query_value(value, &NamedType(n.to_string())))
+                    .collect(),
+            ),
+
             (query::Value::String(s), NamedType(n)) => {
                 // Check if `ty` is a custom scalar type, otherwise assume it's
                 // just a string.
