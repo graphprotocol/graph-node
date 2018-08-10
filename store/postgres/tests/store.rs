@@ -606,6 +606,64 @@ fn find_string_multiple_and() {
 }
 
 #[test]
+fn find_string_ends_with() {
+    run_test(|| {
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let store = DieselStore::new(StoreConfig { url }, &logger);
+        let this_query = StoreQuery {
+            subgraph: String::from("test_subgraph"),
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![
+                StoreFilter::EndsWith(String::from("name"), Value::String(String::from("ini"))),
+            ])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: None,
+        };
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
+
+        // Check if the first user in the result vector is "Cindini"
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be one user returned in results
+        assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_string_not_ends_with() {
+    run_test(|| {
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let store = DieselStore::new(StoreConfig { url }, &logger);
+        let this_query = StoreQuery {
+            subgraph: String::from("test_subgraph"),
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![
+                StoreFilter::NotEndsWith(String::from("name"), Value::String(String::from("ini"))),
+            ])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: None,
+        };
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
+
+        // Check if the first user in the result vector is "Shaqueeena"
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Shaqueeena"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be 2 users returned in results
+        assert_eq!(2, returned_entities.len());
+    })
+}
+
+#[test]
 fn find_float_equal() {
     run_test(|| {
         let logger = Logger::root(slog::Discard, o!());
