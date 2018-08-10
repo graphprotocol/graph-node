@@ -822,7 +822,7 @@ mod tests {
     }
 
     fn mock_data_source() -> DataSource {
-        let runtime = parity_wasm::deserialize_file("test/example_event_handler.wasm")
+        let runtime = parity_wasm::deserialize_file("wasm_test/example_event_handler.wasm")
             .expect("Failed to deserialize wasm");
 
         DataSource {
