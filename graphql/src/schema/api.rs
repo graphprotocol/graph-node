@@ -239,11 +239,13 @@ fn field_scalar_filter_input_values(
         _ => vec!["", "not"],
     }.into_iter()
         .map(|filter_type| {
-            input_value(
-                &field.name,
-                filter_type,
-                Type::NamedType(field_type.name.to_owned()),
-            )
+            let value_type = match filter_type {
+                "in" | "not_in" => Type::ListType(Box::new(Type::NonNullType(Box::new(
+                    Type::NamedType(field_type.name.to_owned()),
+                )))),
+                _ => Type::NamedType(field_type.name.to_owned()),
+            };
+            input_value(&field.name, filter_type, value_type)
         })
         .collect()
 }
