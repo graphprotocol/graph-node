@@ -770,10 +770,9 @@ mod tests {
     use graph::components::store::*;
     use graph::components::subgraph::*;
     use graph::data::subgraph::*;
-    use graph::prelude::*;
     use graph::util;
 
-    use super::{WasmiModule, WasmiModuleConfig};
+    use super::*;
 
     #[derive(Default)]
     struct MockEthereumAdapter {}
@@ -821,9 +820,8 @@ mod tests {
         }
     }
 
-    fn mock_data_source() -> DataSource {
-        let runtime = parity_wasm::deserialize_file("wasm_test/example_event_handler.wasm")
-            .expect("Failed to deserialize wasm");
+    fn mock_data_source(path: &str) -> DataSource {
+        let runtime = parity_wasm::deserialize_file(path).expect("Failed to deserialize wasm");
 
         DataSource {
             kind: String::from("ethereum/contract"),
@@ -857,7 +855,7 @@ mod tests {
             &logger,
             WasmiModuleConfig {
                 subgraph: mock_subgraph(),
-                data_source: mock_data_source(),
+                data_source: mock_data_source("wasm_test/example_event_handler.wasm"),
                 event_sink: sender,
                 ethereum_adapter: mock_ethereum_adapter,
                 link_resolver: Arc::new(FakeLinkResolver),
@@ -903,7 +901,7 @@ mod tests {
                     &logger,
                     WasmiModuleConfig {
                         subgraph: mock_subgraph(),
-                        data_source: mock_data_source(),
+                        data_source: mock_data_source("wasm_test/example_event_handler.wasm"),
                         event_sink: sender,
                         ethereum_adapter: mock_ethereum_adapter,
                         link_resolver: Arc::new(FakeLinkResolver),
@@ -948,6 +946,94 @@ mod tests {
                                 .into_iter()
                         ))
                     )
+                );
+            })
+        }))
+    }
+
+    #[test]
+    fn json_conversions() {
+        tokio::run(future::lazy(|| {
+            Ok({
+                // Load the module
+                let logger = slog::Logger::root(slog::Discard, o!());
+                let (sender, _) = channel(1);
+                let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
+                let mut module = WasmiModule::new(
+                    &logger,
+                    WasmiModuleConfig {
+                        subgraph: mock_subgraph(),
+                        data_source: mock_data_source("wasm_test/string_to_number.wasm"),
+                        event_sink: sender,
+                        ethereum_adapter: mock_ethereum_adapter,
+                        link_resolver: Arc::new(FakeLinkResolver),
+                    },
+                );
+
+                // test u64 conversion
+                let number = 9223372036850770800;
+                let converted: u64 = module
+                    .module
+                    .invoke_export(
+                        "testToU64",
+                        &[RuntimeValue::from(module.heap.asc_new(&number.to_string()))],
+                        &mut module.externals,
+                    )
+                    .expect("call failed")
+                    .expect("call returned nothing")
+                    .try_into()
+                    .expect("call did not return I64");
+                assert_eq!(number, converted);
+
+                // test i64 conversion
+                let number = -9223372036850770800;
+                let converted: i64 = module
+                    .module
+                    .invoke_export(
+                        "testToI64",
+                        &[RuntimeValue::from(module.heap.asc_new(&number.to_string()))],
+                        &mut module.externals,
+                    )
+                    .expect("call failed")
+                    .expect("call returned nothing")
+                    .try_into()
+                    .expect("call did not return I64");
+                assert_eq!(number, converted);
+
+                // test f64 conversion
+                let number = F64::from(-9223372036850770.92345034);
+                let converted: F64 = module
+                    .module
+                    .invoke_export(
+                        "testToF64",
+                        &[RuntimeValue::from(
+                            module.heap.asc_new(&number.to_float().to_string()),
+                        )],
+                        &mut module.externals,
+                    )
+                    .expect("call failed")
+                    .expect("call returned nothing")
+                    .try_into()
+                    .expect("call did not return F64");
+                assert_eq!(number, converted);
+
+                // test BigInt conversion
+                let number = "-922337203685077092345034";
+                let big_int_obj: AscPtr<BigInt> = module
+                    .module
+                    .invoke_export(
+                        "testToBigInt",
+                        &[RuntimeValue::from(module.heap.asc_new(number))],
+                        &mut module.externals,
+                    )
+                    .expect("call failed")
+                    .expect("call returned nothing")
+                    .try_into()
+                    .expect("call did not return pointer");
+                let bytes: Vec<u8> = module.heap.asc_get(big_int_obj);
+                assert_eq!(
+                    scalar::BigInt::from_str(number).unwrap(),
+                    scalar::BigInt::from_signed_bytes_le(&bytes)
                 );
             })
         }))

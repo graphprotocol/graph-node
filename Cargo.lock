@@ -659,7 +659,6 @@ dependencies = [
  "graphql-parser 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "nan-preserving-float 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "num-bigint 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "parity-wasm 0.31.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "wasmi 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",

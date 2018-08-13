@@ -4,7 +4,6 @@ extern crate futures;
 extern crate graph;
 extern crate hex;
 extern crate nan_preserving_float;
-extern crate num_bigint;
 extern crate uuid;
 extern crate wasmi;
 extern crate web3;
