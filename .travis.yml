@@ -1,0 +1,52 @@
+dist: xenial
+language: rust
+rust:
+  - stable
+  - beta
+  - nightly
+  - 1.27.0
+  - 1.28.0
+
+# Select pre-installed services
+addons:
+  postgresql: "10"
+  apt:
+    packages:
+    - postgresql-10
+    - postgresql-client-10
+services:
+  - postgresql
+
+matrix:
+  fast_finish: true
+# Allow nightly to fail
+  allow_failures:
+    - rust: nightly
+  # Only check formatting when running against stable
+  include:
+    - env: CHECK_FORMATTING=true
+      if: group = stable
+
+# Cache dependencies
+cache: cargo
+
+env:
+  global:
+  - PGPORT=5433
+  - THEGRAPH_STORE_POSTGRES_DIESEL_URL=postgresql://travis:travis@localhost:5433/graph_node_test
+
+# Test pipeline
+before_script:
+  - if [ "$CHECK_FORMATTING" = "true" ]; then
+      rustup component add rustfmt-preview;
+    fi
+  - psql -c "ALTER USER travis WITH PASSWORD 'travis';"
+  - psql -c 'create database graph_node_test;' -U travis
+
+script:
+  # Check coding style
+  - if [ "$CHECK_FORMATTING" = "true" ]; then
+      cargo fmt --all -- --check;
+    fi
+  # Run unit and sccenario tests
+  - RUST_BACKTRACE=1 cargo test --verbose --all
