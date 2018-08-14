@@ -255,7 +255,11 @@ where
         let logger = self.logger.clone();
         self.event_sink
             .clone()
-            .send(RuntimeHostEvent::EntitySet(store_key, entity_data, EventSource::EthereumBlock(block_hash)))
+            .send(RuntimeHostEvent::EntitySet(
+                store_key,
+                entity_data,
+                EventSource::EthereumBlock(block_hash),
+            ))
             .map_err(move |e| {
                 error!(logger, "Failed to forward runtime host event";
                         "error" => format!("{}", e));
@@ -285,7 +289,10 @@ where
         let logger = self.logger.clone();
         self.event_sink
             .clone()
-            .send(RuntimeHostEvent::EntityRemoved(store_key, EventSource::EthereumBlock(block_hash)))
+            .send(RuntimeHostEvent::EntityRemoved(
+                store_key,
+                EventSource::EthereumBlock(block_hash),
+            ))
             .map_err(move |e| {
                 error!(logger, "Failed to forward runtime host event";
                         "error" => format!("{}", e));
@@ -945,7 +952,9 @@ mod tests {
                             vec![(String::from("exampleAttribute"), Value::from("some data"))]
                                 .into_iter()
                         )),
-                        EventSource::EthereumBlock(util::ethereum::string_to_h256("example block hash")),
+                        EventSource::EthereumBlock(util::ethereum::string_to_h256(
+                            "example block hash",
+                        )),
                     )
                 );
             })
