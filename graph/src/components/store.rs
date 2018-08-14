@@ -93,6 +93,7 @@ pub enum StoreEvent {
 }
 
 /// The source of the events being sent to the store
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventSource {
     EthereumBlock(H256),
 }
