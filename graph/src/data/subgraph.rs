@@ -12,6 +12,11 @@ use tokio::prelude::*;
 
 use std::sync::Arc;
 
+pub enum SubgraphProviderError {
+    ResolveError(SubgraphManifestResolveError),
+    SendError,
+}
+
 #[derive(Debug)]
 pub enum SubgraphManifestResolveError {
     ParseError(serde_yaml::Error),

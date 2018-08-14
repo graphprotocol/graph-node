@@ -1,6 +1,7 @@
 use components::EventProducer;
 use data::schema::Schema;
-use data::subgraph::SubgraphManifest;
+use data::subgraph::{SubgraphManifest, SubgraphProviderError};
+use tokio::prelude::*;
 
 /// Events emitted by [SubgraphProvider](trait.SubgraphProvider.html) implementations.
 #[derive(Clone, Debug)]
@@ -24,4 +25,8 @@ pub enum SchemaEvent {
 pub trait SubgraphProvider:
     EventProducer<SubgraphProviderEvent> + EventProducer<SchemaEvent>
 {
+    fn add(
+        &self,
+        link: String,
+    ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
 }

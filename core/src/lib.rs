@@ -3,7 +3,6 @@ extern crate futures;
 extern crate graph;
 extern crate graph_graphql;
 extern crate graph_runtime_wasm;
-extern crate graphql_parser;
 extern crate serde;
 extern crate serde_yaml;
 
