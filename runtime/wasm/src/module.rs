@@ -77,13 +77,14 @@ const TYPE_CONVERSION_H256_TO_H160_FUNC_INDEX: usize = 8;
 const TYPE_CONVERSION_H160_TO_H256_FUNC_INDEX: usize = 9;
 const TYPE_CONVERSION_U256_TO_H160_FUNC_INDEX: usize = 10;
 const TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX: usize = 11;
-const TYPE_CONVERSION_INT256_TO_BIG_INT_FUNC_INDEX: usize = 12;
-const JSON_FROM_BYTES_FUNC_INDEX: usize = 13;
-const JSON_TO_I64_FUNC_INDEX: usize = 14;
-const JSON_TO_U64_FUNC_INDEX: usize = 15;
-const JSON_TO_F64_FUNC_INDEX: usize = 16;
-const JSON_TO_BIG_INT_FUNC_INDEX: usize = 17;
-const IPFS_CAT_FUNC_INDEX: usize = 18;
+const TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX: usize = 12;
+const TYPE_CONVERSION_INT256_TO_BIG_INT_FUNC_INDEX: usize = 13;
+const JSON_FROM_BYTES_FUNC_INDEX: usize = 14;
+const JSON_TO_I64_FUNC_INDEX: usize = 15;
+const JSON_TO_U64_FUNC_INDEX: usize = 16;
+const JSON_TO_F64_FUNC_INDEX: usize = 17;
+const JSON_TO_BIG_INT_FUNC_INDEX: usize = 18;
+const IPFS_CAT_FUNC_INDEX: usize = 19;
 
 pub struct WasmiModuleConfig<T, L> {
     pub subgraph: SubgraphManifest,
@@ -444,8 +445,17 @@ where
         Ok(Some(RuntimeValue::from(h256_obj)))
     }
 
-    ///  This works for both U256 and I256.
-    ///  function typeConversion.int256ToBigInt(int256: Uint64Array): BigInt
+    /// function typeConversion.stringToH160(s: String): H160
+    fn string_to_h160(&self, str_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
+        let s: String = self.heap.asc_get(str_ptr);
+        let h160 = H160::from_str(s.as_str())
+            .map_err(|e| host_error(format!("Failed to convert string to Address/H160: {}", e)))?;
+        let h160_obj: AscPtr<AscH160> = self.heap.asc_new(&h160);
+        Ok(Some(RuntimeValue::from(h160_obj)))
+    }
+
+    /// This works for both U256 and I256.
+    /// function typeConversion.int256ToBigInt(int256: Uint64Array): BigInt
     fn int256_to_big_int(
         &self,
         int256_ptr: AscPtr<Uint64Array>,
@@ -567,6 +577,7 @@ where
             TYPE_CONVERSION_H160_TO_H256_FUNC_INDEX => self.h160_to_h256(args.nth_checked(0)?),
             TYPE_CONVERSION_U256_TO_H160_FUNC_INDEX => self.u256_to_h160(args.nth_checked(0)?),
             TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX => self.u256_to_h256(args.nth_checked(0)?),
+            TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX => self.string_to_h160(args.nth_checked(0)?),
             TYPE_CONVERSION_INT256_TO_BIG_INT_FUNC_INDEX => {
                 self.int256_to_big_int(args.nth_checked(0)?)
             }
@@ -690,6 +701,10 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
             "u256ToH256" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX,
+            ),
+            "stringToH160" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX,
             ),
             "int256ToBigInt" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
