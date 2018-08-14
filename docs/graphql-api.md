@@ -88,6 +88,56 @@ query {
 }
 ```
 
+# 1.4 Filtering
+
+You can use `where` parameter in your queries to filter for different properties
+
+#### Example
+Query challenges with `failed` outcome:
+
+```graphql
+{
+  challenges(where: {outcome: "failed"}) {
+    challenger
+    outcome
+    application {
+      id
+    }
+  }
+}
+```
+
+You can use suffixes like `_gt`, `_lte` for value comparison:
+
+#### Example
+```graphql
+{
+  applications(where: {deposit_gt:"10000000000"}) {
+    id
+    whitelisted
+    deposit
+  }
+}
+```
+
+Full list of parameter suffixes:
+```
+_not
+_gt
+_lt
+_gte
+_lte
+_in
+_not_in
+_contains
+_not_contains
+_starts_with
+_ends_with
+_not_starts_with
+_not_ends_with
+```
+
+
 # 3 Schema
 
 The schema of your data source--that is, the entity types, values and relationships that are available to query--are defined through the [GraphQL Interface Definition Langauge (IDL)] (http://facebook.github.io/graphql/draft/#sec-Type-System).
