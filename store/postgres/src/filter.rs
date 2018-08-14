@@ -272,7 +272,7 @@ fn store_filter_by_mode<'a>(
         // Is `attribute` equal to some `v` in `query_values`?
         StoreFilter::In(attribute, query_values) => {
             query_values.into_iter().try_fold(query, |q, v| {
-                store_filter_by_mode(q, StoreFilter::Equal(attribute.clone(), v), FilterMode::Or)
+                store_filter_by_mode(q, StoreFilter::Equal(attribute.clone(), v), FilterMode::And)
             })?
         }
         // Is `attribute` different from all `query_values`?

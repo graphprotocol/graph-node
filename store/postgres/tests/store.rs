@@ -398,7 +398,7 @@ fn find_string_not_equal() {
         assert!(returned_name.is_some());
         assert_ne!(&test_value, returned_name.unwrap());
 
-        // There should be two users returned in results
+        // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -428,7 +428,7 @@ fn find_string_greater_than() {
         assert!(returned_name.is_some());
         assert_ne!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
     })
 }
@@ -458,7 +458,7 @@ fn find_string_less_than() {
         assert!(returned_name.is_some());
         assert_ne!(&test_value, returned_name.unwrap());
 
-        //There should be two users returned in results
+        //There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -570,7 +570,7 @@ fn find_string_less_than_range() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
     })
 }
@@ -600,7 +600,7 @@ fn find_string_multiple_and() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
     })
 }
@@ -614,9 +614,10 @@ fn find_string_ends_with() {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![
-                StoreFilter::EndsWith(String::from("name"), Value::String(String::from("ini"))),
-            ])),
+            filter: Some(StoreFilter::And(vec![StoreFilter::EndsWith(
+                String::from("name"),
+                Value::String(String::from("ini")),
+            )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
@@ -629,7 +630,7 @@ fn find_string_ends_with() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
     })
 }
@@ -643,9 +644,10 @@ fn find_string_not_ends_with() {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![
-                StoreFilter::NotEndsWith(String::from("name"), Value::String(String::from("ini"))),
-            ])),
+            filter: Some(StoreFilter::And(vec![StoreFilter::NotEndsWith(
+                String::from("name"),
+                Value::String(String::from("ini")),
+            )])),
             order_by: Some(String::from("name")),
             order_direction: Some(StoreOrder::Descending),
             range: None,
@@ -659,6 +661,67 @@ fn find_string_not_ends_with() {
         assert_eq!(&test_value, returned_name.unwrap());
 
         // There should be 2 users returned in results
+        assert_eq!(2, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_string_in() {
+    run_test(|| {
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let store = DieselStore::new(StoreConfig { url }, &logger);
+        let this_query = StoreQuery {
+            subgraph: String::from("test_subgraph"),
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::In(
+                String::from("name"),
+                vec![Value::String(String::from("Johnton"))],
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: None,
+        };
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
+
+        // Check if the first user in the result vector is "Johnton"
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Johnton"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be 1 user returned in results
+        assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_string_not_in() {
+    run_test(|| {
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let store = DieselStore::new(StoreConfig { url }, &logger);
+        let this_query = StoreQuery {
+            subgraph: String::from("test_subgraph"),
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::NotIn(
+                String::from("name"),
+                vec![Value::String(String::from("Shaqueeena"))],
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: None,
+        };
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
+
+        // Check if the first user in the result vector is "Johnton"
+        let returned_name = returned_entities[0].get(&String::from("name"));
+
+        let test_value = Value::String(String::from("Johnton"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be 2 user returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -688,7 +751,7 @@ fn find_float_equal() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
     })
 }
@@ -718,7 +781,7 @@ fn find_float_not_equal() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be two users returned in results
+        // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -748,7 +811,7 @@ fn find_float_greater_than() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
     })
 }
@@ -778,7 +841,7 @@ fn find_float_less_than() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        //There should be two users returned in results
+        //There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -808,7 +871,7 @@ fn find_float_less_than_order_by_desc() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be two users returned in results
+        // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -837,7 +900,67 @@ fn find_float_less_than_range() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be 1 user returned in results
+        assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_float_in() {
+    run_test(|| {
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let store = DieselStore::new(StoreConfig { url }, &logger);
+        let this_query = StoreQuery {
+            subgraph: String::from("test_subgraph"),
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::In(
+                String::from("weight"),
+                vec![Value::Float(184.4 as f32), Value::Float(111.7 as f32)],
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: Some(StoreRange { first: 5, skip: 0 }),
+        };
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
+
+        // Check if the first user in the result vector is "Shaqueeena"
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Shaqueeena"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be 2 users returned in results
+        assert_eq!(2, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_float_not_in() {
+    run_test(|| {
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let store = DieselStore::new(StoreConfig { url }, &logger);
+        let this_query = StoreQuery {
+            subgraph: String::from("test_subgraph"),
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::NotIn(
+                String::from("weight"),
+                vec![Value::Float(184.4 as f32), Value::Float(111.7 as f32)],
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: Some(StoreRange { first: 5, skip: 0 }),
+        };
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
+
+        // Check if the first user in the result vector is "Cindini"
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be 1 users returned in results
         assert_eq!(1, returned_entities.len());
     })
 }
@@ -861,13 +984,13 @@ fn find_int_equal() {
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
 
-        // Check if the first user in the result vector is "Shaqueeena"
+        // Check if the first user in the result vector is "Johnton"
         let returned_name = returned_entities[0].get(&String::from("name"));
         let test_value = Value::String(String::from("Johnton"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one users returned in results
+        // There should be 1 users returned in results
         assert_eq!(1, returned_entities.len());
     })
 }
@@ -897,7 +1020,7 @@ fn find_int_not_equal() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be two users returned in results
+        // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -927,7 +1050,7 @@ fn find_int_greater_than() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
     })
 }
@@ -957,7 +1080,7 @@ fn find_int_greater_or_equal() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -987,7 +1110,7 @@ fn find_int_less_than() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        //There should be two users returned in results
+        //There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -1017,7 +1140,7 @@ fn find_int_less_or_equal() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        //There should be two users returned in results
+        //There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -1047,7 +1170,7 @@ fn find_int_less_than_order_by_desc() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be two users returned in results
+        // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -1077,7 +1200,67 @@ fn find_int_less_than_range() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be 1 user returned in results
+        assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_int_in() {
+    run_test(|| {
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let store = DieselStore::new(StoreConfig { url }, &logger);
+        let this_query = StoreQuery {
+            subgraph: String::from("test_subgraph"),
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::In(
+                String::from("age"),
+                vec![Value::Int(67 as i32), Value::Int(43 as i32)],
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: Some(StoreRange { first: 5, skip: 0 }),
+        };
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
+
+        // Check if the first user in the result vector is "Johnton"
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Johnton"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be 2 users returned in results
+        assert_eq!(2, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_int_not_in() {
+    run_test(|| {
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let store = DieselStore::new(StoreConfig { url }, &logger);
+        let this_query = StoreQuery {
+            subgraph: String::from("test_subgraph"),
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::NotIn(
+                String::from("age"),
+                vec![Value::Int(67 as i32), Value::Int(43 as i32)],
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: Some(StoreRange { first: 5, skip: 0 }),
+        };
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
+
+        // Check if the first user in the result vector is "Shaqueeena"
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Shaqueeena"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be 1 users returned in results
         assert_eq!(1, returned_entities.len());
     })
 }
@@ -1107,7 +1290,7 @@ fn find_bool_equal() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
     })
 }
@@ -1137,7 +1320,67 @@ fn find_bool_not_equal() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be two users returned in results
+        // There should be 2 users returned in results
+        assert_eq!(2, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_bool_in() {
+    run_test(|| {
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let store = DieselStore::new(StoreConfig { url }, &logger);
+        let this_query = StoreQuery {
+            subgraph: String::from("test_subgraph"),
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::In(
+                String::from("coffee"),
+                vec![Value::Bool(true)],
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: Some(StoreRange { first: 5, skip: 0 }),
+        };
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
+
+        // Check if the first user in the result vector is "Cindini"
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Cindini"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be 1 user returned in results
+        assert_eq!(1, returned_entities.len());
+    })
+}
+
+#[test]
+fn find_bool_not_in() {
+    run_test(|| {
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let store = DieselStore::new(StoreConfig { url }, &logger);
+        let this_query = StoreQuery {
+            subgraph: String::from("test_subgraph"),
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::NotIn(
+                String::from("coffee"),
+                vec![Value::Bool(true)],
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: Some(StoreRange { first: 5, skip: 0 }),
+        };
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
+
+        // Check if the first user in the result vector is "Shaqueeena"
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Shaqueeena"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
     })
 }
@@ -1177,7 +1420,7 @@ fn revert_block() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one user returned in results
+        // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
 
         // Perform revert operation again to confirm idempotent nature of revert_events()
@@ -1228,13 +1471,13 @@ fn revert_block_with_delete() {
             .find(this_query.clone())
             .expect("store.find operation failed");
 
-        // Check if "cindini@email.com" is in result set
+        // Check if "dinici@email.com" is in result set
         let returned_name = returned_entities[0].get(&String::from("email"));
         let test_value = Value::String(String::from("dinici@email.com"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        // There should be one entity returned in results
+        // There should be 1 entity returned in results
         assert_eq!(1, returned_entities.len());
 
         // Perform revert operation again to confirm idempotent nature of revert_events()
