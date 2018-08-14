@@ -14,3 +14,4 @@ mod subgraph;
 pub use query::QueryRunner;
 pub use schema::SchemaProvider;
 pub use subgraph::RuntimeManager;
+pub use subgraph::SubgraphProvider;

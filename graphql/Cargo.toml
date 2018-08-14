@@ -13,4 +13,4 @@ graph = { path = "../graph" }
 futures = "0.1.21"
 pretty_assertions = "0.5.1"
 graph-mock = { path = "../mock" }
-graph-node = { path = "../node" }
+graph-core = { path = "../core" }

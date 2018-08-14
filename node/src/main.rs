@@ -1,7 +1,6 @@
 extern crate clap;
 extern crate env_logger;
 extern crate futures;
-extern crate graph_node;
 #[macro_use]
 extern crate sentry;
 extern crate graph;
@@ -23,8 +22,8 @@ use std::sync::Mutex;
 use graph::components::forward;
 use graph::prelude::*;
 use graph::util::log::logger;
+use graph_core::SubgraphProvider as IpfsSubgraphProvider;
 use graph_datasource_ethereum::Transport;
-use graph_node::SubgraphProvider as IpfsSubgraphProvider;
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as HyperGraphQLServer;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
