@@ -48,11 +48,7 @@ impl RuntimeManager where {
                     store
                         .lock()
                         .unwrap()
-                        .set(
-                            store_key,
-                            entity,
-                            event_source,
-                        )
+                        .set(store_key, entity, event_source)
                         .expect("Failed to set entity in the store");
                 }
                 RuntimeHostEvent::EntityRemoved(store_key, event_source) => {
