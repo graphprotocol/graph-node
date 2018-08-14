@@ -1,13 +1,4 @@
 steps:
-  - label: Install rustfmt
-    command: rustup component add rustfmt-preview
-  - wait
-  - label: Check coding style
-    command: cargo fmt --all -- --write-mode=diff
-  - label: Run tests
-    command:
-    - ./.buildkite/run-tests.sh
-  - wait
   - label: Deploy to staging
     trigger: the-graph-network-staging-deployment
     branches: master
