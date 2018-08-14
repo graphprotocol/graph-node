@@ -1,8 +1,6 @@
-use ethereum_types::H256;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Mutex;
 
-use graph::components::store::EventSource;
 use graph::components::subgraph::RuntimeHostEvent;
 use graph::components::subgraph::SubgraphProviderEvent;
 use graph::prelude::*;
@@ -46,22 +44,22 @@ impl RuntimeManager where {
         // Handles each incoming event from the subgraph.
         fn handle_event<S: Store + 'static>(store: Arc<Mutex<S>>, event: RuntimeHostEvent) {
             match event {
-                RuntimeHostEvent::EntitySet(store_key, entity) => {
+                RuntimeHostEvent::EntitySet(store_key, entity, event_source) => {
                     store
                         .lock()
                         .unwrap()
                         .set(
                             store_key,
                             entity,
-                            EventSource::EthereumBlock(H256::random()),
+                            event_source,
                         )
                         .expect("Failed to set entity in the store");
                 }
-                RuntimeHostEvent::EntityRemoved(store_key) => {
+                RuntimeHostEvent::EntityRemoved(store_key, event_source) => {
                     store
                         .lock()
                         .unwrap()
-                        .delete(store_key, EventSource::EthereumBlock(H256::random()))
+                        .delete(store_key, event_source)
                         .expect("Failed to delete entity from the store");
                 }
             }
