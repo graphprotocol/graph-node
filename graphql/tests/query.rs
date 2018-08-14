@@ -12,11 +12,10 @@ use std::sync::Mutex;
 
 use graph::components::store::EventSource;
 use graph::prelude::*;
-use graph_core::SubgraphProvider;
 use graph_graphql::prelude::*;
 
 fn test_schema() -> Schema {
-    let schema = Schema {
+    let mut schema = Schema {
         id: String::from("test-schema"),
         document: api_schema(
             &graphql_parser::parse_schema(
@@ -44,7 +43,8 @@ fn test_schema() -> Schema {
             ).expect("Test schema invalid"),
         ).expect("Failed to derive API schema from test schema"),
     };
-    SubgraphProvider::add_subgraph_id_directives(&mut schema.clone(), String::from("test_subgraph"))
+    schema.add_subgraph_id_directives(String::from("test_subgraph"));
+    schema
 }
 
 #[derive(Clone)]

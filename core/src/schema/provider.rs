@@ -119,7 +119,7 @@ impl SchemaProvider {
 
 #[cfg(test)]
 mod tests {
-    use graphql_parser;
+    extern crate graphql_parser;
 
     use graph::prelude::*;
     use graph_graphql::schema::ast;

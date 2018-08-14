@@ -5,7 +5,6 @@ version = "0.1.0"
 [dependencies]
 ethereum-types = "0.3"
 futures = "0.1.21"
-graphql-parser = "0.2.0"
 graph = { path = "../graph" }
 graph-graphql = { path = "../graphql" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
@@ -14,5 +13,6 @@ serde_yaml = "0.7"
 
 [dev-dependencies]
 ethabi = "5.1.1"
+graphql-parser = "0.2.0"
 ipfs-api = "0.5.0-alpha2"
 graph-mock = { path = "../mock" }
