@@ -3,7 +3,7 @@ use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::sql_types::Text;
-use diesel::{delete, insert_into, result, select};
+use diesel::{debug_query, delete, insert_into, result, select};
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use graph::serde_json;
@@ -66,6 +66,7 @@ impl Store {
         // Create the entities table (if necessary)
         initiate_schema(&logger, &conn);
 
+        println!("CREATING THE STORE");
         // Create the store
         let mut store = Store {
             logger,
@@ -233,6 +234,9 @@ impl BasicStore for Store {
                 .offset(range.skip as i64);
         }
 
+        let copy = diesel_query;
+        let debug = debug_query::<Pg, _>(&copy);
+        println!("DEBUG FIND QUERY, query: {:?}", debug);
         // Process results; deserialize JSON data
         diesel_query
             .load::<serde_json::Value>(&self.conn)
