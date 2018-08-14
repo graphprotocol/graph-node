@@ -15,7 +15,7 @@ use wasmi::{
 use web3::types::BlockId;
 
 use graph::components::ethereum::*;
-use graph::components::store::StoreKey;
+use graph::components::store::{EventSource, StoreKey};
 use graph::components::subgraph::RuntimeHostEvent;
 use graph::data::store::scalar;
 use graph::data::subgraph::DataSource;
@@ -239,7 +239,7 @@ where
         id_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<AscEntity>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let _block_hash: H256 = self.block_hash.clone();
+        let block_hash: H256 = self.block_hash.clone();
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
@@ -255,7 +255,7 @@ where
         let logger = self.logger.clone();
         self.event_sink
             .clone()
-            .send(RuntimeHostEvent::EntitySet(store_key, entity_data))
+            .send(RuntimeHostEvent::EntitySet(store_key, entity_data, EventSource::EthereumBlock(block_hash)))
             .map_err(move |e| {
                 error!(logger, "Failed to forward runtime host event";
                         "error" => format!("{}", e));
@@ -272,7 +272,7 @@ where
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let _block_hash: H256 = self.block_hash.clone();
+        let block_hash: H256 = self.block_hash.clone();
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let store_key = StoreKey {
@@ -285,7 +285,7 @@ where
         let logger = self.logger.clone();
         self.event_sink
             .clone()
-            .send(RuntimeHostEvent::EntityRemoved(store_key))
+            .send(RuntimeHostEvent::EntityRemoved(store_key, EventSource::EthereumBlock(block_hash)))
             .map_err(move |e| {
                 error!(logger, "Failed to forward runtime host event";
                         "error" => format!("{}", e));
@@ -944,7 +944,8 @@ mod tests {
                         Entity::from(HashMap::from_iter(
                             vec![(String::from("exampleAttribute"), Value::from("some data"))]
                                 .into_iter()
-                        ))
+                        )),
+                        EventSource::EthereumBlock(util::ethereum::string_to_h256("example block hash")),
                     )
                 );
             })

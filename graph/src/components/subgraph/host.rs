@@ -4,9 +4,9 @@ use prelude::*;
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeHostEvent {
     /// An entity should be created or updated.
-    EntitySet(StoreKey, Entity),
+    EntitySet(StoreKey, Entity, EventSource),
     /// An entity should be removed.
-    EntityRemoved(StoreKey),
+    EntityRemoved(StoreKey, EventSource),
 }
 
 /// Common trait for runtime host implementations.

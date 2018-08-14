@@ -54,7 +54,7 @@ pub mod prelude {
     pub use components::schema::{SchemaProvider, SchemaProviderEvent};
     pub use components::server::GraphQLServer;
     pub use components::store::{
-        BasicStore, Store, StoreEvent, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
+        BasicStore, EventSource, Store, StoreEvent, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
     };
     pub use components::subgraph::{
         RuntimeHost, RuntimeHostBuilder, RuntimeHostEvent, RuntimeManager, SchemaEvent,
