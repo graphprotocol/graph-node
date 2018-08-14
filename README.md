@@ -4,6 +4,9 @@
 
 # Graph Node
 
+[![Build Status](https://travis-ci.org/graphprotocol/graph-node.svg?branch=master)](https://travis-ci.org/graphprotocol/graph-node)
+[![Getting Started Docs](https://img.shields.io/badge/docs-getting--started-brightgreen.svg)](docs/getting-started.md)
+
 [The Graph](https://thegraph.com/) is a protocol for building decentralized applications quickly on Ethereum and IPFS using GraphQL.
 
 Graph Node is an open source Rust implementation that event-sources the Ethereum blockchain to deterministically update a datastore which can be queried via the GraphQL endpoint.
