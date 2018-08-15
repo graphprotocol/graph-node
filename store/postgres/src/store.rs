@@ -233,9 +233,8 @@ impl BasicStore for Store {
                 .offset(range.skip as i64);
         }
 
-        {
-            debug!(self.logger, "find"; "Postgres query" => format!("{:?}", debug_query::<Pg, _>(&diesel_query)));
-        }
+        debug!(self.logger, "find";
+                "sql" => format!("{:?}", debug_query::<Pg, _>(&diesel_query)));
 
         // Process results; deserialize JSON data
         diesel_query
