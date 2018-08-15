@@ -1,7 +1,12 @@
 use graphql_parser::query;
 use graphql_parser::schema;
 
+use bigdecimal::BigDecimal;
+use diesel::pg::Pg;
+use diesel::serialize::{self, Output, ToSql};
+use diesel::sql_types::{Bool, Float, Integer, Numeric, Text};
 use std::collections::{BTreeMap, HashMap};
+use std::io::Write;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
@@ -17,7 +22,7 @@ pub const BYTES_SCALAR: &str = "Bytes";
 pub const BIG_INT_SCALAR: &str = "BigInt";
 
 /// An attribute value is represented as an enum with variants for all supported value types.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, AsExpression)]
 #[serde(untagged)]
 pub enum Value {
     String(String),
@@ -111,6 +116,55 @@ impl From<String> for Value {
 impl<'a> From<&'a String> for Value {
     fn from(value: &'a String) -> Value {
         Value::String(value.clone())
+    }
+}
+
+impl ToSql<Bool, Pg> for Value {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
+        match *self {
+            Value::Bool(ref b) => <bool as ToSql<Bool, Pg>>::to_sql(&b, out),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl ToSql<Float, Pg> for Value {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
+        match *self {
+            Value::Float(ref f) => <f32 as ToSql<Float, Pg>>::to_sql(&f, out),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl ToSql<Integer, Pg> for Value {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
+        match *self {
+            Value::Int(ref i) => <i32 as ToSql<Integer, Pg>>::to_sql(&i, out),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl ToSql<Numeric, Pg> for Value {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
+        match *self {
+            Value::BigInt(ref number) => <BigDecimal as ToSql<Numeric, Pg>>::to_sql(
+                &BigDecimal::from_str(&number.to_string()).unwrap(),
+                out,
+            ),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl ToSql<Text, Pg> for Value {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
+        match *self {
+            Value::String(ref s) => <String as ToSql<Text, Pg>>::to_sql(&s, out),
+            Value::Bytes(ref h) => <String as ToSql<Text, Pg>>::to_sql(&h.to_string(), out),
+            _ => unimplemented!(),
+        }
     }
 }
 
