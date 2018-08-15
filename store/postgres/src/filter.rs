@@ -12,8 +12,8 @@ use diesel::AppearsOnTable;
 
 use graph::components::store::StoreFilter;
 use graph::data::store::*;
-
 use graph::serde_json;
+use models::SqlValue;
 
 pub(crate) struct UnsupportedFilter {
     pub filter: String,
@@ -281,7 +281,7 @@ fn store_filter_by_mode<'a>(
                         .sql(")")
                         .sql("::boolean")
                         .sql(op)
-                        .bind::<Array<Bool>, _>(query_values)
+                        .bind::<Array<Bool>, _>(SqlValue::new_array(query_values))
                         .sql(")"),
                 ),
                 Value::BigInt(_) => add_filter(
@@ -292,7 +292,7 @@ fn store_filter_by_mode<'a>(
                         .sql(")")
                         .sql("::numeric")
                         .sql(op)
-                        .bind::<Array<Numeric>, _>(query_values)
+                        .bind::<Array<Numeric>, _>(SqlValue::new_array(query_values))
                         .sql(")"),
                 ),
                 Value::Bytes(_) => add_filter(
@@ -301,7 +301,7 @@ fn store_filter_by_mode<'a>(
                     sql("data ->> ")
                         .bind::<Text, _>(attribute)
                         .sql(op)
-                        .bind::<Array<Text>, _>(query_values)
+                        .bind::<Array<Text>, _>(SqlValue::new_array(query_values))
                         .sql(")"),
                 ),
                 Value::Float(_) => add_filter(
@@ -312,7 +312,7 @@ fn store_filter_by_mode<'a>(
                         .sql(")")
                         .sql("::float")
                         .sql(op)
-                        .bind::<Array<Float>, _>(query_values)
+                        .bind::<Array<Float>, _>(SqlValue::new_array(query_values))
                         .sql(")"),
                 ),
                 Value::Int(_) => add_filter(
@@ -323,7 +323,7 @@ fn store_filter_by_mode<'a>(
                         .sql(")")
                         .sql("::int")
                         .sql(op)
-                        .bind::<Array<Integer>, _>(query_values)
+                        .bind::<Array<Integer>, _>(SqlValue::new_array(query_values))
                         .sql(")"),
                 ),
                 Value::String(_) => add_filter(
@@ -332,7 +332,7 @@ fn store_filter_by_mode<'a>(
                     sql("data ->> ")
                         .bind::<Text, _>(attribute)
                         .sql(op)
-                        .bind::<Array<Text>, _>(query_values)
+                        .bind::<Array<Text>, _>(SqlValue::new_array(query_values))
                         .sql(")"),
                 ),
                 _ => unimplemented!(),

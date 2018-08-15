@@ -10,6 +10,8 @@ ethereum-types = "0.3"
 diesel-dynamic-schema = { git = "https://github.com/diesel-rs/diesel-dynamic-schema" }
 futures = "0.1.21"
 graph = { path = "../../graph" }
+slog = "2.2.3"
+serde_json = "1.0"
 
 [dev-dependencies]
 lazy_static = "1.1"

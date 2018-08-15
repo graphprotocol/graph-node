@@ -3,8 +3,6 @@ name = "graph"
 version = "0.1.0"
 
 [dependencies]
-bigdecimal = "0.0.11"
-diesel = { version = "1.3.2", features = ["postgres", "serde_json", "numeric"] }
 ethabi = "5.1"
 ethereum-types = "0.3"
 hex = "0.3.2"
