@@ -66,7 +66,6 @@ impl Store {
         // Create the entities table (if necessary)
         initiate_schema(&logger, &conn);
 
-        println!("CREATING THE STORE");
         // Create the store
         let mut store = Store {
             logger,
@@ -234,9 +233,10 @@ impl BasicStore for Store {
                 .offset(range.skip as i64);
         }
 
-        let copy = diesel_query;
-        let debug = debug_query::<Pg, _>(&copy);
-        println!("DEBUG FIND QUERY, query: {:?}", debug);
+        {
+            debug!(self.logger, "find"; "Postgres query" => format!("{:?}", debug_query::<Pg, _>(&diesel_query)));
+        }
+
         // Process results; deserialize JSON data
         diesel_query
             .load::<serde_json::Value>(&self.conn)
