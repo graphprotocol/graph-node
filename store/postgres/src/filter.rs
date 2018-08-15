@@ -7,7 +7,7 @@ use diesel::expression::NonAggregate;
 use diesel::pg::Pg;
 use diesel::prelude::*;
 use diesel::query_builder::{BoxedSelectStatement, QueryFragment};
-use diesel::sql_types::{Bool, Float, Integer, Jsonb, Numeric, Text};
+use diesel::sql_types::{Array, Bool, Float, Integer, Jsonb, Numeric, Text};
 use diesel::AppearsOnTable;
 
 use graph::components::store::StoreFilter;
@@ -271,9 +271,72 @@ fn store_filter_by_mode<'a>(
         }
         // Is `attribute` equal to some `v` in `query_values`?
         StoreFilter::In(attribute, query_values) => {
-            query_values.into_iter().try_fold(query, |q, v| {
-                store_filter_by_mode(q, StoreFilter::Equal(attribute.clone(), v), FilterMode::And)
-            })?
+            let op = " = ANY (";
+            match query_values[0].clone() {
+                Value::Bool(_) => add_filter(
+                    query,
+                    filter_mode,
+                    sql("(data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(")")
+                        .sql("::boolean")
+                        .sql(op)
+                        .bind::<Array<Bool>, _>(query_values)
+                        .sql(")"),
+                ),
+                Value::BigInt(_) => add_filter(
+                    query,
+                    filter_mode,
+                    sql("data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(")")
+                        .sql("::numeric")
+                        .sql(op)
+                        .bind::<Array<Numeric>, _>(query_values)
+                        .sql(")"),
+                ),
+                Value::Bytes(_) => add_filter(
+                    query,
+                    filter_mode,
+                    sql("data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(op)
+                        .bind::<Array<Text>, _>(query_values)
+                        .sql(")"),
+                ),
+                Value::Float(_) => add_filter(
+                    query,
+                    filter_mode,
+                    sql("(data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(")")
+                        .sql("::float")
+                        .sql(op)
+                        .bind::<Array<Float>, _>(query_values)
+                        .sql(")"),
+                ),
+                Value::Int(_) => add_filter(
+                    query,
+                    filter_mode,
+                    sql("(data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(")")
+                        .sql("::int")
+                        .sql(op)
+                        .bind::<Array<Integer>, _>(query_values)
+                        .sql(")"),
+                ),
+                Value::String(_) => add_filter(
+                    query,
+                    filter_mode,
+                    sql("data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(op)
+                        .bind::<Array<Text>, _>(query_values)
+                        .sql(")"),
+                ),
+                _ => unimplemented!(),
+            }
         }
         // Is `attribute` different from all `query_values`?
         StoreFilter::NotIn(attribute, query_values) => {
