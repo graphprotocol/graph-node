@@ -137,6 +137,7 @@ _not_starts_with
 _not_ends_with
 ```
 
+Please note that some suffixes are only supported for specific types. For example, `Boolean` only supports `"_not", "_in", "_not_in"`. For full details about this please refer to [graphql/src/schema/api.rs, line 215](https://github.com/graphprotocol/graph-node/blob/d4c721bcb166315081649fafb22eead946c89c52/graphql/src/schema/api.rs#L215).
 
 # 3 Schema
 
