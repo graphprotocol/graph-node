@@ -13,6 +13,7 @@ extern crate serde;
 extern crate serde_derive;
 #[macro_use]
 extern crate slog;
+extern crate uuid;
 
 pub mod db_schema;
 mod entity_changes;
