@@ -11,7 +11,7 @@ use graph::components::store::{EventSource, Store as StoreTrait};
 use graph::prelude::*;
 use graph::serde_json;
 
-use entity_changes::{EntityChange, EntityChangeListener};
+use entity_changes::EntityChangeListener;
 use functions::{revert_block, set_config};
 
 embed_migrations!("./migrations");

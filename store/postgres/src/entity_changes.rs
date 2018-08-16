@@ -7,14 +7,6 @@ use futures::sync::mpsc::{channel, Receiver};
 use graph::prelude::*;
 use graph::serde_json;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EntityChange {
-    pub subgraph: String,
-    pub entity: String,
-    pub id: String,
-    pub data: Entity,
-}
-
 pub struct EntityChangeListener {
     output: Option<Receiver<EntityChange>>,
 }
