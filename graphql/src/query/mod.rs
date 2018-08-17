@@ -1,11 +1,68 @@
+use graphql_parser::query as q;
+
+use graph::prelude::*;
+
+use execution::*;
+use prelude::*;
+use query::ast as qast;
+
 /// Utilities for working with GraphQL query ASTs.
 pub mod ast;
 
-/// Implementation of the GraphQL query execution algorithm.
-pub mod execution;
+/// Options available for query execution.
+pub struct QueryExecutionOptions<R>
+where
+    R: Resolver,
+{
+    /// The logger to use during query execution.
+    pub logger: slog::Logger,
+    /// The resolver to use.
+    pub resolver: R,
+}
 
-/// Common trait for field resolvers used in the execution.
-pub mod resolver;
+/// Executes a query and returns a result.
+pub fn execute_query<R>(query: &Query, options: QueryExecutionOptions<R>) -> QueryResult
+where
+    R: Resolver,
+{
+    info!(options.logger, "Execute query");
 
-pub use self::execution::{execute, ExecutionOptions};
-pub use self::resolver::Resolver;
+    // Obtain the only operation of the query (fail if there is none or more than one)
+    let operation = match qast::get_operation(&query.document, None) {
+        Ok(op) => op,
+        Err(e) => return QueryResult::from(e),
+    };
+
+    // Create an introspection type store and resolver
+    let introspection_schema = introspection_schema();
+    let introspection_resolver = IntrospectionResolver::new(&options.logger, &query.schema);
+
+    // Create a fresh execution context
+    let ctx = ExecutionContext {
+        logger: options.logger,
+        resolver: Arc::new(options.resolver),
+        schema: &query.schema,
+        introspection_resolver: Arc::new(introspection_resolver),
+        introspection_schema: &introspection_schema,
+        introspecting: false,
+        query,
+        fields: vec![],
+    };
+
+    match operation {
+        // Execute top-level `query { ... }` expressions
+        &q::OperationDefinition::Query(q::Query {
+            ref selection_set, ..
+        }) => execute_root_selection_set(ctx, selection_set, &None),
+
+        // Execute top-level `{ ... }` expressions
+        &q::OperationDefinition::SelectionSet(ref selection_set) => {
+            execute_root_selection_set(ctx, selection_set, &None)
+        }
+
+        // Everything else (e.g. mutations) is unsupported
+        _ => QueryResult::from(QueryExecutionError::NotSupported(
+            "Only queries are supported".to_string(),
+        )),
+    }
+}
