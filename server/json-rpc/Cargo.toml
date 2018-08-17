@@ -1,0 +1,10 @@
+[package]
+name = "graph-server-json-rpc"
+version = "0.1.0"
+authors = ["Leonardo Yvens Schwarzstein <leoyvens@gmail.com>"]
+
+[dependencies]
+graph = { path = "../../graph" }
+jsonrpc-http-server = { git = "https://github.com/paritytech/jsonrpc" }
+serde = "1.0"
+serde_derive = "1.0"

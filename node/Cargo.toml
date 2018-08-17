@@ -7,6 +7,7 @@ clap = "2.31.2"
 env_logger = "0.5.10"
 futures = "0.1.21"
 graphql-parser = "0.2.1"
+reqwest = "0.8.7"
 sentry = "0.3.1"
 ipfs-api = "0.5.0-alpha2"
 graph = { path = "../graph" }
@@ -15,6 +16,7 @@ graph-datasource-ethereum = { path = "../datasource/ethereum" }
 graph-mock = { path = "../mock" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-http = { path = "../server/http" }
+graph-server-json-rpc = { path = "../server/json-rpc"}
 graph-store-postgres = { path = "../store/postgres" }
 
 [dev-dependencies]

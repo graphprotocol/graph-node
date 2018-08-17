@@ -10,8 +10,10 @@ extern crate serde_derive;
 extern crate serde_yaml;
 #[macro_use]
 pub extern crate slog;
+#[macro_use]
 extern crate failure;
 extern crate ipfs_api;
+extern crate jsonrpc_http_server;
 extern crate parity_wasm;
 pub extern crate serde_json;
 extern crate slog_async;
@@ -52,7 +54,7 @@ pub mod prelude {
     pub use components::link_resolver::LinkResolver;
     pub use components::query::QueryRunner;
     pub use components::schema::{SchemaProvider, SchemaProviderEvent};
-    pub use components::server::GraphQLServer;
+    pub use components::server::{GraphQLServer, JsonRpcServer};
     pub use components::store::{
         BasicStore, EventSource, Store, StoreEvent, StoreFilter, StoreKey, StoreOrder, StoreQuery,
         StoreRange,

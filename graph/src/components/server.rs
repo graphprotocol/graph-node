@@ -1,13 +1,18 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{Receiver, Sender};
 use futures::sync::oneshot::Canceled;
+use jsonrpc_http_server::Server;
 use serde::ser::*;
 use std::error::Error;
 use std::fmt;
+use std::io;
+use std::sync::Arc;
 
 use super::schema::SchemaProviderEvent;
 use super::store::StoreEvent;
+use super::subgraph::SubgraphProvider;
 use data::query::{Query, QueryError};
+use prelude::Logger;
 use util::stream::StreamError;
 
 /// Errors that can occur while processing incoming requests.
@@ -106,4 +111,12 @@ pub trait GraphQLServer {
         &mut self,
         port: u16,
     ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError>;
+}
+
+pub trait JsonRpcServer {
+    fn serve(
+        port: u16,
+        provider: Arc<impl SubgraphProvider>,
+        logger: Logger,
+    ) -> Result<Server, io::Error>;
 }

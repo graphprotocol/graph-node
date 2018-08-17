@@ -13,16 +13,7 @@ pub struct SubgraphProvider<L> {
 }
 
 impl<L: LinkResolver> SubgraphProvider<L> {
-    /// Returns `Self` containing the streams where the events will be received,
-    /// and a future that sends the events into the stream.
-    pub fn new(
-        logger: slog::Logger,
-        link: &str,
-        resolver: Arc<L>,
-    ) -> (
-        Self,
-        impl Future<Item = (), Error = SubgraphProviderError> + Send,
-    ) {
+    pub fn new(logger: slog::Logger, resolver: Arc<L>) -> Self {
         let (schema_event_sink, schema_event_stream) = channel(100);
         let (event_sink, event_stream) = channel(100);
 
@@ -36,8 +27,7 @@ impl<L: LinkResolver> SubgraphProvider<L> {
             resolver,
         };
 
-        let send = provider.add(link.to_owned());
-        (provider, send)
+        provider
     }
 }
 

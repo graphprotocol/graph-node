@@ -9,6 +9,7 @@ hex = "0.3.2"
 futures = "0.1.21"
 graphql-parser = "0.2.1"
 ipfs-api = "0.5.0-alpha2"
+jsonrpc-http-server = { git = "https://github.com/paritytech/jsonrpc" }
 parity-wasm = "0.31"
 failure = "0.1.2"
 num-bigint = { version = "0.2.0", features = ["serde"] }
