@@ -16,6 +16,7 @@ extern crate ipfs_api;
 use clap::{App, Arg};
 use ipfs_api::IpfsClient;
 use std::env;
+use std::io;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Mutex;
@@ -138,8 +139,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             ipfs_socket_addr.port(),
         ).expect("Failed to start IPFS client"),
     );
-    let ipfs_test = resolver.cat("/ipfs/QmS4ustL54uo8FzR9455qaxZwuMiUhyvMcX9Ba8nUH4uVv/readme");
-    if let Err(e) = ipfs_test.concat2().wait() {
+    let ipfs_test = resolver.add(io::Cursor::new("test"));
+    if let Err(e) = ipfs_test.wait() {
         error!(logger, "Failed to connect to IPFS: {}", e);
         error!(
             logger,
