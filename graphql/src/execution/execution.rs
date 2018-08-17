@@ -12,7 +12,7 @@ use schema::ast as sast;
 
 /// Contextual information passed around during query execution.
 #[derive(Clone)]
-struct ExecutionContext<'a, R1, R2>
+pub struct ExecutionContext<'a, R1, R2>
 where
     R1: Resolver,
     R2: Resolver,
@@ -48,66 +48,8 @@ where
     }
 }
 
-/// Optionsp available for the `execute` function.
-pub struct ExecutionOptions<R>
-where
-    R: Resolver,
-{
-    /// The logger to use during query execution.
-    pub logger: slog::Logger,
-    /// The resolver to use.
-    pub resolver: R,
-}
-
-/// Executes a query and returns a result.
-pub fn execute<R>(query: &Query, options: ExecutionOptions<R>) -> QueryResult
-where
-    R: Resolver,
-{
-    info!(options.logger, "Execute");
-
-    // Obtain the only operation of the query (fail if there is none or more than one)
-    let operation = match qast::get_operation(&query.document, None) {
-        Ok(op) => op,
-        Err(e) => return QueryResult::from(e),
-    };
-
-    // Create an introspection type store and resolver
-    let introspection_schema = introspection_schema();
-    let introspection_resolver = IntrospectionResolver::new(&options.logger, &query.schema);
-
-    // Create a fresh execution context
-    let ctx = ExecutionContext {
-        logger: options.logger,
-        resolver: Arc::new(options.resolver),
-        schema: &query.schema,
-        introspection_resolver: Arc::new(introspection_resolver),
-        introspection_schema: &introspection_schema,
-        introspecting: false,
-        query,
-        fields: vec![],
-    };
-
-    match operation {
-        // Execute top-level `query { ... }` expressions
-        &q::OperationDefinition::Query(q::Query {
-            ref selection_set, ..
-        }) => execute_root_selection_set(ctx, selection_set, &None),
-
-        // Execute top-level `{ ... }` expressions
-        &q::OperationDefinition::SelectionSet(ref selection_set) => {
-            execute_root_selection_set(ctx, selection_set, &None)
-        }
-
-        // Everything else (e.g. mutations) is unsupported
-        _ => QueryResult::from(QueryExecutionError::NotSupported(
-            "Only queries are supported".to_string(),
-        )),
-    }
-}
-
 /// Executes the root selection set of a query.
-fn execute_root_selection_set<'a, R1, R2>(
+pub fn execute_root_selection_set<'a, R1, R2>(
     ctx: ExecutionContext<'a, R1, R2>,
     selection_set: &'a q::SelectionSet,
     initial_value: &Option<q::Value>,
@@ -130,7 +72,7 @@ where
 /// Executes a selection set, requiring the result to be of the given object type.
 ///
 /// Allows passing in a parent value during recursive processing of objects and their fields.
-fn execute_selection_set<'a, R1, R2>(
+pub fn execute_selection_set<'a, R1, R2>(
     mut ctx: ExecutionContext<'a, R1, R2>,
     selection_set: &'a q::SelectionSet,
     object_type: &s::ObjectType,

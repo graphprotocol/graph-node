@@ -35,11 +35,11 @@ where
         let store = self.store.clone();
 
         tokio::spawn(stream.for_each(move |query| {
-            let options = ExecutionOptions {
+            let options = QueryExecutionOptions {
                 logger: logger.clone(),
                 resolver: StoreResolver::new(&logger, store.clone()),
             };
-            let result = execute(&query, options);
+            let result = execute_query(&query, options);
 
             query
                 .result_sender
