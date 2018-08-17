@@ -32,15 +32,13 @@ pub struct MockGraphQLServer {
     logger: Logger,
     query_sink: Option<Sender<Query>>,
     schema_event_sink: Sender<SchemaEvent>,
-    store_event_sink: Sender<StoreEvent>,
     schema: Arc<Mutex<Option<Schema>>>,
 }
 
 impl MockGraphQLServer {
     /// Creates a new mock `GraphQLServer`.
     pub fn new(logger: &Logger) -> Self {
-        // Create channels for handling incoming schema and store events
-        let (store_sink, store_stream) = channel(100);
+        // Create channel for handling incoming schema events
         let (schema_event_sink, schema_event_stream) = channel(100);
 
         // Create a new mock GraphQL server
@@ -48,13 +46,11 @@ impl MockGraphQLServer {
             logger: logger.new(o!("component" => "MockGraphQLServer")),
             query_sink: None,
             schema_event_sink,
-            store_event_sink: store_sink,
             schema: Arc::new(Mutex::new(None)),
         };
 
-        // Spawn tasks to handle incoming schema and store events
+        // Spawn tasks to handle incoming schema events
         server.handle_schema_events(schema_event_stream);
-        server.handle_store_events(store_stream);
 
         // Return the new server
         server
@@ -86,16 +82,6 @@ impl MockGraphQLServer {
             Ok(())
         }));
     }
-
-    // Handle incoming events from the store
-    fn handle_store_events(&mut self, stream: Receiver<StoreEvent>) {
-        let logger = self.logger.clone();
-
-        tokio::spawn(stream.for_each(move |event| {
-            info!(logger, "Received store event"; "event" => format!("{:?}", event));
-            Ok(())
-        }));
-    }
 }
 
 impl GraphQLServer for MockGraphQLServer {
@@ -103,10 +89,6 @@ impl GraphQLServer for MockGraphQLServer {
 
     fn schema_event_sink(&mut self) -> Sender<SchemaEvent> {
         self.schema_event_sink.clone()
-    }
-
-    fn store_event_sink(&mut self) -> Sender<StoreEvent> {
-        self.store_event_sink.clone()
     }
 
     fn query_stream(&mut self) -> Result<Receiver<Query>, StreamError> {

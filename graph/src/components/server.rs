@@ -96,10 +96,6 @@ pub trait GraphQLServer {
     /// should serve changes.
     fn schema_event_sink(&mut self) -> Sender<SchemaEvent>;
 
-    /// Sender to which others should write store events that might require
-    /// subscription queries to re-run.
-    fn store_event_sink(&mut self) -> Sender<StoreEvent>;
-
     /// Receiver from which others can read incoming queries for processing.
     /// Can only be called once. Any consecutive call will result in a StreamError.
     fn query_stream(&mut self) -> Result<Receiver<Query>, StreamError>;
