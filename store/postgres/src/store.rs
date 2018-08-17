@@ -296,8 +296,8 @@ impl StoreTrait for Store {
         subgraph: String,
         entities: Vec<String>,
     ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
+        // Prepare the new subscription by creating a channel and a subscription object
         let (sender, receiver) = channel(100);
-
         let id = Uuid::new_v4().to_string();
         let subscription = Subscription {
             subgraph,
@@ -305,17 +305,22 @@ impl StoreTrait for Store {
             sender,
         };
 
+        // Add the new subscription (log an error if somehow the UUID is not unique)
         let subscriptions = self.subscriptions.clone();
         let mut subscriptions = subscriptions.write().unwrap();
-
         if subscriptions.contains_key(&id) {
-            let drain = self.logger.clone().fuse();
-            let logger = slog::Logger::root(drain, o!());
-            error!(logger, "Duplicate Store subscription detected"; "id" => &id);
+            error!(self.logger, "Duplicate Store subscription detected; \
+                                 subscriptions will not work as expected";
+                   "id" => &id);
         }
-
         subscriptions.insert(id.clone(), subscription);
 
+        // Return the subscription ID and entity change stream
         (id, Box::new(receiver))
+    }
+
+    fn unsubscribe(&mut self, id: String) {
+        let subscriptions = self.subscriptions.clone();
+        subscriptions.write().unwrap().remove(&id);
     }
 }
