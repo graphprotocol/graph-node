@@ -80,7 +80,7 @@ impl Store for MockStore {
         &mut self,
         subgraph: String,
         entities: Vec<String>,
-    ) -> Box<Stream<Item = EntityChange, Error = ()> + Send> {
+    ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
         unimplemented!();
     }
 }
@@ -110,7 +110,7 @@ impl Store for FakeStore {
         &mut self,
         subgraph: String,
         entities: Vec<String>,
-    ) -> Box<Stream<Item = EntityChange, Error = ()> + Send> {
+    ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
         unimplemented!();
     }
 }
