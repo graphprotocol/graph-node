@@ -1,6 +1,7 @@
 extern crate clap;
 extern crate env_logger;
 extern crate futures;
+extern crate reqwest;
 #[macro_use]
 extern crate sentry;
 extern crate graph;
@@ -9,23 +10,27 @@ extern crate graph_datasource_ethereum;
 extern crate graph_mock;
 extern crate graph_runtime_wasm;
 extern crate graph_server_http;
+extern crate graph_server_json_rpc;
 extern crate graph_store_postgres;
 extern crate ipfs_api;
 
 use clap::{App, Arg};
 use ipfs_api::IpfsClient;
+use reqwest::header::ContentType;
+use reqwest::Client;
 use std::env;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Mutex;
 
 use graph::components::forward;
-use graph::prelude::*;
+use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::util::log::logger;
 use graph_core::SubgraphProvider as IpfsSubgraphProvider;
 use graph_datasource_ethereum::Transport;
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as HyperGraphQLServer;
+use graph_server_json_rpc::JsonRpcServer;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
@@ -45,10 +50,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .arg(
             Arg::with_name("subgraph")
                 .takes_value(true)
-                .required(true)
                 .long("subgraph")
-                .value_name("IPFS_HASH")
-                .help("IPFS hash of the subgraph manifest"),
+                .value_name("[NAME:]IPFS_HASH")
+                .help("name and IPFS hash of the subgraph manifest"),
         )
         .arg(
             Arg::with_name("postgres-url")
@@ -93,13 +97,20 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .value_name("HOST:PORT")
                 .help("HTTP address of an IPFS node"),
         )
+        .arg(
+            Arg::with_name("json-rpc-port")
+                .default_value("8020")
+                .long("json-rpc-port")
+                .value_name("PORT")
+                .help("port for the admin JSON-RPC server"),
+        )
         .get_matches();
 
     // Safe to unwrap because a value is required by CLI
     let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
 
     // Obtain subgraph related command-line arguments
-    let subgraph_hash = matches.value_of("subgraph").unwrap();
+    let subgraph = matches.value_of("subgraph");
 
     // Obtain the Ethereum RPC/WS/IPC transport locations
     let ethereum_rpc = matches.value_of("ethereum-rpc");
@@ -108,6 +119,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     let ipfs_socket_addr = SocketAddr::from_str(matches.value_of("ipfs").unwrap())
         .expect("could not parse IPFS address, expected format is host:port");
+
+    let json_rpc_port = matches.value_of("json-rpc-port").unwrap().parse().unwrap();
 
     debug!(logger, "Setting up Sentry");
 
@@ -134,12 +147,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             ipfs_socket_addr.port(),
         ).expect("Failed to start IPFS client"),
     );
-    let (mut subgraph_provider, subgraph_provider_events) = IpfsSubgraphProvider::new(
-        logger.clone(),
-        &format!("/ipfs/{}", subgraph_hash.clone()),
-        resolver.clone(),
-    );
-    tokio::spawn(subgraph_provider_events.map_err(|_| ()));
+    let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), resolver.clone());
 
     let mut schema_provider = graph_core::SchemaProvider::new(&logger);
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger);
@@ -152,9 +160,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .or(ethereum_ws.map(Transport::new_ws))
         .or(ethereum_rpc.map(Transport::new_rpc))
         .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
+
     // If we drop the event loop the transport will stop working. For now it's
     // fine to just leak it.
     std::mem::forget(transport_event_loop);
+
     let ethereum_watcher = graph_datasource_ethereum::EthereumAdapter::new(
         graph_datasource_ethereum::EthereumAdapterConfig { transport },
     );
@@ -168,6 +178,40 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Forward schema events from the subgraph provider to the schema provider
     tokio::spawn(forward(&mut subgraph_provider, &schema_provider).unwrap());
+
+    // Start admin JSON-RPC server.
+    let json_rpc_server =
+        JsonRpcServer::serve(json_rpc_port, Arc::new(subgraph_provider), logger.clone())
+            .expect("Failed to start JSON-RFC server");
+
+    // Let the server run forever.
+    std::mem::forget(json_rpc_server);
+
+    // Add the CLI subgraph with a REST request to the admin server.
+    if let Some(subgraph) = subgraph {
+        let (name, hash) = if subgraph.contains(':') {
+            let mut split = subgraph.split(':');
+            (split.next().unwrap(), split.next().unwrap())
+        } else {
+            ("cli", subgraph)
+        };
+
+        let raw_response = Client::new()
+            .post(&format!(
+                "http://localhost:{}/subgraph_add/{}/{}",
+                json_rpc_port, name, hash
+            ))
+            .header(ContentType::json())
+            .send()
+            .expect("failed to make `subgraph_add` request");
+
+        graph_server_json_rpc::parse_response(
+            raw_response
+                .error_for_status()
+                .and_then(|mut res| res.json())
+                .expect("`subgraph_add` request error"),
+        ).expect("`subgraph_add` request error");
+    }
 
     // Forward schema events from the schema provider to the store and GraphQL server
     let schema_stream = schema_provider.take_event_stream().unwrap();

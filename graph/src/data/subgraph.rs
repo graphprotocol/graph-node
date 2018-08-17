@@ -12,16 +12,23 @@ use tokio::prelude::*;
 
 use std::sync::Arc;
 
+#[derive(Fail, Debug)]
 pub enum SubgraphProviderError {
+    #[fail(display = "subgraph resolve error: {}", _0)]
     ResolveError(SubgraphManifestResolveError),
+    #[fail(display = "error sending subgraph")]
     SendError,
 }
 
-#[derive(Debug)]
+#[derive(Fail, Debug)]
 pub enum SubgraphManifestResolveError {
+    #[fail(display = "parse error: {}", _0)]
     ParseError(serde_yaml::Error),
+    #[fail(display = "subgraph is not UTF-8")]
     NonUtf8,
+    #[fail(display = "subgraph is not valid YAML")]
     InvalidFormat,
+    #[fail(display = "resolve error: {}", _0)]
     ResolveError(failure::Error),
 }
 

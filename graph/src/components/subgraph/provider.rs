@@ -23,7 +23,7 @@ pub enum SchemaEvent {
 
 /// Common trait for subgraph providers.
 pub trait SubgraphProvider:
-    EventProducer<SubgraphProviderEvent> + EventProducer<SchemaEvent>
+    EventProducer<SubgraphProviderEvent> + EventProducer<SchemaEvent> + Send + Sync + 'static
 {
     fn add(
         &self,
