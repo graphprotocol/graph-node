@@ -134,10 +134,11 @@ pub trait BasicStore {
 /// Common trait for store implementations.
 pub trait Store: BasicStore + Send {
     /// Subscribe to entity changes for specific subgraphs and entities.
-    /// Returns a stream of entity changes that match the input arguments.
+    /// Returns a unique subscription Id and a stream of entity changes that match
+    /// the input arguments.
     fn subscribe(
         &mut self,
         subgraph: String,
         entities: Vec<String>,
-    ) -> Box<Stream<Item = EntityChange, Error = ()> + Send>;
+    ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>);
 }
