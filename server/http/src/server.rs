@@ -49,7 +49,6 @@ pub struct GraphQLServer {
     logger: slog::Logger,
     query_sink: Option<Sender<Query>>,
     schema_event_sink: Sender<SchemaEvent>,
-    store_event_sink: Sender<StoreEvent>,
     // Maps a subgraph id to its name.
     names: Arc<RwLock<BTreeMap<String, String>>>,
     // Maps a subgraph name to its schema.
@@ -59,8 +58,7 @@ pub struct GraphQLServer {
 impl GraphQLServer {
     /// Creates a new GraphQL server.
     pub fn new(logger: &slog::Logger) -> Self {
-        // Create channels for handling incoming schema and store events.
-        let (store_sink, store_stream) = channel(100);
+        // Create channel for handling incoming schema events
         let (schema_event_sink, schema_event_stream) = channel(100);
 
         // Create a new GraphQL server
@@ -68,14 +66,12 @@ impl GraphQLServer {
             logger: logger.new(o!("component" => "GraphQLServer")),
             query_sink: None,
             schema_event_sink,
-            store_event_sink: store_sink,
             names: Arc::new(RwLock::new(BTreeMap::new())),
             schemas: Arc::new(RwLock::new(BTreeMap::new())),
         };
 
-        // Spawn tasks to handle incoming schema and store events.
+        // Spawn tasks to handle incoming schema events
         server.handle_schema_events(schema_event_stream);
-        server.handle_store_events(store_stream);
 
         // Return the new server.
         server
@@ -120,16 +116,6 @@ impl GraphQLServer {
             Ok(())
         }));
     }
-
-    // Handle incoming events from the store.
-    fn handle_store_events(&mut self, stream: Receiver<StoreEvent>) {
-        let logger = self.logger.clone();
-
-        tokio::spawn(stream.for_each(move |event| {
-            info!(logger, "Received store event"; "event" => format!("{:?}",  event));
-            Ok(())
-        }));
-    }
 }
 
 impl GraphQLServerTrait for GraphQLServer {
@@ -137,10 +123,6 @@ impl GraphQLServerTrait for GraphQLServer {
 
     fn schema_event_sink(&mut self) -> Sender<SchemaEvent> {
         self.schema_event_sink.clone()
-    }
-
-    fn store_event_sink(&mut self) -> Sender<StoreEvent> {
-        self.store_event_sink.clone()
     }
 
     fn query_stream(&mut self) -> Result<Receiver<Query>, StreamError> {

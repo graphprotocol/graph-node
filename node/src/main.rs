@@ -230,18 +230,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         ).expect("`subgraph_add` server error");
     }
 
-    // Forward store events to the GraphQL server
-    {
-        let store_stream = protected_store.lock().unwrap().event_stream().unwrap();
-        tokio::spawn(
-            store_stream
-                .forward(graphql_server.store_event_sink().sink_map_err(|e| {
-                    panic!("Failed to send store event to the GraphQL server: {:?}", e);
-                }))
-                .and_then(|_| Ok(())),
-        );
-    }
-
     // Forward incoming queries from the GraphQL server to the query runner
     let mut query_runner = graph_core::QueryRunner::new(&logger, protected_store.clone());
     let query_stream = graphql_server.query_stream().unwrap();
