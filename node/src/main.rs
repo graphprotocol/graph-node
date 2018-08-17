@@ -20,8 +20,6 @@ use std::io;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Mutex;
-use std::thread;
-use std::time::Duration;
 
 use graph::components::forward;
 use graph::prelude::*;
@@ -34,7 +32,9 @@ use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
     // Run `async_main` inside the context of an executor.
-    tokio::run(future::lazy(|| async_main()))
+    // Use block_on so that panics in async_main will end process
+    let mut runtime = tokio::runtime::Runtime::new().unwrap();
+    runtime.block_on(future::lazy(|| async_main())).unwrap();
 }
 
 fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
@@ -146,7 +146,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             logger,
             "Is there an IPFS node running at '{}'?", ipfs_socket_addr
         );
-        thread::sleep(Duration::from_millis(50)); // small delay to let logger finish writing
+        std::mem::drop(logger);
         panic!();
     }
     info!(logger, "Connected to IPFS node.");
