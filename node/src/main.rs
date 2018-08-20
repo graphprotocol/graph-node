@@ -227,13 +227,10 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     tokio::spawn(
         schema_stream
             .forward(
-                protected_store
-                    .lock()
-                    .unwrap()
+                graphql_server
                     .schema_provider_event_sink()
-                    .fanout(graphql_server.schema_provider_event_sink())
                     .sink_map_err(|e| {
-                        panic!("Failed to send event to store and server: {:?}", e);
+                        panic!("Failed to send event to graphql server: {:?}", e);
                     }),
             )
             .and_then(|_| Ok(())),

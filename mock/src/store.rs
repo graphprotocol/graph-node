@@ -7,16 +7,12 @@ use graph::prelude::*;
 pub struct MockStore {
     logger: slog::Logger,
     event_sink: Option<Sender<StoreEvent>>,
-    schema_provider_event_sink: Sender<SchemaProviderEvent>,
     entities: Vec<Entity>,
 }
 
 impl MockStore {
     /// Creates a new mock `Store`.
     pub fn new(logger: &slog::Logger) -> Self {
-        // Create a channel for handling incoming schema provider events
-        let (sink, stream) = channel(100);
-
         // Create a few test entities
         let mut entities = vec![];
         for (i, name) in ["Joe", "Jeff", "Linda"].iter().enumerate() {
@@ -26,28 +22,11 @@ impl MockStore {
             entities.push(entity);
         }
 
-        // Create a new mock store
-        let mut store = MockStore {
+        MockStore {
             logger: logger.new(o!("component" => "MockStore")),
             event_sink: None,
-            schema_provider_event_sink: sink,
             entities,
-        };
-
-        // Spawn a task that handles incoming schema provider events
-        store.handle_schema_provider_events(stream);
-
-        // Return the new store
-        store
-    }
-
-    /// Handles incoming schema provider events.
-    fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaProviderEvent>) {
-        let logger = self.logger.clone();
-        tokio::spawn(stream.for_each(move |event| {
-            info!(logger, "Received schema provider event: {:?}", event);
-            Ok(())
-        }));
+        }
     }
 
     /// Generates a bunch of mock store events.
@@ -97,10 +76,6 @@ impl BasicStore for MockStore {
 }
 
 impl Store for MockStore {
-    fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
-        self.schema_provider_event_sink.clone()
-    }
-
     fn event_stream(&mut self) -> Result<Receiver<StoreEvent>, StreamError> {
         // If possible, create a new channel for streaming store events
         let result = match self.event_sink {
@@ -138,10 +113,6 @@ impl BasicStore for FakeStore {
 }
 
 impl Store for FakeStore {
-    fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
-        panic!("called FakeStore")
-    }
-
     fn event_stream(&mut self) -> Result<Receiver<StoreEvent>, StreamError> {
         panic!("called FakeStore")
     }

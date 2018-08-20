@@ -7,7 +7,6 @@ use diesel::{debug_query, delete, insert_into, result, select};
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use graph::serde_json;
-use graph::tokio;
 
 use functions::{revert_block, set_config};
 
@@ -44,7 +43,6 @@ pub struct StoreConfig {
 pub struct Store {
     event_sink: Option<Sender<StoreEvent>>,
     logger: slog::Logger,
-    schema_provider_event_sink: Sender<SchemaProviderEvent>,
     _config: StoreConfig,
     pub conn: PgConnection,
 }
@@ -53,9 +51,6 @@ impl Store {
     pub fn new(config: StoreConfig, logger: &slog::Logger) -> Self {
         // Create a store-specific logger
         let logger = logger.new(o!("component" => "Store"));
-
-        // Create a channel for handling incoming schema provider events
-        let (sink, stream) = channel(100);
 
         // Connect to Postgres
         let conn =
@@ -66,28 +61,12 @@ impl Store {
         // Create the entities table (if necessary)
         initiate_schema(&logger, &conn);
 
-        // Create the store
-        let mut store = Store {
+        Store {
             logger,
             event_sink: None,
-            schema_provider_event_sink: sink,
             _config: config,
             conn: conn,
-        };
-
-        // Spawn a task that handles incoming schema provider events
-        store.handle_schema_provider_events(stream);
-
-        // Return the store
-        store
-    }
-
-    /// Handles incoming schema provider events.
-    fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaProviderEvent>) {
-        tokio::spawn(stream.for_each(move |_| {
-            // We are currently not doing anything in response to schema events
-            Ok(())
-        }));
+        }
     }
 
     /// Handles block reorganizations.
@@ -253,10 +232,6 @@ impl BasicStore for Store {
 }
 
 impl StoreTrait for Store {
-    fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
-        self.schema_provider_event_sink.clone()
-    }
-
     fn event_stream(&mut self) -> Result<Receiver<StoreEvent>, StreamError> {
         // If possible, create a new channel for streaming store events
         match self.event_sink {
