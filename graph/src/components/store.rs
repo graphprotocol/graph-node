@@ -126,10 +126,6 @@ pub trait BasicStore {
 
 /// Common trait for store implementations.
 pub trait Store: BasicStore + Send {
-    /// Sender to which others should write whenever the schema that the store
-    /// should implement changes.
-    fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent>;
-
     /// Receiver from which others can read events emitted by the store.
     /// Can only be called once. Any consecutive call will result in a StreamError.
     fn event_stream(&mut self) -> Result<Receiver<StoreEvent>, StreamError>;
