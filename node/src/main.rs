@@ -16,6 +16,7 @@ extern crate ipfs_api;
 use clap::{App, Arg};
 use ipfs_api::IpfsClient;
 use std::env;
+use std::io;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Mutex;
@@ -31,7 +32,9 @@ use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
     // Run `async_main` inside the context of an executor.
-    tokio::run(future::lazy(|| async_main()))
+    // Use block_on so that panics in async_main will end process
+    let mut runtime = tokio::runtime::Runtime::new().unwrap();
+    runtime.block_on(future::lazy(|| async_main())).unwrap();
 }
 
 fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
@@ -108,7 +111,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let ethereum_ws = matches.value_of("ethereum-ws");
 
     let ipfs_socket_addr = SocketAddr::from_str(matches.value_of("ipfs").unwrap())
-        .expect("could not parse IPFS address, expected format is host:port");
+        .expect("could not parse IPFS address, expected format is ipaddress:port");
 
     debug!(logger, "Setting up Sentry");
 
@@ -128,13 +131,27 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     info!(logger, "Starting up");
 
-    // Create system components
+    // Create and test IPFS client
+    info!(logger, "Connecting to IPFS node...");
     let resolver = Arc::new(
         IpfsClient::new(
             &format!("{}", ipfs_socket_addr.ip()),
             ipfs_socket_addr.port(),
         ).expect("Failed to start IPFS client"),
     );
+    let ipfs_test = resolver.add(io::Cursor::new("test"));
+    if let Err(e) = ipfs_test.wait() {
+        error!(logger, "Failed to connect to IPFS: {}", e);
+        error!(
+            logger,
+            "Is there an IPFS node running at '{}'?", ipfs_socket_addr
+        );
+        std::mem::drop(logger);
+        panic!();
+    }
+    info!(logger, "Connected to IPFS node.");
+
+    // Create subgraph provider
     let (mut subgraph_provider, subgraph_provider_events) = IpfsSubgraphProvider::new(
         logger.clone(),
         &format!("/ipfs/{}", subgraph_hash.clone()),
