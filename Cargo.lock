@@ -749,6 +749,7 @@ dependencies = [
  "futures 0.1.23 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.1.0",
  "graph-graphql 0.1.0",
+ "graph-mock 0.1.0",
  "graphql-parser 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper 0.12.7 (registry+https://github.com/rust-lang/crates.io-index)",
