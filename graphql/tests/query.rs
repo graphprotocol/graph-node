@@ -6,7 +6,6 @@ extern crate graph;
 extern crate graph_core;
 extern crate graph_graphql;
 
-use futures::sync::oneshot;
 use graphql_parser::query as q;
 use std::sync::Mutex;
 
@@ -190,31 +189,28 @@ impl BasicStore for TestStore {
     }
 }
 
-fn execute_query(query: q::Document) -> QueryResult {
-    let (sender, _receiver) = oneshot::channel();
-
+fn execute_query_document(query: q::Document) -> QueryResult {
     let query = Query {
         schema: test_schema(),
         document: query,
         variables: None,
-        result_sender: sender,
     };
 
     let logger = Logger::root(slog::Discard, o!());
     let store = Arc::new(Mutex::new(TestStore::new()));
     let store_resolver = StoreResolver::new(&logger, store);
 
-    let options = ExecutionOptions {
+    let options = QueryExecutionOptions {
         logger: logger,
         resolver: store_resolver,
     };
 
-    execute(&query, options)
+    execute_query(&query, options)
 }
 
 #[test]
 fn can_query_one_to_one_relationship() {
-    let result = execute_query(
+    let result = execute_query_document(
         graphql_parser::parse_query(
             "
             query {
@@ -280,7 +276,7 @@ fn can_query_one_to_one_relationship() {
 
 #[test]
 fn can_query_one_to_many_relationships_in_both_directions() {
-    let result = execute_query(
+    let result = execute_query_document(
         graphql_parser::parse_query(
             "
         query {
@@ -374,7 +370,7 @@ fn can_query_one_to_many_relationships_in_both_directions() {
 
 #[test]
 fn can_query_many_to_many_relationship() {
-    let result = execute_query(
+    let result = execute_query_document(
         graphql_parser::parse_query(
             "
             query {
