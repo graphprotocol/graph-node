@@ -5,7 +5,6 @@ extern crate graph;
 extern crate graph_graphql;
 extern crate graphql_parser;
 
-use futures::sync::oneshot;
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 
@@ -481,18 +480,16 @@ fn expected_mock_schema_introspection() -> q::Value {
 /// Execute an introspection query.
 fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     // Create the query
-    let (sender, _) = oneshot::channel();
     let query = Query {
         schema: schema,
         document: graphql_parser::parse_query(query).unwrap(),
         variables: None,
-        result_sender: sender,
     };
 
     // Execute it
-    execute(
+    execute_query(
         &query,
-        ExecutionOptions {
+        QueryExecutionOptions {
             logger: slog::Logger::root(slog::Discard, o!()),
             resolver: MockResolver,
         },
