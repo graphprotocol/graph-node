@@ -5,6 +5,7 @@ extern crate futures;
 extern crate lazy_static;
 extern crate graph;
 extern crate graph_store_postgres;
+extern crate tokio_executor;
 
 use diesel::pg::PgConnection;
 use diesel::*;
@@ -43,12 +44,22 @@ where
     };
 
     let (sender, receiver) = oneshot::channel();
-    tokio::run(future::lazy(|| {
-        insert_test_data();
-        let result = panic::catch_unwind(|| test());
-        remove_test_data();
-        sender.send(result).map_err(|_| ())
-    }));
+
+    let mut runtime = tokio::runtime::Runtime::new().unwrap();
+    tokio_executor::with_default(
+        &mut runtime.executor(),
+        &mut tokio_executor::enter().unwrap(),
+        |_| {
+            runtime
+                .block_on(future::lazy(|| {
+                    insert_test_data();
+                    let result = panic::catch_unwind(|| test());
+                    remove_test_data();
+                    sender.send(result).map_err(|_| ())
+                }))
+                .expect("Failed to run test harness");
+        },
+    );
 
     // Unwrap in the main thread where a panic will fail the test.
     receiver.wait().unwrap().expect("Failed to run test");
