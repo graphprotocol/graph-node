@@ -1,9 +1,10 @@
-use futures::sync::mpsc::Sender;
+use futures::prelude::*;
 
-use data::query::Query;
+use data::query::{Query, QueryError, QueryResult};
 
-/// Common trait for query runners that run queries against a [Store](../store/trait.Store.html).
-pub trait QueryRunner {
-    // Sender to which others can write queries that need to be run.
-    fn query_sink(&mut self) -> Sender<Query>;
+/// A component that can run GraphqL queries against a [Store](../store/trait.Store.html).
+pub trait QueryRunner: Send + Sync {
+    /// Runs a GraphQL query and returns its result.
+    fn run_query(&self, query: Query)
+        -> Box<Future<Item = QueryResult, Error = QueryError> + Send>;
 }

@@ -1,4 +1,3 @@
-use futures::sync::oneshot;
 use graphql_parser::query as q;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
@@ -79,5 +78,4 @@ pub struct Query {
     pub schema: Schema,
     pub document: q::Document,
     pub variables: Option<QueryVariables>,
-    pub result_sender: oneshot::Sender<QueryResult>,
 }
