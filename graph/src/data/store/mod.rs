@@ -2,7 +2,6 @@ use graphql_parser::query;
 use graphql_parser::schema;
 
 use std::collections::{BTreeMap, HashMap};
-use std::io::Write;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;

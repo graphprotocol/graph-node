@@ -13,7 +13,6 @@ pub extern crate slog;
 #[macro_use]
 extern crate failure;
 extern crate ipfs_api;
-extern crate jsonrpc_http_server;
 extern crate parity_wasm;
 pub extern crate serde_json;
 extern crate slog_async;
