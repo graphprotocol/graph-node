@@ -1,7 +1,6 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{Receiver, Sender};
 use futures::sync::oneshot::Canceled;
-use jsonrpc_http_server::Server;
 use serde::ser::*;
 use std::error::Error;
 use std::fmt;
