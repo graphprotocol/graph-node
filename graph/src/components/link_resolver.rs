@@ -1,7 +1,9 @@
 use data::subgraph::Link;
 use failure;
-use futures::prelude::*;
 use ipfs_api;
+use tokio::prelude::*;
+
+use std::time::{Duration, Instant};
 
 /// Resolves links to subgraph manifests and resources referenced by them.
 pub trait LinkResolver: Send + Sync + 'static {
@@ -24,8 +26,10 @@ impl LinkResolver for ipfs_api::IpfsClient {
         Box::new(
             self.cat(path)
                 .concat2()
+                // Guard against IPFS unresponsiveness.
+                .deadline(Instant::now() + Duration::from_secs(10))
                 .map(|x| x.to_vec())
-                .map_err(|e| failure::Error::from(e)),
+                .map_err(|e| failure::err_msg(e.to_string())),
         )
     }
 }
