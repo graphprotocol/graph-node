@@ -42,14 +42,15 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
         Box::new(
             SubgraphManifest::resolve(Link { link }, self.resolver.clone())
                 .map_err(SubgraphProviderError::ResolveError)
-                .and_then(move |subgraph| {
-                    let mut schema = subgraph.schema.clone();
-                    schema.add_subgraph_id_directives(subgraph.id.clone());
+                .and_then(move |mut subgraph| {
+                    subgraph
+                        .schema
+                        .add_subgraph_id_directives(subgraph.id.clone());
 
                     // Push the subgraph and the schema into their streams
                     let event_logger = send_logger.clone();
                     schema_event_sink
-                        .send(SchemaEvent::SchemaAdded(schema))
+                        .send(SchemaEvent::SchemaAdded(subgraph.schema.clone()))
                         .map_err(move |e| {
                             error!(send_logger, "Failed to forward subgraph schema: {}", e)
                         })

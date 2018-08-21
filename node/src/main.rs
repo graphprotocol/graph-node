@@ -98,9 +98,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .help("HTTP address of an IPFS node"),
         )
         .arg(
-            Arg::with_name("json-rpc-port")
+            Arg::with_name("admin-port")
                 .default_value("8020")
-                .long("json-rpc-port")
+                .long("admin-port")
                 .value_name("PORT")
                 .help("port for the admin JSON-RPC server"),
         )
@@ -120,7 +120,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let ipfs_socket_addr = SocketAddr::from_str(matches.value_of("ipfs").unwrap())
         .expect("could not parse IPFS address, expected format is host:port");
 
-    let json_rpc_port = matches.value_of("json-rpc-port").unwrap().parse().unwrap();
+    let json_rpc_port = matches
+        .value_of("admin-port")
+        .unwrap()
+        .parse()
+        .expect("invalid admin port");
 
     debug!(logger, "Setting up Sentry");
 
@@ -182,7 +186,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Start admin JSON-RPC server.
     let json_rpc_server =
         JsonRpcServer::serve(json_rpc_port, Arc::new(subgraph_provider), logger.clone())
-            .expect("Failed to start JSON-RFC server");
+            .expect("Failed to start admin server");
 
     // Let the server run forever.
     std::mem::forget(json_rpc_server);
@@ -210,7 +214,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .error_for_status()
                 .and_then(|mut res| res.json())
                 .expect("`subgraph_add` request error"),
-        ).expect("`subgraph_add` request error");
+        ).expect("`subgraph_add` server error");
     }
 
     // Forward schema events from the schema provider to the store and GraphQL server

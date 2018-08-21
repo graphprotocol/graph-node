@@ -31,11 +31,13 @@ impl fmt::Display for SubgraphAddParams {
 pub struct JsonRpcServer {}
 
 impl JsonRpcServerTrait for JsonRpcServer {
+    type Server = Server;
+
     fn serve(
         port: u16,
         provider: Arc<impl SubgraphProvider>,
         logger: Logger,
-    ) -> Result<Server, io::Error> {
+    ) -> Result<Self::Server, io::Error> {
         let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
 
         let mut handler = IoHandler::new();

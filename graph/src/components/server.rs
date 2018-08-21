@@ -114,9 +114,11 @@ pub trait GraphQLServer {
 }
 
 pub trait JsonRpcServer {
+    type Server;
+
     fn serve(
         port: u16,
         provider: Arc<impl SubgraphProvider>,
         logger: Logger,
-    ) -> Result<Server, io::Error>;
+    ) -> Result<Self::Server, io::Error>;
 }
