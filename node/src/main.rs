@@ -156,7 +156,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger);
     let protected_store = Arc::new(Mutex::new(store));
-    let mut graphql_server = HyperGraphQLServer::new(&logger);
+    let query_runner = Arc::new(graph_core::QueryRunner::new(
+        &logger,
+        protected_store.clone(),
+    ));
+    let mut graphql_server = HyperGraphQLServer::new(&logger, query_runner.clone());
 
     // Create Ethereum adapter
     let (transport_event_loop, transport) = ethereum_ipc
@@ -229,17 +233,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .expect("`subgraph_add` request error"),
         ).expect("`subgraph_add` server error");
     }
-
-    // Forward incoming queries from the GraphQL server to the query runner
-    let mut query_runner = graph_core::QueryRunner::new(&logger, protected_store.clone());
-    let query_stream = graphql_server.query_stream().unwrap();
-    tokio::spawn(
-        query_stream
-            .forward(query_runner.query_sink().sink_map_err(|e| {
-                panic!("Failed to send query to query runner: {:?}", e);
-            }))
-            .and_then(|_| Ok(())),
-    );
 
     // Serve GraphQL server over HTTP. We will listen on port 8000.
     let http_server = graphql_server
