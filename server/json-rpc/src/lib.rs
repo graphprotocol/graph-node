@@ -7,7 +7,7 @@ extern crate graph;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::serde_json;
 use jsonrpc_http_server::{
-    jsonrpc_core::{self, IoHandler, Params, Value},
+    jsonrpc_core::{self, Id, IoHandler, MethodCall, Params, Value, Version},
     RestApi, Server, ServerBuilder,
 };
 use std::fmt;
@@ -84,6 +84,21 @@ fn json_rpc_error(code: i64, message: String) -> jsonrpc_core::Error {
         code: jsonrpc_core::ErrorCode::ServerError(code),
         message,
         data: None,
+    }
+}
+
+pub fn subgraph_add_request(name: String, ipfs_hash: String, id: String) -> MethodCall {
+    let params = serde_json::to_value(SubgraphAddParams { name, ipfs_hash })
+        .unwrap()
+        .as_object()
+        .cloned()
+        .unwrap();
+
+    MethodCall {
+        jsonrpc: Some(Version::V2),
+        method: "subgraph_add".to_owned(),
+        params: Params::Map(params),
+        id: Id::Str(id),
     }
 }
 

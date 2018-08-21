@@ -13,15 +13,16 @@ extern crate graph_server_http;
 extern crate graph_server_json_rpc;
 extern crate graph_store_postgres;
 extern crate ipfs_api;
+extern crate url;
 
 use clap::{App, Arg};
 use ipfs_api::IpfsClient;
-use reqwest::header::ContentType;
 use reqwest::Client;
 use std::env;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Mutex;
+use url::Url;
 
 use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
@@ -30,7 +31,7 @@ use graph_core::SubgraphProvider as IpfsSubgraphProvider;
 use graph_datasource_ethereum::Transport;
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as HyperGraphQLServer;
-use graph_server_json_rpc::JsonRpcServer;
+use graph_server_json_rpc::{subgraph_add_request, JsonRpcServer};
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
@@ -200,12 +201,16 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             ("cli", subgraph)
         };
 
+        let mut url = Url::parse("http://localhost").unwrap();
+        url.set_port(Some(json_rpc_port))
+            .expect("invalid admin port");
         let raw_response = Client::new()
-            .post(&format!(
-                "http://localhost:{}/subgraph_add/{}/{}",
-                json_rpc_port, name, hash
+            .post(url.clone())
+            .json(&subgraph_add_request(
+                name.to_owned(),
+                hash.to_owned(),
+                "1".to_owned(),
             ))
-            .header(ContentType::json())
             .send()
             .expect("failed to make `subgraph_add` request");
 

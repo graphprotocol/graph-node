@@ -9,6 +9,7 @@ futures = "0.1.21"
 graphql-parser = "0.2.1"
 reqwest = "0.8.7"
 sentry = "0.3.1"
+url = "1.7.1"
 ipfs-api = "0.5.0-alpha2"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
