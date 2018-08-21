@@ -117,7 +117,7 @@ impl fmt::Display for EventSource {
 }
 
 /// Common trait for store implementations that don't require interaction with the system.
-pub trait BasicStore {
+pub trait BasicStore: Send {
     /// Looks up an entity using the given store key.
     fn get(&self, key: StoreKey) -> Result<Entity, ()>;
 
