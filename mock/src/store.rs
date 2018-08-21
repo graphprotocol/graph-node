@@ -6,7 +6,6 @@ use graph::prelude::*;
 /// A mock `Store`.
 pub struct MockStore {
     logger: slog::Logger,
-    event_sink: Option<Sender<StoreEvent>>,
     entities: Vec<Entity>,
 }
 
@@ -24,21 +23,7 @@ impl MockStore {
 
         MockStore {
             logger: logger.new(o!("component" => "MockStore")),
-            event_sink: None,
             entities,
-        }
-    }
-
-    /// Generates a bunch of mock store events.
-    fn generate_mock_events(&self) {
-        info!(self.logger, "Generate mock events");
-
-        let sink = self.event_sink.clone().unwrap();
-        for entity in self.entities.iter() {
-            sink.clone()
-                .send(StoreEvent::EntityAdded(entity.clone()))
-                .wait()
-                .unwrap();
         }
     }
 }
@@ -78,13 +63,13 @@ impl BasicStore for MockStore {
 impl Store for MockStore {
     fn subscribe(
         &mut self,
-        subgraph: String,
-        entities: Vec<String>,
+        _subgraph: String,
+        _entities: Vec<String>,
     ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
         unimplemented!();
     }
 
-    fn unsubscribe(&mut self, id: String) {
+    fn unsubscribe(&mut self, _id: String) {
         unimplemented!();
     }
 }
@@ -112,13 +97,13 @@ impl BasicStore for FakeStore {
 impl Store for FakeStore {
     fn subscribe(
         &mut self,
-        subgraph: String,
-        entities: Vec<String>,
+        _subgraph: String,
+        _entities: Vec<String>,
     ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
         unimplemented!();
     }
 
-    fn unsubscribe(&mut self, id: String) {
+    fn unsubscribe(&mut self, _id: String) {
         unimplemented!();
     }
 }
