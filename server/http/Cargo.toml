@@ -11,3 +11,7 @@ itertools = "0.7.8"
 serde = "1.0"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
+
+[dev-dependencies]
+graph-mock = { path = "../../mock" }
+tokio-executor = "0.1.2"

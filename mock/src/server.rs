@@ -1,5 +1,4 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use futures::sync::oneshot;
 use graphql_parser;
 use std::error::Error;
 use std::fmt;
@@ -28,25 +27,25 @@ impl fmt::Display for MockServeError {
 }
 
 /// A mock `GraphQLServer`.
-pub struct MockGraphQLServer {
+pub struct MockGraphQLServer<Q> {
     logger: Logger,
-    query_sink: Option<Sender<Query>>,
     schema_event_sink: Sender<SchemaEvent>,
     schema: Arc<Mutex<Option<Schema>>>,
+    query_runner: Arc<Q>,
 }
 
-impl MockGraphQLServer {
+impl<Q> MockGraphQLServer<Q> {
     /// Creates a new mock `GraphQLServer`.
-    pub fn new(logger: &Logger) -> Self {
+    pub fn new(logger: &Logger, query_runner: Arc<Q>) -> Self {
         // Create channel for handling incoming schema events
         let (schema_event_sink, schema_event_stream) = channel(100);
 
         // Create a new mock GraphQL server
         let mut server = MockGraphQLServer {
             logger: logger.new(o!("component" => "MockGraphQLServer")),
-            query_sink: None,
             schema_event_sink,
             schema: Arc::new(Mutex::new(None)),
+            query_runner,
         };
 
         // Spawn tasks to handle incoming schema events
@@ -84,69 +83,45 @@ impl MockGraphQLServer {
     }
 }
 
-impl GraphQLServer for MockGraphQLServer {
+impl<Q> GraphQLServer for MockGraphQLServer<Q>
+where
+    Q: QueryRunner + 'static,
+{
     type ServeError = MockServeError;
 
     fn schema_event_sink(&mut self) -> Sender<SchemaEvent> {
         self.schema_event_sink.clone()
     }
 
-    fn query_stream(&mut self) -> Result<Receiver<Query>, StreamError> {
-        // If possible, create a new channel for streaming incoming queries
-        match self.query_sink {
-            Some(_) => Err(StreamError::AlreadyCreated),
-            None => {
-                let (sink, stream) = channel(100);
-                self.query_sink = Some(sink);
-                Ok(stream)
-            }
-        }
-    }
-
     fn serve(
         &mut self,
         _port: u16,
     ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
-        // Only launch the GraphQL server if there is a component that will handle incoming queries
-        let query_sink = self.query_sink.clone().ok_or_else(|| MockServeError)?;
         let schema = self.schema.clone();
+        let query_runner = self.query_runner.clone();
+        let logger = self.logger.clone();
 
         // Generate mock query requests
         let requests = (0..5)
             .map(|_| {
                 let schema = schema.lock().unwrap();
-                let (sink, stream) = oneshot::channel();
-                (
-                    stream,
-                    Query {
-                        schema: schema.clone().unwrap(),
-                        document: graphql_parser::parse_query("{ allUsers { name }}").unwrap(),
-                        variables: None,
-                        result_sender: sink,
-                    },
-                )
+                Query {
+                    schema: schema.clone().unwrap(),
+                    document: graphql_parser::parse_query("{ allUsers { name }}").unwrap(),
+                    variables: None,
+                }
             })
-            .collect::<Vec<(oneshot::Receiver<QueryResult>, Query)>>();
+            .collect::<Vec<Query>>();
 
         println!("Requests: {:?}", requests);
 
-        let logger = self.logger.clone();
-
         // Create task to generate mock queries
-        Ok(Box::new(stream::iter_ok(requests).for_each(
-            move |(receiver, query)| {
-                query_sink
-                    .clone()
-                    .send(query)
-                    .wait()
-                    .expect("Failed to forward mock query");
-
-                let logger = logger.clone();
-                receiver.then(move |result| {
-                    info!(logger, "Send query result to client: {:?}", result);
-                    Ok(())
-                })
-            },
-        )))
+        Ok(Box::new(stream::iter_ok(requests).for_each(move |query| {
+            let logger = logger.clone();
+            query_runner.run_query(query).then(move |result| {
+                info!(logger, "Query result: {:?}", result);
+                Ok(())
+            })
+        })))
     }
 }

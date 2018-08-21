@@ -1,4 +1,3 @@
-use futures::sync::oneshot;
 use graph::serde_json;
 use graphql_parser;
 use hyper::Chunk;
@@ -20,7 +19,7 @@ impl GraphQLRequest {
 }
 
 impl Future for GraphQLRequest {
-    type Item = (Query, oneshot::Receiver<QueryResult>);
+    type Item = Query;
     type Error = GraphQLServerError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -67,19 +66,11 @@ impl Future for GraphQLRequest {
             ))),
         }?;
 
-        // Create a one-shot channel to allow another part of the system
-        // to notify the service when the query has completed
-        let (sender, receiver) = oneshot::channel();
-
-        Ok(Async::Ready((
-            Query {
-                document,
-                variables,
-                schema: schema,
-                result_sender: sender,
-            },
-            receiver,
-        )))
+        Ok(Async::Ready(Query {
+            document,
+            variables,
+            schema,
+        }))
     }
 }
 
@@ -153,7 +144,7 @@ mod tests {
             hyper::Chunk::from("{\"query\": \"{ user { name } }\"}"),
             schema,
         );
-        let (query, _) = request.wait().expect("Should accept valid queries");
+        let query = request.wait().expect("Should accept valid queries");
         assert_eq!(
             query.document,
             graphql_parser::parse_query("{ user { name } }").unwrap()
@@ -177,7 +168,7 @@ mod tests {
             ),
             schema,
         );
-        let (query, _) = request.wait().expect("Should accept null variables");
+        let query = request.wait().expect("Should accept null variables");
 
         let expected_query = graphql_parser::parse_query("{ user { name } }").unwrap();
         assert_eq!(query.document, expected_query);
@@ -221,7 +212,7 @@ mod tests {
             ),
             schema,
         );
-        let (query, _) = request.wait().expect("Should accept valid queries");
+        let query = request.wait().expect("Should accept valid queries");
 
         let expected_query = graphql_parser::parse_query("{ user { name } }").unwrap();
         let mut expected_variables = QueryVariables::new();
