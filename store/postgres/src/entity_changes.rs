@@ -37,10 +37,7 @@ impl EntityChangeListener {
                 .expect("failed to listen to entity changes in Postgres");
 
             iter.iterator()
-                .filter_map(|notification| match notification {
-                    Ok(notification) => Some(notification),
-                    Err(_) => None,
-                })
+                .filter_map(Result::ok)
                 .filter(|notification| notification.channel == String::from("entity_changes"))
                 .map(|notification| notification.payload)
                 .filter_map(|payload: String| -> Option<EntityChange> {
