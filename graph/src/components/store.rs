@@ -77,19 +77,6 @@ pub struct StoreQuery {
     pub range: Option<StoreRange>,
 }
 
-/// Events emitted by implementations of [Store](trait.Store.html).
-#[derive(Debug)]
-pub enum StoreEvent {
-    /// An entity was added to the store.
-    EntityAdded(Entity),
-
-    /// An entity was removed from the store.
-    EntityRemoved(Entity),
-
-    /// An entity was changed in the store.
-    EntityChanged(Entity),
-}
-
 /// Entity change events emitted by [Store](trait.Store.html) implementations.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EntityChange {
