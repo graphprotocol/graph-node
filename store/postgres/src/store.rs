@@ -5,7 +5,6 @@ use diesel::prelude::*;
 use diesel::sql_types::Text;
 use diesel::{debug_query, delete, insert_into, result, select};
 use filter::store_filter;
-use futures::stream;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
