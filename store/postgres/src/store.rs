@@ -335,13 +335,8 @@ impl BasicStore for Store {
 }
 
 impl StoreTrait for Store {
-    fn subscribe(
-        &mut self,
-        subgraph: String,
-        entities: Vec<String>,
-    ) -> Box<Stream<Item = EntityChange, Error = ()> + Send> {
+    fn subscribe(&mut self, subgraph: String, entities: Vec<String>) -> EntityChangeStream {
         let subscriptions = self.subscriptions.clone();
-
         // Prepare the new subscription by creating a channel and a subscription object
         let (sender, receiver) = channel(100);
 
