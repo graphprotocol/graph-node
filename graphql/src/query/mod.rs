@@ -45,7 +45,7 @@ where
         introspection_resolver: Arc::new(introspection_resolver),
         introspection_schema: &introspection_schema,
         introspecting: false,
-        query,
+        document: &query.document,
         fields: vec![],
     };
 

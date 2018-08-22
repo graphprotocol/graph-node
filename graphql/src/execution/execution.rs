@@ -24,7 +24,7 @@ where
     /// Introspection data that corresponds to the schema.
     pub introspection_schema: &'a s::Document,
     /// The query to execute.
-    pub query: &'a Query,
+    pub document: &'a q::Document,
     /// The resolver to use.
     pub resolver: Arc<R1>,
     /// The introspection resolver to use.
@@ -120,7 +120,7 @@ where
 }
 
 /// Collects fields of a selection set.
-fn collect_fields<'a, R1, R2>(
+pub fn collect_fields<'a, R1, R2>(
     ctx: ExecutionContext<'a, R1, R2>,
     object_type: &s::ObjectType,
     selection_set: &'a q::SelectionSet,
@@ -167,7 +167,7 @@ where
                     // Resolve the fragment using its name and, if it applies, collect
                     // fields for the fragment and group them
                     let fragment_grouped_field_set =
-                        qast::get_fragment(&ctx.query.document, &spread.fragment_name)
+                        qast::get_fragment(&ctx.document, &spread.fragment_name)
                             .and_then(|fragment| {
                                 // We have a fragment, only pass it on if it applies to the
                                 // current object type
@@ -692,7 +692,7 @@ fn merge_selection_sets(fields: Vec<&q::Field>) -> q::SelectionSet {
 }
 
 /// Coerces argument values into GraphQL values.
-fn coerce_argument_values<'a, R1, R2>(
+pub fn coerce_argument_values<'a, R1, R2>(
     ctx: ExecutionContext<'a, R1, R2>,
     object_type: &'a s::ObjectType,
     field: &'a q::Field,
