@@ -53,7 +53,6 @@ pub struct StoreConfig {
 
 /// A Store based on Diesel and Postgres.
 pub struct Store {
-    event_sink: Option<Sender<StoreEvent>>,
     logger: slog::Logger,
     subscriptions: Arc<RwLock<HashMap<String, Subscription>>>,
     pub conn: PgConnection,
@@ -76,7 +75,6 @@ impl Store {
         // Create the store
         let mut store = Store {
             logger: logger.clone(),
-            event_sink: None,
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             conn: conn,
         };

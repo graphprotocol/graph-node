@@ -1,5 +1,3 @@
-use futures::future;
-use futures::prelude::*;
 use std::sync::Mutex;
 
 use graph::prelude::{QueryRunner as QueryRunnerTrait, *};
