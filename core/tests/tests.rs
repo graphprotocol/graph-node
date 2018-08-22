@@ -5,17 +5,18 @@ extern crate graph_mock;
 extern crate graph_runtime_wasm;
 extern crate ipfs_api;
 
-use graph::components::ethereum::*;
-use graph::prelude::*;
-use graph_core::RuntimeManager;
-use graph_mock::FakeStore;
-use graph_runtime_wasm::RuntimeHostBuilder;
 use ipfs_api::IpfsClient;
 use std::fs::read_to_string;
 use std::io::Cursor;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
+
+use graph::components::ethereum::*;
+use graph::prelude::*;
+use graph_core::RuntimeManager;
+use graph_mock::FakeStore;
+use graph_runtime_wasm::RuntimeHostBuilder;
 
 #[test]
 fn multiple_data_sources_per_subgraph() {
