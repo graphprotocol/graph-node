@@ -131,8 +131,5 @@ pub trait Store: BasicStore + Send {
         &mut self,
         subgraph: String,
         entities: Vec<String>,
-    ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>);
-
-    /// Unsubscribe using a previously obtained subscription ID.
-    fn unsubscribe(&mut self, id: String);
+    ) -> Box<Stream<Item = EntityChange, Error = ()> + Send>;
 }

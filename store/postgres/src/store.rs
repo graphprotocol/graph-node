@@ -105,21 +105,29 @@ impl Store {
                    "entity" => &change.entity,
                    "id" => &change.id);
 
-            let subscriptions = subscriptions.read().unwrap();
-
-            let matching_senders = subscriptions
-                .values()
-                .filter(|subscription| {
+            // Obtain IDs and senders of subscriptions matching the entity change
+            let matches = subscriptions
+                .read()
+                .unwrap()
+                .iter()
+                .filter(|(_, subscription)| {
                     subscription.subgraph == change.subgraph
                         && subscription.entities.contains(&change.entity)
                 })
-                .map(|subscription| subscription.sender.clone())
+                .map(|(id, subscription)| (id.clone(), subscription.sender.clone()))
                 .collect::<Vec<_>>();
 
-            stream::iter_ok::<_, ()>(matching_senders).for_each(move |sender| {
+            let subscriptions = subscriptions.clone();
+
+            // Write change to all matching subscription streams; remove subscriptions
+            // whose receiving end has been dropped
+            stream::iter_ok::<_, ()>(matches).for_each(move |(id, sender)| {
+                let subscriptions = subscriptions.clone();
                 sender
                     .send(change.clone())
-                    .map_err(|_| ())
+                    .map_err(move |_| {
+                        subscriptions.write().unwrap().remove(&id);
+                    })
                     .and_then(|_| Ok(()))
             })
         }));
@@ -292,7 +300,7 @@ impl StoreTrait for Store {
         &mut self,
         subgraph: String,
         entities: Vec<String>,
-    ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
+    ) -> Box<Stream<Item = EntityChange, Error = ()> + Send> {
         // Prepare the new subscription by creating a channel and a subscription object
         let (sender, receiver) = channel(100);
         let id = Uuid::new_v4().to_string();
@@ -306,18 +314,13 @@ impl StoreTrait for Store {
         let subscriptions = self.subscriptions.clone();
         let mut subscriptions = subscriptions.write().unwrap();
         if subscriptions.contains_key(&id) {
-            error!(self.logger, "Duplicate Store subscription detected; \
+            error!(self.logger, "Duplicate Store subscription ID generated; \
                                  subscriptions will not work as expected";
                    "id" => &id);
         }
         subscriptions.insert(id.clone(), subscription);
 
         // Return the subscription ID and entity change stream
-        (id, Box::new(receiver))
-    }
-
-    fn unsubscribe(&mut self, id: String) {
-        let subscriptions = self.subscriptions.clone();
-        subscriptions.write().unwrap().remove(&id);
+        Box::new(receiver)
     }
 }

@@ -65,11 +65,7 @@ impl Store for MockStore {
         &mut self,
         _subgraph: String,
         _entities: Vec<String>,
-    ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
-        unimplemented!();
-    }
-
-    fn unsubscribe(&mut self, _id: String) {
+    ) -> Box<Stream<Item = EntityChange, Error = ()> + Send> {
         unimplemented!();
     }
 }
@@ -99,11 +95,7 @@ impl Store for FakeStore {
         &mut self,
         _subgraph: String,
         _entities: Vec<String>,
-    ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
-        unimplemented!();
-    }
-
-    fn unsubscribe(&mut self, _id: String) {
+    ) -> Box<Stream<Item = EntityChange, Error = ()> + Send> {
         unimplemented!();
     }
 }
