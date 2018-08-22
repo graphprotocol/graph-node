@@ -7,10 +7,8 @@ extern crate serde;
 extern crate serde_yaml;
 
 mod query;
-mod schema;
 mod subgraph;
 
 pub use query::QueryRunner;
-pub use schema::SchemaProvider;
 pub use subgraph::RuntimeManager;
 pub use subgraph::SubgraphProvider;
