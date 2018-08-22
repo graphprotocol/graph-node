@@ -3,14 +3,14 @@ name = "graph-graphql"
 version = "0.1.0"
 
 [dependencies]
+futures = "0.1.21"
+graph = { path = "../graph" }
 graphql-parser = "0.2.0"
 indexmap = "1.0"
 Inflector = "0.11.3"
 serde = "1.0"
-graph = { path = "../graph" }
 
 [dev-dependencies]
-futures = "0.1.21"
 pretty_assertions = "0.5.1"
 graph-mock = { path = "../mock" }
 graph-core = { path = "../core" }

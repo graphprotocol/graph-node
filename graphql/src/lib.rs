@@ -1,3 +1,4 @@
+extern crate futures;
 extern crate graph;
 extern crate graphql_parser;
 extern crate indexmap;
@@ -16,6 +17,9 @@ mod execution;
 /// Utilities for executing GraphQL queries and working with query ASTs.
 pub mod query;
 
+/// Utilities for executing GraphQL subscriptions.
+pub mod subscription;
+
 /// Utilities for working with GraphQL values.
 mod values;
 
@@ -29,5 +33,6 @@ pub mod prelude {
     pub use super::query::{execute_query, QueryExecutionOptions};
     pub use super::schema::{api_schema, APISchemaError};
     pub use super::store::{build_query, StoreResolver};
+    pub use super::subscription::{execute_subscription, SubscriptionExecutionOptions};
     pub use super::values::{object_value, MaybeCoercible, SerializableValue};
 }
