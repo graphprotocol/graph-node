@@ -3,16 +3,16 @@ use std::collections::BTreeMap;
 
 use graph::prelude::*;
 
-/// A mock `QueryRunner`.
-pub struct MockQueryRunner {
+/// A mock `GraphQLRunner`.
+pub struct MockGraphQLRunner {
     logger: slog::Logger,
 }
 
-impl MockQueryRunner {
-    /// Creates a new mock `QueryRunner`.
+impl MockGraphQLRunner {
+    /// Creates a new mock `GraphQLRunner`.
     pub fn new(logger: &slog::Logger) -> Self {
-        MockQueryRunner {
-            logger: logger.new(o!("component" => "MockQueryRunner")),
+        MockGraphQLRunner {
+            logger: logger.new(o!("component" => "MockGraphQLRunner")),
         }
     }
 }

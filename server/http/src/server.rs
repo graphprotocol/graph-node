@@ -51,12 +51,12 @@ pub struct GraphQLServer<Q> {
     names: Arc<RwLock<BTreeMap<String, String>>>,
     // Maps a subgraph name to its schema.
     schemas: Arc<RwLock<BTreeMap<String, Schema>>>,
-    query_runner: Arc<Q>,
+    graphql_runner: Arc<Q>,
 }
 
 impl<Q> GraphQLServer<Q> {
     /// Creates a new GraphQL server.
-    pub fn new(logger: &slog::Logger, query_runner: Arc<Q>) -> Self {
+    pub fn new(logger: &slog::Logger, graphql_runner: Arc<Q>) -> Self {
         // Create channel for handling incoming schema events
         let (schema_event_sink, schema_event_stream) = channel(100);
 
@@ -66,7 +66,7 @@ impl<Q> GraphQLServer<Q> {
             schema_event_sink,
             names: Arc::new(RwLock::new(BTreeMap::new())),
             schemas: Arc::new(RwLock::new(BTreeMap::new())),
-            query_runner: query_runner,
+            graphql_runner: graphql_runner,
         };
 
         // Spawn tasks to handle incoming schema events
@@ -115,7 +115,7 @@ impl<Q> GraphQLServer<Q> {
 
 impl<Q> GraphQLServerTrait for GraphQLServer<Q>
 where
-    Q: QueryRunner + 'static,
+    Q: GraphQLRunner + Sized + 'static,
 {
     type ServeError = GraphQLServeError;
 
@@ -133,11 +133,12 @@ where
 
         // On every incoming request, launch a new GraphQL service that writes
         // incoming queries to the query sink.
-        let query_runner = self.query_runner.clone();
+        let graphql_runner = self.graphql_runner.clone();
         let names = self.names.clone();
         let schemas = self.schemas.clone();
         let new_service = move || {
-            let service = GraphQLService::new(names.clone(), schemas.clone(), query_runner.clone());
+            let service =
+                GraphQLService::new(names.clone(), schemas.clone(), graphql_runner.clone());
             future::ok::<GraphQLService<Q>, hyper::Error>(service)
         };
 
@@ -156,7 +157,7 @@ mod tests {
 
     use std::time::{Duration, Instant};
 
-    use self::graph_mock::MockQueryRunner;
+    use self::graph_mock::MockGraphQLRunner;
     use graph_graphql::schema::ast;
 
     use super::*;
@@ -169,8 +170,8 @@ mod tests {
                 let res: Result<_, ()> = Ok({
                     // Set up the server
                     let logger = Logger::root(slog::Discard, o!());
-                    let query_runner = Arc::new(MockQueryRunner::new(&logger));
-                    let mut server = GraphQLServer::new(&logger, query_runner);
+                    let graphql_runner = Arc::new(MockGraphQLRunner::new(&logger));
+                    let mut server = GraphQLServer::new(&logger, graphql_runner);
                     let schema_sink = server.schema_event_sink();
 
                     // Create an input schema event

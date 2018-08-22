@@ -1,28 +1,28 @@
 use std::sync::Mutex;
 
-use graph::prelude::{QueryRunner as QueryRunnerTrait, *};
+use graph::prelude::{GraphQLRunner as GraphQLRunnerTrait, *};
 use graph_graphql::prelude::*;
 
-/// Common query runner implementation for The Graph.
-pub struct QueryRunner<S> {
+/// GraphQL runner implementation for The Graph.
+pub struct GraphQLRunner<S> {
     logger: Logger,
     store: Arc<Mutex<S>>,
 }
 
-impl<S> QueryRunner<S>
+impl<S> GraphQLRunner<S>
 where
     S: Store + Sized + 'static,
 {
     /// Creates a new query runner.
     pub fn new(logger: &Logger, store: Arc<Mutex<S>>) -> Self {
-        QueryRunner {
-            logger: logger.new(o!("component" => "QueryRunner")),
+        GraphQLRunner {
+            logger: logger.new(o!("component" => "GraphQLRunner")),
             store: store,
         }
     }
 }
 
-impl<S> QueryRunnerTrait for QueryRunner<S>
+impl<S> GraphQLRunnerTrait for GraphQLRunner<S>
 where
     S: Store + 'static,
 {
