@@ -22,23 +22,23 @@ pub struct GraphQLService<Q> {
     names: Arc<RwLock<BTreeMap<String, String>>>,
     // Maps names to schemas.
     schemas: Arc<RwLock<BTreeMap<String, Schema>>>,
-    query_runner: Arc<Q>,
+    graphql_runner: Arc<Q>,
 }
 
 impl<Q> GraphQLService<Q>
 where
-    Q: QueryRunner + 'static,
+    Q: GraphQLRunner + 'static,
 {
     /// Creates a new GraphQL service.
     pub fn new(
         names: Arc<RwLock<BTreeMap<String, String>>>,
         schemas: Arc<RwLock<BTreeMap<String, Schema>>>,
-        query_runner: Arc<Q>,
+        graphql_runner: Arc<Q>,
     ) -> Self {
         GraphQLService {
             names,
             schemas,
-            query_runner,
+            graphql_runner,
         }
     }
 
@@ -77,7 +77,7 @@ where
         name_or_id: &str,
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
-        let query_runner = self.query_runner.clone();
+        let graphql_runner = self.graphql_runner.clone();
         let schemas = self.schemas.read().unwrap();
 
         // First try `name_or_id` as a name, if that fails try it as an id.
@@ -99,7 +99,7 @@ where
                 .and_then(move |body| GraphQLRequest::new(body, schema.clone()))
                 .and_then(move |query| {
                     // Run the query using the query runner
-                    query_runner
+                    graphql_runner
                         .run_query(query)
                         .map_err(|e| GraphQLServerError::from(e))
                 })
@@ -132,7 +132,7 @@ where
 
 impl<Q> Service for GraphQLService<Q>
 where
-    Q: QueryRunner + 'static,
+    Q: GraphQLRunner + 'static,
 {
     type ReqBody = Body;
     type ResBody = Body;
@@ -199,13 +199,10 @@ mod tests {
     use test_utils;
 
     /// A simple stupid query runner for testing.
-    pub struct TestQueryRunner;
+    pub struct TestGraphQLRunner;
 
-    impl QueryRunner for TestQueryRunner {
-        fn run_query(
-            &self,
-            _query: Query,
-        ) -> Box<Future<Item = QueryResult, Error = QueryError> + Send> {
+    impl GraphQLRunner for TestGraphQLRunner {
+        fn run_query(&self, _query: Query) -> QueryResultFuture {
             Box::new(future::ok(QueryResult::new(Some(q::Value::Object(
                 BTreeMap::from_iter(
                     vec![(
@@ -214,6 +211,10 @@ mod tests {
                     )].into_iter(),
                 ),
             )))))
+        }
+
+        fn run_subscription(&self, _subscription: Subscription) -> SubscriptionResultFuture {
+            unimplemented!();
         }
     }
 
@@ -233,8 +234,8 @@ mod tests {
                 ).unwrap(),
             },
         )))));
-        let query_runner = Arc::new(TestQueryRunner);
-        let mut service = GraphQLService::new(Default::default(), schema, query_runner);
+        let graphql_runner = Arc::new(TestGraphQLRunner);
+        let mut service = GraphQLService::new(Default::default(), schema, graphql_runner);
 
         let request = Request::builder()
             .method(Method::POST)
@@ -261,7 +262,7 @@ mod tests {
 
     #[test]
     fn posting_valid_queries_yields_result_response() {
-        let query_runner = Arc::new(TestQueryRunner);
+        let graphql_runner = Arc::new(TestGraphQLRunner);
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
             .block_on(future::lazy(|| {
@@ -281,7 +282,8 @@ mod tests {
                         },
                     )))));
 
-                    let mut service = GraphQLService::new(Default::default(), schema, query_runner);
+                    let mut service =
+                        GraphQLService::new(Default::default(), schema, graphql_runner);
 
                     let request = Request::builder()
                         .method(Method::POST)

@@ -41,8 +41,8 @@ pub mod subgraph;
 /// Components dealing with Ethereum.
 pub mod ethereum;
 
-/// Components dealing with processing GraphQL queries.
-pub mod query;
+/// Components dealing with processing GraphQL.
+pub mod graphql;
 
 /// Components dealing with serving GraphQL over the network.
 pub mod server;

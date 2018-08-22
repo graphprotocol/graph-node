@@ -6,9 +6,9 @@ extern crate graph_runtime_wasm;
 extern crate serde;
 extern crate serde_yaml;
 
-mod query;
+mod graphql;
 mod subgraph;
 
-pub use query::QueryRunner;
+pub use graphql::GraphQLRunner;
 pub use subgraph::RuntimeManager;
 pub use subgraph::SubgraphProvider;
