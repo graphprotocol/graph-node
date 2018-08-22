@@ -80,9 +80,13 @@ pub struct StoreQuery {
 /// Entity change events emitted by [Store](trait.Store.html) implementations.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EntityChange {
+    // ID of the subgraph the changed entity belongs to.
     pub subgraph: String,
+    // Entity type name of the changed entity.
     pub entity: String,
+    // ID of the changed entity.
     pub id: String,
+    // Entity data after the change.
     pub data: Entity,
 }
 
