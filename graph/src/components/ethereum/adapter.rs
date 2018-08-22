@@ -1,8 +1,7 @@
-use ethabi::{Bytes, Error as ABIError, Event, Function, LogParam, Token};
+use ethabi::{Bytes, Error as ABIError, Event, Function, LogParam, ParamType, Token};
 use ethereum_types::{Address, H256};
+use failure::SyncFailure;
 use futures::{Future, Stream};
-use std::error::Error;
-use std::fmt;
 use web3::error::Error as Web3Error;
 use web3::types::{BlockId, BlockNumber};
 
@@ -32,72 +31,46 @@ pub struct EthereumContractCall {
     pub args: Vec<Token>,
 }
 
-#[derive(Debug)]
+#[derive(Fail, Debug)]
 pub enum EthereumContractCallError {
-    CallError(Web3Error),
-    ABIError(ABIError),
-}
-
-impl Error for EthereumContractCallError {
-    fn description(&self) -> &str {
-        "Ethereum contract call error"
-    }
-
-    fn cause(&self) -> Option<&Error> {
-        match self {
-            EthereumContractCallError::CallError(ref e) => Some(e),
-            EthereumContractCallError::ABIError(ref e) => Some(e),
-        }
-    }
-}
-
-impl fmt::Display for EthereumContractCallError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            EthereumContractCallError::CallError(e) => write!(f, "Call error: {}", e),
-            EthereumContractCallError::ABIError(e) => write!(f, "ABI error: {}", e),
-        }
-    }
+    #[fail(display = "call error: {}", _0)]
+    CallError(SyncFailure<Web3Error>),
+    #[fail(display = "ABI error: {}", _0)]
+    ABIError(SyncFailure<ABIError>),
+    /// `Token` is not of expected `ParamType`
+    #[fail(display = "type mismatch, token {:?} is not of kind {:?}", _0, _1)]
+    TypeError(Token, ParamType),
 }
 
 impl From<Web3Error> for EthereumContractCallError {
     fn from(e: Web3Error) -> Self {
-        EthereumContractCallError::CallError(e)
+        EthereumContractCallError::CallError(SyncFailure::new(e))
     }
 }
 
 impl From<ABIError> for EthereumContractCallError {
     fn from(e: ABIError) -> Self {
-        EthereumContractCallError::ABIError(e)
+        EthereumContractCallError::ABIError(SyncFailure::new(e))
     }
 }
 
-#[derive(Debug)]
+#[derive(Fail, Debug)]
 pub enum EthereumSubscriptionError {
-    // Because `Web3Error` and `ABIError` are not `Sync`,
-    // we have to wrap them in mutexes.
-    RpcError(Web3Error),
-    ABIError(ABIError),
-}
-
-impl fmt::Display for EthereumSubscriptionError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            EthereumSubscriptionError::RpcError(e) => write!(f, "RPC error: {}", e),
-            EthereumSubscriptionError::ABIError(e) => write!(f, "ABI error: {}", e),
-        }
-    }
+    #[fail(display = "RPC error: {}", _0)]
+    RpcError(SyncFailure<Web3Error>),
+    #[fail(display = "ABI error: {}", _0)]
+    ABIError(SyncFailure<ABIError>),
 }
 
 impl From<Web3Error> for EthereumSubscriptionError {
     fn from(err: Web3Error) -> EthereumSubscriptionError {
-        EthereumSubscriptionError::RpcError(err)
+        EthereumSubscriptionError::RpcError(SyncFailure::new(err))
     }
 }
 
 impl From<ABIError> for EthereumSubscriptionError {
     fn from(err: ABIError) -> EthereumSubscriptionError {
-        EthereumSubscriptionError::ABIError(err)
+        EthereumSubscriptionError::ABIError(SyncFailure::new(err))
     }
 }
 

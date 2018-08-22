@@ -1,5 +1,6 @@
 use ethabi::{RawLog, Token};
 use ethereum_types::H256;
+use futures::future;
 use futures::prelude::*;
 use futures::stream::iter_ok;
 use std::sync::Arc;
@@ -72,6 +73,20 @@ impl<T: web3::Transport + Send + Sync + 'static> EthereumAdapterTrait for Ethere
         &mut self,
         call: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
+        // Emit custom error for type mismatches.
+        for (token, kind) in call
+            .args
+            .iter()
+            .zip(call.function.inputs.iter().map(|p| &p.kind))
+        {
+            if !token.type_check(kind) {
+                return Box::new(future::err(EthereumContractCallError::TypeError(
+                    token.clone(),
+                    kind.clone(),
+                )));
+            }
+        }
+
         // Obtain a handle on the Ethereum client
         let eth_client = self.eth_client.clone();
 
