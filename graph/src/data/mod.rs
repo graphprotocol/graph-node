@@ -9,3 +9,6 @@ pub mod schema;
 
 /// Data types for dealing with storing entities.
 pub mod store;
+
+/// Data types for dealing with GraphQL subscriptions.
+pub mod subscription;
