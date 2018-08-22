@@ -19,4 +19,3 @@ uuid = "0.6"
 
 [dev-dependencies]
 lazy_static = "1.1"
-tokio-executor = "0.1.2"
