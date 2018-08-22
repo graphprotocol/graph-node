@@ -7,7 +7,6 @@ extern crate ipfs_api;
 
 use graph::components::ethereum::*;
 use graph::prelude::*;
-use graph::util::log::logger;
 use graph_core::RuntimeManager;
 use graph_mock::FakeStore;
 use graph_runtime_wasm::RuntimeHostBuilder;
