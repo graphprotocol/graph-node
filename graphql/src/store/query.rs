@@ -143,6 +143,58 @@ pub fn parse_subgraph_id(entity: &s::ObjectType) -> Option<String> {
         })
 }
 
+/// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.
+pub fn collect_entities_from_query_field(
+    schema: &s::Document,
+    object_type: &s::ObjectType,
+    field: &q::Field,
+) -> Vec<(String, String)> {
+    // Output entities
+    let mut entities = HashSet::new();
+
+    // List of objects/fields to visit next
+    let mut queue = VecDeque::new();
+    queue.push_back((object_type, field));
+
+    while !queue.is_empty() {
+        let (object_type, field) = queue.pop_front().unwrap();
+
+        // Check if the field exists on the object type
+        if let Some(field_type) = sast::get_field_type(object_type, &field.name) {
+            // Check if the field type corresponds to a type definition (in a valid schema,
+            // this should always be the case)
+            if let Some(type_definition) =
+                sast::get_type_definition_from_field_type(schema, field_type)
+            {
+                // Check if the field's type is that of an entity
+                //
+                // FIXME: We must check for the `@entity` directive here once we have that,
+                // otherwise the check below will also be true for the root Query and
+                // Subscription objects as well as all filter object types
+                if let s::TypeDefinition::Object(object_type) = type_definition {
+                    // Obtain the subgraph ID from the object type
+                    if let Some(subgraph_id) = parse_subgraph_id(object_type) {
+                        // Add the (subgraph_id, entity_name) tuple to the result set
+                        entities.insert((subgraph_id, object_type.name.to_owned()));
+                    }
+
+                    // If the query field has a non-empty selection set, this means we
+                    // need to recursively process it
+                    if !field.selection_set.items.is_empty() {
+                        for selection in field.selection_set.items.iter() {
+                            if let q::Selection::Field(sub_field) = selection {
+                                queue.push_back((object_type, sub_field))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    entities.into_iter().collect()
+}
+
 #[cfg(test)]
 mod tests {
     use graphql_parser::{

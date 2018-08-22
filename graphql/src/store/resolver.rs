@@ -1,10 +1,11 @@
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::result;
 use std::sync::{Arc, Mutex};
 
 use graph::components::store::*;
-use graph::prelude::{slog::*, BasicStore, Value};
+use graph::prelude::{slog::*, QueryExecutionError, Store, Value};
 
 use prelude::*;
 use query::ast as qast;
@@ -15,11 +16,11 @@ use store::query::{collect_entities_from_query_field, parse_subgraph_id};
 #[derive(Clone)]
 pub struct StoreResolver {
     logger: Logger,
-    store: Arc<Mutex<BasicStore>>,
+    store: Arc<Mutex<Store>>,
 }
 
 impl StoreResolver {
-    pub fn new(logger: &Logger, store: Arc<Mutex<BasicStore>>) -> Self {
+    pub fn new(logger: &Logger, store: Arc<Mutex<Store>>) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,
@@ -294,5 +295,27 @@ impl Resolver for StoreResolver {
                     .unwrap_or(q::Value::Null)
             }
         }
+    }
+
+    fn resolve_field_stream<'a, 'b>(
+        &self,
+        schema: &'a s::Document,
+        object_type: &'a s::ObjectType,
+        field: &'b q::Field,
+    ) -> result::Result<EntityChangeStream, QueryExecutionError> {
+        // Fail if the field does not exist on the object type
+        if sast::get_field_type(object_type, &field.name).is_none() {
+            return Err(QueryExecutionError::UnknownField(
+                field.position.clone(),
+                object_type.name.clone(),
+                field.name.clone(),
+            ));
+        }
+
+        // Collect all entities involved in the query field
+        let entities = collect_entities_from_query_field(schema, object_type, field);
+
+        // Subscribe to the store and return the entity change stream
+        Ok(self.store.lock().unwrap().subscribe(entities))
     }
 }
