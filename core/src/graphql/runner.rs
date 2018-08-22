@@ -1,3 +1,4 @@
+use futures::future;
 use std::sync::Mutex;
 
 use graph::prelude::{GraphQLRunner as GraphQLRunnerTrait, *};
@@ -26,19 +27,26 @@ impl<S> GraphQLRunnerTrait for GraphQLRunner<S>
 where
     S: Store + 'static,
 {
-    fn run_query(
-        &self,
-        query: Query,
-    ) -> Box<Future<Item = QueryResult, Error = QueryError> + Send> {
-        let logger = self.logger.clone();
-        let store = self.store.clone();
-
-        let options = QueryExecutionOptions {
-            logger: logger.clone(),
-            resolver: StoreResolver::new(&logger, store.clone()),
-        };
-
-        let result = execute_query(&query, options);
+    fn run_query(&self, query: Query) -> QueryResultFuture {
+        let result = execute_query(
+            &query,
+            QueryExecutionOptions {
+                logger: self.logger.clone(),
+                resolver: StoreResolver::new(&self.logger, self.store.clone()),
+            },
+        );
         Box::new(future::ok(result))
+    }
+
+    fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture {
+        let result = execute_subscription(
+            &subscription,
+            SubscriptionExecutionOptions {
+                logger: self.logger.clone(),
+                resolver: StoreResolver::new(&self.logger, self.store.clone()),
+            },
+        );
+
+        Box::new(future::result(result))
     }
 }
