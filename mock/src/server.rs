@@ -5,10 +5,8 @@ use std::error::Error;
 use std::fmt;
 use std::sync::Mutex;
 
-use graph::components::schema::SchemaProviderEvent;
-use graph::components::store::StoreEvent;
 use graph::prelude::*;
-use graph::util::stream::StreamError;
+use graph_graphql::prelude::api_schema;
 
 #[derive(Debug)]
 pub struct MockServeError;
@@ -33,7 +31,7 @@ impl fmt::Display for MockServeError {
 pub struct MockGraphQLServer {
     logger: Logger,
     query_sink: Option<Sender<Query>>,
-    schema_provider_event_sink: Sender<SchemaProviderEvent>,
+    schema_provider_event_sink: Sender<SchemaEvent>,
     store_event_sink: Sender<StoreEvent>,
     schema: Arc<Mutex<Option<Schema>>>,
 }
@@ -63,16 +61,26 @@ impl MockGraphQLServer {
     }
 
     /// Handle incoming events from the schema provider
-    fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaProviderEvent>) {
+    fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaEvent>) {
         let logger = self.logger.clone();
         let schema = self.schema.clone();
 
         tokio::spawn(stream.for_each(move |event| {
             info!(logger, "Received schema provider event"; "event" => format!("{:?}", event));
-            let SchemaProviderEvent::SchemaChanged(new_schema) = event;
 
-            let mut schema = schema.lock().unwrap();
-            *schema = new_schema;
+            if let SchemaEvent::SchemaAdded(new_schema) = event {
+                let mut schema = schema.lock().unwrap();
+                let derived_schema = match api_schema(&new_schema.document) {
+                    Ok(document) => Schema {
+                        id: new_schema.id.clone(),
+                        document,
+                    },
+                    Err(e) => return Ok(error!(logger, "error deriving schema {}", e)),
+                };
+                *schema = Some(derived_schema);
+            } else {
+                panic!("schema removal is yet not supported")
+            }
 
             Ok(())
         }));
@@ -92,7 +100,7 @@ impl MockGraphQLServer {
 impl GraphQLServer for MockGraphQLServer {
     type ServeError = MockServeError;
 
-    fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
+    fn schema_provider_event_sink(&mut self) -> Sender<SchemaEvent> {
         self.schema_provider_event_sink.clone()
     }
 

@@ -10,6 +10,3 @@ hyper = "0.12.7"
 serde = "1.0"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
-
-[dev-dependencies]
-tokio-executor = "0.1.2"

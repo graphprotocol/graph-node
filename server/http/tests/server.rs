@@ -4,7 +4,6 @@ extern crate graph_server_http;
 extern crate graphql_parser;
 extern crate http;
 extern crate hyper;
-extern crate tokio_executor;
 
 use futures::prelude::*;
 use futures::sync::mpsc::Receiver;
@@ -13,7 +12,6 @@ use http::StatusCode;
 use hyper::{Body, Client, Request};
 use std::collections::BTreeMap;
 
-use graph::components::schema::SchemaProviderEvent;
 use graph::prelude::*;
 
 use graph_server_http::test_utils;
@@ -39,10 +37,8 @@ fn simulate_running_one_query(query_stream: Receiver<Query>) {
 #[test]
 fn rejects_empty_json() {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    tokio_executor::with_default(
-        &mut runtime.executor(),
-        &mut tokio_executor::enter().unwrap(),
-        |_| {
+    runtime
+        .block_on(futures::lazy(|| {
             let logger = slog::Logger::root(slog::Discard, o!());
 
             let mut server = HyperGraphQLServer::new(&logger);
@@ -52,16 +48,11 @@ fn rejects_empty_json() {
             // Create a simple schema and send it to the server
             let schema = Schema {
                 id: "test-schema".to_string(),
-                document: graphql_parser::parse_schema(
-                    "\
-                     scalar String \
-                     type Query { name: String } \
-                     ",
-                ).unwrap(),
+                document: Default::default(),
             };
             server
                 .schema_provider_event_sink()
-                .send(SchemaProviderEvent::SchemaChanged(Some(schema)))
+                .send(SchemaEvent::SchemaAdded(schema))
                 .wait()
                 .expect("Failed to send schema to server");
 
@@ -76,33 +67,28 @@ fn rejects_empty_json() {
                 .unwrap();
 
             // The response must be a query error
-            runtime
-                .block_on(client.request(request).and_then(|response| {
-                    let errors =
-                        test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
+            client.request(request).and_then(|response| {
+                let errors = test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
 
-                    let message = errors[0]
-                        .as_object()
-                        .expect("Query error is not an object")
-                        .get("message")
-                        .expect("Error contains no message")
-                        .as_str()
-                        .expect("Error message is not a string");
-                    assert_eq!(message, "The \"query\" field missing in request data");
-                    Ok(())
-                }))
-                .unwrap();
-        },
-    )
+                let message = errors[0]
+                    .as_object()
+                    .expect("Query error is not an object")
+                    .get("message")
+                    .expect("Error contains no message")
+                    .as_str()
+                    .expect("Error message is not a string");
+                assert_eq!(message, "The \"query\" field missing in request data");
+                Ok(())
+            })
+        }))
+        .unwrap()
 }
 
 #[test]
 fn rejects_invalid_queries() {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    tokio_executor::with_default(
-        &mut runtime.executor(),
-        &mut tokio_executor::enter().unwrap(),
-        |_| {
+    runtime
+        .block_on(futures::lazy(|| {
             let logger = slog::Logger::root(slog::Discard, o!());
 
             let mut server = HyperGraphQLServer::new(&logger);
@@ -116,16 +102,11 @@ fn rejects_invalid_queries() {
             // Create a simple schema and send it to the server
             let schema = Schema {
                 id: "test-schema".to_string(),
-                document: graphql_parser::parse_schema(
-                    "\
-                     scalar String \
-                     type Query { name: String } \
-                     ",
-                ).unwrap(),
+                document: Default::default(),
             };
             server
                 .schema_provider_event_sink()
-                .send(SchemaProviderEvent::SchemaChanged(Some(schema)))
+                .send(SchemaEvent::SchemaAdded(schema))
                 .wait()
                 .expect("Failed to send schema to server");
 
@@ -136,67 +117,62 @@ fn rejects_invalid_queries() {
                 .unwrap();
 
             // The response must be a query error
-            runtime
-                .block_on(client.request(request).and_then(|response| {
-                    let errors =
-                        test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
+            client.request(request).and_then(|response| {
+                let errors = test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
 
-                    let message = errors[0]
-                        .as_object()
-                        .expect("Query error is not an object")
-                        .get("message")
-                        .expect("Error contains no message")
-                        .as_str()
-                        .expect("Error message is not a string");
+                let message = errors[0]
+                    .as_object()
+                    .expect("Query error is not an object")
+                    .get("message")
+                    .expect("Error contains no message")
+                    .as_str()
+                    .expect("Error message is not a string");
 
-                    assert_eq!(
-                        message,
-                        "Unexpected `unexpected character \
-                         \'<\'`\nExpected `{`, `query`, `mutation`, \
-                         `subscription` or `fragment`"
-                    );
+                assert_eq!(
+                    message,
+                    "Unexpected `unexpected character \
+                     \'<\'`\nExpected `{`, `query`, `mutation`, \
+                     `subscription` or `fragment`"
+                );
 
-                    let locations = errors[0]
-                        .as_object()
-                        .expect("Query error is not an object")
-                        .get("locations")
-                        .expect("Query error contains not locations")
-                        .as_array()
-                        .expect("Query error \"locations\" field is not an array");
+                let locations = errors[0]
+                    .as_object()
+                    .expect("Query error is not an object")
+                    .get("locations")
+                    .expect("Query error contains not locations")
+                    .as_array()
+                    .expect("Query error \"locations\" field is not an array");
 
-                    let location = locations[0]
-                        .as_object()
-                        .expect("Query error location is not an object");
+                let location = locations[0]
+                    .as_object()
+                    .expect("Query error location is not an object");
 
-                    let line = location
-                        .get("line")
-                        .expect("Query error location is missing a \"line\" field")
-                        .as_u64()
-                        .expect("Query error location \"line\" field is not a u64");
+                let line = location
+                    .get("line")
+                    .expect("Query error location is missing a \"line\" field")
+                    .as_u64()
+                    .expect("Query error location \"line\" field is not a u64");
 
-                    assert_eq!(line, 1);
+                assert_eq!(line, 1);
 
-                    let column = location
-                        .get("column")
-                        .expect("Query error location is missing a \"column\" field")
-                        .as_u64()
-                        .expect("Query error location \"column\" field is not a u64");
+                let column = location
+                    .get("column")
+                    .expect("Query error location is missing a \"column\" field")
+                    .as_u64()
+                    .expect("Query error location \"column\" field is not a u64");
 
-                    assert_eq!(column, 1);
-                    Ok(())
-                }))
-                .unwrap();
-        },
-    )
+                assert_eq!(column, 1);
+                Ok(())
+            })
+        }))
+        .unwrap()
 }
 
 #[test]
 fn accepts_valid_queries() {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    tokio_executor::with_default(
-        &mut runtime.executor(),
-        &mut tokio_executor::enter().unwrap(),
-        |_| {
+    runtime
+        .block_on(futures::lazy(|| {
             let logger = slog::Logger::root(slog::Discard, o!());
 
             let mut server = HyperGraphQLServer::new(&logger);
@@ -210,16 +186,11 @@ fn accepts_valid_queries() {
             // Create a simple schema and send it to the server
             let schema = Schema {
                 id: "test-schema".to_string(),
-                document: graphql_parser::parse_schema(
-                    "\
-                     scalar String \
-                     type Query { name: String } \
-                     ",
-                ).unwrap(),
+                document: Default::default(),
             };
             server
                 .schema_provider_event_sink()
-                .send(SchemaProviderEvent::SchemaChanged(Some(schema)))
+                .send(SchemaEvent::SchemaAdded(schema))
                 .wait()
                 .expect("Failed to send schema to server");
 
@@ -230,21 +201,19 @@ fn accepts_valid_queries() {
                 .unwrap();
 
             // The response must be a 200
-            runtime
-                .block_on(client.request(request).and_then(|response| {
-                    let data = test_utils::assert_successful_response(response);
+            client.request(request).and_then(|response| {
+                let data = test_utils::assert_successful_response(response);
 
-                    // The JSON response should match the simulated query result
-                    let name = data
-                        .get("name")
-                        .expect("Query result data has no \"name\" field")
-                        .as_str()
-                        .expect("Query result field \"name\" is not a string");
-                    assert_eq!(name, "Jordi".to_string());
+                // The JSON response should match the simulated query result
+                let name = data
+                    .get("name")
+                    .expect("Query result data has no \"name\" field")
+                    .as_str()
+                    .expect("Query result field \"name\" is not a string");
+                assert_eq!(name, "Jordi".to_string());
 
-                    Ok(())
-                }))
-                .unwrap();
-        },
-    )
+                Ok(())
+            })
+        }))
+        .unwrap()
 }

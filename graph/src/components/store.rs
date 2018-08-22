@@ -1,7 +1,6 @@
 use ethereum_types::H256;
-use futures::sync::mpsc::{Receiver, Sender};
+use futures::sync::mpsc::Receiver;
 
-use components::schema::SchemaProviderEvent;
 use data::store::*;
 use std::fmt;
 use util::stream::StreamError;

@@ -154,7 +154,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
     let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), resolver.clone());
 
-    let mut schema_provider = graph_core::SchemaProvider::new(&logger);
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger);
     let protected_store = Arc::new(Mutex::new(store));
     let mut graphql_server = HyperGraphQLServer::new(&logger);
@@ -181,8 +180,21 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Forward subgraph events from the subgraph provider to the runtime manager
     tokio::spawn(forward(&mut subgraph_provider, &runtime_manager).unwrap());
 
-    // Forward schema events from the subgraph provider to the schema provider
-    tokio::spawn(forward(&mut subgraph_provider, &schema_provider).unwrap());
+    // Forward schema events from the subgraph provider to the GraphQL server.
+    let schema_event_logger = logger.clone();
+    tokio::spawn(
+        subgraph_provider
+            .take_event_stream()
+            .unwrap()
+            .forward(
+                graphql_server
+                    .schema_provider_event_sink()
+                    .sink_map_err(move |e| {
+                        error!(schema_event_logger, "Error forwarding schema event {}", e);
+                    }),
+            )
+            .and_then(|_| Ok(())),
+    );
 
     // Start admin JSON-RPC server.
     let json_rpc_server =
@@ -221,20 +233,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .expect("`subgraph_add` request error"),
         ).expect("`subgraph_add` server error");
     }
-
-    // Forward schema events from the schema provider to the store and GraphQL server
-    let schema_stream = schema_provider.take_event_stream().unwrap();
-    tokio::spawn(
-        schema_stream
-            .forward(
-                graphql_server
-                    .schema_provider_event_sink()
-                    .sink_map_err(|e| {
-                        panic!("Failed to send event to graphql server: {:?}", e);
-                    }),
-            )
-            .and_then(|_| Ok(())),
-    );
 
     // Forward store events to the GraphQL server
     {
