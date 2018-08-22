@@ -59,6 +59,25 @@ pub fn get_root_query_type(schema: &Document) -> Option<&ObjectType> {
         .next()
 }
 
+/// Returns the root subscription type (if there is one).
+pub fn get_root_subscription_type(schema: &Document) -> Option<&ObjectType> {
+    schema
+        .definitions
+        .iter()
+        .filter_map(|d| match d {
+            Definition::TypeDefinition(TypeDefinition::Object(t)) => {
+                if t.name == "Subscription".to_string() {
+                    Some(t)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .peekable()
+        .next()
+}
+
 /// Returns all type definitions in the schema.
 pub fn get_type_definitions<'a>(schema: &'a Document) -> Vec<&'a TypeDefinition> {
     schema
