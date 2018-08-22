@@ -12,6 +12,7 @@ pub enum QueryExecutionError {
     OperationNotFound(String),
     NotSupported(String),
     NoRootQueryObjectType,
+    NoRootSubscriptionObjectType,
     ResolveEntityError(Pos, String),
     NonNullError(Pos, String),
     ListValueError(Pos, String),
@@ -19,6 +20,8 @@ pub enum QueryExecutionError {
     AbstractTypeError(String),
     InvalidArgumentError(Pos, String, q::Value),
     MissingArgumentError(Pos, String),
+    UnknownField(Pos, String, String),
+    MultipleSubscriptionFields,
 }
 
 impl Error for QueryExecutionError {
@@ -42,6 +45,9 @@ impl fmt::Display for QueryExecutionError {
             QueryExecutionError::NoRootQueryObjectType => {
                 write!(f, "No root Query type defined in the schema")
             }
+            QueryExecutionError::NoRootSubscriptionObjectType => {
+                write!(f, "No root Subscription type defined in the schema")
+            }
             QueryExecutionError::ResolveEntityError(_, s) => {
                 write!(f, "Failed to resolve entity: {}", s)
             }
@@ -63,6 +69,13 @@ impl fmt::Display for QueryExecutionError {
             QueryExecutionError::MissingArgumentError(_, s) => {
                 write!(f, "No value provided for required argument: {}", s)
             }
+            QueryExecutionError::UnknownField(_, t, s) => {
+                write!(f, "Type \"{}\" has no field \"{}\"", t, s)
+            }
+            QueryExecutionError::MultipleSubscriptionFields => write!(
+                f,
+                "Only a single top-level field is allowed in subscriptions"
+            ),
         }
     }
 }
