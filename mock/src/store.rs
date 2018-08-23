@@ -1,17 +1,14 @@
-use futures::sync::mpsc::{channel, Receiver, Sender};
-
 use graph::components::store::*;
 use graph::prelude::*;
 
 /// A mock `Store`.
 pub struct MockStore {
-    logger: slog::Logger,
     entities: Vec<Entity>,
 }
 
 impl MockStore {
     /// Creates a new mock `Store`.
-    pub fn new(logger: &slog::Logger) -> Self {
+    pub fn new() -> Self {
         // Create a few test entities
         let mut entities = vec![];
         for (i, name) in ["Joe", "Jeff", "Linda"].iter().enumerate() {
@@ -21,10 +18,7 @@ impl MockStore {
             entities.push(entity);
         }
 
-        MockStore {
-            logger: logger.new(o!("component" => "MockStore")),
-            entities,
-        }
+        MockStore { entities }
     }
 }
 
