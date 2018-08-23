@@ -1,4 +1,5 @@
 use futures::sync::mpsc::Sender;
+use http::header;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use itertools::Itertools;
@@ -28,6 +29,25 @@ impl GraphQLService {
         GraphQLService {
             schemas,
             query_sink,
+        }
+    }
+
+    fn index(&self) -> GraphQLServiceResponse {
+        let len = self.schemas.read().unwrap().len();
+        match self.schemas.read().unwrap().values().next().clone() {
+            // If there's only 1 schema, redirect to it.
+            Some(schema) if len == 1 => Box::new(future::ok(
+                Response::builder()
+                    .status(StatusCode::PERMANENT_REDIRECT)
+                    .header(
+                        header::LOCATION,
+                        header::HeaderValue::from_str(&format!("/{}", schema.name))
+                            .expect("invalid subgraph name"),
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )),
+            _ => self.handle_not_found(),
         }
     }
 
@@ -85,7 +105,7 @@ impl GraphQLService {
     }
 
     /// Handles 404s.
-    fn handle_not_found(&self, _req: Request<Body>) -> GraphQLServiceResponse {
+    fn handle_not_found(&self) -> GraphQLServiceResponse {
         Box::new(future::ok(
             Response::builder()
                 .status(StatusCode::NOT_FOUND)
@@ -105,6 +125,8 @@ impl Service for GraphQLService {
         let method = req.method().clone();
         let uri = req.uri().clone();
         match (method, uri.path()) {
+            (Method::GET, "/") => self.index(),
+
             (Method::GET, "/graphiql.css") => {
                 self.serve_file(include_str!("../assets/graphiql.css"))
             }
@@ -119,8 +141,6 @@ impl Service for GraphQLService {
                 let name = path.next();
                 let rest = path.join("/");
 
-                println!("got name {:?}", name);
-                println!("got rest {:?}", rest);
                 match (method, name, rest.as_str()) {
                     // GraphiQL
                     (Method::GET, Some(_), "") => {
@@ -134,7 +154,7 @@ impl Service for GraphQLService {
                     (Method::OPTIONS, Some(_), "graphql") => self.handle_graphql_options(req),
 
                     // Everything else results in a 404
-                    _ => self.handle_not_found(req),
+                    _ => self.handle_not_found(),
                 }
             }
         }
