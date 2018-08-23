@@ -95,10 +95,15 @@ impl GraphQLServer {
                     },
                     Err(e) => return Ok(error!(logger, "error deriving schema {}", e)),
                 };
-                schemas
+                if schemas
                     .write()
                     .unwrap()
-                    .insert(derived_schema.name.clone(), derived_schema);
+                    .insert(derived_schema.name.clone(), derived_schema)
+                    .is_some()
+                {
+                    // We need to support clean shutdown of a subgraph before update support.
+                    panic!("updating a subgraph is not supported yet")
+                }
             } else {
                 panic!("schema removal is yet not supported")
             }
