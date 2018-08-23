@@ -31,7 +31,7 @@ impl fmt::Display for MockServeError {
 pub struct MockGraphQLServer {
     logger: Logger,
     query_sink: Option<Sender<Query>>,
-    schema_provider_event_sink: Sender<SchemaEvent>,
+    schema_event_sink: Sender<SchemaEvent>,
     store_event_sink: Sender<StoreEvent>,
     schema: Arc<Mutex<Option<Schema>>>,
 }
@@ -39,34 +39,34 @@ pub struct MockGraphQLServer {
 impl MockGraphQLServer {
     /// Creates a new mock `GraphQLServer`.
     pub fn new(logger: &Logger) -> Self {
-        // Create channels for handling incoming events from the schema provider and the store
+        // Create channels for handling incoming schema and store events
         let (store_sink, store_stream) = channel(100);
-        let (schema_provider_sink, schema_provider_stream) = channel(100);
+        let (schema_event_sink, schema_event_stream) = channel(100);
 
         // Create a new mock GraphQL server
         let mut server = MockGraphQLServer {
             logger: logger.new(o!("component" => "MockGraphQLServer")),
             query_sink: None,
-            schema_provider_event_sink: schema_provider_sink,
+            schema_event_sink,
             store_event_sink: store_sink,
             schema: Arc::new(Mutex::new(None)),
         };
 
-        // Spawn tasks to handle incoming events from the schema provider and store
-        server.handle_schema_provider_events(schema_provider_stream);
+        // Spawn tasks to handle incoming schema and store events
+        server.handle_schema_events(schema_event_stream);
         server.handle_store_events(store_stream);
 
         // Return the new server
         server
     }
 
-    /// Handle incoming events from the schema provider
-    fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaEvent>) {
+    /// Handle incoming schema events
+    fn handle_schema_events(&mut self, stream: Receiver<SchemaEvent>) {
         let logger = self.logger.clone();
         let schema = self.schema.clone();
 
         tokio::spawn(stream.for_each(move |event| {
-            info!(logger, "Received schema provider event"; "event" => format!("{:?}", event));
+            info!(logger, "Received schema event"; "event" => format!("{:?}", event));
 
             if let SchemaEvent::SchemaAdded(new_schema) = event {
                 let mut schema = schema.lock().unwrap();
@@ -100,8 +100,8 @@ impl MockGraphQLServer {
 impl GraphQLServer for MockGraphQLServer {
     type ServeError = MockServeError;
 
-    fn schema_provider_event_sink(&mut self) -> Sender<SchemaEvent> {
-        self.schema_provider_event_sink.clone()
+    fn schema_event_sink(&mut self) -> Sender<SchemaEvent> {
+        self.schema_event_sink.clone()
     }
 
     fn store_event_sink(&mut self) -> Sender<StoreEvent> {

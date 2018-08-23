@@ -186,13 +186,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         subgraph_provider
             .take_event_stream()
             .unwrap()
-            .forward(
-                graphql_server
-                    .schema_provider_event_sink()
-                    .sink_map_err(move |e| {
-                        error!(schema_event_logger, "Error forwarding schema event {}", e);
-                    }),
-            )
+            .forward(graphql_server.schema_event_sink().sink_map_err(move |e| {
+                error!(schema_event_logger, "Error forwarding schema event {}", e);
+            }))
             .and_then(|_| Ok(())),
     );
 
