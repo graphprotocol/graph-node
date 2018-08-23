@@ -51,7 +51,7 @@ fn rejects_empty_json() {
                 document: Default::default(),
             };
             server
-                .schema_provider_event_sink()
+                .schema_event_sink()
                 .send(SchemaEvent::SchemaAdded(schema))
                 .wait()
                 .expect("Failed to send schema to server");
@@ -105,7 +105,7 @@ fn rejects_invalid_queries() {
                 document: Default::default(),
             };
             server
-                .schema_provider_event_sink()
+                .schema_event_sink()
                 .send(SchemaEvent::SchemaAdded(schema))
                 .wait()
                 .expect("Failed to send schema to server");
@@ -189,7 +189,7 @@ fn accepts_valid_queries() {
                 document: Default::default(),
             };
             server
-                .schema_provider_event_sink()
+                .schema_event_sink()
                 .send(SchemaEvent::SchemaAdded(schema))
                 .wait()
                 .expect("Failed to send schema to server");

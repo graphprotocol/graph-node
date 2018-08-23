@@ -47,7 +47,7 @@ impl From<hyper::Error> for GraphQLServeError {
 pub struct GraphQLServer {
     logger: slog::Logger,
     query_sink: Option<Sender<Query>>,
-    schema_provider_event_sink: Sender<SchemaEvent>,
+    schema_event_sink: Sender<SchemaEvent>,
     store_event_sink: Sender<StoreEvent>,
     schema: Arc<Mutex<Option<Schema>>>,
 }
@@ -55,34 +55,34 @@ pub struct GraphQLServer {
 impl GraphQLServer {
     /// Creates a new GraphQL server.
     pub fn new(logger: &slog::Logger) -> Self {
-        // Create channels for handling incoming events from the schema provider and the store
+        // Create channels for handling incoming schema and store events.
         let (store_sink, store_stream) = channel(100);
-        let (schema_provider_sink, schema_provider_stream) = channel(100);
+        let (schema_event_sink, schema_event_stream) = channel(100);
 
         // Create a new GraphQL server
         let mut server = GraphQLServer {
             logger: logger.new(o!("component" => "GraphQLServer")),
             query_sink: None,
-            schema_provider_event_sink: schema_provider_sink,
+            schema_event_sink,
             store_event_sink: store_sink,
             schema: Arc::new(Mutex::new(None)),
         };
 
-        // Spawn tasks to handle incoming events from the schema provider and store
-        server.handle_schema_provider_events(schema_provider_stream);
+        // Spawn tasks to handle incoming schema and store events.
+        server.handle_schema_events(schema_event_stream);
         server.handle_store_events(store_stream);
 
-        // Return the new server
+        // Return the new server.
         server
     }
 
-    /// Handle incoming events from the schema provider
-    fn handle_schema_provider_events(&mut self, stream: Receiver<SchemaEvent>) {
+    /// Handle incoming schema events.
+    fn handle_schema_events(&mut self, stream: Receiver<SchemaEvent>) {
         let logger = self.logger.clone();
         let schema = self.schema.clone();
 
         tokio::spawn(stream.for_each(move |event| {
-            info!(logger, "Received schema provider event");
+            info!(logger, "Received schema event");
 
             if let SchemaEvent::SchemaAdded(new_schema) = event {
                 let mut schema = schema.lock().unwrap();
@@ -102,7 +102,7 @@ impl GraphQLServer {
         }));
     }
 
-    // Handle incoming events from the store
+    // Handle incoming events from the store.
     fn handle_store_events(&mut self, stream: Receiver<StoreEvent>) {
         let logger = self.logger.clone();
 
@@ -116,8 +116,8 @@ impl GraphQLServer {
 impl GraphQLServerTrait for GraphQLServer {
     type ServeError = GraphQLServeError;
 
-    fn schema_provider_event_sink(&mut self) -> Sender<SchemaEvent> {
-        self.schema_provider_event_sink.clone()
+    fn schema_event_sink(&mut self) -> Sender<SchemaEvent> {
+        self.schema_event_sink.clone()
     }
 
     fn store_event_sink(&mut self) -> Sender<StoreEvent> {
@@ -169,7 +169,7 @@ impl GraphQLServerTrait for GraphQLServer {
 }
 
 #[test]
-fn emits_a_combined_schema_after_one_schema_is_added() {
+fn emits_an_api_schema_after_one_schema_is_added() {
     use graph_graphql::schema::ast;
     use std::ops::Deref;
     use std::time::{Duration, Instant};
@@ -181,7 +181,7 @@ fn emits_a_combined_schema_after_one_schema_is_added() {
                 // Set up the server
                 let logger = Logger::root(slog::Discard, o!());
                 let mut server = GraphQLServer::new(&logger);
-                let schema_sink = server.schema_provider_event_sink();
+                let schema_sink = server.schema_event_sink();
 
                 // Create an input schema event
                 let input_doc =

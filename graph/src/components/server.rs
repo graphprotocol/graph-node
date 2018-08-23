@@ -94,7 +94,7 @@ pub trait GraphQLServer {
 
     /// Sender to which others should write whenever the schema that the server
     /// should serve changes.
-    fn schema_provider_event_sink(&mut self) -> Sender<SchemaEvent>;
+    fn schema_event_sink(&mut self) -> Sender<SchemaEvent>;
 
     /// Sender to which others should write store events that might require
     /// subscription queries to re-run.
