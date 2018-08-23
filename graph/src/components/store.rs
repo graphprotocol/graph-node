@@ -77,17 +77,33 @@ pub struct StoreQuery {
     pub range: Option<StoreRange>,
 }
 
+/// Operation types that lead to entity changes.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum EntityChangeOperation {
+    /// A new entity was added.
+    #[serde(rename = "added")]
+    Added,
+    /// An existing entity was updated.
+    #[serde(rename = "updated")]
+    Updated,
+    /// An existing entity was removed.
+    #[serde(rename = "removed")]
+    Removed,
+}
+
 /// Entity change events emitted by [Store](trait.Store.html) implementations.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EntityChange {
-    // ID of the subgraph the changed entity belongs to.
+    /// ID of the subgraph the changed entity belongs to.
     pub subgraph: String,
-    // Entity type name of the changed entity.
+    /// Entity type name of the changed entity.
     pub entity: String,
-    // ID of the changed entity.
+    /// ID of the changed entity.
     pub id: String,
-    // Entity data after the change.
+    /// Entity data after the change.
     pub data: Entity,
+    /// Operation that caused the change.
+    pub operation: EntityChangeOperation,
 }
 
 /// The source of the events being sent to the store
