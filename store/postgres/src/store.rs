@@ -5,14 +5,16 @@ use diesel::prelude::*;
 use diesel::sql_types::Text;
 use diesel::{debug_query, delete, insert_into, result, select};
 use filter::store_filter;
-use futures::sync::mpsc::{channel, Receiver, Sender};
+use futures::sync::mpsc::{channel, Receiver, SendError, Sender};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use graph::components::store::{EventSource, Store as StoreTrait};
 use graph::prelude::*;
 use graph::serde_json;
+use graph::{tokio, tokio::timer::Interval};
 
 use entity_changes::EntityChangeListener;
 use functions::{revert_block, set_config};
@@ -84,8 +86,9 @@ impl Store {
             .take_event_stream()
             .expect("Failed to listen to entity change events in Postgres");
 
-        // Handle entity changes as they come in
+        // Deal with store subscriptions
         store.handle_entity_changes(entity_changes);
+        store.periodically_clean_up_stale_subscriptions();
 
         // Return the store
         store
@@ -131,6 +134,38 @@ impl Store {
                     .and_then(|_| Ok(()))
             })
         }));
+    }
+
+    fn periodically_clean_up_stale_subscriptions(&mut self) {
+        let logger = self.logger.clone();
+        let subscriptions = self.subscriptions.clone();
+
+        // Clean up stale subscriptions every 5s
+        tokio::spawn(
+            Interval::new(Instant::now(), Duration::from_secs(5))
+                .for_each(move |_| {
+                    let mut subscriptions = subscriptions.write().unwrap();
+
+                    // Obtain IDs of subscriptions whose receiving end has gone
+                    let stale_ids = subscriptions
+                        .iter_mut()
+                        .filter_map(
+                            |(id, subscription)| match subscription.sender.poll_ready() {
+                                Err(_) => Some(id.clone()),
+                                _ => None,
+                            },
+                        )
+                        .collect::<Vec<_>>();
+
+                    // Remove all stale subscriptions
+                    for id in stale_ids {
+                        subscriptions.remove(&id);
+                    }
+
+                    Ok(())
+                })
+                .map_err(|_| ()),
+        );
     }
 
     /// Handles block reorganizations.
