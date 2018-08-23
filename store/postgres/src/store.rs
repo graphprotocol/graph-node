@@ -5,7 +5,7 @@ use diesel::prelude::*;
 use diesel::sql_types::Text;
 use diesel::{debug_query, delete, insert_into, result, select};
 use filter::store_filter;
-use futures::sync::mpsc::{channel, Receiver, SendError, Sender};
+use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -81,7 +81,7 @@ impl Store {
         };
 
         // Listen to entity changes in Postgres
-        let mut listener = EntityChangeListener::new(logger, config.url.clone());
+        let mut listener = EntityChangeListener::new(config.url.clone());
         let entity_changes = listener
             .take_event_stream()
             .expect("Failed to listen to entity change events in Postgres");
@@ -137,7 +137,6 @@ impl Store {
     }
 
     fn periodically_clean_up_stale_subscriptions(&mut self) {
-        let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
 
         // Clean up stale subscriptions every 5s
