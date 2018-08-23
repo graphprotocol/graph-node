@@ -1,6 +1,5 @@
 use fallible_iterator::FallibleIterator;
 use postgres::{Connection, TlsMode};
-use slog::Logger;
 use std::thread;
 
 use futures::sync::mpsc::{channel, Receiver};
@@ -12,19 +11,16 @@ pub struct EntityChangeListener {
 }
 
 impl EntityChangeListener {
-    pub fn new(logger: Logger, url: String) -> Self {
-        let logger = logger.new(o!("component" => "EntityChangeListener"));
-        let receiver = Self::listen(logger, url);
+    pub fn new(url: String) -> Self {
+        let receiver = Self::listen(url);
 
         EntityChangeListener {
             output: Some(receiver),
         }
     }
 
-    fn listen(logger: Logger, url: String) -> Receiver<EntityChange> {
+    fn listen(url: String) -> Receiver<EntityChange> {
         let (sender, receiver) = channel(100);
-
-        let error_logger = logger.clone();
 
         thread::spawn(move || {
             let conn = Connection::connect(url, TlsMode::None)
@@ -36,25 +32,31 @@ impl EntityChangeListener {
             conn.execute("LISTEN entity_changes", &[])
                 .expect("failed to listen to entity changes in Postgres");
 
-            iter.iterator()
+            let changes = iter
+                .iterator()
                 .filter_map(Result::ok)
                 .filter(|notification| notification.channel == String::from("entity_changes"))
                 .map(|notification| notification.payload)
-                .filter_map(|payload: String| -> Option<EntityChange> {
-                    serde_json::from_str(payload.as_str())
-                        .map_err(|e| {
-                            error!(error_logger, "Invalid entity change received from Postgres";
-                                   "error" => format!("{}", e).as_str());
-                        })
-                        .ok()
-                })
-                .for_each(|change| {
-                    sender
-                        .clone()
-                        .send(change)
-                        .wait()
-                        .expect("failed to pass entity change event along");
+                .map(|payload: String| -> EntityChange {
+                    let value: serde_json::Value = serde_json::from_str(payload.as_str())
+                        .expect("Invalid JSON entity change data received from database");
+
+                    serde_json::from_value(value.clone()).expect(
+                        format!(
+                            "Invalid entity change received from the database: {:?}",
+                            value
+                        ).as_str(),
+                    )
                 });
+
+            for change in changes {
+                // We'll assume here that if sending fails, this means that the
+                // entity change listener has already been dropped, the receiving
+                // is gone and we should terminate the listener loop
+                if let Err(_) = sender.clone().send(change).wait() {
+                    break;
+                }
+            }
         });
 
         receiver
