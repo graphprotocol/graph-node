@@ -1550,3 +1550,110 @@ fn revert_block_with_partial_update() {
         assert_eq!(reverted_entity, original_entity);
     })
 }
+
+#[test]
+fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
+    run_test(|| {
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let mut store = DieselStore::new(StoreConfig { url }, &logger);
+
+        // Create a store subscription
+        let subscription = store.subscribe(String::from("subgraph-id"), vec![String::from("User")]);
+
+        // Add two entities to the store
+        let added_entities = vec![
+            (
+                String::from("1"),
+                Entity::from(vec![
+                    ("id", Value::from("1")),
+                    ("name", Value::from("Johnny Boy")),
+                ]),
+            ),
+            (
+                String::from("2"),
+                Entity::from(vec![
+                    ("id", Value::from("2")),
+                    ("name", Value::from("Tessa")),
+                ]),
+            ),
+        ];
+        for (id, entity) in added_entities.iter() {
+            store
+                .set(
+                    StoreKey {
+                        subgraph: String::from("subgraph-id"),
+                        entity: String::from("User"),
+                        id: id.clone(),
+                    },
+                    entity.clone(),
+                    EventSource::EthereumBlock(H256::random()),
+                )
+                .expect("failed to add entity to the store");
+        }
+
+        // Update an entity in the store
+        let updated_entity = Entity::from(vec![
+            ("id", Value::from("1")),
+            ("name", Value::from("Johnny")),
+        ]);
+        store
+            .set(
+                StoreKey {
+                    subgraph: String::from("subgraph-id"),
+                    entity: String::from("User"),
+                    id: String::from("1"),
+                },
+                updated_entity.clone(),
+                EventSource::EthereumBlock(H256::random()),
+            )
+            .expect("failed to updaate entity in the store");
+
+        // Delete an entity in the store
+        store
+            .delete(
+                StoreKey {
+                    subgraph: String::from("subgraph-id"),
+                    entity: String::from("User"),
+                    id: String::from("2"),
+                },
+                EventSource::EthereumBlock(H256::random()),
+            )
+            .expect("failed to delete entity from the store");
+
+        // We're expecting three events to be written to the subscription stream
+        assert_eq!(
+            subscription.wait().take(4).collect::<Vec<_>>(),
+            vec![
+                Ok(EntityChange {
+                    subgraph: String::from("subgraph-id"),
+                    entity: String::from("User"),
+                    id: added_entities[0].clone().0,
+                    data: added_entities[0].clone().1,
+                    operation: EntityChangeOperation::Added,
+                }),
+                Ok(EntityChange {
+                    subgraph: String::from("subgraph-id"),
+                    entity: String::from("User"),
+                    id: added_entities[1].clone().0,
+                    data: added_entities[1].clone().1,
+                    operation: EntityChangeOperation::Added,
+                }),
+                Ok(EntityChange {
+                    subgraph: String::from("subgraph-id"),
+                    entity: String::from("User"),
+                    id: String::from("1"),
+                    data: updated_entity,
+                    operation: EntityChangeOperation::Updated,
+                }),
+                Ok(EntityChange {
+                    subgraph: String::from("subgraph-id"),
+                    entity: String::from("User"),
+                    id: added_entities[1].clone().0,
+                    data: added_entities[1].clone().1,
+                    operation: EntityChangeOperation::Removed,
+                }),
+            ]
+        );
+    })
+}
