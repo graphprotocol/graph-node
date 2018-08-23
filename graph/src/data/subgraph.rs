@@ -53,10 +53,10 @@ pub struct SchemaData {
 impl SchemaData {
     pub fn resolve(
         self,
+        name: String,
         resolver: &impl LinkResolver,
     ) -> impl Future<Item = Schema, Error = failure::Error> + Send {
         let id = self.file.link.clone();
-        let name = id.clone();
 
         resolver.cat(&self.file).and_then(|schema_bytes| {
             Ok(
@@ -215,6 +215,7 @@ impl SubgraphManifest {
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
     pub fn resolve(
+        name: String,
         link: Link,
         resolver: Arc<impl LinkResolver>,
     ) -> impl Future<Item = Self, Error = SubgraphManifestResolveError> + Send {
@@ -250,7 +251,7 @@ impl SubgraphManifest {
             })
             .and_then(move |unresolved| {
                 unresolved
-                    .resolve(&*resolver)
+                    .resolve(name, &*resolver)
                     .map_err(|e| SubgraphManifestResolveError::ResolveError(e))
             })
     }
@@ -259,6 +260,7 @@ impl SubgraphManifest {
 impl UnresolvedSubgraphManifest {
     pub fn resolve(
         self,
+        name: String,
         resolver: &impl LinkResolver,
     ) -> impl Future<Item = SubgraphManifest, Error = failure::Error> {
         let UnresolvedSubgraphManifest {
@@ -275,7 +277,7 @@ impl UnresolvedSubgraphManifest {
                 .into_iter()
                 .map(|data_set| data_set.resolve(resolver)),
         ).collect()
-            .join(schema.resolve(resolver))
+            .join(schema.resolve(name, resolver))
             .map(|(data_sources, schema)| SubgraphManifest {
                 id,
                 location,

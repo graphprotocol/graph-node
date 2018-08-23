@@ -50,7 +50,7 @@ impl JsonRpcServerTrait for JsonRpcServer {
             let provider = add_provider.clone();
             info!(add_logger, "Received subgraph_add request"; "params" => params.to_string());
             provider
-                .add(format!("/ipfs/{}", params.ipfs_hash))
+                .add(params.name, format!("/ipfs/{}", params.ipfs_hash))
                 .map_err(|e| json_rpc_error(0, e.to_string()))
                 .map(|_| Ok(Value::Null))
                 .flatten()

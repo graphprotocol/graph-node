@@ -27,6 +27,7 @@ pub trait SubgraphProvider:
 {
     fn add(
         &self,
+        name: String,
         link: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
 }
