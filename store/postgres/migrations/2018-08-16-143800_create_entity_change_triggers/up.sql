@@ -15,7 +15,7 @@ BEGIN
       'entity', NEW.entity,
       'id', NEW.id,
       'data', NEW.data,
-      'operation', 'add'
+      'operation', 'added'
     )::text);
     RETURN NEW;
 END
@@ -38,7 +38,7 @@ BEGIN
         'entity', NEW.entity,
         'id', NEW.id,
         'data', NEW.data,
-        'operation', 'update'
+        'operation', 'updated'
     )::text);
     RETURN NEW;
 END
@@ -61,7 +61,7 @@ BEGIN
         'entity', OLD.entity,
         'id', OLD.id,
         'data', OLD.data,
-        'operation', 'remove'
+        'operation', 'removed'
     )::text);
     RETURN NEW;
 END
