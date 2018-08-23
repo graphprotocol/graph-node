@@ -38,7 +38,7 @@ impl GraphQLService {
             // If there's only 1 schema, redirect to it.
             Some(schema) if len == 1 => Box::new(future::ok(
                 Response::builder()
-                    .status(StatusCode::PERMANENT_REDIRECT)
+                    .status(StatusCode::SEE_OTHER)
                     .header(
                         header::LOCATION,
                         header::HeaderValue::from_str(&format!("/{}", schema.name))
