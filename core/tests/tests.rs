@@ -97,6 +97,7 @@ fn multiple_data_sources_per_subgraph() {
                     // Load a subgraph with two data sets, one listening for `ExampleEvent`
                     // and the other for `ExampleEvent2`.
                     SubgraphManifest::resolve(
+                        "example_subgraph".to_owned(),
                         Link {
                             link: subgraph_link,
                         },

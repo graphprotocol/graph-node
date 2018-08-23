@@ -34,13 +34,14 @@ impl<L: LinkResolver> SubgraphProvider<L> {
 impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
     fn add(
         &self,
+        name: String,
         link: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static> {
         let send_logger = self.logger.clone();
         let schema_event_sink = self.schema_event_sink.clone();
         let event_sink = self.event_sink.clone();
         Box::new(
-            SubgraphManifest::resolve(Link { link }, self.resolver.clone())
+            SubgraphManifest::resolve(name, Link { link }, self.resolver.clone())
                 .map_err(SubgraphProviderError::ResolveError)
                 .and_then(move |mut subgraph| {
                     subgraph
