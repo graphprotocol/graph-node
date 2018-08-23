@@ -16,6 +16,7 @@ use graph_graphql::prelude::*;
 
 fn test_schema() -> Schema {
     let mut schema = Schema {
+        name: String::from("test-schema"),
         id: String::from("test-schema"),
         document: api_schema(
             &graphql_parser::parse_schema(

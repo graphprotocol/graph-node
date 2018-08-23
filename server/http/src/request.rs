@@ -9,12 +9,12 @@ use graph::prelude::*;
 /// Future for a query parsed from an HTTP request.
 pub struct GraphQLRequest {
     body: Chunk,
-    schema: Option<Schema>,
+    schema: Schema,
 }
 
 impl GraphQLRequest {
     /// Creates a new GraphQLRequest future based on an HTTP request and a result sender.
-    pub fn new(body: Chunk, schema: Option<Schema>) -> Self {
+    pub fn new(body: Chunk, schema: Schema) -> Self {
         GraphQLRequest { body, schema }
     }
 }
@@ -25,12 +25,7 @@ impl Future for GraphQLRequest {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         // Fail if no schema is available
-        let schema = self
-            .schema
-            .clone()
-            .ok_or(GraphQLServerError::InternalError(
-                "No schema available to query".to_string(),
-            ))?;
+        let schema = self.schema.clone();
 
         // Parse request body as JSON
         let json: serde_json::Value = serde_json::from_slice(&self.body)
@@ -102,20 +97,22 @@ mod tests {
     #[test]
     fn rejects_invalid_json() {
         let schema = Schema {
+            name: "test".to_string(),
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
-        let request = GraphQLRequest::new(hyper::Chunk::from("!@#)%"), Some(schema));
+        let request = GraphQLRequest::new(hyper::Chunk::from("!@#)%"), schema);
         request.wait().expect_err("Should reject invalid JSON");
     }
 
     #[test]
     fn rejects_json_without_query_field() {
         let schema = Schema {
+            name: "test".to_string(),
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
-        let request = GraphQLRequest::new(hyper::Chunk::from("{}"), Some(schema));
+        let request = GraphQLRequest::new(hyper::Chunk::from("{}"), schema);
         request
             .wait()
             .expect_err("Should reject JSON without query field");
@@ -124,10 +121,11 @@ mod tests {
     #[test]
     fn rejects_json_with_non_string_query_field() {
         let schema = Schema {
+            name: "test".to_string(),
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
-        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": 5}"), Some(schema));
+        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": 5}"), schema);
         request
             .wait()
             .expect_err("Should reject JSON with a non-string query field");
@@ -136,22 +134,24 @@ mod tests {
     #[test]
     fn rejects_broken_queries() {
         let schema = Schema {
+            name: "test".to_string(),
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
-        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": \"foo\"}"), Some(schema));
+        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": \"foo\"}"), schema);
         request.wait().expect_err("Should reject broken queries");
     }
 
     #[test]
     fn accepts_valid_queries() {
         let schema = Schema {
+            name: "test".to_string(),
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(
             hyper::Chunk::from("{\"query\": \"{ user { name } }\"}"),
-            Some(schema),
+            schema,
         );
         let (query, _) = request.wait().expect("Should accept valid queries");
         assert_eq!(
@@ -163,6 +163,7 @@ mod tests {
     #[test]
     fn accepts_null_variables() {
         let schema = Schema {
+            name: "test".to_string(),
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
@@ -174,7 +175,7 @@ mod tests {
                  \"variables\": null \
                  }",
             ),
-            Some(schema),
+            schema,
         );
         let (query, _) = request.wait().expect("Should accept null variables");
 
@@ -186,6 +187,7 @@ mod tests {
     #[test]
     fn rejects_non_map_variables() {
         let schema = Schema {
+            name: "test".to_string(),
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
@@ -197,7 +199,7 @@ mod tests {
                  \"variables\": 5 \
                  }",
             ),
-            Some(schema),
+            schema,
         );
         request.wait().expect_err("Should reject non-map variables");
     }
@@ -205,6 +207,7 @@ mod tests {
     #[test]
     fn parses_variables() {
         let schema = Schema {
+            name: "test".to_string(),
             id: "test".to_string(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
@@ -216,7 +219,7 @@ mod tests {
                  \"variables\": { \"foo\": \"bar\" } \
                  }",
             ),
-            Some(schema),
+            schema,
         );
         let (query, _) = request.wait().expect("Should accept valid queries");
 

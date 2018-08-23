@@ -21,6 +21,7 @@ impl MockSubgraphProvider {
 
         let (schema_event_sink, schema_event_stream) = channel(100);
 
+        let id = "176dbd4fdeb8407b899be5d456ababc0".to_string();
         MockSubgraphProvider {
             logger: logger.new(o!("component" => "MockSubgraphProvider")),
             event_sink,
@@ -28,7 +29,8 @@ impl MockSubgraphProvider {
             event_stream: Some(event_stream),
             schema_event_stream: Some(schema_event_stream),
             schemas: vec![Schema {
-                id: "176dbd4fdeb8407b899be5d456ababc0".to_string(),
+                name: id.clone(),
+                id,
                 document: graphql_parser::parse_schema(
                     "type User {
                            id: ID!
@@ -48,6 +50,7 @@ impl MockSubgraphProvider {
             location: String::from("/tmp/example-data-source.yaml"),
             spec_version: String::from("0.1"),
             schema: Schema {
+                name: String::from("exampled name"),
                 id: String::from("exampled id"),
                 document: Document {
                     definitions: vec![],

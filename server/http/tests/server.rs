@@ -34,186 +34,199 @@ fn simulate_running_one_query(query_stream: Receiver<Query>) {
     );
 }
 
-#[test]
-fn rejects_empty_json() {
-    let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    runtime
-        .block_on(futures::lazy(|| {
-            let logger = slog::Logger::root(slog::Discard, o!());
+#[cfg(test)]
+mod test {
+    use super::*;
 
-            let mut server = HyperGraphQLServer::new(&logger);
-            let query_stream = server.query_stream().unwrap();
-            let http_server = server.serve(8001).expect("Failed to start GraphQL server");
+    fn test_schema() -> Schema {
+        Schema {
+            name: "test-schema".to_string(),
+            id: "test-schema".to_string(),
+            document: Default::default(),
+        }
+    }
 
-            // Create a simple schema and send it to the server
-            let schema = Schema {
-                id: "test-schema".to_string(),
-                document: Default::default(),
-            };
-            server
-                .schema_event_sink()
-                .send(SchemaEvent::SchemaAdded(schema))
-                .wait()
-                .expect("Failed to send schema to server");
+    #[test]
+    fn rejects_empty_json() {
+        let mut runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime
+            .block_on(futures::lazy(|| {
+                let logger = slog::Logger::root(slog::Discard, o!());
 
-            // Launch the server to handle a single request
-            simulate_running_one_query(query_stream);
-            tokio::spawn(http_server.fuse());
+                let mut server = HyperGraphQLServer::new(&logger);
+                let query_stream = server.query_stream().unwrap();
+                let http_server = server.serve(8001).expect("Failed to start GraphQL server");
 
-            // Send an empty JSON POST request
-            let client = Client::new();
-            let request = Request::post("http://localhost:8001/graphql")
-                .body(Body::from("{}"))
-                .unwrap();
+                // Create a simple schema and send it to the server
+                let schema = test_schema();
+                let id = schema.id.clone();
 
-            // The response must be a query error
-            client.request(request).and_then(|response| {
-                let errors = test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
+                server
+                    .schema_event_sink()
+                    .send(SchemaEvent::SchemaAdded(schema))
+                    .wait()
+                    .expect("Failed to send schema to server");
 
-                let message = errors[0]
-                    .as_object()
-                    .expect("Query error is not an object")
-                    .get("message")
-                    .expect("Error contains no message")
-                    .as_str()
-                    .expect("Error message is not a string");
-                assert_eq!(message, "The \"query\" field missing in request data");
-                Ok(())
-            })
-        }))
-        .unwrap()
-}
+                // Launch the server to handle a single request
+                simulate_running_one_query(query_stream);
+                tokio::spawn(http_server.fuse());
 
-#[test]
-fn rejects_invalid_queries() {
-    let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    runtime
-        .block_on(futures::lazy(|| {
-            let logger = slog::Logger::root(slog::Discard, o!());
+                // Send an empty JSON POST request
+                let client = Client::new();
+                let request = Request::post(format!("http://localhost:8001/{}/graphql", id))
+                    .body(Body::from("{}"))
+                    .unwrap();
 
-            let mut server = HyperGraphQLServer::new(&logger);
-            let query_stream = server.query_stream().unwrap();
-            let http_server = server.serve(8002).expect("Failed to start GraphQL server");
+                // The response must be a query error
+                client.request(request).and_then(|response| {
+                    let errors =
+                        test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
 
-            // Launch the server to handle a single request
-            simulate_running_one_query(query_stream);
-            tokio::spawn(http_server.fuse());
+                    let message = errors[0]
+                        .as_object()
+                        .expect("Query error is not an object")
+                        .get("message")
+                        .expect("Error contains no message")
+                        .as_str()
+                        .expect("Error message is not a string");
+                    assert_eq!(message, "The \"query\" field missing in request data");
+                    Ok(())
+                })
+            }))
+            .unwrap()
+    }
 
-            // Create a simple schema and send it to the server
-            let schema = Schema {
-                id: "test-schema".to_string(),
-                document: Default::default(),
-            };
-            server
-                .schema_event_sink()
-                .send(SchemaEvent::SchemaAdded(schema))
-                .wait()
-                .expect("Failed to send schema to server");
+    #[test]
+    fn rejects_invalid_queries() {
+        let mut runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime
+            .block_on(futures::lazy(|| {
+                let logger = slog::Logger::root(slog::Discard, o!());
 
-            // Send an broken query request
-            let client = Client::new();
-            let request = Request::post("http://localhost:8002/graphql")
-                .body(Body::from("{\"query\": \"<L<G<>M>\"}"))
-                .unwrap();
+                let mut server = HyperGraphQLServer::new(&logger);
+                let query_stream = server.query_stream().unwrap();
+                let http_server = server.serve(8002).expect("Failed to start GraphQL server");
 
-            // The response must be a query error
-            client.request(request).and_then(|response| {
-                let errors = test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
+                // Launch the server to handle a single request
+                simulate_running_one_query(query_stream);
+                tokio::spawn(http_server.fuse());
 
-                let message = errors[0]
-                    .as_object()
-                    .expect("Query error is not an object")
-                    .get("message")
-                    .expect("Error contains no message")
-                    .as_str()
-                    .expect("Error message is not a string");
+                // Create a simple schema and send it to the server
+                let schema = test_schema();
+                let id = schema.id.clone();
 
-                assert_eq!(
-                    message,
-                    "Unexpected `unexpected character \
-                     \'<\'`\nExpected `{`, `query`, `mutation`, \
-                     `subscription` or `fragment`"
-                );
+                server
+                    .schema_event_sink()
+                    .send(SchemaEvent::SchemaAdded(schema))
+                    .wait()
+                    .expect("Failed to send schema to server");
 
-                let locations = errors[0]
-                    .as_object()
-                    .expect("Query error is not an object")
-                    .get("locations")
-                    .expect("Query error contains not locations")
-                    .as_array()
-                    .expect("Query error \"locations\" field is not an array");
+                // Send an broken query request
+                let client = Client::new();
+                let request = Request::post(format!("http://localhost:8002/{}/graphql", id))
+                    .body(Body::from("{\"query\": \"<L<G<>M>\"}"))
+                    .unwrap();
 
-                let location = locations[0]
-                    .as_object()
-                    .expect("Query error location is not an object");
+                // The response must be a query error
+                client.request(request).and_then(|response| {
+                    let errors =
+                        test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
 
-                let line = location
-                    .get("line")
-                    .expect("Query error location is missing a \"line\" field")
-                    .as_u64()
-                    .expect("Query error location \"line\" field is not a u64");
+                    let message = errors[0]
+                        .as_object()
+                        .expect("Query error is not an object")
+                        .get("message")
+                        .expect("Error contains no message")
+                        .as_str()
+                        .expect("Error message is not a string");
 
-                assert_eq!(line, 1);
+                    assert_eq!(
+                        message,
+                        "Unexpected `unexpected character \
+                         \'<\'`\nExpected `{`, `query`, `mutation`, \
+                         `subscription` or `fragment`"
+                    );
 
-                let column = location
-                    .get("column")
-                    .expect("Query error location is missing a \"column\" field")
-                    .as_u64()
-                    .expect("Query error location \"column\" field is not a u64");
+                    let locations = errors[0]
+                        .as_object()
+                        .expect("Query error is not an object")
+                        .get("locations")
+                        .expect("Query error contains not locations")
+                        .as_array()
+                        .expect("Query error \"locations\" field is not an array");
 
-                assert_eq!(column, 1);
-                Ok(())
-            })
-        }))
-        .unwrap()
-}
+                    let location = locations[0]
+                        .as_object()
+                        .expect("Query error location is not an object");
 
-#[test]
-fn accepts_valid_queries() {
-    let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    runtime
-        .block_on(futures::lazy(|| {
-            let logger = slog::Logger::root(slog::Discard, o!());
+                    let line = location
+                        .get("line")
+                        .expect("Query error location is missing a \"line\" field")
+                        .as_u64()
+                        .expect("Query error location \"line\" field is not a u64");
 
-            let mut server = HyperGraphQLServer::new(&logger);
-            let query_stream = server.query_stream().unwrap();
-            let http_server = server.serve(8003).expect("Failed to start GraphQL server");
+                    assert_eq!(line, 1);
 
-            // Launch the server to handle a single request
-            simulate_running_one_query(query_stream);
-            tokio::spawn(http_server.fuse());
+                    let column = location
+                        .get("column")
+                        .expect("Query error location is missing a \"column\" field")
+                        .as_u64()
+                        .expect("Query error location \"column\" field is not a u64");
 
-            // Create a simple schema and send it to the server
-            let schema = Schema {
-                id: "test-schema".to_string(),
-                document: Default::default(),
-            };
-            server
-                .schema_event_sink()
-                .send(SchemaEvent::SchemaAdded(schema))
-                .wait()
-                .expect("Failed to send schema to server");
+                    assert_eq!(column, 1);
+                    Ok(())
+                })
+            }))
+            .unwrap()
+    }
 
-            // Send a valid example query
-            let client = Client::new();
-            let request = Request::post("http://localhost:8003/graphql")
-                .body(Body::from("{\"query\": \"{ name }\"}"))
-                .unwrap();
+    #[test]
+    fn accepts_valid_queries() {
+        let mut runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime
+            .block_on(futures::lazy(|| {
+                let logger = slog::Logger::root(slog::Discard, o!());
 
-            // The response must be a 200
-            client.request(request).and_then(|response| {
-                let data = test_utils::assert_successful_response(response);
+                let mut server = HyperGraphQLServer::new(&logger);
+                let query_stream = server.query_stream().unwrap();
+                let http_server = server.serve(8003).expect("Failed to start GraphQL server");
 
-                // The JSON response should match the simulated query result
-                let name = data
-                    .get("name")
-                    .expect("Query result data has no \"name\" field")
-                    .as_str()
-                    .expect("Query result field \"name\" is not a string");
-                assert_eq!(name, "Jordi".to_string());
+                // Launch the server to handle a single request
+                simulate_running_one_query(query_stream);
+                tokio::spawn(http_server.fuse());
 
-                Ok(())
-            })
-        }))
-        .unwrap()
+                // Create a simple schema and send it to the server
+                let schema = test_schema();
+                let id = schema.id.clone();
+
+                server
+                    .schema_event_sink()
+                    .send(SchemaEvent::SchemaAdded(schema))
+                    .wait()
+                    .expect("Failed to send schema to server");
+
+                // Send a valid example query
+                let client = Client::new();
+                let request = Request::post(format!("http://localhost:8003/{}/graphql", id))
+                    .body(Body::from("{\"query\": \"{ name }\"}"))
+                    .unwrap();
+
+                // The response must be a 200
+                client.request(request).and_then(|response| {
+                    let data = test_utils::assert_successful_response(response);
+
+                    // The JSON response should match the simulated query result
+                    let name = data
+                        .get("name")
+                        .expect("Query result data has no \"name\" field")
+                        .as_str()
+                        .expect("Query result field \"name\" is not a string");
+                    assert_eq!(name, "Jordi".to_string());
+
+                    Ok(())
+                })
+            }))
+            .unwrap()
+    }
+
 }

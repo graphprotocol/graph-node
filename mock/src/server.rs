@@ -72,6 +72,7 @@ impl MockGraphQLServer {
                 let mut schema = schema.lock().unwrap();
                 let derived_schema = match api_schema(&new_schema.document) {
                     Ok(document) => Schema {
+                        name: new_schema.name.clone(),
                         id: new_schema.id.clone(),
                         document,
                     },

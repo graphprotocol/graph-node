@@ -56,11 +56,12 @@ impl SchemaData {
         resolver: &impl LinkResolver,
     ) -> impl Future<Item = Schema, Error = failure::Error> + Send {
         let id = self.file.link.clone();
+        let name = id.clone();
 
         resolver.cat(&self.file).and_then(|schema_bytes| {
             Ok(
                 graphql_parser::parse_schema(&String::from_utf8(schema_bytes)?)
-                    .map(|document| Schema { id, document })?,
+                    .map(|document| Schema { name, id, document })?,
             )
         })
     }

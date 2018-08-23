@@ -2,10 +2,11 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use hyper;
 use hyper::Server;
 
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt;
 use std::net::{Ipv4Addr, SocketAddrV4};
-use std::sync::Mutex;
+use std::sync::RwLock;
 
 use graph::components::store::StoreEvent;
 use graph::data::query::Query;
@@ -49,7 +50,8 @@ pub struct GraphQLServer {
     query_sink: Option<Sender<Query>>,
     schema_event_sink: Sender<SchemaEvent>,
     store_event_sink: Sender<StoreEvent>,
-    schema: Arc<Mutex<Option<Schema>>>,
+    // Maps a graph name to it's schema.
+    schemas: Arc<RwLock<BTreeMap<String, Schema>>>,
 }
 
 impl GraphQLServer {
@@ -65,7 +67,7 @@ impl GraphQLServer {
             query_sink: None,
             schema_event_sink,
             store_event_sink: store_sink,
-            schema: Arc::new(Mutex::new(None)),
+            schemas: Arc::new(RwLock::new(BTreeMap::new())),
         };
 
         // Spawn tasks to handle incoming schema and store events.
@@ -79,21 +81,24 @@ impl GraphQLServer {
     /// Handle incoming schema events.
     fn handle_schema_events(&mut self, stream: Receiver<SchemaEvent>) {
         let logger = self.logger.clone();
-        let schema = self.schema.clone();
+        let schemas = self.schemas.clone();
 
         tokio::spawn(stream.for_each(move |event| {
             info!(logger, "Received schema event");
 
             if let SchemaEvent::SchemaAdded(new_schema) = event {
-                let mut schema = schema.lock().unwrap();
                 let derived_schema = match api_schema(&new_schema.document) {
                     Ok(document) => Schema {
+                        name: new_schema.name.clone(),
                         id: new_schema.id.clone(),
                         document,
                     },
                     Err(e) => return Ok(error!(logger, "error deriving schema {}", e)),
                 };
-                *schema = Some(derived_schema);
+                schemas
+                    .write()
+                    .unwrap()
+                    .insert(derived_schema.name.clone(), derived_schema);
             } else {
                 panic!("schema removal is yet not supported")
             }
@@ -153,9 +158,9 @@ impl GraphQLServerTrait for GraphQLServer {
         // On every incoming request, launch a new GraphQL service that writes
         // incoming queries to the query sink.
         let query_sink = query_sink.clone();
-        let schema = self.schema.clone();
+        let schemas = self.schemas.clone();
         let new_service = move || {
-            let service = GraphQLService::new(schema.clone(), query_sink.clone());
+            let service = GraphQLService::new(schemas.clone(), query_sink.clone());
             future::ok::<GraphQLService, hyper::Error>(service)
         };
 
@@ -171,7 +176,6 @@ impl GraphQLServerTrait for GraphQLServer {
 #[test]
 fn emits_an_api_schema_after_one_schema_is_added() {
     use graph_graphql::schema::ast;
-    use std::ops::Deref;
     use std::time::{Duration, Instant};
 
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
@@ -187,6 +191,7 @@ fn emits_an_api_schema_after_one_schema_is_added() {
                 let input_doc =
                     ::graphql_parser::parse_schema("type User { name: String! }").unwrap();
                 let input_schema = Schema {
+                    name: "input-schema".to_string(),
                     id: "input-schema".to_string(),
                     document: input_doc,
                 };
@@ -200,7 +205,7 @@ fn emits_an_api_schema_after_one_schema_is_added() {
                 let start_time = Instant::now();
                 let max_wait = Duration::from_secs(30);
                 let output_schema = loop {
-                    if let Some(schema) = server.schema.lock().unwrap().deref() {
+                    if let Some(schema) = server.schemas.read().unwrap().get("input-schema") {
                         break schema.clone();
                     } else if Instant::now().duration_since(start_time) > max_wait {
                         panic!("Timed out, schema not received")
