@@ -13,8 +13,6 @@ use jsonrpc_http_server::{
 use std::fmt;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddrV4};
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SubgraphAddParams {
@@ -45,7 +43,6 @@ impl JsonRpcServerTrait for JsonRpcServer {
         // `subgraph_add` handler.
         let add_provider = provider.clone();
         let add_logger = logger.clone();
-        let subgraph_added = AtomicBool::new(false);
         let add_handler = move |params: SubgraphAddParams| {
             let provider = add_provider.clone();
             info!(add_logger, "Received subgraph_add request"; "params" => params.to_string());
@@ -57,18 +54,7 @@ impl JsonRpcServerTrait for JsonRpcServer {
         };
         handler.add_method("subgraph_add", move |params: Params| {
             let handler = add_handler.clone();
-            let added = subgraph_added.load(Ordering::SeqCst);
-            subgraph_added.store(true, Ordering::SeqCst);
-            if added {
-                Err(json_rpc_error(
-                    1,
-                    "adding multiple subgraphs is not yet supported".to_owned(),
-                ))
-            } else {
-                Ok(())
-            }.into_future()
-                .and_then(|_| params.parse())
-                .and_then(handler)
+            params.parse().into_future().and_then(handler)
         });
 
         ServerBuilder::new(handler)
