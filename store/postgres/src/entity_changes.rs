@@ -49,11 +49,13 @@ impl EntityChangeListener {
                     )
                 });
 
+            // Read notifications as long as the Postgres connection is alive;
+            // which can be "forever"
             for change in changes {
                 // We'll assume here that if sending fails, this means that the
                 // entity change listener has already been dropped, the receiving
                 // is gone and we should terminate the listener loop
-                if let Err(_) = sender.clone().send(change).wait() {
+                if sender.clone().send(change).wait().is_err() {
                     break;
                 }
             }
