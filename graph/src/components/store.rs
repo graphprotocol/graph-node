@@ -79,15 +79,13 @@ pub struct StoreQuery {
 
 /// Operation types that lead to entity changes.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum EntityChangeOperation {
     /// A new entity was added.
-    #[serde(rename = "added")]
     Added,
     /// An existing entity was updated.
-    #[serde(rename = "updated")]
     Updated,
     /// An existing entity was removed.
-    #[serde(rename = "removed")]
     Removed,
 }
 
