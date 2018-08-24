@@ -1,5 +1,4 @@
 use futures::future;
-use futures::prelude::*;
 use futures::sync::mpsc::channel;
 use graphql_parser::query as gqlq;
 use std::collections::BTreeMap;
