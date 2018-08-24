@@ -137,10 +137,13 @@ pub trait BasicStore: Send {
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()>;
 }
 
+/// A pair of subgraph ID and entity type name.
+pub type SubgraphEntityPair = (String, String);
+
 /// Common trait for store implementations.
 pub trait Store: BasicStore + Send {
     /// Subscribe to entity changes for specific subgraphs and entities.
-    /// Returns a unique subscription Id and a stream of entity changes that match
-    /// the input arguments.
-    fn subscribe(&mut self, subgraph: String, entities: Vec<String>) -> EntityChangeStream;
+    ///
+    /// Returns a stream of entity changes that match the input arguments.
+    fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
 }

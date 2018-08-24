@@ -23,8 +23,7 @@ embed_migrations!("./migrations");
 
 /// Internal representation of a Store subscription.
 struct Subscription {
-    pub subgraph: String,
-    pub entities: Vec<String>,
+    pub entities: Vec<SubgraphEntityPair>,
     pub sender: Sender<EntityChange>,
 }
 
@@ -119,8 +118,9 @@ impl Store {
                 .unwrap()
                 .iter()
                 .filter(|(_, subscription)| {
-                    subscription.subgraph == change.subgraph
-                        && subscription.entities.contains(&change.entity)
+                    subscription
+                        .entities
+                        .contains(&(change.subgraph.clone(), change.entity.clone()))
                 })
                 .map(|(id, subscription)| (id.clone(), subscription.sender.clone()))
                 .collect::<Vec<_>>();
@@ -335,10 +335,8 @@ impl BasicStore for Store {
 }
 
 impl StoreTrait for Store {
-    fn subscribe(&mut self, subgraph: String, entities: Vec<String>) -> EntityChangeStream {
+    fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         let subscriptions = self.subscriptions.clone();
-        // Prepare the new subscription by creating a channel and a subscription object
-        let (sender, receiver) = channel(100);
 
         // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions
         let mut id = Uuid::new_v4().to_string();
@@ -346,11 +344,9 @@ impl StoreTrait for Store {
             id = Uuid::new_v4().to_string();
         }
 
-        let subscription = Subscription {
-            subgraph,
-            entities,
-            sender,
-        };
+        // Prepare the new subscription by creating a channel and a subscription object
+        let (sender, receiver) = channel(100);
+        let subscription = Subscription { entities, sender };
 
         // Add the new subscription
         let mut subscriptions = subscriptions.write().unwrap();

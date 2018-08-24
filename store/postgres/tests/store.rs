@@ -1656,7 +1656,8 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         let mut store = DieselStore::new(StoreConfig { url }, &logger);
 
         // Create a store subscription
-        let subscription = store.subscribe(String::from("subgraph-id"), vec![String::from("User")]);
+        let subscription =
+            store.subscribe(vec![(String::from("subgraph-id"), String::from("User"))]);
 
         // Add two entities to the store
         let added_entities = vec![

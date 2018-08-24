@@ -189,6 +189,12 @@ impl BasicStore for TestStore {
     }
 }
 
+impl Store for TestStore {
+    fn subscribe(&mut self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+        unimplemented!();
+    }
+}
+
 fn execute_query_document(query: q::Document) -> QueryResult {
     let query = Query {
         schema: test_schema(),
