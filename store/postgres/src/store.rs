@@ -163,7 +163,7 @@ impl Store {
 
                     Ok(())
                 })
-                .map_err(|_| ()),
+                .map_err(|_| unreachable!()),
         );
     }
 
