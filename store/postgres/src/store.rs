@@ -335,24 +335,26 @@ impl StoreTrait for Store {
         subgraph: String,
         entities: Vec<String>,
     ) -> Box<Stream<Item = EntityChange, Error = ()> + Send> {
+        let subscriptions = self.subscriptions.clone();
+
         // Prepare the new subscription by creating a channel and a subscription object
         let (sender, receiver) = channel(100);
-        let id = Uuid::new_v4().to_string();
+
+        // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions
+        let mut id = Uuid::new_v4().to_string();
+        while subscriptions.read().unwrap().contains_key(&id) {
+            id = Uuid::new_v4().to_string();
+        }
+
         let subscription = Subscription {
             subgraph,
             entities,
             sender,
         };
 
-        // Add the new subscription (log an error if somehow the UUID is not unique)
-        let subscriptions = self.subscriptions.clone();
+        // Add the new subscription
         let mut subscriptions = subscriptions.write().unwrap();
-        if subscriptions.contains_key(&id) {
-            error!(self.logger, "Duplicate Store subscription ID generated; \
-                                 subscriptions will not work as expected";
-                   "id" => &id);
-        }
-        subscriptions.insert(id.clone(), subscription);
+        subscriptions.insert(id, subscription);
 
         // Return the subscription ID and entity change stream
         Box::new(receiver)
