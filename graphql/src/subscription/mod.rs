@@ -3,10 +3,7 @@ use std::collections::HashMap;
 use std::result::Result;
 use std::sync::Arc;
 
-use graph::prelude::{
-    slog, slog::*, EntityChange, EntityChangeStream, QueryExecutionError, QueryResult,
-    QueryResultStream, Schema, Stream, Subscription, SubscriptionError, SubscriptionResult,
-};
+use graph::prelude::*;
 
 use execution::*;
 use prelude::*;

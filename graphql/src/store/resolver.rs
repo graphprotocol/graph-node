@@ -5,7 +5,7 @@ use std::result;
 use std::sync::{Arc, Mutex};
 
 use graph::components::store::*;
-use graph::prelude::{slog::*, QueryExecutionError, Store, Value};
+use graph::prelude::*;
 
 use prelude::*;
 use query::ast as qast;
