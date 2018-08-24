@@ -154,6 +154,10 @@ impl RuntimeHost {
                     .event_handlers
                     .iter()
                     .map(|event_handler| {
+                        debug!(logger, "Prepare subscription";
+                                "event" => &event_handler.event,
+                                "handler" => &event_handler.handler,
+                            );
                         let subscription_id = Uuid::new_v4().simple().to_string();
                         let event = util::ethereum::contract_event_with_signature(
                             &contract,
@@ -178,8 +182,9 @@ impl RuntimeHost {
             // Merge all event streams.
             let mut event_stream: Box<Stream<Item = _, Error = _>> = Box::new(stream::empty());
             for subscription in subscription_results {
-                info!(logger, "Subscribe to event"; "name" => &subscription.event.name);
-
+                info!(logger, "Subscribe to event";
+                      "name" => &subscription.event.name,
+                      "subscription_id" => &subscription.subscription_id);
                 event_stream = Box::new(
                     event_stream.select(
                         ethereum_adapter
@@ -197,11 +202,13 @@ impl RuntimeHost {
 
         event_stream
             .map(move |event| {
-                info!(event_logger, "Ethereum event received");
+                info!(event_logger, "Ethereum event received";
+                      "signature" => event.event_signature.to_string(),
+                    );
 
                 if event.removed {
                     info!(event_logger, "Event removed";
-                              "block" => event.block_hash.to_string());
+                          "block" => event.block_hash.to_string());
                 } else {
                     let event_handler = data_source
                         .mapping
@@ -215,7 +222,8 @@ impl RuntimeHost {
                         .to_owned();
 
                     debug!(event_logger, "  Call event handler";
-                               "name" => &event_handler.handler);
+                           "name" => &event_handler.handler,
+                           "signature" => &event_handler.event);
 
                     module.handle_ethereum_event(event_handler.handler.as_str(), event);
                 }

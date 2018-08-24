@@ -311,10 +311,12 @@ where
         call_ptr: AscPtr<AscUnresolvedContractCall>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let unresolved_call: UnresolvedContractCall = self.heap.asc_get(call_ptr);
-
         info!(self.logger, "Call smart contract";
+              "address" => &unresolved_call.contract_address.to_string(),
               "contract" => &unresolved_call.contract_name,
-              "function" => &unresolved_call.function_name);
+              "function" => &unresolved_call.function_name,
+              "block_hash" => &unresolved_call.block_hash.to_string(),
+              );
 
         // Obtain the path to the contract ABI
         let contract = self
