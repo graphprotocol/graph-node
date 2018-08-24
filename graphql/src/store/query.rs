@@ -1,15 +1,12 @@
 use graph::prelude::*;
-use graphql_parser::{query as q, schema};
-use schema::ast;
-use std::collections::{BTreeMap, HashMap};
+use graphql_parser::{query as q, schema as s};
+use schema::ast as sast;
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 /// Builds a StoreQuery from GraphQL arguments.
-pub fn build_query(
-    entity: &schema::ObjectType,
-    arguments: &HashMap<&q::Name, q::Value>,
-) -> StoreQuery {
+pub fn build_query(entity: &s::ObjectType, arguments: &HashMap<&q::Name, q::Value>) -> StoreQuery {
     StoreQuery {
-        subgraph: build_subgraph_id(entity)
+        subgraph: parse_subgraph_id(entity)
             .expect(format!("Failed to get subgraph ID from type: {}", entity.name).as_str()),
         entity: entity.name.to_owned(),
         range: build_range(arguments),
@@ -47,7 +44,7 @@ fn build_range(arguments: &HashMap<&q::Name, q::Value>) -> Option<StoreRange> {
 
 /// Parses GraphQL arguments into a StoreFilter, if present.
 fn build_filter(
-    entity: &schema::ObjectType,
+    entity: &s::ObjectType,
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> Option<StoreFilter> {
     arguments
@@ -61,18 +58,18 @@ fn build_filter(
 
 /// Parses a GraphQL input object into a StoreFilter, if present.
 fn build_filter_from_object(
-    entity: &schema::ObjectType,
+    entity: &s::ObjectType,
     object: &BTreeMap<q::Name, q::Value>,
 ) -> StoreFilter {
     StoreFilter::And(
         object
             .iter()
             .map(|(key, value)| {
-                use schema::ast::FilterOp::*;
+                use self::sast::FilterOp::*;
 
-                let (attribute, op) = ast::parse_field_as_filter(key);
+                let (attribute, op) = sast::parse_field_as_filter(key);
 
-                let field = ast::get_field_type(entity, &attribute)
+                let field = sast::get_field_type(entity, &attribute)
                     .expect("attribute does not belong to entity");
                 let ty = &field.field_type;
                 let store_value = Value::from_query_value(value, &ty);
@@ -128,7 +125,7 @@ fn build_order_direction(arguments: &HashMap<&q::Name, q::Value>) -> Option<Stor
 }
 
 /// Parses the subgraph ID from the ObjectType directives.
-pub fn build_subgraph_id(entity: &schema::ObjectType) -> Option<String> {
+pub fn parse_subgraph_id(entity: &s::ObjectType) -> Option<String> {
     entity
         .clone()
         .directives
@@ -141,7 +138,7 @@ pub fn build_subgraph_id(entity: &schema::ObjectType) -> Option<String> {
                 .find(|(name, _)| name == &"id".to_string())
         })
         .and_then(|(_, value)| match value {
-            schema::Value::String(id) => Some(id),
+            s::Value::String(id) => Some(id),
             _ => None,
         })
 }
@@ -149,7 +146,7 @@ pub fn build_subgraph_id(entity: &schema::ObjectType) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use graphql_parser::{
-        query as q, schema,
+        query as q, schema as s,
         schema::{Directive, Field, ObjectType, Type},
         Pos,
     };
@@ -162,8 +159,8 @@ mod tests {
 
     fn default_object() -> ObjectType {
         let subgraph_id_argument = (
-            schema::Name::from("id"),
-            schema::Value::String("QmZ5dsusHwD1PEbx6L4dLCWkDsk1BLhrx9mPsGyPvTxPCM".to_string()),
+            s::Name::from("id"),
+            s::Value::String("QmZ5dsusHwD1PEbx6L4dLCWkDsk1BLhrx9mPsGyPvTxPCM".to_string()),
         );
         let subgraph_id_directive = Directive {
             name: "subgraphId".to_string(),
