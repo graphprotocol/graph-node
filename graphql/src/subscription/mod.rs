@@ -1,13 +1,10 @@
-use futures::future;
-use futures::prelude::*;
-use futures::sync::mpsc::channel;
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::result::Result;
 use std::sync::Arc;
 
 use graph::prelude::{
-    slog, slog::*, tokio, EntityChange, EntityChangeStream, QueryExecutionError, QueryResult,
+    slog, slog::*, EntityChange, EntityChangeStream, QueryExecutionError, QueryResult,
     QueryResultStream, Schema, Stream, Subscription, SubscriptionError, SubscriptionResult,
 };
 
@@ -46,7 +43,7 @@ where
         IntrospectionResolver::new(&options.logger, &subscription.query.schema);
 
     // Create a fresh execution context
-    let mut ctx = ExecutionContext {
+    let ctx = ExecutionContext {
         logger: options.logger,
         resolver: Arc::new(options.resolver),
         schema: &subscription.query.schema,
@@ -109,7 +106,7 @@ fn resolve_field_stream<'a, R1, R2>(
     ctx: &'a ExecutionContext<'a, R1, R2>,
     object_type: &'a s::ObjectType,
     field: &'a q::Field,
-    argument_values: HashMap<&q::Name, q::Value>,
+    _argument_values: HashMap<&q::Name, q::Value>,
 ) -> Result<EntityChangeStream, SubscriptionError>
 where
     R1: Resolver,

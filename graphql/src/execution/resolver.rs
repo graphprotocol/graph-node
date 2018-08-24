@@ -105,9 +105,9 @@ pub trait Resolver: Clone + Send + Sync {
     // Resolves a change stream for a given field.
     fn resolve_field_stream<'a, 'b>(
         &self,
-        schema: &'a s::Document,
-        object_type: &'a s::ObjectType,
-        field: &'b q::Field,
+        _schema: &'a s::Document,
+        _object_type: &'a s::ObjectType,
+        _field: &'b q::Field,
     ) -> Result<EntityChangeStream, QueryExecutionError> {
         Err(QueryExecutionError::NotSupported(String::from(
             "Resolving field streams is not supported by this resolver",
