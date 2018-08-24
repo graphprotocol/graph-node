@@ -9,8 +9,6 @@ extern crate futures;
 extern crate graph;
 extern crate postgres;
 extern crate serde;
-#[macro_use]
-extern crate slog;
 extern crate uuid;
 
 pub mod db_schema;
