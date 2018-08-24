@@ -1,6 +1,6 @@
 use futures::prelude::*;
 
-use prelude::{QueryError, QueryResult, SubscriptionError};
+use prelude::QueryResult;
 
 /// A stream of query results for a subscription.
 pub type QueryResultStream = Box<Stream<Item = QueryResult, Error = ()> + Send>;
