@@ -18,7 +18,6 @@ use graph_server_http::test_utils;
 use graph_server_http::GraphQLServer as HyperGraphQLServer;
 
 /// A simple stupid query runner for testing.
-#[derive(Default)]
 pub struct TestQueryRunner;
 
 impl QueryRunner for TestQueryRunner {
