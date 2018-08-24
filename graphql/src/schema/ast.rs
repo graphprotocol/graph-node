@@ -169,3 +169,31 @@ pub fn get_argument_definitions<'a>(
 ) -> Option<&'a Vec<InputValue>> {
     get_field_type(object_type, name).map(|field| &field.arguments)
 }
+
+/// Returns the type definition that a field type corresponds to.
+pub fn get_type_definition_from_field_type<'a>(
+    schema: &'a Document,
+    field_type: &'a Field,
+) -> Option<&'a TypeDefinition> {
+    get_type_definition_from_type(schema, &field_type.field_type)
+}
+
+/// Returns the type definition for a type.
+pub fn get_type_definition_from_type<'a>(
+    schema: &'a Document,
+    t: &'a Type,
+) -> Option<&'a TypeDefinition> {
+    match t {
+        Type::NamedType(name) => get_named_type(schema, name),
+        Type::ListType(inner) => get_type_definition_from_type(schema, inner),
+        Type::NonNullType(inner) => get_type_definition_from_type(schema, inner),
+    }
+}
+
+/// Looks up a directive in a object type, if it is provided.
+pub fn get_object_type_directive(object_type: &ObjectType, name: Name) -> Option<&Directive> {
+    object_type
+        .directives
+        .iter()
+        .find(|directive| directive.name == name)
+}
