@@ -9,7 +9,7 @@ extern crate graph_store_postgres;
 use diesel::pg::PgConnection;
 use diesel::*;
 use ethereum_types::H256;
-use futures::sync::oneshot;
+use std::fmt::Debug;
 use std::panic;
 use std::sync::Mutex;
 
@@ -32,9 +32,13 @@ lazy_static! {
 }
 
 /// Test harness for running database integration tests.
-fn run_test<T>(test: T) -> ()
+fn run_test<R, F>(test: F) -> ()
 where
-    T: FnOnce() -> () + Send + 'static + panic::UnwindSafe,
+    F: FnOnce() -> R + Send + 'static,
+    R: IntoFuture + Send + 'static,
+    R::Item: Send,
+    R::Error: Send + Debug,
+    R::Future: Send,
 {
     // Lock regardless of poisoning.
     let _test_lock = match TEST_MUTEX.lock() {
@@ -42,20 +46,27 @@ where
         Err(err) => err.into_inner(),
     };
 
-    let (sender, receiver) = oneshot::channel();
+    let mut runtime = tokio::runtime::Runtime::new().unwrap();
 
-    tokio::runtime::Runtime::new()
-        .unwrap()
+    runtime
         .block_on(future::lazy(|| {
             insert_test_data();
-            let result = panic::catch_unwind(|| test());
-            remove_test_data();
-            sender.send(result).map_err(|_| ())
+            future::ok::<_, ()>(())
         }))
-        .expect("Failed to run test harness");
+        .expect("Failed to insert test data");
 
-    // Unwrap in the main thread where a panic will fail the test.
-    receiver.wait().unwrap().expect("Failed to run test");
+    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        runtime.block_on(future::lazy(|| test()))
+    }));
+
+    runtime
+        .block_on(future::lazy(|| {
+            remove_test_data();
+            future::ok::<_, ()>(())
+        }))
+        .expect("Failed to remove test data");
+
+    result.expect("Failed to run test").expect("Test failed");
 }
 
 /// Creates a test entity.
@@ -163,7 +174,7 @@ fn remove_test_data() {
 
 #[test]
 fn delete_entity() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         use db_schema::entities::dsl::*;
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
@@ -182,12 +193,14 @@ fn delete_entity() {
 
         // Check that that the deleted entity id is not present
         assert!(!all_ids.contains(&String::from("3")));
+
+        Ok(())
     })
 }
 
 #[test]
 fn get_entity() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -211,12 +224,14 @@ fn get_entity() {
 
         // Check that the expected entity was returned
         assert_eq!(result, expected_entity);
+
+        Ok(())
     })
 }
 
 #[test]
 fn insert_entity() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         use db_schema::entities::dsl::*;
 
         let logger = Logger::root(slog::Discard, o!());
@@ -240,12 +255,14 @@ fn insert_entity() {
         // Check that new record is in the store
         let all_ids = entities.select(id).load::<String>(&store.conn).unwrap();
         assert!(all_ids.iter().any(|x| x == &String::from("7")));
+
+        Ok(())
     })
 }
 
 #[test]
 fn update_existing() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let mut store = DieselStore::new(StoreConfig { url }, &logger);
@@ -277,12 +294,14 @@ fn update_existing() {
 
         // Verify that the entity in the store has changed to what we have set
         assert_eq!(store.get(entity_key).unwrap(), test_entity_1.1);
+
+        Ok(())
     })
 }
 
 #[test]
 fn partially_update_existing() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let mut store = DieselStore::new(StoreConfig { url }, &logger);
@@ -322,12 +341,14 @@ fn partially_update_existing() {
         assert_eq!(updated_entity.get("age"), original_entity.get("age"));
         assert_eq!(updated_entity.get("weight"), original_entity.get("weight"));
         assert_eq!(updated_entity.get("coffee"), original_entity.get("coffee"));
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_contains() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -348,12 +369,14 @@ fn find_string_contains() {
         let returned_name = returned_entities[0].get(&String::from("name"));
         let test_value = Value::String(String::from("Cindini"));
         assert_eq!(&test_value, returned_name.unwrap());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_equal() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -374,12 +397,14 @@ fn find_string_equal() {
         let returned_name = returned_entities[0].get(&String::from("name"));
         let test_value = Value::String(String::from("Cindini"));
         assert_eq!(&test_value, returned_name.unwrap());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_not_equal() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -404,12 +429,14 @@ fn find_string_not_equal() {
 
         // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_greater_than() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -434,12 +461,14 @@ fn find_string_greater_than() {
 
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_less_than() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -464,12 +493,14 @@ fn find_string_less_than() {
 
         //There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_less_than_order_by_asc() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -505,12 +536,14 @@ fn find_string_less_than_order_by_asc() {
                 &Value::String(String::from("Johnton")),
             ]
         );
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_less_than_order_by_desc() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -546,12 +579,14 @@ fn find_string_less_than_order_by_desc() {
                 &Value::String(String::from("Cindini")),
             ]
         );
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_less_than_range() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -576,12 +611,14 @@ fn find_string_less_than_range() {
 
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_multiple_and() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -606,12 +643,14 @@ fn find_string_multiple_and() {
 
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_ends_with() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -636,12 +675,14 @@ fn find_string_ends_with() {
 
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_not_ends_with() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -666,12 +707,14 @@ fn find_string_not_ends_with() {
 
         // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_in() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -696,12 +739,14 @@ fn find_string_in() {
 
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_string_not_in() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -727,12 +772,14 @@ fn find_string_not_in() {
 
         // There should be 2 user returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_float_equal() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -757,12 +804,14 @@ fn find_float_equal() {
 
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_float_not_equal() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -787,12 +836,14 @@ fn find_float_not_equal() {
 
         // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_float_greater_than() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -817,12 +868,14 @@ fn find_float_greater_than() {
 
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_float_less_than() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -845,14 +898,16 @@ fn find_float_less_than() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        //There should be 2 users returned in results
+        // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_float_less_than_order_by_desc() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -877,12 +932,14 @@ fn find_float_less_than_order_by_desc() {
 
         // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_float_less_than_range() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -906,12 +963,14 @@ fn find_float_less_than_range() {
 
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_float_in() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -936,12 +995,14 @@ fn find_float_in() {
 
         // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_float_not_in() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -966,12 +1027,14 @@ fn find_float_not_in() {
 
         // There should be 1 users returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_int_equal() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -996,12 +1059,14 @@ fn find_int_equal() {
 
         // There should be 1 users returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_int_not_equal() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1026,12 +1091,14 @@ fn find_int_not_equal() {
 
         // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_int_greater_than() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1056,12 +1123,14 @@ fn find_int_greater_than() {
 
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_int_greater_or_equal() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1086,12 +1155,14 @@ fn find_int_greater_or_equal() {
 
         // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_int_less_than() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1116,12 +1187,14 @@ fn find_int_less_than() {
 
         //There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_int_less_or_equal() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1144,14 +1217,16 @@ fn find_int_less_or_equal() {
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
-        //There should be 2 users returned in results
+        // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_int_less_than_order_by_desc() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1176,12 +1251,14 @@ fn find_int_less_than_order_by_desc() {
 
         // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_int_less_than_range() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1206,12 +1283,14 @@ fn find_int_less_than_range() {
 
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_int_in() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1236,12 +1315,14 @@ fn find_int_in() {
 
         // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_int_not_in() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1266,12 +1347,14 @@ fn find_int_not_in() {
 
         // There should be 1 users returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_bool_equal() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1296,12 +1379,14 @@ fn find_bool_equal() {
 
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_bool_not_equal() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1326,12 +1411,14 @@ fn find_bool_not_equal() {
 
         // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_bool_in() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1356,12 +1443,14 @@ fn find_bool_in() {
 
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn find_bool_not_in() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1386,12 +1475,14 @@ fn find_bool_not_in() {
 
         // There should be 2 users returned in results
         assert_eq!(2, returned_entities.len());
+
+        Ok(())
     })
 }
 
 #[test]
 fn revert_block() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1433,12 +1524,14 @@ fn revert_block() {
         let test_value = Value::String(String::from("queensha@email.com"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
+
+        Ok(())
     })
 }
 
 #[test]
 fn revert_block_with_delete() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let mut store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1500,12 +1593,14 @@ fn revert_block_with_delete() {
         let test_value = Value::String(String::from("dinici@email.com"));
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
+
+        Ok(())
     })
 }
 
 #[test]
 fn revert_block_with_partial_update() {
-    run_test(|| {
+    run_test(|| -> Result<(), ()> {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let mut store = DieselStore::new(StoreConfig { url }, &logger);
@@ -1548,6 +1643,8 @@ fn revert_block_with_partial_update() {
         store.revert_events(revert_event_source);
         let reverted_entity = store.get(entity_key).unwrap();
         assert_eq!(reverted_entity, original_entity);
+
+        Ok(())
     })
 }
 
@@ -1622,38 +1719,45 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             .expect("failed to delete entity from the store");
 
         // We're expecting three events to be written to the subscription stream
-        assert_eq!(
-            subscription.wait().take(4).collect::<Vec<_>>(),
-            vec![
-                Ok(EntityChange {
-                    subgraph: String::from("subgraph-id"),
-                    entity: String::from("User"),
-                    id: added_entities[0].clone().0,
-                    data: added_entities[0].clone().1,
-                    operation: EntityChangeOperation::Added,
-                }),
-                Ok(EntityChange {
-                    subgraph: String::from("subgraph-id"),
-                    entity: String::from("User"),
-                    id: added_entities[1].clone().0,
-                    data: added_entities[1].clone().1,
-                    operation: EntityChangeOperation::Added,
-                }),
-                Ok(EntityChange {
-                    subgraph: String::from("subgraph-id"),
-                    entity: String::from("User"),
-                    id: String::from("1"),
-                    data: updated_entity,
-                    operation: EntityChangeOperation::Updated,
-                }),
-                Ok(EntityChange {
-                    subgraph: String::from("subgraph-id"),
-                    entity: String::from("User"),
-                    id: added_entities[1].clone().0,
-                    data: added_entities[1].clone().1,
-                    operation: EntityChangeOperation::Removed,
-                }),
-            ]
-        );
+        subscription
+            .take(4)
+            .collect()
+            .and_then(move |changes| {
+                assert_eq!(
+                    changes,
+                    vec![
+                        EntityChange {
+                            subgraph: String::from("subgraph-id"),
+                            entity: String::from("User"),
+                            id: added_entities[0].clone().0,
+                            data: added_entities[0].clone().1,
+                            operation: EntityChangeOperation::Added,
+                        },
+                        EntityChange {
+                            subgraph: String::from("subgraph-id"),
+                            entity: String::from("User"),
+                            id: added_entities[1].clone().0,
+                            data: added_entities[1].clone().1,
+                            operation: EntityChangeOperation::Added,
+                        },
+                        EntityChange {
+                            subgraph: String::from("subgraph-id"),
+                            entity: String::from("User"),
+                            id: String::from("1"),
+                            data: updated_entity,
+                            operation: EntityChangeOperation::Updated,
+                        },
+                        EntityChange {
+                            subgraph: String::from("subgraph-id"),
+                            entity: String::from("User"),
+                            id: added_entities[1].clone().0,
+                            data: added_entities[1].clone().1,
+                            operation: EntityChangeOperation::Removed,
+                        },
+                    ]
+                );
+                Ok(())
+            })
+            .and_then(|_| Ok(()))
     })
 }
