@@ -55,7 +55,7 @@ impl BasicStore for MockStore {
 }
 
 impl Store for MockStore {
-    fn subscribe(&mut self, _subgraph: String, _entities: Vec<String>) -> EntityChangeStream {
+    fn subscribe(&mut self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
 }
@@ -81,7 +81,7 @@ impl BasicStore for FakeStore {
 }
 
 impl Store for FakeStore {
-    fn subscribe(&mut self, _subgraph: String, _entities: Vec<String>) -> EntityChangeStream {
+    fn subscribe(&mut self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
 }

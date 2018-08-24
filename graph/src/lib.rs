@@ -56,7 +56,7 @@ pub mod prelude {
     pub use components::server::{GraphQLServer, JsonRpcServer};
     pub use components::store::{
         BasicStore, EntityChange, EntityChangeOperation, EntityChangeStream, EventSource, Store,
-        StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
+        StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange, SubgraphEntityPair,
     };
     pub use components::subgraph::{
         RuntimeHost, RuntimeHostBuilder, RuntimeHostEvent, RuntimeManager, SchemaEvent,
