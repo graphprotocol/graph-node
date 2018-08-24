@@ -234,7 +234,7 @@ mod tests {
                 ).unwrap(),
             },
         )))));
-        let query_runner = Arc::new(TestQueryRunner::default());
+        let query_runner = Arc::new(TestQueryRunner);
         let mut service = GraphQLService::new(Default::default(), schema, query_runner);
 
         let request = Request::builder()
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn posting_valid_queries_yields_result_response() {
-        let query_runner = Arc::new(TestQueryRunner::default());
+        let query_runner = Arc::new(TestQueryRunner);
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
             .block_on(future::lazy(|| {
@@ -283,19 +283,6 @@ mod tests {
                     )))));
 
                     let mut service = GraphQLService::new(Default::default(), schema, query_runner);
-
-                    tokio::spawn(
-                        query_stream
-                            .for_each(move |query| {
-                                let mut map = BTreeMap::new();
-                                map.insert("name".to_string(), Value::String("Jordi".to_string()));
-                                let data = Value::Object(map);
-                                let result = QueryResult::new(Some(data));
-                                query.result_sender.send(result).unwrap();
-                                Ok(())
-                            })
-                            .fuse(),
-                    );
 
                     let request = Request::builder()
                         .method(Method::POST)
