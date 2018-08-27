@@ -60,7 +60,7 @@ To deploy a GraphQL endpoint serving blockchain data to your Graph Node we will 
 ## 3 Defining your Subgraph
 In The Graph, we refer to your project's GraphQL endpoint as a *subgraph*, because once deployed to the decentralized network, it will be just one subset of a global GraphQL endpoint.
 
-The subgraph is defined as a YAML file called a *subgraph manifest*. See [here](https://github.com/graphprotocol/graph-cli/blob/master/examples/example-event-handler/subgraph.yaml) for an example, or [here](graphql-api.md) for the full subgraph manifest specification. It comprises a schema, source data and mappings which are used to deploy your endpoint.
+The subgraph is defined as a YAML file called a *subgraph manifest*. See [here](https://github.com/graphprotocol/graph-cli/blob/master/examples/example-event-handler/subgraph.yaml) for an example, or [here](subgraph-manifest.md) for the full subgraph manifest specification. It comprises a schema, source data and mappings which are used to deploy your endpoint.
 
 The subgraph manifest is typically placed into a *subgraph* directory. We'll also add a `package.json` and `tsconfig.json` in the directory, to take advantage of our Javascript-based build toolchain using the Graph CLI.
 
