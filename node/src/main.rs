@@ -16,21 +16,18 @@ extern crate ipfs_api;
 extern crate url;
 
 use clap::{App, Arg};
-use futures::sync::mpsc;
 use ipfs_api::IpfsClient;
 use reqwest::Client;
 use std::env;
 use std::io;
 use std::net::SocketAddr;
-use std::panic;
-use std::process;
 use std::str::FromStr;
 use std::sync::Mutex;
 use url::Url;
 
 use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
-use graph::util::log::{guarded_logger, logger};
+use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::SubgraphProvider as IpfsSubgraphProvider;
 use graph_datasource_ethereum::Transport;
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
@@ -39,39 +36,9 @@ use graph_server_json_rpc::{subgraph_add_request, JsonRpcServer};
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
-    let (shutdown_sender, _shutdown_receiver) = mpsc::channel(1);
-    let (panic_logger, panic_guard) = guarded_logger();
-    let mut runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-
-    // Create our own panic hook that logs before sending shutdown signal
-    panic::set_hook(Box::new(move |panic_info| {
-        let panic_payload = panic_info.payload().downcast_ref::<String>();
-        let panic_location = if let Some(location) = panic_info.location() {
-            format!("{}:{}", location.file(), location.line().to_string())
-        } else {
-            "NA".to_string()
-        };
-        error!(panic_logger, "Panic info";
-            "payload" => panic_payload.clone(),
-            "location" => panic_location.clone()
-           );
-
-        // Signal an event loop shutdown
-        shutdown_sender
-            .clone()
-            .send(())
-            .map(|_| ())
-            .map_err(|_| ())
-            .wait()
-            .expect("Failed to signal shutdown");
-    }));
-
-    let _result = runtime.block_on(future::lazy(|| async_main()));
-
-    // Drop logger, shutdown tokio event loop, and exit process
-    drop(panic_guard);
-    runtime.shutdown_now().wait().unwrap();
-    process::exit(1);
+    let (panic_logger, _panic_guard) = guarded_logger();
+    register_panic_hook(panic_logger);
+    tokio::run(future::lazy(|| async_main()))
 }
 
 fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
@@ -190,7 +157,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
     let ipfs_test = resolver.add(io::Cursor::new("test"));
     if let Err(e) = ipfs_test.wait() {
-        //        error!(logger, "Failed to connect to IPFS: {}", e);
         error!(
             logger,
             "Is there an IPFS node running at '{}'?", ipfs_socket_addr
