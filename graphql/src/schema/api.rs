@@ -48,6 +48,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_query_type(&mut schema, &object_types, &interface_types)?;
+    add_subscription_type(&mut schema, &object_types, &interface_types)?;
 
     Ok(schema)
 }
@@ -312,6 +313,34 @@ fn add_query_type(
         position: Pos::default(),
         description: None,
         name: "Query".to_string(),
+        implements_interfaces: vec![],
+        directives: vec![],
+        fields: object_types
+            .iter()
+            .map(|t| &t.name)
+            .chain(interface_types.iter().map(|t| &t.name))
+            .flat_map(|name| query_fields_for_type(schema, name))
+            .collect(),
+    });
+    let def = Definition::TypeDefinition(typedef);
+    schema.definitions.push(def);
+    Ok(())
+}
+
+/// Adds a root `Subscription` object type to the schema.
+fn add_subscription_type(
+    schema: &mut Document,
+    object_types: &Vec<&ObjectType>,
+    interface_types: &Vec<&InterfaceType>,
+) -> Result<(), APISchemaError> {
+    if ast::get_named_type(schema, &"Subscription".to_string()).is_some() {
+        return Err(APISchemaError::TypeExists("Subscription".to_owned()));
+    }
+
+    let typedef = TypeDefinition::Object(ObjectType {
+        position: Pos::default(),
+        description: None,
+        name: "Subscription".to_string(),
         implements_interfaces: vec![],
         directives: vec![],
         fields: object_types
