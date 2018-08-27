@@ -449,6 +449,13 @@ impl<'a> IntrospectionResolver<'a> {
                     .map(|t| t.clone())
                     .unwrap_or(q::Value::Null),
             ),
+            (
+                "subscriptionType",
+                self.type_objects
+                    .get(&String::from("Subscription"))
+                    .map(|t| t.clone())
+                    .unwrap_or(q::Value::Null),
+            ),
             ("mutationType", q::Value::Null),
             (
                 "types",
