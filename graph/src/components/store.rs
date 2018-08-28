@@ -1,5 +1,8 @@
 use ethereum_types::H256;
+use failure::Error;
 use futures::Stream;
+use web3::types::Block;
+use web3::types::Transaction;
 
 use data::store::*;
 use std::fmt;
@@ -140,8 +143,34 @@ pub trait BasicStore: Send {
 /// A pair of subgraph ID and entity type name.
 pub type SubgraphEntityPair = (String, String);
 
+/// Common trait for block data store implementations.
+pub trait BlockStore {
+    /// Add a new network, but only if one with this name does not already exist in the block store
+    fn add_network_if_missing(&self, network_name: &str) -> Result<(), Error>;
+
+    /// Insert some blocks into the store (or update if they are already present).
+    fn upsert_blocks(&self, network_name: &str, blocks: &[Block<Transaction>])
+        -> Result<(), Error>;
+
+    /// Try to update the head block pointer to the block with the highest block number.
+    /// Only updates pointer if there is a block with a higher block number than the current head
+    /// block, and the `ancestor_count` most recent ancestors of that block are in the store.
+    ///
+    /// If the pointer was updated, returns `Ok(vec![])`, and fires a HeadUpdateEvent.
+    ///
+    /// If no block has a number higher than the current head block, returns `Ok(vec![])`.
+    ///
+    /// If the candidate new head block had one or more missing ancestors, returns
+    /// `Ok(missing_blocks)`, where `missing_blocks` is a nonexhaustive list of missing blocks.
+    fn attempt_head_update(
+        &self,
+        network_name: &str,
+        ancestor_count: u64,
+    ) -> Result<Vec<H256>, Error>;
+}
+
 /// Common trait for store implementations.
-pub trait Store: BasicStore + Send {
+pub trait Store: BasicStore + BlockStore + Send {
     /// Subscribe to entity changes for specific subgraphs and entities.
     ///
     /// Returns a stream of entity changes that match the input arguments.
