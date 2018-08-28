@@ -94,6 +94,14 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .help("Ethereum IPC pipe"),
         )
         .arg(
+            Arg::with_name("ethereum-network-name")
+                .takes_value(true)
+                .default_value("mainnet")
+                .long("ethereum-network-name")
+                .value_name("NAME")
+                .help("Ethereum network name (e.g. mainnet or ropsten)"),
+        )
+        .arg(
             Arg::with_name("ipfs")
                 .takes_value(true)
                 .required(true)
@@ -116,11 +124,13 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Obtain subgraph related command-line arguments
     let subgraph = matches.value_of("subgraph");
 
-    // Obtain the Ethereum RPC/WS/IPC transport locations
+    // Obtain the Ethereum parameters
     let ethereum_rpc = matches.value_of("ethereum-rpc");
     let ethereum_ipc = matches.value_of("ethereum-ipc");
     let ethereum_ws = matches.value_of("ethereum-ws");
+    let ethereum_network_name = matches.value_of("ethereum-network-name").unwrap();
 
+    // Parse IPFS address
     let ipfs_socket_addr = SocketAddr::from_str(matches.value_of("ipfs").unwrap())
         .expect("could not parse IPFS address, expected format is host:port");
 
@@ -183,6 +193,17 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .or(ethereum_ws.map(Transport::new_ws))
         .or(ethereum_rpc.map(Transport::new_rpc))
         .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
+
+    // Create Ethereum block ingestor
+    graph_datasource_ethereum::BlockIngestor::spawn(
+        graph_datasource_ethereum::BlockIngestorConfig {
+            store: protected_store.clone(),
+            network_name: ethereum_network_name.to_owned(),
+            web3_transport: transport.clone(),
+            ancestor_count: 400, // TODO make configuable
+            logger: logger.clone(),
+        },
+    ).expect("failed to start block ingestor");
 
     // If we drop the event loop the transport will stop working. For now it's
     // fine to just leak it.
