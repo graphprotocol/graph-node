@@ -1,3 +1,7 @@
+use web3::types::Block;
+use web3::types::H256;
+use web3::types::Transaction;
+
 use graph::components::store::*;
 use graph::prelude::*;
 
@@ -54,6 +58,28 @@ impl BasicStore for MockStore {
     }
 }
 
+impl BlockStore for MockStore {
+    fn add_network_if_missing(&self, _network_name: &str) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn upsert_blocks(
+        &self,
+        _network_name: &str,
+        _blocks: &[Block<Transaction>],
+    ) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn attempt_head_update(
+        &self,
+        _network_name: &str,
+        _ancestor_count: u64,
+    ) -> Result<Vec<H256>, Error> {
+        unimplemented!()
+    }
+}
+
 impl Store for MockStore {
     fn subscribe(&mut self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
@@ -76,6 +102,28 @@ impl BasicStore for FakeStore {
     }
 
     fn find(&self, _: StoreQuery) -> Result<Vec<Entity>, ()> {
+        panic!("called FakeStore")
+    }
+}
+
+impl BlockStore for FakeStore {
+    fn add_network_if_missing(&self, _network_name: &str) -> Result<(), Error> {
+        panic!("called FakeStore")
+    }
+
+    fn upsert_blocks(
+        &self,
+        _network_name: &str,
+        _blocks: &[Block<Transaction>],
+    ) -> Result<(), Error> {
+        panic!("called FakeStore")
+    }
+
+    fn attempt_head_update(
+        &self,
+        _network_name: &str,
+        _ancestor_count: u64,
+    ) -> Result<Vec<H256>, Error> {
         panic!("called FakeStore")
     }
 }

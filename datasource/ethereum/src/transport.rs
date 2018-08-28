@@ -61,3 +61,19 @@ impl web3::Transport for Transport {
         }
     }
 }
+
+impl web3::BatchTransport for Transport {
+    type Batch =
+        Box<Future<Item = Vec<Result<Value, web3::error::Error>>, Error = web3::error::Error>>;
+
+    fn send_batch<T>(&self, requests: T) -> Self::Batch
+    where
+        T: IntoIterator<Item = (RequestId, Call)>,
+    {
+        match self {
+            Transport::RPC(http) => Box::new(http.send_batch(requests)),
+            Transport::IPC(ipc) => Box::new(ipc.send_batch(requests)),
+            Transport::WS(ws) => Box::new(ws.send_batch(requests)),
+        }
+    }
+}

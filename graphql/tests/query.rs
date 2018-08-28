@@ -5,9 +5,13 @@ extern crate pretty_assertions;
 extern crate graph;
 extern crate graph_core;
 extern crate graph_graphql;
+extern crate web3;
 
 use graphql_parser::query as q;
 use std::sync::Mutex;
+use web3::types::Block;
+use web3::types::H256;
+use web3::types::Transaction;
 
 use graph::components::store::EventSource;
 use graph::prelude::*;
@@ -186,6 +190,28 @@ impl BasicStore for TestStore {
             .collect();
 
         Ok(entities)
+    }
+}
+
+impl BlockStore for TestStore {
+    fn add_network_if_missing(&self, _network_name: &str) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn upsert_blocks(
+        &self,
+        _network_name: &str,
+        _blocks: &[Block<Transaction>],
+    ) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn attempt_head_update(
+        &self,
+        _network_name: &str,
+        _ancestor_count: u64,
+    ) -> Result<Vec<H256>, Error> {
+        unimplemented!()
     }
 }
 
