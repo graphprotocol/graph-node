@@ -1730,28 +1730,24 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                             subgraph: String::from("subgraph-id"),
                             entity: String::from("User"),
                             id: added_entities[0].clone().0,
-                            data: added_entities[0].clone().1,
                             operation: EntityChangeOperation::Added,
                         },
                         EntityChange {
                             subgraph: String::from("subgraph-id"),
                             entity: String::from("User"),
                             id: added_entities[1].clone().0,
-                            data: added_entities[1].clone().1,
                             operation: EntityChangeOperation::Added,
                         },
                         EntityChange {
                             subgraph: String::from("subgraph-id"),
                             entity: String::from("User"),
                             id: String::from("1"),
-                            data: updated_entity,
                             operation: EntityChangeOperation::Updated,
                         },
                         EntityChange {
                             subgraph: String::from("subgraph-id"),
                             entity: String::from("User"),
                             id: added_entities[1].clone().0,
-                            data: added_entities[1].clone().1,
                             operation: EntityChangeOperation::Removed,
                         },
                     ]

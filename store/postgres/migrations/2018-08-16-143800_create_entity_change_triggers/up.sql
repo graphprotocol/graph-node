@@ -14,7 +14,6 @@ BEGIN
       'subgraph', NEW.subgraph,
       'entity', NEW.entity,
       'id', NEW.id,
-      'data', NEW.data,
       'operation', 'added'
     )::text);
     RETURN NEW;
@@ -37,7 +36,6 @@ BEGIN
         'subgraph', NEW.subgraph,
         'entity', NEW.entity,
         'id', NEW.id,
-        'data', NEW.data,
         'operation', 'updated'
     )::text);
     RETURN NEW;
@@ -60,7 +58,6 @@ BEGIN
         'subgraph', OLD.subgraph,
         'entity', OLD.entity,
         'id', OLD.id,
-        'data', OLD.data,
         'operation', 'removed'
     )::text);
     RETURN NEW;

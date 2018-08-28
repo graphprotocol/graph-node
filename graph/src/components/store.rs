@@ -98,8 +98,6 @@ pub struct EntityChange {
     pub entity: String,
     /// ID of the changed entity.
     pub id: String,
-    /// Entity data after the change.
-    pub data: Entity,
     /// Operation that caused the change.
     pub operation: EntityChangeOperation,
 }
