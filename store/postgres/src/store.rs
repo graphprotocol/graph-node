@@ -10,6 +10,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
+use web3::types::Block;
+use web3::types::H256;
+use web3::types::Transaction;
 
 use graph::components::store::{EventSource, Store as StoreTrait};
 use graph::prelude::*;
@@ -17,7 +20,7 @@ use graph::serde_json;
 use graph::{tokio, tokio::timer::Interval};
 
 use entity_changes::EntityChangeListener;
-use functions::{revert_block, set_config};
+use functions::{attempt_head_update, revert_block, set_config};
 
 embed_migrations!("./migrations");
 
@@ -336,6 +339,72 @@ impl BasicStore for Store {
                     .collect()
             })
             .map_err(|_| ())
+    }
+}
+
+impl BlockStore for Store {
+    fn add_network_if_missing(&self, network_name: &str) -> Result<(), Error> {
+        use db_schema::ethereum_networks::dsl::*;
+
+        insert_into(ethereum_networks)
+            .values((
+                name.eq(network_name),
+                head_block_hash.eq::<Option<String>>(None),
+                head_block_number.eq::<Option<i64>>(None),
+            ))
+            .on_conflict(name)
+            .do_nothing()
+            .execute(&self.conn)?;
+
+        Ok(())
+    }
+
+    fn upsert_blocks(&self, net_name: &str, blocks: &[Block<Transaction>]) -> Result<(), Error> {
+        use db_schema::ethereum_blocks::dsl::*;
+
+        for block in blocks {
+            let json_blob = serde_json::to_value(&block).expect("Failed to serialize block");
+            let values = (
+                hash.eq(format!("{:#x}", block.hash.unwrap())),
+                number.eq(block.number.unwrap().as_u64() as i64),
+                parent_hash.eq(format!("{:#x}", block.parent_hash)),
+                network_name.eq(net_name),
+                data.eq(json_blob),
+            );
+
+            insert_into(ethereum_blocks)
+                .values(values.clone())
+                .on_conflict(hash)
+                .do_update()
+                .set(values)
+                .execute(&self.conn)?;
+        }
+
+        Ok(())
+    }
+
+    fn attempt_head_update(
+        &self,
+        network_name: &str,
+        ancestor_count: u64,
+    ) -> Result<Vec<H256>, Error> {
+        select(attempt_head_update(network_name, ancestor_count as i64))
+            .load(&self.conn)
+            .map_err(Error::from)
+
+            // We got a single return value, but it's returned generically as a set of rows
+            .map(|mut rows: Vec<_>| {
+                assert_eq!(rows.len(), 1);
+                rows.pop().unwrap()
+            })
+
+            // Parse block hashes into H256 type
+            .map(|hashes: Vec<String>| {
+                hashes.into_iter()
+                    .map(|h| h.parse())
+                    .collect::<Result<Vec<H256>, _>>()
+            })
+            .and_then(|r| r.map_err(Error::from))
     }
 }
 

@@ -42,6 +42,7 @@ pub mod prelude {
     // Glob import from `slog` to re-export the macros, but prevent
     // `slog::Result` from shadowing `Result`. Rust 2018 will have proper macro
     // imports then we can remove `slog::*` in favor of something fine-grained.
+    pub use failure::Error;
     pub use slog;
     pub use slog::*;
     pub use std::result::Result;
@@ -57,8 +58,9 @@ pub mod prelude {
     pub use components::server::query::GraphQLServer;
     pub use components::server::subscription::SubscriptionServer;
     pub use components::store::{
-        BasicStore, EntityChange, EntityChangeOperation, EntityChangeStream, EventSource, Store,
-        StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange, SubgraphEntityPair,
+        BasicStore, BlockStore, EntityChange, EntityChangeOperation, EntityChangeStream,
+        EventSource, Store, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
+        SubgraphEntityPair,
     };
     pub use components::subgraph::{
         RuntimeHost, RuntimeHostBuilder, RuntimeHostEvent, RuntimeManager, SchemaEvent,
