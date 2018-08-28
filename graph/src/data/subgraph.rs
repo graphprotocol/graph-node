@@ -18,6 +18,8 @@ pub enum SubgraphProviderError {
     ResolveError(SubgraphManifestResolveError),
     #[fail(display = "error sending subgraph")]
     SendError,
+    #[fail(display = "name {} is invalid, only ASCII alphanumerics, `-` and `_` are allowed", _0)]
+    InvalidName(String),
 }
 
 #[derive(Fail, Debug)]

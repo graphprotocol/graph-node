@@ -37,6 +37,14 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
         name: String,
         link: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static> {
+        // Check that the name contains only allowed characters.
+        if !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return Box::new(Err(SubgraphProviderError::InvalidName(name)).into_future());
+        }
+
         let send_logger = self.logger.clone();
         let schema_event_sink = self.schema_event_sink.clone();
         let event_sink = self.event_sink.clone();
@@ -84,5 +92,26 @@ impl<L> EventProducer<SchemaEvent> for SubgraphProvider<L> {
         self.schema_event_stream
             .take()
             .map(|s| Box::new(s) as Box<Stream<Item = SchemaEvent, Error = ()> + Send>)
+    }
+}
+
+#[test]
+fn rejects_name_bad_for_urls() {
+    extern crate failure;
+
+    struct FakeLinkResolver;
+
+    impl LinkResolver for FakeLinkResolver {
+        fn cat(&self, _: &Link) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send> {
+            unimplemented!()
+        }
+    }
+    let logger = slog::Logger::root(slog::Discard, o!());
+    let provider = SubgraphProvider::new(logger, Arc::new(FakeLinkResolver));
+    let bad = "/../funky%2F:9001".to_owned();
+    let result = provider.add(bad.clone(), "".to_owned());
+    match result.wait() {
+        Err(SubgraphProviderError::InvalidName(name)) => assert_eq!(name, bad),
+        x => panic!("unexpected test result {:?}", x),
     }
 }
