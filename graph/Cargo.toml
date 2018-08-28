@@ -3,6 +3,7 @@ name = "graph"
 version = "0.1.0"
 
 [dependencies]
+backtrace = "0.3.9"
 ethabi = "5.1"
 ethereum-types = "0.3"
 hex = "0.3.2"

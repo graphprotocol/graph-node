@@ -1,7 +1,8 @@
+use backtrace::Backtrace;
 use slog;
 use slog_async;
 use slog_term;
-use std::panic;
+use std::{env, panic};
 
 use slog::Drain;
 
@@ -31,5 +32,16 @@ pub fn register_panic_hook(panic_logger: slog::Logger) {
             "error" => panic_payload.clone(),
             "location" => panic_location.clone()
            );
+        match env::var_os("RUST_BACKTRACE") {
+            Some(val) => {
+                if &val == "0" {
+                    ()
+                } else {
+                    error!(panic_logger, "Backtrace";
+                    "trace" => format!("{:?}", Backtrace::new()));
+                }
+            }
+            None => (),
+        }
     }));
 }
