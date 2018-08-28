@@ -23,6 +23,7 @@ use std::env;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Mutex;
+use std::time::Duration;
 use url::Url;
 
 use graph::components::forward;
@@ -202,6 +203,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             web3_transport: transport.clone(),
             ancestor_count: 400, // TODO make configuable
             logger: logger.clone(),
+            polling_interval: Duration::from_millis(500), // TODO make configurable
         },
     ).expect("failed to start block ingestor");
 
