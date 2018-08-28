@@ -1704,7 +1704,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 updated_entity.clone(),
                 EventSource::EthereumBlock(H256::random()),
             )
-            .expect("failed to updaate entity in the store");
+            .expect("failed to update entity in the store");
 
         // Delete an entity in the store
         store
@@ -1718,11 +1718,16 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             )
             .expect("failed to delete entity from the store");
 
-        // We're expecting three events to be written to the subscription stream
+        // We're expecting four events to be written to the subscription stream
         subscription
             .take(4)
             .collect()
             .and_then(move |changes| {
+                // Keep the store around until we're done reading from it; otherwise
+                // it would be dropped too early and its entity change listener would
+                // be terminated as well
+                let _store = store;
+
                 assert_eq!(
                     changes,
                     vec![
@@ -1752,6 +1757,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                         },
                     ]
                 );
+
                 Ok(())
             })
             .and_then(|_| Ok(()))
