@@ -1,3 +1,4 @@
+extern crate backtrace;
 extern crate ethabi;
 extern crate ethereum_types;
 extern crate futures;
