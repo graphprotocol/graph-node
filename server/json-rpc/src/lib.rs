@@ -28,6 +28,21 @@ impl fmt::Display for SubgraphAddParams {
 
 pub struct JsonRpcServer {}
 
+impl JsonRpcServer {
+    fn add_handler(
+        params: SubgraphAddParams,
+        provider: Arc<impl SubgraphProvider>,
+        logger: Logger,
+    ) -> impl Future<Item = Value, Error = jsonrpc_core::Error> {
+        info!(logger, "Received subgraph_add request"; "params" => params.to_string());
+        provider
+            .add(params.name, format!("/ipfs/{}", params.ipfs_hash))
+            .map_err(|e| json_rpc_error(0, e.to_string()))
+            .map(|_| Ok(Value::Null))
+            .flatten()
+    }
+}
+
 impl JsonRpcServerTrait for JsonRpcServer {
     type Server = Server;
 
@@ -43,18 +58,14 @@ impl JsonRpcServerTrait for JsonRpcServer {
         // `subgraph_add` handler.
         let add_provider = provider.clone();
         let add_logger = logger.clone();
-        let add_handler = move |params: SubgraphAddParams| {
-            let provider = add_provider.clone();
-            info!(add_logger, "Received subgraph_add request"; "params" => params.to_string());
-            provider
-                .add(params.name, format!("/ipfs/{}", params.ipfs_hash))
-                .map_err(|e| json_rpc_error(0, e.to_string()))
-                .map(|_| Ok(Value::Null))
-                .flatten()
-        };
+        let add_handler =
+            move |params| Self::add_handler(params, add_provider.clone(), add_logger.clone());
         handler.add_method("subgraph_add", move |params: Params| {
-            let handler = add_handler.clone();
-            params.parse().into_future().and_then(handler)
+            let add_handler = add_handler.clone();
+            params
+                .parse()
+                .into_future()
+                .and_then(move |params| add_handler(params))
         });
 
         ServerBuilder::new(handler)
