@@ -192,6 +192,16 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let ethereum_watcher = graph_datasource_ethereum::EthereumAdapter::new(
         graph_datasource_ethereum::EthereumAdapterConfig { transport },
     );
+
+    match ethereum_watcher.block_number().wait() {
+        Ok(number) => info!(logger, "Connected to Ethereum node";
+                            "most_recent_block" => &number.to_string()),
+        Err(e) => {
+            error!(logger, "Was a valid Ethereum node endpoint provided?");
+            panic!("Failed to connect to Ethereum node: {}", e);
+        }
+    }
+
     let runtime_host_builder =
         WASMRuntimeHostBuilder::new(&logger, Arc::new(Mutex::new(ethereum_watcher)), resolver);
     let runtime_manager =
