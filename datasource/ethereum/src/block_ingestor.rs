@@ -21,6 +21,7 @@ pub struct BlockIngestorConfig<S: BlockStore, T: BatchTransport> {
     pub web3_transport: T,
     pub ancestor_count: u64,
     pub logger: slog::Logger,
+    pub polling_interval: Duration,
 }
 
 pub struct BlockIngestor<S: BlockStore, T: BatchTransport + Debug + Clone> {
@@ -29,6 +30,7 @@ pub struct BlockIngestor<S: BlockStore, T: BatchTransport + Debug + Clone> {
     web3_transport: T,
     ancestor_count: u64,
     logger: slog::Logger,
+    polling_interval: Duration,
 }
 
 impl<S: BlockStore + Send + 'static, T: BatchTransport + Debug + Clone> BlockIngestor<S, T> {
@@ -43,6 +45,7 @@ impl<S: BlockStore + Send + 'static, T: BatchTransport + Debug + Clone> BlockIng
             web3_transport,
             ancestor_count,
             logger,
+            polling_interval,
         } = config;
 
         // Add a head block pointer for this network name if one does not already exist
@@ -55,6 +58,7 @@ impl<S: BlockStore + Send + 'static, T: BatchTransport + Debug + Clone> BlockIng
             web3_transport,
             ancestor_count,
             logger: logger.new(o!("component" => "BlockIngestor")),
+            polling_interval,
         };
         tokio::spawn(block_ingestor.into_polling_stream());
 
@@ -64,7 +68,7 @@ impl<S: BlockStore + Send + 'static, T: BatchTransport + Debug + Clone> BlockIng
     fn into_polling_stream(self) -> impl Future<Item = (), Error = ()> {
         let err_logger = self.logger.clone();
 
-        tokio::timer::Interval::new(Instant::now(), Duration::from_secs(5))
+        tokio::timer::Interval::new(Instant::now(), self.polling_interval)
             .map_err(Error::from)
             .map(move |_| {
                 self.do_poll().unwrap_or_else(|e| {
