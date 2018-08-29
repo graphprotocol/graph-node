@@ -13,6 +13,7 @@ pub struct EntityChangeListener {
     worker_handle: Option<thread::JoinHandle<()>>,
     terminate_worker: Arc<RwLock<bool>>,
     worker_barrier: Arc<Barrier>,
+    started: bool,
 }
 
 impl EntityChangeListener {
@@ -25,12 +26,16 @@ impl EntityChangeListener {
             worker_handle: Some(worker_handle),
             terminate_worker,
             worker_barrier,
+            started: false,
         }
     }
 
     /// Begins processing notifications coming in from Postgres.
-    pub fn start(&self) {
-        self.worker_barrier.wait();
+    pub fn start(&mut self) {
+        if !self.started {
+            self.worker_barrier.wait();
+            self.started = true;
+        }
     }
 
     fn listen(
