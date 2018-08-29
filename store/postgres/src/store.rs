@@ -92,6 +92,8 @@ impl Store {
         store.handle_entity_changes(entity_changes);
         store.periodically_clean_up_stale_subscriptions();
 
+        store.change_listener.start();
+
         // Return the store
         store
     }

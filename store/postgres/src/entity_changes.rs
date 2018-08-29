@@ -1,6 +1,6 @@
 use fallible_iterator::FallibleIterator;
 use postgres::{Connection, TlsMode};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Barrier, RwLock};
 use std::thread;
 use std::time::Duration;
 
@@ -12,18 +12,25 @@ pub struct EntityChangeListener {
     output: Option<Receiver<EntityChange>>,
     worker_handle: Option<thread::JoinHandle<()>>,
     terminate_worker: Arc<RwLock<bool>>,
+    worker_barrier: Arc<Barrier>,
 }
 
 impl EntityChangeListener {
     pub fn new(url: String) -> Self {
         // Listen to Postgres notifications in a worker thread
-        let (receiver, worker_handle, terminate_worker) = Self::listen(url);
+        let (receiver, worker_handle, terminate_worker, worker_barrier) = Self::listen(url);
 
         EntityChangeListener {
             output: Some(receiver),
             worker_handle: Some(worker_handle),
             terminate_worker,
+            worker_barrier,
         }
+    }
+
+    /// Begins processing notifications coming in from Postgres.
+    pub fn start(&self) {
+        self.worker_barrier.wait();
     }
 
     fn listen(
@@ -32,11 +39,14 @@ impl EntityChangeListener {
         Receiver<EntityChange>,
         thread::JoinHandle<()>,
         Arc<RwLock<bool>>,
+        Arc<Barrier>,
     ) {
         // Create two ends of a boolean variable for signalling when the worker
         // thread should be terminated
         let terminate = Arc::new(RwLock::new(false));
         let terminate_worker = terminate.clone();
+        let barrier = Arc::new(Barrier::new(2));
+        let worker_barrier = barrier.clone();
 
         // Create a channel for entity changes
         let (sender, receiver) = channel(100);
@@ -53,6 +63,9 @@ impl EntityChangeListener {
             // Subscribe to the "entity_changes" notification channel in Postgres
             conn.execute("LISTEN entity_changes", &[])
                 .expect("failed to listen to entity changes in Postgres");
+
+            // Wait until the listener has been started
+            barrier.wait();
 
             let mut notifications = iter.iterator();
 
@@ -92,7 +105,7 @@ impl EntityChangeListener {
             }
         });
 
-        (receiver, worker_handle, terminate_worker)
+        (receiver, worker_handle, terminate_worker, worker_barrier)
     }
 }
 
