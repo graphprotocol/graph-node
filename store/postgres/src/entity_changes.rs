@@ -1,5 +1,7 @@
 use fallible_iterator::FallibleIterator;
 use postgres::{Connection, TlsMode};
+use std::env;
+use std::io;
 use std::sync::{Arc, Barrier, RwLock};
 use std::thread;
 use std::time::Duration;
@@ -77,6 +79,20 @@ impl EntityChangeListener {
             // Read notifications as long as the Postgres connection is alive
             // or the thread is to be terminated
             loop {
+                // HACK: Travis seems to have serious problems with running the
+                // integration tests for the Diesel store. Unless we log frequently
+                // from this thread, it all store tests either take a long time
+                // or never finish (before Travis' 10mins timeout).
+                // As soon as you log something from this thread, suddenly all
+                // tests run relatively fast and reliable. This _could_ be a
+                // timing-sensitive synchronization issue on our side we've tried
+                // almost everything and this hack was the only thing that made
+                // the tests work in Travis.
+                if let Ok(_) = env::var("TRAVIS") {
+                    print!(".");
+                    io::stdout().flush().unwrap();
+                }
+
                 // Terminate the thread if desired
                 let terminate_now = terminate.read().unwrap();
                 if *terminate_now {
