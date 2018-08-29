@@ -19,14 +19,22 @@ pub type GraphQLServiceResponse =
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
 pub struct GraphQLService {
+    // Maps ids to names.
+    names: Arc<RwLock<BTreeMap<String, String>>>,
+    // Maps names to schemas.
     schemas: Arc<RwLock<BTreeMap<String, Schema>>>,
     query_sink: Sender<Query>,
 }
 
 impl GraphQLService {
     /// Creates a new GraphQL service.
-    pub fn new(schemas: Arc<RwLock<BTreeMap<String, Schema>>>, query_sink: Sender<Query>) -> Self {
+    pub fn new(
+        names: Arc<RwLock<BTreeMap<String, String>>>,
+        schemas: Arc<RwLock<BTreeMap<String, Schema>>>,
+        query_sink: Sender<Query>,
+    ) -> Self {
         GraphQLService {
+            names,
             schemas,
             query_sink,
         }
@@ -62,15 +70,24 @@ impl GraphQLService {
     }
 
     /// Handles GraphQL queries received via POST /.
-    fn handle_graphql_query(&self, name: &str, request: Request<Body>) -> GraphQLServiceResponse {
+    fn handle_graphql_query(
+        &self,
+        name_or_id: &str,
+        request: Request<Body>,
+    ) -> GraphQLServiceResponse {
         let query_sink = self.query_sink.clone();
-        let schema = self
-            .schemas
-            .read()
-            .unwrap()
-            .get(name)
-            .expect("schema not found")
-            .clone();
+        let schemas = self.schemas.read().unwrap();
+
+        // First try `name_or_id` as a name, if that fails try it as an id.
+        let schema = schemas
+            .get(name_or_id)
+            .or_else(|| schemas.get(self.names.read().unwrap().get(name_or_id)?));
+
+        let schema = if let Some(schema) = schema {
+            schema.clone()
+        } else {
+            return self.handle_not_found();
+        };
 
         Box::new(
             request
@@ -138,17 +155,19 @@ impl Service for GraphQLService {
             (method, path) => {
                 let mut path = path.split('/');
                 let _empty = path.next();
-                let name = path.next();
+                let name_or_id = path.next();
                 let rest = path.join("/");
 
-                match (method, name, rest.as_str()) {
+                match (method, name_or_id, rest.as_str()) {
                     // GraphiQL
                     (Method::GET, Some(_), "") => {
                         self.serve_file(include_str!("../assets/index.html"))
                     }
 
                     // POST / receives GraphQL queries
-                    (Method::POST, Some(name), "graphql") => self.handle_graphql_query(&name, req),
+                    (Method::POST, Some(name_or_id), "graphql") => {
+                        self.handle_graphql_query(&name_or_id, req)
+                    }
 
                     // OPTIONS / allows to check for GraphQL HTTP features
                     (Method::OPTIONS, Some(_), "graphql") => self.handle_graphql_options(req),
