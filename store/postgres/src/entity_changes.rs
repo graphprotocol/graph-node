@@ -1,6 +1,8 @@
 use fallible_iterator::FallibleIterator;
 use postgres::{Connection, TlsMode};
+use std::sync::{Arc, RwLock};
 use std::thread;
+use std::time::Duration;
 
 use futures::sync::mpsc::{channel, Receiver};
 use graph::prelude::*;
@@ -8,60 +10,106 @@ use graph::serde_json;
 
 pub struct EntityChangeListener {
     output: Option<Receiver<EntityChange>>,
+    worker_handle: Option<thread::JoinHandle<()>>,
+    terminate_worker: Arc<RwLock<bool>>,
 }
 
 impl EntityChangeListener {
     pub fn new(url: String) -> Self {
-        let receiver = Self::listen(url);
+        // Listen to Postgres notifications in a worker thread
+        let (receiver, worker_handle, terminate_worker) = Self::listen(url);
 
         EntityChangeListener {
             output: Some(receiver),
+            worker_handle: Some(worker_handle),
+            terminate_worker,
         }
     }
 
-    fn listen(url: String) -> Receiver<EntityChange> {
+    fn listen(
+        url: String,
+    ) -> (
+        Receiver<EntityChange>,
+        thread::JoinHandle<()>,
+        Arc<RwLock<bool>>,
+    ) {
+        // Create two ends of a boolean variable for signalling when the worker
+        // thread should be terminated
+        let terminate = Arc::new(RwLock::new(false));
+        let terminate_worker = terminate.clone();
+
+        // Create a channel for entity changes
         let (sender, receiver) = channel(100);
 
-        thread::spawn(move || {
+        let worker_handle = thread::spawn(move || {
+            // Connect to Postgres
             let conn = Connection::connect(url, TlsMode::None)
                 .expect("failed to connect entity change listener to Postgres");
 
+            // Obtain a notifications iterator from Postgres
             let notifications = conn.notifications();
-            let iter = notifications.blocking_iter();
+            let iter = notifications.timeout_iter(Duration::from_millis(500));
 
+            // Subscribe to the "entity_changes" notification channel in Postgres
             conn.execute("LISTEN entity_changes", &[])
                 .expect("failed to listen to entity changes in Postgres");
 
-            let changes = iter
-                .iterator()
-                .filter_map(Result::ok)
-                .filter(|notification| notification.channel == String::from("entity_changes"))
-                .map(|notification| notification.payload)
-                .map(|payload: String| -> EntityChange {
-                    let value: serde_json::Value = serde_json::from_str(payload.as_str())
-                        .expect("Invalid JSON entity change data received from database");
+            let mut notifications = iter.iterator();
 
-                    serde_json::from_value(value.clone()).expect(
+            // Read notifications as long as the Postgres connection is alive
+            // or the thread is to be terminated
+            loop {
+                // Terminate the thread if desired
+                let terminate_now = terminate.read().unwrap();
+                if *terminate_now {
+                    return;
+                }
+
+                if let Some(Ok(notification)) = notifications.next() {
+                    // Only handle notifications from the "entity_changes" channel.
+                    if notification.channel != String::from("entity_changes") {
+                        continue;
+                    }
+
+                    // Parse payload into an entity change
+                    let value: serde_json::Value =
+                        serde_json::from_str(notification.payload.as_str())
+                            .expect("Invalid JSON entity change data received from database");
+                    let change: EntityChange = serde_json::from_value(value.clone()).expect(
                         format!(
                             "Invalid entity change received from the database: {:?}",
                             value
                         ).as_str(),
-                    )
-                });
+                    );
 
-            // Read notifications as long as the Postgres connection is alive;
-            // which can be "forever"
-            for change in changes {
-                // We'll assume here that if sending fails, this means that the
-                // entity change listener has already been dropped, the receiving
-                // is gone and we should terminate the listener loop
-                if sender.clone().send(change).wait().is_err() {
-                    break;
+                    // We'll assume here that if sending fails, this means that the
+                    // entity change listener has already been dropped, the receiving
+                    // is gone and we should terminate the listener loop
+                    if sender.clone().send(change).wait().is_err() {
+                        break;
+                    }
                 }
             }
         });
 
-        receiver
+        (receiver, worker_handle, terminate_worker)
+    }
+}
+
+impl Drop for EntityChangeListener {
+    fn drop(&mut self) {
+        // When dropping the change listener, also make sure we signal termination
+        // to the worker and wait for it to shut down
+        if let Some(worker_handle) = self.worker_handle.take() {
+            *self
+                .terminate_worker
+                .write()
+                .expect("failed to signal termination to EntityChangeListener thread") = true;
+
+            worker_handle
+                .join()
+                .expect("failed to terminate EntityChangeListener thread");
+        }
     }
 }
 
