@@ -215,7 +215,7 @@ mod tests {
             },
         )))));
         let (query_sink, _) = channel(1);
-        let mut service = GraphQLService::new(schema, query_sink);
+        let mut service = GraphQLService::new(Default::default(), schema, query_sink);
 
         let request = Request::builder()
             .method(Method::POST)
@@ -261,7 +261,7 @@ mod tests {
                         },
                     )))));
                     let (query_sink, query_stream) = channel(1);
-                    let mut service = GraphQLService::new(schema, query_sink);
+                    let mut service = GraphQLService::new(Default::default(), schema, query_sink);
 
                     tokio::spawn(
                         query_stream
