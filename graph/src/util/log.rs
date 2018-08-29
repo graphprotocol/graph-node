@@ -28,20 +28,16 @@ pub fn register_panic_hook(panic_logger: slog::Logger) {
         } else {
             "NA".to_string()
         };
-        error!(panic_logger, "Node error";
+        crit!(panic_logger, "Node error";
             "error" => panic_payload.clone(),
             "location" => panic_location.clone()
            );
         match env::var_os("RUST_BACKTRACE") {
-            Some(val) => {
-                if &val == "0" {
-                    ()
-                } else {
-                    error!(panic_logger, "Backtrace";
+            Some(ref val) if val != "0" => {
+                crit!(panic_logger, "Backtrace";
                     "trace" => format!("{:?}", Backtrace::new()));
-                }
             }
-            None => (),
+            _ => (),
         }
     }));
 }
