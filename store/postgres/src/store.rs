@@ -56,6 +56,7 @@ pub struct StoreConfig {
 pub struct Store {
     logger: slog::Logger,
     subscriptions: Arc<RwLock<HashMap<String, Subscription>>>,
+    change_listener: EntityChangeListener,
     pub conn: PgConnection,
 }
 
@@ -73,18 +74,19 @@ impl Store {
         // Create the entities table (if necessary)
         initiate_schema(&logger, &conn);
 
+        // Listen to entity changes in Postgres
+        let mut change_listener = EntityChangeListener::new(config.url.clone());
+        let entity_changes = change_listener
+            .take_event_stream()
+            .expect("Failed to listen to entity change events in Postgres");
+
         // Create the store
         let mut store = Store {
             logger: logger.clone(),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
+            change_listener,
             conn: conn,
         };
-
-        // Listen to entity changes in Postgres
-        let mut listener = EntityChangeListener::new(config.url.clone());
-        let entity_changes = listener
-            .take_event_stream()
-            .expect("Failed to listen to entity change events in Postgres");
 
         // Deal with store subscriptions
         store.handle_entity_changes(entity_changes);
@@ -104,9 +106,9 @@ impl Store {
 
         tokio::spawn(entity_changes.for_each(move |change| {
             debug!(logger, "Entity change";
-                   "subgraph" => &change.subgraph,
-                   "entity" => &change.entity,
-                   "id" => &change.id);
+                           "subgraph" => &change.subgraph,
+                           "entity" => &change.entity,
+                           "id" => &change.id);
 
             // Obtain IDs and senders of subscriptions matching the entity change
             let matches = subscriptions
