@@ -1,11 +1,13 @@
 use web3::types::Block;
 use web3::types::H256;
 use web3::types::Transaction;
+use web3::types::TransactionReceipt;
 
 use graph::components::store::*;
 use graph::prelude::*;
 
 /// A mock `Store`.
+#[derive(Clone)]
 pub struct MockStore {
     entities: Vec<Entity>,
 }
@@ -27,7 +29,28 @@ impl MockStore {
 }
 
 impl BasicStore for MockStore {
-    fn get(&self, key: StoreKey) -> Result<Entity, ()> {
+    fn block_ptr(&self, _subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
+        unimplemented!()
+    }
+
+    fn set_block_ptr_with_no_changes(
+        &self,
+        _subgraph_id: SubgraphId,
+        _from: EthereumBlockPointer,
+        _to: EthereumBlockPointer,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn revert_block(
+        &self,
+        _subgraph_id: SubgraphId,
+        _block: Block<Transaction>,
+    ) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn get(&self, key: StoreKey, _block_ptr: EthereumBlockPointer) -> Result<Entity, StoreError> {
         if key.entity == "User" {
             self.entities
                 .iter()
@@ -39,33 +62,33 @@ impl BasicStore for MockStore {
                     }
                 })
                 .map(|entity| entity.clone())
-                .ok_or(())
+                .ok_or(StoreError::Database(format_err!("entity not found")))
         } else {
             unimplemented!()
         }
     }
 
-    fn set(&mut self, _key: StoreKey, _entity: Entity, _source: EventSource) -> Result<(), ()> {
-        unimplemented!();
-    }
-
-    fn delete(&mut self, _key: StoreKey, _source: EventSource) -> Result<(), ()> {
-        unimplemented!();
-    }
-
-    fn find(&self, _query: StoreQuery) -> Result<Vec<Entity>, ()> {
+    fn find(
+        &self,
+        _query: StoreQuery,
+        _block_ptr: EthereumBlockPointer,
+    ) -> Result<Vec<Entity>, StoreError> {
         Ok(self.entities.clone())
+    }
+
+    fn commit_transaction(
+        &self,
+        _subgraph_id: SubgraphId,
+        _tx_ops: Vec<StoreOp>,
+        _block: Block<Transaction>,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
     }
 }
 
 impl BlockStore for MockStore {
-    fn add_network_if_missing(&self, _: &str) -> Result<(), Error> {
-        unimplemented!()
-    }
-
     fn upsert_blocks<'a, B>(
         &self,
-        _: &str,
         _: B,
     ) -> Box<Future<Item = (), Error = Error> + Send + 'a>
     where
@@ -74,7 +97,30 @@ impl BlockStore for MockStore {
         unimplemented!()
     }
 
-    fn attempt_head_update(&self, _: &str, _: u64) -> Result<Vec<H256>, Error> {
+    fn attempt_head_update(&self, _ancestor_count: u64) -> Result<Vec<H256>, Error> {
+        unimplemented!()
+    }
+
+    fn head_block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+        unimplemented!()
+    }
+
+    fn block(&self, _block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {
+        unimplemented!()
+    }
+
+    fn block_with_receipts(
+        &self,
+        _block_hash: H256,
+    ) -> Result<Option<(Block<Transaction>, Vec<TransactionReceipt>)>, Error> {
+        unimplemented!()
+    }
+
+    fn ancestor_block(
+        &self,
+        _block_ptr: EthereumBlockPointer,
+        _offset: u64,
+    ) -> Result<Option<Block<Transaction>>, Error> {
         unimplemented!()
     }
 }
@@ -85,34 +131,56 @@ impl Store for MockStore {
     }
 }
 
+#[derive(Clone)]
 pub struct FakeStore;
 
 impl BasicStore for FakeStore {
-    fn get(&self, _: StoreKey) -> Result<Entity, ()> {
+    fn block_ptr(&self, _subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
         panic!("called FakeStore")
     }
 
-    fn set(&mut self, _: StoreKey, _: Entity, _source: EventSource) -> Result<(), ()> {
+    fn set_block_ptr_with_no_changes(
+        &self,
+        _subgraph_id: SubgraphId,
+        _from: EthereumBlockPointer,
+        _to: EthereumBlockPointer,
+    ) -> Result<(), StoreError> {
         panic!("called FakeStore")
     }
 
-    fn delete(&mut self, _: StoreKey, _source: EventSource) -> Result<(), ()> {
+    fn revert_block(
+        &self,
+        _subgraph_id: SubgraphId,
+        _block: Block<Transaction>,
+    ) -> Result<(), Error> {
         panic!("called FakeStore")
     }
 
-    fn find(&self, _: StoreQuery) -> Result<Vec<Entity>, ()> {
+    fn get(&self, _key: StoreKey, _block_ptr: EthereumBlockPointer) -> Result<Entity, StoreError> {
+        panic!("called FakeStore")
+    }
+
+    fn find(
+        &self,
+        _query: StoreQuery,
+        _block_ptr: EthereumBlockPointer,
+    ) -> Result<Vec<Entity>, StoreError> {
+        panic!("called FakeStore")
+    }
+
+    fn commit_transaction(
+        &self,
+        _subgraph_id: SubgraphId,
+        _tx_ops: Vec<StoreOp>,
+        _block: Block<Transaction>,
+    ) -> Result<(), StoreError> {
         panic!("called FakeStore")
     }
 }
 
 impl BlockStore for FakeStore {
-    fn add_network_if_missing(&self, _: &str) -> Result<(), Error> {
-        panic!("called FakeStore")
-    }
-
     fn upsert_blocks<'a, B>(
         &self,
-        _: &str,
         _: B,
     ) -> Box<Future<Item = (), Error = Error> + Send + 'a>
     where
@@ -121,7 +189,30 @@ impl BlockStore for FakeStore {
         panic!("called FakeStore")
     }
 
-    fn attempt_head_update(&self, _: &str, _: u64) -> Result<Vec<H256>, Error> {
+    fn attempt_head_update(&self, _ancestor_count: u64) -> Result<Vec<H256>, Error> {
+        panic!("called FakeStore")
+    }
+
+    fn head_block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+        panic!("called FakeStore")
+    }
+
+    fn block(&self, _block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {
+        panic!("called FakeStore")
+    }
+
+    fn block_with_receipts(
+        &self,
+        _block_hash: H256,
+    ) -> Result<Option<(Block<Transaction>, Vec<TransactionReceipt>)>, Error> {
+        panic!("called FakeStore")
+    }
+
+    fn ancestor_block(
+        &self,
+        _block_ptr: EthereumBlockPointer,
+        _offset: u64,
+    ) -> Result<Option<Block<Transaction>>, Error> {
         panic!("called FakeStore")
     }
 }

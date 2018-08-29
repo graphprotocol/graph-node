@@ -170,8 +170,22 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), resolver.clone());
 
+    // Create Ethereum web3 transport
+    let (ethereum_network_name, (transport_event_loop, transport)) = ethereum_ipc
+        .map(|s| new_transport(s, &logger, Transport::new_ipc))
+        .or(ethereum_ws.map(|s| new_transport(s, &logger, Transport::new_ws)))
+        .or(ethereum_rpc.map(|s| new_transport(s, &logger, Transport::new_rpc)))
+        .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
+
+    // Set up DieselStore (backed by Postgres)
     info!(logger, "Connecting to Postgres db...");
-    let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger);
+    let store = DieselStore::new(
+        StoreConfig {
+            url: postgres_url,
+            network_name: ethereum_network_name.to_owned(),
+        },
+        &logger,
+    ).unwrap();
     let protected_store = Arc::new(Mutex::new(store));
     let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(
         &logger,
@@ -180,17 +194,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let mut graphql_server = GraphQLQueryServer::new(&logger, graphql_runner.clone());
     let mut subscription_server = GraphQLSubscriptionServer::new(&logger, graphql_runner.clone());
 
-    // Create Ethereum adapter
-    let (ethereum_network_name, (transport_event_loop, transport)) = ethereum_ipc
-        .map(|s| new_transport(s, &logger, Transport::new_ipc))
-        .or(ethereum_ws.map(|s| new_transport(s, &logger, Transport::new_ws)))
-        .or(ethereum_rpc.map(|s| new_transport(s, &logger, Transport::new_rpc)))
-        .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
-
     // Create Ethereum block ingestor
     let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
         protected_store.clone(),
-        ethereum_network_name.to_owned(),
         transport.clone(),
         400, // ancestor count, TODO make configuable
         logger.clone(),

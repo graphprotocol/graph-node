@@ -3,7 +3,7 @@ use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::sql_types::Text;
-use diesel::{debug_query, delete, insert_into, result, select};
+use diesel::{debug_query, delete, insert_into, result, select, update};
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
 use std::collections::HashMap;
@@ -13,8 +13,9 @@ use uuid::Uuid;
 use web3::types::Block;
 use web3::types::H256;
 use web3::types::Transaction;
+use web3::types::TransactionReceipt;
 
-use graph::components::store::{EventSource, Store as StoreTrait};
+use graph::components::store::{EventSource, Store as StoreTrait, StoreOp};
 use graph::prelude::*;
 use graph::serde_json;
 use graph::{tokio, tokio::timer::Interval};
@@ -50,12 +51,15 @@ fn initiate_schema(logger: &slog::Logger, conn: &PgConnection) {
 }
 
 /// Configuration for the Diesel/Postgres store.
+#[derive(Clone, Debug)]
 pub struct StoreConfig {
     pub url: String,
+    pub network_name: String,
 }
 
 /// A Store based on Diesel and Postgres.
 pub struct Store {
+    config: StoreConfig,
     logger: slog::Logger,
     subscriptions: Arc<RwLock<HashMap<String, Subscription>>>,
     change_listener: EntityChangeListener,
@@ -63,7 +67,7 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn new(config: StoreConfig, logger: &slog::Logger) -> Self {
+    pub fn new(config: StoreConfig, logger: &slog::Logger) -> Result<Self, Error> {
         // Create a store-specific logger
         let logger = logger.new(o!("component" => "Store"));
 
@@ -76,6 +80,18 @@ impl Store {
         // Create the entities table (if necessary)
         initiate_schema(&logger, &conn);
 
+        // Create ethereum_networks entry (if necessary)
+        use db_schema::ethereum_networks::dsl::*;
+        insert_into(ethereum_networks)
+            .values((
+                name.eq(&config.network_name),
+                head_block_hash.eq::<Option<String>>(None),
+                head_block_number.eq::<Option<i64>>(None),
+            ))
+            .on_conflict(name)
+            .do_nothing()
+            .execute(&conn)?;
+
         // Listen to entity changes in Postgres
         let mut change_listener = EntityChangeListener::new(config.url.clone());
         let entity_changes = change_listener
@@ -84,6 +100,7 @@ impl Store {
 
         // Create the store
         let mut store = Store {
+            config,
             logger: logger.clone(),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             change_listener,
@@ -98,7 +115,7 @@ impl Store {
         store.change_listener.start();
 
         // Return the store
-        store
+        Ok(store)
     }
 
     /// Handles entity changes emitted by Postgres.
@@ -187,37 +204,21 @@ impl Store {
             .execute(&*self.conn.lock().unwrap())
             .unwrap();
     }
-}
 
-impl BasicStore for Store {
-    fn get(&self, key: StoreKey) -> Result<Entity, ()> {
-        debug!(self.logger, "get"; "key" => format!("{:?}", key));
-
-        use db_schema::entities::dsl::*;
-
-        // Use primary key fields to get the entity; deserialize the result JSON
-        entities
-            .find((key.id, key.subgraph, key.entity))
-            .select(data)
-            .first::<serde_json::Value>(&*self.conn.lock().unwrap())
-            .map(|value| {
-                serde_json::from_value::<Entity>(value).expect("Failed to deserialize entity")
-            })
-            .map_err(|_| ())
-    }
-
+    // TODO replace with commit_transaction
     fn set(
-        &mut self,
+        &self,
         key: StoreKey,
         input_entity: Entity,
         input_event_source: EventSource,
-    ) -> Result<(), ()> {
+        subgraph_block_ptr: EthereumBlockPointer,
+    ) -> Result<(), Error> {
         debug!(self.logger, "set"; "key" => format!("{:?}", key));
 
         use db_schema::entities::dsl::*;
 
         // Update the existing entity, if necessary
-        let updated_entity = match self.get(key.clone()) {
+        let updated_entity = match self.get(key.clone(), subgraph_block_ptr) {
             Ok(mut existing_entity) => {
                 existing_entity.merge(input_entity);
                 existing_entity
@@ -249,10 +250,11 @@ impl BasicStore for Store {
             ))
             .execute(&*self.conn.lock().unwrap())
             .map(|_| ())
-            .map_err(|_| ())
+            .map_err(Error::from)
     }
 
-    fn delete(&mut self, key: StoreKey, input_event_source: EventSource) -> Result<(), ()> {
+    // TODO replace with commit_transaction
+    fn delete(&self, key: StoreKey, input_event_source: EventSource) -> Result<(), Error> {
         debug!(self.logger, "delete"; "key" => format!("{:?}", key));
 
         use db_schema::entities::dsl::*;
@@ -264,8 +266,7 @@ impl BasicStore for Store {
                 "vars.current_event_source",
                 input_event_source.to_string(),
                 false,
-            )).execute(&*conn)
-                .unwrap();
+            )).execute(&*conn)?;
 
             // Delete from DB where rows match the subgraph ID, entity name and ID
             delete(
@@ -275,17 +276,104 @@ impl BasicStore for Store {
                     .filter(id.eq(&key.id)),
             ).execute(&*conn)
         }).map(|_| ())
-            .map_err(|_| ())
+            .map_err(Error::from)
+    }
+}
+
+impl BasicStore for Store {
+    fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
+        use db_schema::subgraphs::dsl::*;
+
+        subgraphs
+            .select((latest_block_hash, latest_block_number))
+            .filter(id.eq(subgraph_id.0))
+            .first::<(String, i64)>(&*self.conn.lock().unwrap())
+            .map(|(hash, number)| (hash.parse().unwrap(), number).into())
+            .map_err(Error::from)
     }
 
-    fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()> {
+    fn set_block_ptr_with_no_changes(
+        &self,
+        subgraph_id: SubgraphId,
+        from: EthereumBlockPointer,
+        to: EthereumBlockPointer,
+    ) -> Result<(), StoreError> {
+        use db_schema::subgraphs::dsl::*;
+
+        update(subgraphs)
+            .set((
+                latest_block_hash.eq(to.hash.to_string()),
+                latest_block_number.eq(to.number as i64),
+            ))
+            .filter(id.eq(subgraph_id.0))
+            .filter(latest_block_hash.eq(from.hash.to_string()))
+            .filter(latest_block_number.eq(from.number as i64))
+            .execute(&*self.conn.lock().unwrap())
+            .map_err(Error::from)
+            .map_err(StoreError::Database)
+            .and_then(|row_count| match row_count {
+                0 => Err(StoreError::VersionConflict),
+                1 => Ok(()),
+                _ => unreachable!(),
+            })
+    }
+
+    fn revert_block(
+        &self,
+        _subgraph_id: SubgraphId,
+        block: Block<Transaction>,
+    ) -> Result<(), Error> {
+        // TODO need to make it per-subgraph
+        // TODO is this right? is it atomic?
+        select(revert_block(block.hash.unwrap().to_string()))
+            .execute(&*self.conn.lock().unwrap())
+            .map(|_| ())
+            .map_err(Error::from)
+    }
+
+    fn get(&self, key: StoreKey, block_ptr: EthereumBlockPointer) -> Result<Entity, StoreError> {
+        debug!(self.logger, "get"; "key" => format!("{:?}", key));
+
+        use db_schema::entities;
         use db_schema::entities::dsl::*;
+        use db_schema::subgraphs;
+        use db_schema::subgraphs::dsl::*;
+
+        // Use primary key fields to get the entity; deserialize the result JSON
+        entities
+            .inner_join(subgraphs)
+            .select((data, latest_block_hash, latest_block_number))
+            .filter(entities::id.eq(key.id))
+            .filter(entities::subgraph.eq(&key.subgraph))
+            .filter(entities::entity.eq(key.entity))
+            .filter(subgraphs::id.eq(&key.subgraph))
+            .first::<(serde_json::Value, String, i64)>(&*self.conn.lock().unwrap())
+            .map(|(value, block_hash, block_number)| {
+                assert_eq!(
+                    EthereumBlockPointer::from((block_hash.parse().unwrap(), block_number)),
+                    block_ptr
+                );
+                serde_json::from_value::<Entity>(value).expect("Failed to deserialize entity")
+            })
+            .map_err(Error::from)
+            .map_err(StoreError::Database)
+    }
+
+    fn find(
+        &self,
+        query: StoreQuery,
+        _block_ptr: EthereumBlockPointer,
+    ) -> Result<Vec<Entity>, StoreError> {
+        use db_schema::entities;
+        use db_schema::entities::dsl::*;
+
+        // TODO check block_ptr
 
         // Create base boxed query; this will be added to based on the
         // query parameters provided
         let mut diesel_query = entities
-            .filter(entity.eq(query.entity))
-            .filter(subgraph.eq(query.subgraph))
+            .filter(entities::entity.eq(query.entity))
+            .filter(entities::subgraph.eq(query.subgraph))
             .select(data)
             .into_boxed::<Pg>();
 
@@ -294,7 +382,8 @@ impl BasicStore for Store {
             diesel_query = store_filter(diesel_query, filter).map_err(|e| {
                 error!(self.logger, "value does not support this filter";
                                     "value" => format!("{:?}", e.value),
-                                    "filter" => e.filter)
+                                    "filter" => e.filter);
+                StoreError::Database(format_err!("value does not support this filter"))
             })?;
         }
 
@@ -337,44 +426,51 @@ impl BasicStore for Store {
                     })
                     .collect()
             })
-            .map_err(|_| ())
+            .map_err(Error::from)
+            .map_err(StoreError::Database)
+    }
+
+    fn commit_transaction(
+        &self,
+        subgraph_id: SubgraphId,
+        tx_ops: Vec<StoreOp>,
+        block: Block<Transaction>,
+    ) -> Result<(), StoreError> {
+        let event_source = EventSource::EthereumBlock(block.hash.unwrap());
+
+        // TODO this is not atomic
+        let parent_block_ptr = EthereumBlockPointer::to_parent(&block);
+        tx_ops
+            .into_iter()
+            .map(|op| match op {
+                StoreOp::Set(key, entity) => {
+                    self.set(key, entity, event_source.clone(), parent_block_ptr)
+                }
+                StoreOp::Delete(key) => self.delete(key, event_source.clone()),
+            })
+            .collect::<Result<Vec<_>, Error>>()
+            .map_err(StoreError::Database)?;
+        self.set_block_ptr_with_no_changes(subgraph_id, parent_block_ptr, block.into())
     }
 }
 
 impl BlockStore for Store {
-    fn add_network_if_missing(&self, network_name: &str) -> Result<(), Error> {
-        use db_schema::ethereum_networks::dsl::*;
-
-        insert_into(ethereum_networks)
-            .values((
-                name.eq(network_name),
-                head_block_hash.eq::<Option<String>>(None),
-                head_block_number.eq::<Option<i64>>(None),
-            ))
-            .on_conflict(name)
-            .do_nothing()
-            .execute(&*self.conn.lock().unwrap())?;
-
-        Ok(())
-    }
-
     fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
         &self,
-        net_name: &str,
         blocks: B,
     ) -> Box<Future<Item = (), Error = Error> + Send + 'a> {
         use db_schema::ethereum_blocks::dsl::*;
 
         let conn = self.conn.clone();
-        let net_name = net_name.to_owned();
+        let net_name = self.config.network_name.clone();
         Box::new(blocks.for_each(move |block| {
-            let json_blob = serde_json::to_value(&block).expect("Failed to serialize block");
+            let block_json = serde_json::to_value(&block).expect("Failed to serialize block");
             let values = (
                 hash.eq(format!("{:#x}", block.hash.unwrap())),
                 number.eq(block.number.unwrap().as_u64() as i64),
                 parent_hash.eq(format!("{:#x}", block.parent_hash)),
                 network_name.eq(&net_name),
-                data.eq(json_blob),
+                block_data.eq(block_json),
             );
 
             insert_into(ethereum_blocks)
@@ -388,13 +484,9 @@ impl BlockStore for Store {
         }))
     }
 
-    fn attempt_head_update(
-        &self,
-        network_name: &str,
-        ancestor_count: u64,
-    ) -> Result<Vec<H256>, Error> {
+    fn attempt_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error> {
         // Call attempt_head_update SQL function
-        select(attempt_head_update(network_name, ancestor_count as i64))
+        select(attempt_head_update(&self.config.network_name, ancestor_count as i64))
             .load(&*self.conn.lock().unwrap())
             .map_err(Error::from)
 
@@ -411,6 +503,95 @@ impl BlockStore for Store {
                     .collect::<Result<Vec<H256>, _>>()
             })
             .and_then(|r| r.map_err(Error::from))
+    }
+
+    fn head_block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+        use db_schema::ethereum_networks::dsl::*;
+
+        ethereum_networks
+            .select((head_block_hash, head_block_number))
+            .filter(name.eq(&self.config.network_name))
+            .load::<(Option<String>, Option<i64>)>(&*self.conn.lock().unwrap())
+            .map(|rows| {
+                rows.first()
+                    .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
+                        (Some(hash), Some(number)) => Some((hash.parse().unwrap(), *number).into()),
+                        (None, None) => None,
+                        _ => unreachable!(),
+                    })
+                    .and_then(|opt| opt)
+            })
+            .map_err(Error::from)
+    }
+
+    fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {
+        use db_schema::ethereum_blocks::dsl::*;
+
+        ethereum_blocks
+            .select(block_data)
+            .filter(network_name.eq(&self.config.network_name))
+            .filter(hash.eq(block_hash.to_string()))
+            .load::<serde_json::Value>(&*self.conn.lock().unwrap())
+            .map(|json_blocks| match json_blocks.len() {
+                0 => None,
+                1 => Some(
+                    serde_json::from_value::<Block<Transaction>>(json_blocks[0].clone())
+                        .expect("Failed to deserialize block"),
+                ),
+                _ => unreachable!(),
+            })
+            .map_err(Error::from)
+    }
+
+    fn block_with_receipts(
+        &self,
+        block_hash: H256,
+    ) -> Result<Option<(Block<Transaction>, Vec<TransactionReceipt>)>, Error> {
+        use db_schema::ethereum_blocks::dsl::*;
+
+        ethereum_blocks
+            .select((block_data, receipt_data))
+            .filter(network_name.eq(&self.config.network_name))
+            .filter(hash.eq(block_hash.to_string()))
+            .load::<(serde_json::Value, serde_json::Value)>(&*self.conn.lock().unwrap())
+            .map(|rows| match rows.len() {
+                0 => None,
+                1 => Some((
+                    serde_json::from_value::<Block<Transaction>>(rows[0].0.clone())
+                        .expect("Failed to deserialize block"),
+                    serde_json::from_value::<Vec<TransactionReceipt>>(rows[0].1.clone())
+                        .expect("Failed to deserialize transaction receipts"),
+                )),
+                _ => unreachable!(),
+            })
+            .map_err(Error::from)
+    }
+
+    fn ancestor_block(
+        &self,
+        block_ptr: EthereumBlockPointer,
+        mut offset: u64,
+    ) -> Result<Option<Block<Transaction>>, Error> {
+        if block_ptr.number < offset {
+            bail!("block offset points to before genesis block");
+        }
+
+        // TODO do this in one query? not necessary but nice for perf
+
+        let mut block_hash = block_ptr.hash;
+
+        while offset > 0 {
+            // Try to load block. If missing, return Ok(None).
+            let block = match self.block(block_hash)? {
+                None => return Ok(None),
+                Some(b) => b,
+            };
+
+            block_hash = block.parent_hash;
+            offset -= 1;
+        }
+
+        self.block(block_hash)
     }
 }
 

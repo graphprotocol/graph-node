@@ -22,6 +22,17 @@ table! {
         number -> BigInt,
         parent_hash -> Nullable<Varchar>,
         network_name -> Varchar, // REFERENCES ethereum_networks (name),
-        data -> Jsonb,
+        block_data -> Jsonb,
+        receipt_data -> Jsonb,
     }
 }
+
+table! {
+    subgraphs (id) {
+        id -> Varchar,
+        latest_block_hash -> Varchar,
+        latest_block_number -> BigInt,
+    }
+}
+allow_tables_to_appear_in_same_query!(entities, subgraphs);
+joinable!(entities -> subgraphs (subgraph));

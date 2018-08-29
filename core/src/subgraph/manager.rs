@@ -45,18 +45,40 @@ impl RuntimeManager where {
         fn handle_event<S: Store + 'static>(store: Arc<Mutex<S>>, event: RuntimeHostEvent) {
             match event {
                 RuntimeHostEvent::EntitySet(store_key, entity, event_source) => {
-                    store
-                        .lock()
-                        .unwrap()
-                        .set(store_key, entity, event_source)
+                    let store = store.lock().unwrap();
+                    // TODO this code is incorrect. One TX should be used for entire block.
+                    // TODO ensure necessary blocks are in DB
+                    let EventSource::EthereumBlock(block_hash) = event_source;
+                    let mut tx = store
+                        .begin_transaction(
+                            SubgraphId(store_key.subgraph.clone()),
+                            store
+                                .block(block_hash)
+                                .expect("failed to load block from block store")
+                                .expect(&format!(
+                                    "block {:?} missing from block store",
+                                    block_hash
+                                )),
+                        )
+                        .unwrap();
+                    tx.set(store_key, entity)
                         .expect("Failed to set entity in the store");
+                    tx.commit().unwrap();
                 }
                 RuntimeHostEvent::EntityRemoved(store_key, event_source) => {
-                    store
-                        .lock()
-                        .unwrap()
-                        .delete(store_key, event_source)
+                    let store = store.lock().unwrap();
+                    // TODO this code is incorrect. One TX should be used for entire block.
+                    // TODO ensure necessary blocks are in DB
+                    let EventSource::EthereumBlock(block_hash) = event_source;
+                    let mut tx = store
+                        .begin_transaction(
+                            SubgraphId(store_key.subgraph.clone()),
+                            store.block(block_hash).unwrap().unwrap(),
+                        )
+                        .unwrap();
+                    tx.delete(store_key)
                         .expect("Failed to delete entity from the store");
+                    tx.commit().unwrap();
                 }
             }
         }

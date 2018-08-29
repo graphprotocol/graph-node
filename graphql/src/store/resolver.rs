@@ -226,8 +226,14 @@ where
         }
 
         let store = self.store.lock().unwrap();
+
+        // TODO this code is incorrect. block_ptr should be asked for once, and used throughout
+        // entire query.
+        // Also: add error handling
+
+        let block_ptr = store.block_ptr(SubgraphId(query.subgraph.clone())).unwrap();
         store
-            .find(query)
+            .find(query, block_ptr)
             .map(|entities| {
                 q::Value::List(
                     entities
@@ -254,6 +260,15 @@ where
 
         if let Some(id) = id {
             let store = self.store.lock().unwrap();
+
+            // TODO this code is incorrect. block_ptr should be asked for once, and used throughout
+            // entire query.
+            // Also: add error handling
+
+            let subgraph_id = parse_subgraph_id(object_type).expect(
+                format!("Failed to get subgraph ID from type: {}", object_type.name).as_str(),
+            );
+            let block_ptr = store.block_ptr(SubgraphId(subgraph_id.clone())).unwrap();
             return store
                 .get(StoreKey {
                     subgraph: parse_subgraph_id(object_type).expect(
@@ -262,27 +277,37 @@ where
                     ),
                     entity: object_type.name.to_owned(),
                     id: id.to_owned(),
-                })
+                }, block_ptr)
                 .map(|entity| entity.into())
                 .unwrap_or(q::Value::Null);
         }
 
         match parent {
             Some(q::Value::Object(parent_object)) => match parent_object.get(field) {
-                Some(q::Value::String(id)) => self
-                    .store
-                    .lock()
-                    .unwrap()
-                    .get(StoreKey {
-                        subgraph: parse_subgraph_id(object_type).expect(
-                            format!("Failed to get subgraph ID from type: {}", object_type.name)
-                                .as_str(),
-                        ),
-                        entity: object_type.name.to_owned(),
-                        id: id.to_owned(),
-                    })
-                    .map(|entity| entity.into())
-                    .unwrap_or(q::Value::Null),
+                Some(q::Value::String(id)) => {
+                    let store = self.store.lock().unwrap();
+
+                    // TODO this code is incorrect. block_ptr should be asked for once, and used throughout
+                    // entire query.
+                    // Also: add error handling
+
+                    let subgraph_id = parse_subgraph_id(object_type).expect(
+                        format!("Failed to get subgraph ID from type: {}", object_type.name)
+                            .as_str(),
+                    );
+                    let block_ptr = store.block_ptr(SubgraphId(subgraph_id.clone())).unwrap();
+                    store
+                        .get(
+                            StoreKey {
+                                subgraph: subgraph_id,
+                                entity: object_type.name.to_owned(),
+                                id: id.to_owned(),
+                            },
+                            block_ptr,
+                        )
+                        .map(|entity| entity.into())
+                        .unwrap_or(q::Value::Null)
+                }
                 _ => q::Value::Null,
             },
             _ => {
@@ -298,10 +323,15 @@ where
 
                 query.range = Some(StoreRange { first: 1, skip: 0 });
 
-                self.store
-                    .lock()
-                    .unwrap()
-                    .find(query)
+                let store = self.store.lock().unwrap();
+
+                // TODO this code is incorrect. block_ptr should be asked for once, and used throughout
+                // entire query.
+                // Also: add error handling
+
+                let block_ptr = store.block_ptr(SubgraphId(query.subgraph.clone())).unwrap();
+                store
+                    .find(query, block_ptr)
                     .map(|entities| {
                         entities
                             .into_iter()

@@ -23,7 +23,6 @@ where
     <T as BatchTransport>::Batch: Send,
 {
     store: Arc<Mutex<S>>,
-    network_name: String,
     web3_transport: T,
     ancestor_count: u64,
     logger: slog::Logger,
@@ -39,18 +38,13 @@ where
 {
     pub fn new(
         store: Arc<Mutex<S>>,
-        network_name: String,
         web3_transport: T,
         ancestor_count: u64,
         logger: slog::Logger,
         polling_interval: Duration,
     ) -> Result<BlockIngestor<S, T>, Error> {
-        // Add a head block pointer for this network name if one does not already exist
-        store.lock().unwrap().add_network_if_missing(&network_name)?;
-
         Ok(BlockIngestor {
             store,
-            network_name,
             web3_transport,
             ancestor_count,
             logger: logger.new(o!("component" => "BlockIngestor")),
@@ -134,12 +128,12 @@ where
         self.store
             .lock()
             .unwrap()
-            .upsert_blocks(&self.network_name, blocks)
+            .upsert_blocks(blocks)
             .and_then(move |()| {
                 self.store
                     .lock()
                     .unwrap()
-                    .attempt_head_update(&self.network_name, self.ancestor_count)
+                    .attempt_head_update(self.ancestor_count)
             })
     }
 
