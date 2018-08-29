@@ -50,7 +50,9 @@ pub struct GraphQLServer {
     query_sink: Option<Sender<Query>>,
     schema_event_sink: Sender<SchemaEvent>,
     store_event_sink: Sender<StoreEvent>,
-    // Maps a graph name to it's schema.
+    // Maps a subgraph id to its name.
+    names: Arc<RwLock<BTreeMap<String, String>>>,
+    // Maps a subgraph name to its schema.
     schemas: Arc<RwLock<BTreeMap<String, Schema>>>,
 }
 
@@ -67,6 +69,7 @@ impl GraphQLServer {
             query_sink: None,
             schema_event_sink,
             store_event_sink: store_sink,
+            names: Arc::new(RwLock::new(BTreeMap::new())),
             schemas: Arc::new(RwLock::new(BTreeMap::new())),
         };
 
@@ -82,6 +85,7 @@ impl GraphQLServer {
     fn handle_schema_events(&mut self, stream: Receiver<SchemaEvent>) {
         let logger = self.logger.clone();
         let schemas = self.schemas.clone();
+        let names = self.names.clone();
 
         tokio::spawn(stream.for_each(move |event| {
             info!(logger, "Received schema event");
@@ -104,6 +108,11 @@ impl GraphQLServer {
                     // We need to support clean shutdown of a subgraph before update support.
                     panic!("updating a subgraph is not supported yet")
                 }
+
+                names
+                    .write()
+                    .unwrap()
+                    .insert(new_schema.id.clone(), new_schema.name.clone());
             } else {
                 panic!("schema removal is yet not supported")
             }
@@ -163,9 +172,10 @@ impl GraphQLServerTrait for GraphQLServer {
         // On every incoming request, launch a new GraphQL service that writes
         // incoming queries to the query sink.
         let query_sink = query_sink.clone();
+        let names = self.names.clone();
         let schemas = self.schemas.clone();
         let new_service = move || {
-            let service = GraphQLService::new(schemas.clone(), query_sink.clone());
+            let service = GraphQLService::new(names.clone(), schemas.clone(), query_sink.clone());
             future::ok::<GraphQLService, hyper::Error>(service)
         };
 
