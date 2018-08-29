@@ -55,11 +55,10 @@ pub struct SchemaData {
 impl SchemaData {
     pub fn resolve(
         self,
+        id: String,
         name: String,
         resolver: &impl LinkResolver,
     ) -> impl Future<Item = Schema, Error = failure::Error> + Send {
-        let id = self.file.link.clone();
-
         resolver.cat(&self.file).and_then(|schema_bytes| {
             Ok(
                 graphql_parser::parse_schema(&String::from_utf8(schema_bytes)?)
@@ -279,7 +278,7 @@ impl UnresolvedSubgraphManifest {
                 .into_iter()
                 .map(|data_set| data_set.resolve(resolver)),
         ).collect()
-            .join(schema.resolve(name, resolver))
+            .join(schema.resolve(id.clone(), name, resolver))
             .map(|(data_sources, schema)| SubgraphManifest {
                 id,
                 location,
