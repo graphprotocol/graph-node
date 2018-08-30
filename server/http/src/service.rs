@@ -5,7 +5,7 @@ use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::sync::RwLock;
 
-use graph::components::server::GraphQLServerError;
+use graph::components::server::query::GraphQLServerError;
 use graph::prelude::*;
 
 use request::GraphQLRequest;

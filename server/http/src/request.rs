@@ -2,7 +2,7 @@ use graph::serde_json;
 use graphql_parser;
 use hyper::Chunk;
 
-use graph::components::server::GraphQLServerError;
+use graph::components::server::query::GraphQLServerError;
 use graph::prelude::*;
 
 /// Future for a query parsed from an HTTP request.

@@ -4,7 +4,7 @@ use http::status::StatusCode;
 use hyper::{Body, Response};
 use serde::ser::*;
 
-use graph::components::server::GraphQLServerError;
+use graph::components::server::query::GraphQLServerError;
 use graph::data::query::QueryResult;
 use graph_graphql::prelude::SerializableValue;
 
@@ -90,7 +90,7 @@ impl Future for GraphQLResponse {
 mod tests {
     use super::GraphQLResponse;
     use futures::sync::oneshot;
-    use graph::components::server::GraphQLServerError;
+    use graph::components::server::query::GraphQLServerError;
     use graph::prelude::*;
     use graphql_parser;
     use http::status::StatusCode;
