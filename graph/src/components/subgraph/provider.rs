@@ -25,7 +25,7 @@ pub enum SchemaEvent {
 pub trait SubgraphProvider:
     EventProducer<SubgraphProviderEvent> + EventProducer<SchemaEvent> + Send + Sync + 'static
 {
-    fn add(
+    fn deploy(
         &self,
         name: String,
         link: String,

@@ -38,7 +38,7 @@ impl<L: LinkResolver> SubgraphProvider<L> {
 }
 
 impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
-    fn add(
+    fn deploy(
         &self,
         name: String,
         link: String,
@@ -165,7 +165,7 @@ fn rejects_name_bad_for_urls() {
     let logger = slog::Logger::root(slog::Discard, o!());
     let provider = SubgraphProvider::new(logger, Arc::new(FakeLinkResolver));
     let bad = "/../funky%2F:9001".to_owned();
-    let result = provider.add(bad.clone(), "".to_owned());
+    let result = provider.deploy(bad.clone(), "".to_owned());
     match result.wait() {
         Err(SubgraphProviderError::InvalidName(name)) => assert_eq!(name, bad),
         x => panic!("unexpected test result {:?}", x),

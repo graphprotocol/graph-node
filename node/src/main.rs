@@ -32,7 +32,7 @@ use graph_core::SubgraphProvider as IpfsSubgraphProvider;
 use graph_datasource_ethereum::Transport;
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as HyperGraphQLServer;
-use graph_server_json_rpc::{subgraph_add_request, JsonRpcServer};
+use graph_server_json_rpc::{subgraph_deploy_request, JsonRpcServer};
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
@@ -231,20 +231,20 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             .expect("invalid admin port");
         let raw_response = Client::new()
             .post(url.clone())
-            .json(&subgraph_add_request(
+            .json(&subgraph_deploy_request(
                 name.to_owned(),
                 hash.to_owned(),
                 "1".to_owned(),
             ))
             .send()
-            .expect("failed to make `subgraph_add` request");
+            .expect("failed to make `subgraph_deploy` request");
 
         graph_server_json_rpc::parse_response(
             raw_response
                 .error_for_status()
                 .and_then(|mut res| res.json())
-                .expect("`subgraph_add` request error"),
-        ).expect("`subgraph_add` server error");
+                .expect("`subgraph_deploy` request error"),
+        ).expect("`subgraph_deploy` server error");
     }
 
     // Serve GraphQL server over HTTP. We will listen on port 8000.

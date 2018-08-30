@@ -15,12 +15,12 @@ use std::io;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 #[derive(Debug, Serialize, Deserialize)]
-struct SubgraphAddParams {
+struct SubgraphDeployParams {
     name: String,
     ipfs_hash: String,
 }
 
-impl fmt::Display for SubgraphAddParams {
+impl fmt::Display for SubgraphDeployParams {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "{:?}", self)
     }
@@ -40,15 +40,15 @@ impl fmt::Display for SubgraphRemoveParams {
 pub struct JsonRpcServer {}
 
 impl JsonRpcServer {
-    /// Handler for the `subgraph_add` endpoint.
-    fn add_handler(
-        params: SubgraphAddParams,
+    /// Handler for the `subgraph_deploy` endpoint.
+    fn deploy_handler(
+        params: SubgraphDeployParams,
         provider: Arc<impl SubgraphProvider>,
         logger: Logger,
     ) -> impl Future<Item = Value, Error = jsonrpc_core::Error> {
-        info!(logger, "Received subgraph_add request"; "params" => params.to_string());
+        info!(logger, "Received subgraph_deploy request"; "params" => params.to_string());
         provider
-            .add(params.name, format!("/ipfs/{}", params.ipfs_hash))
+            .deploy(params.name, format!("/ipfs/{}", params.ipfs_hash))
             .map_err(|e| json_rpc_error(0, e.to_string()))
             .map(|_| Ok(Value::Null))
             .flatten()
@@ -81,17 +81,18 @@ impl JsonRpcServerTrait for JsonRpcServer {
 
         let mut handler = IoHandler::new();
 
-        // `subgraph_add` handler.
-        let add_provider = provider.clone();
-        let add_logger = logger.clone();
-        let add_handler =
-            move |params| Self::add_handler(params, add_provider.clone(), add_logger.clone());
-        handler.add_method("subgraph_add", move |params: Params| {
-            let add_handler = add_handler.clone();
+        // `subgraph_deploy` handler.
+        let deploy_provider = provider.clone();
+        let deploy_logger = logger.clone();
+        let deploy_handler = move |params| {
+            Self::deploy_handler(params, deploy_provider.clone(), deploy_logger.clone())
+        };
+        handler.add_method("subgraph_deploy", move |params: Params| {
+            let deploy_handler = deploy_handler.clone();
             params
                 .parse()
                 .into_future()
-                .and_then(move |params| add_handler(params))
+                .and_then(move |params| deploy_handler(params))
         });
 
         // `subgraph_remove` handler.
@@ -124,8 +125,8 @@ fn json_rpc_error(code: i64, message: String) -> jsonrpc_core::Error {
     }
 }
 
-pub fn subgraph_add_request(name: String, ipfs_hash: String, id: String) -> MethodCall {
-    let params = serde_json::to_value(SubgraphAddParams { name, ipfs_hash })
+pub fn subgraph_deploy_request(name: String, ipfs_hash: String, id: String) -> MethodCall {
+    let params = serde_json::to_value(SubgraphDeployParams { name, ipfs_hash })
         .unwrap()
         .as_object()
         .cloned()
@@ -133,7 +134,7 @@ pub fn subgraph_add_request(name: String, ipfs_hash: String, id: String) -> Meth
 
     MethodCall {
         jsonrpc: Some(Version::V2),
-        method: "subgraph_add".to_owned(),
+        method: "subgraph_deploy".to_owned(),
         params: Params::Map(params),
         id: Id::Str(id),
     }
