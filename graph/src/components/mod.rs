@@ -44,7 +44,7 @@ pub mod ethereum;
 /// Components dealing with processing GraphQL.
 pub mod graphql;
 
-/// Components dealing with serving GraphQL over the network.
+/// Components powering GraphQL, JSON-RPC, WebSocket APIs.
 pub mod server;
 
 /// Components dealing with storing entities.

@@ -4,12 +4,9 @@ use futures::sync::oneshot::Canceled;
 use serde::ser::*;
 use std::error::Error;
 use std::fmt;
-use std::io;
-use std::sync::Arc;
 
-use super::subgraph::{SchemaEvent, SubgraphProvider};
+use components::subgraph::SchemaEvent;
 use data::query::QueryError;
-use prelude::Logger;
 
 /// Errors that can occur while processing incoming requests.
 #[derive(Debug)]
@@ -99,14 +96,4 @@ pub trait GraphQLServer {
         &mut self,
         port: u16,
     ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError>;
-}
-
-pub trait JsonRpcServer {
-    type Server;
-
-    fn serve(
-        port: u16,
-        provider: Arc<impl SubgraphProvider>,
-        logger: Logger,
-    ) -> Result<Self::Server, io::Error>;
 }

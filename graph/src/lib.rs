@@ -53,7 +53,8 @@ pub mod prelude {
     pub use components::ethereum::EthereumAdapter;
     pub use components::graphql::{GraphQLRunner, QueryResultFuture, SubscriptionResultFuture};
     pub use components::link_resolver::LinkResolver;
-    pub use components::server::{GraphQLServer, JsonRpcServer};
+    pub use components::server::admin::JsonRpcServer;
+    pub use components::server::query::GraphQLServer;
     pub use components::store::{
         BasicStore, EntityChange, EntityChangeOperation, EntityChangeStream, EventSource, Store,
         StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange, SubgraphEntityPair,
