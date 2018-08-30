@@ -90,10 +90,10 @@ impl RuntimeManager where {
                         runtime_hosts.push(new_host);
                     }
                 }
-                SubgraphProviderEvent::SubgraphRemoved(ref manifest) => {
+                SubgraphProviderEvent::SubgraphRemoved(id) => {
                     // Destroy all runtime hosts for this subgraph; this will
                     // also terminate the host's event stream
-                    runtime_hosts.retain(|host| host.subgraph_manifest() != manifest);
+                    runtime_hosts.retain(|host| host.subgraph_manifest().id != id);
                 }
             }
 

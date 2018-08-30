@@ -121,8 +121,9 @@ impl RuntimeHost {
                         .map(|_| panic!("sent into cancel guard"))
                         .map_err(|_| ()),
                 )
+                .for_each(|_| Ok(()))
                 .wait()
-                .for_each(drop);
+                .ok();
 
             info!(logger, "shutting down WASM runtime"; "data_source" => name);
         });
