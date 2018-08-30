@@ -20,9 +20,11 @@ pub struct EntityChangeListener {
 }
 
 impl EntityChangeListener {
-    pub fn new(url: String) -> Self {
+    pub fn new(url: String, logger: &slog::Logger) -> Self {
+        let logger = logger.new(o!("component" => "EntityChangeListener"));
+
         // Listen to Postgres notifications in a worker thread
-        let (receiver, worker_handle, terminate_worker, worker_barrier) = Self::listen(url);
+        let (receiver, worker_handle, terminate_worker, worker_barrier) = Self::listen(url, logger);
 
         EntityChangeListener {
             output: Some(receiver),
@@ -43,6 +45,7 @@ impl EntityChangeListener {
 
     fn listen(
         url: String,
+        logger: slog::Logger,
     ) -> (
         Receiver<EntityChange>,
         thread::JoinHandle<()>,
@@ -75,11 +78,19 @@ impl EntityChangeListener {
             // Wait until the listener has been started
             barrier.wait();
 
-            let mut notifications = iter.iterator();
+            let notifications = iter.iterator().filter(|result| match result {
+                Ok(notification) => notification.channel == "entity_changes",
+                _ => true,
+            });
 
             // Read notifications as long as the Postgres connection is alive
             // or the thread is to be terminated
-            loop {
+            for notification in notifications {
+                // Terminate the thread if desired
+                if terminate.load(Ordering::SeqCst) {
+                    return;
+                }
+
                 // HACK: Travis seems to have serious problems with running the
                 // integration tests for the Diesel store. Unless we log frequently
                 // from this thread, it all store tests either take a long time
@@ -89,38 +100,34 @@ impl EntityChangeListener {
                 // timing-sensitive synchronization issue on our side we've tried
                 // almost everything and this hack was the only thing that made
                 // the tests work in Travis.
-                if let Ok(_) = env::var("TRAVIS") {
+                if env::var("TRAVIS").is_ok() {
                     print!(".");
                     io::stdout().flush().unwrap();
                 }
 
-                // Terminate the thread if desired
-                if terminate.load(Ordering::SeqCst) {
-                    return;
-                }
+                match notification {
+                    Ok(notification) => {
+                        // Parse payload into an entity change
+                        let value: serde_json::Value =
+                            serde_json::from_str(notification.payload.as_str())
+                                .expect("Invalid JSON entity change data received from database");
+                        let change: EntityChange = serde_json::from_value(value.clone()).expect(
+                            format!(
+                                "Invalid entity change received from the database: {:?}",
+                                value
+                            ).as_str(),
+                        );
 
-                if let Some(Ok(notification)) = notifications.next() {
-                    // Only handle notifications from the "entity_changes" channel.
-                    if notification.channel != String::from("entity_changes") {
-                        continue;
+                        // We'll assume here that if sending fails, this means that the
+                        // entity change listener has already been dropped, the receiving
+                        // is gone and we should terminate the listener loop
+                        if sender.clone().send(change).wait().is_err() {
+                            break;
+                        }
                     }
-
-                    // Parse payload into an entity change
-                    let value: serde_json::Value =
-                        serde_json::from_str(notification.payload.as_str())
-                            .expect("Invalid JSON entity change data received from database");
-                    let change: EntityChange = serde_json::from_value(value.clone()).expect(
-                        format!(
-                            "Invalid entity change received from the database: {:?}",
-                            value
-                        ).as_str(),
-                    );
-
-                    // We'll assume here that if sending fails, this means that the
-                    // entity change listener has already been dropped, the receiving
-                    // is gone and we should terminate the listener loop
-                    if sender.clone().send(change).wait().is_err() {
-                        break;
+                    Err(e) => {
+                        error!(logger, "Failed to retrieve notification from Postgres";
+                           "error" => format!("{}", e).as_str());
                     }
                 }
             }
