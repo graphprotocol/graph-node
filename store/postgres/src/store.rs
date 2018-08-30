@@ -62,23 +62,6 @@ pub struct Store {
 
 impl Store {
     pub fn new(config: StoreConfig, logger: &slog::Logger) -> Self {
-        let mut store = Self::new_internal(config, logger);
-        store.change_listener.start();
-        store
-    }
-
-    pub fn new_without_processing_entity_changes(
-        config: StoreConfig,
-        logger: &slog::Logger,
-    ) -> Self {
-        Self::new_internal(config, logger)
-    }
-
-    pub fn start_processing_entity_changes(&mut self) {
-        self.change_listener.start();
-    }
-
-    fn new_internal(config: StoreConfig, logger: &slog::Logger) -> Self {
         // Create a store-specific logger
         let logger = logger.new(o!("component" => "Store"));
 
@@ -108,6 +91,9 @@ impl Store {
         // Deal with store subscriptions
         store.handle_entity_changes(entity_changes);
         store.periodically_clean_up_stale_subscriptions();
+
+        // We're ready for processing entity changes
+        store.change_listener.start();
 
         // Return the store
         store

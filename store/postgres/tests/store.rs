@@ -1653,14 +1653,10 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|| {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
-        let mut store =
-            DieselStore::new_without_processing_entity_changes(StoreConfig { url }, &logger);
+        let mut store = DieselStore::new(StoreConfig { url }, &logger);
 
         // Create a store subscription
         let subscription = store.subscribe(String::from("subgraph-id"), vec![String::from("User")]);
-
-        // Start processing entity changes from the DB now that we're subscribed
-        store.start_processing_entity_changes();
 
         // Add two entities to the store
         let added_entities = vec![
