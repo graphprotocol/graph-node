@@ -85,27 +85,27 @@ impl<Q> GraphQLServer<Q> {
         tokio::spawn(stream.for_each(move |event| {
             info!(logger, "Received schema event");
 
-            if let SchemaEvent::SchemaAdded(new_schema) = event {
-                let derived_schema = match api_schema(&new_schema.document) {
-                    Ok(document) => Schema {
-                        name: new_schema.name.clone(),
-                        id: new_schema.id.clone(),
-                        document,
-                    },
-                    Err(e) => return Ok(error!(logger, "error deriving schema {}", e)),
-                };
+            let mut schemas = schemas.write().unwrap();
+            let mut names = names.write().unwrap();
+            match event {
+                SchemaEvent::SchemaAdded(new_schema) => {
+                    let derived_schema = match api_schema(&new_schema.document) {
+                        Ok(document) => Schema {
+                            name: new_schema.name.clone(),
+                            id: new_schema.id.clone(),
+                            document,
+                        },
+                        Err(e) => return Ok(error!(logger, "error deriving schema {}", e)),
+                    };
 
-                schemas
-                    .write()
-                    .unwrap()
-                    .insert(derived_schema.name.clone(), derived_schema);
-
-                names
-                    .write()
-                    .unwrap()
-                    .insert(new_schema.id.clone(), new_schema.name.clone());
-            } else {
-                panic!("schema removal is yet not supported")
+                    schemas.insert(derived_schema.name.clone(), derived_schema);
+                    names.insert(new_schema.id.clone(), new_schema.name.clone());
+                }
+                SchemaEvent::SchemaRemoved(name, id) => {
+                    // If the event got this far, the subgraph must be hosted.
+                    schemas.remove(&name).expect("subgraph not hosted");
+                    names.remove(&id).expect("subgraph not hosted");
+                }
             }
 
             Ok(())

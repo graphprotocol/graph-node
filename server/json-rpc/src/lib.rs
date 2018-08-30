@@ -26,9 +26,21 @@ impl fmt::Display for SubgraphAddParams {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct SubgraphRemoveParams {
+    name_or_id: String,
+}
+
+impl fmt::Display for SubgraphRemoveParams {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{:?}", self)
+    }
+}
+
 pub struct JsonRpcServer {}
 
 impl JsonRpcServer {
+    /// Handler for the `subgraph_add` endpoint.
     fn add_handler(
         params: SubgraphAddParams,
         provider: Arc<impl SubgraphProvider>,
@@ -38,6 +50,20 @@ impl JsonRpcServer {
         provider
             .add(params.name, format!("/ipfs/{}", params.ipfs_hash))
             .map_err(|e| json_rpc_error(0, e.to_string()))
+            .map(|_| Ok(Value::Null))
+            .flatten()
+    }
+
+    /// Handler for the `subgraph_remove` endpoint.
+    fn remove_handler(
+        params: SubgraphRemoveParams,
+        provider: Arc<impl SubgraphProvider>,
+        logger: Logger,
+    ) -> impl Future<Item = Value, Error = jsonrpc_core::Error> {
+        info!(logger, "Received subgraph_remove request"; "params" => params.to_string());
+        provider
+            .remove(params.name_or_id)
+            .map_err(|e| json_rpc_error(1, e.to_string()))
             .map(|_| Ok(Value::Null))
             .flatten()
     }
@@ -66,6 +92,20 @@ impl JsonRpcServerTrait for JsonRpcServer {
                 .parse()
                 .into_future()
                 .and_then(move |params| add_handler(params))
+        });
+
+        // `subgraph_remove` handler.
+        let remove_provider = provider.clone();
+        let remove_logger = logger.clone();
+        let remove_handler = move |params| {
+            Self::remove_handler(params, remove_provider.clone(), remove_logger.clone())
+        };
+        handler.add_method("subgraph_remove", move |params: Params| {
+            let remove_handler = remove_handler.clone();
+            params
+                .parse()
+                .into_future()
+                .and_then(move |params| remove_handler(params))
         });
 
         ServerBuilder::new(handler)

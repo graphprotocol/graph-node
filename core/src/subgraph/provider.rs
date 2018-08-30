@@ -88,9 +88,47 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
                                 .send(SubgraphProviderEvent::SubgraphAdded(subgraph))
                                 .map_err(|e| panic!("Failed to forward subgraph: {}", e)),
                         )
-                        .map_err(|_| SubgraphProviderError::SendError)
                         .map(|_| ())
                 }),
+        )
+    }
+
+    fn remove(
+        &self,
+        name_or_id: String,
+    ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static> {
+        let mut subgraphs = self.subgraphs.lock().unwrap();
+
+        // Either `name_or_id` is a name,
+        let name = if subgraphs.contains_key(&name_or_id) {
+            name_or_id
+        // or it's an id, so we get the corresponding name.
+        } else if let Some(name) = subgraphs.keys().find(|&name| subgraphs[name] == name_or_id) {
+            name.to_owned()
+        // Otherwise the subgraph is not hosted.
+        } else {
+            return Box::new(future::err(SubgraphProviderError::NotFound(
+                name_or_id.to_owned(),
+            )));
+        };
+
+        // Remove the subgraph and signal the removal the graphql server and the
+        // runtime manager.
+        let id = subgraphs.remove(&name).unwrap();
+        let graphql_remove_sink = self.schema_event_sink.clone();
+        let host_remove_sink = self.event_sink.clone();
+        Box::new(
+            graphql_remove_sink
+                .send(SchemaEvent::SchemaRemoved(name.to_owned(), id.clone()))
+                .map_err(|e| panic!("Failed to forward schema removal: {}", e))
+                .map(|_| ())
+                .join(
+                    host_remove_sink
+                        .send(SubgraphProviderEvent::SubgraphRemoved(id))
+                        .map(|_| ())
+                        .map_err(|e| panic!("Failed to forward subgraph removal: {}", e)),
+                )
+                .map(|_| ()),
         )
     }
 }

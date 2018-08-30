@@ -16,10 +16,11 @@ use std::sync::Arc;
 pub enum SubgraphProviderError {
     #[fail(display = "subgraph resolve error: {}", _0)]
     ResolveError(SubgraphManifestResolveError),
-    #[fail(display = "error sending subgraph")]
-    SendError,
     #[fail(display = "name {} is invalid, only ASCII alphanumerics, `-` and `_` are allowed", _0)]
     InvalidName(String),
+    /// Occurs when attempting to remove a subgraph that's not hosted.
+    #[fail(display = "subgraph not found: {}", _0)]
+    NotFound(String),
 }
 
 #[derive(Fail, Debug)]
