@@ -8,7 +8,7 @@ use tokio::prelude::*;
 pub enum SubgraphProviderEvent {
     /// A subgraph was added to the provider.
     SubgraphAdded(SubgraphManifest),
-    /// A subgraph with the given id was removed from the provider.
+    /// A subgraph with the given ID was removed from the provider.
     SubgraphRemoved(String),
 }
 
