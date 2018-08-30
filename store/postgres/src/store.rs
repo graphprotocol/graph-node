@@ -92,7 +92,7 @@ impl Store {
         initiate_schema(&logger, &conn);
 
         // Listen to entity changes in Postgres
-        let mut change_listener = EntityChangeListener::new(config.url.clone());
+        let mut change_listener = EntityChangeListener::new(config.url.clone(), &logger);
         let entity_changes = change_listener
             .take_event_stream()
             .expect("Failed to listen to entity change events in Postgres");
