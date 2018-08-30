@@ -141,13 +141,12 @@ impl Drop for EntityChangeListener {
     fn drop(&mut self) {
         // When dropping the change listener, also make sure we signal termination
         // to the worker and wait for it to shut down
-        if let Some(worker_handle) = self.worker_handle.take() {
-            self.terminate_worker.store(true, Ordering::SeqCst);
-
-            worker_handle
-                .join()
-                .expect("failed to terminate EntityChangeListener thread");
-        }
+        self.terminate_worker.store(true, Ordering::SeqCst);
+        self.worker_handle
+            .take()
+            .unwrap()
+            .join()
+            .expect("failed to terminate EntityChangeListener thread");
     }
 }
 
