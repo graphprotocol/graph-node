@@ -2,7 +2,8 @@ use fallible_iterator::FallibleIterator;
 use postgres::{Connection, TlsMode};
 use std::env;
 use std::io;
-use std::sync::{Arc, Barrier, RwLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Duration;
 
@@ -13,7 +14,7 @@ use graph::serde_json;
 pub struct EntityChangeListener {
     output: Option<Receiver<EntityChange>>,
     worker_handle: Option<thread::JoinHandle<()>>,
-    terminate_worker: Arc<RwLock<bool>>,
+    terminate_worker: Arc<AtomicBool>,
     worker_barrier: Arc<Barrier>,
     started: bool,
 }
@@ -45,12 +46,12 @@ impl EntityChangeListener {
     ) -> (
         Receiver<EntityChange>,
         thread::JoinHandle<()>,
-        Arc<RwLock<bool>>,
+        Arc<AtomicBool>,
         Arc<Barrier>,
     ) {
         // Create two ends of a boolean variable for signalling when the worker
         // thread should be terminated
-        let terminate = Arc::new(RwLock::new(false));
+        let terminate = Arc::new(AtomicBool::new(false));
         let terminate_worker = terminate.clone();
         let barrier = Arc::new(Barrier::new(2));
         let worker_barrier = barrier.clone();
@@ -94,8 +95,7 @@ impl EntityChangeListener {
                 }
 
                 // Terminate the thread if desired
-                let terminate_now = terminate.read().unwrap();
-                if *terminate_now {
+                if terminate.load(Ordering::SeqCst) {
                     return;
                 }
 
@@ -135,10 +135,7 @@ impl Drop for EntityChangeListener {
         // When dropping the change listener, also make sure we signal termination
         // to the worker and wait for it to shut down
         if let Some(worker_handle) = self.worker_handle.take() {
-            *self
-                .terminate_worker
-                .write()
-                .expect("failed to signal termination to EntityChangeListener thread") = true;
+            self.terminate_worker.store(true, Ordering::SeqCst);
 
             worker_handle
                 .join()
