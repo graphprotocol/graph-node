@@ -113,8 +113,6 @@ where
             })
             .collect::<Vec<Query>>();
 
-        println!("Requests: {:?}", requests);
-
         // Create task to generate mock queries
         Ok(Box::new(stream::iter_ok(requests).for_each(move |query| {
             let logger = logger.clone();
