@@ -1,15 +1,20 @@
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+
 use futures::sync::mpsc::{channel, Receiver, Sender};
 
 use graph::data::subgraph::SubgraphProviderError;
 use graph::prelude::{SubgraphProvider as SubgraphProviderTrait, *};
 
 pub struct SubgraphProvider<L> {
-    logger: slog::Logger,
+    _logger: slog::Logger,
     event_stream: Option<Receiver<SubgraphProviderEvent>>,
     event_sink: Sender<SubgraphProviderEvent>,
     schema_event_stream: Option<Receiver<SchemaEvent>>,
     schema_event_sink: Sender<SchemaEvent>,
     resolver: Arc<L>,
+    // Maps subgraph name to id.
+    subgraphs: Arc<Mutex<BTreeMap<String, String>>>,
 }
 
 impl<L: LinkResolver> SubgraphProvider<L> {
@@ -19,12 +24,13 @@ impl<L: LinkResolver> SubgraphProvider<L> {
 
         // Create the subgraph provider
         let provider = SubgraphProvider {
-            logger: logger.new(o!("component" => "SubgraphProvider")),
+            _logger: logger.new(o!("component" => "SubgraphProvider")),
             event_stream: Some(event_stream),
             event_sink,
             schema_event_stream: Some(schema_event_stream),
             schema_event_sink,
             resolver,
+            subgraphs: Arc::new(Mutex::new(BTreeMap::new())),
         };
 
         provider
@@ -45,30 +51,42 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
             return Box::new(Err(SubgraphProviderError::InvalidName(name)).into_future());
         }
 
-        let send_logger = self.logger.clone();
         let schema_event_sink = self.schema_event_sink.clone();
-        let event_sink = self.event_sink.clone();
+        let event_sink_remove = self.event_sink.clone();
+        let event_sink_add = self.event_sink.clone();
+        let subgraphs = self.subgraphs.clone();
         Box::new(
-            SubgraphManifest::resolve(name, Link { link }, self.resolver.clone())
+            SubgraphManifest::resolve(name.clone(), Link { link }, self.resolver.clone())
                 .map_err(SubgraphProviderError::ResolveError)
                 .and_then(move |mut subgraph| {
                     subgraph
                         .schema
                         .add_subgraph_id_directives(subgraph.id.clone());
 
+                    let old_id = subgraphs.lock().unwrap().insert(name, subgraph.id.clone());
+
+                    if let Some(id) = old_id {
+                        Box::new(
+                            event_sink_remove
+                                .send(SubgraphProviderEvent::SubgraphRemoved(id))
+                                .map_err(|e| -> SubgraphProviderError {
+                                    panic!("Failed to forward subgraph removal: {}", e)
+                                })
+                                .map(move |_| subgraph),
+                        ) as Box<Future<Item = _, Error = _> + Send>
+                    } else {
+                        Box::new(future::ok::<_, SubgraphProviderError>(subgraph))
+                    }
+                })
+                .and_then(move |subgraph: SubgraphManifest| {
                     // Push the subgraph and the schema into their streams
-                    let event_logger = send_logger.clone();
                     schema_event_sink
                         .send(SchemaEvent::SchemaAdded(subgraph.schema.clone()))
-                        .map_err(move |e| {
-                            error!(send_logger, "Failed to forward subgraph schema: {}", e)
-                        })
+                        .map_err(|e| panic!("Failed to forward subgraph schema: {}", e))
                         .join(
-                            event_sink
+                            event_sink_add
                                 .send(SubgraphProviderEvent::SubgraphAdded(subgraph))
-                                .map_err(move |e| {
-                                    error!(event_logger, "Failed to forward subgraph: {}", e)
-                                }),
+                                .map_err(|e| panic!("Failed to forward subgraph: {}", e)),
                         )
                         .map_err(|_| SubgraphProviderError::SendError)
                         .map(|_| ())
