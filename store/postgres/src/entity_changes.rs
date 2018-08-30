@@ -1,7 +1,5 @@
 use fallible_iterator::FallibleIterator;
 use postgres::{Connection, TlsMode};
-use std::env;
-use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
@@ -89,20 +87,6 @@ impl EntityChangeListener {
                 // Terminate the thread if desired
                 if terminate.load(Ordering::SeqCst) {
                     return;
-                }
-
-                // HACK: Travis seems to have serious problems with running the
-                // integration tests for the Diesel store. Unless we log frequently
-                // from this thread, it all store tests either take a long time
-                // or never finish (before Travis' 10mins timeout).
-                // As soon as you log something from this thread, suddenly all
-                // tests run relatively fast and reliable. This _could_ be a
-                // timing-sensitive synchronization issue on our side we've tried
-                // almost everything and this hack was the only thing that made
-                // the tests work in Travis.
-                if env::var("TRAVIS").is_ok() {
-                    print!(".");
-                    io::stdout().flush().unwrap();
                 }
 
                 match notification {
