@@ -141,7 +141,7 @@ Please note that some suffixes are only supported for specific types. For exampl
 
 # 3 Schema
 
-The schema of your data source--that is, the entity types, values and relationships that are available to query--are defined through the [GraphQL Interface Definition Langauge (IDL)] (http://facebook.github.io/graphql/draft/#sec-Type-System).
+The schema of your data source--that is, the entity types, values and relationships that are available to query--are defined through the [GraphQL Interface Definition Langauge (IDL)](http://facebook.github.io/graphql/draft/#sec-Type-System).
 
 ## 3.1 Basics
 
