@@ -17,8 +17,8 @@ pub enum SubgraphProviderEvent {
 pub enum SchemaEvent {
     /// A subgraph with a new schema was added.
     SchemaAdded(Schema),
-    /// A subgraph with an existing schema was removed.
-    SchemaRemoved(Schema),
+    /// A subgraph with the given name and id was removed.
+    SchemaRemoved(String, String),
 }
 
 /// Common trait for subgraph providers.
@@ -29,5 +29,10 @@ pub trait SubgraphProvider:
         &self,
         name: String,
         link: String,
+    ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
+
+    fn remove(
+        &self,
+        name_or_id: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
 }
