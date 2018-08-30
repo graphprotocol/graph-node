@@ -1,5 +1,6 @@
 use ethereum_types::Address;
 use futures::sync::mpsc::{channel, Receiver};
+use futures::sync::oneshot;
 use std::str::FromStr;
 use std::sync::Mutex;
 use std::thread;
@@ -68,6 +69,8 @@ where
 pub struct RuntimeHost {
     config: RuntimeHostConfig,
     output: Option<Receiver<RuntimeHostEvent>>,
+    // Never accessed, it's purpose is to signal cancelation on drop.
+    _guard: oneshot::Sender<()>,
 }
 
 impl RuntimeHost {
@@ -94,7 +97,11 @@ impl RuntimeHost {
             link_resolver: link_resolver.clone(),
         };
 
-        info!(logger, "Loading WASM runtime"; "data_source" => &config.data_source.name);
+        let name = config.data_source.name.clone();
+        info!(logger, "Loading WASM runtime"; "data_source" => &name);
+
+        // Create channel as cancelation guard.
+        let (cancel_sender, cancel_receiver) = oneshot::channel();
 
         // wasmi modules are not `Send` therefore they cannot be scheduled by
         // the regular tokio executor, so we create a dedicated thread inside
@@ -106,15 +113,24 @@ impl RuntimeHost {
             let module = WasmiModule::new(&logger, wasmi_config);
 
             // Process one event at a time, blocking the thread when waiting for
-            // the next event.
+            // the next event. Also check for a cancelation signal.
             Self::subscribe_to_events(&logger, data_source, module, ethereum_adapter)
+                .select(
+                    cancel_receiver
+                        .into_stream()
+                        .map(|_| panic!("sent into cancel guard"))
+                        .map_err(|_| ()),
+                )
                 .wait()
                 .for_each(drop);
+
+            info!(logger, "shutting down WASM runtime"; "data_source" => name);
         });
 
         RuntimeHost {
             config,
             output: Some(event_receiver),
+            _guard: cancel_sender,
         }
     }
 
