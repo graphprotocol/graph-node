@@ -16,7 +16,7 @@ dataSources:
     abis:
     - name: ExampleContract
       file:
-        /: 'link to abis/ExampleContract.json'
+        /: 'link to ExampleContract.json'
     eventHandlers:
     - event: ExampleEvent(string)
       handler: handleExampleEvent
@@ -35,7 +35,7 @@ dataSources:
     abis:
     - name: ExampleContract2
       file:
-        /: 'link to abis/ExampleContract2.json'
+        /: 'link to ExampleContract2.json'
     eventHandlers:
     - event: ExampleEvent2(string)
       handler: handleExampleEvent2
