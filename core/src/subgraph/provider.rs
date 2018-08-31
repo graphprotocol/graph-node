@@ -112,8 +112,8 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
             )));
         };
 
-        // Remove the subgraph and signal the removal the graphql server and the
-        // runtime manager.
+        // Remove the subgraph and signal the removal to the graphql server and
+        // the runtime manager.
         let id = subgraphs.remove(&name).unwrap();
         let graphql_remove_sink = self.schema_event_sink.clone();
         let host_remove_sink = self.event_sink.clone();
