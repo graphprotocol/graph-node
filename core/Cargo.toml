@@ -16,3 +16,4 @@ ethabi = "6.0"
 graphql-parser = "0.2.0"
 ipfs-api = "0.5.0-alpha2"
 graph-mock = { path = "../mock" }
+walkdir = "2.2.5"
