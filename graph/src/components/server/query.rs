@@ -87,8 +87,8 @@ impl Serialize for GraphQLServerError {
 pub trait GraphQLServer {
     type ServeError;
 
-    /// Sender to which others should write whenever the schema that the server
-    /// should serve changes.
+    /// Sender to which others should write whenever the schemas that the server
+    /// runs against change.
     fn schema_event_sink(&mut self) -> Sender<SchemaEvent>;
 
     /// Creates a new Tokio task that, when spawned, brings up the GraphQL server.
