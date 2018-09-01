@@ -733,6 +733,7 @@ dependencies = [
  "graph-runtime-wasm 0.1.0",
  "graph-server-http 0.1.0",
  "graph-server-json-rpc 0.1.0",
+ "graph-server-websocket 0.1.0",
  "graph-store-postgres 0.1.0",
  "graphql-parser 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "ipfs-api 0.5.0-alpha2 (registry+https://github.com/rust-lang/crates.io-index)",
