@@ -11,6 +11,7 @@ extern crate graph_mock;
 extern crate graph_runtime_wasm;
 extern crate graph_server_http;
 extern crate graph_server_json_rpc;
+extern crate graph_server_websocket;
 extern crate graph_store_postgres;
 extern crate ipfs_api;
 extern crate url;
@@ -31,8 +32,9 @@ use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::SubgraphProvider as IpfsSubgraphProvider;
 use graph_datasource_ethereum::Transport;
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
-use graph_server_http::GraphQLServer as HyperGraphQLServer;
+use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_json_rpc::{subgraph_deploy_request, JsonRpcServer};
+use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
@@ -173,7 +175,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         &logger,
         protected_store.clone(),
     ));
-    let mut graphql_server = HyperGraphQLServer::new(&logger, graphql_runner.clone());
+    let mut graphql_server = GraphQLQueryServer::new(&logger, graphql_runner.clone());
+    let mut subscription_server = GraphQLSubscriptionServer::new(&logger, graphql_runner.clone());
 
     // Create Ethereum adapter
     let (transport_event_loop, transport) = ethereum_ipc
@@ -198,14 +201,16 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     tokio::spawn(forward(&mut subgraph_provider, &runtime_manager).unwrap());
 
     // Forward schema events from the subgraph provider to the GraphQL server.
-    let schema_event_logger = logger.clone();
+    let graphql_server_logger = logger.clone();
     tokio::spawn(
         subgraph_provider
             .take_event_stream()
             .unwrap()
-            .forward(graphql_server.schema_event_sink().sink_map_err(move |e| {
-                error!(schema_event_logger, "Error forwarding schema event {}", e);
-            }))
+            .forward(subscription_server.event_sink().fanout(
+                graphql_server.schema_event_sink().sink_map_err(move |e| {
+                    error!(graphql_server_logger, "Error forwarding schema event {}", e);
+                }),
+            ))
             .and_then(|_| Ok(())),
     );
 
@@ -247,9 +252,17 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         ).expect("`subgraph_deploy` server error");
     }
 
-    // Serve GraphQL server over HTTP. We will listen on port 8000.
-    let http_server = graphql_server
-        .serve(8000)
-        .expect("Failed to start GraphQL server");
-    http_server
+    // Serve GraphQL queries over HTTP. We will listen on port 8000.
+    tokio::spawn(
+        graphql_server
+            .serve(8000)
+            .expect("Failed to start GraphQL query server"),
+    );
+
+    // Serve GraphQL subscriptions over WebSockets. We will listen on port 8001.
+    let websocket_server = subscription_server
+        .serve(8001)
+        .expect("Failed to start GraphQL subscription server");
+
+    websocket_server
 }

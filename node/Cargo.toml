@@ -18,6 +18,7 @@ graph-mock = { path = "../mock" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-http = { path = "../server/http" }
 graph-server-json-rpc = { path = "../server/json-rpc"}
+graph-server-websocket = { path = "../server/websocket" }
 graph-store-postgres = { path = "../store/postgres" }
 
 [dev-dependencies]
