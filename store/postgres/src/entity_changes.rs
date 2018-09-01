@@ -65,10 +65,6 @@ impl EntityChangeListener {
             let conn = Connection::connect(url, TlsMode::None)
                 .expect("failed to connect entity change listener to Postgres");
 
-            // Obtain a notifications iterator from Postgres
-            let notifications = conn.notifications();
-            let iter = notifications.timeout_iter(Duration::from_millis(500));
-
             // Subscribe to the "entity_changes" notification channel in Postgres
             conn.execute("LISTEN entity_changes", &[])
                 .expect("failed to listen to entity changes in Postgres");
@@ -76,42 +72,39 @@ impl EntityChangeListener {
             // Wait until the listener has been started
             barrier.wait();
 
-            let notifications = iter.iterator().filter(|result| match result {
-                Ok(notification) => notification.channel == "entity_changes",
-                _ => true,
-            });
+            // Read notifications until the thread is to be terminated
+            while !terminate.load(Ordering::SeqCst) {
+                // Obtain a notifications iterator from Postgres
+                let notifications = conn.notifications();
 
-            // Read notifications as long as the Postgres connection is alive
-            // or the thread is to be terminated
-            for notification in notifications {
-                // Terminate the thread if desired
-                if terminate.load(Ordering::SeqCst) {
-                    return;
-                }
-
-                match notification {
-                    Ok(notification) => {
-                        // Parse payload into an entity change
-                        let value: serde_json::Value =
-                            serde_json::from_str(notification.payload.as_str())
-                                .expect("Invalid JSON entity change data received from database");
-                        let change: EntityChange = serde_json::from_value(value.clone()).expect(
-                            format!(
-                                "Invalid entity change received from the database: {:?}",
-                                value
-                            ).as_str(),
-                        );
-
-                        // We'll assume here that if sending fails, this means that the
-                        // entity change listener has already been dropped, the receiving
-                        // is gone and we should terminate the listener loop
-                        if sender.clone().send(change).wait().is_err() {
-                            break;
-                        }
+                // Read notifications until there hasn't been one for 500ms
+                for notification in notifications
+                    .timeout_iter(Duration::from_millis(500))
+                    .iterator()
+                    .filter_map(Result::ok)
+                    .filter(|notification| notification.channel == "entity_changes")
+                {
+                    // Terminate the thread if desired
+                    if terminate.load(Ordering::SeqCst) {
+                        return;
                     }
-                    Err(e) => {
-                        error!(logger, "Failed to retrieve notification from Postgres";
-                           "error" => format!("{}", e).as_str());
+
+                    // Parse payload into an entity change
+                    let value: serde_json::Value =
+                        serde_json::from_str(notification.payload.as_str())
+                            .expect("Invalid JSON entity change data received from database");
+                    let change: EntityChange = serde_json::from_value(value.clone()).expect(
+                        format!(
+                            "Invalid entity change received from the database: {:?}",
+                            value
+                        ).as_str(),
+                    );
+
+                    // We'll assume here that if sending fails, this means that the
+                    // entity change listener has already been dropped, the receiving
+                    // is gone and we should terminate the listener loop
+                    if sender.clone().send(change).wait().is_err() {
+                        break;
                     }
                 }
             }
