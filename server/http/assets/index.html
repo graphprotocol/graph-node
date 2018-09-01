@@ -33,6 +33,10 @@
         <script src="//cdn.jsdelivr.net/react/15.4.2/react.min.js"></script>
         <script src="//cdn.jsdelivr.net/react/15.4.2/react-dom.min.js"></script>
 
+        <!-- Pull in the GraphiQL subscriptions fetcher -->
+        <script src="//unpkg.com/subscriptions-transport-ws@0.8.2/browser/client.js"></script>
+        <script src="//unpkg.com/graphiql-subscriptions-fetcher@0.0.2/browser/client.js"></script>
+
         <!--
              These two files can be found in the npm module, however you may wish to
              copy them directly into your environment, or perhaps include them in your
@@ -129,13 +133,26 @@
              });
          }
 
+         let wsUrl = 'ws://'
+                   + window.location.hostname
+                   + ':8001'
+                   + window.location.pathname
+                   + "/subscriptions";
+         var subscriptionsClient = new window.SubscriptionsTransportWs.SubscriptionClient(
+             wsUrl, { reconnect: true }
+         );
+
+         var fetcher = window.GraphiQLSubscriptionsFetcher.graphQLFetcher(
+             subscriptionsClient, graphQLFetcher
+         );
+
          // Render <GraphiQL /> into the body.
          // See the README in the top level of this module to learn more about
          // how you can customize GraphiQL by providing different values or
          // additional child elements.
          ReactDOM.render(
              React.createElement(GraphiQL, {
-                 fetcher: graphQLFetcher,
+                 fetcher: fetcher,
                  query: parameters.query,
                  variables: parameters.variables,
                  operationName: parameters.operationName,
