@@ -1,12 +1,11 @@
-use graph::serde_json;
-use graph::tokio::prelude::*;
 use http::status::StatusCode;
 use hyper::{Body, Response};
 use serde::ser::*;
 
 use graph::components::server::query::GraphQLServerError;
 use graph::data::query::QueryResult;
-use graph_graphql::prelude::SerializableValue;
+use graph::serde_json;
+use graph::tokio::prelude::*;
 
 /// Future for HTTP responses to GraphQL query requests.
 pub struct GraphQLResponse {
@@ -45,19 +44,7 @@ impl Serialize for GraphQLResponse {
         S: Serializer,
     {
         match self.result {
-            Ok(ref result) => {
-                let mut map = serializer.serialize_map(None)?;
-
-                if let Some(ref data) = result.data {
-                    map.serialize_entry("data", &SerializableValue(&data))?;
-                }
-
-                if let Some(ref errors) = result.errors {
-                    map.serialize_entry("errors", errors)?;
-                }
-
-                map.end()
-            }
+            Ok(ref result) => result.serialize(serializer),
             Err(ref e) => {
                 let mut map = serializer.serialize_map(Some(1))?;
                 let errors = vec![e];
