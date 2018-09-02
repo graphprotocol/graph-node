@@ -56,6 +56,7 @@ pub mod prelude {
     pub use components::server::admin::JsonRpcServer;
     pub use components::server::query::GraphQLServer;
     pub use components::server::subscription::SubscriptionServer;
+    pub use components::server::SubgraphRegistry;
     pub use components::store::{
         BasicStore, EntityChange, EntityChangeOperation, EntityChangeStream, EventSource, Store,
         StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange, SubgraphEntityPair,
