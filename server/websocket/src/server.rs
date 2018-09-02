@@ -158,10 +158,10 @@ where
     Q: GraphQLRunner + Sized + 'static,
 {
     fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()> + Send> {
-        let error_logger = self.logger.clone();
+        let logger = self.logger.clone();
         Box::new(self.schema_event_sink.clone().sink_map_err(move |e| {
             error!(
-                error_logger,
+                logger,
                 "Failed to send schema event to subscription server: {}", e
             )
         }))
