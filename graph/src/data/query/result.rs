@@ -1,6 +1,8 @@
 use graphql_parser::query as q;
+use serde::ser::*;
 
 use super::error::{QueryError, QueryExecutionError};
+use data::graphql::SerializableValue;
 
 /// The result of running a query, if successful.
 #[derive(Debug)]
@@ -25,5 +27,24 @@ impl From<QueryExecutionError> for QueryResult {
         let mut result = Self::new(None);
         result.errors = Some(vec![QueryError::from(e)]);
         result
+    }
+}
+
+impl Serialize for QueryResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(None)?;
+
+        if let Some(ref data) = self.data {
+            map.serialize_entry("data", &SerializableValue(&data))?;
+        }
+
+        if let Some(ref errors) = self.errors {
+            map.serialize_entry("errors", &errors)?;
+        }
+
+        map.end()
     }
 }

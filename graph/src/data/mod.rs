@@ -12,3 +12,6 @@ pub mod store;
 
 /// Data types for dealing with GraphQL subscriptions.
 pub mod subscription;
+
+/// Data types for dealing with GraphQL values.
+pub mod graphql;
