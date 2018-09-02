@@ -67,6 +67,7 @@ pub mod prelude {
     };
     pub use components::{EventConsumer, EventProducer};
 
+    pub use data::graphql::SerializableValue;
     pub use data::query::{
         Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue, QueryVariables,
     };
