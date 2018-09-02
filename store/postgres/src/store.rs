@@ -336,6 +336,8 @@ impl BasicStore for Store {
 
 impl StoreTrait for Store {
     fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+        debug!(self.logger, "Subscribe"; "entities" => format!("{:?}", entities));
+
         let subscriptions = self.subscriptions.clone();
 
         // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions
