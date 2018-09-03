@@ -18,11 +18,9 @@ pub struct EntityChangeListener {
 }
 
 impl EntityChangeListener {
-    pub fn new(url: String, logger: &slog::Logger) -> Self {
-        let logger = logger.new(o!("component" => "EntityChangeListener"));
-
+    pub fn new(url: String) -> Self {
         // Listen to Postgres notifications in a worker thread
-        let (receiver, worker_handle, terminate_worker, worker_barrier) = Self::listen(url, logger);
+        let (receiver, worker_handle, terminate_worker, worker_barrier) = Self::listen(url);
 
         EntityChangeListener {
             output: Some(receiver),
@@ -43,7 +41,6 @@ impl EntityChangeListener {
 
     fn listen(
         url: String,
-        logger: slog::Logger,
     ) -> (
         Receiver<EntityChange>,
         thread::JoinHandle<()>,
