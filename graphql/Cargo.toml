@@ -3,12 +3,14 @@ name = "graph-graphql"
 version = "0.1.0"
 
 [dependencies]
+failure = "0.1"
 futures = "0.1.21"
 graph = { path = "../graph" }
 graphql-parser = "0.2.0"
 indexmap = "1.0"
 Inflector = "0.11.3"
 serde = "1.0"
+serde_derive = "1.0"
 
 [dev-dependencies]
 pretty_assertions = "0.5.1"
