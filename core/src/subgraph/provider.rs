@@ -5,6 +5,7 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 
 use graph::data::subgraph::SubgraphProviderError;
 use graph::prelude::{SubgraphProvider as SubgraphProviderTrait, *};
+use graph_graphql::prelude::validate_schema;
 
 pub struct SubgraphProvider<L> {
     _logger: slog::Logger,
@@ -58,6 +59,15 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
         Box::new(
             SubgraphManifest::resolve(name.clone(), Link { link }, self.resolver.clone())
                 .map_err(SubgraphProviderError::ResolveError)
+                .and_then(
+                    // Validate the subgraph schema before deploying the subgraph
+                    |subgraph| match validate_schema(&subgraph.schema.document) {
+                        Err(e) => future::err::<_, SubgraphProviderError>(
+                            SubgraphProviderError::SchemaValidationError(e),
+                        ),
+                        _ => future::ok::<_, _>(subgraph),
+                    },
+                )
                 .and_then(move |mut subgraph| {
                     subgraph
                         .schema
