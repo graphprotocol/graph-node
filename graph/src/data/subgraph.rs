@@ -21,6 +21,9 @@ pub enum SubgraphProviderError {
     /// Occurs when attempting to remove a subgraph that's not hosted.
     #[fail(display = "subgraph not found: {}", _0)]
     NotFound(String),
+    /// Occurs when a subgraph's GraphQL schema is invalid.
+    #[fail(display = "GraphQL schema error: {}", _0)]
+    SchemaValidationError(failure::Error),
 }
 
 #[derive(Fail, Debug)]
