@@ -106,8 +106,8 @@ where
                 println!("IO Error: {}", e);
             })
             .for_each(move |stream| {
-                let conn_logger = logger.clone();
-                let conn_runner = graphql_runner.clone();
+                let logger = logger.clone();
+                let graphql_runner = graphql_runner.clone();
 
                 // Clone subgraph registry to pass it on to connections
                 let subgraphs = subgraphs.clone();
@@ -127,23 +127,28 @@ where
                         String::from("Sec-WebSocket-Protocol"),
                         String::from("graphql-ws"),
                     )]))
-                }).map_err(|e| {
-                    println!("WS error: {:?}", e);
-                })
-                    .and_then(move |ws_stream| {
-                        // Obtain the subgraph ID or name that we resolved the request to
-                        let subgraph = subgraph_id_or_name.lock().unwrap().clone().unwrap();
+                }).then(move |result| {
+                    match result {
+                        Ok(ws_stream) => {
+                            // Obtain the subgraph ID or name that we resolved the request to
+                            let subgraph = subgraph_id_or_name.lock().unwrap().clone().unwrap();
 
-                        // Spawn a GraphQL over WebSocket connection
-                        let service = GraphQlConnection::new(
-                            &conn_logger,
-                            subgraphs.clone(),
-                            subgraph,
-                            ws_stream,
-                            conn_runner.clone(),
-                        );
-                        tokio::spawn(service.into_future()).into_future()
-                    })
+                            // Spawn a GraphQL over WebSocket connection
+                            let service = GraphQlConnection::new(
+                                &logger,
+                                subgraphs.clone(),
+                                subgraph,
+                                ws_stream,
+                                graphql_runner.clone(),
+                            );
+                            tokio::spawn(service.into_future()).into_future()
+                        }
+                        Err(e) => {
+                            warn!(logger, "Failed to establish WebSocket connection: {}", e);
+                            future::ok(())
+                        }
+                    }
+                })
             })
             .map_err(|e| {
                 println!("Error: {:?}", e);
