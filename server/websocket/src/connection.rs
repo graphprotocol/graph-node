@@ -1,9 +1,9 @@
 use futures::future::IntoFuture;
 use futures::stream::SplitStream;
-use futures::sync::mpsc;
+use futures::sync::{mpsc, oneshot};
 use graphql_parser::parse_query;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use tokio_tungstenite::tungstenite::{Error as WsError, Message as WsMessage};
 use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;
@@ -119,9 +119,9 @@ where
         subgraph: String,
         graphql_runner: Arc<Q>,
     ) -> impl Future<Item = (), Error = WsError> {
-        // Set up a mapping of subscription IDs to GraphQL subscriptions
-        let operations: Arc<Mutex<HashMap<String, Subscription>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        // Set up a mapping of operation IDs to oneshot senders that
+        // can terminate each operation
+        let mut operations: HashMap<String, oneshot::Sender<()>> = HashMap::new();
 
         // Helper function to send outgoing messages
         let send_message = |sink: &mpsc::UnboundedSender<WsMessage>, msg: OutgoingMessage| {
@@ -166,29 +166,26 @@ where
                 // When receiving a stop request
                 Stop { id } => {
                     // Remove the operation with this ID from the known operations
-                    if let None = operations.lock().unwrap().remove(&id) {
-                        return send_error_string(
+                    match operations.remove(&id) {
+                        Some(terminator) => {
+                            // Cancel the subscription result stream
+                            terminator.send(()).unwrap();
+
+                            // Send a GQL_COMPLETE to indicate the operation is been completed
+                            send_message(&msg_sink, Complete { id: id.clone() })
+                        }
+                        None => send_error_string(
                             &msg_sink,
                             id.clone(),
                             format!("Unknown operation ID: {}", id),
-                        );
+                        ),
                     }
-
-                    // TODO: Close any streams we need to close, without terminating the
-                    // connection itself.
-                    //
-                    // How can we achieve this? Should we use a close channel and then
-                    // `select` between the query result stream and the close oneshot
-                    // to terminate the subscription?
-
-                    // Send a GQL_COMPLETE to indicate the operation is been completed
-                    send_message(&msg_sink, Complete { id: id.clone() })
                 }
 
                 // When receiving a start request
                 Start { id, payload } => {
                     // Respond with a GQL_ERROR if we already have an operation with this ID
-                    if operations.lock().unwrap().contains_key(&id) {
+                    if operations.contains_key(&id) {
                         return send_error_string(
                             &msg_sink,
                             id.clone(),
@@ -232,11 +229,11 @@ where
                         },
                     };
 
-                    // Remember this subscription
-                    operations
-                        .lock()
-                        .unwrap()
-                        .insert(id.clone(), subscription.clone());
+                    // Create a oneshot channel to terminate the subscription later
+                    let (terminator, terminated) = oneshot::channel();
+
+                    // Remember the terminator for this subscription
+                    operations.insert(id.clone(), terminator);
 
                     // Execute the GraphQL subscription
                     let graphql_runner = graphql_runner.clone();
@@ -245,35 +242,40 @@ where
                     let result_id = id.clone();
                     let err_id = id.clone();
                     tokio::spawn(
-                        graphql_runner
-                            .run_subscription(subscription)
-                            .map_err(move |e| {
-                                // Send errors back to the client as GQL_DATA
-                                match e {
-                                    SubscriptionError::GraphQLError(e) => {
-                                        let result = QueryResult::from(e);
-                                        let msg = OutgoingMessage::from_query_result(
-                                            err_id.clone(),
-                                            result,
-                                        );
-                                        error_sink.unbounded_send(msg.into()).unwrap();
-                                    }
-                                };
-                            })
-                            .and_then(move |result| {
-                                // Send results back to the client as GQL_DATA
-                                result
-                                    .stream
-                                    .map(move |result| {
-                                        OutgoingMessage::from_query_result(
-                                            result_id.clone(),
-                                            result,
-                                        )
+                        terminated
+                            .then(|_| Ok(()))
+                            .select(
+                                graphql_runner
+                                    .run_subscription(subscription)
+                                    .map_err(move |e| {
+                                        // Send errors back to the client as GQL_DATA
+                                        match e {
+                                            SubscriptionError::GraphQLError(e) => {
+                                                let result = QueryResult::from(e);
+                                                let msg = OutgoingMessage::from_query_result(
+                                                    err_id.clone(),
+                                                    result,
+                                                );
+                                                error_sink.unbounded_send(msg.into()).unwrap();
+                                            }
+                                        };
                                     })
-                                    .map(WsMessage::from)
-                                    .forward(result_sink.sink_map_err(|_| ()))
-                            })
-                            .and_then(|_| Ok(())),
+                                    .and_then(move |result| {
+                                        // Send results back to the client as GQL_DATA
+                                        result
+                                            .stream
+                                            .map(move |result| {
+                                                OutgoingMessage::from_query_result(
+                                                    result_id.clone(),
+                                                    result,
+                                                )
+                                            })
+                                            .map(WsMessage::from)
+                                            .forward(result_sink.sink_map_err(|_| ()))
+                                    })
+                                    .and_then(|_| Ok(())),
+                            )
+                            .then(|_| Ok(())),
                     );
 
                     Ok(())
