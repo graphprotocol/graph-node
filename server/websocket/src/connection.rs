@@ -25,8 +25,12 @@ struct StartPayload {
 enum IncomingMessage {
     #[serde(rename = "connection_init")]
     ConnectionInit { payload: Option<serde_json::Value> },
+    #[serde(rename = "connection_terminate")]
+    ConnectionTerminate,
     #[serde(rename = "start")]
     Start { id: String, payload: StartPayload },
+    #[serde(rename = "stop")]
+    Stop { id: String },
 }
 
 impl IncomingMessage {
@@ -50,6 +54,8 @@ enum OutgoingMessage {
     Error { id: String, payload: String },
     #[serde(rename = "data")]
     Data { id: String, payload: QueryResult },
+    #[serde(rename = "complete")]
+    Complete { id: String },
 }
 
 impl OutgoingMessage {
@@ -106,7 +112,7 @@ where
 
     fn handle_incoming_messages(
         ws_stream: SplitStream<WebSocketStream<S>>,
-        msg_sink: mpsc::UnboundedSender<WsMessage>,
+        mut msg_sink: mpsc::UnboundedSender<WsMessage>,
         logger: Logger,
         id: String,
         subgraphs: Arc<RwLock<SubgraphRegistry<Schema>>>,
@@ -114,7 +120,7 @@ where
         graphql_runner: Arc<Q>,
     ) -> impl Future<Item = (), Error = WsError> {
         // Set up a mapping of subscription IDs to GraphQL subscriptions
-        let subscriptions: Arc<Mutex<HashMap<String, Subscription>>> =
+        let operations: Arc<Mutex<HashMap<String, Subscription>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
         // Helper function to send outgoing messages
@@ -148,10 +154,43 @@ where
                 // Always accept connection init requests
                 ConnectionInit { payload: _ } => send_message(&msg_sink, ConnectionAck),
 
+                // When receiving a connection termination request
+                ConnectionTerminate => {
+                    // Close the message sink
+                    msg_sink.close().unwrap();
+
+                    // TODO: Close any other streams we need to close so that the
+                    // connection is also terminated
+
+                    Ok(())
+                }
+
+                // When receiving a stop request
+                Stop { id } => {
+                    // Remove the operation with this ID from the known operations
+                    if let None = operations.lock().unwrap().remove(&id) {
+                        return send_error_string(
+                            &msg_sink,
+                            id.clone(),
+                            format!("Unknown operation ID: {}", id),
+                        );
+                    }
+
+                    // TODO: Close any streams we need to close, without terminating the
+                    // connection itself.
+                    //
+                    // How can we achieve this? Should we use a close channel and then
+                    // `select` between the query result stream and the close oneshot
+                    // to terminate the subscription?
+
+                    // Send a GQL_COMPLETE to indicate the operation is been completed
+                    send_message(&msg_sink, Complete { id: id.clone() })
+                }
+
                 // When receiving a start request
                 Start { id, payload } => {
                     // Respond with a GQL_ERROR if we already have an operation with this ID
-                    if subscriptions.lock().unwrap().contains_key(&id) {
+                    if operations.lock().unwrap().contains_key(&id) {
                         return send_error_string(
                             &msg_sink,
                             id.clone(),
@@ -194,6 +233,12 @@ where
                             variables: None,
                         },
                     };
+
+                    // Remember this subscription
+                    operations
+                        .lock()
+                        .unwrap()
+                        .insert(id.clone(), subscription.clone());
 
                     // Execute the GraphQL subscription
                     let graphql_runner = graphql_runner.clone();
