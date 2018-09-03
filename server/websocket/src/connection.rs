@@ -159,10 +159,8 @@ where
                     // Close the message sink
                     msg_sink.close().unwrap();
 
-                    // TODO: Close any other streams we need to close so that the
-                    // connection is also terminated
-
-                    Ok(())
+                    // Return an error here to terminate the connection
+                    Err(WsError::ConnectionClosed(None))
                 }
 
                 // When receiving a stop request
