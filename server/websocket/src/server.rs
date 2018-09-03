@@ -93,6 +93,7 @@ where
         port: u16,
     ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
         let logger = self.logger.clone();
+        let error_logger = self.logger.clone();
         let subgraphs = self.subgraphs.clone();
 
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
@@ -102,8 +103,8 @@ where
 
         let task = socket
             .incoming()
-            .map_err(|e| {
-                println!("IO Error: {}", e);
+            .map_err(move |e| {
+                warn!(error_logger, "Connection error: {}", e);
             })
             .for_each(move |stream| {
                 let logger = logger.clone();
@@ -144,14 +145,13 @@ where
                             tokio::spawn(service.into_future()).into_future()
                         }
                         Err(e) => {
+                            // We gracefully skip over failed connection attempts rather
+                            // than tearing down the entire stream
                             warn!(logger, "Failed to establish WebSocket connection: {}", e);
                             future::ok(())
                         }
                     }
                 })
-            })
-            .map_err(|e| {
-                println!("Error: {:?}", e);
             });
 
         Ok(Box::new(task))
