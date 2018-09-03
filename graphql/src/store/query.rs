@@ -166,16 +166,17 @@ pub fn collect_entities_from_query_field(
             if let Some(type_definition) =
                 sast::get_type_definition_from_field_type(schema, field_type)
             {
-                // Check if the field's type is that of an entity
-                //
-                // FIXME: We must check for the `@entity` directive here once we have that,
-                // otherwise the check below will also be true for the root Query and
-                // Subscription objects as well as all filter object types
+                // If the field's type definition is an object type, extract that type
                 if let s::TypeDefinition::Object(object_type) = type_definition {
-                    // Obtain the subgraph ID from the object type
-                    if let Some(subgraph_id) = parse_subgraph_id(object_type) {
-                        // Add the (subgraph_id, entity_name) tuple to the result set
-                        entities.insert((subgraph_id, object_type.name.to_owned()));
+                    // Only collect whether the field's type has an @entity directive
+                    if sast::get_object_type_directive(object_type, String::from("entity"))
+                        .is_some()
+                    {
+                        // Obtain the subgraph ID from the object type
+                        if let Some(subgraph_id) = parse_subgraph_id(object_type) {
+                            // Add the (subgraph_id, entity_name) tuple to the result set
+                            entities.insert((subgraph_id, object_type.name.to_owned()));
+                        }
                     }
 
                     // If the query field has a non-empty selection set, this means we
