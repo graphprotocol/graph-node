@@ -12,7 +12,7 @@ enum GraphQLValue {
 }
 
 /// Variable value for a GraphQL query.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct QueryVariableValue(#[serde(with = "GraphQLValue")] q::Value);
 
 impl Deref for QueryVariableValue {
@@ -42,7 +42,7 @@ impl<'a> From<&'a str> for QueryVariableValue {
 }
 
 /// Variable values for a GraphQL query.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct QueryVariables(HashMap<String, QueryVariableValue>);
 
 impl QueryVariables {
@@ -72,7 +72,7 @@ impl PartialEq for QueryVariables {
 }
 
 /// A GraphQL query as submitted by a client, either directly or through a subscription.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Query {
     pub schema: Schema,
     pub document: q::Document,
