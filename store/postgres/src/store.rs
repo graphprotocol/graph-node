@@ -126,14 +126,17 @@ impl Store {
                 .collect::<Vec<_>>();
 
             let subscriptions = subscriptions.clone();
+            let logger = logger.clone();
 
             // Write change to all matching subscription streams; remove subscriptions
             // whose receiving end has been dropped
             stream::iter_ok::<_, ()>(matches).for_each(move |(id, sender)| {
+                let logger = logger.clone();
                 let subscriptions = subscriptions.clone();
                 sender
                     .send(change.clone())
                     .map_err(move |_| {
+                        debug!(logger, "Unsubscribe"; "id" => &id);
                         subscriptions.write().unwrap().remove(&id);
                     })
                     .and_then(|_| Ok(()))
@@ -142,6 +145,7 @@ impl Store {
     }
 
     fn periodically_clean_up_stale_subscriptions(&mut self) {
+        let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
 
         // Clean up stale subscriptions every 5s
@@ -163,6 +167,7 @@ impl Store {
 
                     // Remove all stale subscriptions
                     for id in stale_ids {
+                        debug!(logger, "Unsubscribe"; "id" => &id);
                         subscriptions.remove(&id);
                     }
 
@@ -336,8 +341,6 @@ impl BasicStore for Store {
 
 impl StoreTrait for Store {
     fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
-        debug!(self.logger, "Subscribe"; "entities" => format!("{:?}", entities));
-
         let subscriptions = self.subscriptions.clone();
 
         // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions
@@ -345,6 +348,10 @@ impl StoreTrait for Store {
         while subscriptions.read().unwrap().contains_key(&id) {
             id = Uuid::new_v4().to_string();
         }
+
+        debug!(self.logger, "Subscribe";
+               "id" => &id,
+               "entities" => format!("{:?}", entities));
 
         // Prepare the new subscription by creating a channel and a subscription object
         let (sender, receiver) = channel(100);
