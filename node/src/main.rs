@@ -95,14 +95,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .help("Ethereum network name (e.g. 'mainnet') and Ethereum IPC pipe path, separated by a ':'"),
         )
         .arg(
-            Arg::with_name("ethereum-network-name")
-                .takes_value(true)
-                .default_value("mainnet")
-                .long("ethereum-network-name")
-                .value_name("NAME")
-                .help("Ethereum network name (e.g. mainnet or ropsten)"),
-        )
-        .arg(
             Arg::with_name("ipfs")
                 .takes_value(true)
                 .required(true)
