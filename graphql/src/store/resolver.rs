@@ -13,14 +13,28 @@ use schema::ast as sast;
 use store::query::{collect_entities_from_query_field, parse_subgraph_id};
 
 /// A resolver that fetches entities from a `Store`.
-#[derive(Clone)]
-pub struct StoreResolver {
+pub struct StoreResolver<S> {
     logger: Logger,
-    store: Arc<Mutex<Store>>,
+    store: Arc<Mutex<S>>,
 }
 
-impl StoreResolver {
-    pub fn new(logger: &Logger, store: Arc<Mutex<Store>>) -> Self {
+impl<S> Clone for StoreResolver<S>
+where
+    S: Store,
+{
+    fn clone(&self) -> Self {
+        StoreResolver {
+            logger: self.logger.clone(),
+            store: self.store.clone(),
+        }
+    }
+}
+
+impl<S> StoreResolver<S>
+where
+    S: Store,
+{
+    pub fn new(logger: &Logger, store: Arc<Mutex<S>>) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,
@@ -178,7 +192,10 @@ impl StoreResolver {
     }
 }
 
-impl Resolver for StoreResolver {
+impl<S> Resolver for StoreResolver<S>
+where
+    S: Store,
+{
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
