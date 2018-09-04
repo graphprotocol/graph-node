@@ -62,10 +62,8 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
                 .and_then(
                     // Validate the subgraph schema before deploying the subgraph
                     |subgraph| match validate_schema(&subgraph.schema.document) {
-                        Err(e) => future::err::<_, SubgraphProviderError>(
-                            SubgraphProviderError::SchemaValidationError(e),
-                        ),
-                        _ => future::ok::<_, _>(subgraph),
+                        Err(e) => Err(SubgraphProviderError::SchemaValidationError(e)),
+                        _ => Ok(subgraph),
                     },
                 )
                 .and_then(move |mut subgraph| {
