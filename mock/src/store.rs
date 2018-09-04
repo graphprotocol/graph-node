@@ -59,23 +59,22 @@ impl BasicStore for MockStore {
 }
 
 impl BlockStore for MockStore {
-    fn add_network_if_missing(&self, _network_name: &str) -> Result<(), Error> {
+    fn add_network_if_missing(&self, _: &str) -> Result<(), Error> {
         unimplemented!()
     }
 
-    fn upsert_blocks(
+    fn upsert_blocks<'a, B>(
         &self,
-        _network_name: &str,
-        _blocks: &[Block<Transaction>],
-    ) -> Result<(), Error> {
+        _: &str,
+        _: B,
+    ) -> Box<Future<Item = (), Error = Error> + Send + 'a>
+    where
+        B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a,
+    {
         unimplemented!()
     }
 
-    fn attempt_head_update(
-        &self,
-        _network_name: &str,
-        _ancestor_count: u64,
-    ) -> Result<Vec<H256>, Error> {
+    fn attempt_head_update(&self, _: &str, _: u64) -> Result<Vec<H256>, Error> {
         unimplemented!()
     }
 }
@@ -107,23 +106,22 @@ impl BasicStore for FakeStore {
 }
 
 impl BlockStore for FakeStore {
-    fn add_network_if_missing(&self, _network_name: &str) -> Result<(), Error> {
+    fn add_network_if_missing(&self, _: &str) -> Result<(), Error> {
         panic!("called FakeStore")
     }
 
-    fn upsert_blocks(
+    fn upsert_blocks<'a, B>(
         &self,
-        _network_name: &str,
-        _blocks: &[Block<Transaction>],
-    ) -> Result<(), Error> {
+        _: &str,
+        _: B,
+    ) -> Box<Future<Item = (), Error = Error> + Send + 'a>
+    where
+        B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a,
+    {
         panic!("called FakeStore")
     }
 
-    fn attempt_head_update(
-        &self,
-        _network_name: &str,
-        _ancestor_count: u64,
-    ) -> Result<Vec<H256>, Error> {
+    fn attempt_head_update(&self, _: &str, _: u64) -> Result<Vec<H256>, Error> {
         panic!("called FakeStore")
     }
 }
