@@ -21,6 +21,7 @@ pub enum QueryExecutionError {
     InvalidArgumentError(Pos, String, q::Value),
     MissingArgumentError(Pos, String),
     UnknownField(Pos, String, String),
+    EmptyQuery,
     MultipleSubscriptionFields,
 }
 
@@ -72,6 +73,7 @@ impl fmt::Display for QueryExecutionError {
             QueryExecutionError::UnknownField(_, t, s) => {
                 write!(f, "Type \"{}\" has no field \"{}\"", t, s)
             }
+            QueryExecutionError::EmptyQuery => write!(f, "The query is empty"),
             QueryExecutionError::MultipleSubscriptionFields => write!(
                 f,
                 "Only a single top-level field is allowed in subscriptions"
