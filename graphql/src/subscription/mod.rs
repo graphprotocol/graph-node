@@ -85,7 +85,9 @@ where
         None,
     );
 
-    if grouped_field_set.len() != 1 {
+    if grouped_field_set.len() == 0 {
+        return Err(SubscriptionError::from(QueryExecutionError::EmptyQuery));
+    } else if grouped_field_set.len() > 1 {
         return Err(SubscriptionError::from(
             QueryExecutionError::MultipleSubscriptionFields,
         ));
