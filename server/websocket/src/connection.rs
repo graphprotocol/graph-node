@@ -12,24 +12,20 @@ use graph::prelude::*;
 use graph::serde_json;
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct StartPayload {
     query: String,
     variables: Option<serde_json::Value>,
-    #[serde(rename = "operationName")]
     operation_name: Option<String>,
 }
 
 /// GraphQL/WebSocket message received from a client.
 #[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", rename_all = "snake_case")]
 enum IncomingMessage {
-    #[serde(rename = "connection_init")]
     ConnectionInit { payload: Option<serde_json::Value> },
-    #[serde(rename = "connection_terminate")]
     ConnectionTerminate,
-    #[serde(rename = "start")]
     Start { id: String, payload: StartPayload },
-    #[serde(rename = "stop")]
     Stop { id: String },
 }
 
@@ -46,15 +42,11 @@ impl IncomingMessage {
 
 /// GraphQL/WebSocket message to be sent to the client.
 #[derive(Debug, Serialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", rename_all = "snake_case")]
 enum OutgoingMessage {
-    #[serde(rename = "connection_ack")]
     ConnectionAck,
-    #[serde(rename = "error")]
     Error { id: String, payload: String },
-    #[serde(rename = "data")]
     Data { id: String, payload: QueryResult },
-    #[serde(rename = "complete")]
     Complete { id: String },
 }
 
