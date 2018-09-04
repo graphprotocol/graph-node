@@ -4,10 +4,19 @@ use serde::ser::*;
 use super::error::{QueryError, QueryExecutionError};
 use data::graphql::SerializableValue;
 
+fn serialize_data<S>(data: &Option<q::Value>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    SerializableValue(data.as_ref().unwrap_or(&q::Value::Null)).serialize(serializer)
+}
+
 /// The result of running a query, if successful.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct QueryResult {
+    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "serialize_data")]
     pub data: Option<q::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub errors: Option<Vec<QueryError>>,
 }
 
@@ -27,24 +36,5 @@ impl From<QueryExecutionError> for QueryResult {
         let mut result = Self::new(None);
         result.errors = Some(vec![QueryError::from(e)]);
         result
-    }
-}
-
-impl Serialize for QueryResult {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut map = serializer.serialize_map(None)?;
-
-        if let Some(ref data) = self.data {
-            map.serialize_entry("data", &SerializableValue(&data))?;
-        }
-
-        if let Some(ref errors) = self.errors {
-            map.serialize_entry("errors", &errors)?;
-        }
-
-        map.end()
     }
 }
