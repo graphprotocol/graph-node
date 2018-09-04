@@ -15,22 +15,6 @@ use web3::Transport;
 
 use graph::prelude::*;
 
-#[derive(Clone, Debug)]
-pub struct BlockIngestorConfig<S, T>
-where
-    S: BlockStore + Send + 'static,
-    T: BatchTransport + Send + Sync + Debug + Clone + 'static,
-    <T as Transport>::Out: Send,
-    <T as BatchTransport>::Batch: Send,
-{
-    pub store: Arc<Mutex<S>>,
-    pub network_name: String,
-    pub web3_transport: T,
-    pub ancestor_count: u64,
-    pub logger: slog::Logger,
-    pub polling_interval: Duration,
-}
-
 pub struct BlockIngestor<S, T>
 where
     S: BlockStore + Send + 'static,
@@ -53,17 +37,14 @@ where
     <T as Transport>::Out: Send,
     <T as BatchTransport>::Batch: Send,
 {
-    pub fn spawn(config: BlockIngestorConfig<S, T>) -> Result<(), Error> {
-        // Extract config params
-        let BlockIngestorConfig {
-            store,
-            network_name,
-            web3_transport,
-            ancestor_count,
-            logger,
-            polling_interval,
-        } = config;
-
+    pub fn spawn(
+        store: Arc<Mutex<S>>,
+        network_name: String,
+        web3_transport: T,
+        ancestor_count: u64,
+        logger: slog::Logger,
+        polling_interval: Duration,
+    ) -> Result<(), Error> {
         // Add a head block pointer for this network name if one does not already exist
         store.lock().unwrap().add_network_if_missing(&network_name)?;
 
