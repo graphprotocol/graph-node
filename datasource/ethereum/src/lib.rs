@@ -1,4 +1,3 @@
-extern crate diesel;
 extern crate ethabi;
 extern crate ethereum_types;
 #[macro_use]
