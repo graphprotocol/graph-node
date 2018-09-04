@@ -30,7 +30,7 @@ use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::SubgraphProvider as IpfsSubgraphProvider;
-use graph_datasource_ethereum::Transport;
+use graph_datasource_ethereum::{EventLoopHandle, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_json_rpc::{subgraph_deploy_request, JsonRpcServer};
@@ -73,8 +73,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .required_unless_one(&["ethereum-ws", "ethereum-ipc"])
                 .conflicts_with_all(&["ethereum-ws", "ethereum-ipc"])
                 .long("ethereum-rpc")
-                .value_name("URL")
-                .help("Ethereum RPC endpoint"),
+                .value_name("NETWORK_NAME:URL")
+                .help("Ethereum network name (e.g. 'mainnet') and Ethereum RPC endpoint URL, separated by a ':'"),
         )
         .arg(
             Arg::with_name("ethereum-ws")
@@ -82,8 +82,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .required_unless_one(&["ethereum-rpc", "ethereum-ipc"])
                 .conflicts_with_all(&["ethereum-rpc", "ethereum-ipc"])
                 .long("ethereum-ws")
-                .value_name("URL")
-                .help("Ethereum WebSocket endpoint"),
+                .value_name("NETWORK_NAME:URL")
+                .help("Ethereum network name (e.g. 'mainnet') and Ethereum WebSocket endpoint URL, separated by a ':'"),
         )
         .arg(
             Arg::with_name("ethereum-ipc")
@@ -91,8 +91,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .required_unless_one(&["ethereum-rpc", "ethereum-ws"])
                 .conflicts_with_all(&["ethereum-rpc", "ethereum-ws"])
                 .long("ethereum-ipc")
-                .value_name("FILE")
-                .help("Ethereum IPC pipe"),
+                .value_name("NETWORK_NAME:FILE")
+                .help("Ethereum network name (e.g. 'mainnet') and Ethereum IPC pipe path, separated by a ':'"),
         )
         .arg(
             Arg::with_name("ethereum-network-name")
@@ -129,7 +129,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let ethereum_rpc = matches.value_of("ethereum-rpc");
     let ethereum_ipc = matches.value_of("ethereum-ipc");
     let ethereum_ws = matches.value_of("ethereum-ws");
-    let ethereum_network_name = matches.value_of("ethereum-network-name").unwrap();
 
     // Parse IPFS address
     let ipfs_socket_addr = SocketAddr::from_str(matches.value_of("ipfs").unwrap())
@@ -189,10 +188,10 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let mut subscription_server = GraphQLSubscriptionServer::new(&logger, graphql_runner.clone());
 
     // Create Ethereum adapter
-    let (transport_event_loop, transport) = ethereum_ipc
-        .map(Transport::new_ipc)
-        .or(ethereum_ws.map(Transport::new_ws))
-        .or(ethereum_rpc.map(Transport::new_rpc))
+    let (ethereum_network_name, (transport_event_loop, transport)) = ethereum_ipc
+        .map(|s| new_transport(s, &logger, Transport::new_ipc))
+        .or(ethereum_ws.map(|s| new_transport(s, &logger, Transport::new_ws)))
+        .or(ethereum_rpc.map(|s| new_transport(s, &logger, Transport::new_rpc)))
         .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
 
     // Create Ethereum block ingestor
@@ -297,4 +296,36 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
 
     future::empty()
+}
+
+/// Parses a connection string, returns a network name and a Transport.
+fn new_transport<'a, C>(
+    s: &'a str,
+    logger: &Logger,
+    constructor: C,
+) -> (&'a str, (EventLoopHandle, Transport))
+where
+    C: FnOnce(&str) -> (EventLoopHandle, Transport),
+{
+    // Check for common mistakes
+    if s.starts_with("wss://") || s.starts_with("http://") || s.starts_with("https://") {
+        warn!(logger, "Is your Ethereum connection string missing a network name? Try 'mainnet:' + the connection URL.");
+    }
+
+    // Parse string (format is "network_name:url_or_path")
+    let split_at = s.find(':').expect(
+        "A network name must be provided alongside the Ethereum node location. Try 'mainnet:URL'.",
+    );
+    let (name, loc_with_delim) = s.split_at(split_at);
+    let loc = &loc_with_delim[1..];
+
+    if name.is_empty() {
+        panic!("Ethereum network name cannot be an empty string");
+    }
+
+    if loc.is_empty() {
+        panic!("Ethereum connection location cannot be an empty string");
+    }
+
+    (name, constructor(loc))
 }
