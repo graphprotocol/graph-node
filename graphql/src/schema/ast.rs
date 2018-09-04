@@ -46,13 +46,7 @@ pub fn get_root_query_type(schema: &Document) -> Option<&ObjectType> {
         .definitions
         .iter()
         .filter_map(|d| match d {
-            Definition::TypeDefinition(TypeDefinition::Object(t)) => {
-                if t.name == "Query".to_string() {
-                    Some(t)
-                } else {
-                    None
-                }
-            }
+            Definition::TypeDefinition(TypeDefinition::Object(t)) if t.name == "Query" => Some(t),
             _ => None,
         })
         .peekable()
@@ -65,12 +59,8 @@ pub fn get_root_subscription_type(schema: &Document) -> Option<&ObjectType> {
         .definitions
         .iter()
         .filter_map(|d| match d {
-            Definition::TypeDefinition(TypeDefinition::Object(t)) => {
-                if t.name == "Subscription".to_string() {
-                    Some(t)
-                } else {
-                    None
-                }
+            Definition::TypeDefinition(TypeDefinition::Object(t)) if t.name == "Subscription" => {
+                Some(t)
             }
             _ => None,
         })
