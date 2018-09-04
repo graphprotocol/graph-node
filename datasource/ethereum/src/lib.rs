@@ -15,4 +15,4 @@ mod transport;
 
 pub use self::block_ingestor::BlockIngestor;
 pub use self::ethereum_adapter::{EthereumAdapter, EthereumAdapterConfig};
-pub use self::transport::Transport;
+pub use self::transport::{EventLoopHandle, Transport};

@@ -5,8 +5,9 @@ use web3;
 use web3::transports::http;
 use web3::transports::ipc;
 use web3::transports::ws;
-use web3::transports::EventLoopHandle;
 use web3::RequestId;
+
+pub use web3::transports::EventLoopHandle;
 
 /// Abstraction over the different web3 transports.
 #[derive(Clone, Debug)]
