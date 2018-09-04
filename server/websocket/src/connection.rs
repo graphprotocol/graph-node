@@ -106,13 +106,13 @@ where
         ws_stream: SplitStream<WebSocketStream<S>>,
         mut msg_sink: mpsc::UnboundedSender<WsMessage>,
         logger: Logger,
-        id: String,
+        connection_id: String,
         subgraphs: SubgraphRegistry<Schema>,
         subgraph: String,
         graphql_runner: Arc<Q>,
     ) -> impl Future<Item = (), Error = WsError> {
         // Set up a mapping of operation IDs to oneshot senders that
-        // can terminate each operation
+        // can stop each operation
         let mut operations: HashMap<String, oneshot::Sender<()>> = HashMap::new();
 
         // Helper function to send outgoing messages
@@ -133,13 +133,13 @@ where
             use self::OutgoingMessage::*;
 
             debug!(logger, "Received message";
-                   "connection" => &id,
+                   "connection" => &connection_id,
                    "msg" => format!("{}", ws_msg).as_str());
 
             let msg = IncomingMessage::from_ws_message(ws_msg.clone())?;
 
             debug!(logger, "GraphQL/WebSocket message";
-                   "connection" => &id,
+                   "connection" => &connection_id,
                    "msg" => format!("{:?}", msg).as_str());
 
             match msg {
@@ -159,9 +159,9 @@ where
                 Stop { id } => {
                     // Remove the operation with this ID from the known operations
                     match operations.remove(&id) {
-                        Some(terminator) => {
+                        Some(stopper) => {
                             // Cancel the subscription result stream
-                            terminator.send(()).unwrap();
+                            drop(stopper);
 
                             // Send a GQL_COMPLETE to indicate the operation is been completed
                             send_message(&msg_sink, Complete { id: id.clone() })
@@ -220,11 +220,15 @@ where
                         },
                     };
 
-                    // Create a oneshot channel to terminate the subscription later
-                    let (terminator, terminated) = oneshot::channel();
+                    // Create a oneshot channel to stop the subscription later
+                    let (stopper, stopped) = oneshot::channel();
 
-                    // Remember the terminator for this subscription
-                    operations.insert(id.clone(), terminator);
+                    // Remember the stopper for this subscription
+                    operations.insert(id.clone(), stopper);
+
+                    debug!(logger, "Start operation";
+                           "connection" => &connection_id,
+                           "id" => &id);
 
                     // Execute the GraphQL subscription
                     let graphql_runner = graphql_runner.clone();
@@ -232,9 +236,17 @@ where
                     let result_sink = msg_sink.clone();
                     let result_id = id.clone();
                     let err_id = id.clone();
+                    let stopped_connection_id = connection_id.clone();
+                    let stopped_id = id.clone();
+                    let stopped_logger = logger.clone();
                     tokio::spawn(
-                        terminated
-                            .then(|_| Ok(()))
+                        stopped
+                            .then(move |_| {
+                                debug!(stopped_logger, "Stop operation";
+                                       "connection" => stopped_connection_id,
+                                       "id" => stopped_id);
+                                Ok(())
+                            })
                             .select(
                                 graphql_runner
                                     .run_subscription(subscription)
