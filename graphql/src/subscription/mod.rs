@@ -31,8 +31,7 @@ where
     info!(options.logger, "Execute subscription");
 
     // Obtain the only operation of the subscription (fail if there is none or more than one)
-    let operation =
-        qast::get_operation(&subscription.query.document, None).map_err(SubscriptionError::from)?;
+    let operation = qast::get_operation(&subscription.query.document, None)?;
 
     // Create an introspection type store and resolver
     let introspection_schema = introspection_schema();
@@ -74,9 +73,8 @@ where
     R1: Resolver,
     R2: Resolver,
 {
-    let subscription_type = sast::get_root_subscription_type(&ctx.schema.document).ok_or(
-        SubscriptionError::from(QueryExecutionError::NoRootSubscriptionObjectType),
-    )?;
+    let subscription_type = sast::get_root_subscription_type(&ctx.schema.document)
+        .ok_or(QueryExecutionError::NoRootSubscriptionObjectType)?;
 
     let grouped_field_set = collect_fields(
         ctx.clone(),
@@ -95,8 +93,7 @@ where
 
     let fields = grouped_field_set.get_index(0).unwrap();
     let field = fields.1[0];
-    let argument_values = coerce_argument_values(ctx.clone(), subscription_type, field)
-        .map_err(SubscriptionError::from)?;
+    let argument_values = coerce_argument_values(ctx.clone(), subscription_type, field)?;
 
     resolve_field_stream(ctx, subscription_type, field, argument_values)
 }
