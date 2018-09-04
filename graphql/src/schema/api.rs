@@ -305,14 +305,16 @@ fn add_query_type(
     object_types: &Vec<&ObjectType>,
     interface_types: &Vec<&InterfaceType>,
 ) -> Result<(), APISchemaError> {
-    if ast::get_named_type(schema, &"Query".to_string()).is_some() {
-        return Err(APISchemaError::TypeExists("Query".to_owned()));
+    let type_name = String::from("Query");
+
+    if ast::get_named_type(schema, &type_name).is_some() {
+        return Err(APISchemaError::TypeExists(type_name));
     }
 
     let typedef = TypeDefinition::Object(ObjectType {
         position: Pos::default(),
         description: None,
-        name: "Query".to_string(),
+        name: type_name,
         implements_interfaces: vec![],
         directives: vec![],
         fields: object_types
@@ -333,14 +335,16 @@ fn add_subscription_type(
     object_types: &Vec<&ObjectType>,
     interface_types: &Vec<&InterfaceType>,
 ) -> Result<(), APISchemaError> {
-    if ast::get_named_type(schema, &"Subscription".to_string()).is_some() {
-        return Err(APISchemaError::TypeExists("Subscription".to_owned()));
+    let type_name = String::from("Subscription");
+
+    if ast::get_named_type(schema, &type_name).is_some() {
+        return Err(APISchemaError::TypeExists(type_name));
     }
 
     let typedef = TypeDefinition::Object(ObjectType {
         position: Pos::default(),
         description: None,
-        name: "Subscription".to_string(),
+        name: type_name,
         implements_interfaces: vec![],
         directives: vec![],
         fields: object_types
