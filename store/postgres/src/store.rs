@@ -258,24 +258,23 @@ impl BasicStore for Store {
         use db_schema::entities::dsl::*;
 
         let conn = self.conn.lock().unwrap();
-        conn
-            .transaction::<usize, result::Error, _>(|| {
-                // Set session variable to store the source of the event
-                select(set_config(
-                    "vars.current_event_source",
-                    input_event_source.to_string(),
-                    false,
-                )).execute(&*conn).unwrap();
+        conn.transaction::<usize, result::Error, _>(|| {
+            // Set session variable to store the source of the event
+            select(set_config(
+                "vars.current_event_source",
+                input_event_source.to_string(),
+                false,
+            )).execute(&*conn)
+                .unwrap();
 
-                // Delete from DB where rows match the subgraph ID, entity name and ID
-                delete(
-                    entities
-                        .filter(subgraph.eq(&key.subgraph))
-                        .filter(entity.eq(&key.entity))
-                        .filter(id.eq(&key.id)),
-                ).execute(&*conn)
-            })
-            .map(|_| ())
+            // Delete from DB where rows match the subgraph ID, entity name and ID
+            delete(
+                entities
+                    .filter(subgraph.eq(&key.subgraph))
+                    .filter(entity.eq(&key.entity))
+                    .filter(id.eq(&key.id)),
+            ).execute(&*conn)
+        }).map(|_| ())
             .map_err(|_| ())
     }
 
