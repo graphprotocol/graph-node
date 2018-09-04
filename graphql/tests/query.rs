@@ -198,11 +198,14 @@ impl BlockStore for TestStore {
         unimplemented!()
     }
 
-    fn upsert_blocks(
+    fn upsert_blocks<'a, B>(
         &self,
-        _network_name: &str,
-        _blocks: &[Block<Transaction>],
-    ) -> Result<(), Error> {
+        _: &str,
+        _: B,
+    ) -> Box<Future<Item = (), Error = Error> + Send + 'a>
+    where
+        B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a,
+    {
         unimplemented!()
     }
 
