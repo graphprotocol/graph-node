@@ -56,7 +56,7 @@ where
         &q::OperationDefinition::Subscription(ref subscription) => {
             let source_stream = create_source_event_stream(&ctx, subscription)?;
             let response_stream = map_source_to_response_stream(&ctx, subscription, source_stream)?;
-            Ok(SubscriptionResult::new(response_stream))
+            Ok(response_stream)
         }
 
         // Everything else (queries, mutations) is unsupported
