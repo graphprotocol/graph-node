@@ -13,6 +13,6 @@ mod block_ingestor;
 mod ethereum_adapter;
 mod transport;
 
-pub use self::block_ingestor::{BlockIngestor, BlockIngestorConfig};
+pub use self::block_ingestor::BlockIngestor;
 pub use self::ethereum_adapter::{EthereumAdapter, EthereumAdapterConfig};
 pub use self::transport::Transport;
