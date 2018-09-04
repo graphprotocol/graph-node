@@ -75,7 +75,7 @@ where
 
                 self.do_poll().then(move |result| {
                     if let Err(e) = result {
-                        error!(err_logger, "failed to poll for latest block: {:?}", e);
+                        warn!(err_logger, "failed to poll for latest block: {:?}", e);
                     }
 
                     future::ok(())
@@ -109,7 +109,7 @@ where
         let web3 = Web3::new(self.web3_transport.clone());
         web3.eth()
             .block_with_txs(BlockNumber::Latest.into())
-            .map_err(|e| format_err!("could not get latest block from web3: {}", e))
+            .map_err(|e| format_err!("could not get latest block from Ethereum: {}", e))
     }
 
     fn ingest_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
