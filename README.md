@@ -45,7 +45,7 @@ Once you have all the dependencies set up you can run the following:
 ```
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://USERNAME[:PASSWORD]@localhost:5432/adchain-subgraph \
-  --ethereum-ws wss://mainnet.infura.io/_ws \
+  --ethereum-ws mainnet:wss://mainnet.infura.io/_ws \
   --ipfs 127.0.0.1:5001 \
   --subgraph IPFS_HASH
 ```
