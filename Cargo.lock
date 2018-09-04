@@ -685,7 +685,6 @@ dependencies = [
 name = "graph-datasource-ethereum"
 version = "0.1.0"
 dependencies = [
- "diesel 1.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "ethabi 5.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ethereum-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
