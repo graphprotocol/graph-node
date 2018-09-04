@@ -134,6 +134,7 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 ## Contributing
 
 Please check [CONTRIBUTING.md](CONTRIBUTING.md) for development flow and conventions we use.
+Here's [a list of good first issues](https://github.com/graphprotocol/graph-node/labels/good%20first%20issue).
 
 ## License
 
