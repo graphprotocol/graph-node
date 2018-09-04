@@ -37,47 +37,45 @@ where
     <T as Transport>::Out: Send,
     <T as BatchTransport>::Batch: Send,
 {
-    pub fn spawn(
+    pub fn new(
         store: Arc<Mutex<S>>,
         network_name: String,
         web3_transport: T,
         ancestor_count: u64,
         logger: slog::Logger,
         polling_interval: Duration,
-    ) -> Result<(), Error> {
+    ) -> Result<BlockIngestor<S, T>, Error> {
         // Add a head block pointer for this network name if one does not already exist
         store.lock().unwrap().add_network_if_missing(&network_name)?;
 
-        // Start block ingestor
-        let block_ingestor = BlockIngestor {
+        Ok(BlockIngestor {
             store,
             network_name,
             web3_transport,
             ancestor_count,
             logger: logger.new(o!("component" => "BlockIngestor")),
             polling_interval,
-        };
-        let as_static: &'static BlockIngestor<_, _> = Box::leak(Box::new(block_ingestor));
-        tokio::spawn(as_static.polling_stream());
-
-        Ok(())
+        })
     }
 
-    fn polling_stream<'a>(&'a self) -> impl Future<Item = (), Error = ()> + 'a {
-        let err_logger = self.logger.clone();
+    pub fn into_polling_stream(self) -> impl Future<Item = (), Error = ()> {
+        // Currently, there is no way to stop block ingestion, so just leak self
+        let static_self: &'static _ = Box::leak(Box::new(self));
 
-        tokio::timer::Interval::new(Instant::now(), self.polling_interval)
+        // Create stream that emits at polling interval
+        tokio::timer::Interval::new(Instant::now(), static_self.polling_interval)
             .map_err(move |e| {
-                error!(err_logger, "timer::Interval failed: {:?}", e);
+                error!(static_self.logger, "timer::Interval failed: {:?}", e);
             })
             .for_each(move |_| {
-                let err_logger = self.logger.clone();
-
-                self.do_poll().then(move |result| {
+                // Attempt to poll
+                static_self.do_poll().then(move |result| {
                     if let Err(e) = result {
-                        warn!(err_logger, "failed to poll for latest block: {:?}", e);
+                        // Some polls will fail due to transient issues
+                        warn!(static_self.logger, "failed to poll for latest block: {:?}", e);
                     }
 
+                    // Continue polling even if polling failed
                     future::ok(())
                 })
             })
