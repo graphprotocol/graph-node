@@ -5,7 +5,6 @@ extern crate graphql_parser;
 extern crate http;
 extern crate hyper;
 
-use futures::prelude::*;
 use graphql_parser::query as q;
 use http::StatusCode;
 use hyper::{Body, Client, Request};

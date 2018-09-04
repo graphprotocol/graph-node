@@ -7,3 +7,4 @@ futures = "0.1.21"
 graphql-parser = "0.2.0"
 graph = { path = "../graph" }
 graph-graphql = { path = "../graphql" }
+web3 = { git = "https://github.com/tomusdrw/rust-web3" }

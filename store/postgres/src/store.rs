@@ -7,9 +7,12 @@ use diesel::{debug_query, delete, insert_into, result, select};
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
+use web3::types::Block;
+use web3::types::H256;
+use web3::types::Transaction;
 
 use graph::components::store::{EventSource, Store as StoreTrait};
 use graph::prelude::*;
@@ -17,7 +20,7 @@ use graph::serde_json;
 use graph::{tokio, tokio::timer::Interval};
 
 use entity_changes::EntityChangeListener;
-use functions::{revert_block, set_config};
+use functions::{attempt_head_update, revert_block, set_config};
 
 embed_migrations!("./migrations");
 
@@ -56,7 +59,7 @@ pub struct Store {
     logger: slog::Logger,
     subscriptions: Arc<RwLock<HashMap<String, Subscription>>>,
     change_listener: EntityChangeListener,
-    pub conn: PgConnection,
+    pub conn: Arc<Mutex<PgConnection>>,
 }
 
 impl Store {
@@ -84,7 +87,7 @@ impl Store {
             logger: logger.clone(),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             change_listener,
-            conn: conn,
+            conn: Arc::new(Mutex::new(conn)),
         };
 
         // Deal with store subscriptions
@@ -181,7 +184,7 @@ impl Store {
     /// Revert all store events related to the given block
     pub fn revert_events(&self, block_hash: String) {
         select(revert_block(block_hash))
-            .execute(&self.conn)
+            .execute(&*self.conn.lock().unwrap())
             .unwrap();
     }
 }
@@ -196,7 +199,7 @@ impl BasicStore for Store {
         entities
             .find((key.id, key.subgraph, key.entity))
             .select(data)
-            .first::<serde_json::Value>(&self.conn)
+            .first::<serde_json::Value>(&*self.conn.lock().unwrap())
             .map(|value| {
                 serde_json::from_value::<Entity>(value).expect("Failed to deserialize entity")
             })
@@ -244,7 +247,7 @@ impl BasicStore for Store {
                 data.eq(&entity_json),
                 event_source.eq(&input_event_source.to_string()),
             ))
-            .execute(&self.conn)
+            .execute(&*self.conn.lock().unwrap())
             .map(|_| ())
             .map_err(|_| ())
     }
@@ -254,25 +257,24 @@ impl BasicStore for Store {
 
         use db_schema::entities::dsl::*;
 
-        self.conn
-            .transaction::<usize, result::Error, _>(|| {
-                // Set session variable to store the source of the event
-                select(set_config(
-                    "vars.current_event_source",
-                    input_event_source.to_string(),
-                    false,
-                )).execute(&self.conn)
-                    .unwrap();
+        let conn = self.conn.lock().unwrap();
+        conn.transaction::<usize, result::Error, _>(|| {
+            // Set session variable to store the source of the event
+            select(set_config(
+                "vars.current_event_source",
+                input_event_source.to_string(),
+                false,
+            )).execute(&*conn)
+                .unwrap();
 
-                // Delete from DB where rows match the subgraph ID, entity name and ID
-                delete(
-                    entities
-                        .filter(subgraph.eq(&key.subgraph))
-                        .filter(entity.eq(&key.entity))
-                        .filter(id.eq(&key.id)),
-                ).execute(&self.conn)
-            })
-            .map(|_| ())
+            // Delete from DB where rows match the subgraph ID, entity name and ID
+            delete(
+                entities
+                    .filter(subgraph.eq(&key.subgraph))
+                    .filter(entity.eq(&key.entity))
+                    .filter(id.eq(&key.id)),
+            ).execute(&*conn)
+        }).map(|_| ())
             .map_err(|_| ())
     }
 
@@ -325,7 +327,7 @@ impl BasicStore for Store {
 
         // Process results; deserialize JSON data
         diesel_query
-            .load::<serde_json::Value>(&self.conn)
+            .load::<serde_json::Value>(&*self.conn.lock().unwrap())
             .map(|values| {
                 values
                     .into_iter()
@@ -336,6 +338,79 @@ impl BasicStore for Store {
                     .collect()
             })
             .map_err(|_| ())
+    }
+}
+
+impl BlockStore for Store {
+    fn add_network_if_missing(&self, network_name: &str) -> Result<(), Error> {
+        use db_schema::ethereum_networks::dsl::*;
+
+        insert_into(ethereum_networks)
+            .values((
+                name.eq(network_name),
+                head_block_hash.eq::<Option<String>>(None),
+                head_block_number.eq::<Option<i64>>(None),
+            ))
+            .on_conflict(name)
+            .do_nothing()
+            .execute(&*self.conn.lock().unwrap())?;
+
+        Ok(())
+    }
+
+    fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
+        &self,
+        net_name: &str,
+        blocks: B,
+    ) -> Box<Future<Item = (), Error = Error> + Send + 'a> {
+        use db_schema::ethereum_blocks::dsl::*;
+
+        let conn = self.conn.clone();
+        let net_name = net_name.to_owned();
+        Box::new(blocks.for_each(move |block| {
+            let json_blob = serde_json::to_value(&block).expect("Failed to serialize block");
+            let values = (
+                hash.eq(format!("{:#x}", block.hash.unwrap())),
+                number.eq(block.number.unwrap().as_u64() as i64),
+                parent_hash.eq(format!("{:#x}", block.parent_hash)),
+                network_name.eq(&net_name),
+                data.eq(json_blob),
+            );
+
+            insert_into(ethereum_blocks)
+                .values(values.clone())
+                .on_conflict(hash)
+                .do_update()
+                .set(values)
+                .execute(&*conn.lock().unwrap())
+                .map_err(Error::from)
+                .map(|_| ())
+        }))
+    }
+
+    fn attempt_head_update(
+        &self,
+        network_name: &str,
+        ancestor_count: u64,
+    ) -> Result<Vec<H256>, Error> {
+        // Call attempt_head_update SQL function
+        select(attempt_head_update(network_name, ancestor_count as i64))
+            .load(&*self.conn.lock().unwrap())
+            .map_err(Error::from)
+
+            // We got a single return value, but it's returned generically as a set of rows
+            .map(|mut rows: Vec<_>| {
+                assert_eq!(rows.len(), 1);
+                rows.pop().unwrap()
+            })
+
+            // Parse block hashes into H256 type
+            .map(|hashes: Vec<String>| {
+                hashes.into_iter()
+                    .map(|h| h.parse())
+                    .collect::<Result<Vec<H256>, _>>()
+            })
+            .and_then(|r| r.map_err(Error::from))
     }
 }
 

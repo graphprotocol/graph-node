@@ -5,8 +5,9 @@ use web3;
 use web3::transports::http;
 use web3::transports::ipc;
 use web3::transports::ws;
-use web3::transports::EventLoopHandle;
 use web3::RequestId;
+
+pub use web3::transports::EventLoopHandle;
 
 /// Abstraction over the different web3 transports.
 #[derive(Clone, Debug)]
@@ -43,7 +44,7 @@ impl Transport {
 }
 
 impl web3::Transport for Transport {
-    type Out = Box<Future<Item = Value, Error = web3::error::Error>>;
+    type Out = Box<Future<Item = Value, Error = web3::error::Error> + Send>;
 
     fn prepare(&self, method: &str, params: Vec<Value>) -> (RequestId, Call) {
         match self {
@@ -58,6 +59,23 @@ impl web3::Transport for Transport {
             Transport::RPC(http) => Box::new(http.send(id, request)),
             Transport::IPC(ipc) => Box::new(ipc.send(id, request)),
             Transport::WS(ws) => Box::new(ws.send(id, request)),
+        }
+    }
+}
+
+impl web3::BatchTransport for Transport {
+    type Batch = Box<
+        Future<Item = Vec<Result<Value, web3::error::Error>>, Error = web3::error::Error> + Send,
+    >;
+
+    fn send_batch<T>(&self, requests: T) -> Self::Batch
+    where
+        T: IntoIterator<Item = (RequestId, Call)>,
+    {
+        match self {
+            Transport::RPC(http) => Box::new(http.send_batch(requests)),
+            Transport::IPC(ipc) => Box::new(ipc.send_batch(requests)),
+            Transport::WS(ws) => Box::new(ws.send_batch(requests)),
         }
     }
 }
