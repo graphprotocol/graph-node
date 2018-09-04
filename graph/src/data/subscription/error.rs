@@ -1,38 +1,17 @@
 use serde::ser::*;
-use std::error::Error;
-use std::fmt;
 
 use prelude::QueryExecutionError;
 
 /// Error caused while processing a [Subscription](struct.Subscription.html) request.
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 pub enum SubscriptionError {
+    #[fail(display = "GraphQL error: {}", _0)]
     GraphQLError(QueryExecutionError),
 }
 
 impl From<QueryExecutionError> for SubscriptionError {
     fn from(e: QueryExecutionError) -> Self {
         SubscriptionError::GraphQLError(e)
-    }
-}
-
-impl Error for SubscriptionError {
-    fn description(&self) -> &str {
-        "Subscription error"
-    }
-
-    fn cause(&self) -> Option<&Error> {
-        match self {
-            SubscriptionError::GraphQLError(e) => Some(e),
-        }
-    }
-}
-
-impl fmt::Display for SubscriptionError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            SubscriptionError::GraphQLError(e) => write!(f, "{}", e),
-        }
     }
 }
 
