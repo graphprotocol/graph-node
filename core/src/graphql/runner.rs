@@ -1,29 +1,29 @@
 use futures::future;
 use std::sync::Mutex;
 
-use graph::prelude::{GraphQLRunner as GraphQLRunnerTrait, *};
+use graph::prelude::{GraphQlRunner as GraphQlRunnerTrait, *};
 use graph_graphql::prelude::*;
 
 /// GraphQL runner implementation for The Graph.
-pub struct GraphQLRunner<S> {
+pub struct GraphQlRunner<S> {
     logger: Logger,
     store: Arc<Mutex<S>>,
 }
 
-impl<S> GraphQLRunner<S>
+impl<S> GraphQlRunner<S>
 where
     S: Store + 'static,
 {
     /// Creates a new query runner.
     pub fn new(logger: &Logger, store: Arc<Mutex<S>>) -> Self {
-        GraphQLRunner {
-            logger: logger.new(o!("component" => "GraphQLRunner")),
+        GraphQlRunner {
+            logger: logger.new(o!("component" => "GraphQlRunner")),
             store: store,
         }
     }
 }
 
-impl<S> GraphQLRunnerTrait for GraphQLRunner<S>
+impl<S> GraphQlRunnerTrait for GraphQlRunner<S>
 where
     S: Store + 'static,
 {

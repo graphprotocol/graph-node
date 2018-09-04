@@ -8,7 +8,7 @@ mod server;
 mod store;
 mod subgraph;
 
-pub use self::graphql::MockGraphQLRunner;
+pub use self::graphql::MockGraphQlRunner;
 pub use self::server::MockGraphQLServer;
 pub use self::store::{FakeStore, MockStore};
 pub use self::subgraph::MockSubgraphProvider;

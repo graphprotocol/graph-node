@@ -18,9 +18,9 @@ use graph_server_http::test_utils;
 use graph_server_http::GraphQLServer as HyperGraphQLServer;
 
 /// A simple stupid query runner for testing.
-pub struct TestGraphQLRunner;
+pub struct TestGraphQlRunner;
 
-impl GraphQLRunner for TestGraphQLRunner {
+impl GraphQlRunner for TestGraphQlRunner {
     fn run_query(&self, _query: Query) -> QueryResultFuture {
         Box::new(future::ok(QueryResult::new(Some(q::Value::Object(
             BTreeMap::from_iter(
@@ -56,7 +56,7 @@ mod test {
             .block_on(futures::lazy(|| {
                 let logger = slog::Logger::root(slog::Discard, o!());
 
-                let query_runner = Arc::new(TestGraphQLRunner);
+                let query_runner = Arc::new(TestGraphQlRunner);
                 let mut server = HyperGraphQLServer::new(&logger, query_runner);
                 let http_server = server.serve(8001).expect("Failed to start GraphQL server");
 
@@ -105,7 +105,7 @@ mod test {
             .block_on(futures::lazy(|| {
                 let logger = slog::Logger::root(slog::Discard, o!());
 
-                let query_runner = Arc::new(TestGraphQLRunner);
+                let query_runner = Arc::new(TestGraphQlRunner);
                 let mut server = HyperGraphQLServer::new(&logger, query_runner);
                 let http_server = server.serve(8002).expect("Failed to start GraphQL server");
 
@@ -188,7 +188,7 @@ mod test {
             .block_on(futures::lazy(|| {
                 let logger = slog::Logger::root(slog::Discard, o!());
 
-                let query_runner = Arc::new(TestGraphQLRunner);
+                let query_runner = Arc::new(TestGraphQlRunner);
                 let mut server = HyperGraphQLServer::new(&logger, query_runner);
                 let http_server = server.serve(8003).expect("Failed to start GraphQL server");
 

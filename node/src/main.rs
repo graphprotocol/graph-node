@@ -171,7 +171,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     info!(logger, "Connecting to Postgres db...");
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger);
     let protected_store = Arc::new(Mutex::new(store));
-    let graphql_runner = Arc::new(graph_core::GraphQLRunner::new(
+    let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(
         &logger,
         protected_store.clone(),
     ));

@@ -22,7 +22,7 @@ pub struct SubscriptionServer<Q> {
 
 impl<Q> SubscriptionServer<Q>
 where
-    Q: GraphQLRunner + 'static,
+    Q: GraphQlRunner + 'static,
 {
     pub fn new(logger: &Logger, graphql_runner: Arc<Q>) -> Self {
         let logger = logger.new(o!("component" => "SubscriptionServer"));
@@ -84,7 +84,7 @@ where
 
 impl<Q> SubscriptionServerTrait for SubscriptionServer<Q>
 where
-    Q: GraphQLRunner + 'static,
+    Q: GraphQlRunner + 'static,
 {
     type ServeError = ();
 
@@ -160,7 +160,7 @@ where
 
 impl<Q> EventConsumer<SchemaEvent> for SubscriptionServer<Q>
 where
-    Q: GraphQLRunner + 'static,
+    Q: GraphQlRunner + 'static,
 {
     fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()> + Send> {
         let logger = self.logger.clone();
