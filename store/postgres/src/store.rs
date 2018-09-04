@@ -394,6 +394,7 @@ impl BlockStore for Store {
         network_name: &str,
         ancestor_count: u64,
     ) -> Result<Vec<H256>, Error> {
+        // Call attempt_head_update SQL function
         select(attempt_head_update(network_name, ancestor_count as i64))
             .load(&*self.conn.lock().unwrap())
             .map_err(Error::from)
