@@ -83,7 +83,7 @@ impl EntityChangeListener {
                 {
                     // Terminate the thread if desired
                     if terminate.load(Ordering::SeqCst) {
-                        return;
+                        break;
                     }
 
                     // Parse payload into an entity change
