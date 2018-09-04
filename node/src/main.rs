@@ -260,9 +260,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
 
     // Serve GraphQL subscriptions over WebSockets. We will listen on port 8001.
-    let websocket_server = subscription_server
-        .serve(8001)
-        .expect("Failed to start GraphQL subscription server");
+    tokio::spawn(
+        subscription_server
+            .serve(8001)
+            .expect("Failed to start GraphQL subscription server"),
+    );
 
-    websocket_server
+    future::empty()
 }
