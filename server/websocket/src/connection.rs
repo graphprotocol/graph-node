@@ -3,7 +3,7 @@ use futures::stream::SplitStream;
 use futures::sync::{mpsc, oneshot};
 use graphql_parser::parse_query;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio_tungstenite::tungstenite::{Error as WsError, Message as WsMessage};
 use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;
@@ -75,7 +75,7 @@ pub struct GraphQlConnection<Q, S> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     stream: WebSocketStream<S>,
-    subgraphs: Arc<RwLock<SubgraphRegistry<Schema>>>,
+    subgraphs: SubgraphRegistry<Schema>,
     subgraph: String,
 }
 
@@ -87,7 +87,7 @@ where
     /// Creates a new GraphQL subscription service.
     pub fn new(
         logger: &Logger,
-        subgraphs: Arc<RwLock<SubgraphRegistry<Schema>>>,
+        subgraphs: SubgraphRegistry<Schema>,
         subgraph: String,
         stream: WebSocketStream<S>,
         graphql_runner: Arc<Q>,
@@ -107,7 +107,7 @@ where
         mut msg_sink: mpsc::UnboundedSender<WsMessage>,
         logger: Logger,
         id: String,
-        subgraphs: Arc<RwLock<SubgraphRegistry<Schema>>>,
+        subgraphs: SubgraphRegistry<Schema>,
         subgraph: String,
         graphql_runner: Arc<Q>,
     ) -> impl Future<Item = (), Error = WsError> {
@@ -186,7 +186,6 @@ where
                     }
 
                     // Respond with a GQL_ERROR if the subgraph name or ID is unknown
-                    let subgraphs = subgraphs.read().unwrap();
                     let schema = if let Some(schema) = subgraphs.resolve(&subgraph) {
                         schema
                     } else {
@@ -215,7 +214,7 @@ where
                     // Construct a subscription
                     let subscription = Subscription {
                         query: Query {
-                            schema: schema.clone(),
+                            schema,
                             document: query,
                             variables: None,
                         },

@@ -2,7 +2,7 @@ use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::{handshake::server::Request, Error as WsError};
 
@@ -17,7 +17,7 @@ pub struct SubscriptionServer<Q> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     schema_event_sink: Sender<SchemaEvent>,
-    subgraphs: Arc<RwLock<SubgraphRegistry<Schema>>>,
+    subgraphs: SubgraphRegistry<Schema>,
 }
 
 impl<Q> SubscriptionServer<Q>
@@ -33,7 +33,7 @@ where
             logger,
             graphql_runner,
             schema_event_sink,
-            subgraphs: Arc::new(RwLock::new(SubgraphRegistry::new())),
+            subgraphs: SubgraphRegistry::new(),
         };
 
         // Spawn task to handle incoming schema events
@@ -45,7 +45,7 @@ where
 
     fn handle_schema_events(&mut self, stream: Receiver<SchemaEvent>) {
         let logger = self.logger.clone();
-        let subgraphs = self.subgraphs.clone();
+        let mut subgraphs = self.subgraphs.clone();
 
         tokio::spawn(stream.for_each(move |event| {
             info!(logger, "Received schema event");
@@ -61,7 +61,7 @@ where
                 };
 
                 // Add the subgraph name, ID and schema to the subgraph registry
-                subgraphs.write().unwrap().insert(
+                subgraphs.insert(
                     Some(derived_schema.name.clone()),
                     derived_schema.id.clone(),
                     derived_schema,
