@@ -327,11 +327,15 @@ where
             })
             .forward(ws_sink.sink_map_err(|_| ()));
 
-        // Silently swallow internal send results and errors
+        // Silently swallow internal send results and errors. There is nothing
+        // we can do about these errors ourselves. Clients will be disconnected
+        // as a result of this but most will try to reconnect (GraphiQL for sure,
+        // Apollo maybe).
         let ws_writer = ws_writer.map(|_| ());
         let ws_reader = ws_reader.map(|_| ()).map_err(|_| ());
 
-        // Return a future that is fulfilled when either the reader or the writer are closed
+        // Return a future that is fulfilled when either we or the client close
+        // our/their end of the WebSocket stream
         let logger = self.logger.clone();
         let id = self.id.clone();
         Box::new(ws_reader.select(ws_writer).then(move |_| {
