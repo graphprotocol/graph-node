@@ -17,11 +17,7 @@ where
     }
 
     pub fn resolve(&self, id_or_name: &String) -> Option<&T> {
-        let id = self
-            .names_to_ids
-            .get(id_or_name)
-            .or(Some(id_or_name))
-            .unwrap();
+        let id = self.names_to_ids.get(id_or_name).unwrap_or(id_or_name);
         self.ids_to_values.get(id)
     }
 
