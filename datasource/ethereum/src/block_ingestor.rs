@@ -72,7 +72,10 @@ where
                 static_self.do_poll().then(move |result| {
                     if let Err(e) = result {
                         // Some polls will fail due to transient issues
-                        warn!(static_self.logger, "failed to poll for latest block: {:?}", e);
+                        warn!(
+                            static_self.logger,
+                            "failed to poll for latest block: {:?}", e
+                        );
                     }
 
                     // Continue polling even if polling failed
@@ -82,17 +85,28 @@ where
     }
 
     fn do_poll<'a>(&'a self) -> impl Future<Item = (), Error = Error> + 'a {
+        // Ask for latest block from Ethereum node
         self.get_latest_block()
             .and_then(move |latest_block: Block<Transaction>| {
+                // Store latest block in block store.
+                // Might be a no-op if latest block is one that we have seen.
+                // ingest_blocks will return a (potentially incomplete) list of blocks that are
+                // missing.
                 self.ingest_blocks(stream::once(Ok(latest_block)))
             })
             .and_then(move |missing_block_hashes| {
+                // Repeatedly fetch missing blocks, and ingest them.
+                // ingest_blocks will continue to tell us about more missing blocks until we have
+                // filled in all missing pieces of the blockchain (that we care about).
                 future::loop_fn(
                     missing_block_hashes,
                     move |missing_block_hashes| -> Box<Future<Item = _, Error = _> + Send> {
                         if missing_block_hashes.is_empty() {
+                            // If no blocks were missing, then the block head pointer was updated
+                            // successfully, and this poll has completed.
                             Box::new(future::ok(future::Loop::Break(())))
                         } else {
+                            // Some blocks are missing: load them, ingest them, and repeat.
                             let missing_blocks = self.get_blocks(&missing_block_hashes);
                             Box::new(self.ingest_blocks(missing_blocks).map(
                                 |missing_block_hashes| future::Loop::Continue(missing_block_hashes),
@@ -110,6 +124,9 @@ where
             .map_err(|e| format_err!("could not get latest block from Ethereum: {}", e))
     }
 
+    /// Put some blocks into the block store (if they are not there already), and try to update the
+    /// head block pointer. If missing blocks prevent such an update, return a Vec with at least
+    /// one of the missing blocks' hashes.
     fn ingest_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
         &'a self,
         blocks: B,
