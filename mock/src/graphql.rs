@@ -5,21 +5,21 @@ use std::collections::BTreeMap;
 
 use graph::prelude::*;
 
-/// A mock `GraphQLRunner`.
-pub struct MockGraphQLRunner {
+/// A mock `GraphQlRunner`.
+pub struct MockGraphQlRunner {
     logger: slog::Logger,
 }
 
-impl MockGraphQLRunner {
-    /// Creates a new mock `GraphQLRunner`.
+impl MockGraphQlRunner {
+    /// Creates a new mock `GraphQlRunner`.
     pub fn new(logger: &slog::Logger) -> Self {
-        MockGraphQLRunner {
-            logger: logger.new(o!("component" => "MockGraphQLRunner")),
+        MockGraphQlRunner {
+            logger: logger.new(o!("component" => "MockGraphQlRunner")),
         }
     }
 }
 
-impl GraphQLRunner for MockGraphQLRunner {
+impl GraphQlRunner for MockGraphQlRunner {
     fn run_query(&self, query: Query) -> QueryResultFuture {
         info!(self.logger, "Run query"; "query" => format!("{:?}", query));
 

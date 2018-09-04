@@ -9,6 +9,6 @@ extern crate serde_yaml;
 mod graphql;
 mod subgraph;
 
-pub use graphql::GraphQLRunner;
+pub use graphql::GraphQlRunner;
 pub use subgraph::RuntimeManager;
 pub use subgraph::SubgraphProvider;

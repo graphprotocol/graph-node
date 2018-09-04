@@ -1,3 +1,3 @@
 mod runner;
 
-pub use self::runner::GraphQLRunner;
+pub use self::runner::GraphQlRunner;

@@ -115,7 +115,7 @@ impl<Q> GraphQLServer<Q> {
 
 impl<Q> GraphQLServerTrait for GraphQLServer<Q>
 where
-    Q: GraphQLRunner + Sized + 'static,
+    Q: GraphQlRunner + Sized + 'static,
 {
     type ServeError = GraphQLServeError;
 
@@ -157,7 +157,7 @@ mod tests {
 
     use std::time::{Duration, Instant};
 
-    use self::graph_mock::MockGraphQLRunner;
+    use self::graph_mock::MockGraphQlRunner;
     use graph_graphql::schema::ast;
 
     use super::*;
@@ -170,7 +170,7 @@ mod tests {
                 let res: Result<_, ()> = Ok({
                     // Set up the server
                     let logger = Logger::root(slog::Discard, o!());
-                    let graphql_runner = Arc::new(MockGraphQLRunner::new(&logger));
+                    let graphql_runner = Arc::new(MockGraphQlRunner::new(&logger));
                     let mut server = GraphQLServer::new(&logger, graphql_runner);
                     let schema_sink = server.schema_event_sink();
 

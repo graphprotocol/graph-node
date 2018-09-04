@@ -89,7 +89,7 @@ pub struct GraphQlConnection<Q, S> {
 
 impl<Q, S> GraphQlConnection<Q, S>
 where
-    Q: GraphQLRunner + 'static,
+    Q: GraphQlRunner + 'static,
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
     /// Creates a new GraphQL subscription service.
@@ -287,7 +287,7 @@ where
 
 impl<Q, S> IntoFuture for GraphQlConnection<Q, S>
 where
-    Q: GraphQLRunner + 'static,
+    Q: GraphQlRunner + 'static,
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
     type Future = Box<Future<Item = Self::Item, Error = Self::Error> + Send>;

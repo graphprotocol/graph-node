@@ -27,7 +27,7 @@ pub struct GraphQLService<Q> {
 
 impl<Q> GraphQLService<Q>
 where
-    Q: GraphQLRunner + 'static,
+    Q: GraphQlRunner + 'static,
 {
     /// Creates a new GraphQL service.
     pub fn new(
@@ -132,7 +132,7 @@ where
 
 impl<Q> Service for GraphQLService<Q>
 where
-    Q: GraphQLRunner + 'static,
+    Q: GraphQlRunner + 'static,
 {
     type ReqBody = Body;
     type ResBody = Body;
@@ -199,9 +199,9 @@ mod tests {
     use test_utils;
 
     /// A simple stupid query runner for testing.
-    pub struct TestGraphQLRunner;
+    pub struct TestGraphQlRunner;
 
-    impl GraphQLRunner for TestGraphQLRunner {
+    impl GraphQlRunner for TestGraphQlRunner {
         fn run_query(&self, _query: Query) -> QueryResultFuture {
             Box::new(future::ok(QueryResult::new(Some(q::Value::Object(
                 BTreeMap::from_iter(
@@ -234,7 +234,7 @@ mod tests {
                 ).unwrap(),
             },
         )))));
-        let graphql_runner = Arc::new(TestGraphQLRunner);
+        let graphql_runner = Arc::new(TestGraphQlRunner);
         let mut service = GraphQLService::new(Default::default(), schema, graphql_runner);
 
         let request = Request::builder()
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn posting_valid_queries_yields_result_response() {
-        let graphql_runner = Arc::new(TestGraphQLRunner);
+        let graphql_runner = Arc::new(TestGraphQlRunner);
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
             .block_on(future::lazy(|| {
