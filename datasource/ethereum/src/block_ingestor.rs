@@ -11,11 +11,18 @@ use web3::types::BlockNumber;
 use web3::types::H256;
 use web3::types::Transaction;
 use web3::BatchTransport;
+use web3::Transport;
 
 use graph::prelude::*;
 
 #[derive(Clone, Debug)]
-pub struct BlockIngestorConfig<S: BlockStore, T: BatchTransport> {
+pub struct BlockIngestorConfig<S, T>
+where
+    S: BlockStore + Send + 'static,
+    T: BatchTransport + Send + Sync + Debug + Clone + 'static,
+    <T as Transport>::Out: Send,
+    <T as BatchTransport>::Batch: Send,
+{
     pub store: Arc<Mutex<S>>,
     pub network_name: String,
     pub web3_transport: T,
@@ -24,7 +31,13 @@ pub struct BlockIngestorConfig<S: BlockStore, T: BatchTransport> {
     pub polling_interval: Duration,
 }
 
-pub struct BlockIngestor<S: BlockStore, T: BatchTransport + Debug + Clone> {
+pub struct BlockIngestor<S, T>
+where
+    S: BlockStore + Send + 'static,
+    T: BatchTransport + Send + Sync + Debug + Clone + 'static,
+    <T as Transport>::Out: Send,
+    <T as BatchTransport>::Batch: Send,
+{
     store: Arc<Mutex<S>>,
     network_name: String,
     web3_transport: T,
@@ -33,11 +46,14 @@ pub struct BlockIngestor<S: BlockStore, T: BatchTransport + Debug + Clone> {
     polling_interval: Duration,
 }
 
-impl<S: BlockStore + Send + 'static, T: BatchTransport + Debug + Clone> BlockIngestor<S, T> {
-    pub fn spawn(config: BlockIngestorConfig<S, T>) -> Result<(), Error>
-    where
-        T: Send + Sync + 'static,
-    {
+impl<S, T> BlockIngestor<S, T>
+where
+    S: BlockStore + Send + 'static,
+    T: BatchTransport + Send + Sync + Debug + Clone + 'static,
+    <T as Transport>::Out: Send,
+    <T as BatchTransport>::Batch: Send,
+{
+    pub fn spawn(config: BlockIngestorConfig<S, T>) -> Result<(), Error> {
         // Extract config params
         let BlockIngestorConfig {
             store,
@@ -60,81 +76,107 @@ impl<S: BlockStore + Send + 'static, T: BatchTransport + Debug + Clone> BlockIng
             logger: logger.new(o!("component" => "BlockIngestor")),
             polling_interval,
         };
-        tokio::spawn(block_ingestor.into_polling_stream());
+        let as_static: &'static BlockIngestor<_, _> = Box::leak(Box::new(block_ingestor));
+        tokio::spawn(as_static.polling_stream());
 
         Ok(())
     }
 
-    fn into_polling_stream(self) -> impl Future<Item = (), Error = ()> {
+    fn polling_stream<'a>(&'a self) -> impl Future<Item = (), Error = ()> + 'a {
         let err_logger = self.logger.clone();
 
         tokio::timer::Interval::new(Instant::now(), self.polling_interval)
-            .map_err(Error::from)
-            .map(move |_| {
-                self.do_poll().unwrap_or_else(|e| {
-                    error!(self.logger, "failed to poll for latest block: {:?}", e);
-                });
-            })
-            .collect()
-            .map(|_| ())
             .map_err(move |e| {
                 error!(err_logger, "timer::Interval failed: {:?}", e);
             })
+            .for_each(move |_| {
+                let err_logger = self.logger.clone();
+
+                self.do_poll().then(move |result| {
+                    if let Err(e) = result {
+                        error!(err_logger, "failed to poll for latest block: {:?}", e);
+                    }
+
+                    future::ok(())
+                })
+            })
     }
 
-    fn do_poll(&self) -> Result<(), Error> {
-        let latest_block = self.get_latest_block()?;
-
-        let mut new_blocks = vec![latest_block];
-        while new_blocks.len() > 0 {
-            let missing_block_hashes = self.ingest_blocks(&new_blocks)?;
-            new_blocks = self.get_blocks(&missing_block_hashes)?;
-        }
-
-        Ok(())
+    fn do_poll<'a>(&'a self) -> impl Future<Item = (), Error = Error> + 'a {
+        self.get_latest_block()
+            .and_then(move |latest_block: Block<Transaction>| {
+                self.ingest_blocks(stream::once(Ok(latest_block)))
+            })
+            .and_then(move |missing_block_hashes| {
+                future::loop_fn(
+                    missing_block_hashes,
+                    move |missing_block_hashes| -> Box<Future<Item = _, Error = _> + Send> {
+                        if missing_block_hashes.is_empty() {
+                            Box::new(future::ok(future::Loop::Break(())))
+                        } else {
+                            let missing_blocks = self.get_blocks(&missing_block_hashes);
+                            Box::new(self.ingest_blocks(missing_blocks).map(
+                                |missing_block_hashes| future::Loop::Continue(missing_block_hashes),
+                            ))
+                        }
+                    },
+                )
+            })
     }
 
-    fn get_latest_block(&self) -> Result<Block<Transaction>, Error> {
+    fn get_latest_block(&self) -> impl Future<Item = Block<Transaction>, Error = Error> {
         let web3 = Web3::new(self.web3_transport.clone());
         web3.eth()
             .block_with_txs(BlockNumber::Latest.into())
-            .wait()
             .map_err(|e| format_err!("could not get latest block from web3: {}", e))
     }
 
-    fn ingest_blocks(&self, blocks: &[Block<Transaction>]) -> Result<Vec<H256>, Error> {
-        let store = self.store.lock().unwrap();
-        store.upsert_blocks(&self.network_name, blocks)?;
-        store.attempt_head_update(&self.network_name, self.ancestor_count)
+    fn ingest_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
+        &'a self,
+        blocks: B,
+    ) -> impl Future<Item = Vec<H256>, Error = Error> + Send + 'a {
+        self.store
+            .lock()
+            .unwrap()
+            .upsert_blocks(&self.network_name, blocks)
+            .and_then(move |()| {
+                self.store
+                    .lock()
+                    .unwrap()
+                    .attempt_head_update(&self.network_name, self.ancestor_count)
+            })
     }
 
-    fn get_blocks(&self, block_hashes: &[H256]) -> Result<Vec<Block<Transaction>>, Error> {
+    /// Requests the specified blocks via web3, returning them in a stream (potentially out of
+    /// order).
+    fn get_blocks<'a>(
+        &'a self,
+        block_hashes: &[H256],
+    ) -> Box<Stream<Item = Block<Transaction>, Error = Error> + Send + 'a> {
         // Don't bother with a batch request if nothing to request
-        if block_hashes.len() == 0 {
-            return Ok(vec![]);
+        if block_hashes.is_empty() {
+            return Box::new(stream::empty());
         }
 
         let web3 = Web3::new(Batch::new(self.web3_transport.clone()));
 
         // Add requests to batch
-        let blocks = block_hashes
+        let block_futures = block_hashes
             .into_iter()
-            .map(|block_hash| web3.eth().block_with_txs(BlockId::from(*block_hash)))
+            .map(|block_hash| {
+                web3.eth()
+                    .block_with_txs(BlockId::from(*block_hash))
+                    .map_err(|e| format_err!("could not get block from Ethereum: {}", e))
+            })
             .collect::<Vec<_>>();
 
         // Submit all requests in batch
-        web3.transport()
-            .submit_batch()
-            .wait()
-            .map_err(|e| format_err!("could not get block from web3: {}", e))?;
-
-        // Receive request results
-        blocks
-            .into_iter()
-            .map(|b| {
-                b.wait()
-                    .map_err(|e| format_err!("could not get block from web3: {}", e))
-            })
-            .collect()
+        Box::new(
+            web3.transport()
+                .submit_batch()
+                .map_err(|e| format_err!("could not get blocks from Ethereum: {}", e))
+                .map(|_| stream::futures_unordered(block_futures))
+                .flatten_stream(),
+        )
     }
 }
