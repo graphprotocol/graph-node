@@ -260,10 +260,9 @@ where
                                             }
                                         };
                                     })
-                                    .and_then(move |result| {
+                                    .and_then(move |result_stream| {
                                         // Send results back to the client as GQL_DATA
-                                        result
-                                            .stream
+                                        result_stream
                                             .map(move |result| {
                                                 OutgoingMessage::from_query_result(
                                                     result_id.clone(),

@@ -6,12 +6,4 @@ use prelude::QueryResult;
 pub type QueryResultStream = Box<Stream<Item = QueryResult, Error = ()> + Send>;
 
 /// The result of running a subscription, if successful.
-pub struct SubscriptionResult {
-    pub stream: QueryResultStream,
-}
-
-impl SubscriptionResult {
-    pub fn new(stream: QueryResultStream) -> Self {
-        SubscriptionResult { stream }
-    }
-}
+pub type SubscriptionResult = QueryResultStream;

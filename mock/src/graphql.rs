@@ -41,6 +41,6 @@ impl GraphQlRunner for MockGraphQlRunner {
     fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture {
         info!(self.logger, "Run subscription"; "subscription" => format!("{:?}", subscription));
         let (_, receiver) = channel(2);
-        Box::new(future::ok(SubscriptionResult::new(Box::new(receiver))))
+        Box::new(future::ok(Box::new(receiver) as SubscriptionResult))
     }
 }
