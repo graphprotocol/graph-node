@@ -164,6 +164,7 @@ where
                     .block_with_txs(BlockId::from(*block_hash))
                     .map_err(|e| format_err!("could not get block from Ethereum: {}", e))
             })
+            // Collect to ensure that `block_with_txs` calls happen before `submit_batch`
             .collect::<Vec<_>>();
 
         // Submit all requests in batch
