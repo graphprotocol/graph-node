@@ -2,7 +2,7 @@
 
 Welcome to the Graph Protocol! Thanks a ton for your interest in contributing.
 
-If you run into any problems feel free to create an issue. PRs are much appreciated for simple things. If it's something more complex we'd appreciate having a quick chat in GitHub Issues or Discord.
+If you run into any problems feel free to create an issue. PRs are much appreciated for simple things. Here's [a list of good first issues](https://github.com/graphprotocol/graph-node/labels/good%20first%20issue). If it's something more complex we'd appreciate having a quick chat in GitHub Issues or Discord.
 
 Join the conversation on our [Discord](https://discord.gg/9a5VCua).
 
