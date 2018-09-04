@@ -195,14 +195,15 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
 
     // Create Ethereum block ingestor
-    graph_datasource_ethereum::BlockIngestor::spawn(
+    let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
         protected_store.clone(),
         ethereum_network_name.to_owned(),
         transport.clone(),
         400, // ancestor count, TODO make configuable
         logger.clone(),
         Duration::from_millis(500), // polling interval, TODO make configurable
-    ).expect("failed to start block ingestor");
+    ).expect("failed to create block ingestor");
+    tokio::spawn(block_ingestor.into_polling_stream());
 
     // If we drop the event loop the transport will stop working. For now it's
     // fine to just leak it.
