@@ -197,14 +197,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Create Ethereum block ingestor
     graph_datasource_ethereum::BlockIngestor::spawn(
-        graph_datasource_ethereum::BlockIngestorConfig {
-            store: protected_store.clone(),
-            network_name: ethereum_network_name.to_owned(),
-            web3_transport: transport.clone(),
-            ancestor_count: 400, // TODO make configuable
-            logger: logger.clone(),
-            polling_interval: Duration::from_millis(500), // TODO make configurable
-        },
+        protected_store.clone(),
+        ethereum_network_name.to_owned(),
+        transport.clone(),
+        400, // ancestor count, TODO make configuable
+        logger.clone(),
+        Duration::from_millis(500), // polling interval, TODO make configurable
     ).expect("failed to start block ingestor");
 
     // If we drop the event loop the transport will stop working. For now it's
