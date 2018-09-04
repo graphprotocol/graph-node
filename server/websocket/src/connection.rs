@@ -328,7 +328,7 @@ where
             .forward(ws_sink.sink_map_err(|_| ()));
 
         // Silently swallow internal send results and errors
-        let ws_writer = ws_writer.map(|_| ()).map_err(|_| ());
+        let ws_writer = ws_writer.map(|_| ());
         let ws_reader = ws_reader.map(|_| ()).map_err(|_| ());
 
         // Return a future that is fulfilled when either the reader or the writer are closed
