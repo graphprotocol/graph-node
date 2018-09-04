@@ -189,7 +189,10 @@ fn delete_entity() {
         store.delete(test_key, source).unwrap();
 
         //Get all ids in table
-        let all_ids = entities.select(id).load::<String>(&store.conn).unwrap();
+        let all_ids = entities
+            .select(id)
+            .load::<String>(&*store.conn.lock().unwrap())
+            .unwrap();
 
         // Check that that the deleted entity id is not present
         assert!(!all_ids.contains(&String::from("3")));
@@ -253,7 +256,10 @@ fn insert_entity() {
             .expect("Failed to set entity in the store");
 
         // Check that new record is in the store
-        let all_ids = entities.select(id).load::<String>(&store.conn).unwrap();
+        let all_ids = entities
+            .select(id)
+            .load::<String>(&*store.conn.lock().unwrap())
+            .unwrap();
         assert!(all_ids.iter().any(|x| x == &String::from("7")));
 
         Ok(())

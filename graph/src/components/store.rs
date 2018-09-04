@@ -1,5 +1,6 @@
 use ethereum_types::H256;
 use failure::Error;
+use futures::Future;
 use futures::Stream;
 use web3::types::Block;
 use web3::types::Transaction;
@@ -148,9 +149,12 @@ pub trait BlockStore {
     /// Add a new network, but only if one with this name does not already exist in the block store
     fn add_network_if_missing(&self, network_name: &str) -> Result<(), Error>;
 
-    /// Insert some blocks into the store (or update if they are already present).
-    fn upsert_blocks(&self, network_name: &str, blocks: &[Block<Transaction>])
-        -> Result<(), Error>;
+    /// Insert blocks into the store (or update if they are already present).
+    fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
+        &self,
+        network_name: &str,
+        blocks: B,
+    ) -> Box<Future<Item = (), Error = Error> + Send + 'a>;
 
     /// Try to update the head block pointer to the block with the highest block number.
     /// Only updates pointer if there is a block with a higher block number than the current head
