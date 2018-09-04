@@ -12,7 +12,7 @@ pub struct GraphQLRunner<S> {
 
 impl<S> GraphQLRunner<S>
 where
-    S: Store + Sized + 'static,
+    S: Store + 'static,
 {
     /// Creates a new query runner.
     pub fn new(logger: &Logger, store: Arc<Mutex<S>>) -> Self {
