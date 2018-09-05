@@ -23,13 +23,13 @@ table! {
         parent_hash -> Nullable<Varchar>,
         network_name -> Varchar, // REFERENCES ethereum_networks (name),
         block_data -> Jsonb,
-        receipt_data -> Jsonb,
     }
 }
 
 table! {
     subgraphs (id) {
         id -> Varchar,
+        network_name -> Varchar,
         latest_block_hash -> Varchar,
         latest_block_number -> BigInt,
     }

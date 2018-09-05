@@ -4,7 +4,6 @@ use futures::Future;
 use futures::Stream;
 use web3::types::Block;
 use web3::types::Transaction;
-use web3::types::TransactionReceipt;
 
 use data::store::*;
 use std::fmt;
@@ -247,6 +246,10 @@ pub trait BasicStore {
     // Note: making this work properly for multiple blockchains at once is not easy to get right!
     // For that, we will need to rethink how mappings work, etc, in order to enforce determinism.
 
+    /// Register a new subgraph ID in the store.
+    /// Each subgraph has its own entities and separate block processing state.
+    fn add_subgraph(&self, subgraph_id: SubgraphId) -> Result<(), Error>;
+
     /// Get the latest processed block.
     fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error>;
 
@@ -339,12 +342,6 @@ pub trait BlockStore {
 
     /// Get Some(block) if it is present in the block store, or None.
     fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error>;
-
-    /// Get Some((block, transaction_receipts)) if it is present in the block store, or None.
-    fn block_with_receipts(
-        &self,
-        block_hash: H256,
-    ) -> Result<Option<(Block<Transaction>, Vec<TransactionReceipt>)>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to

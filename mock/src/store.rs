@@ -1,7 +1,6 @@
 use web3::types::Block;
 use web3::types::H256;
 use web3::types::Transaction;
-use web3::types::TransactionReceipt;
 
 use graph::components::store::*;
 use graph::prelude::*;
@@ -29,6 +28,10 @@ impl MockStore {
 }
 
 impl BasicStore for MockStore {
+    fn add_subgraph(&self, _: SubgraphId) -> Result<(), Error> {
+        unimplemented!()
+    }
+
     fn block_ptr(&self, _subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
         unimplemented!()
     }
@@ -109,13 +112,6 @@ impl BlockStore for MockStore {
         unimplemented!()
     }
 
-    fn block_with_receipts(
-        &self,
-        _block_hash: H256,
-    ) -> Result<Option<(Block<Transaction>, Vec<TransactionReceipt>)>, Error> {
-        unimplemented!()
-    }
-
     fn ancestor_block(
         &self,
         _block_ptr: EthereumBlockPointer,
@@ -135,6 +131,10 @@ impl Store for MockStore {
 pub struct FakeStore;
 
 impl BasicStore for FakeStore {
+    fn add_subgraph(&self, _: SubgraphId) -> Result<(), Error> {
+        panic!("called FakeStore")
+    }
+
     fn block_ptr(&self, _subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
         panic!("called FakeStore")
     }
@@ -198,13 +198,6 @@ impl BlockStore for FakeStore {
     }
 
     fn block(&self, _block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {
-        panic!("called FakeStore")
-    }
-
-    fn block_with_receipts(
-        &self,
-        _block_hash: H256,
-    ) -> Result<Option<(Block<Transaction>, Vec<TransactionReceipt>)>, Error> {
         panic!("called FakeStore")
     }
 

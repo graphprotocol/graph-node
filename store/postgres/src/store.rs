@@ -13,7 +13,6 @@ use uuid::Uuid;
 use web3::types::Block;
 use web3::types::H256;
 use web3::types::Transaction;
-use web3::types::TransactionReceipt;
 
 use graph::components::store::{EventSource, Store as StoreTrait, StoreOp};
 use graph::prelude::*;
@@ -205,8 +204,21 @@ impl Store {
             .unwrap();
     }
 
+    /// Do not use.
+    // TODO remove this, only here for compatibility with existing tests
+    pub fn set(&mut self, key: StoreKey, entity: Entity, event_source: EventSource) -> Result<(), Error> {
+        let subgraph_id = SubgraphId(key.subgraph.clone());
+        self.deprecated_set(key, entity, event_source, self.block_ptr(subgraph_id)?)
+    }
+
+    /// Do not use.
+    // TODO remove this, only here for compatibility with existing tests
+    pub fn delete(&mut self, key: StoreKey, event_source: EventSource) -> Result<(), Error> {
+        self.deprecated_delete(key, event_source)
+    }
+
     // TODO replace with commit_transaction
-    fn set(
+    fn deprecated_set(
         &self,
         key: StoreKey,
         input_entity: Entity,
@@ -254,7 +266,7 @@ impl Store {
     }
 
     // TODO replace with commit_transaction
-    fn delete(&self, key: StoreKey, input_event_source: EventSource) -> Result<(), Error> {
+    fn deprecated_delete(&self, key: StoreKey, input_event_source: EventSource) -> Result<(), Error> {
         debug!(self.logger, "delete"; "key" => format!("{:?}", key));
 
         use db_schema::entities::dsl::*;
@@ -281,6 +293,27 @@ impl Store {
 }
 
 impl BasicStore for Store {
+    fn add_subgraph(&self, subgraph_id: SubgraphId) -> Result<(), Error> {
+        use db_schema::subgraphs::dsl::*;
+
+        insert_into(subgraphs)
+            .values((
+                id.eq(&subgraph_id.0),
+                network_name.eq(&self.config.network_name),
+                latest_block_hash.eq::<String>(format!("{:x}", H256::zero())),
+                latest_block_number.eq::<i64>(0),
+            ))
+            .on_conflict(id)
+            .do_nothing()
+            .execute(&*self.conn.lock().unwrap())
+            .map_err(Error::from)
+            .and_then(|insert_count| match insert_count {
+                0 => Err(format_err!("subgraph already exists with ID {:?}", subgraph_id.0)),
+                1 => Ok(()),
+                _ => unreachable!(),
+            })
+    }
+
     fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
         use db_schema::subgraphs::dsl::*;
 
@@ -288,7 +321,7 @@ impl BasicStore for Store {
             .select((latest_block_hash, latest_block_number))
             .filter(id.eq(subgraph_id.0))
             .first::<(String, i64)>(&*self.conn.lock().unwrap())
-            .map(|(hash, number)| (hash.parse().unwrap(), number).into())
+            .map(|(hash, number)| (hash.parse().expect("subgraph block ptr hash must be a valid H256"), number).into())
             .map_err(Error::from)
     }
 
@@ -302,7 +335,7 @@ impl BasicStore for Store {
 
         update(subgraphs)
             .set((
-                latest_block_hash.eq(to.hash.to_string()),
+                latest_block_hash.eq(format!("{:x}", to.hash)),
                 latest_block_number.eq(to.number as i64),
             ))
             .filter(id.eq(subgraph_id.0))
@@ -444,9 +477,9 @@ impl BasicStore for Store {
             .into_iter()
             .map(|op| match op {
                 StoreOp::Set(key, entity) => {
-                    self.set(key, entity, event_source.clone(), parent_block_ptr)
+                    self.deprecated_set(key, entity, event_source.clone(), parent_block_ptr)
                 }
-                StoreOp::Delete(key) => self.delete(key, event_source.clone()),
+                StoreOp::Delete(key) => self.deprecated_delete(key, event_source.clone()),
             })
             .collect::<Result<Vec<_>, Error>>()
             .map_err(StoreError::Database)?;
@@ -538,30 +571,6 @@ impl BlockStore for Store {
                     serde_json::from_value::<Block<Transaction>>(json_blocks[0].clone())
                         .expect("Failed to deserialize block"),
                 ),
-                _ => unreachable!(),
-            })
-            .map_err(Error::from)
-    }
-
-    fn block_with_receipts(
-        &self,
-        block_hash: H256,
-    ) -> Result<Option<(Block<Transaction>, Vec<TransactionReceipt>)>, Error> {
-        use db_schema::ethereum_blocks::dsl::*;
-
-        ethereum_blocks
-            .select((block_data, receipt_data))
-            .filter(network_name.eq(&self.config.network_name))
-            .filter(hash.eq(block_hash.to_string()))
-            .load::<(serde_json::Value, serde_json::Value)>(&*self.conn.lock().unwrap())
-            .map(|rows| match rows.len() {
-                0 => None,
-                1 => Some((
-                    serde_json::from_value::<Block<Transaction>>(rows[0].0.clone())
-                        .expect("Failed to deserialize block"),
-                    serde_json::from_value::<Vec<TransactionReceipt>>(rows[0].1.clone())
-                        .expect("Failed to deserialize transaction receipts"),
-                )),
                 _ => unreachable!(),
             })
             .map_err(Error::from)

@@ -15,6 +15,5 @@ CREATE TABLE IF NOT EXISTS ethereum_blocks (
     number BIGINT NOT NULL,
     parent_hash VARCHAR NOT NULL,
     network_name VARCHAR NOT NULL REFERENCES ethereum_networks (name),
-    block_data JSONB NOT NULL,
-    receipt_data JSONB NOT NULL
+    block_data JSONB NOT NULL
 );
