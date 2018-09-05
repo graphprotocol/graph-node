@@ -28,14 +28,6 @@ impl<T: web3::Transport> EthereumAdapter<T> {
         }
     }
 
-    pub fn block_number(&self) -> CallResult<U256, T::Out> {
-        self.eth_client.eth().block_number()
-    }
-
-    pub fn sha3(&self, data: &str) -> CallResult<H256, T::Out> {
-        self.eth_client.web3().sha3(Bytes::from(data))
-    }
-
     pub fn event_filter(&self, subscription: EthereumEventSubscription) -> CreateFilter<T, Log> {
         let filter_builder = FilterBuilder::default();
         let eth_filter: Filter = filter_builder
