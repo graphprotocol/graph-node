@@ -206,7 +206,12 @@ impl Store {
 
     /// Do not use.
     // TODO remove this, only here for compatibility with existing tests
-    pub fn set(&mut self, key: StoreKey, entity: Entity, event_source: EventSource) -> Result<(), Error> {
+    pub fn set(
+        &mut self,
+        key: StoreKey,
+        entity: Entity,
+        event_source: EventSource,
+    ) -> Result<(), Error> {
         let subgraph_id = SubgraphId(key.subgraph.clone());
         self.deprecated_set(key, entity, event_source, self.block_ptr(subgraph_id)?)
     }
@@ -266,7 +271,11 @@ impl Store {
     }
 
     // TODO replace with commit_transaction
-    fn deprecated_delete(&self, key: StoreKey, input_event_source: EventSource) -> Result<(), Error> {
+    fn deprecated_delete(
+        &self,
+        key: StoreKey,
+        input_event_source: EventSource,
+    ) -> Result<(), Error> {
         debug!(self.logger, "delete"; "key" => format!("{:?}", key));
 
         use db_schema::entities::dsl::*;
@@ -308,7 +317,10 @@ impl BasicStore for Store {
             .execute(&*self.conn.lock().unwrap())
             .map_err(Error::from)
             .and_then(|insert_count| match insert_count {
-                0 => Err(format_err!("subgraph already exists with ID {:?}", subgraph_id.0)),
+                0 => Err(format_err!(
+                    "subgraph already exists with ID {:?}",
+                    subgraph_id.0
+                )),
                 1 => Ok(()),
                 _ => unreachable!(),
             })
@@ -321,7 +333,13 @@ impl BasicStore for Store {
             .select((latest_block_hash, latest_block_number))
             .filter(id.eq(subgraph_id.0))
             .first::<(String, i64)>(&*self.conn.lock().unwrap())
-            .map(|(hash, number)| (hash.parse().expect("subgraph block ptr hash must be a valid H256"), number).into())
+            .map(|(hash, number)| {
+                (
+                    hash.parse()
+                        .expect("subgraph block ptr hash must be a valid H256"),
+                    number,
+                ).into()
+            })
             .map_err(Error::from)
     }
 

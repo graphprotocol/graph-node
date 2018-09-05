@@ -270,14 +270,17 @@ where
             );
             let block_ptr = store.block_ptr(SubgraphId(subgraph_id.clone())).unwrap();
             return store
-                .get(StoreKey {
-                    subgraph: parse_subgraph_id(object_type).expect(
-                        format!("Failed to get subgraph ID from type: {}", object_type.name)
-                            .as_str(),
-                    ),
-                    entity: object_type.name.to_owned(),
-                    id: id.to_owned(),
-                }, block_ptr)
+                .get(
+                    StoreKey {
+                        subgraph: parse_subgraph_id(object_type).expect(
+                            format!("Failed to get subgraph ID from type: {}", object_type.name)
+                                .as_str(),
+                        ),
+                        entity: object_type.name.to_owned(),
+                        id: id.to_owned(),
+                    },
+                    block_ptr,
+                )
                 .map(|entity| entity.into())
                 .unwrap_or(q::Value::Null);
         }

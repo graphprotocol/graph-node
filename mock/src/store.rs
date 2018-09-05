@@ -90,10 +90,7 @@ impl BasicStore for MockStore {
 }
 
 impl BlockStore for MockStore {
-    fn upsert_blocks<'a, B>(
-        &self,
-        _: B,
-    ) -> Box<Future<Item = (), Error = Error> + Send + 'a>
+    fn upsert_blocks<'a, B>(&self, _: B) -> Box<Future<Item = (), Error = Error> + Send + 'a>
     where
         B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a,
     {
@@ -179,10 +176,7 @@ impl BasicStore for FakeStore {
 }
 
 impl BlockStore for FakeStore {
-    fn upsert_blocks<'a, B>(
-        &self,
-        _: B,
-    ) -> Box<Future<Item = (), Error = Error> + Send + 'a>
+    fn upsert_blocks<'a, B>(&self, _: B) -> Box<Future<Item = (), Error = Error> + Send + 'a>
     where
         B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a,
     {

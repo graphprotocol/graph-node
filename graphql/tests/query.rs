@@ -169,10 +169,17 @@ impl BasicStore for TestStore {
                 entity.get("id") == Some(&Value::String(key.id.clone()))
                     && entity.get("__typename") == Some(&Value::String(key.entity.clone()))
             })
-            .map_or(Err(StoreError::Database(format_err!("not found"))), |entity| Ok(entity.clone()))
+            .map_or(
+                Err(StoreError::Database(format_err!("not found"))),
+                |entity| Ok(entity.clone()),
+            )
     }
 
-    fn find(&self, query: StoreQuery, _block_ptr: EthereumBlockPointer) -> Result<Vec<Entity>, StoreError> {
+    fn find(
+        &self,
+        query: StoreQuery,
+        _block_ptr: EthereumBlockPointer,
+    ) -> Result<Vec<Entity>, StoreError> {
         let entity_name = Value::String(query.entity.clone());
 
         let entities = self.entities
@@ -223,10 +230,7 @@ impl BasicStore for TestStore {
 }
 
 impl BlockStore for TestStore {
-    fn upsert_blocks<'a, B>(
-        &self,
-        _: B,
-    ) -> Box<Future<Item = (), Error = Error> + Send + 'a>
+    fn upsert_blocks<'a, B>(&self, _: B) -> Box<Future<Item = (), Error = Error> + Send + 'a>
     where
         B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a,
     {

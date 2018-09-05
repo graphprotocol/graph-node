@@ -9,6 +9,9 @@ extern crate web3;
 
 use diesel::pg::PgConnection;
 use diesel::*;
+use std::fmt::Debug;
+use std::panic;
+use std::sync::Mutex;
 use web3::types::Block;
 use web3::types::Bytes;
 use web3::types::H160;
@@ -16,9 +19,6 @@ use web3::types::H2048;
 use web3::types::H256;
 use web3::types::Transaction;
 use web3::types::U256;
-use std::fmt::Debug;
-use std::panic;
-use std::sync::Mutex;
 
 use graph::components::store::{
     EventSource, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
@@ -41,7 +41,7 @@ fn create_diesel_store() -> DieselStore {
             url: postgres_test_url(),
             network_name: "_testsuite".to_owned(),
         },
-        &Logger::root(slog::Discard, o!())
+        &Logger::root(slog::Discard, o!()),
     ).unwrap()
 }
 
@@ -145,7 +145,8 @@ fn create_test_entity(
 fn insert_test_data() {
     let mut store = create_diesel_store();
 
-    store.add_subgraph(SubgraphId(String::from("test_subgraph")))
+    store
+        .add_subgraph(SubgraphId(String::from("test_subgraph")))
         .expect("Failed to register test subgraph in store");
 
     let test_entity_1 = create_test_entity(
@@ -257,7 +258,9 @@ fn get_entity() {
             entity: String::from("user"),
             id: String::from("1"),
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
         let result = store.get(key, block_ptr).unwrap();
 
         let mut expected_entity = Entity::new();
@@ -332,8 +335,13 @@ fn update_existing() {
         );
 
         // Verify that the entity before updating is different from what we expect afterwards
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        assert_ne!(store.get(entity_key.clone(), block_ptr).unwrap(), test_entity_1.1);
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        assert_ne!(
+            store.get(entity_key.clone(), block_ptr).unwrap(),
+            test_entity_1.1
+        );
 
         // Set test entity; as the entity already exists an update should be performed
         store
@@ -341,7 +349,9 @@ fn update_existing() {
             .expect("Failed to update entity that already exists");
 
         // Verify that the entity in the store has changed to what we have set
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
         assert_eq!(store.get(entity_key, block_ptr).unwrap(), test_entity_1.1);
 
         Ok(())
@@ -365,7 +375,9 @@ fn partially_update_existing() {
             ("email", Value::Null),
         ]);
 
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
         let original_entity = store.get(entity_key.clone(), block_ptr).unwrap();
         let event_source = EventSource::EthereumBlock(H256::random());
         // Verify that the entity before updating is different from what we expect afterwards
@@ -377,7 +389,9 @@ fn partially_update_existing() {
             .expect("Failed to update entity that already exists");
 
         // Obtain the updated entity from the store
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
         let updated_entity = store.get(entity_key, block_ptr).unwrap();
 
         // Verify that the values of all attributes we have set were either unset
@@ -410,8 +424,12 @@ fn find_string_contains() {
             order_direction: None,
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Make sure the first user in the result vector is "Cindini"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -437,8 +455,12 @@ fn find_string_equal() {
             order_direction: None,
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Make sure the first user in the result vector is "Cindini"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -464,8 +486,12 @@ fn find_string_not_equal() {
             order_direction: None,
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"; fail if it is
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -495,8 +521,12 @@ fn find_string_greater_than() {
             order_direction: None,
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"; fail if it is
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -526,8 +556,12 @@ fn find_string_less_than() {
             order_direction: None,
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"; fail if it is
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -557,7 +591,9 @@ fn find_string_less_than_order_by_asc() {
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
         let result = store
             .find(this_query, block_ptr)
             .expect("Failed to fetch entities from the store");
@@ -599,7 +635,9 @@ fn find_string_less_than_order_by_desc() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
         let result = store
             .find(this_query, block_ptr)
             .expect("Failed to fetch entities from the store");
@@ -641,8 +679,12 @@ fn find_string_less_than_range() {
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 1, skip: 1 }),
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -672,8 +714,12 @@ fn find_string_multiple_and() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -703,8 +749,12 @@ fn find_string_ends_with() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -734,8 +784,12 @@ fn find_string_not_ends_with() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -765,8 +819,12 @@ fn find_string_in() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -796,8 +854,12 @@ fn find_string_not_in() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -828,8 +890,12 @@ fn find_float_equal() {
             order_direction: None,
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -859,8 +925,12 @@ fn find_float_not_equal() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -890,8 +960,12 @@ fn find_float_greater_than() {
             order_direction: None,
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -921,8 +995,12 @@ fn find_float_less_than() {
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini";
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -952,8 +1030,12 @@ fn find_float_less_than_order_by_desc() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -983,8 +1065,12 @@ fn find_float_less_than_range() {
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 1, skip: 1 }),
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
         // Check if the first user in the result vector is "Cindini"
         let returned_name = returned_entities[0].get(&String::from("name"));
         let test_value = Value::String(String::from("Cindini"));
@@ -1013,8 +1099,12 @@ fn find_float_in() {
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 5, skip: 0 }),
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1044,8 +1134,12 @@ fn find_float_not_in() {
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 5, skip: 0 }),
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1075,8 +1169,12 @@ fn find_int_equal() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1106,8 +1204,12 @@ fn find_int_not_equal() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1137,8 +1239,12 @@ fn find_int_greater_than() {
             order_direction: None,
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1168,8 +1274,12 @@ fn find_int_greater_or_equal() {
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1199,8 +1309,12 @@ fn find_int_less_than() {
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1230,8 +1344,12 @@ fn find_int_less_or_equal() {
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini";
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1261,8 +1379,12 @@ fn find_int_less_than_order_by_desc() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1292,8 +1414,12 @@ fn find_int_less_than_range() {
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 1, skip: 1 }),
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1323,8 +1449,12 @@ fn find_int_in() {
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 5, skip: 0 }),
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Johnton"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1354,8 +1484,12 @@ fn find_int_not_in() {
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 5, skip: 0 }),
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1385,8 +1519,12 @@ fn find_bool_equal() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1416,8 +1554,12 @@ fn find_bool_not_equal() {
             order_direction: Some(StoreOrder::Ascending),
             range: None,
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find query failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find query failed");
 
         // Check if the first user in the result vector is "Johnton"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1447,8 +1589,12 @@ fn find_bool_in() {
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 5, skip: 0 }),
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Cindini"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1478,8 +1624,12 @@ fn find_bool_not_in() {
             order_direction: Some(StoreOrder::Descending),
             range: Some(StoreRange { first: 5, skip: 0 }),
         };
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
 
         // Check if the first user in the result vector is "Shaqueeena"
         let returned_name = returned_entities[0].get(&String::from("name"));
@@ -1517,7 +1667,9 @@ fn revert_block() {
         // Revert all events associated with event_source, "znuyjijnezBiGFuZAW9Q"
         store.revert_events(event_source);
 
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
         let returned_entities = store
             .find(this_query.clone(), block_ptr)
             .expect("store.find operation failed");
@@ -1532,8 +1684,12 @@ fn revert_block() {
         assert_eq!(1, returned_entities.len());
 
         // Perform revert operation again to confirm idempotent nature of revert_events()
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
-        let returned_entities = store.find(this_query, block_ptr).expect("store.find operation failed");
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
+        let returned_entities = store
+            .find(this_query, block_ptr)
+            .expect("store.find operation failed");
         let returned_name = returned_entities[0].get(&String::from("email"));
         let test_value = Value::String(String::from("queensha@email.com"));
         assert!(returned_name.is_some());
@@ -1576,7 +1732,9 @@ fn revert_block_with_delete() {
         // Revert all events associated with our random event_source
         store.revert_events(revert_event_source);
 
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
         let returned_entities = store
             .find(this_query.clone(), block_ptr)
             .expect("store.find operation failed");
@@ -1599,7 +1757,9 @@ fn revert_block_with_delete() {
             .delete(del_key.clone(), event_source)
             .expect("Store.delete operation failed");
         store.revert_events(revert_event_source);
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
         let returned_entities = store
             .find(this_query.clone(), block_ptr)
             .expect("store.find operation failed");
@@ -1629,7 +1789,9 @@ fn revert_block_with_partial_update() {
             ("email", Value::Null),
         ]);
 
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
         let original_entity = store.get(entity_key.clone(), block_ptr).unwrap();
         let event_source = EventSource::EthereumBlock(H256::random());
         let revert_event_source = event_source.to_string();
@@ -1646,7 +1808,9 @@ fn revert_block_with_partial_update() {
         store.revert_events(revert_event_source.clone());
 
         // Obtain the reverted entity from the store
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
         let reverted_entity = store.get(entity_key.clone(), block_ptr).unwrap();
 
         // Verify that the entity has been returned to its original state
@@ -1655,7 +1819,9 @@ fn revert_block_with_partial_update() {
         // Perform revert operation again and verify the same results to confirm the
         // idempotent nature of the revert_events function
         store.revert_events(revert_event_source);
-        let block_ptr = store.block_ptr(SubgraphId("test_subgraph".to_owned())).unwrap();
+        let block_ptr = store
+            .block_ptr(SubgraphId("test_subgraph".to_owned()))
+            .unwrap();
         let reverted_entity = store.get(entity_key, block_ptr).unwrap();
         assert_eq!(reverted_entity, original_entity);
 
@@ -1669,7 +1835,8 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         let mut store = create_diesel_store();
 
         // Register subgraph in store
-        store.add_subgraph(SubgraphId(String::from("subgraph-id")))
+        store
+            .add_subgraph(SubgraphId(String::from("subgraph-id")))
             .expect("failed to register new subgraph in store");
 
         // Create a store subscription
