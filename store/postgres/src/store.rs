@@ -176,8 +176,8 @@ impl Store {
 
     /// Handles block reorganizations.
     /// Revert all store events related to the given block
-    pub fn revert_events(&self, block_hash: String) {
-        select(revert_block(block_hash))
+    pub fn revert_events(&self, block_hash: String, subgraph_id: String) {
+        select(revert_block(block_hash, subgraph_id))
             .execute(&*self.conn.lock().unwrap())
             .unwrap();
     }

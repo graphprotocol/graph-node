@@ -88,7 +88,7 @@ $$
 DECLARE
     entity_history_row RECORD;
 BEGIN
-    -- Loop through each record change even
+    -- Loop through each record change event
     FOR entity_history_row IN
         -- Get all entity changes driven by given event
         SELECT
@@ -245,9 +245,9 @@ $$ LANGUAGE plpgsql;
 *
 * Revert the row store events related to a particular block
 * Rerun all of an entities changes that come after the row store events related to that block
-* Parameters: block_hash
+* Parameters: block_hash, subgraph
 **************************************************************/
-CREATE OR REPLACE FUNCTION revert_block(block_hash_to_revert VARCHAR)
+CREATE OR REPLACE FUNCTION revert_block(block_hash_to_revert VARCHAR, subgraph_id VARCHAR)
     RETURNS VOID AS
 $$
 DECLARE
@@ -261,7 +261,8 @@ BEGIN
         FROM entity_history
         JOIN event_meta_data ON
             entity_history.event_id = event_meta_data.id
-        WHERE event_meta_data.source = block_hash_to_revert
+        WHERE event_meta_data.source = block_hash_to_revert AND
+            entity_history.subgraph = subgraph_id
         GROUP BY
             entity_history.event_id
         ORDER BY entity_history.event_id DESC
@@ -277,9 +278,9 @@ $$ LANGUAGE plpgsql;
 *
 * Revert the row store events related to a set of blocks
 * for each block in the set run the revert block function
-* Parameters: array of block_hash's
+* Parameters: array of block_hash's, subgraph
 **************************************************************/
-CREATE OR REPLACE FUNCTION revert_block_group(block_hash_group VARCHAR[])
+CREATE OR REPLACE FUNCTION revert_block_group(block_hash_group VARCHAR[], subgraph_id VARCHAR)
     RETURNS VOID AS
 $$
 DECLARE
@@ -301,7 +302,8 @@ BEGIN
             FROM entity_history
             JOIN event_meta_data ON
                 entity_history.event_id = event_meta_data.id
-            WHERE event_meta_data.block_hash = block_row.block_hash
+            WHERE event_meta_data.block_hash = block_row.block_hash AND
+                entity_history.subgraph = subgraph_id
             GROUP BY
                 entity_history.event_id
             ORDER BY entity_history.event_id DESC
