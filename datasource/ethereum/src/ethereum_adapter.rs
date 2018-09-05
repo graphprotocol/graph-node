@@ -110,12 +110,13 @@ impl<T: web3::Transport> EthereumAdapter<T> {
             .from_err()
     }
 
-    /// Find all events from transactions in the specified `block` that match `event_type`.
+    /// Find all events from transactions in the specified `block` that match at least one of the
+    /// `event_types`.
     // TODO investigate storing receipts in DB and moving this fn to BlockStore
     pub fn get_events_in_block(
         &self,
         block: Block<Transaction>,
-        event_type: Event,
+        event_types: Vec<Event>,
     ) -> impl Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> {
         // TODO check block.logs_bloom, return empty
 
@@ -129,17 +130,23 @@ impl<T: web3::Transport> EthereumAdapter<T> {
 
         stream::futures_ordered(receipt_futures)
             .map(move |receipt| {
-                let event_type = event_type.clone();
+                let event_types = event_types.to_vec();
 
                 stream::iter_result(
                     receipt
                         .logs
                         .into_iter()
-                        .map(move |log| (log, event_type.clone()))
-                        .filter(|(log, event_type)| {
-                            // Select only logs that match event signature
-                            log.topics.first() == Some(&event_type.signature())
+                        .map(move |log| (log, event_types.clone()))
+
+                        // Find which event type this log matches (if any)
+                        .filter_map(|(log, event_types)| {
+                            event_types.into_iter().find(|event_type| {
+                                log.topics.first() == Some(&event_type.signature())
+                            })
+                            .map(|event_type| (log, event_type))
                         })
+
+                        // Convert Log into an EthereumEvent
                         .map(|(log, event_type)| {
                             // Try to parse log data into an Ethereum event
                             event_type
