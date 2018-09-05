@@ -1,9 +1,9 @@
 use ethabi::{Bytes, Error as ABIError, Event, Function, LogParam, ParamType, Token};
-use ethereum_types::{Address, H256};
 use failure::SyncFailure;
-use futures::{Future, Stream};
+use futures::Future;
+use std::collections::HashMap;
 use web3::error::Error as Web3Error;
-use web3::types::{BlockId, BlockNumber};
+use web3::types::{Address, BlockId, BlockNumber, H2048, H256, Log};
 
 /// A request for the state of a contract at a specific block hash and address.
 pub struct EthereumContractStateRequest {
@@ -99,6 +99,37 @@ pub struct EthereumEvent {
     pub block_hash: H256,
     pub params: Vec<LogParam>,
     pub removed: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct EthereumEventFilter {
+    // Event types stored in nested hash tables for faster lookups
+    pub event_types_by_contract_address_and_sig: HashMap<Address, HashMap<H256, Event>>,
+}
+
+impl EthereumEventFilter {
+    /// Check if log bloom filter indicates a possible match for this event filter.
+    /// Returns `true` to indicate that a matching `Log` _might_ be contained.
+    /// Returns `false` to indicate that a matching `Log` _is not_ contained.
+    pub fn check_bloom(&self, _bloom: H2048) -> bool {
+        // TODO
+        true // not even wrong
+    }
+
+    /// Try to match a `Log` to one of the event types in this filter.
+    pub fn match_event(&self, log: &Log) -> Option<Event> {
+        // First topic should be event sig
+        log.topics.first()
+            .and_then(|sig| {
+                // Look up contract address
+                self.event_types_by_contract_address_and_sig
+                    .get(&log.address)
+                    .and_then(|event_types_by_sig| {
+                        // Look up event sig
+                        event_types_by_sig.get(sig).map(Clone::clone)
+                    })
+            })
+    }
 }
 
 /// Common trait for components that watch and manage access to Ethereum.

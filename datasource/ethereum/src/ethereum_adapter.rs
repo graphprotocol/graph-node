@@ -110,15 +110,17 @@ impl<T: web3::Transport> EthereumAdapter<T> {
             .from_err()
     }
 
-    /// Find all events from transactions in the specified `block` that match at least one of the
-    /// `event_types`.
+    /// Find all events from transactions in the specified `block` that match the specified
+    /// `event_filter`.
     // TODO investigate storing receipts in DB and moving this fn to BlockStore
-    pub fn get_events_in_block(
-        &self,
+    pub fn get_events_in_block<'a>(
+        &'a self,
         block: Block<Transaction>,
-        event_types: Vec<Event>,
-    ) -> impl Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> {
-        // TODO check block.logs_bloom, return empty
+        event_filter: EthereumEventFilter,
+    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> + 'a> {
+        if !event_filter.check_bloom(block.logs_bloom) {
+            return Box::new(stream::empty());
+        }
 
         let receipt_futures = block.transactions.into_iter().map(|tx| {
             self.eth_client
@@ -128,44 +130,43 @@ impl<T: web3::Transport> EthereumAdapter<T> {
                 .map_err(EthereumSubscriptionError::from)
         });
 
-        stream::futures_ordered(receipt_futures)
+        Box::new(
+            stream::futures_ordered(receipt_futures)
             .map(move |receipt| {
-                let event_types = event_types.to_vec();
+                let event_filter = event_filter.clone();
 
                 stream::iter_result(
                     receipt
                         .logs
                         .into_iter()
-                        .map(move |log| (log, event_types.clone()))
 
-                        // Find which event type this log matches (if any)
-                        .filter_map(|(log, event_types)| {
-                            event_types.into_iter().find(|event_type| {
-                                log.topics.first() == Some(&event_type.signature())
-                            })
-                            .map(|event_type| (log, event_type))
-                        })
+                        // Select only logs that match event filter
+                        .filter_map(move |log| {
+                            event_filter
+                                .match_event(&log)
 
-                        // Convert Log into an EthereumEvent
-                        .map(|(log, event_type)| {
-                            // Try to parse log data into an Ethereum event
-                            event_type
-                                .parse_log(RawLog {
-                                    topics: log.topics.clone(),
-                                    data: log.data.0.clone(),
-                                })
-                                .map_err(EthereumSubscriptionError::from)
-                                .map(|log_data| EthereumEvent {
-                                    address: log.address,
-                                    event_signature: log.topics[0],
-                                    block_hash: log.block_hash.unwrap(),
-                                    params: log_data.params,
-                                    removed: log.is_removed(), // TODO is this obsolete?
+                                // Convert Log into an EthereumEvent
+                                .map(|event_type| {
+                                    // Try to parse log data into an Ethereum event
+                                    event_type
+                                        .parse_log(RawLog {
+                                            topics: log.topics.clone(),
+                                            data: log.data.0.clone(),
+                                        })
+                                        .map_err(EthereumSubscriptionError::from)
+                                        .map(|log_data| EthereumEvent {
+                                            address: log.address,
+                                            event_signature: log.topics[0],
+                                            block_hash: log.block_hash.unwrap(),
+                                            params: log_data.params,
+                                            removed: log.is_removed(), // TODO is this obsolete?
+                                        })
                                 })
                         })
                 )
             })
             .flatten()
+        )
     }
 
     fn call(
