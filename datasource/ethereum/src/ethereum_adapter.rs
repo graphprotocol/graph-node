@@ -9,9 +9,11 @@ use web3;
 use web3::api::CreateFilter;
 use web3::api::{Eth, Web3};
 use web3::helpers::CallResult;
-use web3::types::*;
+use web3::types::{Filter, *};
 
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
+use graph::components::store::EthereumBlockPointer;
+use graph::prelude::*;
 
 pub struct EthereumAdapterConfig<T: web3::Transport> {
     pub transport: T,
@@ -40,6 +42,103 @@ impl<T: web3::Transport> EthereumAdapter<T> {
 
     pub fn block(eth: Eth<T>, block_id: BlockId) -> CallResult<Block<H256>, T::Out> {
         eth.block(block_id)
+    }
+
+    /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
+    /// node.
+    ///
+    /// Careful: don't use this function without considering race conditions.
+    /// Chain reorgs could happen at any time, and could affect the answer received.
+    /// Generally, it is only safe to use this function with blocks that have received enough
+    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
+    /// those confirmations.
+    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
+    /// reorgs.
+    pub fn is_on_main_chain(
+        &self,
+        block_ptr: EthereumBlockPointer,
+    ) -> impl Future<Item = bool, Error = Error> {
+        self.eth_client
+            .eth()
+            .block(BlockId::Number(block_ptr.number.into()))
+            .map(move |b| b.hash.unwrap() == block_ptr.hash)
+            .map_err(SyncFailure::new)
+            .from_err()
+    }
+
+    /// Find the first block in the specified range containing at least one transaction with at
+    /// least one log entry matching the specified `event_type`.
+    ///
+    /// Careful: don't use this function without considering race conditions.
+    /// Chain reorgs could happen at any time, and could affect the answer received.
+    /// Generally, it is only safe to use this function with blocks that have received enough
+    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
+    /// those confirmations.
+    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
+    /// reorgs.
+    /// It is recommended that `to` be far behind the block number of latest block the Ethereum
+    /// node is aware of.
+    pub fn find_first_block_with_event(
+        &self,
+        from: BlockNumber,
+        to: BlockNumber,
+        event_type: Event,
+    ) -> impl Future<Item = Option<EthereumBlockPointer>, Error = Error> {
+        // TODO use an incremental search instead of one large query
+
+        let log_filter: Filter = FilterBuilder::default()
+            .from_block(from)
+            .to_block(to)
+            .topics(Some(vec![event_type.signature()]), None, None, None)
+            .build();
+
+        self.eth_client
+            .eth()
+            .logs(log_filter)
+            .map(|logs| {
+                logs.first().map(|log| {
+                    let hash = log
+                        .block_hash
+                        .expect("log from Eth node is missing block hash");
+                    let number = log
+                        .block_number
+                        .expect("log from Eth node is missing block number");
+                    (hash, number.as_u64()).into()
+                })
+            })
+            .map_err(SyncFailure::new)
+            .from_err()
+    }
+
+    /// Find all `Log`s from transactions in the specified `block` that match `event_type`.
+    // TODO investigate storing receipts in DB and moving this fn to BlockStore
+    pub fn get_events_in_block(
+        &self,
+        block: Block<Transaction>,
+        event_type: Event,
+    ) -> impl Stream<Item = Log, Error = Error> {
+        // TODO check block.logs_bloom, return empty
+
+        let receipt_futures = block.transactions.into_iter().map(|tx| {
+            self.eth_client
+                .eth()
+                .transaction_receipt(tx.hash)
+                .map(move |opt| opt.expect(&format!("missing receipt for TX {:?}", tx.hash)))
+                .map_err(SyncFailure::new)
+        });
+
+        stream::futures_ordered(receipt_futures)
+            .map(move |receipt| {
+                let event_type = event_type.clone();
+
+                stream::iter_ok(
+                    receipt
+                        .logs
+                        .into_iter()
+                        .filter(move |log| log_matches_event(&log, &event_type)),
+                )
+            })
+            .flatten()
     }
 
     fn call(
@@ -154,4 +253,8 @@ impl<T: web3::Transport + Send + Sync + 'static> EthereumAdapterTrait for Ethere
     fn unsubscribe_from_event(&mut self, _unique_id: String) -> bool {
         false
     }
+}
+
+fn log_matches_event(log: &Log, event_type: &Event) -> bool {
+    log.topics.first() == Some(&event_type.signature())
 }

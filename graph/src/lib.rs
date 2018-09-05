@@ -42,7 +42,7 @@ pub mod prelude {
     // Glob import from `slog` to re-export the macros, but prevent
     // `slog::Result` from shadowing `Result`. Rust 2018 will have proper macro
     // imports then we can remove `slog::*` in favor of something fine-grained.
-    pub use failure::{Error, Fail};
+    pub use failure::{Error, Fail, SyncFailure};
     pub use slog;
     pub use slog::*;
     pub use std::result::Result;
