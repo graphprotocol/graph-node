@@ -110,13 +110,13 @@ impl<T: web3::Transport> EthereumAdapter<T> {
             .from_err()
     }
 
-    /// Find all `Log`s from transactions in the specified `block` that match `event_type`.
+    /// Find all events from transactions in the specified `block` that match `event_type`.
     // TODO investigate storing receipts in DB and moving this fn to BlockStore
     pub fn get_events_in_block(
         &self,
         block: Block<Transaction>,
         event_type: Event,
-    ) -> impl Stream<Item = Log, Error = Error> {
+    ) -> impl Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> {
         // TODO check block.logs_bloom, return empty
 
         let receipt_futures = block.transactions.into_iter().map(|tx| {
@@ -124,18 +124,38 @@ impl<T: web3::Transport> EthereumAdapter<T> {
                 .eth()
                 .transaction_receipt(tx.hash)
                 .map(move |opt| opt.expect(&format!("missing receipt for TX {:?}", tx.hash)))
-                .map_err(SyncFailure::new)
+                .map_err(EthereumSubscriptionError::from)
         });
 
         stream::futures_ordered(receipt_futures)
             .map(move |receipt| {
                 let event_type = event_type.clone();
 
-                stream::iter_ok(
+                stream::iter_result(
                     receipt
                         .logs
                         .into_iter()
-                        .filter(move |log| log_matches_event(&log, &event_type)),
+                        .map(move |log| (log, event_type.clone()))
+                        .filter(|(log, event_type)| {
+                            // Select only logs that match event signature
+                            log.topics.first() == Some(&event_type.signature())
+                        })
+                        .map(|(log, event_type)| {
+                            // Try to parse log data into an Ethereum event
+                            event_type
+                                .parse_log(RawLog {
+                                    topics: log.topics.clone(),
+                                    data: log.data.0.clone(),
+                                })
+                                .map_err(EthereumSubscriptionError::from)
+                                .map(|log_data| EthereumEvent {
+                                    address: log.address,
+                                    event_signature: log.topics[0],
+                                    block_hash: log.block_hash.unwrap(),
+                                    params: log_data.params,
+                                    removed: log.is_removed(), // TODO is this obsolete?
+                                })
+                        })
                 )
             })
             .flatten()
@@ -253,8 +273,4 @@ impl<T: web3::Transport + Send + Sync + 'static> EthereumAdapterTrait for Ethere
     fn unsubscribe_from_event(&mut self, _unique_id: String) -> bool {
         false
     }
-}
-
-fn log_matches_event(log: &Log, event_type: &Event) -> bool {
-    log.topics.first() == Some(&event_type.signature())
 }
