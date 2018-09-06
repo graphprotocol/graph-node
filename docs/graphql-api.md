@@ -153,13 +153,13 @@ It is typical for developers to define their own root `Query` and `Subscription`
 
 ## 3.2 Entities
 
-All GraphQL types in your schema will be treated as entities, and must have an `ID` field.
+All GraphQL types with `@entity` directives in your schema will be treated as entities, and must have an `ID` field.
 
 #### Example
 Define a `Token` entity:
 
 ```graphql
-type Token {
+type Token @entity {
   # The unique ID of this entity
   id: ID!
   name: String!
@@ -193,12 +193,12 @@ Relationships are defined on entities just like any other scalar type, except th
 #### Example
 Define a `Transaction` entity type with an (optional) one-to-one relationship with a `TransactionReceipt` entity type:
 ```graphql
-type Transaction {
+type Transaction @entity {
   id: ID!
   transactionReceipt: TransactionReceipt
 }
 
-type TransactionReceipt {
+type TransactionReceipt @entity {
   id: ID!
   transaction: Transaction
 }
@@ -207,12 +207,12 @@ type TransactionReceipt {
 #### Example
 Define a `Token` entity type with a  (required) one-to-many relationship with a `TokenBalance` entity type.
 ```graphql
-type Token {
+type Token @entity {
   id: ID!
   tokenBalances: [TokenBalance!]!
 }
 
-type TokenBalance {
+type TokenBalance @entity {
   id: ID!
   amount: Int!
 }
@@ -226,13 +226,13 @@ The type of a `@derivedFrom` field must be a collection, since multiple entities
 #### Example
 Define a reverse lookup from a `User` entity type to a `Organization` entity type:
 ```graphql
-type Organization {
+type Organization @entity {
   id: ID!
   name: String!
   members: [User]!
 }
 
-type User {
+type User @entity {
   id: ID!
   name: String!
   organizations: [Organization!] @derivedFrom(field: "members")
