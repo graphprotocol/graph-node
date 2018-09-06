@@ -128,6 +128,13 @@ impl RuntimeManager where {
                             info!(logger, "Host mapping runtimes for subgraph";
                           "location" => &manifest.location);
 
+                            // Add entry to store for subgraph
+                            store
+                                .lock()
+                                .unwrap()
+                                .add_subgraph_if_missing(SubgraphId(manifest.id.clone()))
+                                .unwrap();
+
                             // Create a new runtime host for each data source in the subgraph manifest
                             let mut new_hosts = manifest
                                 .data_sources
@@ -160,6 +167,7 @@ impl RuntimeManager where {
                             for (subgraph_id, runtime_hosts) in runtime_hosts_by_subgraph.iter_mut()
                             {
                                 handle_head_block_update(
+                                    logger.clone(),
                                     store.clone(),
                                     eth_adapter.clone(),
                                     SubgraphId(subgraph_id.to_owned()),
@@ -186,6 +194,7 @@ impl EventConsumer<SubgraphProviderEvent> for RuntimeManager {
 }
 
 fn handle_head_block_update<S, E, H>(
+    logger: Logger,
     store_mutex: Arc<Mutex<S>>,
     eth_adapter_mutex: Arc<Mutex<E>>,
     subgraph_id: SubgraphId,
@@ -198,6 +207,11 @@ where
 {
     // TODO handle VersionConflicts
     // TODO remove .wait()s, maybe?
+
+    info!(
+        logger,
+        "Handling head block update for subgraph {}", subgraph_id.0
+    );
 
     let store = store_mutex.lock().unwrap();
     let eth_adapter = eth_adapter_mutex.lock().unwrap();
@@ -214,6 +228,9 @@ where
             .head_block_ptr()?
             .expect("should not receive head block update before head block pointer is set");
         let subgraph_ptr = store.block_ptr(subgraph_id.clone())?;
+
+        debug!(logger, "head_ptr = {:?}", head_ptr);
+        debug!(logger, "subgraph_ptr = {:?}", subgraph_ptr);
 
         // Only continue if the subgraph block ptr is behind the head block ptr.
         // subgraph_ptr > head_ptr shouldn't happen, but if it does, it's safest to just stop.
@@ -284,9 +301,11 @@ where
                     // It isn't safe to go any farther due to race conditions.
                     let to = head_ptr.number - REORG_THRESHOLD;
 
+                    debug!(logger, "start find_first_block_with_event");
                     let descendant_ptr_opt = eth_adapter
                         .find_first_block_with_event(from, to, event_filter.clone())
                         .wait()?;
+                    debug!(logger, "done find_first_block_with_event");
 
                     match descendant_ptr_opt {
                         None => {
@@ -443,6 +462,12 @@ where
                     .get_events_in_block(descendant_block, event_filter.clone())
                     .collect()
                     .wait()?;
+
+                debug!(
+                    logger,
+                    "Processing block. {} event(s) are relevant to this subgraph.",
+                    events.len()
+                );
 
                 // Then, we will distribute each event to each of the runtime hosts.
                 // The execution order is important to ensure entity data is produced

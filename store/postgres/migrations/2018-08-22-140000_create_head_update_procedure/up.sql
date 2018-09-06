@@ -68,7 +68,11 @@ BEGIN
     WHERE name = net_name;
 
     -- Fire head block update event
-    NOTIFY head_block_update;
+    PERFORM pg_notify('head_block_update', json_build_object(
+      'network_name', net_name,
+      'head_block_hash', new_head_hash,
+      'head_block_number', new_head_number
+    )::text);
 
     -- Done
     RETURN ARRAY[]::VARCHAR[];

@@ -28,7 +28,7 @@ impl MockStore {
 }
 
 impl BasicStore for MockStore {
-    fn add_subgraph(&self, _: SubgraphId) -> Result<(), Error> {
+    fn add_subgraph_if_missing(&self, _: SubgraphId) -> Result<(), Error> {
         unimplemented!()
     }
 
@@ -49,7 +49,7 @@ impl BasicStore for MockStore {
         &self,
         _subgraph_id: SubgraphId,
         _block: Block<Transaction>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -132,7 +132,7 @@ impl Store for MockStore {
 pub struct FakeStore;
 
 impl BasicStore for FakeStore {
-    fn add_subgraph(&self, _: SubgraphId) -> Result<(), Error> {
+    fn add_subgraph_if_missing(&self, _: SubgraphId) -> Result<(), Error> {
         panic!("called FakeStore")
     }
 
@@ -153,7 +153,7 @@ impl BasicStore for FakeStore {
         &self,
         _subgraph_id: SubgraphId,
         _block: Block<Transaction>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         panic!("called FakeStore")
     }
 

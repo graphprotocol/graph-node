@@ -21,6 +21,7 @@ use graph::{tokio, tokio::timer::Interval};
 
 use entity_changes::EntityChangeListener;
 use functions::{attempt_head_update, revert_block, set_config};
+use head_block_updates::HeadBlockUpdateListener;
 
 embed_migrations!("./migrations");
 
@@ -196,10 +197,10 @@ impl Store {
         );
     }
 
-    /// Handles block reorganizations.
-    /// Revert all store events related to the given block
+    /// Do not use.
+    // TODO remove this, only here for compatibility with existing tests
     pub fn revert_events(&self, block_hash: String) {
-        select(revert_block(block_hash))
+        select(revert_block(block_hash, ""))
             .execute(&*self.conn.lock().unwrap())
             .unwrap();
     }
@@ -302,28 +303,23 @@ impl Store {
 }
 
 impl BasicStore for Store {
-    fn add_subgraph(&self, subgraph_id: SubgraphId) -> Result<(), Error> {
+    fn add_subgraph_if_missing(&self, subgraph_id: SubgraphId) -> Result<(), Error> {
         use db_schema::subgraphs::dsl::*;
 
         insert_into(subgraphs)
             .values((
                 id.eq(&subgraph_id.0),
                 network_name.eq(&self.config.network_name),
-                latest_block_hash.eq::<String>(format!("{:x}", H256::zero())),
+                // TODO genesis block hash... put this somewhere better?
+                latest_block_hash
+                    .eq::<&str>("d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"),
                 latest_block_number.eq::<i64>(0),
             ))
             .on_conflict(id)
             .do_nothing()
             .execute(&*self.conn.lock().unwrap())
             .map_err(Error::from)
-            .and_then(|insert_count| match insert_count {
-                0 => Err(format_err!(
-                    "subgraph already exists with ID {:?}",
-                    subgraph_id.0
-                )),
-                1 => Ok(()),
-                _ => unreachable!(),
-            })
+            .map(|_| ())
     }
 
     fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
@@ -371,14 +367,22 @@ impl BasicStore for Store {
 
     fn revert_block(
         &self,
-        _subgraph_id: SubgraphId,
+        subgraph_id: SubgraphId,
         block: Block<Transaction>,
-    ) -> Result<(), Error> {
-        // TODO need to update subgraph ptr!
-        select(revert_block(block.hash.unwrap().to_string()))
-            .execute(&*self.conn.lock().unwrap())
+    ) -> Result<(), StoreError> {
+        // TODO make this atomic
+        select(revert_block(
+            block.hash.unwrap().to_string(),
+            subgraph_id.0.clone(),
+        )).execute(&*self.conn.lock().unwrap())
             .map(|_| ())
             .map_err(Error::from)
+            .map_err(StoreError::Database)?;
+        self.set_block_ptr_with_no_changes(
+            subgraph_id,
+            block.clone().into(),
+            EthereumBlockPointer::to_parent(&block),
+        )
     }
 
     fn get(&self, key: StoreKey, block_ptr: EthereumBlockPointer) -> Result<Entity, StoreError> {
@@ -575,7 +579,17 @@ impl BlockStore for Store {
     }
 
     fn head_block_updates(&self) -> Box<Stream<Item = HeadBlockUpdateEvent, Error = Error> + Send> {
-        unimplemented!()
+        let mut listener =
+            HeadBlockUpdateListener::new(self.config.url.clone(), self.config.network_name.clone());
+        let updates = Box::new(
+            listener
+                .take_event_stream()
+                .expect("Failed to listen to head block update events in Postgres")
+                .map_err(|_| format_err!("error in head block update stream")),
+        );
+        listener.start();
+        Box::leak(Box::new(listener)); // TODO need a better idea
+        updates
     }
 
     fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {

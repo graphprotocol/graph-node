@@ -177,8 +177,9 @@ impl From<(H256, i64)> for EthereumBlockPointer {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct HeadBlockUpdateEvent {
-    block_ptr: EthereumBlockPointer,
+    pub block_ptr: EthereumBlockPointer,
 }
 
 #[derive(Fail, Debug)]
@@ -251,7 +252,7 @@ pub trait BasicStore {
 
     /// Register a new subgraph ID in the store.
     /// Each subgraph has its own entities and separate block processing state.
-    fn add_subgraph(&self, subgraph_id: SubgraphId) -> Result<(), Error>;
+    fn add_subgraph_if_missing(&self, subgraph_id: SubgraphId) -> Result<(), Error>;
 
     /// Get the latest processed block.
     fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error>;
@@ -282,8 +283,11 @@ pub trait BasicStore {
     ///
     /// `StoreError::VersionConflict` is returned if `block` does not match the current block pointer.
     // TODO: just need hash, number and parent_hash from Block
-    fn revert_block(&self, subgraph_id: SubgraphId, block: Block<Transaction>)
-        -> Result<(), Error>;
+    fn revert_block(
+        &self,
+        subgraph_id: SubgraphId,
+        block: Block<Transaction>,
+    ) -> Result<(), StoreError>;
 
     /// Looks up an entity using the given store key.
     ///

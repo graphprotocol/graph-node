@@ -137,7 +137,7 @@ impl TestStore {
 }
 
 impl BasicStore for TestStore {
-    fn add_subgraph(&self, _: SubgraphId) -> Result<(), Error> {
+    fn add_subgraph_if_missing(&self, _: SubgraphId) -> Result<(), Error> {
         unimplemented!()
     }
 
@@ -159,7 +159,7 @@ impl BasicStore for TestStore {
         &self,
         _subgraph_id: SubgraphId,
         _block: Block<Transaction>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
