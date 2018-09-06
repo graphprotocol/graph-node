@@ -172,7 +172,7 @@ impl RuntimeHost {
                 info!(event_logger, "Event removed";
                           "block" => event.block_hash.to_string());
             } else {
-                let event_handler = data_source
+                let event_handler_opt = data_source
                     .mapping
                     .event_handlers
                     .iter()
@@ -180,14 +180,15 @@ impl RuntimeHost {
                         util::ethereum::string_to_h256(event_handler.event.as_str())
                             == event.event_signature
                     })
-                    .expect("Received an Ethereum event not mentioned in the data set")
                     .to_owned();
 
-                debug!(event_logger, "  Call event handler";
-                           "name" => &event_handler.handler,
-                           "signature" => &event_handler.event);
+                if let Some(event_handler) = event_handler_opt {
+                    debug!(event_logger, "  Call event handler";
+                               "name" => &event_handler.handler,
+                               "signature" => &event_handler.event);
 
-                module.handle_ethereum_event(event_handler.handler.as_str(), event);
+                    module.handle_ethereum_event(event_handler.handler.as_str(), event);
+                }
             }
         })
     }

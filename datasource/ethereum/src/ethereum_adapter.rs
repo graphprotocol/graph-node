@@ -61,13 +61,12 @@ where
                 .build();
 
             // Request logs from client
-            debug!(&self.logger, "REQUESTING logs for [{}, {}]", from, to);
             Box::new(
                 self.eth_client
                     .eth()
                     .logs(log_filter)
                     .map(move |logs| {
-                        debug!(self.logger, "GOT logs for [{}, {}]", from, to);
+                        debug!(self.logger, "Received logs for [{}, {}].", from, to);
                         logs
                     })
                     .map_err(SyncFailure::new)
