@@ -118,7 +118,9 @@ where
                                 .filter(move |log| event_filter.match_event(log).is_some())
                                 .collect()
                         });
-                    chunk_futures.push(Box::new(chunk_future) as Box<Future<Item=Vec<Log>,Error=_> + Send>);
+                    chunk_futures
+                        .push(Box::new(chunk_future)
+                            as Box<Future<Item = Vec<Log>, Error = _> + Send>);
 
                     chunk_offset = chunk_end + 1;
                 } else {
@@ -140,7 +142,9 @@ where
                         // and will therefore return false positives
                         debug!(
                             self.logger,
-                            "Starting request for logs in block range [{},{}]", chunk_offset, chunk_end
+                            "Starting request for logs in block range [{},{}]",
+                            chunk_offset,
+                            chunk_end
                         );
                         let event_filter = event_filter.clone();
                         let chunk_future = self
@@ -153,7 +157,8 @@ where
                             });
 
                         // Save future for later
-                        chunk_futures.push(Box::new(chunk_future) as Box<Future<Item=Vec<Log>,Error=_> + Send>);
+                        chunk_futures.push(Box::new(chunk_future)
+                            as Box<Future<Item = Vec<Log>, Error = _> + Send>);
 
                         // If last chunk, will push offset past `to`. That's fine.
                         chunk_offset += LOG_STREAM_CHUNK_SIZE_IN_BLOCKS;

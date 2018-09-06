@@ -353,7 +353,7 @@ impl BasicStore for Store {
                 latest_block_number.eq(to.number as i64),
             ))
             .filter(id.eq(subgraph_id.0))
-            .filter(latest_block_hash.eq(from.hash.to_string()))
+            .filter(latest_block_hash.eq(format!("{:x}", from.hash)))
             .filter(latest_block_number.eq(from.number as i64))
             .execute(&*self.conn.lock().unwrap())
             .map_err(Error::from)
