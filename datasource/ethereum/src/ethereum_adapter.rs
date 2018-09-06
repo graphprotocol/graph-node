@@ -398,12 +398,28 @@ where
     Box::new(future::loop_fn((), move |()| {
         let logger = logger.clone();
 
+        let mut retries_left = 10;
         try_it()
             .deadline(Instant::now() + Duration::from_secs(30))
             .then(move |result| match result {
                 Ok(ret) => Ok(future::Loop::Break(ret)),
                 Err(deadline_err) => match deadline_err.into_inner() {
-                    Some(e) => Err(e),
+                    Some(e) => {
+                        if retries_left > 0 {
+                            warn!(
+                                logger,
+                                "Ethereum RPC call failed: {}", e
+                            );
+                            warn!(
+                                logger,
+                                "Retrying..."
+                            );
+                            retries_left -= 1;
+                            Ok(future::Loop::Continue(()))
+                        } else {
+                            Err(e)
+                        }
+                    },
                     None => {
                         info!(
                             logger,
