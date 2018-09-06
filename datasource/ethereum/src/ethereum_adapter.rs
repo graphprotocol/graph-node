@@ -25,7 +25,7 @@ pub struct EthereumAdapter<T: web3::Transport> {
 }
 
 /// Number of chunks to request in parallel when streaming logs.
-const LOG_STREAM_PARALLEL_CHUNKS: u64 = 20;
+const LOG_STREAM_PARALLEL_CHUNKS: u64 = 10;
 
 /// Number of blocks to request in each chunk.
 const LOG_STREAM_CHUNK_SIZE_IN_BLOCKS: u64 = 10000;
@@ -81,7 +81,7 @@ where
         from: u64,
         to: u64,
         event_filter: EthereumEventFilter,
-    ) -> impl Stream<Item = Log, Error = Error> + 'a {
+    ) -> impl Stream<Item = Log, Error = Error> + Send + 'a {
         if from > to {
             panic!(
                 "cannot produce a log stream on a backwards block range (from={}, to={})",
@@ -96,26 +96,15 @@ where
             .flat_map(|event_types_by_sig| event_types_by_sig.keys())
             .map(|sig| sig.to_owned())
             .collect::<Vec<H256>>();
+        debug!(self.logger, "event sigs: {:?}", &event_sigs);
 
         stream::unfold(from, move |mut chunk_offset| {
             if chunk_offset <= to {
                 let mut chunk_futures = vec![];
-                for _ in 0..LOG_STREAM_PARALLEL_CHUNKS {
-                    // Last chunk may be shorter than CHUNK_SIZE, so needs special handling
-                    let is_last_chunk = (chunk_offset + LOG_STREAM_CHUNK_SIZE_IN_BLOCKS) > to;
 
-                    // Determine the upper bound on the chunk
-                    // Note: chunk_end is inclusive
-                    let chunk_end = if is_last_chunk {
-                        to
-                    } else {
-                        // Subtract 1 to make range inclusive
-                        chunk_offset + LOG_STREAM_CHUNK_SIZE_IN_BLOCKS - 1
-                    };
+                if chunk_offset < 4_000_000 {
+                    let chunk_end = (chunk_offset + 100_000).min(to).min(4_000_000);
 
-                    // Start request for this chunk of logs
-                    // Note: this function filters only on event sigs,
-                    // and will therefore return false positives
                     debug!(
                         self.logger,
                         "Starting request for logs in block range [{},{}]", chunk_offset, chunk_end
@@ -127,16 +116,51 @@ where
                             logs.into_iter()
                                 // Filter out false positives
                                 .filter(move |log| event_filter.match_event(log).is_some())
+                                .collect()
                         });
+                    chunk_futures.push(Box::new(chunk_future) as Box<Future<Item=Vec<Log>,Error=_> + Send>);
 
-                    // Save future for later
-                    chunk_futures.push(chunk_future);
+                    chunk_offset = chunk_end + 1;
+                } else {
+                    for _ in 0..LOG_STREAM_PARALLEL_CHUNKS {
+                        // Last chunk may be shorter than CHUNK_SIZE, so needs special handling
+                        let is_last_chunk = (chunk_offset + LOG_STREAM_CHUNK_SIZE_IN_BLOCKS) > to;
 
-                    // If last chunk, will push offset past `to`. That's fine.
-                    chunk_offset += LOG_STREAM_CHUNK_SIZE_IN_BLOCKS;
+                        // Determine the upper bound on the chunk
+                        // Note: chunk_end is inclusive
+                        let chunk_end = if is_last_chunk {
+                            to
+                        } else {
+                            // Subtract 1 to make range inclusive
+                            chunk_offset + LOG_STREAM_CHUNK_SIZE_IN_BLOCKS - 1
+                        };
 
-                    if is_last_chunk {
-                        break;
+                        // Start request for this chunk of logs
+                        // Note: this function filters only on event sigs,
+                        // and will therefore return false positives
+                        debug!(
+                            self.logger,
+                            "Starting request for logs in block range [{},{}]", chunk_offset, chunk_end
+                        );
+                        let event_filter = event_filter.clone();
+                        let chunk_future = self
+                            .logs_with_sigs(chunk_offset, chunk_end, event_sigs.clone())
+                            .map(move |logs| {
+                                logs.into_iter()
+                                    // Filter out false positives
+                                    .filter(move |log| event_filter.match_event(log).is_some())
+                                    .collect()
+                            });
+
+                        // Save future for later
+                        chunk_futures.push(Box::new(chunk_future) as Box<Future<Item=Vec<Log>,Error=_> + Send>);
+
+                        // If last chunk, will push offset past `to`. That's fine.
+                        chunk_offset += LOG_STREAM_CHUNK_SIZE_IN_BLOCKS;
+
+                        if is_last_chunk {
+                            break;
+                        }
                     }
                 }
 
