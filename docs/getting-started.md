@@ -69,12 +69,12 @@ Before proceeding, follow the instructions in the [Graph CLI Readme](https://git
 ### 3.1 Defining your GraphQL schema
 GraphQL schemas are defined using the GraphQL interface definition language (IDL). If you've never written a GraphQL schema, we recommend checking out a [quick primer](https://graphql.org/learn/schema/#type-language) on the GraphQL type system.
 
-With The Graph, you don't have to define your own top-level `Query` type, you simply define entity types, and Graph Node will generate top level fields for querying single instances and collections of that entity type.
+With The Graph, you don't have to define your own top-level `Query` type, you simply define entity types, and Graph Node will generate top level fields for querying single instances and collections of that entity type. Each type that should be an entity is required to be annotated with an `@entity` directive.
 
 ##### Example
 Define a simple Token entity type:
 ```graphql
-type Token {
+type Token @entity {
   id: ID!
   name: String!
   minted: Int!
