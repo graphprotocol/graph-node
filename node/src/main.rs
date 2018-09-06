@@ -209,7 +209,10 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     std::mem::forget(transport_event_loop);
 
     let ethereum_watcher = graph_datasource_ethereum::EthereumAdapter::new(
-        graph_datasource_ethereum::EthereumAdapterConfig { transport },
+        graph_datasource_ethereum::EthereumAdapterConfig {
+            transport,
+            logger: logger.clone(),
+        },
     );
 
     match ethereum_watcher.block_number().wait() {
