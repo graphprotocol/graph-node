@@ -82,6 +82,28 @@ where
         // Ask for latest block from Ethereum node
         self.get_latest_block()
             .and_then(move |latest_block: Block<Transaction>| {
+                // Check how far behind we are and (possibly) alert user
+                self.store.lock().unwrap()
+                    .head_block_ptr()
+                    .map(move |head_block_ptr_opt| {
+                        match head_block_ptr_opt {
+                            None => {
+                                info!(self.logger, "Downloading latest blocks from Ethereum. This may take a few minutes...");
+                            },
+                            Some(head_block_ptr) => {
+                                let distance = latest_block.number.unwrap().as_u64() - head_block_ptr.number;
+                                if distance > 10 && distance <= 50 {
+                                    info!(self.logger, "Downloading latest blocks from Ethereum. This may take a few seconds...");
+                                } else if distance > 50 {
+                                    info!(self.logger, "Downloading latest blocks from Ethereum. This may take a few minutes...");
+                                }
+                            },
+                        }
+
+                        latest_block
+                    })
+            })
+            .and_then(move |latest_block: Block<Transaction>| {
                 // Store latest block in block store.
                 // Might be a no-op if latest block is one that we have seen.
                 // ingest_blocks will return a (potentially incomplete) list of blocks that are
