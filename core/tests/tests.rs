@@ -4,6 +4,7 @@ extern crate graph_core;
 extern crate graph_mock;
 extern crate graph_runtime_wasm;
 extern crate ipfs_api;
+extern crate web3;
 
 use ipfs_api::IpfsClient;
 use std::fs::read_to_string;
@@ -11,6 +12,9 @@ use std::io::Cursor;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
+use web3::types::Block;
+use web3::types::H256;
+use web3::types::Transaction;
 
 use graph::components::ethereum::*;
 use graph::prelude::*;
@@ -25,22 +29,48 @@ fn multiple_data_sources_per_subgraph() {
     }
 
     impl EthereumAdapter for MockEthereumAdapter {
+        fn block_by_hash(
+            &self,
+            _: H256,
+        ) -> Box<Future<Item = Block<Transaction>, Error = Error> + Send> {
+            unimplemented!()
+        }
+
+        fn block_by_number(
+            &self,
+            _: u64,
+        ) -> Box<Future<Item = Block<Transaction>, Error = Error> + Send> {
+            unimplemented!()
+        }
+
+        fn is_on_main_chain(
+            &self,
+            _: EthereumBlockPointer,
+        ) -> Box<Future<Item = bool, Error = Error> + Send> {
+            unimplemented!()
+        }
+
+        fn find_first_block_with_event(
+            &self,
+            _: u64,
+            _: u64,
+            _: EthereumEventFilter,
+        ) -> Box<Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send> {
+            unimplemented!()
+        }
+
+        fn get_events_in_block<'a>(
+            &'a self,
+            _: Block<Transaction>,
+            _: EthereumEventFilter,
+        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> + 'a> {
+            unimplemented!()
+        }
+
         fn contract_call(
             &mut self,
             _request: EthereumContractCall,
         ) -> Box<Future<Item = Vec<ethabi::Token>, Error = EthereumContractCallError>> {
-            unimplemented!()
-        }
-
-        fn subscribe_to_event(
-            &mut self,
-            subscription: EthereumEventSubscription,
-        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
-            self.received_subscriptions.push(subscription.event.name);
-            Box::new(stream::iter_ok(vec![]))
-        }
-
-        fn unsubscribe_from_event(&mut self, _subscription_id: String) -> bool {
             unimplemented!()
         }
     }
@@ -93,7 +123,8 @@ fn multiple_data_sources_per_subgraph() {
                         RuntimeHostBuilder::new(&logger, eth_adapter.clone(), resolver.clone());
 
                     let fake_store = Arc::new(Mutex::new(FakeStore));
-                    let manager = RuntimeManager::new(&logger, fake_store, host_builder);
+                    let manager =
+                        RuntimeManager::new(&logger, fake_store, eth_adapter.clone(), host_builder);
 
                     // Load a subgraph with two data sets, one listening for `ExampleEvent`
                     // and the other for `ExampleEvent2`.

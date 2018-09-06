@@ -1,10 +1,9 @@
 use ethereum_types::Address;
-use futures::sync::mpsc::{channel, Receiver};
+use futures::sync::mpsc::{channel, Receiver, Sender};
 use futures::sync::oneshot;
 use std::str::FromStr;
 use std::sync::Mutex;
 use std::thread;
-use uuid::Uuid;
 
 use graph::components::ethereum::*;
 use graph::components::subgraph::RuntimeHostEvent;
@@ -68,7 +67,9 @@ where
 
 pub struct RuntimeHost {
     config: RuntimeHostConfig,
+    logger: Logger,
     output: Option<Receiver<RuntimeHostEvent>>,
+    eth_event_sender: Option<Sender<EthereumEvent>>,
     // Never accessed, it's purpose is to signal cancelation on drop.
     _guard: oneshot::Sender<()>,
 }
@@ -103,34 +104,44 @@ impl RuntimeHost {
         // Create channel as cancelation guard.
         let (cancel_sender, cancel_receiver) = oneshot::channel();
 
+        // Create channel for sending Ethereum events
+        let (eth_event_sender, eth_event_receiver) = channel(100);
+
         // wasmi modules are not `Send` therefore they cannot be scheduled by
         // the regular tokio executor, so we create a dedicated thread inside
         // which we may wait on futures.
+        let subscription_logger = logger.clone();
         thread::spawn(move || {
             let data_source = wasmi_config.data_source.clone();
 
             // Load the mappings as a WASM module
-            let module = WasmiModule::new(&logger, wasmi_config);
+            let module = WasmiModule::new(&subscription_logger, wasmi_config);
 
             // Process one event at a time, blocking the thread when waiting for
             // the next event. Also check for a cancelation signal.
-            Self::subscribe_to_events(&logger, data_source, module, ethereum_adapter)
-                .select(
-                    cancel_receiver
-                        .into_stream()
-                        .map(|_| panic!("sent into cancel guard"))
-                        .map_err(|_| ()),
-                )
+            Self::subscribe_to_events(
+                &subscription_logger,
+                data_source,
+                module,
+                eth_event_receiver,
+            ).select(
+                cancel_receiver
+                    .into_stream()
+                    .map(|_| panic!("sent into cancel guard"))
+                    .map_err(|_| ()),
+            )
                 .for_each(|_| Ok(()))
                 .wait()
                 .ok();
 
-            info!(logger, "shutting down WASM runtime"; "data_source" => name);
+            info!(subscription_logger, "shutting down WASM runtime"; "data_source" => name);
         });
 
         RuntimeHost {
             config,
+            logger,
             output: Some(event_receiver),
+            eth_event_sender: Some(eth_event_sender),
             _guard: cancel_sender,
         }
     }
@@ -141,7 +152,7 @@ impl RuntimeHost {
         logger: &Logger,
         data_source: DataSource,
         mut module: WasmiModule<T, L>,
-        ethereum_adapter: Arc<Mutex<T>>,
+        eth_event_receiver: Receiver<EthereumEvent>,
     ) -> impl Stream<Item = (), Error = ()> + 'static
     where
         T: EthereumAdapter + 'static,
@@ -149,103 +160,36 @@ impl RuntimeHost {
     {
         info!(logger, "Subscribe to events");
 
-        // Obtain the contract address of the data set.
-        let address = Address::from_str(data_source.source.address.as_str())
-            .expect("Failed to parse contract address");
-
-        // Load the main dataset contract.
-        let contract = data_source
-            .mapping
-            .abis
-            .iter()
-            .find(|abi| abi.name == data_source.source.abi)
-            .expect("No ABI entry found for the main contract of the dataset")
-            .contract
-            .clone();
-
-        // Prepare subscriptions for all events.
-        let event_stream = {
-            let subscription_results = {
-                data_source
-                    .mapping
-                    .event_handlers
-                    .iter()
-                    .map(|event_handler| {
-                        debug!(logger, "Prepare subscription";
-                                "event" => &event_handler.event,
-                                "handler" => &event_handler.handler,
-                            );
-                        let subscription_id = Uuid::new_v4().simple().to_string();
-                        let event = util::ethereum::contract_event_with_signature(
-                            &contract,
-                            event_handler.event.as_str(),
-                        ).expect(
-                            format!("Event not found in contract: {}", event_handler.event)
-                                .as_str(),
-                        );
-
-                        EthereumEventSubscription {
-                            address,
-                            event: event.clone(),
-                            range: BlockNumberRange {
-                                from: BlockNumber::Number(0),
-                                to: BlockNumber::Latest,
-                            },
-                            subscription_id: subscription_id.clone(),
-                        }
-                    })
-            };
-
-            // Merge all event streams.
-            let mut event_stream: Box<Stream<Item = _, Error = _>> = Box::new(stream::empty());
-            for subscription in subscription_results {
-                info!(logger, "Subscribe to event";
-                      "name" => &subscription.event.name,
-                      "subscription_id" => &subscription.subscription_id);
-                event_stream = Box::new(
-                    event_stream.select(
-                        ethereum_adapter
-                            .lock()
-                            .unwrap()
-                            .subscribe_to_event(subscription),
-                    ),
-                );
-            }
-            event_stream
-        };
-
         let event_logger = logger.clone();
-        let error_logger = logger.clone();
 
-        event_stream
-            .map(move |event| {
-                info!(event_logger, "Ethereum event received";
+        eth_event_receiver.map(move |event| {
+            info!(event_logger, "Ethereum event received";
                       "signature" => event.event_signature.to_string(),
                     );
 
-                if event.removed {
-                    info!(event_logger, "Event removed";
+            if event.removed {
+                // TODO why would this happen?
+                info!(event_logger, "Event removed";
                           "block" => event.block_hash.to_string());
-                } else {
-                    let event_handler = data_source
-                        .mapping
-                        .event_handlers
-                        .iter()
-                        .find(|event_handler| {
-                            util::ethereum::string_to_h256(event_handler.event.as_str())
-                                == event.event_signature
-                        })
-                        .expect("Received an Ethereum event not mentioned in the data set")
-                        .to_owned();
+            } else {
+                let event_handler = data_source
+                    .mapping
+                    .event_handlers
+                    .iter()
+                    .find(|event_handler| {
+                        util::ethereum::string_to_h256(event_handler.event.as_str())
+                            == event.event_signature
+                    })
+                    .expect("Received an Ethereum event not mentioned in the data set")
+                    .to_owned();
 
-                    debug!(event_logger, "  Call event handler";
+                debug!(event_logger, "  Call event handler";
                            "name" => &event_handler.handler,
                            "signature" => &event_handler.event);
 
-                    module.handle_ethereum_event(event_handler.handler.as_str(), event);
-                }
-            })
-            .map_err(move |e| error!(error_logger, "Event subscription failed: {}", e))
+                module.handle_ethereum_event(event_handler.handler.as_str(), event);
+            }
+        })
     }
 }
 
@@ -262,5 +206,54 @@ impl EventProducer<RuntimeHostEvent> for RuntimeHost {
 impl RuntimeHostTrait for RuntimeHost {
     fn subgraph_manifest(&self) -> &SubgraphManifest {
         &self.config.subgraph_manifest
+    }
+
+    // TODO cache this?
+    fn event_filter(&self) -> EthereumEventFilter {
+        let data_source = &self.config.data_source;
+
+        // Obtain the contract address of the data set.
+        let address = Address::from_str(data_source.source.address.as_str())
+            .expect("Failed to parse contract address");
+
+        // Load the main dataset contract.
+        let contract = data_source
+            .mapping
+            .abis
+            .iter()
+            .find(|abi| abi.name == data_source.source.abi)
+            .expect("No ABI entry found for the main contract of the dataset")
+            .contract
+            .clone();
+
+        // Combine event handlers into one large event filter
+        data_source
+            .mapping
+            .event_handlers
+            .iter()
+            .map(|event_handler| {
+                debug!(self.logger, "Prepare subscription";
+                        "event" => &event_handler.event,
+                        "handler" => &event_handler.handler,
+                    );
+                let event = util::ethereum::contract_event_with_signature(
+                    &contract,
+                    event_handler.event.as_str(),
+                ).expect(
+                    format!("Event not found in contract: {}", event_handler.event)
+                        .as_str(),
+                );
+
+                EthereumEventFilter::from_single(address, event.to_owned())
+            })
+
+            // Take the union of the event filters
+            .sum()
+    }
+
+    // TODO this should take a StoreTransaction and be synchronous
+    fn process_event(&mut self, event: EthereumEvent) {
+        let sender = self.eth_event_sender.take().unwrap();
+        self.eth_event_sender = Some(sender.send(event).wait().unwrap());
     }
 }

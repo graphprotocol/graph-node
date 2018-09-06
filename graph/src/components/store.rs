@@ -177,6 +177,10 @@ impl From<(H256, i64)> for EthereumBlockPointer {
     }
 }
 
+pub struct HeadBlockUpdateEvent {
+    block_ptr: EthereumBlockPointer,
+}
+
 #[derive(Fail, Debug)]
 pub enum StoreError {
     /// Indicates that an operation failed because its data is stale.
@@ -190,7 +194,6 @@ pub enum StoreError {
     #[fail(
         display = "operation could not complete due to an error from the underlying data storage"
     )]
-    // TODO how to mark `cause`?
     Database(Error),
 }
 
@@ -275,7 +278,7 @@ pub trait BasicStore {
         to: EthereumBlockPointer,
     ) -> Result<(), StoreError>;
 
-    /// Rollback the store changes made in a single block.
+    /// Rollback the store changes made in a single block and update the subgraph pointer.
     ///
     /// `StoreError::VersionConflict` is returned if `block` does not match the current block pointer.
     // TODO: just need hash, number and parent_hash from Block
@@ -339,6 +342,9 @@ pub trait BlockStore {
     ///
     /// The head block pointer will be None on initial set up.
     fn head_block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
+
+    /// Get a stream of head block change events.
+    fn head_block_updates(&self) -> Box<Stream<Item = HeadBlockUpdateEvent, Error = Error> + Send>;
 
     /// Get Some(block) if it is present in the block store, or None.
     fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error>;

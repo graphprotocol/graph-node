@@ -221,10 +221,15 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         }
     }
 
+    let ethereum_watcher_protected = Arc::new(Mutex::new(ethereum_watcher));
     let runtime_host_builder =
-        WASMRuntimeHostBuilder::new(&logger, Arc::new(Mutex::new(ethereum_watcher)), resolver);
-    let runtime_manager =
-        graph_core::RuntimeManager::new(&logger, protected_store.clone(), runtime_host_builder);
+        WASMRuntimeHostBuilder::new(&logger, ethereum_watcher_protected.clone(), resolver);
+    let runtime_manager = graph_core::RuntimeManager::new(
+        &logger,
+        protected_store.clone(),
+        ethereum_watcher_protected,
+        runtime_host_builder,
+    );
 
     // Forward subgraph events from the subgraph provider to the runtime manager
     tokio::spawn(forward(&mut subgraph_provider, &runtime_manager).unwrap());

@@ -15,6 +15,7 @@ use web3::types::Block;
 use web3::types::H256;
 use web3::types::Transaction;
 
+use graph::components::store::HeadBlockUpdateEvent;
 use graph::components::store::StoreOp;
 use graph::prelude::*;
 use graph_graphql::prelude::*;
@@ -242,6 +243,10 @@ impl BlockStore for TestStore {
     }
 
     fn head_block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+        unimplemented!()
+    }
+
+    fn head_block_updates(&self) -> Box<Stream<Item = HeadBlockUpdateEvent, Error = Error> + Send> {
         unimplemented!()
     }
 

@@ -14,7 +14,7 @@ use web3::types::Block;
 use web3::types::H256;
 use web3::types::Transaction;
 
-use graph::components::store::{EventSource, Store as StoreTrait, StoreOp};
+use graph::components::store::{Store as StoreTrait, *};
 use graph::prelude::*;
 use graph::serde_json;
 use graph::{tokio, tokio::timer::Interval};
@@ -374,8 +374,7 @@ impl BasicStore for Store {
         _subgraph_id: SubgraphId,
         block: Block<Transaction>,
     ) -> Result<(), Error> {
-        // TODO need to make it per-subgraph
-        // TODO is this right? is it atomic?
+        // TODO need to update subgraph ptr!
         select(revert_block(block.hash.unwrap().to_string()))
             .execute(&*self.conn.lock().unwrap())
             .map(|_| ())
@@ -573,6 +572,10 @@ impl BlockStore for Store {
                     .and_then(|opt| opt)
             })
             .map_err(Error::from)
+    }
+
+    fn head_block_updates(&self) -> Box<Stream<Item = HeadBlockUpdateEvent, Error = Error> + Send> {
+        unimplemented!()
     }
 
     fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {

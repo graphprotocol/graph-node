@@ -789,6 +789,8 @@ mod tests {
     use std::collections::HashMap;
     use std::iter::FromIterator;
     use std::sync::Mutex;
+    use web3::types::Block;
+    use web3::types::Transaction;
 
     use graph::components::ethereum::*;
     use graph::components::store::*;
@@ -802,22 +804,50 @@ mod tests {
     struct MockEthereumAdapter {}
 
     impl EthereumAdapter for MockEthereumAdapter {
+        fn block_by_hash(
+            &self,
+            _: H256,
+        ) -> Box<Future<Item = Block<Transaction>, Error = failure::Error> + Send> {
+            unimplemented!()
+        }
+
+        fn block_by_number(
+            &self,
+            _: u64,
+        ) -> Box<Future<Item = Block<Transaction>, Error = failure::Error> + Send> {
+            unimplemented!()
+        }
+
+        fn is_on_main_chain(
+            &self,
+            _: EthereumBlockPointer,
+        ) -> Box<Future<Item = bool, Error = failure::Error> + Send> {
+            unimplemented!()
+        }
+
+        fn find_first_block_with_event(
+            &self,
+            _: u64,
+            _: u64,
+            _: EthereumEventFilter,
+        ) -> Box<Future<Item = Option<EthereumBlockPointer>, Error = failure::Error> + Send>
+        {
+            unimplemented!()
+        }
+
+        fn get_events_in_block<'a>(
+            &'a self,
+            _: Block<Transaction>,
+            _: EthereumEventFilter,
+        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> + 'a> {
+            unimplemented!()
+        }
+
         fn contract_call(
             &mut self,
-            _call: EthereumContractCall,
+            _: EthereumContractCall,
         ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
             unimplemented!()
-        }
-
-        fn subscribe_to_event(
-            &mut self,
-            _subscription: EthereumEventSubscription,
-        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
-            unimplemented!()
-        }
-
-        fn unsubscribe_from_event(&mut self, _subscription_id: String) -> bool {
-            false
         }
     }
 

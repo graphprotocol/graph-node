@@ -2,11 +2,8 @@ use ethabi::{RawLog, Token};
 use ethereum_types::H256;
 use futures::future;
 use futures::prelude::*;
-use futures::stream::iter_ok;
 use std::sync::Arc;
-use std::time::Duration;
 use web3;
-use web3::api::CreateFilter;
 use web3::api::{Eth, Web3};
 use web3::helpers::CallResult;
 use web3::types::{Filter, *};
@@ -30,143 +27,8 @@ impl<T: web3::Transport> EthereumAdapter<T> {
         }
     }
 
-    pub fn event_filter(&self, subscription: EthereumEventSubscription) -> CreateFilter<T, Log> {
-        let filter_builder = FilterBuilder::default();
-        let eth_filter: Filter = filter_builder
-            .from_block(subscription.range.from)
-            .to_block(subscription.range.to)
-            .topics(Some(vec![subscription.event.signature()]), None, None, None)
-            .build();
-        self.eth_client.eth_filter().create_logs_filter(eth_filter)
-    }
-
     pub fn block(eth: Eth<T>, block_id: BlockId) -> CallResult<Block<H256>, T::Out> {
         eth.block(block_id)
-    }
-
-    /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
-    /// node.
-    ///
-    /// Careful: don't use this function without considering race conditions.
-    /// Chain reorgs could happen at any time, and could affect the answer received.
-    /// Generally, it is only safe to use this function with blocks that have received enough
-    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
-    /// those confirmations.
-    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
-    /// reorgs.
-    pub fn is_on_main_chain(
-        &self,
-        block_ptr: EthereumBlockPointer,
-    ) -> impl Future<Item = bool, Error = Error> {
-        self.eth_client
-            .eth()
-            .block(BlockId::Number(block_ptr.number.into()))
-            .map(move |b| b.hash.unwrap() == block_ptr.hash)
-            .map_err(SyncFailure::new)
-            .from_err()
-    }
-
-    /// Find the first block in the specified range containing at least one transaction with at
-    /// least one log entry matching the specified `event_type`.
-    ///
-    /// Careful: don't use this function without considering race conditions.
-    /// Chain reorgs could happen at any time, and could affect the answer received.
-    /// Generally, it is only safe to use this function with blocks that have received enough
-    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
-    /// those confirmations.
-    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
-    /// reorgs.
-    /// It is recommended that `to` be far behind the block number of latest block the Ethereum
-    /// node is aware of.
-    pub fn find_first_block_with_event(
-        &self,
-        from: BlockNumber,
-        to: BlockNumber,
-        event_type: Event,
-    ) -> impl Future<Item = Option<EthereumBlockPointer>, Error = Error> {
-        // TODO use an incremental search instead of one large query
-
-        let log_filter: Filter = FilterBuilder::default()
-            .from_block(from)
-            .to_block(to)
-            .topics(Some(vec![event_type.signature()]), None, None, None)
-            .build();
-
-        self.eth_client
-            .eth()
-            .logs(log_filter)
-            .map(|logs| {
-                logs.first().map(|log| {
-                    let hash = log
-                        .block_hash
-                        .expect("log from Eth node is missing block hash");
-                    let number = log
-                        .block_number
-                        .expect("log from Eth node is missing block number");
-                    (hash, number.as_u64()).into()
-                })
-            })
-            .map_err(SyncFailure::new)
-            .from_err()
-    }
-
-    /// Find all events from transactions in the specified `block` that match the specified
-    /// `event_filter`.
-    // TODO investigate storing receipts in DB and moving this fn to BlockStore
-    pub fn get_events_in_block<'a>(
-        &'a self,
-        block: Block<Transaction>,
-        event_filter: EthereumEventFilter,
-    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> + 'a> {
-        if !event_filter.check_bloom(block.logs_bloom) {
-            return Box::new(stream::empty());
-        }
-
-        let receipt_futures = block.transactions.into_iter().map(|tx| {
-            self.eth_client
-                .eth()
-                .transaction_receipt(tx.hash)
-                .map(move |opt| opt.expect(&format!("missing receipt for TX {:?}", tx.hash)))
-                .map_err(EthereumSubscriptionError::from)
-        });
-
-        Box::new(
-            stream::futures_ordered(receipt_futures)
-            .map(move |receipt| {
-                let event_filter = event_filter.clone();
-
-                stream::iter_result(
-                    receipt
-                        .logs
-                        .into_iter()
-
-                        // Select only logs that match event filter
-                        .filter_map(move |log| {
-                            event_filter
-                                .match_event(&log)
-
-                                // Convert Log into an EthereumEvent
-                                .map(|event_type| {
-                                    // Try to parse log data into an Ethereum event
-                                    event_type
-                                        .parse_log(RawLog {
-                                            topics: log.topics.clone(),
-                                            data: log.data.0.clone(),
-                                        })
-                                        .map_err(EthereumSubscriptionError::from)
-                                        .map(|log_data| EthereumEvent {
-                                            address: log.address,
-                                            event_signature: log.topics[0],
-                                            block_hash: log.block_hash.unwrap(),
-                                            params: log_data.params,
-                                            removed: log.is_removed(), // TODO is this obsolete?
-                                        })
-                                })
-                        })
-                )
-            })
-            .flatten()
-        )
     }
 
     fn call(
@@ -187,7 +49,154 @@ impl<T: web3::Transport> EthereumAdapter<T> {
     }
 }
 
-impl<T: web3::Transport + Send + Sync + 'static> EthereumAdapterTrait for EthereumAdapter<T> {
+impl<T> EthereumAdapterTrait for EthereumAdapter<T>
+where
+    T: web3::Transport + Send + Sync + 'static,
+    T::Out: Send,
+{
+    fn block_by_hash(
+        &self,
+        block_hash: H256,
+    ) -> Box<Future<Item = Block<Transaction>, Error = Error> + Send> {
+        Box::new(
+            self.eth_client
+                .eth()
+                .block_with_txs(BlockId::Hash(block_hash))
+                .map_err(SyncFailure::new)
+                .from_err(),
+        )
+    }
+
+    fn block_by_number(
+        &self,
+        block_number: u64,
+    ) -> Box<Future<Item = Block<Transaction>, Error = Error> + Send> {
+        Box::new(
+            self.eth_client
+                .eth()
+                .block_with_txs(BlockId::Number(block_number.into()))
+                .map_err(SyncFailure::new)
+                .from_err(),
+        )
+    }
+
+    fn is_on_main_chain(
+        &self,
+        block_ptr: EthereumBlockPointer,
+    ) -> Box<Future<Item = bool, Error = Error> + Send> {
+        Box::new(
+            self.eth_client
+                .eth()
+                .block(BlockId::Number(block_ptr.number.into()))
+                .map(move |b| b.hash.unwrap() == block_ptr.hash)
+                .map_err(SyncFailure::new)
+                .from_err(),
+        )
+    }
+
+    fn find_first_block_with_event(
+        &self,
+        from: u64,
+        to: u64,
+        event_filter: EthereumEventFilter,
+    ) -> Box<Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send> {
+        // TODO use an incremental search instead of one large query
+
+        // Find all event sigs
+        let event_sigs = event_filter
+            .event_types_by_contract_address_and_sig
+            .values()
+            .flat_map(|event_types_by_sig| event_types_by_sig.keys())
+            .map(|sig| sig.to_owned())
+            .collect::<Vec<H256>>();
+
+        // Create a log filter
+        // Note: this filter will have false positives
+        let log_filter: Filter = FilterBuilder::default()
+            .from_block(from.into())
+            .to_block(to.into())
+            .topics(Some(event_sigs), None, None, None)
+            .build();
+
+        Box::new(
+            self.eth_client
+                .eth()
+                .logs(log_filter)
+                .map(move |logs| {
+                    logs.into_iter()
+                    // Filter out false positives
+                    .filter(|log| event_filter.match_event(log).is_some())
+
+                    // Get first result (if any)
+                    .next()
+
+                    // Get block ptr from log (that's all we care about)
+                    .map(|log| {
+                        let hash = log
+                            .block_hash
+                            .expect("log from Eth node is missing block hash");
+                        let number = log
+                            .block_number
+                            .expect("log from Eth node is missing block number");
+                        (hash, number.as_u64()).into()
+                    })
+                })
+                .map_err(SyncFailure::new)
+                .from_err(),
+        )
+    }
+
+    // TODO investigate storing receipts in DB and moving this fn to BlockStore
+    fn get_events_in_block<'a>(
+        &'a self,
+        block: Block<Transaction>,
+        event_filter: EthereumEventFilter,
+    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> + 'a> {
+        if !event_filter.check_bloom(block.logs_bloom) {
+            return Box::new(stream::empty());
+        }
+
+        let tx_receipt_futures = block.transactions.into_iter().map(|tx| {
+            self.eth_client
+                .eth()
+                .transaction_receipt(tx.hash)
+                .map(move |opt| opt.expect(&format!("missing receipt for TX {:?}", tx.hash)))
+                .map_err(EthereumSubscriptionError::from)
+        });
+
+        Box::new(
+            stream::futures_ordered(tx_receipt_futures)
+                .map(move |receipt| {
+                    let event_filter = event_filter.clone();
+
+                    stream::iter_result(receipt.logs.into_iter().filter_map(move |log| {
+                        // Check log against event filter
+                        event_filter
+                                .match_event(&log)
+
+                                // If matched: convert Log into an EthereumEvent
+                                .map(|event_type| {
+                                    // Try to parse log data into an Ethereum event
+                                    event_type
+                                        .parse_log(RawLog {
+                                            topics: log.topics.clone(),
+                                            data: log.data.0.clone(),
+                                        })
+                                        .map_err(EthereumSubscriptionError::from)
+                                        .map(|log_data| EthereumEvent {
+                                            address: log.address,
+                                            event_signature: log.topics[0],
+                                            block_hash: log.block_hash.unwrap(),
+                                            params: log_data.params,
+                                            removed: log.is_removed(), // TODO is this obsolete?
+                                        })
+                                })
+                    }))
+                })
+                .flatten(),
+        )
+    }
+
     fn contract_call(
         &mut self,
         call: EthereumContractCall,
@@ -237,48 +246,5 @@ impl<T: web3::Transport + Send + Sync + 'static> EthereumAdapterTrait for Ethere
                         .map_err(EthereumContractCallError::from)
                 }),
         )
-    }
-
-    fn subscribe_to_event(
-        &mut self,
-        subscription: EthereumEventSubscription,
-    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
-        let event = subscription.event.clone();
-        Box::new(
-            self.event_filter(subscription)
-                .map_err(EthereumSubscriptionError::from)
-                .map(|base_filter| {
-                    let past_logs_stream = base_filter
-                        .logs()
-                        .map_err(EthereumSubscriptionError::from)
-                        .map(|logs_vec| iter_ok::<_, EthereumSubscriptionError>(logs_vec))
-                        .flatten_stream();
-                    let future_logs_stream = base_filter
-                        .stream(Duration::from_millis(2000))
-                        .map_err(EthereumSubscriptionError::from);
-                    past_logs_stream.chain(future_logs_stream)
-                })
-                .flatten_stream()
-                .and_then(move |log| {
-                    event
-                        .parse_log(RawLog {
-                            topics: log.topics.clone(),
-                            data: log.clone().data.0,
-                        })
-                        .map_err(EthereumSubscriptionError::from)
-                        .map(|log_data| (log, log_data))
-                })
-                .map(move |(log, log_data)| EthereumEvent {
-                    address: log.address,
-                    event_signature: log.topics[0],
-                    block_hash: log.block_hash.unwrap(),
-                    params: log_data.params,
-                    removed: log.is_removed(),
-                }),
-        )
-    }
-
-    fn unsubscribe_from_event(&mut self, _unique_id: String) -> bool {
-        false
     }
 }

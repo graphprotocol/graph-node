@@ -1,9 +1,23 @@
 use ethabi::{Bytes, Error as ABIError, Event, Function, LogParam, ParamType, Token};
+use failure::Error;
 use failure::SyncFailure;
 use futures::Future;
+use futures::Stream;
 use std::collections::HashMap;
+use std::iter::Sum;
+use std::ops::Add;
+use std::ops::AddAssign;
 use web3::error::Error as Web3Error;
-use web3::types::{Address, BlockId, BlockNumber, H2048, H256, Log};
+use web3::types::Address;
+use web3::types::Block;
+use web3::types::BlockId;
+use web3::types::BlockNumber;
+use web3::types::H2048;
+use web3::types::H256;
+use web3::types::Log;
+use web3::types::Transaction;
+
+use components::store::EthereumBlockPointer;
 
 /// A request for the state of a contract at a specific block hash and address.
 pub struct EthereumContractStateRequest {
@@ -101,6 +115,26 @@ pub struct EthereumEvent {
     pub removed: bool,
 }
 
+// Implemented manually because LogParam is not Clone.
+impl Clone for EthereumEvent {
+    fn clone(&self) -> Self {
+        EthereumEvent {
+            address: self.address.clone(),
+            event_signature: self.event_signature,
+            block_hash: self.block_hash,
+            params: self
+                .params
+                .iter()
+                .map(|param| LogParam {
+                    name: param.name.clone(),
+                    value: param.value.clone(),
+                })
+                .collect(),
+            removed: self.removed,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct EthereumEventFilter {
     // Event types stored in nested hash tables for faster lookups
@@ -108,6 +142,28 @@ pub struct EthereumEventFilter {
 }
 
 impl EthereumEventFilter {
+    /// Create an event filter that matches no events.
+    pub fn empty() -> Self {
+        EthereumEventFilter {
+            event_types_by_contract_address_and_sig: HashMap::new(),
+        }
+    }
+
+    /// Create an event filter that matches one event type from one contract only.
+    pub fn from_single(contract_address: Address, event_type: Event) -> Self {
+        EthereumEventFilter {
+            event_types_by_contract_address_and_sig: [(
+                contract_address,
+                [(event_type.signature(), event_type)]
+                    .iter()
+                    .cloned()
+                    .collect(),
+            )].iter()
+                .cloned()
+                .collect(),
+        }
+    }
+
     /// Check if log bloom filter indicates a possible match for this event filter.
     /// Returns `true` to indicate that a matching `Log` _might_ be contained.
     /// Returns `false` to indicate that a matching `Log` _is not_ contained.
@@ -119,16 +175,62 @@ impl EthereumEventFilter {
     /// Try to match a `Log` to one of the event types in this filter.
     pub fn match_event(&self, log: &Log) -> Option<Event> {
         // First topic should be event sig
-        log.topics.first()
-            .and_then(|sig| {
-                // Look up contract address
-                self.event_types_by_contract_address_and_sig
-                    .get(&log.address)
-                    .and_then(|event_types_by_sig| {
-                        // Look up event sig
-                        event_types_by_sig.get(sig).map(Clone::clone)
+        log.topics.first().and_then(|sig| {
+            // Look up contract address
+            self.event_types_by_contract_address_and_sig
+                .get(&log.address)
+                .and_then(|event_types_by_sig| {
+                    // Look up event sig
+                    event_types_by_sig.get(sig).map(Clone::clone)
+                })
+        })
+    }
+}
+
+impl Add for EthereumEventFilter {
+    type Output = EthereumEventFilter;
+
+    /// Take the union of two event filters.
+    /// Produce a new event filter that matches all events
+    /// that would have matched either of the two original event filters.
+    fn add(mut self, rhs: Self) -> Self {
+        self += rhs;
+        self
+    }
+}
+
+impl AddAssign for EthereumEventFilter {
+    /// Take the union of two event filters.
+    /// Update the left-hand-side event filter to match all events
+    /// that would have matched either of the two original event filters.
+    fn add_assign(&mut self, rhs: Self) {
+        for (addr, rhs_event_types_by_sig) in
+            rhs.event_types_by_contract_address_and_sig.into_iter()
+        {
+            let event_types_by_sig = self
+                .event_types_by_contract_address_and_sig
+                .entry(addr)
+                .or_insert(HashMap::new());
+
+            for (sig, rhs_event_type) in rhs_event_types_by_sig.into_iter() {
+                event_types_by_sig
+                    .entry(sig)
+                    .and_modify(|event_type| {
+                        // Don't actuall modify, just check for conflict
+                        if event_type != &rhs_event_type {
+                            panic!("event filters had different versions of the same event: {:?} and {:?}",
+                                   event_type, rhs_event_type);
+                        }
                     })
-            })
+                    .or_insert(rhs_event_type);
+            }
+        }
+    }
+}
+
+impl Sum for EthereumEventFilter {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::empty(), |acc, f| acc + f)
     }
 }
 
@@ -137,18 +239,73 @@ impl EthereumEventFilter {
 /// Implementations may be implemented against an in-process Ethereum node
 /// or a remote node over RPC.
 pub trait EthereumAdapter: Send + 'static {
+    /// Find a block by its hash.
+    ///
+    /// Use this method instead of `block_by_number` whenever possible.
+    fn block_by_hash(
+        &self,
+        block_hash: H256,
+    ) -> Box<Future<Item = Block<Transaction>, Error = Error> + Send>;
+
+    /// Find a block by its number.
+    ///
+    /// Careful: don't use this function without considering race conditions.
+    /// Chain reorgs could happen at any time, and could affect the answer received.
+    /// Generally, it is only safe to use this function with blocks that have received enough
+    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
+    /// those confirmations.
+    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
+    /// reorgs.
+    fn block_by_number(
+        &self,
+        block_number: u64,
+    ) -> Box<Future<Item = Block<Transaction>, Error = Error> + Send>;
+
+    /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
+    /// node.
+    ///
+    /// Careful: don't use this function without considering race conditions.
+    /// Chain reorgs could happen at any time, and could affect the answer received.
+    /// Generally, it is only safe to use this function with blocks that have received enough
+    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
+    /// those confirmations.
+    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
+    /// reorgs.
+    fn is_on_main_chain(
+        &self,
+        block_ptr: EthereumBlockPointer,
+    ) -> Box<Future<Item = bool, Error = Error> + Send>;
+
+    /// Find the first block in the specified range containing at least one transaction with at
+    /// least one log entry matching the specified `event_filter`.
+    ///
+    /// Careful: don't use this function without considering race conditions.
+    /// Chain reorgs could happen at any time, and could affect the answer received.
+    /// Generally, it is only safe to use this function with blocks that have received enough
+    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
+    /// those confirmations.
+    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
+    /// reorgs.
+    /// It is recommended that `to` be far behind the block number of latest block the Ethereum
+    /// node is aware of.
+    fn find_first_block_with_event(
+        &self,
+        from: u64,
+        to: u64,
+        event_filter: EthereumEventFilter,
+    ) -> Box<Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send>;
+
+    /// Find all events from transactions in the specified `block` that match the specified
+    /// `event_filter`.
+    fn get_events_in_block<'a>(
+        &'a self,
+        block: Block<Transaction>,
+        event_filter: EthereumEventFilter,
+    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> + 'a>;
+
     /// Call the function of a smart contract.
     fn contract_call(
         &mut self,
         call: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>>;
-
-    /// Subscribe to an event of a smart contract.
-    fn subscribe_to_event(
-        &mut self,
-        subscription: EthereumEventSubscription,
-    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>>;
-
-    /// Cancel a specific event subscription. Returns true when the subscription existed before.
-    fn unsubscribe_from_event(&mut self, subscription_id: String) -> bool;
 }

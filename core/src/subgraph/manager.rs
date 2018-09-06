@@ -1,9 +1,17 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use std::collections::HashMap;
 use std::sync::Mutex;
+use web3::types::Block;
+use web3::types::Transaction;
 
+use graph::components::ethereum::EthereumEventFilter;
+use graph::components::store::HeadBlockUpdateEvent;
 use graph::components::subgraph::RuntimeHostEvent;
 use graph::components::subgraph::SubgraphProviderEvent;
 use graph::prelude::*;
+
+// TODO choose a good number
+const REORG_THRESHOLD: u64 = 300;
 
 pub struct RuntimeManager {
     logger: Logger,
@@ -12,9 +20,15 @@ pub struct RuntimeManager {
 
 impl RuntimeManager where {
     /// Creates a new runtime manager.
-    pub fn new<S, T>(logger: &Logger, store: Arc<Mutex<S>>, host_builder: T) -> Self
+    pub fn new<S, E, T>(
+        logger: &Logger,
+        store: Arc<Mutex<S>>,
+        eth_adapter: Arc<Mutex<E>>,
+        host_builder: T,
+    ) -> Self
     where
         S: Store + 'static,
+        E: EthereumAdapter,
         T: RuntimeHostBuilder,
     {
         let logger = logger.new(o!("component" => "RuntimeManager"));
@@ -23,7 +37,13 @@ impl RuntimeManager where {
         let (subgraph_sender, subgraph_receiver) = channel(100);
 
         // Handle incoming events from the subgraph provider.
-        Self::handle_subgraph_events(logger.clone(), store, host_builder, subgraph_receiver);
+        Self::handle_subgraph_events(
+            logger.clone(),
+            store,
+            eth_adapter,
+            host_builder,
+            subgraph_receiver,
+        );
 
         RuntimeManager {
             logger,
@@ -32,22 +52,23 @@ impl RuntimeManager where {
     }
 
     /// Handle incoming events from subgraph providers.
-    fn handle_subgraph_events<S, T>(
+    fn handle_subgraph_events<S, E, T>(
         logger: Logger,
         store: Arc<Mutex<S>>,
+        eth_adapter: Arc<Mutex<E>>,
         mut host_builder: T,
         receiver: Receiver<SubgraphProviderEvent>,
     ) where
         S: Store + 'static,
+        E: EthereumAdapter,
         T: RuntimeHostBuilder,
     {
         // Handles each incoming event from the subgraph.
-        fn handle_event<S: Store + 'static>(store: Arc<Mutex<S>>, event: RuntimeHostEvent) {
+        fn handle_runtime_event<S: Store + 'static>(store: Arc<Mutex<S>>, event: RuntimeHostEvent) {
             match event {
                 RuntimeHostEvent::EntitySet(store_key, entity, event_source) => {
                     let store = store.lock().unwrap();
                     // TODO this code is incorrect. One TX should be used for entire block.
-                    // TODO ensure necessary blocks are in DB
                     let EventSource::EthereumBlock(block_hash) = event_source;
                     let mut tx = store
                         .begin_transaction(
@@ -68,7 +89,6 @@ impl RuntimeManager where {
                 RuntimeHostEvent::EntityRemoved(store_key, event_source) => {
                     let store = store.lock().unwrap();
                     // TODO this code is incorrect. One TX should be used for entire block.
-                    // TODO ensure necessary blocks are in DB
                     let EventSource::EthereumBlock(block_hash) = event_source;
                     let mut tx = store
                         .begin_transaction(
@@ -83,44 +103,75 @@ impl RuntimeManager where {
             }
         }
 
-        let mut runtime_hosts = vec![];
+        enum EventType {
+            Subgraph(SubgraphProviderEvent),
+            HeadBlock(HeadBlockUpdateEvent),
+        }
+        let head_logger = logger.clone();
+        let head_block_updates = store
+            .lock()
+            .unwrap()
+            .head_block_updates()
+            .map(EventType::HeadBlock)
+            .map_err(move |e| {
+                error!(head_logger, "head block update stream error: {}", e);
+            });
+        let subgraph_events = receiver.map(EventType::Subgraph);
 
-        tokio::spawn(receiver.for_each(move |event| {
-            match event {
-                SubgraphProviderEvent::SubgraphAdded(manifest) => {
-                    info!(logger, "Host mapping runtimes for subgraph";
+        let mut runtime_hosts_by_subgraph = HashMap::new();
+        tokio::spawn(
+            head_block_updates
+                .select(subgraph_events)
+                .for_each(move |event| {
+                    match event {
+                        EventType::Subgraph(SubgraphProviderEvent::SubgraphAdded(manifest)) => {
+                            info!(logger, "Host mapping runtimes for subgraph";
                           "location" => &manifest.location);
 
-                    // Create a new runtime host for each data source in the subgraph manifest
-                    let mut new_hosts = manifest
-                        .data_sources
-                        .iter()
-                        .map(|d| host_builder.build(manifest.clone(), d.clone()));
+                            // Create a new runtime host for each data source in the subgraph manifest
+                            let mut new_hosts = manifest
+                                .data_sources
+                                .iter()
+                                .map(|d| host_builder.build(manifest.clone(), d.clone()))
+                                .collect::<Vec<_>>();
 
-                    // Forward events from the runtime host to the store; this
-                    // Tokio task will terminate when the corresponding subgraph
-                    // is removed and the host and its event sender are dropped
-                    for mut new_host in new_hosts {
-                        let store = store.clone();
-                        tokio::spawn(new_host.take_event_stream().unwrap().for_each(
-                            move |event| {
-                                handle_event(store.clone(), event);
-                                Ok(())
-                            },
-                        ));
-                        // Add the new host to the list of managed runtime hosts
-                        runtime_hosts.push(new_host);
+                            // Forward events from the runtime host to the store; this
+                            // Tokio task will terminate when the corresponding subgraph
+                            // is removed and the host and its event sender are dropped
+                            for mut new_host in new_hosts.iter_mut() {
+                                let store = store.clone();
+                                tokio::spawn(new_host.take_event_stream().unwrap().for_each(
+                                    move |event| {
+                                        handle_runtime_event(store.clone(), event);
+                                        Ok(())
+                                    },
+                                ));
+                            }
+
+                            // Add the new hosts to the list of managed runtime hosts
+                            runtime_hosts_by_subgraph.insert(manifest.id, new_hosts);
+                        }
+                        EventType::Subgraph(SubgraphProviderEvent::SubgraphRemoved(id)) => {
+                            // Destroy all runtime hosts for this subgraph; this will
+                            // also terminate the host's event stream
+                            runtime_hosts_by_subgraph.remove(&id);
+                        }
+                        EventType::HeadBlock(_) => {
+                            for (subgraph_id, runtime_hosts) in runtime_hosts_by_subgraph.iter_mut()
+                            {
+                                handle_head_block_update(
+                                    store.clone(),
+                                    eth_adapter.clone(),
+                                    SubgraphId(subgraph_id.to_owned()),
+                                    runtime_hosts,
+                                ).unwrap();
+                            }
+                        }
                     }
-                }
-                SubgraphProviderEvent::SubgraphRemoved(id) => {
-                    // Destroy all runtime hosts for this subgraph; this will
-                    // also terminate the host's event stream
-                    runtime_hosts.retain(|host| host.subgraph_manifest().id != id);
-                }
-            }
 
-            Ok(())
-        }));
+                    Ok(())
+                }),
+        );
     }
 }
 
@@ -131,5 +182,287 @@ impl EventConsumer<SubgraphProviderEvent> for RuntimeManager {
         Box::new(self.input.clone().sink_map_err(move |e| {
             error!(logger, "Component was dropped: {}", e);
         }))
+    }
+}
+
+fn handle_head_block_update<S, E, H>(
+    store_mutex: Arc<Mutex<S>>,
+    eth_adapter_mutex: Arc<Mutex<E>>,
+    subgraph_id: SubgraphId,
+    runtime_hosts: &mut [H],
+) -> Result<(), Error>
+where
+    S: Store + 'static,
+    E: EthereumAdapter,
+    H: RuntimeHost,
+{
+    // TODO handle VersionConflicts
+    // TODO remove .wait()s, maybe?
+
+    let store = store_mutex.lock().unwrap();
+    let eth_adapter = eth_adapter_mutex.lock().unwrap();
+
+    // Create an event filter that will match any event relevant to this subgraph
+    let event_filter = runtime_hosts
+        .iter()
+        .map(|host| host.event_filter())
+        .sum::<EthereumEventFilter>();
+
+    loop {
+        // Get pointers from database for comparison
+        let head_ptr = store
+            .head_block_ptr()?
+            .expect("should not receive head block update before head block pointer is set");
+        let subgraph_ptr = store.block_ptr(subgraph_id.clone())?;
+
+        // Only continue if the subgraph block ptr is behind the head block ptr.
+        // subgraph_ptr > head_ptr shouldn't happen, but if it does, it's safest to just stop.
+        if subgraph_ptr.number >= head_ptr.number {
+            break Ok(());
+        }
+
+        // Subgraph ptr is behind head ptr.
+        // Each loop iteration, we'll move the subgraph ptr one step in the right direction.
+        // First question: what direction is right?
+        enum Step {
+            ToParent,
+            ToDescendant(Block<Transaction>),
+        }
+        let step = {
+            // We will use a different approach to deciding the step direction depending on how far
+            // the subgraph ptr is behind the head ptr.
+            //
+            // Normally, we need to worry about chain reorganizations -- situations where the
+            // Ethereum client discovers a new longer chain of blocks different from the one we had
+            // processed so far, forcing us to rollback one or more blocks we had already
+            // processed.
+            // We can't assume that blocks we receive are permanent.
+            //
+            // However, as a block receives more and more confirmations, eventually it becomes safe
+            // to assume that that block will be permanent.
+            // The probability of a block being "uncled" approaches zero as more and more blocks
+            // are chained on after that block.
+            // Eventually, the probability is so low, that a block is effectively permanent.
+            // The "effectively permanent" part is what makes blockchains useful.
+            //
+            // Accordingly, if the subgraph ptr is really far behind the head ptr, then we can
+            // trust that the Ethereum node knows what the real, permanent block is for that block
+            // number.
+            // We'll define "really far" to mean "greater than REORG_THRESHOLD blocks".
+            //
+            // If the subgraph ptr is not too far behind the head ptr (i.e. less than
+            // REORG_THRESHOLD blocks behind), then we have to allow for the possibility that the
+            // block might be on the main chain now, but might become uncled in the future.
+            //
+            // Most importantly: Our ability to make this assumption (or not) will determine what
+            // Ethereum RPC calls can give us accurate data without race conditions.
+            // (This is mostly due to some unfortunate API design decisions on the Ethereum side)
+            if (head_ptr.number - subgraph_ptr.number) > REORG_THRESHOLD {
+                // Since we are beyond the reorg threshold, the Ethereum node knows what block has
+                // been permanently assigned this block number.
+                // This allows us to ask the node: does subgraph_ptr point to a block that was
+                // permanently accepted into the main chain, or does it point to a block that was
+                // uncled?
+                let is_on_main_chain = eth_adapter.is_on_main_chain(subgraph_ptr).wait()?;
+                if is_on_main_chain {
+                    // The subgraph ptr points to a block on the main chain.
+                    // This means that the last block we processed does not need to be reverted.
+                    // Therefore, our direction of travel will be forward, towards the chain head.
+
+                    // As an optimization, instead of advancing one block, we will use an Ethereum
+                    // RPC call to find the first block between the subgraph ptr and the reorg
+                    // threshold that has event(s) we are interested in.
+                    // Note that we use block numbers here.
+                    // This is an artifact of Ethereum RPC limitations.
+                    // It is only safe to use block numbers because we are beyond the reorg
+                    // threshold.
+
+                    // Start with first block after subgraph ptr
+                    let from = subgraph_ptr.number + 1;
+
+                    // End just prior to reorg threshold.
+                    // It isn't safe to go any farther due to race conditions.
+                    let to = head_ptr.number - REORG_THRESHOLD;
+
+                    let descendant_ptr_opt = eth_adapter
+                        .find_first_block_with_event(from, to, event_filter.clone())
+                        .wait()?;
+
+                    match descendant_ptr_opt {
+                        None => {
+                            // No matching events in range.
+                            // Therefore, we can update the subgraph ptr without any changes to the
+                            // entity data.
+
+                            // We need to look up what block hash corresponds to the block number
+                            // `to`.
+                            // Again, this is only safe from race conditions due to being beyond
+                            // the reorg threshold.
+                            let new_ptr = eth_adapter.block_by_number(to).wait()?.into();
+
+                            store.set_block_ptr_with_no_changes(
+                                subgraph_id.clone(),
+                                subgraph_ptr,
+                                new_ptr,
+                            )?;
+
+                            // There were no events to process in this case, so we have already
+                            // completed the subgraph ptr step.
+                            // Continue outer loop.
+                            continue;
+                        }
+                        Some(descendant_ptr) => {
+                            // The next interesting block is at descendant_ptr.
+                            // That is where we will go.
+
+                            // Load that block
+                            let descendant_block = {
+                                // Try locally first. Otherwise, get block from Ethereum node.
+                                let block_from_store = store.block(descendant_ptr.hash)?;
+                                if let Some(block) = block_from_store {
+                                    Ok(block)
+                                } else {
+                                    eth_adapter.block_by_hash(descendant_ptr.hash).wait()
+                                }
+                            }?;
+
+                            // Proceed to that block
+                            Step::ToDescendant(descendant_block)
+                        }
+                    }
+                } else {
+                    // The subgraph ptr points to a block that was uncled.
+                    // We need to revert this block.
+                    Step::ToParent
+                }
+            } else {
+                // The subgraph ptr is not too far behind the head ptr.
+                // This means a few things.
+                //
+                // First, because we are still within the reorg threshold,
+                // we can't trust the Ethereum RPC methods that use block numbers.
+                // Block numbers in this region are not yet immutable pointers to blocks;
+                // the block associated with a particular block number on the Ethereum node could
+                // change under our feet at any time.
+                //
+                // Second, due to how the BlockIngestor is designed, we get a helpful guarantee:
+                // the head block and at least its REORG_THRESHOLD most recent ancestors will be
+                // present in the block store.
+                // This allows us to work locally in the block store instead of relying on
+                // Ethereum RPC calls, so that we are not subject to the limitations of the RPC
+                // API.
+
+                // To determine the step direction, we need to find out if the subgraph ptr refers
+                // to a block that is an ancestor of the head block.
+                // We can do so by walking back up the chain from the head block to the appropriate
+                // block number, and checking to see if the block we found matches the
+                // subgraph_ptr.
+
+                // Precondition: subgraph_ptr.number < head_ptr.number
+                // Walk back to one block short of subgraph_ptr.number
+                let offset = head_ptr.number - subgraph_ptr.number - 1;
+                let ancestor_block_opt = store.ancestor_block(head_ptr, offset)?;
+                match ancestor_block_opt {
+                    None => {
+                        // Block is missing in the block store.
+                        // This generally won't happen often, but can happen if the head ptr has
+                        // been updated since we retrieved the head ptr, and the block store has
+                        // been garbage collected.
+                        // It's easiest to start over at this point.
+                        continue;
+                    }
+                    Some(ancestor_block) => {
+                        // We stopped one block short, so we'll compare the parent hash to the
+                        // subgraph ptr.
+                        if ancestor_block.parent_hash == subgraph_ptr.hash {
+                            // The subgraph ptr is an ancestor of the head block.
+                            // We cannot use an RPC call here to find the first interesting block
+                            // due to the race conditions previously mentioned,
+                            // so instead we will advance the subgraph ptr by one block.
+                            // Note that ancestor_block is a child of subgraph_ptr.
+                            Step::ToDescendant(ancestor_block.into())
+                        } else {
+                            // The subgraph ptr is not on the main chain.
+                            // We will need to step back (possibly repeatedly) one block at a time
+                            // until we are back on the main chain.
+                            Step::ToParent
+                        }
+                    }
+                }
+            }
+        };
+
+        // We now know where to take the subgraph ptr.
+        match step {
+            Step::ToParent => {
+                // We would like to move to the parent of the current block.
+                // This means we need to revert this block.
+
+                // First, we need the block data.
+                let block = {
+                    // Try locally first. Otherwise, get block from Ethereum node.
+                    let block_from_store = store.block(subgraph_ptr.hash)?;
+                    if let Some(block) = block_from_store {
+                        Ok(block)
+                    } else {
+                        eth_adapter.block_by_hash(subgraph_ptr.hash).wait()
+                    }
+                }?;
+
+                // Revert entity changes from this block, and update subgraph ptr.
+                store.revert_block(subgraph_id.clone(), block)?;
+
+                // At this point, the loop repeats, and we try to move the subgraph ptr another
+                // step in the right direction.
+            }
+            Step::ToDescendant(descendant_block) => {
+                // We would like to advance the subgraph ptr to the specified descendant.
+
+                // First, check if there are blocks between subgraph_ptr and descendant_block.
+                let descendant_parent_ptr = EthereumBlockPointer::to_parent(&descendant_block);
+                if subgraph_ptr != descendant_parent_ptr {
+                    // descendant_block is not a direct child.
+                    // Therefore, there are blocks that are irrelevant to this subgraph that we can skip.
+
+                    // Update subgraph_ptr in store to skip the irrelevant blocks.
+                    store.set_block_ptr_with_no_changes(
+                        subgraph_id.clone(),
+                        subgraph_ptr,
+                        descendant_parent_ptr,
+                    )?;
+                }
+
+                // subgraph ptr is now the direct parent of descendant_block
+                let subgraph_ptr = descendant_parent_ptr;
+                let descendant_ptr = descendant_block.clone().into();
+
+                // TODO future enhancement: load a recent history of blocks before running mappings
+
+                // Next, we will determine what relevant events are contained in this block.
+                let events = eth_adapter
+                    .get_events_in_block(descendant_block, event_filter.clone())
+                    .collect()
+                    .wait()?;
+
+                // Then, we will distribute each event to each of the runtime hosts.
+                // The execution order is important to ensure entity data is produced
+                // deterministically.
+                // TODO runtime host order should be deterministic
+                // TODO use a single StoreTransaction, use commit instead of set_block_ptr
+                events.iter().for_each(|event| {
+                    runtime_hosts
+                        .iter_mut()
+                        .for_each(|host| host.process_event(event.clone()))
+                });
+                store.set_block_ptr_with_no_changes(
+                    subgraph_id.clone(),
+                    subgraph_ptr,
+                    descendant_ptr,
+                )?;
+
+                // At this point, the loop repeats, and we try to move the subgraph ptr another
+                // step in the right direction.
+            }
+        }
     }
 }

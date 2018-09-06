@@ -105,6 +105,10 @@ impl BlockStore for MockStore {
         unimplemented!()
     }
 
+    fn head_block_updates(&self) -> Box<Stream<Item = HeadBlockUpdateEvent, Error = Error> + Send> {
+        unimplemented!()
+    }
+
     fn block(&self, _block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {
         unimplemented!()
     }
@@ -188,6 +192,10 @@ impl BlockStore for FakeStore {
     }
 
     fn head_block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+        panic!("called FakeStore")
+    }
+
+    fn head_block_updates(&self) -> Box<Stream<Item = HeadBlockUpdateEvent, Error = Error> + Send> {
         panic!("called FakeStore")
     }
 
