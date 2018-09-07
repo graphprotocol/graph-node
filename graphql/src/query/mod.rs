@@ -49,7 +49,7 @@ where
         fields: vec![],
     };
 
-    match operation {
+    let result = match operation {
         // Execute top-level `query { ... }` expressions
         &q::OperationDefinition::Query(q::Query {
             ref selection_set, ..
@@ -61,8 +61,13 @@ where
         }
 
         // Everything else (e.g. mutations) is unsupported
-        _ => QueryResult::from(QueryExecutionError::NotSupported(
+        _ => Err(vec![QueryExecutionError::NotSupported(
             "Only queries are supported".to_string(),
-        )),
+        )]),
+    };
+
+    match result {
+        Ok(value) => QueryResult::new(Some(value)),
+        Err(e) => QueryResult::from(e),
     }
 }
