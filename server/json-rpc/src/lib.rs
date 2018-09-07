@@ -73,7 +73,7 @@ pub struct JsonRpcServer<T> {
     provider: Arc<T>,
     logger: Logger,
     // Maps auth tokens to authorized subgraph name.
-    authorized: Arc<RwLock<BTreeMap<String, String>>>,
+    subgraph_api_keys: Arc<RwLock<BTreeMap<String, String>>>,
 }
 
 impl<T: SubgraphProvider> JsonRpcServer<T> {
@@ -86,11 +86,11 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
         info!(self.logger, "Received subgraph_deploy request"; "params" => params.to_string());
 
         if should_check_auth()
-            && Some(&auth.bearer_token) != self.authorized.read().unwrap().get(&params.name)
+            && Some(&auth.bearer_token) != self.subgraph_api_keys.read().unwrap().get(&params.name)
         {
             return Box::new(future::err(json_rpc_error(
                 JSON_RPC_UNAUTHORIZED_ERROR,
-                "Auth token is invalid".to_owned(),
+                "API key is invalid".to_owned(),
             )));
         }
 
@@ -111,18 +111,21 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
     ) -> Box<Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
         info!(self.logger, "Received subgraph_remove request"; "params" => params.to_string());
 
+        let name_or_id = params.name_or_id;
+        // We need a name for auth so `name_or_id` being an id is not supported
+        // if we're checking auth.
         if should_check_auth()
-            && Some(&auth.bearer_token) != self.authorized.read().unwrap().get(&params.name_or_id)
+            && Some(&auth.bearer_token) != self.subgraph_api_keys.read().unwrap().get(&name_or_id)
         {
             return Box::new(future::err(json_rpc_error(
                 JSON_RPC_UNAUTHORIZED_ERROR,
-                "Auth token is invalid".to_owned(),
+                "API key is invalid".to_owned(),
             )));
         }
 
         Box::new(
             self.provider
-                .remove(params.name_or_id)
+                .remove(name_or_id)
                 .map_err(|e| json_rpc_error(JSON_RPC_REMOVE_ERROR, e.to_string()))
                 .map(|_| Ok(Value::Null))
                 .flatten(),
@@ -131,7 +134,7 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
 
     /// Handler for the `subgraph_authorize` endpoint.
     ///
-    /// Takens subgraph name and returns an auth token that can be used to
+    /// Taken subgraph name and returns an API key that can be used to
     /// add/remove subgraphs under the input name.
     ///
     /// Requires bearer authorization with the master token.
@@ -148,7 +151,7 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
             Ok(_) => {
                 return Err(json_rpc_error(
                     JSON_RPC_UNAUTHORIZED_ERROR,
-                    "auth token is invalid".to_owned(),
+                    "authorization token is invalid".to_owned(),
                 ))
             }
             Err(_) => {
@@ -158,13 +161,13 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
                 ))
             }
         }
-        // Generate a random token of 50 ASCII alhpanumerics.
+        // Generate a random token of 50 ASCII alphanumerics.
         let mut rng = rand::thread_rng();
         let mut token = String::new();
         for _ in 0..50 {
             token.push(rng.sample(Alphanumeric));
         }
-        self.authorized
+        self.subgraph_api_keys
             .write()
             .unwrap()
             .insert(params.name, token.clone());
@@ -183,7 +186,7 @@ impl<T: SubgraphProvider> JsonRpcServerTrait<T> for JsonRpcServer<T> {
         let arc_self = Arc::new(JsonRpcServer {
             provider,
             logger,
-            authorized: Arc::new(RwLock::new(BTreeMap::new())),
+            subgraph_api_keys: Arc::new(RwLock::new(BTreeMap::new())),
         });
         // `subgraph_deploy` handler.
         let me = arc_self.clone();
