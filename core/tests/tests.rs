@@ -6,6 +6,7 @@ extern crate graph_runtime_wasm;
 extern crate ipfs_api;
 extern crate web3;
 
+use ethabi::Token;
 use ipfs_api::IpfsClient;
 use std::fs::read_to_string;
 use std::io::Cursor;
@@ -50,27 +51,27 @@ fn multiple_data_sources_per_subgraph() {
             unimplemented!()
         }
 
-        fn find_first_block_with_event(
+        fn find_first_blocks_with_events(
             &self,
             _: u64,
             _: u64,
             _: EthereumEventFilter,
-        ) -> Box<Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send> {
+        ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
             unimplemented!()
         }
 
-        fn get_events_in_block<'a>(
-            &'a self,
+        fn get_events_in_block(
+            &self,
             _: Block<Transaction>,
             _: EthereumEventFilter,
-        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> + 'a> {
+        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
             unimplemented!()
         }
 
         fn contract_call(
             &mut self,
-            _request: EthereumContractCall,
-        ) -> Box<Future<Item = Vec<ethabi::Token>, Error = EthereumContractCallError>> {
+            _: EthereumContractCall,
+        ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
             unimplemented!()
         }
     }

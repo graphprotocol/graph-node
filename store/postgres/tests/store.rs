@@ -12,13 +12,7 @@ use diesel::*;
 use std::fmt::Debug;
 use std::panic;
 use std::sync::Mutex;
-use web3::types::Block;
-use web3::types::Bytes;
-use web3::types::H160;
-use web3::types::H2048;
-use web3::types::H256;
-use web3::types::Transaction;
-use web3::types::U256;
+use web3::types::*;
 
 use graph::components::store::{
     EventSource, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
@@ -43,31 +37,6 @@ fn create_diesel_store() -> DieselStore {
         },
         &Logger::root(slog::Discard, o!()),
     ).unwrap()
-}
-
-/// Helper function to create a Store for a test instance
-fn create_fake_block() -> Block<Transaction> {
-    Block {
-        hash: Some(H256::random()),
-        parent_hash: H256::zero(),
-        uncles_hash: H256::zero(),
-        author: H160::zero(),
-        state_root: H256::zero(),
-        transactions_root: H256::zero(),
-        receipts_root: H256::zero(),
-        number: Some(1.into()),
-        gas_used: U256::zero(),
-        gas_limit: U256::zero(),
-        extra_data: Bytes(vec![]),
-        logs_bloom: H2048::zero(),
-        timestamp: U256::zero(),
-        difficulty: U256::zero(),
-        total_difficulty: U256::zero(),
-        seal_fields: vec![],
-        uncles: vec![],
-        transactions: vec![],
-        size: None,
-    }
 }
 
 lazy_static! {
@@ -146,7 +115,7 @@ fn insert_test_data() {
     let mut store = create_diesel_store();
 
     store
-        .add_subgraph(SubgraphId(String::from("test_subgraph")))
+        .add_subgraph_if_missing(SubgraphId(String::from("test_subgraph")))
         .expect("Failed to register test subgraph in store");
 
     let test_entity_1 = create_test_entity(
@@ -1836,7 +1805,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 
         // Register subgraph in store
         store
-            .add_subgraph(SubgraphId(String::from("subgraph-id")))
+            .add_subgraph_if_missing(SubgraphId(String::from("subgraph-id")))
             .expect("failed to register new subgraph in store");
 
         // Create a store subscription

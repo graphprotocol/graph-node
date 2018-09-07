@@ -10,7 +10,7 @@ use ethabi::{Function, Param, ParamType, Token};
 use futures::prelude::*;
 use futures::{failed, finished};
 use graph::components::ethereum::EthereumContractCall;
-use graph::prelude::EthereumAdapter as EthereumAdapterTrait;
+use graph::prelude::{*, EthereumAdapter as EthereumAdapterTrait};
 use graph::serde_json;
 use graph_datasource_ethereum::{EthereumAdapter, EthereumAdapterConfig};
 use std::collections::VecDeque;
@@ -127,7 +127,8 @@ fn contract_call() {
         H256::from(100000)
     )));
 
-    let mut adapter = EthereumAdapter::new(EthereumAdapterConfig { transport });
+    let logger = slog::Logger::root(slog::Discard, o!());
+    let mut adapter = EthereumAdapter::new(EthereumAdapterConfig { transport, logger });
     let balance_of = Function {
         name: "balanceOf".to_owned(),
         inputs: vec![Param {

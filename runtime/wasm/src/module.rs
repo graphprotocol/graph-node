@@ -788,8 +788,7 @@ mod tests {
     use std::collections::HashMap;
     use std::iter::FromIterator;
     use std::sync::Mutex;
-    use web3::types::Block;
-    use web3::types::Transaction;
+    use web3::types::*;
 
     use graph::components::ethereum::*;
     use graph::components::store::*;
@@ -824,21 +823,20 @@ mod tests {
             unimplemented!()
         }
 
-        fn find_first_block_with_event(
+        fn find_first_blocks_with_events(
             &self,
             _: u64,
             _: u64,
             _: EthereumEventFilter,
-        ) -> Box<Future<Item = Option<EthereumBlockPointer>, Error = failure::Error> + Send>
-        {
+        ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = failure::Error> + Send> {
             unimplemented!()
         }
 
-        fn get_events_in_block<'a>(
-            &'a self,
+        fn get_events_in_block(
+            &self,
             _: Block<Transaction>,
             _: EthereumEventFilter,
-        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> + 'a> {
+        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
             unimplemented!()
         }
 
@@ -920,7 +918,7 @@ mod tests {
         let ethereum_event = EthereumEvent {
             address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
             event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
-            block_hash: util::ethereum::string_to_h256("example block hash"),
+            block: create_fake_block(),
             params: vec![LogParam {
                 name: String::from("exampleParam"),
                 value: Token::String(String::from("some data")),
@@ -966,7 +964,7 @@ mod tests {
                 let ethereum_event = EthereumEvent {
                     address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
                     event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
-                    block_hash: util::ethereum::string_to_h256("example block hash"),
+                    block: create_fake_block(),
                     params: vec![LogParam {
                         name: String::from("exampleParam"),
                         value: Token::String(String::from("some data")),
@@ -999,9 +997,7 @@ mod tests {
                             vec![(String::from("exampleAttribute"), Value::from("some data"))]
                                 .into_iter()
                         )),
-                        EventSource::EthereumBlock(util::ethereum::string_to_h256(
-                            "example block hash",
-                        )),
+                        create_fake_block(),
                     )
                 );
             })
@@ -1094,5 +1090,30 @@ mod tests {
                 );
             })
         }))
+    }
+
+    /// Helper function to create a fake block for testing
+    fn create_fake_block() -> Block<Transaction> {
+        Block {
+            hash: Some(H256::random()),
+            parent_hash: H256::zero(),
+            uncles_hash: H256::zero(),
+            author: H160::zero(),
+            state_root: H256::zero(),
+            transactions_root: H256::zero(),
+            receipts_root: H256::zero(),
+            number: Some(1.into()),
+            gas_used: U256::zero(),
+            gas_limit: U256::zero(),
+            extra_data: Bytes(vec![]),
+            logs_bloom: H2048::zero(),
+            timestamp: U256::zero(),
+            difficulty: U256::zero(),
+            total_difficulty: U256::zero(),
+            seal_fields: vec![],
+            uncles: vec![],
+            transactions: vec![],
+            size: None,
+        }
     }
 }
