@@ -53,7 +53,7 @@ pub fn execute_root_selection_set<'a, R1, R2>(
     ctx: ExecutionContext<'a, R1, R2>,
     selection_set: &'a q::SelectionSet,
     initial_value: &Option<q::Value>,
-) -> QueryResult
+) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R1: Resolver,
     R2: Resolver,
@@ -61,12 +61,11 @@ where
     // Obtain the root Query type and fail if there isn't one
     let query_type = match sast::get_root_query_type(&ctx.schema.document) {
         Some(t) => t,
-        None => return QueryResult::from(QueryExecutionError::NoRootQueryObjectType),
+        None => return Err(vec![QueryExecutionError::NoRootQueryObjectType]),
     };
 
     // Execute the root selection set against the root query type
     execute_selection_set(ctx, selection_set, query_type, initial_value)
-        .unwrap_or_else(QueryResult::from)
 }
 
 /// Executes a selection set, requiring the result to be of the given object type.
@@ -77,12 +76,12 @@ pub fn execute_selection_set<'a, R1, R2>(
     selection_set: &'a q::SelectionSet,
     object_type: &s::ObjectType,
     object_value: &Option<q::Value>,
-) -> Result<QueryResult, QueryExecutionError>
+) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R1: Resolver,
     R2: Resolver,
 {
-    let mut result = QueryResult::new(None);
+    let mut errors: Vec<QueryExecutionError> = Vec::new();
     let mut result_map: BTreeMap<String, q::Value> = BTreeMap::new();
 
     // Group fields with the same response key, so we can execute them together
@@ -104,19 +103,18 @@ where
                 Ok(v) => {
                     result_map.insert(response_key.to_owned(), v);
                 }
-                Err(e) => {
-                    result.add_error(QueryError::from(e));
+                Err(mut e) => {
+                    errors.append(&mut e);
                 }
             };
         }
     }
 
-    // If we have result data, wrap it in an output object
-    if !result_map.is_empty() {
-        result.data = Some(q::Value::Object(result_map));
+    if errors.is_empty() & !result_map.is_empty() {
+        Ok(q::Value::Object(result_map))
+    } else {
+        Err(errors)
     }
-
-    Ok(result)
 }
 
 /// Collects fields of a selection set.
@@ -270,7 +268,7 @@ fn execute_field<'a, R1, R2>(
     field: &'a q::Field,
     field_definition: &s::Field,
     fields: Vec<&'a q::Field>,
-) -> Result<q::Value, QueryExecutionError>
+) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R1: Resolver,
     R2: Resolver,
@@ -298,7 +296,7 @@ fn resolve_field_value<'a, R1, R2>(
     field_definition: &s::Field,
     field_type: &s::Type,
     argument_values: &HashMap<&q::Name, q::Value>,
-) -> Result<q::Value, QueryExecutionError>
+) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R1: Resolver,
     R2: Resolver,
@@ -343,7 +341,7 @@ fn resolve_field_value_for_named_type<'a, R1, R2>(
     field_definition: &s::Field,
     type_name: &s::Name,
     argument_values: &HashMap<&q::Name, q::Value>,
-) -> Result<q::Value, QueryExecutionError>
+) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R1: Resolver,
     R2: Resolver,
@@ -356,27 +354,29 @@ where
             &ctx.schema.document
         },
         type_name,
-    ).ok_or(QueryExecutionError::NamedTypeError(type_name.to_string()))?;
+    ).ok_or(vec![QueryExecutionError::NamedTypeError(
+        type_name.to_string(),
+    )])?;
 
-    match named_type {
+    let value = match named_type {
         // Let the resolver decide how the field (with the given object type)
         // is resolved into an entity based on the (potential) parent object
         s::TypeDefinition::Object(t) => if ctx.introspecting {
-            Ok(ctx.introspection_resolver.resolve_object(
+            ctx.introspection_resolver.resolve_object(
                 object_value,
                 &field.name,
                 field_definition,
                 t,
                 argument_values,
-            ))
+            )
         } else {
-            Ok(ctx.resolver.resolve_object(
+            ctx.resolver.resolve_object(
                 object_value,
                 &field.name,
                 field_definition,
                 t,
                 argument_values,
-            ))
+            )
         },
 
         // Let the resolver decide how values in the resolved object value
@@ -410,6 +410,14 @@ where
         s::TypeDefinition::Union(_) => unimplemented!(),
 
         _ => unimplemented!(),
+    };
+
+    match value {
+        Ok(v) => Ok(v),
+        Err(e) => Err(vec![
+            e,
+            QueryExecutionError::NamedTypeError(type_name.to_string()),
+        ]),
     }
 }
 
@@ -422,7 +430,7 @@ fn resolve_field_value_for_list_type<'a, R1, R2>(
     field_definition: &s::Field,
     inner_type: &s::Type,
     argument_values: &HashMap<&q::Name, q::Value>,
-) -> Result<q::Value, QueryExecutionError>
+) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R1: Resolver,
     R2: Resolver,
@@ -451,23 +459,29 @@ where
             match named_type {
                 // Let the resolver decide how the list field (with the given item object type)
                 // is resolved into a entities based on the (potential) parent object
-                s::TypeDefinition::Object(t) => if ctx.introspecting {
-                    Ok(ctx.introspection_resolver.resolve_objects(
-                        object_value,
-                        &field.name,
-                        field_definition,
-                        t,
-                        argument_values,
-                    ))
-                } else {
-                    Ok(ctx.resolver.resolve_objects(
-                        object_value,
-                        &field.name,
-                        field_definition,
-                        t,
-                        argument_values,
-                    ))
-                },
+                s::TypeDefinition::Object(t) => {
+                    let object = if ctx.introspecting {
+                        ctx.introspection_resolver.resolve_objects(
+                            object_value,
+                            &field.name,
+                            field_definition,
+                            &t,
+                            argument_values,
+                        )
+                    } else {
+                        ctx.resolver.resolve_objects(
+                            object_value,
+                            &field.name,
+                            field_definition,
+                            &t,
+                            argument_values,
+                        )
+                    };
+                    match object {
+                        Ok(v) => Ok(v),
+                        Err(e) => Err(vec![e]),
+                    }
+                }
 
                 // Let the resolver decide how values in the resolved object value
                 // map to values of GraphQL enums
@@ -475,9 +489,9 @@ where
                     Some(q::Value::Object(o)) => if ctx.introspecting {
                         Ok(ctx
                             .introspection_resolver
-                            .resolve_enum_values(t, o.get(&field.name)))
+                            .resolve_enum_values(&t, o.get(&field.name)))
                     } else {
-                        Ok(ctx.resolver.resolve_enum_values(t, o.get(&field.name)))
+                        Ok(ctx.resolver.resolve_enum_values(&t, o.get(&field.name)))
                     },
                     _ => Ok(q::Value::Null),
                 },
@@ -488,9 +502,9 @@ where
                     Some(q::Value::Object(o)) => if ctx.introspecting {
                         Ok(ctx
                             .introspection_resolver
-                            .resolve_scalar_values(t, o.get(&field.name)))
+                            .resolve_scalar_values(&t, o.get(&field.name)))
                     } else {
-                        Ok(ctx.resolver.resolve_scalar_values(t, o.get(&field.name)))
+                        Ok(ctx.resolver.resolve_scalar_values(&t, o.get(&field.name)))
                     },
                     _ => Ok(q::Value::Null),
                 },
@@ -515,7 +529,7 @@ fn complete_value<'a, R1, R2>(
     field_type: &'a s::Type,
     fields: Vec<&'a q::Field>,
     resolved_value: q::Value,
-) -> Result<q::Value, QueryExecutionError>
+) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R1: Resolver,
     R2: Resolver,
@@ -523,10 +537,10 @@ where
     // Fail if the field type is non-null but the value is null
     if let s::Type::NonNullType(inner_type) = field_type {
         return match complete_value(ctx.clone(), field, inner_type, fields, resolved_value)? {
-            q::Value::Null => Err(QueryExecutionError::NonNullError(
+            q::Value::Null => Err(vec![QueryExecutionError::NonNullError(
                 field.position,
                 field.name.to_string(),
-            )),
+            )]),
 
             v => Ok(v),
         };
@@ -556,10 +570,10 @@ where
             }
 
             // Return field error if the resolved value for the list is not a list
-            _ => Err(QueryExecutionError::ListValueError(
+            _ => Err(vec![QueryExecutionError::ListValueError(
                 field.position,
                 field.name.to_string(),
-            )),
+            )]),
         };
     }
 
@@ -593,10 +607,7 @@ where
             &merge_selection_sets(fields),
             object_type,
             &Some(resolved_value),
-        ).map(|result| match result.data {
-            Some(v) => v,
-            None => q::Value::Null,
-        }),
+        ),
 
         // Resolve interface types using the resolved value and complete the value recursively
         Some(s::TypeDefinition::Interface(_)) => {
@@ -608,10 +619,7 @@ where
                 &merge_selection_sets(fields),
                 object_type,
                 &Some(resolved_value),
-            ).map(|result| match result.data {
-                Some(v) => v,
-                None => q::Value::Null,
-            })
+            )
         }
 
         // Resolve union types using the resolved value and complete the value recursively
@@ -624,10 +632,7 @@ where
                 &merge_selection_sets(fields),
                 object_type,
                 &Some(resolved_value),
-            ).map(|result| match result.data {
-                Some(v) => v,
-                None => q::Value::Null,
-            })
+            )
         }
 
         _ => unimplemented!(),
@@ -639,7 +644,7 @@ fn resolve_abstract_type<'a, R1, R2>(
     ctx: ExecutionContext<'a, R1, R2>,
     abstract_type: &'a s::TypeDefinition,
     object_value: &q::Value,
-) -> Result<&'a s::ObjectType, QueryExecutionError>
+) -> Result<&'a s::ObjectType, Vec<QueryExecutionError>>
 where
     R1: Resolver,
     R2: Resolver,
@@ -655,9 +660,10 @@ where
             },
             abstract_type,
             object_value,
-        ).ok_or(QueryExecutionError::AbstractTypeError(
+        )
+        .ok_or(vec![QueryExecutionError::AbstractTypeError(
             sast::get_type_name(abstract_type).to_string(),
-        ))
+        )])
 }
 
 /// Merges the selection sets of several fields into a single selection set.
@@ -693,7 +699,7 @@ pub fn coerce_argument_values<'a, R1, R2>(
     ctx: ExecutionContext<'a, R1, R2>,
     object_type: &'a s::ObjectType,
     field: &'a q::Field,
-) -> Result<HashMap<&'a q::Name, q::Value>, QueryExecutionError>
+) -> Result<HashMap<&'a q::Name, q::Value>, Vec<QueryExecutionError>>
 where
     R1: Resolver,
     R2: Resolver,
@@ -711,10 +717,10 @@ where
                     if let Some(ref default_value) = argument_def.default_value {
                         coerced_values.insert(&argument_def.name, default_value.clone());
                     } else if let s::Type::NonNullType(_) = argument_def.value_type {
-                        return Err(QueryExecutionError::MissingArgumentError(
+                        return Err(vec![QueryExecutionError::MissingArgumentError(
                             field.position.clone(),
                             argument_def.name.to_owned(),
-                        ));
+                        )]);
                     };
                 }
 
@@ -739,7 +745,7 @@ fn coerce_argument_value<'a, R1, R2>(
     field: &q::Field,
     argument: &s::InputValue,
     value: &q::Value,
-) -> Result<q::Value, QueryExecutionError>
+) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R1: Resolver,
     R2: Resolver,
@@ -759,11 +765,11 @@ where
     };
 
     coerce_value(&value, &argument.value_type, &resolver).ok_or_else(|| {
-        QueryExecutionError::InvalidArgumentError(
+        vec![QueryExecutionError::InvalidArgumentError(
             field.position.clone(),
             argument.name.to_owned(),
             value.clone(),
-        )
+        )]
     })
 }
 
