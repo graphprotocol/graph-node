@@ -486,7 +486,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         _field_definition: &s::Field,
         _object_type: &s::ObjectType,
         _arguments: &HashMap<&q::Name, q::Value>,
-    ) -> q::Value {
+    ) -> Result<q::Value, QueryExecutionError> {
         match field.as_str() {
             "possibleTypes" => {
                 let type_names = object_field(parent, "possibleTypes")
@@ -496,7 +496,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                     }).unwrap_or(vec![]);
 
                 if type_names.len() > 0 {
-                    q::Value::List(
+                    Ok(q::Value::List(
                         type_names
                             .iter()
                             .filter_map(|type_name| match type_name {
@@ -504,14 +504,15 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                                 _ => None,
                             }).filter_map(|type_name| self.type_objects.get(type_name).cloned())
                             .collect(),
-                    )
+                    ))
                 } else {
-                    q::Value::Null
+                    Err(QueryExecutionError::ObjectFieldError)
                 }
             }
             _ => object_field(parent, field.as_str())
-                .map(|value| value.clone())
-                .unwrap_or(q::Value::Null),
+                .map_or(Err(QueryExecutionError::ObjectFieldError), |value| {
+                    Ok(value.clone())
+                }),
         }
     }
 
@@ -522,8 +523,8 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         _field_definition: &s::Field,
         _object_type: &s::ObjectType,
         arguments: &HashMap<&q::Name, q::Value>,
-    ) -> q::Value {
-        match field.as_str() {
+    ) -> Result<q::Value, QueryExecutionError> {
+        let object = match field.as_str() {
             "__schema" => self.schema_object(),
             "__type" => self.type_object(arguments),
             "type" => object_field(parent, "type")
@@ -539,6 +540,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
             _ => object_field(parent, field.as_str())
                 .map(|value| value.clone())
                 .unwrap_or(q::Value::Null),
-        }
+        };
+        Ok(object)
     }
 }
