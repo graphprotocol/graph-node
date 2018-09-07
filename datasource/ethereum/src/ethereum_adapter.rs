@@ -19,13 +19,14 @@ pub struct EthereumAdapterConfig<T: web3::Transport> {
     pub logger: Logger,
 }
 
+#[derive(Clone)]
 pub struct EthereumAdapter<T: web3::Transport> {
     eth_client: Arc<Web3<T>>,
     logger: Logger,
 }
 
 /// Number of chunks to request in parallel when streaming logs.
-const LOG_STREAM_PARALLEL_CHUNKS: u64 = 10;
+const LOG_STREAM_PARALLEL_CHUNKS: u64 = 5;
 
 /// Number of blocks to request in each chunk.
 const LOG_STREAM_CHUNK_SIZE_IN_BLOCKS: u64 = 10000;
@@ -46,12 +47,13 @@ where
         eth.block(block_id)
     }
 
-    fn logs_with_sigs<'a>(
-        &'a self,
+    fn logs_with_sigs(
+        &self,
         from: u64,
         to: u64,
         event_signatures: Vec<H256>,
-    ) -> impl Future<Item = Vec<Log>, Error = Error> + 'a {
+    ) -> impl Future<Item = Vec<Log>, Error = Error> {
+        let eth_adapter = self.clone();
         with_retry(self.logger.clone(), move || {
             // Create a log filter
             let log_filter: Filter = FilterBuilder::default()
@@ -61,12 +63,14 @@ where
                 .build();
 
             // Request logs from client
+            let logger = eth_adapter.logger.clone();
             Box::new(
-                self.eth_client
+                eth_adapter
+                    .eth_client
                     .eth()
                     .logs(log_filter)
                     .map(move |logs| {
-                        debug!(self.logger, "Received logs for [{}, {}].", from, to);
+                        debug!(logger, "Received logs for [{}, {}].", from, to);
                         logs
                     })
                     .map_err(SyncFailure::new)
@@ -75,12 +79,12 @@ where
         })
     }
 
-    fn log_stream<'a>(
-        &'a self,
+    fn log_stream(
+        &self,
         from: u64,
         to: u64,
         event_filter: EthereumEventFilter,
-    ) -> impl Stream<Item = Log, Error = Error> + Send + 'a {
+    ) -> impl Stream<Item = Log, Error = Error> + Send {
         if from > to {
             panic!(
                 "cannot produce a log stream on a backwards block range (from={}, to={})",
@@ -97,6 +101,7 @@ where
             .collect::<Vec<H256>>();
         debug!(self.logger, "event sigs: {:?}", &event_sigs);
 
+        let eth_adapter = self.clone();
         stream::unfold(from, move |mut chunk_offset| {
             if chunk_offset <= to {
                 let mut chunk_futures = vec![];
@@ -105,11 +110,11 @@ where
                     let chunk_end = (chunk_offset + 100_000).min(to).min(4_000_000);
 
                     debug!(
-                        self.logger,
+                        eth_adapter.logger,
                         "Starting request for logs in block range [{},{}]", chunk_offset, chunk_end
                     );
                     let event_filter = event_filter.clone();
-                    let chunk_future = self
+                    let chunk_future = eth_adapter
                         .logs_with_sigs(chunk_offset, chunk_end, event_sigs.clone())
                         .map(move |logs| {
                             logs.into_iter()
@@ -140,13 +145,13 @@ where
                         // Note: this function filters only on event sigs,
                         // and will therefore return false positives
                         debug!(
-                            self.logger,
+                            eth_adapter.logger,
                             "Starting request for logs in block range [{},{}]",
                             chunk_offset,
                             chunk_end
                         );
                         let event_filter = event_filter.clone();
-                        let chunk_future = self
+                        let chunk_future = eth_adapter
                             .logs_with_sigs(chunk_offset, chunk_end, event_sigs.clone())
                             .map(move |logs| {
                                 logs.into_iter()
@@ -248,12 +253,12 @@ where
         )
     }
 
-    fn find_first_block_with_event<'a>(
-        &'a self,
+    fn find_first_block_with_event(
+        &self,
         from: u64,
         to: u64,
         event_filter: EthereumEventFilter,
-    ) -> Box<Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send + 'a> {
+    ) -> Box<Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send> {
         Box::new(
             // Get a stream of all relevant events in range
             self.log_stream(from, to, event_filter)
@@ -284,11 +289,11 @@ where
     }
 
     // TODO investigate storing receipts in DB and moving this fn to BlockStore
-    fn get_events_in_block<'a>(
-        &'a self,
+    fn get_events_in_block(
+        &self,
         block: Block<Transaction>,
         event_filter: EthereumEventFilter,
-    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> + 'a> {
+    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
         if !event_filter.check_bloom(block.logs_bloom) {
             return Box::new(stream::empty());
         }
@@ -405,20 +410,14 @@ where
                 Err(deadline_err) => match deadline_err.into_inner() {
                     Some(e) => {
                         if retries_left > 0 {
-                            warn!(
-                                logger,
-                                "Ethereum RPC call failed: {}", e
-                            );
-                            warn!(
-                                logger,
-                                "Retrying..."
-                            );
+                            warn!(logger, "Ethereum RPC call failed: {}", e);
+                            warn!(logger, "Retrying...");
                             retries_left -= 1;
                             Ok(future::Loop::Continue(()))
                         } else {
                             Err(e)
                         }
-                    },
+                    }
                     None => {
                         info!(
                             logger,

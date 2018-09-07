@@ -83,21 +83,24 @@ where
         self.get_latest_block()
             .and_then(move |latest_block: Block<Transaction>| {
                 // Check how far behind we are and (possibly) alert user
-                self.store.lock().unwrap()
+                self.store
+                    .lock()
+                    .unwrap()
                     .head_block_ptr()
                     .map(move |head_block_ptr_opt| {
                         match head_block_ptr_opt {
                             None => {
                                 info!(self.logger, "Downloading latest blocks from Ethereum. This may take a few minutes...");
-                            },
+                            }
                             Some(head_block_ptr) => {
-                                let distance = latest_block.number.unwrap().as_u64() - head_block_ptr.number;
+                                let distance =
+                                    latest_block.number.unwrap().as_u64() - head_block_ptr.number;
                                 if distance > 10 && distance <= 50 {
                                     info!(self.logger, "Downloading latest blocks from Ethereum. This may take a few seconds...");
                                 } else if distance > 50 {
                                     info!(self.logger, "Downloading latest blocks from Ethereum. This may take a few minutes...");
                                 }
-                            },
+                            }
                         }
 
                         latest_block

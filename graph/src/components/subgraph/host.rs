@@ -23,7 +23,10 @@ pub trait RuntimeHost: EventProducer<RuntimeHostEvent> + Send {
     /// Called when the runtime host should handle an Ethereum event.
     /// Some events provided may not match the event filter (see above).
     /// Runtime hosts should ignore events they are not interested in.
-    fn process_event(&mut self, event: EthereumEvent);
+    fn process_event(
+        &mut self,
+        event: EthereumEvent,
+    ) -> Box<Future<Item = (), Error = Error> + Send>;
 }
 
 pub trait RuntimeHostBuilder: Send + 'static {

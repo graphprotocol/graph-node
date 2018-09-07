@@ -189,6 +189,7 @@ where
                 &mut self.externals,
             )
             .unwrap_or_else(|e| {
+                // TODO cancel processing of block
                 warn!(self.logger, "Failed to handle Ethereum event";
                       "handler" => &handler_name,
                       "error" => format!("{}", e));
@@ -311,7 +312,7 @@ where
         call_ptr: AscPtr<AscUnresolvedContractCall>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let unresolved_call: UnresolvedContractCall = self.heap.asc_get(call_ptr);
-        info!(self.logger, "Call smart contract";
+        info!(self.logger, "Calling smart contract";
               "address" => &unresolved_call.contract_address.to_string(),
               "contract" => &unresolved_call.contract_name,
               "function" => &unresolved_call.function_name,
@@ -353,7 +354,10 @@ where
             .unwrap()
             .contract_call(call)
             .wait()
-            .map(|result| Some(RuntimeValue::from(self.heap.asc_new(&*result))))
+            .map(|result| {
+                debug!(self.logger, "Completed smart contract call.");
+                Some(RuntimeValue::from(self.heap.asc_new(&*result)))
+            })
             .map_err(|e| {
                 host_error(format!(
                     "Failed to call function \"{}\" of contract \"{}\": {}",

@@ -288,20 +288,20 @@ pub trait EthereumAdapter: Send + 'static {
     /// reorgs.
     /// It is recommended that `to` be far behind the block number of latest block the Ethereum
     /// node is aware of.
-    fn find_first_block_with_event<'a>(
-        &'a self,
+    fn find_first_block_with_event(
+        &self,
         from: u64,
         to: u64,
         event_filter: EthereumEventFilter,
-    ) -> Box<Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send + 'a>;
+    ) -> Box<Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send>;
 
     /// Find all events from transactions in the specified `block` that match the specified
     /// `event_filter`.
-    fn get_events_in_block<'a>(
-        &'a self,
+    fn get_events_in_block(
+        &self,
         block: Block<Transaction>,
         event_filter: EthereumEventFilter,
-    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError> + 'a>;
+    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>>;
 
     /// Call the function of a smart contract.
     fn contract_call(

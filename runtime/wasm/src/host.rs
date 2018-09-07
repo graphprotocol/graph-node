@@ -69,7 +69,7 @@ pub struct RuntimeHost {
     config: RuntimeHostConfig,
     logger: Logger,
     output: Option<Receiver<RuntimeHostEvent>>,
-    eth_event_sender: Option<Sender<EthereumEvent>>,
+    eth_event_sender: Sender<(EthereumEvent, oneshot::Sender<Result<(), Error>>)>,
     // Never accessed, it's purpose is to signal cancelation on drop.
     _guard: oneshot::Sender<()>,
 }
@@ -141,7 +141,7 @@ impl RuntimeHost {
             config,
             logger,
             output: Some(event_receiver),
-            eth_event_sender: Some(eth_event_sender),
+            eth_event_sender,
             _guard: cancel_sender,
         }
     }
@@ -152,7 +152,7 @@ impl RuntimeHost {
         logger: &Logger,
         data_source: DataSource,
         mut module: WasmiModule<T, L>,
-        eth_event_receiver: Receiver<EthereumEvent>,
+        eth_event_receiver: Receiver<(EthereumEvent, oneshot::Sender<Result<(), Error>>)>,
     ) -> impl Stream<Item = (), Error = ()> + 'static
     where
         T: EthereumAdapter + 'static,
@@ -162,14 +162,14 @@ impl RuntimeHost {
 
         let event_logger = logger.clone();
 
-        eth_event_receiver.map(move |event| {
+        eth_event_receiver.map(move |(event, on_complete)| {
             info!(event_logger, "Ethereum event received";
                       "signature" => event.event_signature.to_string(),
                     );
 
             if event.removed {
                 // TODO why would this happen?
-                info!(event_logger, "Event removed";
+                error!(event_logger, "Event removed";
                           "block" => event.block_hash.to_string());
             } else {
                 let event_handler_opt = data_source
@@ -183,13 +183,16 @@ impl RuntimeHost {
                     .to_owned();
 
                 if let Some(event_handler) = event_handler_opt {
-                    debug!(event_logger, "  Call event handler";
+                    debug!(event_logger, "Call event handler";
                                "name" => &event_handler.handler,
                                "signature" => &event_handler.event);
 
                     module.handle_ethereum_event(event_handler.handler.as_str(), event);
                 }
             }
+
+            debug!(event_logger, "Done processing event in this RuntimeHost.");
+            on_complete.send(Ok(())).unwrap();
         })
     }
 }
@@ -252,9 +255,24 @@ impl RuntimeHostTrait for RuntimeHost {
             .sum()
     }
 
-    // TODO this should take a StoreTransaction and be synchronous
-    fn process_event(&mut self, event: EthereumEvent) {
-        let sender = self.eth_event_sender.take().unwrap();
-        self.eth_event_sender = Some(sender.send(event).wait().unwrap());
+    fn process_event(
+        &mut self,
+        event: EthereumEvent,
+    ) -> Box<Future<Item = (), Error = Error> + Send> {
+        let (sender, receiver) = oneshot::channel();
+        Box::new(
+            self.eth_event_sender
+                .clone()
+                .send((event, sender))
+                .map_err(|_| {
+                    format_err!("failed to send Ethereum event to RuntimeHost mappings thread")
+                })
+                .and_then(move |_| {
+                    receiver.map_err(|_| {
+                        format_err!("failed to receive result of sending Ethereum event to RuntimeHost mappings thread")
+                    })
+                })
+                .and_then(|result| result),
+        )
     }
 }

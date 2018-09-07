@@ -196,7 +196,7 @@ impl EventConsumer<SubgraphProviderEvent> for RuntimeManager {
 fn handle_head_block_update<S, E, H>(
     logger: Logger,
     store_mutex: Arc<Mutex<S>>,
-    eth_adapter_mutex: Arc<Mutex<E>>,
+    eth_adapter: Arc<Mutex<E>>,
     subgraph_id: SubgraphId,
     runtime_hosts: &mut [H],
 ) -> Result<(), Error>
@@ -214,7 +214,6 @@ where
     );
 
     let store = store_mutex.lock().unwrap();
-    let eth_adapter = eth_adapter_mutex.lock().unwrap();
 
     // Create an event filter that will match any event relevant to this subgraph
     let event_filter = runtime_hosts
@@ -280,7 +279,11 @@ where
                 // This allows us to ask the node: does subgraph_ptr point to a block that was
                 // permanently accepted into the main chain, or does it point to a block that was
                 // uncled?
-                let is_on_main_chain = eth_adapter.is_on_main_chain(subgraph_ptr).wait()?;
+                let is_on_main_chain = eth_adapter
+                    .lock()
+                    .unwrap()
+                    .is_on_main_chain(subgraph_ptr)
+                    .wait()?;
                 if is_on_main_chain {
                     // The subgraph ptr points to a block on the main chain.
                     // This means that the last block we processed does not need to be reverted.
@@ -303,6 +306,8 @@ where
 
                     debug!(logger, "start find_first_block_with_event");
                     let descendant_ptr_opt = eth_adapter
+                        .lock()
+                        .unwrap()
                         .find_first_block_with_event(from, to, event_filter.clone())
                         .wait()?;
                     debug!(logger, "done find_first_block_with_event");
@@ -317,7 +322,12 @@ where
                             // `to`.
                             // Again, this is only safe from race conditions due to being beyond
                             // the reorg threshold.
-                            let new_ptr = eth_adapter.block_by_number(to).wait()?.into();
+                            let new_ptr = eth_adapter
+                                .lock()
+                                .unwrap()
+                                .block_by_number(to)
+                                .wait()?
+                                .into();
 
                             store.set_block_ptr_with_no_changes(
                                 subgraph_id.clone(),
@@ -341,7 +351,11 @@ where
                                 if let Some(block) = block_from_store {
                                     Ok(block)
                                 } else {
-                                    eth_adapter.block_by_hash(descendant_ptr.hash).wait()
+                                    eth_adapter
+                                        .lock()
+                                        .unwrap()
+                                        .block_by_hash(descendant_ptr.hash)
+                                        .wait()
                                 }
                             }?;
 
@@ -424,7 +438,11 @@ where
                     if let Some(block) = block_from_store {
                         Ok(block)
                     } else {
-                        eth_adapter.block_by_hash(subgraph_ptr.hash).wait()
+                        eth_adapter
+                            .lock()
+                            .unwrap()
+                            .block_by_hash(subgraph_ptr.hash)
+                            .wait()
                     }
                 }?;
 
@@ -453,19 +471,22 @@ where
 
                 // subgraph ptr is now the direct parent of descendant_block
                 let subgraph_ptr = descendant_parent_ptr;
-                let descendant_ptr = descendant_block.clone().into();
+                let descendant_ptr = EthereumBlockPointer::from(descendant_block.clone());
 
                 // TODO future enhancement: load a recent history of blocks before running mappings
 
                 // Next, we will determine what relevant events are contained in this block.
                 let events = eth_adapter
+                    .lock()
+                    .unwrap()
                     .get_events_in_block(descendant_block, event_filter.clone())
                     .collect()
                     .wait()?;
 
                 debug!(
                     logger,
-                    "Processing block. {} event(s) are relevant to this subgraph.",
+                    "Processing block #{}. {} event(s) are relevant to this subgraph.",
+                    descendant_ptr.number,
                     events.len()
                 );
 
@@ -477,7 +498,7 @@ where
                 events.iter().for_each(|event| {
                     runtime_hosts
                         .iter_mut()
-                        .for_each(|host| host.process_event(event.clone()))
+                        .for_each(|host| host.process_event(event.clone()).wait().unwrap())
                 });
                 store.set_block_ptr_with_no_changes(
                     subgraph_id.clone(),
