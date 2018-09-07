@@ -195,7 +195,7 @@ where
         field_definition: &s::Field,
         object_type: &s::ObjectType,
         arguments: &HashMap<&q::Name, q::Value>,
-    ) -> q::Value {
+    ) -> Result<q::Value, QueryExecutionError> {
         let mut query = build_query(&object_type, arguments);
 
         // Add matching filter for derived fields
@@ -209,7 +209,7 @@ where
             && parent.is_some()
             && Self::references_field_is_empty(parent, &field_definition.name)
         {
-            return q::Value::List(vec![]);
+            return Ok(q::Value::List(vec![]));
         }
 
         // Add matching filter for reference fields
@@ -220,13 +220,13 @@ where
         self.store
             .find(query)
             .map(|entities| {
-                q::Value::List(
-                    entities
-                        .into_iter()
-                        .map(|e| e.into())
-                        .collect::<Vec<q::Value>>(),
-                )
-            }).unwrap_or(q::Value::Null)
+            q::Value::List(
+                entities
+                    .into_iter()
+                    .map(|e| e.into())
+                    .collect::<Vec<q::Value>>(),
+            )
+        })
     }
 
     fn resolve_object(
@@ -236,7 +236,7 @@ where
         field_definition: &s::Field,
         object_type: &s::ObjectType,
         arguments: &HashMap<&q::Name, q::Value>,
-    ) -> q::Value {
+    ) -> Result<q::Value, QueryExecutionError> {
         let id = arguments.get(&"id".to_string()).and_then(|id| match id {
             q::Value::String(s) => Some(s),
             _ => None,
@@ -252,8 +252,7 @@ where
                     ),
                     entity: object_type.name.to_owned(),
                     id: id.to_owned(),
-                }).map(|entity| entity.into())
-                .unwrap_or(q::Value::Null);
+                }).map(|entity| entity.into());
         }
 
         match parent {
@@ -267,9 +266,9 @@ where
                         ),
                         entity: object_type.name.to_owned(),
                         id: id.to_owned(),
-                    }).map(|entity| entity.into())
-                    .unwrap_or(q::Value::Null),
-                _ => q::Value::Null,
+                    })
+                    .map(|entity| entity.into()),
+                _ => Err(QueryExecutionError::ObjectFieldError),
             },
             _ => {
                 let mut query = build_query(&object_type, arguments);
@@ -287,12 +286,12 @@ where
                 self.store
                     .find(query)
                     .map(|entities| {
-                        entities
-                            .into_iter()
-                            .next()
-                            .map(|entity| entity.into())
-                            .unwrap_or(q::Value::Null)
-                    }).unwrap_or(q::Value::Null)
+                    entities
+                        .into_iter()
+                        .next()
+                        .map(|entity| entity.into())
+                        .unwrap_or(q::Value::Null)
+                })
             }
         }
     }

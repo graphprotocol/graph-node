@@ -14,7 +14,7 @@ pub trait Resolver: Clone + Send + Sync {
         field_definition: &s::Field,
         object_type: &s::ObjectType,
         arguments: &HashMap<&q::Name, q::Value>,
-    ) -> q::Value;
+    ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an entity referenced by a parent object.
     fn resolve_object(
@@ -24,7 +24,7 @@ pub trait Resolver: Clone + Send + Sync {
         field_definition: &s::Field,
         object_type: &s::ObjectType,
         arguments: &HashMap<&q::Name, q::Value>,
-    ) -> q::Value;
+    ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an enum value for a given enum type.
     fn resolve_enum_value(&self, enum_type: &s::EnumType, value: Option<&q::Value>) -> q::Value {
