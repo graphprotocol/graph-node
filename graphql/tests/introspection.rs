@@ -23,8 +23,8 @@ impl Resolver for MockResolver {
         _field_definition: &s::Field,
         _object_type: &s::ObjectType,
         _arguments: &HashMap<&q::Name, q::Value>,
-    ) -> q::Value {
-        q::Value::Null
+    ) -> Result<q::Value, QueryExecutionError> {
+        Ok(q::Value::Null)
     }
 
     fn resolve_object(
@@ -34,8 +34,8 @@ impl Resolver for MockResolver {
         _field_definition: &s::Field,
         _object_type: &s::ObjectType,
         _arguments: &HashMap<&q::Name, q::Value>,
-    ) -> q::Value {
-        q::Value::Null
+    ) -> Result<q::Value, QueryExecutionError> {
+        Ok(q::Value::Null)
     }
 }
 
