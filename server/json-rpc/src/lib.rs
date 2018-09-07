@@ -3,17 +3,30 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate graph;
+extern crate rand;
 
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::serde_json;
 use jsonrpc_http_server::{
-    jsonrpc_core::{self, Id, IoHandler, MethodCall, Params, Value, Version},
-    RestApi, Server, ServerBuilder,
+    hyper::{header, Request, Response, StatusCode},
+    jsonrpc_core::{
+        self, Compatibility, Id, MetaIoHandler, Metadata, MethodCall, Params, Value, Version,
+    },
+    RequestMiddlewareAction, RestApi, Server, ServerBuilder,
 };
 
-use std::fmt;
-use std::io;
+use rand::distributions::Alphanumeric;
+use rand::Rng;
+
+use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, SocketAddrV4};
+use std::sync::RwLock;
+use std::{env, fmt, io};
+
+const GRAPH_MASTER_TOKEN_VAR: &str = "GRAPH_MASTER_TOKEN";
+const JSON_RPC_DEPLOY_ERROR: i64 = 0;
+const JSON_RPC_REMOVE_ERROR: i64 = 1;
+const JSON_RPC_UNAUTHORIZED_ERROR: i64 = 2;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SubgraphDeployParams {
@@ -38,9 +51,29 @@ impl fmt::Display for SubgraphRemoveParams {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct SubgraphAuthorizeParams {
+    name: String,
+}
+
+impl fmt::Display for SubgraphAuthorizeParams {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Clone, Default)]
+struct AuthorizationHeader {
+    bearer_token: String,
+}
+
+impl Metadata for AuthorizationHeader {}
+
 pub struct JsonRpcServer<T> {
     provider: Arc<T>,
     logger: Logger,
+    // Maps auth tokens to authorized subgraph name.
+    authorized: Arc<RwLock<BTreeMap<String, String>>>,
 }
 
 impl<T: SubgraphProvider> JsonRpcServer<T> {
@@ -48,26 +81,94 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
     fn deploy_handler(
         &self,
         params: SubgraphDeployParams,
-    ) -> impl Future<Item = Value, Error = jsonrpc_core::Error> {
+        auth: AuthorizationHeader,
+    ) -> Box<Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
         info!(self.logger, "Received subgraph_deploy request"; "params" => params.to_string());
-        self.provider
-            .deploy(params.name, format!("/ipfs/{}", params.ipfs_hash))
-            .map_err(|e| json_rpc_error(0, e.to_string()))
-            .map(|_| Ok(Value::Null))
-            .flatten()
+
+        if should_check_auth()
+            && Some(&auth.bearer_token) != self.authorized.read().unwrap().get(&params.name)
+        {
+            return Box::new(future::err(json_rpc_error(
+                JSON_RPC_UNAUTHORIZED_ERROR,
+                "Auth token is invalid".to_owned(),
+            )));
+        }
+
+        Box::new(
+            self.provider
+                .deploy(params.name, format!("/ipfs/{}", params.ipfs_hash))
+                .map_err(|e| json_rpc_error(JSON_RPC_DEPLOY_ERROR, e.to_string()))
+                .map(|_| Ok(Value::Null))
+                .flatten(),
+        )
     }
 
     /// Handler for the `subgraph_remove` endpoint.
     fn remove_handler(
         &self,
         params: SubgraphRemoveParams,
-    ) -> impl Future<Item = Value, Error = jsonrpc_core::Error> {
+        auth: AuthorizationHeader,
+    ) -> Box<Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
         info!(self.logger, "Received subgraph_remove request"; "params" => params.to_string());
-        self.provider
-            .remove(params.name_or_id)
-            .map_err(|e| json_rpc_error(1, e.to_string()))
-            .map(|_| Ok(Value::Null))
-            .flatten()
+
+        if should_check_auth()
+            && Some(&auth.bearer_token) != self.authorized.read().unwrap().get(&params.name_or_id)
+        {
+            return Box::new(future::err(json_rpc_error(
+                JSON_RPC_UNAUTHORIZED_ERROR,
+                "Auth token is invalid".to_owned(),
+            )));
+        }
+
+        Box::new(
+            self.provider
+                .remove(params.name_or_id)
+                .map_err(|e| json_rpc_error(JSON_RPC_REMOVE_ERROR, e.to_string()))
+                .map(|_| Ok(Value::Null))
+                .flatten(),
+        )
+    }
+
+    /// Handler for the `subgraph_authorize` endpoint.
+    ///
+    /// Takens subgraph name and returns an auth token that can be used to
+    /// add/remove subgraphs under the input name.
+    ///
+    /// Requires bearer authorization with the master token.
+    fn authorize_handler(
+        &self,
+        params: SubgraphAuthorizeParams,
+        auth: AuthorizationHeader,
+    ) -> Result<Value, jsonrpc_core::Error> {
+        info!(self.logger, "Received subgraph_authorize request"; "params" => params.to_string());
+
+        let master_token = env::var(GRAPH_MASTER_TOKEN_VAR);
+        match &master_token {
+            Ok(master_token) if *master_token == auth.bearer_token => (), // Authorized.
+            Ok(_) => {
+                return Err(json_rpc_error(
+                    JSON_RPC_UNAUTHORIZED_ERROR,
+                    "auth token is invalid".to_owned(),
+                ))
+            }
+            Err(_) => {
+                return Err(json_rpc_error(
+                    JSON_RPC_UNAUTHORIZED_ERROR,
+                    "internal error".to_owned(),
+                ))
+            }
+        }
+        // Generate a random token of 50 ASCII alhpanumerics.
+        let mut rng = rand::thread_rng();
+        let mut token = String::new();
+        for _ in 0..50 {
+            token.push(rng.sample(Alphanumeric));
+        }
+        self.authorized
+            .write()
+            .unwrap()
+            .insert(params.name, token.clone());
+        Ok(Value::String(token))
     }
 }
 
@@ -77,34 +178,91 @@ impl<T: SubgraphProvider> JsonRpcServerTrait<T> for JsonRpcServer<T> {
     fn serve(port: u16, provider: Arc<T>, logger: Logger) -> Result<Self::Server, io::Error> {
         let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
 
-        let mut handler = IoHandler::new();
+        let mut handler = MetaIoHandler::with_compatibility(Compatibility::Both);
 
-        let arc_self = Arc::new(JsonRpcServer { provider, logger });
+        let arc_self = Arc::new(JsonRpcServer {
+            provider,
+            logger,
+            authorized: Arc::new(RwLock::new(BTreeMap::new())),
+        });
         // `subgraph_deploy` handler.
         let me = arc_self.clone();
-        handler.add_method("subgraph_deploy", move |params: Params| {
+        handler.add_method_with_meta("subgraph_deploy", move |params: Params, auth| {
             let me = me.clone();
             params
                 .parse()
                 .into_future()
-                .and_then(move |params| me.deploy_handler(params))
+                .and_then(move |params| me.deploy_handler(params, auth))
         });
 
         // `subgraph_remove` handler.
         let me = arc_self.clone();
-        handler.add_method("subgraph_remove", move |params: Params| {
+        handler.add_method_with_meta("subgraph_remove", move |params: Params, auth| {
             let me = me.clone();
             params
                 .parse()
                 .into_future()
-                .and_then(move |params| me.remove_handler(params))
+                .and_then(move |params| me.remove_handler(params, auth))
         });
 
-        ServerBuilder::new(handler)
+        // `subgraph_authorize` handler.
+        let me = arc_self.clone();
+        handler.add_method_with_meta("subgraph_authorize", move |params: Params, auth| {
+            let me = me.clone();
+            params
+                .parse()
+                .into_future()
+                .and_then(move |params| me.authorize_handler(params, auth))
+        });
+
+        /// Get the `Authorization: Bearer` header if present.
+        fn auth_extractor(request: &Request) -> Option<AuthorizationHeader> {
+            request
+                .headers()
+                .get::<header::Authorization<header::Bearer>>()
+                .cloned()
+                .map(|bearer| AuthorizationHeader {
+                    bearer_token: bearer.token.clone(),
+                })
+        }
+
+        /// Make sure requests contain a `Authorization: Bearer` header.
+        fn require_auth(request: Request) -> RequestMiddlewareAction {
+            if !should_check_auth() || auth_extractor(&request).is_some() {
+                RequestMiddlewareAction::Proceed {
+                    should_continue_on_invalid_cors: false,
+                    request,
+                }
+            } else {
+                let mut response = Response::new();
+                response.set_status(StatusCode::Unauthorized);
+                RequestMiddlewareAction::Respond {
+                    should_validate_hosts: true,
+                    response: Box::new(future::ok(response)),
+                }
+            }
+        }
+
+        ServerBuilder::with_meta_extractor(handler, |request: &Request| {
+            if should_check_auth() {
+                // The middleware guarantees the header it's present.
+                auth_extractor(request).unwrap()
+            } else {
+                // Nobody should care about this value.
+                AuthorizationHeader::default()
+            }
+        }).request_middleware(require_auth)
             // Enable REST API:
             // POST /<method>/<param1>/<param2>
             .rest_api(RestApi::Secure)
             .start_http(&addr.into())
+    }
+}
+
+fn should_check_auth() -> bool {
+    match env::var(GRAPH_MASTER_TOKEN_VAR) {
+        Err(env::VarError::NotPresent) => false,
+        _ => true,
     }
 }
 

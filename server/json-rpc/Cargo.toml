@@ -8,3 +8,4 @@ graph = { path = "../../graph" }
 jsonrpc-http-server = { git = "https://github.com/paritytech/jsonrpc" }
 serde = "1.0"
 serde_derive = "1.0"
+rand = "0.5.5"
