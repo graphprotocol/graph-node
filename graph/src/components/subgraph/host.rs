@@ -1,5 +1,8 @@
 use prelude::*;
 
+use web3::types::Block;
+use web3::types::Transaction;
+
 use components::ethereum::EthereumEvent;
 use components::ethereum::EthereumEventFilter;
 
@@ -7,9 +10,9 @@ use components::ethereum::EthereumEventFilter;
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeHostEvent {
     /// An entity should be created or updated.
-    EntitySet(StoreKey, Entity, EventSource),
+    EntitySet(StoreKey, Entity, Block<Transaction>),
     /// An entity should be removed.
-    EntityRemoved(StoreKey, EventSource),
+    EntityRemoved(StoreKey, Block<Transaction>),
 }
 
 /// Common trait for runtime host implementations.

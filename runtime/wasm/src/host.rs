@@ -170,7 +170,7 @@ impl RuntimeHost {
             if event.removed {
                 // TODO why would this happen?
                 error!(event_logger, "Event removed";
-                          "block" => event.block_hash.to_string());
+                          "block" => event.block.hash.unwrap().to_string());
             } else {
                 let event_handler_opt = data_source
                     .mapping

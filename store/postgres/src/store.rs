@@ -385,7 +385,7 @@ impl BasicStore for Store {
         )
     }
 
-    fn get(&self, key: StoreKey, block_ptr: EthereumBlockPointer) -> Result<Entity, StoreError> {
+    fn get(&self, key: StoreKey, _block_ptr: EthereumBlockPointer) -> Result<Entity, StoreError> {
         debug!(self.logger, "get"; "key" => format!("{:?}", key));
 
         use db_schema::entities;
@@ -402,11 +402,14 @@ impl BasicStore for Store {
             .filter(entities::entity.eq(key.entity))
             .filter(subgraphs::id.eq(&key.subgraph))
             .first::<(serde_json::Value, String, i64)>(&*self.conn.lock().unwrap())
-            .map(|(value, block_hash, block_number)| {
+            .map(|(value, _block_hash, _block_number)| {
+                // TODO reenable this
+                /*
                 assert_eq!(
                     EthereumBlockPointer::from((block_hash.parse().unwrap(), block_number)),
                     block_ptr
                 );
+                */
                 serde_json::from_value::<Entity>(value).expect("Failed to deserialize entity")
             })
             .map_err(Error::from)
@@ -486,7 +489,7 @@ impl BasicStore for Store {
 
     fn commit_transaction(
         &self,
-        subgraph_id: SubgraphId,
+        _subgraph_id: SubgraphId,
         tx_ops: Vec<StoreOp>,
         block: Block<Transaction>,
     ) -> Result<(), StoreError> {
@@ -503,8 +506,9 @@ impl BasicStore for Store {
                 StoreOp::Delete(key) => self.deprecated_delete(key, event_source.clone()),
             })
             .collect::<Result<Vec<_>, Error>>()
-            .map_err(StoreError::Database)?;
-        self.set_block_ptr_with_no_changes(subgraph_id, parent_block_ptr, block.into())
+            .map(|_| ())
+            .map_err(StoreError::Database)
+        // TODO update block ptr
     }
 }
 
@@ -598,7 +602,7 @@ impl BlockStore for Store {
         ethereum_blocks
             .select(block_data)
             .filter(network_name.eq(&self.config.network_name))
-            .filter(hash.eq(block_hash.to_string()))
+            .filter(hash.eq(format!("{:x}", block_hash)))
             .load::<serde_json::Value>(&*self.conn.lock().unwrap())
             .map(|json_blocks| match json_blocks.len() {
                 0 => None,

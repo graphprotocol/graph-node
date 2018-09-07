@@ -223,12 +223,14 @@ impl<'a, S: BasicStore + ?Sized> StoreTransaction<'a, S> {
 
     /// Updates an entity using the given store key and entity data.
     pub fn set(&mut self, key: StoreKey, entity: Entity) -> Result<(), Error> {
+        assert_eq!(key.subgraph, self.subgraph.0);
         self.ops.push(StoreOp::Set(key, entity));
         Ok(())
     }
 
     /// Deletes an entity using the given store key.
     pub fn delete(&mut self, key: StoreKey) -> Result<(), Error> {
+        assert_eq!(key.subgraph, self.subgraph.0);
         self.ops.push(StoreOp::Delete(key));
         Ok(())
     }

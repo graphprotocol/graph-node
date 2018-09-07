@@ -110,7 +110,7 @@ pub struct EthereumEventSubscription {
 pub struct EthereumEvent {
     pub address: Address,
     pub event_signature: H256,
-    pub block_hash: H256,
+    pub block: Block<Transaction>,
     pub params: Vec<LogParam>,
     pub removed: bool,
 }
@@ -121,7 +121,7 @@ impl Clone for EthereumEvent {
         EthereumEvent {
             address: self.address.clone(),
             event_signature: self.event_signature,
-            block_hash: self.block_hash,
+            block: self.block.clone(),
             params: self
                 .params
                 .iter()
@@ -276,8 +276,8 @@ pub trait EthereumAdapter: Send + 'static {
         block_ptr: EthereumBlockPointer,
     ) -> Box<Future<Item = bool, Error = Error> + Send>;
 
-    /// Find the first block in the specified range containing at least one transaction with at
-    /// least one log entry matching the specified `event_filter`.
+    /// Find the first few blocks in the specified range containing at least one transaction with
+    /// at least one log entry matching the specified `event_filter`.
     ///
     /// Careful: don't use this function without considering race conditions.
     /// Chain reorgs could happen at any time, and could affect the answer received.
@@ -288,12 +288,12 @@ pub trait EthereumAdapter: Send + 'static {
     /// reorgs.
     /// It is recommended that `to` be far behind the block number of latest block the Ethereum
     /// node is aware of.
-    fn find_first_block_with_event(
+    fn find_first_blocks_with_events(
         &self,
         from: u64,
         to: u64,
         event_filter: EthereumEventFilter,
-    ) -> Box<Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send>;
+    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
 
     /// Find all events from transactions in the specified `block` that match the specified
     /// `event_filter`.

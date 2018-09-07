@@ -84,7 +84,7 @@ where
         from: u64,
         to: u64,
         event_filter: EthereumEventFilter,
-    ) -> impl Stream<Item = Log, Error = Error> + Send {
+    ) -> impl Stream<Item = Vec<Log>, Error = Error> + Send {
         if from > to {
             panic!(
                 "cannot produce a log stream on a backwards block range (from={}, to={})",
@@ -173,21 +173,17 @@ where
                     }
                 }
 
-                // Combine chunk futures into one stream of logs
-                let log_stream_for_chunks = stream::futures_ordered(chunk_futures)
-                    .map(|logs_chunk| stream::iter_ok(logs_chunk))
-                    .flatten();
-
-                // Yield a stream from the chunks and a new chunk_offset.
-                // Stream will be consumed entirely before next group of chunks is requested.
-                Some(future::ok::<_, Error>((
-                    log_stream_for_chunks,
-                    chunk_offset,
-                )))
+                // Combine chunk futures into one future (Vec<Log>, u64)
+                Some(stream::futures_ordered(chunk_futures).collect().map(
+                    move |chunks: Vec<Vec<Log>>| {
+                        let flattened = chunks.into_iter().flat_map(|v| v).collect::<Vec<Log>>();
+                        (flattened, chunk_offset)
+                    },
+                ))
             } else {
                 None
             }
-        }).flatten()
+        }).filter(|chunk| !chunk.is_empty())
     }
 
     fn call(
@@ -253,34 +249,51 @@ where
         )
     }
 
-    fn find_first_block_with_event(
+    fn find_first_blocks_with_events(
         &self,
         from: u64,
         to: u64,
         event_filter: EthereumEventFilter,
-    ) -> Box<Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         Box::new(
             // Get a stream of all relevant events in range
             self.log_stream(from, to, event_filter)
 
-                // Find first relevant event (or zero events)
+                // Get first chunk of events
                 .take(1)
 
-                // Collect 0 or 1 logs
+                // Collect 0 or 1 vecs of logs
                 .collect()
 
-                // Produce Some(block ptr) or None
-                .map(|logs| {
-                    match logs.len() {
-                        0 => None,
+                // Produce Vec<block ptr> or None
+                .map(|chunks| {
+                    match chunks.len() {
+                        0 => vec![],
                         1 => {
-                            let hash = logs[0]
-                                .block_hash
-                                .expect("log from Eth node is missing block hash");
-                            let number = logs[0]
-                                .block_number
-                                .expect("log from Eth node is missing block number");
-                            Some((hash, number.as_u64()).into())
+                            let mut block_ptrs = vec![];
+                            for log in chunks[0].iter() {
+                                if block_ptrs.len() >= 100 {
+                                    // That's enough to process in one iteration
+                                    break;
+                                }
+
+                                let hash = log
+                                    .block_hash
+                                    .expect("log from Eth node is missing block hash");
+                                let number = log
+                                    .block_number
+                                    .expect("log from Eth node is missing block number")
+                                    .as_u64();
+                                let block_ptr = EthereumBlockPointer::from((hash, number));
+
+                                if !block_ptrs.contains(&block_ptr) {
+                                    if let Some(prev) = block_ptrs.last() {
+                                        assert!(prev.number < number);
+                                    }
+                                    block_ptrs.push(block_ptr);
+                                }
+                            }
+                            block_ptrs
                         },
                         _ => unreachable!(),
                     }
@@ -298,7 +311,7 @@ where
             return Box::new(stream::empty());
         }
 
-        let tx_receipt_futures = block.transactions.into_iter().map(|tx| {
+        let tx_receipt_futures = block.transactions.clone().into_iter().map(|tx| {
             self.eth_client
                 .eth()
                 .transaction_receipt(tx.hash)
@@ -310,6 +323,7 @@ where
             stream::futures_ordered(tx_receipt_futures)
                 .map(move |receipt| {
                     let event_filter = event_filter.clone();
+                    let block = block.clone();
 
                     stream::iter_result(receipt.logs.into_iter().filter_map(move |log| {
                         // Check log against event filter
@@ -328,7 +342,7 @@ where
                                         .map(|log_data| EthereumEvent {
                                             address: log.address,
                                             event_signature: log.topics[0],
-                                            block_hash: log.block_hash.unwrap(),
+                                            block: block.clone(),
                                             params: log_data.params,
                                             removed: log.is_removed(), // TODO is this obsolete?
                                         })

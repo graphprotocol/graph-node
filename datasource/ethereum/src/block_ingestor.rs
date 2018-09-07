@@ -93,8 +93,9 @@ where
                                 info!(self.logger, "Downloading latest blocks from Ethereum. This may take a few minutes...");
                             }
                             Some(head_block_ptr) => {
-                                let distance =
-                                    latest_block.number.unwrap().as_u64() - head_block_ptr.number;
+                                let latest_number = latest_block.number.unwrap().as_u64() as i64;
+                                let head_number = head_block_ptr.number as i64;
+                                let distance = latest_number - head_number;
                                 if distance > 10 && distance <= 50 {
                                     info!(self.logger, "Downloading latest blocks from Ethereum. This may take a few seconds...");
                                 } else if distance > 50 {

@@ -12,10 +12,12 @@ use wasmi::{
     ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue,
     Signature, Trap, TrapKind, ValueType,
 };
+use web3::types::Block;
 use web3::types::BlockId;
+use web3::types::Transaction;
 
 use graph::components::ethereum::*;
-use graph::components::store::{EventSource, StoreKey};
+use graph::components::store::StoreKey;
 use graph::components::subgraph::RuntimeHostEvent;
 use graph::data::store::scalar;
 use graph::data::subgraph::DataSource;
@@ -165,7 +167,7 @@ where
             heap: heap.clone(),
             ethereum_adapter: config.ethereum_adapter.clone(),
             link_resolver: config.link_resolver.clone(),
-            block_hash: H256::zero(),
+            block: None,
         };
 
         let module = module
@@ -181,7 +183,7 @@ where
     }
 
     pub fn handle_ethereum_event(&mut self, handler_name: &str, event: EthereumEvent) {
-        self.externals.block_hash = event.block_hash.clone();
+        self.externals.block = Some(event.block.clone());
         self.module
             .invoke_export(
                 handler_name,
@@ -225,8 +227,8 @@ pub struct HostExternals<T, L> {
     heap: WasmiAscHeap,
     ethereum_adapter: Arc<Mutex<T>>,
     link_resolver: Arc<L>,
-    // Block hash of the event being mapped.
-    block_hash: H256,
+    // Block of the event being mapped.
+    block: Option<Block<Transaction>>,
 }
 
 impl<T, L> HostExternals<T, L>
@@ -241,7 +243,7 @@ where
         id_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<AscEntity>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let block_hash: H256 = self.block_hash.clone();
+        let block: Block<Transaction> = self.block.clone().unwrap();
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
@@ -257,11 +259,7 @@ where
         let logger = self.logger.clone();
         self.event_sink
             .clone()
-            .send(RuntimeHostEvent::EntitySet(
-                store_key,
-                entity_data,
-                EventSource::EthereumBlock(block_hash),
-            ))
+            .send(RuntimeHostEvent::EntitySet(store_key, entity_data, block))
             .map_err(move |e| {
                 error!(logger, "Failed to forward runtime host event";
                         "error" => format!("{}", e));
@@ -278,7 +276,7 @@ where
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let block_hash: H256 = self.block_hash.clone();
+        let block: Block<Transaction> = self.block.clone().unwrap();
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let store_key = StoreKey {
@@ -291,10 +289,7 @@ where
         let logger = self.logger.clone();
         self.event_sink
             .clone()
-            .send(RuntimeHostEvent::EntityRemoved(
-                store_key,
-                EventSource::EthereumBlock(block_hash),
-            ))
+            .send(RuntimeHostEvent::EntityRemoved(store_key, block))
             .map_err(move |e| {
                 error!(logger, "Failed to forward runtime host event";
                         "error" => format!("{}", e));
