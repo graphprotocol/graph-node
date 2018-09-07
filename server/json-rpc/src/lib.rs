@@ -3,7 +3,6 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate graph;
-extern crate rand;
 
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::serde_json;
@@ -14,9 +13,6 @@ use jsonrpc_http_server::{
     },
     RequestMiddlewareAction, RestApi, Server, ServerBuilder,
 };
-
-use rand::distributions::Alphanumeric;
-use rand::Rng;
 
 use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, SocketAddrV4};
@@ -53,7 +49,7 @@ impl fmt::Display for SubgraphRemoveParams {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SubgraphAuthorizeParams {
-    name: String,
+    subgraph_api_keys: BTreeMap<String, String>,
 }
 
 impl fmt::Display for SubgraphAuthorizeParams {
@@ -161,17 +157,10 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
                 ))
             }
         }
-        // Generate a random token of 50 ASCII alphanumerics.
-        let mut rng = rand::thread_rng();
-        let mut token = String::new();
-        for _ in 0..50 {
-            token.push(rng.sample(Alphanumeric));
-        }
-        self.subgraph_api_keys
-            .write()
-            .unwrap()
-            .insert(params.name, token.clone());
-        Ok(Value::String(token))
+
+        *self.subgraph_api_keys.write().unwrap() = params.subgraph_api_keys;
+
+        Ok(Value::Null)
     }
 }
 

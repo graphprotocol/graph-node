@@ -783,7 +783,6 @@ version = "0.1.0"
 dependencies = [
  "graph 0.1.0",
  "jsonrpc-http-server 8.0.1 (git+https://github.com/paritytech/jsonrpc)",
- "rand 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
