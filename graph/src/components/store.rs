@@ -282,11 +282,11 @@ pub trait Store: Send + Sync {
 
     /// Looks up an entity using the given store key.
     // TODO need to validate block ptr
-    fn get(&self, key: StoreKey) -> Result<Entity, Error>;
+    fn get(&self, key: StoreKey) -> Result<Entity, QueryExecutionError>;
 
     /// Queries the store for entities that match the store query.
     // TODO need to validate block ptr
-    fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()>;
+    fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, QueryExecutionError>;
 
     /// Updates the block pointer.  Careful: this is only safe to use if it is known that no store
     /// changes are needed to go from `block_ptr_from` to `block_ptr_to`.
