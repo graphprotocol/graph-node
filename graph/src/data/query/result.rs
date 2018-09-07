@@ -27,17 +27,20 @@ impl QueryResult {
     pub fn new(data: Option<q::Value>) -> Self {
         QueryResult { data, errors: None }
     }
-
-    pub fn add_error(&mut self, e: QueryError) {
-        let errors = self.errors.get_or_insert(vec![]);
-        errors.push(e);
-    }
 }
 
 impl From<QueryExecutionError> for QueryResult {
     fn from(e: QueryExecutionError) -> Self {
         let mut result = Self::new(None);
         result.errors = Some(vec![QueryError::from(e)]);
+        result
+    }
+}
+
+impl From<Vec<QueryExecutionError>> for QueryResult {
+    fn from(e: Vec<QueryExecutionError>) -> Self {
+        let mut result = Self::new(None);
+        result.errors = Some(e.into_iter().map(|error| QueryError::from(error)).collect());
         result
     }
 }
