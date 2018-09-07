@@ -477,7 +477,7 @@ impl StoreTrait for Store {
             })
     }
 
-    fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()> {
+    fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, QueryExecutionError> {
         use db_schema::entities::dsl::*;
 
         // Create base boxed query; this will be added to based on the
@@ -491,11 +491,7 @@ impl StoreTrait for Store {
         // Add specified filter to query
         if let Some(filter) = query.filter {
             diesel_query = store_filter(diesel_query, filter).map_err(|e| {
-                error!(
-                    self.logger,
-                    "value does not support this filter";
-                    "value" => format!("{:?}", e.value),
-                    "filter" => e.filter
+                QueryExecutionError::FilterNotSupportedError(format!("{:?}", e.value), e.filter
                 )
             })?;
         }
@@ -533,7 +529,7 @@ impl StoreTrait for Store {
                         serde_json::from_value::<Entity>(value)
                             .expect("Error to deserialize entity")
                     }).collect()
-            }).map_err(|e| error!(self.logger, "query error"; "error" => e.to_string()))
+            }).map_err(|e| QueryExecutionError::StoreQueryError(e.to_string()))
     }
 
     fn set_block_ptr_with_no_changes(
