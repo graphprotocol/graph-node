@@ -10,6 +10,7 @@ use jsonrpc_http_server::{
     jsonrpc_core::{self, Id, IoHandler, MethodCall, Params, Value, Version},
     RestApi, Server, ServerBuilder,
 };
+
 use std::fmt;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddrV4};
@@ -37,17 +38,19 @@ impl fmt::Display for SubgraphRemoveParams {
     }
 }
 
-pub struct JsonRpcServer {}
+pub struct JsonRpcServer<T> {
+    provider: Arc<T>,
+    logger: Logger,
+}
 
-impl JsonRpcServer {
+impl<T: SubgraphProvider> JsonRpcServer<T> {
     /// Handler for the `subgraph_deploy` endpoint.
     fn deploy_handler(
+        &self,
         params: SubgraphDeployParams,
-        provider: Arc<impl SubgraphProvider>,
-        logger: Logger,
     ) -> impl Future<Item = Value, Error = jsonrpc_core::Error> {
-        info!(logger, "Received subgraph_deploy request"; "params" => params.to_string());
-        provider
+        info!(self.logger, "Received subgraph_deploy request"; "params" => params.to_string());
+        self.provider
             .deploy(params.name, format!("/ipfs/{}", params.ipfs_hash))
             .map_err(|e| json_rpc_error(0, e.to_string()))
             .map(|_| Ok(Value::Null))
@@ -56,12 +59,11 @@ impl JsonRpcServer {
 
     /// Handler for the `subgraph_remove` endpoint.
     fn remove_handler(
+        &self,
         params: SubgraphRemoveParams,
-        provider: Arc<impl SubgraphProvider>,
-        logger: Logger,
     ) -> impl Future<Item = Value, Error = jsonrpc_core::Error> {
-        info!(logger, "Received subgraph_remove request"; "params" => params.to_string());
-        provider
+        info!(self.logger, "Received subgraph_remove request"; "params" => params.to_string());
+        self.provider
             .remove(params.name_or_id)
             .map_err(|e| json_rpc_error(1, e.to_string()))
             .map(|_| Ok(Value::Null))
@@ -69,44 +71,33 @@ impl JsonRpcServer {
     }
 }
 
-impl JsonRpcServerTrait for JsonRpcServer {
+impl<T: SubgraphProvider> JsonRpcServerTrait<T> for JsonRpcServer<T> {
     type Server = Server;
 
-    fn serve(
-        port: u16,
-        provider: Arc<impl SubgraphProvider>,
-        logger: Logger,
-    ) -> Result<Self::Server, io::Error> {
+    fn serve(port: u16, provider: Arc<T>, logger: Logger) -> Result<Self::Server, io::Error> {
         let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
 
         let mut handler = IoHandler::new();
 
+        let arc_self = Arc::new(JsonRpcServer { provider, logger });
         // `subgraph_deploy` handler.
-        let deploy_provider = provider.clone();
-        let deploy_logger = logger.clone();
-        let deploy_handler = move |params| {
-            Self::deploy_handler(params, deploy_provider.clone(), deploy_logger.clone())
-        };
+        let me = arc_self.clone();
         handler.add_method("subgraph_deploy", move |params: Params| {
-            let deploy_handler = deploy_handler.clone();
+            let me = me.clone();
             params
                 .parse()
                 .into_future()
-                .and_then(move |params| deploy_handler(params))
+                .and_then(move |params| me.deploy_handler(params))
         });
 
         // `subgraph_remove` handler.
-        let remove_provider = provider.clone();
-        let remove_logger = logger.clone();
-        let remove_handler = move |params| {
-            Self::remove_handler(params, remove_provider.clone(), remove_logger.clone())
-        };
+        let me = arc_self.clone();
         handler.add_method("subgraph_remove", move |params: Params| {
-            let remove_handler = remove_handler.clone();
+            let me = me.clone();
             params
                 .parse()
                 .into_future()
-                .and_then(move |params| remove_handler(params))
+                .and_then(move |params| me.remove_handler(params))
         });
 
         ServerBuilder::new(handler)
