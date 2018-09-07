@@ -47,6 +47,10 @@ where
         eth.block(block_id)
     }
 
+    pub fn block_number(&self) -> CallResult<U256, T::Out> {
+        self.eth_client.eth().block_number()
+    }
+
     fn logs_with_sigs(
         &self,
         from: u64,
