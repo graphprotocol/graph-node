@@ -175,6 +175,34 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
     }
 }
 
+impl ToAscObj<AscEnum<StoreValueKind>> for store::Value {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEnum<StoreValueKind> {
+        use self::store::Value;
+
+        let payload = match self {
+            Value::String(string) => heap.asc_new(string.as_str()).into(),
+            Value::Int(n) => EnumPayload::from(*n),
+            Value::Float(n) => EnumPayload::from(*n),
+            Value::Bool(b) => EnumPayload::from(*b),
+            Value::List(array) => heap.asc_new(array.as_slice()).into(),
+            Value::Null => EnumPayload(0),
+            Value::Bytes(bytes) => {
+                let bytes_obj: AscPtr<Uint8Array> = heap.asc_new(bytes.as_slice());
+                bytes_obj.into()
+            }
+            Value::BigInt(big_int) => {
+                let bytes_obj: AscPtr<Uint8Array> = heap.asc_new(&*big_int.to_signed_bytes_le());
+                bytes_obj.into()
+            }
+        };
+
+        AscEnum {
+            kind: StoreValueKind::get_kind(self),
+            payload,
+        }
+    }
+}
+
 impl ToAscObj<AscLogParam> for ethabi::LogParam {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscLogParam {
         AscLogParam {
