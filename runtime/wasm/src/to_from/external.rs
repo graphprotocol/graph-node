@@ -7,6 +7,8 @@ use graph::web3::types as web3;
 
 use asc_abi::class::*;
 use asc_abi::{AscHeap, AscPtr, FromAscObj, ToAscObj};
+use std::collections::HashMap;
+
 
 use UnresolvedContractCall;
 
@@ -214,6 +216,14 @@ impl ToAscObj<AscLogParam> for ethabi::LogParam {
 
 impl ToAscObj<AscJson> for serde_json::Map<String, serde_json::Value> {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscJson {
+        AscTypedMap {
+            entries: heap.asc_new(&*self.iter().collect::<Vec<_>>()),
+        }
+    }
+}
+
+impl ToAscObj<AscEntity> for HashMap<String, store::Value> {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEntity {
         AscTypedMap {
             entries: heap.asc_new(&*self.iter().collect::<Vec<_>>()),
         }
