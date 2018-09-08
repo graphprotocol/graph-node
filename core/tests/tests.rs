@@ -78,7 +78,7 @@ fn multiple_data_sources_per_subgraph() {
             &self,
             _: Block<Transaction>,
             event_filter: EthereumEventFilter,
-        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
+        ) -> Box<Future<Item = Vec<EthereumEvent>, Error = EthereumSubscriptionError>> {
             // Record what events were asked for
             for events_by_sig in event_filter
                 .event_types_by_contract_address_and_sig
@@ -89,7 +89,7 @@ fn multiple_data_sources_per_subgraph() {
                 }
             }
 
-            Box::new(stream::empty())
+            Box::new(future::ok(vec![]))
         }
 
         fn contract_call(

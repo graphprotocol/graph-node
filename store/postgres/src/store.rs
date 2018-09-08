@@ -20,7 +20,7 @@ use graph::serde_json;
 use graph::{tokio, tokio::timer::Interval};
 
 use entity_changes::EntityChangeListener;
-use functions::{attempt_head_update, revert_block, set_config};
+use functions::{attempt_head_update, lookup_ancestor_block, revert_block, set_config};
 use head_block_updates::HeadBlockUpdateListener;
 
 embed_migrations!("./migrations");
@@ -364,7 +364,7 @@ impl BasicStore for Store {
     ) -> Result<(), StoreError> {
         // TODO make this atomic
         select(revert_block(
-            block.hash.unwrap().to_string(),
+            format!("{:x}", block.hash.unwrap()),
             subgraph_id.0.clone(),
         )).execute(&*self.conn.lock().unwrap())
             .map(|_| ())
@@ -620,28 +620,23 @@ impl BlockStore for Store {
     fn ancestor_block(
         &self,
         block_ptr: EthereumBlockPointer,
-        mut offset: u64,
+        offset: u64,
     ) -> Result<Option<Block<Transaction>>, Error> {
         if block_ptr.number < offset {
             bail!("block offset points to before genesis block");
         }
 
-        // TODO do this in one query? not necessary but nice for perf
-
-        let mut block_hash = block_ptr.hash;
-
-        while offset > 0 {
-            // Try to load block. If missing, return Ok(None).
-            let block = match self.block(block_hash)? {
-                None => return Ok(None),
-                Some(b) => b,
-            };
-
-            block_hash = block.parent_hash;
-            offset -= 1;
-        }
-
-        self.block(block_hash)
+        select(lookup_ancestor_block(
+            format!("{:x}", block_ptr.hash),
+            offset as i64,
+        )).first::<Option<serde_json::Value>>(&*self.conn.lock().unwrap())
+            .map(|val_opt| {
+                val_opt.map(|val| {
+                    serde_json::from_value::<Block<Transaction>>(val)
+                        .expect("Failed to deserialize block from database")
+                })
+            })
+            .map_err(Error::from)
     }
 }
 

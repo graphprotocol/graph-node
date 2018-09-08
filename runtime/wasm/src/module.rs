@@ -836,7 +836,7 @@ mod tests {
             &self,
             _: Block<Transaction>,
             _: EthereumEventFilter,
-        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
+        ) -> Box<Future<Item = Vec<EthereumEvent>, Error = EthereumSubscriptionError>> {
             unimplemented!()
         }
 
