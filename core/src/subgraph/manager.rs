@@ -153,13 +153,18 @@ impl RuntimeManager where {
                             info!(logger, "Runtime manager received head block update.");
                             for (subgraph_id, runtime_hosts) in runtime_hosts_by_subgraph.iter_mut()
                             {
+                                let logger = logger.clone();
                                 handle_head_block_update(
                                     logger.clone(),
                                     store.clone(),
                                     eth_adapter.clone(),
                                     SubgraphId(subgraph_id.to_owned()),
                                     runtime_hosts,
-                                ).unwrap();
+                                ).err()
+                                    .map(move |e| {
+                                        warn!(logger, "Problem while handling head block update: {}", e;
+                                           "subgraph_id" => subgraph_id);
+                                    });
                             }
                         }
                     }
@@ -491,7 +496,6 @@ where
                         .lock()
                         .unwrap()
                         .get_events_in_block(descendant_block, event_filter.clone())
-                        .collect()
                         .wait()?;
 
                     debug!(

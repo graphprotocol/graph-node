@@ -2,7 +2,6 @@ use ethabi::{Bytes, Error as ABIError, Event, Function, LogParam, ParamType, Tok
 use failure::Error;
 use failure::SyncFailure;
 use futures::Future;
-use futures::Stream;
 use std::collections::HashMap;
 use std::iter::Sum;
 use std::ops::Add;
@@ -301,7 +300,7 @@ pub trait EthereumAdapter: Send + 'static {
         &self,
         block: Block<Transaction>,
         event_filter: EthereumEventFilter,
-    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>>;
+    ) -> Box<Future<Item = Vec<EthereumEvent>, Error = EthereumSubscriptionError>>;
 
     /// Call the function of a smart contract.
     fn contract_call(

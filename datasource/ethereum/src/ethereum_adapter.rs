@@ -310,16 +310,23 @@ where
         &self,
         block: Block<Transaction>,
         event_filter: EthereumEventFilter,
-    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
+    ) -> Box<Future<Item = Vec<EthereumEvent>, Error = EthereumSubscriptionError>> {
         if !event_filter.check_bloom(block.logs_bloom) {
-            return Box::new(stream::empty());
+            return Box::new(future::ok(vec![]));
         }
 
         let tx_receipt_futures = block.transactions.clone().into_iter().map(|tx| {
             self.eth_client
                 .eth()
                 .transaction_receipt(tx.hash)
-                .map(move |opt| opt.expect(&format!("missing receipt for TX {:?}", tx.hash)))
+                .and_then(move |opt| {
+                    opt.map(|receipt| Ok(receipt)).unwrap_or_else(|| {
+                        Err(web3::error::ErrorKind::Msg(format!(
+                            "got null receipt for TX {:?}",
+                            &tx.hash
+                        )).into())
+                    })
+                })
                 .map_err(EthereumSubscriptionError::from)
         });
 
@@ -353,7 +360,8 @@ where
                                 })
                     }))
                 })
-                .flatten(),
+                .flatten()
+                .collect(),
         )
     }
 
