@@ -89,11 +89,17 @@ fn multiple_data_sources_per_subgraph() {
                     let eth_adapter = Arc::new(Mutex::new(MockEthereumAdapter {
                         received_subscriptions: vec![],
                     }));
-                    let host_builder =
-                        RuntimeHostBuilder::new(&logger, eth_adapter.clone(), resolver.clone());
-
                     let fake_store = Arc::new(Mutex::new(FakeStore));
-                    let manager = RuntimeManager::new(&logger, fake_store, host_builder);
+
+                    let host_builder = RuntimeHostBuilder::new(
+                        &logger,
+                        eth_adapter.clone(),
+                        resolver.clone(),
+                        fake_store.clone(),
+                    );
+
+                    let manager =
+                        RuntimeManager::new(&logger, fake_store,host_builder);
 
                     // Load a subgraph with two data sets, one listening for `ExampleEvent`
                     // and the other for `ExampleEvent2`.
