@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use graph::components::ethereum::*;
 use graph::components::subgraph::RuntimeHostEvent;
+use graph::components::store::Store;
 use graph::data::subgraph::DataSource;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
@@ -22,42 +23,47 @@ pub struct RuntimeHostConfig {
     data_source: DataSource,
 }
 
-pub struct RuntimeHostBuilder<T, L> {
+pub struct RuntimeHostBuilder<T, L, S> {
     logger: Logger,
     ethereum_adapter: Arc<Mutex<T>>,
     link_resolver: Arc<L>,
+    store: Arc<Mutex<S>>,
 }
 
-impl<T, L> RuntimeHostBuilder<T, L>
+impl<T, L, S> RuntimeHostBuilder<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
+    S: Store,
 {
-    pub fn new(logger: &Logger, ethereum_adapter: Arc<Mutex<T>>, link_resolver: Arc<L>) -> Self {
+    pub fn new(logger: &Logger, ethereum_adapter: Arc<Mutex<T>>, link_resolver: Arc<L>, store: Arc<Mutex<S>>) -> Self {
         RuntimeHostBuilder {
             logger: logger.new(o!("component" => "RuntimeHostBuilder")),
             ethereum_adapter,
             link_resolver,
+            store,
         }
     }
 }
 
-impl<T, L> RuntimeHostBuilderTrait for RuntimeHostBuilder<T, L>
+impl<T, L, S> RuntimeHostBuilderTrait for RuntimeHostBuilder<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
+    S: Store + 'static,
 {
     type Host = RuntimeHost;
 
     fn build(
         &mut self,
         subgraph_manifest: SubgraphManifest,
-        data_source: DataSource,
+        data_source: DataSource
     ) -> Self::Host {
         RuntimeHost::new(
             &self.logger,
             self.ethereum_adapter.clone(),
             self.link_resolver.clone(),
+            self.store.clone(),
             RuntimeHostConfig {
                 subgraph_manifest,
                 data_source,
@@ -74,15 +80,17 @@ pub struct RuntimeHost {
 }
 
 impl RuntimeHost {
-    pub fn new<T, L>(
+    pub fn new<T, L, S>(
         logger: &Logger,
         ethereum_adapter: Arc<Mutex<T>>,
         link_resolver: Arc<L>,
+        store: Arc<Mutex<S>>,
         config: RuntimeHostConfig,
     ) -> Self
     where
         T: EthereumAdapter,
         L: LinkResolver,
+        S: Store + 'static,
     {
         let logger = logger.new(o!("component" => "RuntimeHost"));
 
@@ -95,6 +103,7 @@ impl RuntimeHost {
             event_sink: event_sender,
             ethereum_adapter: ethereum_adapter.clone(),
             link_resolver: link_resolver.clone(),
+            store: store.clone(),
         };
 
         let name = config.data_source.name.clone();
@@ -136,15 +145,16 @@ impl RuntimeHost {
 
     /// Subscribe to all smart contract events of `data_source` contained in
     /// `subgraph`.
-    fn subscribe_to_events<T, L>(
+    fn subscribe_to_events<T, L, S>(
         logger: &Logger,
         data_source: DataSource,
-        mut module: WasmiModule<T, L>,
+        mut module: WasmiModule<T, L, S>,
         ethereum_adapter: Arc<Mutex<T>>,
     ) -> impl Stream<Item = (), Error = ()> + 'static
     where
         T: EthereumAdapter + 'static,
         L: LinkResolver + 'static,
+        S: Store + 'static,
     {
         info!(logger, "Subscribe to events");
 

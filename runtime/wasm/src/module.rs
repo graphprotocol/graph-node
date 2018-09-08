@@ -85,15 +85,16 @@ const IPFS_CAT_FUNC_INDEX: usize = 19;
 // const STORE_GET_FUNC_INDEX: usize = 20;
 const TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX: usize = 21;
 
-pub struct WasmiModuleConfig<T, L> {
+pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph: SubgraphManifest,
     pub data_source: DataSource,
     pub event_sink: Sender<RuntimeHostEvent>,
     pub ethereum_adapter: Arc<Mutex<T>>,
     pub link_resolver: Arc<L>,
+    pub store: Arc<Mutex<S>>,
 }
 
-impl<T, L> Clone for WasmiModuleConfig<T, L> {
+impl<T, L, S> Clone for WasmiModuleConfig<T, L, S> {
     fn clone(&self) -> Self {
         WasmiModuleConfig {
             subgraph: self.subgraph.clone(),
@@ -101,25 +102,27 @@ impl<T, L> Clone for WasmiModuleConfig<T, L> {
             event_sink: self.event_sink.clone(),
             ethereum_adapter: self.ethereum_adapter.clone(),
             link_resolver: self.link_resolver.clone(),
+            store: self.store.clone()
         }
     }
 }
 
 /// A WASM module based on wasmi that powers a subgraph runtime.
-pub struct WasmiModule<T, L> {
+pub struct WasmiModule<T, L, S> {
     pub logger: Logger,
     pub module: ModuleRef,
-    externals: HostExternals<T, L>,
+    externals: HostExternals<T, L, S>,
     heap: WasmiAscHeap,
 }
 
-impl<T, L> WasmiModule<T, L>
+impl<T, L, S> WasmiModule<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
+    S: Store,
 {
     /// Creates a new wasmi module
-    pub fn new(logger: &Logger, config: WasmiModuleConfig<T, L>) -> Self {
+    pub fn new(logger: &Logger, config: WasmiModuleConfig<T, L, S>) -> Self {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
         let module = Module::from_parity_wasm_module(config.data_source.mapping.runtime.clone())
@@ -165,6 +168,7 @@ where
             ethereum_adapter: config.ethereum_adapter.clone(),
             link_resolver: config.link_resolver.clone(),
             block_hash: H256::zero(),
+            store: config.store.clone(),
         };
 
         let module = module
@@ -214,7 +218,7 @@ fn host_error(message: String) -> Trap {
 }
 
 /// Hosted functions for external use by wasm module
-pub struct HostExternals<T, L> {
+pub struct HostExternals<T, L, S> {
     logger: Logger,
     subgraph: SubgraphManifest,
     data_source: DataSource,
@@ -224,12 +228,14 @@ pub struct HostExternals<T, L> {
     link_resolver: Arc<L>,
     // Block hash of the event being mapped.
     block_hash: H256,
+    store: Arc<Mutex<S>>,
 }
 
-impl<T, L> HostExternals<T, L>
+impl<T, L, S> HostExternals<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
+    S: Store
 {
     /// function store.set(entity: string, id: string, data: Entity): void
     fn store_set(
@@ -555,10 +561,11 @@ where
     }
 }
 
-impl<T, L> Externals for HostExternals<T, L>
+impl<T, L, S> Externals for HostExternals<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
+    S: Store,
 {
     fn invoke_index(
         &mut self,
