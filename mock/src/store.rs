@@ -1,9 +1,12 @@
-use web3::types::Block;
-use web3::types::H256;
-use web3::types::Transaction;
+use std::cell::RefCell;
+use std::time::Duration;
+use std::time::Instant;
+use web3::types::*;
 
 use graph::components::store::*;
 use graph::prelude::*;
+
+use graph::tokio::timer::Interval;
 
 /// A mock `Store`.
 #[derive(Clone)]
@@ -84,6 +87,7 @@ impl BasicStore for MockStore {
         _subgraph_id: SubgraphId,
         _tx_ops: Vec<StoreOp>,
         _block: Block<Transaction>,
+        _ptr_update: bool,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }
@@ -123,30 +127,44 @@ impl BlockStore for MockStore {
 }
 
 impl Store for MockStore {
-    fn subscribe(&mut self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
 }
 
 #[derive(Clone)]
-pub struct FakeStore;
+pub struct FakeStore {
+    pub block_ptr: RefCell<EthereumBlockPointer>,
+}
+
+impl FakeStore {
+    pub fn new() -> FakeStore {
+        let genesis_block_hash = "d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3".parse().unwrap();
+        let genesis_block_ptr = (genesis_block_hash, 0u64).into();
+        FakeStore {
+            block_ptr: RefCell::new(genesis_block_ptr),
+        }
+    }
+}
 
 impl BasicStore for FakeStore {
     fn add_subgraph_if_missing(&self, _: SubgraphId) -> Result<(), Error> {
-        panic!("called FakeStore")
+        Ok(())
     }
 
     fn block_ptr(&self, _subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
-        panic!("called FakeStore")
+        Ok(self.block_ptr.borrow().clone())
     }
 
     fn set_block_ptr_with_no_changes(
         &self,
         _subgraph_id: SubgraphId,
-        _from: EthereumBlockPointer,
-        _to: EthereumBlockPointer,
+        from: EthereumBlockPointer,
+        to: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
-        panic!("called FakeStore")
+        assert_eq!(*self.block_ptr.borrow(), from);
+        self.block_ptr.replace(to);
+        Ok(())
     }
 
     fn revert_block(
@@ -174,6 +192,7 @@ impl BasicStore for FakeStore {
         _subgraph_id: SubgraphId,
         _tx_ops: Vec<StoreOp>,
         _block: Block<Transaction>,
+        _ptr_update: bool,
     ) -> Result<(), StoreError> {
         panic!("called FakeStore")
     }
@@ -192,28 +211,111 @@ impl BlockStore for FakeStore {
     }
 
     fn head_block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
-        panic!("called FakeStore")
+        Ok(Some((H256::zero(), 1u64).into()))
     }
 
     fn head_block_updates(&self) -> Box<Stream<Item = HeadBlockUpdateEvent, Error = Error> + Send> {
-        panic!("called FakeStore")
+        // Emit a bunch of fake head block updates to the same block
+        Box::new(
+            Interval::new(Instant::now(), Duration::from_secs(1))
+                .then(|_| {
+                    Ok(HeadBlockUpdateEvent {
+                        block_ptr: (H256::zero(), 1u64).into()
+                    })
+                })
+        )
     }
 
-    fn block(&self, _block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {
-        panic!("called FakeStore")
+    fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {
+        let genesis_block_hash = "d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3".parse().unwrap();
+        if block_hash == H256::zero() {
+            Ok(Some(Block {
+                hash: Some(H256::zero()),
+                parent_hash: genesis_block_hash,
+                uncles_hash: H256::default(),
+                author: H160::default(),
+                state_root: H256::default(),
+                transactions_root: H256::default(),
+                receipts_root: H256::default(),
+                number: Some(U128::from(1)),
+                gas_used: U256::from(100),
+                gas_limit: U256::from(1000),
+                extra_data: Bytes(String::from("0x00").into_bytes()),
+                logs_bloom: H2048::default(),
+                timestamp: U256::from(100000),
+                difficulty: U256::from(10),
+                total_difficulty: U256::from(100),
+                seal_fields: vec![],
+                uncles: Vec::<H256>::default(),
+                transactions: vec![],
+                size: Some(U256::from(10000)),
+            }))
+        } else {
+            panic!("called FakeStore")
+        }
     }
 
     fn ancestor_block(
         &self,
-        _block_ptr: EthereumBlockPointer,
-        _offset: u64,
+        block_ptr: EthereumBlockPointer,
+        offset: u64,
     ) -> Result<Option<Block<Transaction>>, Error> {
+        let genesis_block_hash = "d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3".parse().unwrap();
+        if block_ptr.number == 1 && offset == 1 {
+            let fake_genesis_block = Block {
+                hash: Some(genesis_block_hash),
+                parent_hash: H256::zero(),
+                uncles_hash: H256::default(),
+                author: H160::default(),
+                state_root: H256::default(),
+                transactions_root: H256::default(),
+                receipts_root: H256::default(),
+                number: Some(U128::from(0)),
+                gas_used: U256::from(100),
+                gas_limit: U256::from(1000),
+                extra_data: Bytes(String::from("0x00").into_bytes()),
+                logs_bloom: H2048::default(),
+                timestamp: U256::from(100000),
+                difficulty: U256::from(10),
+                total_difficulty: U256::from(100),
+                seal_fields: vec![],
+                uncles: Vec::<H256>::default(),
+                transactions: vec![],
+                size: Some(U256::from(10000)),
+            };
+
+            return Ok(Some(fake_genesis_block));
+        }
+        if block_ptr.number == 1 && offset == 0 {
+            return Ok(Some(Block {
+                hash: Some(H256::zero()),
+                parent_hash: genesis_block_hash,
+                uncles_hash: H256::default(),
+                author: H160::default(),
+                state_root: H256::default(),
+                transactions_root: H256::default(),
+                receipts_root: H256::default(),
+                number: Some(U128::from(1)),
+                gas_used: U256::from(100),
+                gas_limit: U256::from(1000),
+                extra_data: Bytes(String::from("0x00").into_bytes()),
+                logs_bloom: H2048::default(),
+                timestamp: U256::from(100000),
+                difficulty: U256::from(10),
+                total_difficulty: U256::from(100),
+                seal_fields: vec![],
+                uncles: Vec::<H256>::default(),
+                transactions: vec![],
+                size: Some(U256::from(10000)),
+            }));
+        }
+
         panic!("called FakeStore")
     }
 }
 
 impl Store for FakeStore {
-    fn subscribe(&mut self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
 }

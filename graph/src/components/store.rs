@@ -241,7 +241,13 @@ impl<'a, S: BasicStore + ?Sized> StoreTransaction<'a, S> {
     /// direct child of the current block.
     pub fn commit(self) -> Result<(), StoreError> {
         self.store
-            .commit_transaction(self.subgraph, self.ops, self.block)
+            .commit_transaction(self.subgraph, self.ops, self.block, true)
+    }
+
+    /// Do not use.
+    pub fn commit_no_ptr_update(self) -> Result<(), StoreError> {
+        self.store
+            .commit_transaction(self.subgraph, self.ops, self.block, false)
     }
 }
 
@@ -314,6 +320,7 @@ pub trait BasicStore {
         subgraph_id: SubgraphId,
         tx_ops: Vec<StoreOp>,
         block: Block<Transaction>,
+        ptr_update: bool,
     ) -> Result<(), StoreError>;
 }
 
@@ -372,5 +379,5 @@ pub trait Store: BasicStore + BlockStore + Send {
     /// Subscribe to entity changes for specific subgraphs and entities.
     ///
     /// Returns a stream of entity changes that match the input arguments.
-    fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
+    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
 }

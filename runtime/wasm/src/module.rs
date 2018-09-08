@@ -961,10 +961,11 @@ mod tests {
                 );
 
                 // Create a mock Ethereum event
+                let block = create_fake_block();
                 let ethereum_event = EthereumEvent {
                     address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
                     event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
-                    block: create_fake_block(),
+                    block: block.clone(),
                     params: vec![LogParam {
                         name: String::from("exampleParam"),
                         value: Token::String(String::from("some data")),
@@ -997,7 +998,7 @@ mod tests {
                             vec![(String::from("exampleAttribute"), Value::from("some data"))]
                                 .into_iter()
                         )),
-                        create_fake_block(),
+                        block,
                     )
                 );
             })

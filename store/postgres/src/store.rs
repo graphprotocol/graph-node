@@ -199,16 +199,8 @@ impl Store {
 
     /// Do not use.
     // TODO remove this, only here for compatibility with existing tests
-    pub fn revert_events(&self, block_hash: String) {
-        select(revert_block(block_hash, ""))
-            .execute(&*self.conn.lock().unwrap())
-            .unwrap();
-    }
-
-    /// Do not use.
-    // TODO remove this, only here for compatibility with existing tests
     pub fn set(
-        &mut self,
+        &self,
         key: StoreKey,
         entity: Entity,
         event_source: EventSource,
@@ -219,7 +211,7 @@ impl Store {
 
     /// Do not use.
     // TODO remove this, only here for compatibility with existing tests
-    pub fn delete(&mut self, key: StoreKey, event_source: EventSource) -> Result<(), Error> {
+    pub fn delete(&self, key: StoreKey, event_source: EventSource) -> Result<(), Error> {
         self.deprecated_delete(key, event_source)
     }
 
@@ -489,9 +481,10 @@ impl BasicStore for Store {
 
     fn commit_transaction(
         &self,
-        _subgraph_id: SubgraphId,
+        subgraph_id: SubgraphId,
         tx_ops: Vec<StoreOp>,
         block: Block<Transaction>,
+        ptr_update: bool,
     ) -> Result<(), StoreError> {
         let event_source = EventSource::EthereumBlock(block.hash.unwrap());
 
@@ -506,9 +499,14 @@ impl BasicStore for Store {
                 StoreOp::Delete(key) => self.deprecated_delete(key, event_source.clone()),
             })
             .collect::<Result<Vec<_>, Error>>()
-            .map(|_| ())
             .map_err(StoreError::Database)
-        // TODO update block ptr
+            .and_then(|_| {
+                if ptr_update {
+                    self.set_block_ptr_with_no_changes(subgraph_id, EthereumBlockPointer::to_parent(&block), block.into())
+                } else {
+                    Ok(())
+                }
+            })
     }
 }
 
@@ -644,7 +642,7 @@ impl BlockStore for Store {
 }
 
 impl StoreTrait for Store {
-    fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         let subscriptions = self.subscriptions.clone();
 
         // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions

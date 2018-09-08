@@ -20,6 +20,92 @@ use graph::components::store::{
 use graph::prelude::*;
 use graph_store_postgres::{db_schema, Store as DieselStore, StoreConfig};
 
+fn test_subgraph_id() -> SubgraphId {
+    SubgraphId("test_subgraph".to_owned())
+}
+
+fn block100_hash() -> H256 {
+    "cabee56587df7541e577e845a3615e1a8304ffe7b8130869d3d1412fc941ae51".parse().unwrap()
+}
+fn block101_hash() -> H256 {
+    "38396ae55061d3ec68aa968ea64a13e4404da01d7cc7df506fa6d46fdd1a24e4".parse().unwrap()
+}
+fn block102_hash() -> H256 {
+    "e8593c0cf6c13225957cb4c858e45149c4397d2bb9e492dac8ecc60d0874e3d2".parse().unwrap()
+}
+
+fn block100() -> Block<Transaction> {
+    Block {
+        hash: Some(block100_hash()),
+        parent_hash: H256::zero(),
+        uncles_hash: H256::zero(),
+        author: H160::zero(),
+        state_root: H256::zero(),
+        transactions_root: H256::zero(),
+        receipts_root: H256::zero(),
+        number: Some(100.into()),
+        gas_used: U256::zero(),
+        gas_limit: U256::zero(),
+        extra_data: Bytes(vec![]),
+        logs_bloom: H2048::zero(),
+        timestamp: U256::zero(),
+        difficulty: U256::zero(),
+        total_difficulty: U256::zero(),
+        seal_fields: vec![],
+        uncles: vec![],
+        transactions: vec![],
+        size: None,
+    }
+}
+
+fn block101() -> Block<Transaction> {
+    Block {
+        hash: Some(block101_hash()),
+        parent_hash: block100_hash(),
+        uncles_hash: H256::zero(),
+        author: H160::zero(),
+        state_root: H256::zero(),
+        transactions_root: H256::zero(),
+        receipts_root: H256::zero(),
+        number: Some(101.into()),
+        gas_used: U256::zero(),
+        gas_limit: U256::zero(),
+        extra_data: Bytes(vec![]),
+        logs_bloom: H2048::zero(),
+        timestamp: U256::zero(),
+        difficulty: U256::zero(),
+        total_difficulty: U256::zero(),
+        seal_fields: vec![],
+        uncles: vec![],
+        transactions: vec![],
+        size: None,
+    }
+}
+
+fn block102() -> Block<Transaction> {
+    Block {
+        hash: Some(block102_hash()),
+        parent_hash: block101_hash(),
+        uncles_hash: H256::zero(),
+        author: H160::zero(),
+        state_root: H256::zero(),
+        transactions_root: H256::zero(),
+        receipts_root: H256::zero(),
+        number: Some(102.into()),
+        gas_used: U256::zero(),
+        gas_limit: U256::zero(),
+        extra_data: Bytes(vec![]),
+        logs_bloom: H2048::zero(),
+        timestamp: U256::zero(),
+        difficulty: U256::zero(),
+        total_difficulty: U256::zero(),
+        seal_fields: vec![],
+        uncles: vec![],
+        transactions: vec![],
+        size: None,
+    }
+}
+
 /// Helper function to ensure and obtain the Postgres URL to use for testing.
 fn postgres_test_url() -> String {
     std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL")
@@ -90,8 +176,7 @@ fn create_test_entity(
     age: i32,
     weight: f32,
     coffee: bool,
-    block_hash: String,
-) -> (StoreKey, Entity, EventSource) {
+) -> (StoreKey, Entity) {
     let test_key = StoreKey {
         subgraph: String::from("test_subgraph"),
         entity: entity,
@@ -106,18 +191,26 @@ fn create_test_entity(
     (
         test_key,
         test_entity,
-        EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes())),
     )
 }
 
 /// Inserts test data into the store.
 fn insert_test_data() {
-    let mut store = create_diesel_store();
+    let store = create_diesel_store();
+
+    store.upsert_blocks(stream::iter_ok(vec![block100(), block101(), block102()]))
+        .wait()
+        .expect("could not insert blocks into store");
+    assert_eq!(store.attempt_head_update(2)
+        .expect("could not update head ptr"), vec![]);
 
     store
-        .add_subgraph_if_missing(SubgraphId(String::from("test_subgraph")))
+        .add_subgraph_if_missing(test_subgraph_id())
         .expect("Failed to register test subgraph in store");
 
+    store.set_block_ptr_with_no_changes(test_subgraph_id(), store.block_ptr(test_subgraph_id()).unwrap(), EthereumBlockPointer::to_parent(&block100())).unwrap();
+
+    let mut tx = store.begin_transaction(test_subgraph_id(), block100()).unwrap();
     let test_entity_1 = create_test_entity(
         String::from("1"),
         String::from("user"),
@@ -126,12 +219,11 @@ fn insert_test_data() {
         67 as i32,
         184.4 as f32,
         false,
-        String::from("1cYsEjD7LKVExSj0aFA8"),
     );
-    store
-        .set(test_entity_1.0, test_entity_1.1, test_entity_1.2)
-        .expect("Failed to insert test entity into the store");
+    tx.set(test_entity_1.0, test_entity_1.1).unwrap();
+    tx.commit().unwrap();
 
+    let mut tx = store.begin_transaction(test_subgraph_id(), block101()).unwrap();
     let test_entity_2 = create_test_entity(
         String::from("2"),
         String::from("user"),
@@ -140,11 +232,8 @@ fn insert_test_data() {
         43 as i32,
         159.1 as f32,
         true,
-        String::from("b7kJ8ghP6PSITWx4lUZB"),
     );
-    store
-        .set(test_entity_2.0, test_entity_2.1, test_entity_2.2)
-        .expect("Failed to insert test entity into the store");
+    tx.set(test_entity_2.0, test_entity_2.1).unwrap();
 
     let test_entity_3 = create_test_entity(
         String::from("3"),
@@ -154,12 +243,11 @@ fn insert_test_data() {
         28 as i32,
         111.7 as f32,
         false,
-        String::from("TA7xjCbrczBiGFuZAW9Q"),
     );
-    store
-        .set(test_entity_3.0, test_entity_3.1, test_entity_3.2)
-        .expect("Failed to insert test entity into the store");
+    tx.set(test_entity_3.0, test_entity_3.1).unwrap();
+    tx.commit().unwrap();
 
+    let mut tx = store.begin_transaction(test_subgraph_id(), block102()).unwrap();
     let test_entity_3_2 = create_test_entity(
         String::from("3"),
         String::from("user"),
@@ -168,23 +256,28 @@ fn insert_test_data() {
         28 as i32,
         111.7 as f32,
         false,
-        String::from("znuyjijnezBiGFuZAW9Q"),
     );
-
-    store
-        .set(test_entity_3_2.0, test_entity_3_2.1, test_entity_3_2.2)
-        .expect("Failed to insert test entity into the store");
+    tx.set(test_entity_3_2.0, test_entity_3_2.1).unwrap();
+    tx.commit().unwrap();
 }
 
 /// Removes test data from the database behind the store.
 fn remove_test_data() {
     use db_schema::entities::dsl::*;
+    use db_schema::ethereum_blocks::dsl::*;
+    use db_schema::ethereum_networks::dsl::*;
     use db_schema::subgraphs::dsl::*;
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
     delete(entities)
         .execute(&conn)
         .expect("Failed to remove test entity data");
+    delete(ethereum_blocks)
+        .execute(&conn)
+        .expect("Failed to remove test block data");
+    delete(ethereum_networks)
+        .execute(&conn)
+        .expect("Failed to remove test networks table");
     delete(subgraphs)
         .execute(&conn)
         .expect("Failed to remove test subgraph data");
@@ -194,7 +287,7 @@ fn remove_test_data() {
 fn delete_entity() {
     run_test(|| -> Result<(), ()> {
         use db_schema::entities::dsl::*;
-        let mut store = create_diesel_store();
+        let store = create_diesel_store();
 
         let test_key = StoreKey {
             subgraph: String::from("test_subgraph"),
@@ -254,7 +347,8 @@ fn insert_entity() {
     run_test(|| -> Result<(), ()> {
         use db_schema::entities::dsl::*;
 
-        let mut store = create_diesel_store();
+        let store = create_diesel_store();
+        store.revert_block(test_subgraph_id(), block102()).unwrap();
 
         let test_entity_1 = create_test_entity(
             String::from("7"),
@@ -264,11 +358,10 @@ fn insert_entity() {
             76 as i32,
             111.7 as f32,
             true,
-            String::from("MSjZmOE7UqBOzzYibsw9"),
         );
-        store
-            .set(test_entity_1.0, test_entity_1.1, test_entity_1.2)
-            .expect("Failed to set entity in the store");
+        let mut tx = store.begin_transaction(test_subgraph_id(), block102()).unwrap();
+        tx.set(test_entity_1.0, test_entity_1.1).unwrap();
+        tx.commit().unwrap();
 
         // Check that new record is in the store
         let all_ids = entities
@@ -284,7 +377,7 @@ fn insert_entity() {
 #[test]
 fn update_existing() {
     run_test(|| -> Result<(), ()> {
-        let mut store = create_diesel_store();
+        let store = create_diesel_store();
 
         let entity_key = StoreKey {
             subgraph: String::from("test_subgraph"),
@@ -300,22 +393,20 @@ fn update_existing() {
             76 as i32,
             111.7 as f32,
             true,
-            String::from("6SFIlpqNoDy6FfJQryNM"),
         );
 
+        store.revert_block(test_subgraph_id(), block102()).unwrap();
+
         // Verify that the entity before updating is different from what we expect afterwards
-        let block_ptr = store
-            .block_ptr(SubgraphId("test_subgraph".to_owned()))
-            .unwrap();
         assert_ne!(
-            store.get(entity_key.clone(), block_ptr).unwrap(),
+            store.get(entity_key.clone(), block101().into()).unwrap(),
             test_entity_1.1
         );
 
         // Set test entity; as the entity already exists an update should be performed
-        store
-            .set(test_entity_1.0, test_entity_1.1.clone(), test_entity_1.2)
-            .expect("Failed to update entity that already exists");
+        let mut tx = store.begin_transaction(test_subgraph_id(), block102()).unwrap();
+        tx.set(test_entity_1.0, test_entity_1.1.clone()).unwrap();
+        tx.commit().unwrap();
 
         // Verify that the entity in the store has changed to what we have set
         let block_ptr = store
@@ -330,7 +421,7 @@ fn update_existing() {
 #[test]
 fn partially_update_existing() {
     run_test(|| -> Result<(), ()> {
-        let mut store = create_diesel_store();
+        let store = create_diesel_store();
 
         let entity_key = StoreKey {
             subgraph: String::from("test_subgraph"),
@@ -1629,18 +1720,11 @@ fn revert_block() {
             range: None,
         };
 
-        let block_hash = "znuyjijnezBiGFuZAW9Q";
-        let event_source =
-            EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes())).to_string();
+        // Revert all events from block 102
+        store.revert_block(test_subgraph_id(), block102()).unwrap();
 
-        // Revert all events associated with event_source, "znuyjijnezBiGFuZAW9Q"
-        store.revert_events(event_source);
-
-        let block_ptr = store
-            .block_ptr(SubgraphId("test_subgraph".to_owned()))
-            .unwrap();
         let returned_entities = store
-            .find(this_query.clone(), block_ptr)
+            .find(this_query.clone(), block101().into())
             .expect("store.find operation failed");
 
         // Check if the first user in the result vector has email "queensha@email.com"
@@ -1652,18 +1736,6 @@ fn revert_block() {
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
 
-        // Perform revert operation again to confirm idempotent nature of revert_events()
-        let block_ptr = store
-            .block_ptr(SubgraphId("test_subgraph".to_owned()))
-            .unwrap();
-        let returned_entities = store
-            .find(this_query, block_ptr)
-            .expect("store.find operation failed");
-        let returned_name = returned_entities[0].get(&String::from("email"));
-        let test_value = Value::String(String::from("queensha@email.com"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
         Ok(())
     })
 }
@@ -1671,7 +1743,7 @@ fn revert_block() {
 #[test]
 fn revert_block_with_delete() {
     run_test(|| -> Result<(), ()> {
-        let mut store = create_diesel_store();
+        let store = create_diesel_store();
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1683,29 +1755,24 @@ fn revert_block_with_delete() {
             order_direction: Some(StoreOrder::Descending),
             range: None,
         };
+        store.revert_block(test_subgraph_id(), block102()).unwrap();
 
-        // Delete an entity using a randomly created event source
+        // Delete an entity in block 102
         let del_key = StoreKey {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
             id: String::from("2"),
         };
 
-        let block_hash = "test_block_to_revert";
-        let event_source = EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes()));
-        let revert_event_source = event_source.to_string();
-        store
-            .delete(del_key.clone(), event_source)
-            .expect("Store.delete operation failed");
+        let mut tx = store.begin_transaction(test_subgraph_id(), block102()).unwrap();
+        tx.delete(del_key.clone()).unwrap();
+        tx.commit().unwrap();
 
-        // Revert all events associated with our random event_source
-        store.revert_events(revert_event_source);
+        // Revert all events associated with block 102
+        store.revert_block(test_subgraph_id(), block102()).unwrap();
 
-        let block_ptr = store
-            .block_ptr(SubgraphId("test_subgraph".to_owned()))
-            .unwrap();
         let returned_entities = store
-            .find(this_query.clone(), block_ptr)
+            .find(this_query.clone(), block102().into())
             .expect("store.find operation failed");
 
         // Check if "dinici@email.com" is in result set
@@ -1717,26 +1784,6 @@ fn revert_block_with_delete() {
         // There should be 1 entity returned in results
         assert_eq!(1, returned_entities.len());
 
-        // Perform revert operation again to confirm idempotent nature of revert_events()
-        // Delete an entity using a randomly created event source
-        let block_hash = "test_block_to_revert";
-        let event_source = EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes()));
-        let revert_event_source = event_source.to_string();
-        store
-            .delete(del_key.clone(), event_source)
-            .expect("Store.delete operation failed");
-        store.revert_events(revert_event_source);
-        let block_ptr = store
-            .block_ptr(SubgraphId("test_subgraph".to_owned()))
-            .unwrap();
-        let returned_entities = store
-            .find(this_query.clone(), block_ptr)
-            .expect("store.find operation failed");
-        let returned_name = returned_entities[0].get(&String::from("email"));
-        let test_value = Value::String(String::from("dinici@email.com"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
         Ok(())
     })
 }
@@ -1744,7 +1791,8 @@ fn revert_block_with_delete() {
 #[test]
 fn revert_block_with_partial_update() {
     run_test(|| -> Result<(), ()> {
-        let mut store = create_diesel_store();
+        let store = create_diesel_store();
+        store.revert_block(test_subgraph_id(), block102()).unwrap();
 
         let entity_key = StoreKey {
             subgraph: String::from("test_subgraph"),
@@ -1758,40 +1806,28 @@ fn revert_block_with_partial_update() {
             ("email", Value::Null),
         ]);
 
-        let block_ptr = store
-            .block_ptr(SubgraphId("test_subgraph".to_owned()))
-            .unwrap();
-        let original_entity = store.get(entity_key.clone(), block_ptr).unwrap();
-        let event_source = EventSource::EthereumBlock(H256::random());
-        let revert_event_source = event_source.to_string();
+        let original_entity = store.get(entity_key.clone(), block101().into()).unwrap();
 
         // Verify that the entity before updating is different from what we expect afterwards
         assert_ne!(original_entity, partial_entity);
 
         // Set test entity; as the entity already exists an update should be performed
-        store
-            .set(entity_key.clone(), partial_entity, event_source)
-            .expect("Failed to update entity that already exists");
+        let mut tx = store.begin_transaction(test_subgraph_id(), block102()).unwrap();
+        tx.set(entity_key.clone(), partial_entity.clone()).unwrap();
+        tx.commit().unwrap();
+
+        // Check that update happened
+        let updated_entity = store.get(entity_key.clone(), block102().into()).unwrap();
+        assert_eq!(partial_entity, updated_entity);
+        assert_ne!(original_entity, updated_entity);
 
         // Perform revert operation, reversing the partial update
-        store.revert_events(revert_event_source.clone());
+        store.revert_block(test_subgraph_id(), block102()).unwrap();
 
         // Obtain the reverted entity from the store
-        let block_ptr = store
-            .block_ptr(SubgraphId("test_subgraph".to_owned()))
-            .unwrap();
-        let reverted_entity = store.get(entity_key.clone(), block_ptr).unwrap();
+        let reverted_entity = store.get(entity_key.clone(), block101().into()).unwrap();
 
         // Verify that the entity has been returned to its original state
-        assert_eq!(reverted_entity, original_entity);
-
-        // Perform revert operation again and verify the same results to confirm the
-        // idempotent nature of the revert_events function
-        store.revert_events(revert_event_source);
-        let block_ptr = store
-            .block_ptr(SubgraphId("test_subgraph".to_owned()))
-            .unwrap();
-        let reverted_entity = store.get(entity_key, block_ptr).unwrap();
         assert_eq!(reverted_entity, original_entity);
 
         Ok(())
@@ -1801,7 +1837,7 @@ fn revert_block_with_partial_update() {
 #[test]
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|| {
-        let mut store = create_diesel_store();
+        let store = create_diesel_store();
 
         // Register subgraph in store
         store

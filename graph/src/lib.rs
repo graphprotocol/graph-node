@@ -17,7 +17,7 @@ extern crate ipfs_api;
 extern crate parity_wasm;
 pub extern crate serde_json;
 extern crate slog_async;
-extern crate slog_term;
+pub extern crate slog_term;
 extern crate tiny_keccak;
 pub extern crate tokio;
 extern crate web3;
@@ -45,6 +45,7 @@ pub mod prelude {
     pub use failure::{Error, Fail, SyncFailure};
     pub use slog;
     pub use slog::*;
+    pub use slog_term;
     pub use std::result::Result;
     pub use tokio;
     pub use tokio::prelude::*;

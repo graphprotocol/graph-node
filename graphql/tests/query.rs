@@ -225,6 +225,7 @@ impl BasicStore for TestStore {
         _subgraph_id: SubgraphId,
         _tx_ops: Vec<StoreOp>,
         _block: Block<Transaction>,
+        _ptr_update: bool,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }
@@ -264,7 +265,7 @@ impl BlockStore for TestStore {
 }
 
 impl Store for TestStore {
-    fn subscribe(&mut self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
 }
