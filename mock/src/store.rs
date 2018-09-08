@@ -139,7 +139,9 @@ pub struct FakeStore {
 
 impl FakeStore {
     pub fn new() -> FakeStore {
-        let genesis_block_hash = "d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3".parse().unwrap();
+        let genesis_block_hash = "d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"
+            .parse()
+            .unwrap();
         let genesis_block_ptr = (genesis_block_hash, 0u64).into();
         FakeStore {
             block_ptr: RefCell::new(genesis_block_ptr),
@@ -217,17 +219,18 @@ impl BlockStore for FakeStore {
     fn head_block_updates(&self) -> Box<Stream<Item = HeadBlockUpdateEvent, Error = Error> + Send> {
         // Emit a bunch of fake head block updates to the same block
         Box::new(
-            Interval::new(Instant::now(), Duration::from_secs(1))
-                .then(|_| {
-                    Ok(HeadBlockUpdateEvent {
-                        block_ptr: (H256::zero(), 1u64).into()
-                    })
+            Interval::new(Instant::now(), Duration::from_secs(1)).then(|_| {
+                Ok(HeadBlockUpdateEvent {
+                    block_ptr: (H256::zero(), 1u64).into(),
                 })
+            }),
         )
     }
 
     fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {
-        let genesis_block_hash = "d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3".parse().unwrap();
+        let genesis_block_hash = "d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"
+            .parse()
+            .unwrap();
         if block_hash == H256::zero() {
             Ok(Some(Block {
                 hash: Some(H256::zero()),
@@ -260,7 +263,9 @@ impl BlockStore for FakeStore {
         block_ptr: EthereumBlockPointer,
         offset: u64,
     ) -> Result<Option<Block<Transaction>>, Error> {
-        let genesis_block_hash = "d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3".parse().unwrap();
+        let genesis_block_hash = "d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"
+            .parse()
+            .unwrap();
         if block_ptr.number == 1 && offset == 1 {
             let fake_genesis_block = Block {
                 hash: Some(genesis_block_hash),

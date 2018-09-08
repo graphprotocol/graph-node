@@ -21,8 +21,8 @@ use web3::types::Transaction;
 
 use graph::components::ethereum::*;
 use graph::components::store::*;
-use graph::util::ethereum::string_to_h256;
 use graph::prelude::*;
+use graph::util::ethereum::string_to_h256;
 use graph_core::RuntimeManager;
 use graph_mock::FakeStore;
 use graph_runtime_wasm::RuntimeHostBuilder;
@@ -62,7 +62,10 @@ fn multiple_data_sources_per_subgraph() {
             event_filter: EthereumEventFilter,
         ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
             // Record what events were asked for
-            for events_by_sig in event_filter.event_types_by_contract_address_and_sig.values() {
+            for events_by_sig in event_filter
+                .event_types_by_contract_address_and_sig
+                .values()
+            {
                 for sig in events_by_sig.keys() {
                     self.event_sigs.borrow_mut().insert(sig.clone());
                 }
@@ -77,7 +80,10 @@ fn multiple_data_sources_per_subgraph() {
             event_filter: EthereumEventFilter,
         ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
             // Record what events were asked for
-            for events_by_sig in event_filter.event_types_by_contract_address_and_sig.values() {
+            for events_by_sig in event_filter
+                .event_types_by_contract_address_and_sig
+                .values()
+            {
                 for sig in events_by_sig.keys() {
                     self.event_sigs.borrow_mut().insert(sig.clone());
                 }
@@ -134,7 +140,10 @@ fn multiple_data_sources_per_subgraph() {
             ipfs_upload
                 .and_then(move |subgraph_string| add(&add_resolver, subgraph_string))
                 .and_then(|subgraph_link| {
-                    let log_drain = Mutex::new(slog_term::CompactFormat::new(slog_term::TermDecorator::new().build()).build()).fuse();
+                    let log_drain = Mutex::new(
+                        slog_term::CompactFormat::new(slog_term::TermDecorator::new().build())
+                            .build(),
+                    ).fuse();
                     let logger = Logger::root(log_drain, o!());
                     let eth_adapter = Arc::new(Mutex::new(MockEthereumAdapter {
                         event_sigs: RefCell::new(HashSet::new()),
@@ -172,7 +181,9 @@ fn multiple_data_sources_per_subgraph() {
                             loop {
                                 let eth_adapter = eth_adapter.lock().unwrap();
                                 let event_sigs = eth_adapter.event_sigs.borrow();
-                                if event_sigs.contains(&event_sig1) && event_sigs.contains(&event_sig2) {
+                                if event_sigs.contains(&event_sig1)
+                                    && event_sigs.contains(&event_sig2)
+                                {
                                     break;
                                 }
                                 if Instant::now().duration_since(start_time) > max_wait {

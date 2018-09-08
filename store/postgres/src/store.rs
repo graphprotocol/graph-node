@@ -502,7 +502,11 @@ impl BasicStore for Store {
             .map_err(StoreError::Database)
             .and_then(|_| {
                 if ptr_update {
-                    self.set_block_ptr_with_no_changes(subgraph_id, EthereumBlockPointer::to_parent(&block), block.into())
+                    self.set_block_ptr_with_no_changes(
+                        subgraph_id,
+                        EthereumBlockPointer::to_parent(&block),
+                        block.into(),
+                    )
                 } else {
                     Ok(())
                 }

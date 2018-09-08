@@ -25,13 +25,19 @@ fn test_subgraph_id() -> SubgraphId {
 }
 
 fn block100_hash() -> H256 {
-    "cabee56587df7541e577e845a3615e1a8304ffe7b8130869d3d1412fc941ae51".parse().unwrap()
+    "cabee56587df7541e577e845a3615e1a8304ffe7b8130869d3d1412fc941ae51"
+        .parse()
+        .unwrap()
 }
 fn block101_hash() -> H256 {
-    "38396ae55061d3ec68aa968ea64a13e4404da01d7cc7df506fa6d46fdd1a24e4".parse().unwrap()
+    "38396ae55061d3ec68aa968ea64a13e4404da01d7cc7df506fa6d46fdd1a24e4"
+        .parse()
+        .unwrap()
 }
 fn block102_hash() -> H256 {
-    "e8593c0cf6c13225957cb4c858e45149c4397d2bb9e492dac8ecc60d0874e3d2".parse().unwrap()
+    "e8593c0cf6c13225957cb4c858e45149c4397d2bb9e492dac8ecc60d0874e3d2"
+        .parse()
+        .unwrap()
 }
 
 fn block100() -> Block<Transaction> {
@@ -188,29 +194,39 @@ fn create_test_entity(
     test_entity.insert(String::from("age"), Value::Int(age));
     test_entity.insert(String::from("weight"), Value::Float(weight));
     test_entity.insert(String::from("coffee"), Value::Bool(coffee));
-    (
-        test_key,
-        test_entity,
-    )
+    (test_key, test_entity)
 }
 
 /// Inserts test data into the store.
 fn insert_test_data() {
     let store = create_diesel_store();
 
-    store.upsert_blocks(stream::iter_ok(vec![block100(), block101(), block102()]))
+    store
+        .upsert_blocks(stream::iter_ok(vec![block100(), block101(), block102()]))
         .wait()
         .expect("could not insert blocks into store");
-    assert_eq!(store.attempt_head_update(2)
-        .expect("could not update head ptr"), vec![]);
+    assert_eq!(
+        store
+            .attempt_head_update(2)
+            .expect("could not update head ptr"),
+        vec![]
+    );
 
     store
         .add_subgraph_if_missing(test_subgraph_id())
         .expect("Failed to register test subgraph in store");
 
-    store.set_block_ptr_with_no_changes(test_subgraph_id(), store.block_ptr(test_subgraph_id()).unwrap(), EthereumBlockPointer::to_parent(&block100())).unwrap();
+    store
+        .set_block_ptr_with_no_changes(
+            test_subgraph_id(),
+            store.block_ptr(test_subgraph_id()).unwrap(),
+            EthereumBlockPointer::to_parent(&block100()),
+        )
+        .unwrap();
 
-    let mut tx = store.begin_transaction(test_subgraph_id(), block100()).unwrap();
+    let mut tx = store
+        .begin_transaction(test_subgraph_id(), block100())
+        .unwrap();
     let test_entity_1 = create_test_entity(
         String::from("1"),
         String::from("user"),
@@ -223,7 +239,9 @@ fn insert_test_data() {
     tx.set(test_entity_1.0, test_entity_1.1).unwrap();
     tx.commit().unwrap();
 
-    let mut tx = store.begin_transaction(test_subgraph_id(), block101()).unwrap();
+    let mut tx = store
+        .begin_transaction(test_subgraph_id(), block101())
+        .unwrap();
     let test_entity_2 = create_test_entity(
         String::from("2"),
         String::from("user"),
@@ -247,7 +265,9 @@ fn insert_test_data() {
     tx.set(test_entity_3.0, test_entity_3.1).unwrap();
     tx.commit().unwrap();
 
-    let mut tx = store.begin_transaction(test_subgraph_id(), block102()).unwrap();
+    let mut tx = store
+        .begin_transaction(test_subgraph_id(), block102())
+        .unwrap();
     let test_entity_3_2 = create_test_entity(
         String::from("3"),
         String::from("user"),
@@ -359,7 +379,9 @@ fn insert_entity() {
             111.7 as f32,
             true,
         );
-        let mut tx = store.begin_transaction(test_subgraph_id(), block102()).unwrap();
+        let mut tx = store
+            .begin_transaction(test_subgraph_id(), block102())
+            .unwrap();
         tx.set(test_entity_1.0, test_entity_1.1).unwrap();
         tx.commit().unwrap();
 
@@ -404,7 +426,9 @@ fn update_existing() {
         );
 
         // Set test entity; as the entity already exists an update should be performed
-        let mut tx = store.begin_transaction(test_subgraph_id(), block102()).unwrap();
+        let mut tx = store
+            .begin_transaction(test_subgraph_id(), block102())
+            .unwrap();
         tx.set(test_entity_1.0, test_entity_1.1.clone()).unwrap();
         tx.commit().unwrap();
 
@@ -1764,7 +1788,9 @@ fn revert_block_with_delete() {
             id: String::from("2"),
         };
 
-        let mut tx = store.begin_transaction(test_subgraph_id(), block102()).unwrap();
+        let mut tx = store
+            .begin_transaction(test_subgraph_id(), block102())
+            .unwrap();
         tx.delete(del_key.clone()).unwrap();
         tx.commit().unwrap();
 
@@ -1812,7 +1838,9 @@ fn revert_block_with_partial_update() {
         assert_ne!(original_entity, partial_entity);
 
         // Set test entity; as the entity already exists an update should be performed
-        let mut tx = store.begin_transaction(test_subgraph_id(), block102()).unwrap();
+        let mut tx = store
+            .begin_transaction(test_subgraph_id(), block102())
+            .unwrap();
         tx.set(entity_key.clone(), partial_entity.clone()).unwrap();
         tx.commit().unwrap();
 
