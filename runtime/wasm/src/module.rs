@@ -85,6 +85,8 @@ const JSON_TO_U64_FUNC_INDEX: usize = 16;
 const JSON_TO_F64_FUNC_INDEX: usize = 17;
 const JSON_TO_BIG_INT_FUNC_INDEX: usize = 18;
 const IPFS_CAT_FUNC_INDEX: usize = 19;
+// const STORE_GET_FUNC_INDEX: usize = 20;
+const TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX: usize = 21;
 
 pub struct WasmiModuleConfig<T, L> {
     pub subgraph: SubgraphManifest,
@@ -470,6 +472,22 @@ where
         Ok(Some(RuntimeValue::from(big_int_obj)))
     }
 
+    /// function typeConversion.bigIntToInt256(i: BigInt): Uint64Array
+    fn big_int_to_int256(&self, big_int_ptr: AscPtr<BigInt>) -> Result<Option<RuntimeValue>, Trap> {
+        let bytes: Vec<u8> = self.heap.asc_get(big_int_ptr);
+        let size = bytes.len();
+        if size != 32 {
+            Err(host_error(format!(
+                "expected byte array of size 32, found size {}",
+                size
+            )))
+        } else {
+            let int256 = U256::from_little_endian(&*bytes);
+            let int256_ptr: AscPtr<Uint64Array> = self.heap.asc_new(&int256);
+            Ok(Some(RuntimeValue::from(int256_ptr)))
+        }
+    }
+
     /// Converts bytes to a hex string.
     /// References:
     /// https://godoc.org/github.com/ethereum/go-ethereum/common/hexutil#hdr-Encoding_Rules
@@ -589,6 +607,9 @@ where
             JSON_TO_F64_FUNC_INDEX => self.json_to_f64(args.nth_checked(0)?),
             JSON_TO_BIG_INT_FUNC_INDEX => self.json_to_big_int(args.nth_checked(0)?),
             IPFS_CAT_FUNC_INDEX => self.ipfs_cat(args.nth_checked(0)?),
+            TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX => {
+                self.big_int_to_int256(args.nth_checked(0)?)
+            }
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -711,6 +732,10 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
             "int256ToBigInt" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 TYPE_CONVERSION_INT256_TO_BIG_INT_FUNC_INDEX,
+            ),
+            "bigIntToInt256" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(
