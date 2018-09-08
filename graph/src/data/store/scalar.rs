@@ -51,6 +51,12 @@ impl<'de> Deserialize<'de> for BigInt {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Bytes(Box<[u8]>);
 
+impl Bytes {
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 impl Display for Bytes {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         write!(f, "0x{}", hex::encode(&self.0))

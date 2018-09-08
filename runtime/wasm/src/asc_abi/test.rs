@@ -369,7 +369,7 @@ fn abi_store_value() {
     ));
     assert_eq!(new_value, Value::Bool(boolean));
 
-    // Value::Array
+    // Value::List
     let new_value: Value = module.asc_get(
         module
             .module
@@ -386,6 +386,21 @@ fn abi_store_value() {
     assert_eq!(
         new_value,
         Value::List(vec![Value::from(string), Value::Float(float)])
+    );
+
+    let array: &[Value] = &[
+        Value::String("foo".to_owned()),
+        Value::String("bar".to_owned()),
+    ];
+    let array_ptr = module.asc_new(array);
+    let new_value: Value =
+        module.asc_get(module.takes_ptr_returns_ptr("value_from_array", array_ptr));
+    assert_eq!(
+        new_value,
+        Value::List(vec![
+            Value::String("foo".to_owned()),
+            Value::String("bar".to_owned()),
+        ])
     );
 
     // Value::Bytes

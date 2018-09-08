@@ -83,3 +83,9 @@ export function value_from_bigint(bigint: BigInt): Value {
     return value
 }
 
+export function value_from_array(array: Array<string>): Value {
+    let value = new Value()
+    value.kind = ValueKind.ARRAY
+    value.data = array as u64
+    return value
+  }

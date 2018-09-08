@@ -1,5 +1,6 @@
 use super::{AscHeap, AscPtr, AscType, AscValue};
 use ethabi;
+use graph::data::store;
 use graph::serde_json;
 use std::mem::{self, size_of, size_of_val};
 
@@ -230,6 +231,19 @@ impl From<EnumPayload> for bool {
     }
 }
 
+impl From<i32> for EnumPayload {
+    fn from(x: i32) -> EnumPayload {
+        // This is just `i32::from_bytes` which is unstable.
+        EnumPayload(unsafe { ::std::mem::transmute::<i32, u32>(x) } as u64)
+    }
+}
+
+impl From<f32> for EnumPayload {
+    fn from(x: f32) -> EnumPayload {
+        EnumPayload((x as f64).to_bits())
+    }
+}
+
 impl From<bool> for EnumPayload {
     fn from(b: bool) -> EnumPayload {
         EnumPayload(if b { 1 } else { 0 })
@@ -306,6 +320,23 @@ pub enum StoreValueKind {
     Null,
     Bytes,
     BigInt,
+}
+
+impl StoreValueKind {
+    pub(crate) fn get_kind(value: &store::Value) -> StoreValueKind {
+        use self::store::Value;
+
+        match value {
+            Value::String(_) => StoreValueKind::String,
+            Value::Int(_) => StoreValueKind::Int,
+            Value::Float(_) => StoreValueKind::Float,
+            Value::Bool(_) => StoreValueKind::Bool,
+            Value::List(_) => StoreValueKind::Array,
+            Value::Null => StoreValueKind::Null,
+            Value::Bytes(_) => StoreValueKind::Bytes,
+            Value::BigInt(_) => StoreValueKind::BigInt,
+        }
+    }
 }
 
 impl Default for StoreValueKind {
