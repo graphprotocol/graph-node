@@ -168,6 +168,12 @@ impl From<HashMap<Attribute, Value>> for Entity {
     }
 }
 
+impl From<Entity> for HashMap<Attribute, Value> {
+    fn from(e: Entity) -> Self {
+        e.0
+    }
+}
+
 impl<'a> From<Vec<(&'a str, Value)>> for Entity {
     fn from(entries: Vec<(&'a str, Value)>) -> Entity {
         Entity::from(HashMap::from_iter(

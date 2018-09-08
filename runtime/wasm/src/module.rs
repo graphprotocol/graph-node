@@ -82,7 +82,7 @@ const JSON_TO_U64_FUNC_INDEX: usize = 16;
 const JSON_TO_F64_FUNC_INDEX: usize = 17;
 const JSON_TO_BIG_INT_FUNC_INDEX: usize = 18;
 const IPFS_CAT_FUNC_INDEX: usize = 19;
-// const STORE_GET_FUNC_INDEX: usize = 20;
+const STORE_GET_FUNC_INDEX: usize = 20;
 const TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX: usize = 21;
 
 pub struct WasmiModuleConfig<T, L, S> {
@@ -303,6 +303,37 @@ where
             .ok();
 
         Ok(None)
+    }
+
+    /// function store.get(entity: string, id: string): void
+    fn store_get(
+        &self,
+        entity_ptr: AscPtr<AscString>,
+        id_ptr: AscPtr<AscString>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let entity: String = self.heap.asc_get(entity_ptr);
+        let id: String = self.heap.asc_get(id_ptr);
+        let store_key = StoreKey {
+            subgraph: self.subgraph.id.clone(),
+            entity,
+            id,
+        };
+
+        // Retrieve an Entity from the store
+        let logger = self.logger.clone();
+        let get_result = self.store
+            .lock()
+            .unwrap()
+            .get(
+                store_key,
+                Default::default(),
+            )
+            .map(|entity| entity);
+        let get_result: HashMap<_, _> = match get_result {
+            Ok(entity) => entity.into(),
+            Err(e) => return Err(host_error(e.to_string())),
+        };
+        Ok(Some(RuntimeValue::from(self.heap.asc_new(&get_result))))
     }
 
     /// function ethereum.call(call: SmartContractCall): Array<Token>
@@ -577,6 +608,10 @@ where
                 args.nth_checked(0)?,
                 args.nth_checked(1)?,
                 args.nth_checked(2)?,
+            ),
+            STORE_GET_FUNC_INDEX => self.store_get(
+                args.nth_checked(0)?,
+                args.nth_checked(1)?
             ),
             STORE_REMOVE_FUNC_INDEX => {
                 self.store_remove(args.nth_checked(0)?, args.nth_checked(1)?)
