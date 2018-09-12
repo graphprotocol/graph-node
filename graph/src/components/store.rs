@@ -12,7 +12,7 @@ use std::fmt;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct StoreKey {
     /// ID of the subgraph.
-    pub subgraph: String, // TODO use SubgraphId
+    pub subgraph: String, // TODO issue #353: use SubgraphId
 
     /// Name of the entity type.
     pub entity: String,
@@ -63,7 +63,7 @@ pub struct StoreRange {
 #[derive(Clone, Debug, PartialEq)]
 pub struct StoreQuery {
     // ID of the subgraph.
-    pub subgraph: String, // TODO use SubgraphId
+    pub subgraph: String, // TODO issue #353: use SubgraphId
 
     /// The name of the entity type.
     pub entity: String,
@@ -253,7 +253,7 @@ impl<'a, S: BasicStore + ?Sized> StoreTransaction<'a, S> {
 
 /// Common trait for store implementations that don't require interaction with the system.
 pub trait BasicStore {
-    // TODO make this generic over a type Blockchain, with associated types BlockPointer,
+    // TODO issue #354: make this generic over a type Blockchain, with associated types BlockPointer,
     // BlockHash, BlockStore (?)
     // Note: making this work properly for multiple blockchains at once is not easy to get right!
     // For that, we will need to rethink how mappings work, etc, in order to enforce determinism.
@@ -267,7 +267,10 @@ pub trait BasicStore {
 
     /// Begin a store transaction to atomically perform a set of operations tied to a single block.
     /// Use this to add a block's worth of changes to the store.
-    // TODO: just need hash, number and parent_hash from Block
+    ///
+    /// The `block` parameter is only used to obtain the block hash and parent hash.
+    /// The method requires an entire `Block`, however, in order to make the
+    /// API harder to use incorrectly.
     fn begin_transaction(
         &self,
         subgraph_id: SubgraphId,
@@ -290,7 +293,10 @@ pub trait BasicStore {
     /// Rollback the store changes made in a single block and update the subgraph pointer.
     ///
     /// `StoreError::VersionConflict` is returned if `block` does not match the current block pointer.
-    // TODO: just need hash, number and parent_hash from Block
+    ///
+    /// The `block` parameter is only used to obtain the block hash and parent hash.
+    /// The method requires an entire `Block`, however, in order to make the
+    /// API harder to use incorrectly.
     fn revert_block(
         &self,
         subgraph_id: SubgraphId,
@@ -329,7 +335,8 @@ pub type SubgraphEntityPair = (String, String);
 
 /// Common trait for block data store implementations.
 pub trait BlockStore {
-    // TODO make this generic over a type Blockchain, with associated types BlockPointer, BlockHash
+    // TODO issue #354: make this generic over a type Blockchain, with
+    // associated types BlockPointer, BlockHash
 
     /// Insert blocks into the store (or update if they are already present).
     fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(

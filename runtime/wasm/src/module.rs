@@ -191,7 +191,7 @@ where
                 &mut self.externals,
             )
             .unwrap_or_else(|e| {
-                // TODO cancel processing of block
+                // TODO issue #355: cancel processing of block
                 warn!(self.logger, "Failed to handle Ethereum event";
                       "handler" => &handler_name,
                       "error" => format!("{}", e));

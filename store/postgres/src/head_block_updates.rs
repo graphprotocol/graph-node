@@ -10,8 +10,6 @@ use graph::components::store::HeadBlockUpdateEvent;
 use graph::prelude::*;
 use graph::serde_json;
 
-// TODO refactor to combine with EntityChangeListener
-
 pub struct HeadBlockUpdateListener {
     output: Option<Receiver<HeadBlockUpdateEvent>>,
     worker_handle: Option<thread::JoinHandle<()>>,

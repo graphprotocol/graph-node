@@ -10,7 +10,6 @@ use graph::components::subgraph::RuntimeHostEvent;
 use graph::components::subgraph::SubgraphProviderEvent;
 use graph::prelude::*;
 
-// TODO choose a good number
 const REORG_THRESHOLD: u64 = 300;
 
 pub struct RuntimeManager {
@@ -68,7 +67,7 @@ impl RuntimeManager where {
             match event {
                 RuntimeHostEvent::EntitySet(store_key, entity, block) => {
                     let store = store.lock().unwrap();
-                    // TODO this code is incorrect. One TX should be used for entire block.
+                    // TODO issue #347: this code is incorrect. One TX should be used for entire block.
                     let mut tx = store
                         .begin_transaction(SubgraphId(store_key.subgraph.clone()), block)
                         .unwrap();
@@ -78,7 +77,7 @@ impl RuntimeManager where {
                 }
                 RuntimeHostEvent::EntityRemoved(store_key, block) => {
                     let store = store.lock().unwrap();
-                    // TODO this code is incorrect. One TX should be used for entire block.
+                    // TODO issue #347: this code is incorrect. One TX should be used for entire block.
                     let mut tx = store
                         .begin_transaction(SubgraphId(store_key.subgraph.clone()), block)
                         .unwrap();
@@ -197,9 +196,6 @@ where
     E: EthereumAdapter,
     H: RuntimeHost,
 {
-    // TODO handle VersionConflicts
-    // TODO remove .wait()s, maybe?
-
     info!(
         logger,
         "Handling head block update for subgraph {}", subgraph_id.0
@@ -489,7 +485,7 @@ where
                     subgraph_ptr = descendant_parent_ptr;
                     let descendant_ptr = EthereumBlockPointer::from(descendant_block.clone());
 
-                    // TODO future enhancement: load a recent history of blocks before running mappings
+                    // TODO issue #349: load a recent history of blocks before running mappings
 
                     // Next, we will determine what relevant events are contained in this block.
                     let events = eth_adapter
@@ -508,8 +504,8 @@ where
                     // Then, we will distribute each event to each of the runtime hosts.
                     // The execution order is important to ensure entity data is produced
                     // deterministically.
-                    // TODO runtime host order should be deterministic
-                    // TODO use a single StoreTransaction, use commit instead of set_block_ptr
+                    // TODO issue #292: runtime host order here should be deterministic
+                    // TODO issue #347: use a single StoreTransaction, use commit instead of set_block_ptr
                     events.iter().for_each(|event| {
                         runtime_hosts
                             .iter_mut()

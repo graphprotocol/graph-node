@@ -167,7 +167,7 @@ impl EthereumEventFilter {
     /// Returns `true` to indicate that a matching `Log` _might_ be contained.
     /// Returns `false` to indicate that a matching `Log` _is not_ contained.
     pub fn check_bloom(&self, _bloom: H2048) -> bool {
-        // TODO
+        // TODO issue #352: implement bloom filter check
         true // not even wrong
     }
 

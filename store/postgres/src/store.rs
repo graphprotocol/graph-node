@@ -197,7 +197,7 @@ impl Store {
         );
     }
 
-    // TODO replace with commit_transaction
+    // TODO issue #347: replace with commit_transaction
     fn deprecated_set(
         &self,
         key: StoreKey,
@@ -245,7 +245,7 @@ impl Store {
             .map_err(Error::from)
     }
 
-    // TODO replace with commit_transaction
+    // TODO issue #347: replace with commit_transaction
     fn deprecated_delete(
         &self,
         key: StoreKey,
@@ -344,7 +344,7 @@ impl BasicStore for Store {
         subgraph_id: SubgraphId,
         block: Block<Transaction>,
     ) -> Result<(), StoreError> {
-        // TODO make this atomic
+        // TODO issue #347: make this atomic
         select(revert_block(
             format!("{:x}", block.hash.unwrap()),
             subgraph_id.0.clone(),
@@ -377,7 +377,7 @@ impl BasicStore for Store {
             .filter(subgraphs::id.eq(&key.subgraph))
             .first::<(serde_json::Value, String, i64)>(&*self.conn.lock().unwrap())
             .map(|(value, _block_hash, _block_number)| {
-                // TODO reenable this
+                // TODO issue #348: reenable this
                 /*
                 assert_eq!(
                     EthereumBlockPointer::from((block_hash.parse().unwrap(), block_number)),
@@ -398,7 +398,7 @@ impl BasicStore for Store {
         use db_schema::entities;
         use db_schema::entities::dsl::*;
 
-        // TODO check block_ptr
+        // TODO issue #348: check block_ptr
 
         // Create base boxed query; this will be added to based on the
         // query parameters provided
@@ -470,7 +470,7 @@ impl BasicStore for Store {
     ) -> Result<(), StoreError> {
         let event_source = EventSource::EthereumBlock(block.hash.unwrap());
 
-        // TODO this is not atomic
+        // TODO issue #347: this is not atomic
         let parent_block_ptr = EthereumBlockPointer::to_parent(&block);
         tx_ops
             .into_iter()
@@ -576,7 +576,7 @@ impl BlockStore for Store {
                 .map_err(|_| format_err!("error in head block update stream")),
         );
         listener.start();
-        Box::leak(Box::new(listener)); // TODO need a better idea
+        Box::leak(Box::new(listener)); // TODO issue #356
         updates
     }
 

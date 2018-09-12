@@ -168,7 +168,7 @@ impl RuntimeHost {
                     );
 
             if event.removed {
-                // TODO why would this happen?
+                // TODO issue #351: why would this happen?
                 error!(event_logger, "Event removed";
                           "block" => event.block.hash.unwrap().to_string());
             } else {
@@ -212,7 +212,6 @@ impl RuntimeHostTrait for RuntimeHost {
         &self.config.subgraph_manifest
     }
 
-    // TODO cache this?
     fn event_filter(&self) -> EthereumEventFilter {
         let data_source = &self.config.data_source;
 

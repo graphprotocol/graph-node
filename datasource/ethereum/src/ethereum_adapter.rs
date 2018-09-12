@@ -305,7 +305,7 @@ where
         )
     }
 
-    // TODO investigate storing receipts in DB and moving this fn to BlockStore
+    // TODO issue #350: investigate storing receipts in DB and moving this fn to BlockStore
     fn get_events_in_block(
         &self,
         block: Block<Transaction>,
@@ -355,7 +355,7 @@ where
                                             event_signature: log.topics[0],
                                             block: block.clone(),
                                             params: log_data.params,
-                                            removed: log.is_removed(), // TODO is this obsolete?
+                                            removed: log.is_removed(), // TODO issue #351: is this obsolete?
                                         })
                                 })
                     }))

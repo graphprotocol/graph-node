@@ -227,7 +227,7 @@ where
 
         let store = self.store.lock().unwrap();
 
-        // TODO this code is incorrect. block_ptr should be asked for once, and used throughout
+        // TODO issue #348: this code is incorrect. block_ptr should be asked for once, and used throughout
         // entire query.
         // Also: add error handling
 
@@ -261,7 +261,7 @@ where
         if let Some(id) = id {
             let store = self.store.lock().unwrap();
 
-            // TODO this code is incorrect. block_ptr should be asked for once, and used throughout
+            // TODO issue #348: this code is incorrect. block_ptr should be asked for once, and used throughout
             // entire query.
             // Also: add error handling
 
@@ -290,7 +290,7 @@ where
                 Some(q::Value::String(id)) => {
                     let store = self.store.lock().unwrap();
 
-                    // TODO this code is incorrect. block_ptr should be asked for once, and used throughout
+                    // TODO issue #348: this code is incorrect. block_ptr should be asked for once, and used throughout
                     // entire query.
                     // Also: add error handling
 
@@ -328,7 +328,7 @@ where
 
                 let store = self.store.lock().unwrap();
 
-                // TODO this code is incorrect. block_ptr should be asked for once, and used throughout
+                // TODO issue #348: this code is incorrect. block_ptr should be asked for once, and used throughout
                 // entire query.
                 // Also: add error handling
 
