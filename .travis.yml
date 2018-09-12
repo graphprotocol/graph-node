@@ -35,9 +35,6 @@ matrix:
     - env: CHECK_FORMATTING=true
       if: group = stable
 
-# Cache dependencies
-cache: cargo
-
 env:
   global:
   - PGPORT=5433
