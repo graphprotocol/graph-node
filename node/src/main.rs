@@ -20,7 +20,6 @@ use clap::{App, Arg};
 use ipfs_api::IpfsClient;
 use reqwest::Client;
 use std::env;
-use std::io;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Mutex;
@@ -157,7 +156,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             ipfs_socket_addr.port(),
         ).expect("Failed to start IPFS client"),
     );
-    let ipfs_test = resolver.add(io::Cursor::new("test"));
+    let ipfs_test = resolver.version();
     if let Err(e) = ipfs_test.wait() {
         error!(
             logger,
