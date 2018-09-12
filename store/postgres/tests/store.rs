@@ -14,9 +14,7 @@ use std::panic;
 use std::sync::Mutex;
 use web3::types::*;
 
-use graph::components::store::{
-    EventSource, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
-};
+use graph::components::store::{StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange};
 use graph::prelude::*;
 use graph_store_postgres::{db_schema, Store as DieselStore, StoreConfig};
 
@@ -308,14 +306,18 @@ fn delete_entity() {
     run_test(|| -> Result<(), ()> {
         use db_schema::entities::dsl::*;
         let store = create_diesel_store();
+        store.revert_block(test_subgraph_id(), block102()).unwrap();
 
         let test_key = StoreKey {
-            subgraph: String::from("test_subgraph"),
+            subgraph: test_subgraph_id().0,
             entity: String::from("user"),
             id: String::from("3"),
         };
-        let source = EventSource::EthereumBlock(H256::random());
-        store.delete(test_key, source).unwrap();
+        let mut tx = store
+            .begin_transaction(test_subgraph_id(), block102())
+            .unwrap();
+        tx.delete(test_key).unwrap();
+        tx.commit().unwrap();
 
         //Get all ids in table
         let all_ids = entities
@@ -446,6 +448,7 @@ fn update_existing() {
 fn partially_update_existing() {
     run_test(|| -> Result<(), ()> {
         let store = create_diesel_store();
+        store.revert_block(test_subgraph_id(), block102()).unwrap();
 
         let entity_key = StoreKey {
             subgraph: String::from("test_subgraph"),
@@ -459,24 +462,19 @@ fn partially_update_existing() {
             ("email", Value::Null),
         ]);
 
-        let block_ptr = store
-            .block_ptr(SubgraphId("test_subgraph".to_owned()))
-            .unwrap();
-        let original_entity = store.get(entity_key.clone(), block_ptr).unwrap();
-        let event_source = EventSource::EthereumBlock(H256::random());
+        let original_entity = store.get(entity_key.clone(), block101().into()).unwrap();
         // Verify that the entity before updating is different from what we expect afterwards
         assert_ne!(original_entity, partial_entity);
 
         // Set test entity; as the entity already exists an update should be performed
-        store
-            .set(entity_key.clone(), partial_entity.clone(), event_source)
-            .expect("Failed to update entity that already exists");
+        let mut tx = store
+            .begin_transaction(test_subgraph_id(), block102())
+            .unwrap();
+        tx.set(entity_key.clone(), partial_entity.clone()).unwrap();
+        tx.commit().unwrap();
 
         // Obtain the updated entity from the store
-        let block_ptr = store
-            .block_ptr(SubgraphId("test_subgraph".to_owned()))
-            .unwrap();
-        let updated_entity = store.get(entity_key, block_ptr).unwrap();
+        let updated_entity = store.get(entity_key, block102().into()).unwrap();
 
         // Verify that the values of all attributes we have set were either unset
         // (in the case of Value::Null) or updated to the new values
@@ -1865,16 +1863,15 @@ fn revert_block_with_partial_update() {
 #[test]
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|| {
-        let store = create_diesel_store();
-
-        // Register subgraph in store
-        store
-            .add_subgraph_if_missing(SubgraphId(String::from("subgraph-id")))
-            .expect("failed to register new subgraph in store");
+        let store = Arc::new(create_diesel_store());
+        store.revert_block(test_subgraph_id(), block102()).unwrap();
 
         // Create a store subscription
-        let subscription =
-            store.subscribe(vec![(String::from("subgraph-id"), String::from("User"))]);
+        let subscription = store.subscribe(vec![(test_subgraph_id().0, String::from("User"))]);
+
+        let mut tx = store
+            .begin_transaction(test_subgraph_id(), block102())
+            .unwrap();
 
         // Add two entities to the store
         let added_entities = vec![
@@ -1894,17 +1891,14 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             ),
         ];
         for (id, entity) in added_entities.iter() {
-            store
-                .set(
-                    StoreKey {
-                        subgraph: String::from("subgraph-id"),
-                        entity: String::from("User"),
-                        id: id.clone(),
-                    },
-                    entity.clone(),
-                    EventSource::EthereumBlock(H256::random()),
-                )
-                .expect("failed to add entity to the store");
+            tx.set(
+                StoreKey {
+                    subgraph: String::from("subgraph-id"),
+                    entity: String::from("User"),
+                    id: id.clone(),
+                },
+                entity.clone(),
+            ).expect("failed to add entity to the store");
         }
 
         // Update an entity in the store
@@ -1912,31 +1906,26 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             ("id", Value::from("1")),
             ("name", Value::from("Johnny")),
         ]);
-        store
-            .set(
-                StoreKey {
-                    subgraph: String::from("subgraph-id"),
-                    entity: String::from("User"),
-                    id: String::from("1"),
-                },
-                updated_entity.clone(),
-                EventSource::EthereumBlock(H256::random()),
-            )
-            .expect("failed to update entity in the store");
+        tx.set(
+            StoreKey {
+                subgraph: String::from("subgraph-id"),
+                entity: String::from("User"),
+                id: String::from("1"),
+            },
+            updated_entity.clone(),
+        ).expect("failed to update entity in the store");
 
         // Delete an entity in the store
-        store
-            .delete(
-                StoreKey {
-                    subgraph: String::from("subgraph-id"),
-                    entity: String::from("User"),
-                    id: String::from("2"),
-                },
-                EventSource::EthereumBlock(H256::random()),
-            )
-            .expect("failed to delete entity from the store");
+        tx.delete(StoreKey {
+            subgraph: String::from("subgraph-id"),
+            entity: String::from("User"),
+            id: String::from("2"),
+        }).expect("failed to delete entity from the store");
+
+        tx.commit().unwrap();
 
         // We're expecting four events to be written to the subscription stream
+        let store = store.clone();
         subscription
             .take(4)
             .collect()

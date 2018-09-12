@@ -197,24 +197,6 @@ impl Store {
         );
     }
 
-    /// Do not use.
-    // TODO remove this, only here for compatibility with existing tests
-    pub fn set(
-        &self,
-        key: StoreKey,
-        entity: Entity,
-        event_source: EventSource,
-    ) -> Result<(), Error> {
-        let subgraph_id = SubgraphId(key.subgraph.clone());
-        self.deprecated_set(key, entity, event_source, self.block_ptr(subgraph_id)?)
-    }
-
-    /// Do not use.
-    // TODO remove this, only here for compatibility with existing tests
-    pub fn delete(&self, key: StoreKey, event_source: EventSource) -> Result<(), Error> {
-        self.deprecated_delete(key, event_source)
-    }
-
     // TODO replace with commit_transaction
     fn deprecated_set(
         &self,
