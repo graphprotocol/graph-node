@@ -181,9 +181,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         protected_store.clone(),
         ethereum_network_name.to_owned(),
         transport.clone(),
-        400, // ancestor count, TODO make configuable
+        400, // ancestor count, which we could make configuable
         logger.clone(),
-        Duration::from_millis(500), // polling interval, TODO make configurable
+        Duration::from_millis(500), // polling interval, which we could make configurable
     ).expect("failed to create block ingestor");
     tokio::spawn(block_ingestor.into_polling_stream());
 
