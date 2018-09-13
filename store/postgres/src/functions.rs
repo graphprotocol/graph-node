@@ -17,8 +17,8 @@ sql_function! {
     (setting_name: Text, new_value: Text, is_local: Bool)
 }
 sql_function! {
-    attempt_head_update,
-    AttemptHeadUpdate,
+    attempt_chain_head_update,
+    AttemptChainHeadUpdate,
     (net_name: Varchar, ancestor_count: BigInt) -> Array<Varchar>
 }
 sql_function! {

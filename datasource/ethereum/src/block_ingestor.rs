@@ -162,7 +162,7 @@ where
                 self.store
                     .lock()
                     .unwrap()
-                    .attempt_head_update(&self.network_name, self.ancestor_count)
+                    .attempt_chain_head_update(&self.network_name, self.ancestor_count)
             })
     }
 

@@ -3,10 +3,10 @@
 **************************************************************/
 
 /**************************************************************
-* Attempt to update the head block pointer.
+* Attempt to update the chain head block pointer.
 * Raises an exception if ethereum_blocks table is empty.
 **************************************************************/
-CREATE OR REPLACE FUNCTION attempt_head_update(net_name VARCHAR, ancestor_count BIGINT)
+CREATE OR REPLACE FUNCTION attempt_chain_head_update(net_name VARCHAR, ancestor_count BIGINT)
     RETURNS VARCHAR[] AS
 $$
 DECLARE
@@ -15,13 +15,13 @@ DECLARE
     new_head_number BIGINT;
     missing_parents VARCHAR[];
 BEGIN
-    -- Get block number of current head block
+    -- Get block number of current chain head block
     SELECT head_block_number
     INTO STRICT current_head_number
     FROM ethereum_networks
     WHERE name = net_name;
 
-    -- Find candidate new head block
+    -- Find candidate new chain head block
     SELECT
         hash,
         number
@@ -35,7 +35,7 @@ BEGIN
         hash ASC
     LIMIT 1;
 
-    -- Stop now if it's no better than the current head block
+    -- Stop now if it's no better than the current chain head block
     IF new_head_number <= current_head_number THEN
         RETURN ARRAY[]::VARCHAR[];
     END IF;
@@ -57,17 +57,17 @@ BEGIN
         RETURN missing_parents;
     END IF;
 
-    -- No recent missing parent blocks, therefore candidate new head block has
+    -- No recent missing parent blocks, therefore candidate new chain head block has
     -- the necessary minimum number of ancestors present in DB.
 
-    -- Set head block pointer to candidate head block
+    -- Set chain head block pointer to candidate chain head block
     UPDATE ethereum_networks
     SET
         head_block_hash = new_head_hash,
         head_block_number = new_head_number
     WHERE name = net_name;
 
-    -- Fire head block update event
+    -- Fire chain head block update event
     PERFORM pg_notify('chain_head_update', json_build_object(
         'network_name', net_name,
         'head_block_hash', new_head_hash,

@@ -70,7 +70,7 @@ impl BlockStore for MockStore {
         unimplemented!()
     }
 
-    fn attempt_head_update(&self, _: &str, _: u64) -> Result<Vec<H256>, Error> {
+    fn attempt_chain_head_update(&self, _: &str, _: u64) -> Result<Vec<H256>, Error> {
         unimplemented!()
     }
 }
@@ -117,7 +117,7 @@ impl BlockStore for FakeStore {
         panic!("called FakeStore")
     }
 
-    fn attempt_head_update(&self, _: &str, _: u64) -> Result<Vec<H256>, Error> {
+    fn attempt_chain_head_update(&self, _: &str, _: u64) -> Result<Vec<H256>, Error> {
         panic!("called FakeStore")
     }
 }
