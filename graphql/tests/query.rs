@@ -205,7 +205,7 @@ impl BlockStore for TestStore {
         unimplemented!()
     }
 
-    fn attempt_head_update(
+    fn attempt_chain_head_update(
         &self,
         _network_name: &str,
         _ancestor_count: u64,

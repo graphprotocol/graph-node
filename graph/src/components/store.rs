@@ -160,6 +160,7 @@ pub trait BlockStore {
     ) -> Box<Future<Item = (), Error = Error> + Send + 'a>;
 
     /// Try to update the head block pointer to the block with the highest block number.
+    ///
     /// Only updates pointer if there is a block with a higher block number than the current head
     /// block, and the `ancestor_count` most recent ancestors of that block are in the store.
     ///
@@ -169,7 +170,7 @@ pub trait BlockStore {
     ///
     /// If the candidate new head block had one or more missing ancestors, returns
     /// `Ok(missing_blocks)`, where `missing_blocks` is a nonexhaustive list of missing blocks.
-    fn attempt_head_update(
+    fn attempt_chain_head_update(
         &self,
         network_name: &str,
         ancestor_count: u64,
