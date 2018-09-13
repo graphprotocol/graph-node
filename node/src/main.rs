@@ -149,22 +149,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     info!(logger, "Starting up");
 
     // Create system components
-    info!(logger, "Connecting to IPFS node...");
     let resolver = Arc::new(
         IpfsClient::new(
             &format!("{}", ipfs_socket_addr.ip()),
             ipfs_socket_addr.port(),
         ).expect("Failed to start IPFS client"),
     );
-    let ipfs_test = resolver.version();
-    if let Err(e) = ipfs_test.wait() {
-        error!(
-            logger,
-            "Is there an IPFS node running at '{}'?", ipfs_socket_addr
-        );
-        panic!("Failed to connect to IPFS: {}", e);
-    }
-
     let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), resolver.clone());
 
     info!(logger, "Connecting to Postgres db...");
