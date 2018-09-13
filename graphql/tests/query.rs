@@ -1,3 +1,5 @@
+#[macro_use]
+extern crate failure;
 extern crate futures;
 extern crate graphql_parser;
 #[macro_use]
@@ -5,11 +7,16 @@ extern crate pretty_assertions;
 extern crate graph;
 extern crate graph_core;
 extern crate graph_graphql;
+extern crate web3;
 
 use graphql_parser::query as q;
 use std::sync::Mutex;
+use web3::types::Block;
+use web3::types::H256;
+use web3::types::Transaction;
 
-use graph::components::store::EventSource;
+use graph::components::store::HeadBlockUpdateEvent;
+use graph::components::store::StoreOp;
 use graph::prelude::*;
 use graph_graphql::prelude::*;
 
@@ -130,25 +137,50 @@ impl TestStore {
 }
 
 impl BasicStore for TestStore {
-    fn get(&self, key: StoreKey) -> Result<Entity, ()> {
+    fn add_subgraph_if_missing(&self, _: SubgraphId) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn block_ptr(&self, _subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
+        // Return a fake result
+        Ok((H256::zero(), 0u64).into())
+    }
+
+    fn set_block_ptr_with_no_changes(
+        &self,
+        _subgraph_id: SubgraphId,
+        _from: EthereumBlockPointer,
+        _to: EthereumBlockPointer,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn revert_block(
+        &self,
+        _subgraph_id: SubgraphId,
+        _block: Block<Transaction>,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn get(&self, key: StoreKey, _block_ptr: EthereumBlockPointer) -> Result<Entity, StoreError> {
         self.entities
             .iter()
             .find(|entity| {
                 entity.get("id") == Some(&Value::String(key.id.clone()))
                     && entity.get("__typename") == Some(&Value::String(key.entity.clone()))
             })
-            .map_or(Err(()), |entity| Ok(entity.clone()))
+            .map_or(
+                Err(StoreError::Database(format_err!("not found"))),
+                |entity| Ok(entity.clone()),
+            )
     }
 
-    fn set(&mut self, _key: StoreKey, _entity: Entity, _source: EventSource) -> Result<(), ()> {
-        unimplemented!()
-    }
-
-    fn delete(&mut self, _key: StoreKey, _source: EventSource) -> Result<(), ()> {
-        unimplemented!()
-    }
-
-    fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()> {
+    fn find(
+        &self,
+        query: StoreQuery,
+        _block_ptr: EthereumBlockPointer,
+    ) -> Result<Vec<Entity>, StoreError> {
         let entity_name = Value::String(query.entity.clone());
 
         let entities = self.entities
@@ -187,10 +219,53 @@ impl BasicStore for TestStore {
 
         Ok(entities)
     }
+
+    fn commit_transaction(
+        &self,
+        _subgraph_id: SubgraphId,
+        _tx_ops: Vec<StoreOp>,
+        _block: Block<Transaction>,
+        _ptr_update: bool,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+}
+
+impl BlockStore for TestStore {
+    fn upsert_blocks<'a, B>(&self, _: B) -> Box<Future<Item = (), Error = Error> + Send + 'a>
+    where
+        B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a,
+    {
+        unimplemented!()
+    }
+
+    fn attempt_head_update(&self, _ancestor_count: u64) -> Result<Vec<H256>, Error> {
+        unimplemented!()
+    }
+
+    fn head_block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+        unimplemented!()
+    }
+
+    fn head_block_updates(&self) -> Box<Stream<Item = HeadBlockUpdateEvent, Error = Error> + Send> {
+        unimplemented!()
+    }
+
+    fn block(&self, _block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {
+        unimplemented!()
+    }
+
+    fn ancestor_block(
+        &self,
+        _block_ptr: EthereumBlockPointer,
+        _offset: u64,
+    ) -> Result<Option<Block<Transaction>>, Error> {
+        unimplemented!()
+    }
 }
 
 impl Store for TestStore {
-    fn subscribe(&mut self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
 }

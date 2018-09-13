@@ -4,16 +4,25 @@ extern crate graph_core;
 extern crate graph_mock;
 extern crate graph_runtime_wasm;
 extern crate ipfs_api;
+extern crate web3;
 
+use ethabi::Token;
 use ipfs_api::IpfsClient;
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fs::read_to_string;
 use std::io::Cursor;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
+use web3::types::Block;
+use web3::types::H256;
+use web3::types::Transaction;
 
 use graph::components::ethereum::*;
+use graph::components::store::*;
 use graph::prelude::*;
+use graph::util::ethereum::string_to_h256;
 use graph_core::RuntimeManager;
 use graph_mock::FakeStore;
 use graph_runtime_wasm::RuntimeHostBuilder;
@@ -21,26 +30,72 @@ use graph_runtime_wasm::RuntimeHostBuilder;
 #[test]
 fn multiple_data_sources_per_subgraph() {
     struct MockEthereumAdapter {
-        received_subscriptions: Vec<String>,
+        event_sigs: RefCell<HashSet<H256>>,
     }
 
     impl EthereumAdapter for MockEthereumAdapter {
-        fn contract_call(
-            &mut self,
-            _request: EthereumContractCall,
-        ) -> Box<Future<Item = Vec<ethabi::Token>, Error = EthereumContractCallError>> {
+        fn block_by_hash(
+            &self,
+            _: H256,
+        ) -> Box<Future<Item = Block<Transaction>, Error = Error> + Send> {
             unimplemented!()
         }
 
-        fn subscribe_to_event(
-            &mut self,
-            subscription: EthereumEventSubscription,
-        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
-            self.received_subscriptions.push(subscription.event.name);
-            Box::new(stream::iter_ok(vec![]))
+        fn block_by_number(
+            &self,
+            _: u64,
+        ) -> Box<Future<Item = Block<Transaction>, Error = Error> + Send> {
+            unimplemented!()
         }
 
-        fn unsubscribe_from_event(&mut self, _subscription_id: String) -> bool {
+        fn is_on_main_chain(
+            &self,
+            _: EthereumBlockPointer,
+        ) -> Box<Future<Item = bool, Error = Error> + Send> {
+            unimplemented!()
+        }
+
+        fn find_first_blocks_with_events(
+            &self,
+            _: u64,
+            _: u64,
+            event_filter: EthereumEventFilter,
+        ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+            // Record what events were asked for
+            for events_by_sig in event_filter
+                .event_types_by_contract_address_and_sig
+                .values()
+            {
+                for sig in events_by_sig.keys() {
+                    self.event_sigs.borrow_mut().insert(sig.clone());
+                }
+            }
+
+            Box::new(future::ok(vec![]))
+        }
+
+        fn get_events_in_block(
+            &self,
+            _: Block<Transaction>,
+            event_filter: EthereumEventFilter,
+        ) -> Box<Future<Item = Vec<EthereumEvent>, Error = EthereumSubscriptionError>> {
+            // Record what events were asked for
+            for events_by_sig in event_filter
+                .event_types_by_contract_address_and_sig
+                .values()
+            {
+                for sig in events_by_sig.keys() {
+                    self.event_sigs.borrow_mut().insert(sig.clone());
+                }
+            }
+
+            Box::new(future::ok(vec![]))
+        }
+
+        fn contract_call(
+            &mut self,
+            _: EthereumContractCall,
+        ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
             unimplemented!()
         }
     }
@@ -85,15 +140,23 @@ fn multiple_data_sources_per_subgraph() {
             ipfs_upload
                 .and_then(move |subgraph_string| add(&add_resolver, subgraph_string))
                 .and_then(|subgraph_link| {
-                    let logger = Logger::root(slog::Discard, o!());
+                    let log_drain = Mutex::new(
+                        slog_term::CompactFormat::new(slog_term::TermDecorator::new().build())
+                            .build(),
+                    ).fuse();
+                    let logger = Logger::root(log_drain, o!());
                     let eth_adapter = Arc::new(Mutex::new(MockEthereumAdapter {
-                        received_subscriptions: vec![],
+                        event_sigs: RefCell::new(HashSet::new()),
                     }));
                     let host_builder =
                         RuntimeHostBuilder::new(&logger, eth_adapter.clone(), resolver.clone());
 
-                    let fake_store = Arc::new(Mutex::new(FakeStore));
-                    let manager = RuntimeManager::new(&logger, fake_store, host_builder);
+                    let fake_store = Arc::new(Mutex::new(FakeStore::new()));
+                    let manager =
+                        RuntimeManager::new(&logger, fake_store, eth_adapter.clone(), host_builder);
+
+                    let event_sig1 = string_to_h256("ExampleEvent(string)");
+                    let event_sig2 = string_to_h256("ExampleEvent2(string)");
 
                     // Load a subgraph with two data sets, one listening for `ExampleEvent`
                     // and the other for `ExampleEvent2`.
@@ -116,15 +179,15 @@ fn multiple_data_sources_per_subgraph() {
                             let start_time = Instant::now();
                             let max_wait = Duration::from_secs(30);
                             loop {
-                                let subscriptions =
-                                    &eth_adapter.lock().unwrap().received_subscriptions;
-                                if subscriptions.contains(&"ExampleEvent".to_owned())
-                                    && subscriptions.contains(&"ExampleEvent2".to_owned())
+                                let eth_adapter = eth_adapter.lock().unwrap();
+                                let event_sigs = eth_adapter.event_sigs.borrow();
+                                if event_sigs.contains(&event_sig1)
+                                    && event_sigs.contains(&event_sig2)
                                 {
                                     break;
                                 }
                                 if Instant::now().duration_since(start_time) > max_wait {
-                                    panic!("Test failed, events subscribed to: {:?}", subscriptions)
+                                    panic!("Test failed, events subscribed to: {:?}", event_sigs)
                                 }
                                 ::std::thread::yield_now();
                             }

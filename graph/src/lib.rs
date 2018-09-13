@@ -17,7 +17,7 @@ extern crate ipfs_api;
 extern crate parity_wasm;
 pub extern crate serde_json;
 extern crate slog_async;
-extern crate slog_term;
+pub extern crate slog_term;
 extern crate tiny_keccak;
 pub extern crate tokio;
 extern crate web3;
@@ -42,8 +42,10 @@ pub mod prelude {
     // Glob import from `slog` to re-export the macros, but prevent
     // `slog::Result` from shadowing `Result`. Rust 2018 will have proper macro
     // imports then we can remove `slog::*` in favor of something fine-grained.
+    pub use failure::{Error, Fail, SyncFailure};
     pub use slog;
     pub use slog::*;
+    pub use slog_term;
     pub use std::result::Result;
     pub use tokio;
     pub use tokio::prelude::*;
@@ -57,8 +59,9 @@ pub mod prelude {
     pub use components::server::query::GraphQLServer;
     pub use components::server::subscription::SubscriptionServer;
     pub use components::store::{
-        BasicStore, EntityChange, EntityChangeOperation, EntityChangeStream, EventSource, Store,
-        StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange, SubgraphEntityPair,
+        BasicStore, BlockStore, EntityChange, EntityChangeOperation, EntityChangeStream,
+        EthereumBlockPointer, EventSource, Store, StoreError, StoreFilter, StoreKey, StoreOrder,
+        StoreQuery, StoreRange, SubgraphEntityPair, SubgraphId,
     };
     pub use components::subgraph::{
         RuntimeHost, RuntimeHostBuilder, RuntimeHostEvent, RuntimeManager, SchemaEvent,

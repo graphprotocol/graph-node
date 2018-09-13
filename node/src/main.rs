@@ -23,13 +23,14 @@ use std::env;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Mutex;
+use std::time::Duration;
 use url::Url;
 
 use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::SubgraphProvider as IpfsSubgraphProvider;
-use graph_datasource_ethereum::Transport;
+use graph_datasource_ethereum::{EventLoopHandle, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_json_rpc::{subgraph_deploy_request, JsonRpcServer};
@@ -72,8 +73,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .required_unless_one(&["ethereum-ws", "ethereum-ipc"])
                 .conflicts_with_all(&["ethereum-ws", "ethereum-ipc"])
                 .long("ethereum-rpc")
-                .value_name("URL")
-                .help("Ethereum RPC endpoint"),
+                .value_name("NETWORK_NAME:URL")
+                .help("Ethereum network name (e.g. 'mainnet') and Ethereum RPC endpoint URL, separated by a ':'"),
         )
         .arg(
             Arg::with_name("ethereum-ws")
@@ -81,8 +82,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .required_unless_one(&["ethereum-rpc", "ethereum-ipc"])
                 .conflicts_with_all(&["ethereum-rpc", "ethereum-ipc"])
                 .long("ethereum-ws")
-                .value_name("URL")
-                .help("Ethereum WebSocket endpoint"),
+                .value_name("NETWORK_NAME:URL")
+                .help("Ethereum network name (e.g. 'mainnet') and Ethereum WebSocket endpoint URL, separated by a ':'"),
         )
         .arg(
             Arg::with_name("ethereum-ipc")
@@ -90,8 +91,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .required_unless_one(&["ethereum-rpc", "ethereum-ws"])
                 .conflicts_with_all(&["ethereum-rpc", "ethereum-ws"])
                 .long("ethereum-ipc")
-                .value_name("FILE")
-                .help("Ethereum IPC pipe"),
+                .value_name("NETWORK_NAME:FILE")
+                .help("Ethereum network name (e.g. 'mainnet') and Ethereum IPC pipe path, separated by a ':'"),
         )
         .arg(
             Arg::with_name("ipfs")
@@ -116,11 +117,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Obtain subgraph related command-line arguments
     let subgraph = matches.value_of("subgraph");
 
-    // Obtain the Ethereum RPC/WS/IPC transport locations
+    // Obtain the Ethereum parameters
     let ethereum_rpc = matches.value_of("ethereum-rpc");
     let ethereum_ipc = matches.value_of("ethereum-ipc");
     let ethereum_ws = matches.value_of("ethereum-ws");
 
+    // Parse IPFS address
     let ipfs_socket_addr = SocketAddr::from_str(matches.value_of("ipfs").unwrap())
         .expect("could not parse IPFS address, expected format is host:port");
 
@@ -157,8 +159,22 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
     let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), resolver.clone());
 
+    // Create Ethereum web3 transport
+    let (ethereum_network_name, (transport_event_loop, transport)) = ethereum_ipc
+        .map(|s| new_transport(s, &logger, Transport::new_ipc))
+        .or(ethereum_ws.map(|s| new_transport(s, &logger, Transport::new_ws)))
+        .or(ethereum_rpc.map(|s| new_transport(s, &logger, Transport::new_rpc)))
+        .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
+
+    // Set up DieselStore (backed by Postgres)
     info!(logger, "Connecting to Postgres db...");
-    let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger);
+    let store = DieselStore::new(
+        StoreConfig {
+            url: postgres_url,
+            network_name: ethereum_network_name.to_owned(),
+        },
+        &logger,
+    ).unwrap();
     let protected_store = Arc::new(Mutex::new(store));
     let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(
         &logger,
@@ -167,19 +183,25 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let mut graphql_server = GraphQLQueryServer::new(&logger, graphql_runner.clone());
     let mut subscription_server = GraphQLSubscriptionServer::new(&logger, graphql_runner.clone());
 
-    // Create Ethereum adapter
-    let (transport_event_loop, transport) = ethereum_ipc
-        .map(Transport::new_ipc)
-        .or(ethereum_ws.map(Transport::new_ws))
-        .or(ethereum_rpc.map(Transport::new_rpc))
-        .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
+    // Create Ethereum block ingestor
+    let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
+        protected_store.clone(),
+        transport.clone(),
+        400, // ancestor count
+        logger.clone(),
+        Duration::from_millis(500), // polling interval
+    ).expect("failed to create block ingestor");
+    tokio::spawn(block_ingestor.into_polling_stream());
 
     // If we drop the event loop the transport will stop working. For now it's
     // fine to just leak it.
     std::mem::forget(transport_event_loop);
 
     let ethereum_watcher = graph_datasource_ethereum::EthereumAdapter::new(
-        graph_datasource_ethereum::EthereumAdapterConfig { transport },
+        graph_datasource_ethereum::EthereumAdapterConfig {
+            transport,
+            logger: logger.clone(),
+        },
     );
 
     match ethereum_watcher.block_number().wait() {
@@ -191,10 +213,15 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         }
     }
 
+    let ethereum_watcher_protected = Arc::new(Mutex::new(ethereum_watcher));
     let runtime_host_builder =
-        WASMRuntimeHostBuilder::new(&logger, Arc::new(Mutex::new(ethereum_watcher)), resolver);
-    let runtime_manager =
-        graph_core::RuntimeManager::new(&logger, protected_store.clone(), runtime_host_builder);
+        WASMRuntimeHostBuilder::new(&logger, ethereum_watcher_protected.clone(), resolver);
+    let runtime_manager = graph_core::RuntimeManager::new(
+        &logger,
+        protected_store.clone(),
+        ethereum_watcher_protected,
+        runtime_host_builder,
+    );
 
     // Forward subgraph events from the subgraph provider to the runtime manager
     tokio::spawn(forward(&mut subgraph_provider, &runtime_manager).unwrap());
@@ -266,4 +293,36 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
 
     future::empty()
+}
+
+/// Parses a connection string, returns a network name and a Transport.
+fn new_transport<'a, C>(
+    s: &'a str,
+    logger: &Logger,
+    constructor: C,
+) -> (&'a str, (EventLoopHandle, Transport))
+where
+    C: FnOnce(&str) -> (EventLoopHandle, Transport),
+{
+    // Check for common mistakes
+    if s.starts_with("wss://") || s.starts_with("http://") || s.starts_with("https://") {
+        warn!(logger, "Is your Ethereum connection string missing a network name? Try 'mainnet:' + the connection URL.");
+    }
+
+    // Parse string (format is "network_name:url_or_path")
+    let split_at = s.find(':').expect(
+        "A network name must be provided alongside the Ethereum node location. Try 'mainnet:URL'.",
+    );
+    let (name, loc_with_delim) = s.split_at(split_at);
+    let loc = &loc_with_delim[1..];
+
+    if name.is_empty() {
+        panic!("Ethereum network name cannot be an empty string");
+    }
+
+    if loc.is_empty() {
+        panic!("Ethereum connection location cannot be an empty string");
+    }
+
+    (name, constructor(loc))
 }

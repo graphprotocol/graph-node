@@ -12,10 +12,12 @@ use wasmi::{
     ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue,
     Signature, Trap, TrapKind, ValueType,
 };
+use web3::types::Block;
 use web3::types::BlockId;
+use web3::types::Transaction;
 
 use graph::components::ethereum::*;
-use graph::components::store::{EventSource, StoreKey};
+use graph::components::store::StoreKey;
 use graph::components::subgraph::RuntimeHostEvent;
 use graph::data::store::scalar;
 use graph::data::subgraph::DataSource;
@@ -167,7 +169,7 @@ where
             heap: heap.clone(),
             ethereum_adapter: config.ethereum_adapter.clone(),
             link_resolver: config.link_resolver.clone(),
-            block_hash: H256::zero(),
+            block: None,
         };
 
         let module = module
@@ -183,7 +185,7 @@ where
     }
 
     pub fn handle_ethereum_event(&mut self, handler_name: &str, event: EthereumEvent) {
-        self.externals.block_hash = event.block_hash.clone();
+        self.externals.block = Some(event.block.clone());
         self.module
             .invoke_export(
                 handler_name,
@@ -191,6 +193,7 @@ where
                 &mut self.externals,
             )
             .unwrap_or_else(|e| {
+                // TODO issue #355: cancel processing of block
                 warn!(self.logger, "Failed to handle Ethereum event";
                       "handler" => &handler_name,
                       "error" => format!("{}", e));
@@ -226,8 +229,8 @@ pub struct HostExternals<T, L> {
     heap: WasmiAscHeap,
     ethereum_adapter: Arc<Mutex<T>>,
     link_resolver: Arc<L>,
-    // Block hash of the event being mapped.
-    block_hash: H256,
+    // Block of the event being mapped.
+    block: Option<Block<Transaction>>,
 }
 
 impl<T, L> HostExternals<T, L>
@@ -242,7 +245,7 @@ where
         id_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<AscEntity>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let block_hash: H256 = self.block_hash.clone();
+        let block: Block<Transaction> = self.block.clone().unwrap();
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
@@ -258,11 +261,7 @@ where
         let logger = self.logger.clone();
         self.event_sink
             .clone()
-            .send(RuntimeHostEvent::EntitySet(
-                store_key,
-                entity_data,
-                EventSource::EthereumBlock(block_hash),
-            ))
+            .send(RuntimeHostEvent::EntitySet(store_key, entity_data, block))
             .map_err(move |e| {
                 error!(logger, "Failed to forward runtime host event";
                         "error" => format!("{}", e));
@@ -279,7 +278,7 @@ where
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let block_hash: H256 = self.block_hash.clone();
+        let block: Block<Transaction> = self.block.clone().unwrap();
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let store_key = StoreKey {
@@ -292,10 +291,7 @@ where
         let logger = self.logger.clone();
         self.event_sink
             .clone()
-            .send(RuntimeHostEvent::EntityRemoved(
-                store_key,
-                EventSource::EthereumBlock(block_hash),
-            ))
+            .send(RuntimeHostEvent::EntityRemoved(store_key, block))
             .map_err(move |e| {
                 error!(logger, "Failed to forward runtime host event";
                         "error" => format!("{}", e));
@@ -313,7 +309,7 @@ where
         call_ptr: AscPtr<AscUnresolvedContractCall>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let unresolved_call: UnresolvedContractCall = self.heap.asc_get(call_ptr);
-        info!(self.logger, "Call smart contract";
+        info!(self.logger, "Calling smart contract";
               "address" => &unresolved_call.contract_address.to_string(),
               "contract" => &unresolved_call.contract_name,
               "function" => &unresolved_call.function_name,
@@ -355,7 +351,10 @@ where
             .unwrap()
             .contract_call(call)
             .wait()
-            .map(|result| Some(RuntimeValue::from(self.heap.asc_new(&*result))))
+            .map(|result| {
+                debug!(self.logger, "Completed smart contract call.");
+                Some(RuntimeValue::from(self.heap.asc_new(&*result)))
+            })
             .map_err(|e| {
                 host_error(format!(
                     "Failed to call function \"{}\" of contract \"{}\": {}",
@@ -814,6 +813,7 @@ mod tests {
     use std::collections::HashMap;
     use std::iter::FromIterator;
     use std::sync::Mutex;
+    use web3::types::*;
 
     use graph::components::ethereum::*;
     use graph::components::store::*;
@@ -827,22 +827,49 @@ mod tests {
     struct MockEthereumAdapter {}
 
     impl EthereumAdapter for MockEthereumAdapter {
+        fn block_by_hash(
+            &self,
+            _: H256,
+        ) -> Box<Future<Item = Block<Transaction>, Error = failure::Error> + Send> {
+            unimplemented!()
+        }
+
+        fn block_by_number(
+            &self,
+            _: u64,
+        ) -> Box<Future<Item = Block<Transaction>, Error = failure::Error> + Send> {
+            unimplemented!()
+        }
+
+        fn is_on_main_chain(
+            &self,
+            _: EthereumBlockPointer,
+        ) -> Box<Future<Item = bool, Error = failure::Error> + Send> {
+            unimplemented!()
+        }
+
+        fn find_first_blocks_with_events(
+            &self,
+            _: u64,
+            _: u64,
+            _: EthereumEventFilter,
+        ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = failure::Error> + Send> {
+            unimplemented!()
+        }
+
+        fn get_events_in_block(
+            &self,
+            _: Block<Transaction>,
+            _: EthereumEventFilter,
+        ) -> Box<Future<Item = Vec<EthereumEvent>, Error = EthereumSubscriptionError>> {
+            unimplemented!()
+        }
+
         fn contract_call(
             &mut self,
-            _call: EthereumContractCall,
+            _: EthereumContractCall,
         ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
             unimplemented!()
-        }
-
-        fn subscribe_to_event(
-            &mut self,
-            _subscription: EthereumEventSubscription,
-        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
-            unimplemented!()
-        }
-
-        fn unsubscribe_from_event(&mut self, _subscription_id: String) -> bool {
-            false
         }
     }
 
@@ -916,7 +943,7 @@ mod tests {
         let ethereum_event = EthereumEvent {
             address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
             event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
-            block_hash: util::ethereum::string_to_h256("example block hash"),
+            block: create_fake_block(),
             params: vec![LogParam {
                 name: String::from("exampleParam"),
                 value: Token::String(String::from("some data")),
@@ -959,10 +986,11 @@ mod tests {
                 );
 
                 // Create a mock Ethereum event
+                let block = create_fake_block();
                 let ethereum_event = EthereumEvent {
                     address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
                     event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
-                    block_hash: util::ethereum::string_to_h256("example block hash"),
+                    block: block.clone(),
                     params: vec![LogParam {
                         name: String::from("exampleParam"),
                         value: Token::String(String::from("some data")),
@@ -995,9 +1023,7 @@ mod tests {
                             vec![(String::from("exampleAttribute"), Value::from("some data"))]
                                 .into_iter()
                         )),
-                        EventSource::EthereumBlock(util::ethereum::string_to_h256(
-                            "example block hash",
-                        )),
+                        block,
                     )
                 );
             })
@@ -1090,5 +1116,30 @@ mod tests {
                 );
             })
         }))
+    }
+
+    /// Helper function to create a fake block for testing
+    fn create_fake_block() -> Block<Transaction> {
+        Block {
+            hash: Some(H256::random()),
+            parent_hash: H256::zero(),
+            uncles_hash: H256::zero(),
+            author: H160::zero(),
+            state_root: H256::zero(),
+            transactions_root: H256::zero(),
+            receipts_root: H256::zero(),
+            number: Some(1.into()),
+            gas_used: U256::zero(),
+            gas_limit: U256::zero(),
+            extra_data: Bytes(vec![]),
+            logs_bloom: H2048::zero(),
+            timestamp: U256::zero(),
+            difficulty: U256::zero(),
+            total_difficulty: U256::zero(),
+            seal_fields: vec![],
+            uncles: vec![],
+            transactions: vec![],
+            size: None,
+        }
     }
 }

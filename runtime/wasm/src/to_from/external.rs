@@ -245,7 +245,7 @@ impl ToAscObj<AscEthereumEvent> for EthereumEvent {
         AscEthereumEvent {
             address: heap.asc_new(&self.address),
             event_signature: heap.asc_new(&self.event_signature),
-            block_hash: heap.asc_new(&self.block_hash),
+            block_hash: heap.asc_new(&self.block.hash.unwrap()),
             params: heap.asc_new(self.params.as_slice()),
         }
     }

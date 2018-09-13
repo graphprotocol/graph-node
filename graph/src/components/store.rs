@@ -1,5 +1,9 @@
 use ethereum_types::H256;
+use failure::Error;
+use futures::Future;
 use futures::Stream;
+use web3::types::Block;
+use web3::types::Transaction;
 
 use data::store::*;
 use std::fmt;
@@ -7,8 +11,8 @@ use std::fmt;
 /// Key by which an individual entity in the store can be accessed.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct StoreKey {
-    // ID of the subgraph.
-    pub subgraph: String,
+    /// ID of the subgraph.
+    pub subgraph: String, // TODO issue #353: use SubgraphId
 
     /// Name of the entity type.
     pub entity: String,
@@ -59,7 +63,7 @@ pub struct StoreRange {
 #[derive(Clone, Debug, PartialEq)]
 pub struct StoreQuery {
     // ID of the subgraph.
-    pub subgraph: String,
+    pub subgraph: String, // TODO issue #353: use SubgraphId
 
     /// The name of the entity type.
     pub entity: String,
@@ -122,28 +126,265 @@ impl fmt::Display for EventSource {
     }
 }
 
-/// Common trait for store implementations that don't require interaction with the system.
-pub trait BasicStore: Send {
-    /// Looks up an entity using the given store key.
-    fn get(&self, key: StoreKey) -> Result<Entity, ()>;
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SubgraphId(pub String);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EthereumBlockPointer {
+    pub hash: H256,
+    pub number: u64,
+}
+
+impl EthereumBlockPointer {
+    /// Creates a pointer to the parent of the specified block.
+    pub fn to_parent<T>(b: &Block<T>) -> EthereumBlockPointer {
+        EthereumBlockPointer {
+            hash: b.parent_hash,
+            number: b.number.unwrap().as_u64() - 1,
+        }
+    }
+}
+
+impl<T> From<Block<T>> for EthereumBlockPointer {
+    fn from(b: Block<T>) -> EthereumBlockPointer {
+        EthereumBlockPointer {
+            hash: b.hash.unwrap(),
+            number: b.number.unwrap().as_u64(),
+        }
+    }
+}
+
+impl From<(H256, u64)> for EthereumBlockPointer {
+    fn from((hash, number): (H256, u64)) -> EthereumBlockPointer {
+        if number >= (1 << 63) {
+            panic!("block number out of range: {}", number);
+        }
+
+        EthereumBlockPointer { hash, number }
+    }
+}
+
+impl From<(H256, i64)> for EthereumBlockPointer {
+    fn from((hash, number): (H256, i64)) -> EthereumBlockPointer {
+        if number < 0 {
+            panic!("block number out of range: {}", number);
+        }
+
+        EthereumBlockPointer {
+            hash,
+            number: number as u64,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HeadBlockUpdateEvent {
+    pub block_ptr: EthereumBlockPointer,
+}
+
+#[derive(Fail, Debug)]
+pub enum StoreError {
+    /// Indicates that an operation failed because its data is stale.
+    /// API users should request the latest information and retry automatically if they receive
+    /// this type of error.
+    /// Usually, this is because a block pointer in the underlying store does not match what the
+    /// operation requested.
+    #[fail(display = "operation could not complete due to concurrent access to the same resource")]
+    VersionConflict,
+
+    #[fail(
+        display = "operation could not complete due to an error from the underlying data storage"
+    )]
+    Database(Error),
+}
+
+#[derive(Debug)]
+pub enum StoreOp {
+    Set(StoreKey, Entity),
+    Delete(StoreKey),
+}
+
+pub struct StoreTransaction<'a, S: BasicStore + ?Sized + 'a> {
+    store: &'a S,
+    subgraph: SubgraphId,
+    block: Block<Transaction>,
+    ops: Vec<StoreOp>,
+}
+
+impl<'a, S: BasicStore + ?Sized> StoreTransaction<'a, S> {
+    fn new(store: &'a S, subgraph: SubgraphId, block: Block<Transaction>) -> Self {
+        StoreTransaction {
+            store,
+            subgraph,
+            block,
+            ops: vec![],
+        }
+    }
 
     /// Updates an entity using the given store key and entity data.
-    fn set(&mut self, key: StoreKey, entity: Entity, event_source: EventSource) -> Result<(), ()>;
+    pub fn set(&mut self, key: StoreKey, entity: Entity) -> Result<(), Error> {
+        assert_eq!(key.subgraph, self.subgraph.0);
+        self.ops.push(StoreOp::Set(key, entity));
+        Ok(())
+    }
 
     /// Deletes an entity using the given store key.
-    fn delete(&mut self, key: StoreKey, event_source: EventSource) -> Result<(), ()>;
+    pub fn delete(&mut self, key: StoreKey) -> Result<(), Error> {
+        assert_eq!(key.subgraph, self.subgraph.0);
+        self.ops.push(StoreOp::Delete(key));
+        Ok(())
+    }
+
+    /// Writes the queued operations of this transaction atomically to the underlying store.
+    ///
+    /// `StoreError::VersionConflict` is returned if the block provided to `begin_transaction` is not a
+    /// direct child of the current block.
+    pub fn commit(self) -> Result<(), StoreError> {
+        self.store
+            .commit_transaction(self.subgraph, self.ops, self.block, true)
+    }
+
+    /// Do not use.
+    pub fn commit_no_ptr_update(self) -> Result<(), StoreError> {
+        self.store
+            .commit_transaction(self.subgraph, self.ops, self.block, false)
+    }
+}
+
+/// Common trait for store implementations that don't require interaction with the system.
+pub trait BasicStore {
+    // TODO issue #354: make this generic over a type Blockchain, with associated types BlockPointer,
+    // BlockHash, BlockStore (?)
+    // Note: making this work properly for multiple blockchains at once is not easy to get right!
+    // For that, we will need to rethink how mappings work, etc, in order to enforce determinism.
+
+    /// Register a new subgraph ID in the store.
+    /// Each subgraph has its own entities and separate block processing state.
+    fn add_subgraph_if_missing(&self, subgraph_id: SubgraphId) -> Result<(), Error>;
+
+    /// Get the latest processed block.
+    fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error>;
+
+    /// Begin a store transaction to atomically perform a set of operations tied to a single block.
+    /// Use this to add a block's worth of changes to the store.
+    ///
+    /// The `block` parameter is only used to obtain the block hash and parent hash.
+    /// The method requires an entire `Block`, however, in order to make the
+    /// API harder to use incorrectly.
+    fn begin_transaction(
+        &self,
+        subgraph_id: SubgraphId,
+        block: Block<Transaction>,
+    ) -> Result<StoreTransaction<Self>, Error> {
+        Ok(StoreTransaction::new(self, subgraph_id, block))
+    }
+
+    /// Updates the block pointer.  Careful: this is only safe to use if it is known that no store
+    /// changes are needed to go from `from` to `to`.
+    ///
+    /// `StoreError::VersionConflict` is returned if `from` does not match the current block pointer.
+    fn set_block_ptr_with_no_changes(
+        &self,
+        subgraph_id: SubgraphId,
+        from: EthereumBlockPointer,
+        to: EthereumBlockPointer,
+    ) -> Result<(), StoreError>;
+
+    /// Rollback the store changes made in a single block and update the subgraph pointer.
+    ///
+    /// `StoreError::VersionConflict` is returned if `block` does not match the current block pointer.
+    ///
+    /// The `block` parameter is only used to obtain the block hash and parent hash.
+    /// The method requires an entire `Block`, however, in order to make the
+    /// API harder to use incorrectly.
+    fn revert_block(
+        &self,
+        subgraph_id: SubgraphId,
+        block: Block<Transaction>,
+    ) -> Result<(), StoreError>;
+
+    /// Looks up an entity using the given store key.
+    ///
+    /// `StoreError::VersionConflict` is returned if `block_ptr` does not match the current block pointer.
+    fn get(&self, key: StoreKey, block_ptr: EthereumBlockPointer) -> Result<Entity, StoreError>;
 
     /// Queries the store for entities that match the store query.
-    fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()>;
+    ///
+    /// `StoreError::VersionConflict` is returned if `block_ptr` does not match the current block pointer.
+    fn find(
+        &self,
+        query: StoreQuery,
+        block_ptr: EthereumBlockPointer,
+    ) -> Result<Vec<Entity>, StoreError>;
+
+    /// Do not call directly. See BasicStore::begin_transaction and StoreTransaction::commit instead.
+    ///
+    /// Must return `StoreError::VersionConflict` if the block provided is not a direct child of the
+    /// current block.
+    fn commit_transaction(
+        &self,
+        subgraph_id: SubgraphId,
+        tx_ops: Vec<StoreOp>,
+        block: Block<Transaction>,
+        ptr_update: bool,
+    ) -> Result<(), StoreError>;
 }
 
 /// A pair of subgraph ID and entity type name.
 pub type SubgraphEntityPair = (String, String);
 
+/// Common trait for block data store implementations.
+pub trait BlockStore {
+    // TODO issue #354: make this generic over a type Blockchain, with
+    // associated types BlockPointer, BlockHash
+
+    /// Insert blocks into the store (or update if they are already present).
+    fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
+        &self,
+        blocks: B,
+    ) -> Box<Future<Item = (), Error = Error> + Send + 'a>;
+
+    /// Try to update the head block pointer to the block with the highest block number.
+    /// Only updates pointer if there is a block with a higher block number than the current head
+    /// block, and the `ancestor_count` most recent ancestors of that block are in the store.
+    ///
+    /// If the pointer was updated, returns `Ok(vec![])`, and fires a HeadUpdateEvent.
+    ///
+    /// If no block has a number higher than the current head block, returns `Ok(vec![])`.
+    ///
+    /// If the candidate new head block had one or more missing ancestors, returns
+    /// `Ok(missing_blocks)`, where `missing_blocks` is a nonexhaustive list of missing blocks.
+    fn attempt_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error>;
+
+    /// Get the current head block pointer for the specified network.
+    /// Any changes to the head block pointer will be to a block with a larger block number, never
+    /// to a block with a smaller or equal block number.
+    ///
+    /// The head block pointer will be None on initial set up.
+    fn head_block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
+
+    /// Get a stream of head block change events.
+    fn head_block_updates(&self) -> Box<Stream<Item = HeadBlockUpdateEvent, Error = Error> + Send>;
+
+    /// Get Some(block) if it is present in the block store, or None.
+    fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error>;
+
+    /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
+    /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to
+    /// missing blocks in the block store.
+    ///
+    /// Returns an error if the offset would reach past the genesis block.
+    fn ancestor_block(
+        &self,
+        block_ptr: EthereumBlockPointer,
+        offset: u64,
+    ) -> Result<Option<Block<Transaction>>, Error>;
+}
+
 /// Common trait for store implementations.
-pub trait Store: BasicStore + Send {
+pub trait Store: BasicStore + BlockStore + Send {
     /// Subscribe to entity changes for specific subgraphs and entities.
     ///
     /// Returns a stream of entity changes that match the input arguments.
-    fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
+    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
 }

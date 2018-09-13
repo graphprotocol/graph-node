@@ -10,6 +10,7 @@ graph-graphql = { path = "../graphql" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 serde = "1.0"
 serde_yaml = "0.7"
+web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 
 [dev-dependencies]
 failure = "0.1.2"
