@@ -30,6 +30,22 @@ pub struct RuntimeHostBuilder<T, L, S> {
     store: Arc<Mutex<S>>,
 }
 
+impl<T, L, S> Clone for RuntimeHostBuilder<T, L, S>
+where
+    T: EthereumAdapter,
+    L: LinkResolver,
+    S: Store,
+{
+    fn clone(&self) -> Self {
+        RuntimeHostBuilder {
+            logger: self.logger.clone(),
+            ethereum_adapter: self.ethereum_adapter.clone(),
+            link_resolver: self.link_resolver.clone(),
+            store: self.store.clone(),
+        }
+    }
+}
+
 impl<T, L, S> RuntimeHostBuilder<T, L, S>
 where
     T: EthereumAdapter,
@@ -59,11 +75,7 @@ where
 {
     type Host = RuntimeHost;
 
-    fn build(
-        &mut self,
-        subgraph_manifest: SubgraphManifest,
-        data_source: DataSource,
-    ) -> Self::Host {
+    fn build(&self, subgraph_manifest: SubgraphManifest, data_source: DataSource) -> Self::Host {
         RuntimeHost::new(
             &self.logger,
             self.ethereum_adapter.clone(),
