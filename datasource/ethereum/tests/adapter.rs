@@ -3,22 +3,22 @@ extern crate futures;
 extern crate graph;
 extern crate graph_datasource_ethereum;
 extern crate jsonrpc_core;
-extern crate web3;
 
 use ethabi::{Function, Param, ParamType, Token};
 use futures::prelude::*;
 use futures::{failed, finished};
-use graph::components::ethereum::EthereumContractCall;
-use graph::prelude::EthereumAdapter as EthereumAdapterTrait;
-use graph::serde_json;
-use graph_datasource_ethereum::{EthereumAdapter, EthereumAdapterConfig};
 use std::collections::VecDeque;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use web3::error::{Error, ErrorKind};
-use web3::helpers::*;
-use web3::types::*;
-use web3::{RequestId, Transport};
+
+use graph::components::ethereum::EthereumContractCall;
+use graph::prelude::EthereumAdapter as EthereumAdapterTrait;
+use graph::serde_json;
+use graph::web3::error::{Error, ErrorKind};
+use graph::web3::helpers::*;
+use graph::web3::types::*;
+use graph::web3::{RequestId, Transport};
+use graph_datasource_ethereum::{EthereumAdapter, EthereumAdapterConfig};
 
 pub type Result<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
 
