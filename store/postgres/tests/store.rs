@@ -1,5 +1,4 @@
 extern crate diesel;
-extern crate ethereum_types;
 extern crate futures;
 #[macro_use]
 extern crate lazy_static;
@@ -8,7 +7,6 @@ extern crate graph_store_postgres;
 
 use diesel::pg::PgConnection;
 use diesel::*;
-use ethereum_types::H256;
 use std::fmt::Debug;
 use std::panic;
 use std::sync::Mutex;
@@ -17,6 +15,7 @@ use graph::components::store::{
     EventSource, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
 };
 use graph::prelude::*;
+use graph::web3::types::H256;
 use graph_store_postgres::{db_schema, Store as DieselStore, StoreConfig};
 
 /// Helper function to ensure and obtain the Postgres URL to use for testing.
