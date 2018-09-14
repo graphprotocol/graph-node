@@ -3,7 +3,6 @@ name = "graph-core"
 version = "0.1.0"
 
 [dependencies]
-ethereum-types = "0.3"
 futures = "0.1.21"
 graph = { path = "../graph" }
 graph-graphql = { path = "../graphql" }
@@ -13,7 +12,7 @@ serde_yaml = "0.7"
 
 [dev-dependencies]
 failure = "0.1.2"
-ethabi = "5.1.1"
+ethabi = "6.0"
 graphql-parser = "0.2.0"
 ipfs-api = "0.5.0-alpha2"
 graph-mock = { path = "../mock" }
