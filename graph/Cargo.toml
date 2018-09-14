@@ -4,8 +4,7 @@ version = "0.1.0"
 
 [dependencies]
 backtrace = "0.3.9"
-ethabi = "5.1"
-ethereum-types = "0.3"
+ethabi = "6.0"
 hex = "0.3.2"
 futures = "0.1.21"
 graphql-parser = "0.2.1"
@@ -22,4 +21,4 @@ slog-async = "2.3.0"
 slog-term = "2.4.0"
 tiny-keccak = "1.0"
 tokio = "0.1.7"
-web3 = { git = "https://github.com/tomusdrw/rust-web3" }
+web3 = "0.4.0"

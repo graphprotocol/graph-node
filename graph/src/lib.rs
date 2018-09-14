@@ -1,6 +1,5 @@
 extern crate backtrace;
 extern crate ethabi;
-extern crate ethereum_types;
 extern crate futures;
 extern crate graphql_parser;
 extern crate hex;
@@ -20,7 +19,7 @@ extern crate slog_async;
 extern crate slog_term;
 extern crate tiny_keccak;
 pub extern crate tokio;
-extern crate web3;
+pub extern crate web3;
 
 /// Traits and types for all system components.
 pub mod components;
