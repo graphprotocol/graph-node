@@ -32,7 +32,7 @@ use url::Url;
 use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
-use graph_core::SubgraphProvider as IpfsSubgraphProvider;
+use graph_core::{SubgraphInstanceManager, SubgraphProvider as IpfsSubgraphProvider};
 use graph_datasource_ethereum::{EventLoopHandle, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
@@ -205,12 +205,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), ipfs_client.clone());
 
     info!(logger, "Connecting to Postgres db...");
-    let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger);
-    let protected_store = Arc::new(Mutex::new(store));
-    let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(
+    let store = Arc::new(Mutex::new(DieselStore::new(
+        StoreConfig { url: postgres_url },
         &logger,
-        protected_store.clone(),
-    ));
+    )));
+    let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(&logger, store.clone()));
     let mut graphql_server = GraphQLQueryServer::new(&logger, graphql_runner.clone());
     let mut subscription_server = GraphQLSubscriptionServer::new(&logger, graphql_runner.clone());
 
@@ -223,43 +222,44 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Create Ethereum block ingestor
     let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
-        protected_store.clone(),
+        store.clone(),
         ethereum_network_name.to_owned(),
         transport.clone(),
         400, // ancestor count, which we could make configuable
         logger.clone(),
         Duration::from_millis(500), // polling interval, which we could make configurable
-    ).expect("failed to create block ingestor");
+    ).expect("failed to create Ethereum block ingestor");
+
+    // Run the Ethereum block ingestor in the background
     tokio::spawn(block_ingestor.into_polling_stream());
 
     // If we drop the event loop the transport will stop working. For now it's
     // fine to just leak it.
     std::mem::forget(transport_event_loop);
 
-    let ethereum_watcher = graph_datasource_ethereum::EthereumAdapter::new(
+    let ethereum = Arc::new(Mutex::new(graph_datasource_ethereum::EthereumAdapter::new(
         graph_datasource_ethereum::EthereumAdapterConfig { transport },
-    );
+    )));
 
-    match ethereum_watcher.block_number().wait() {
-        Ok(number) => info!(logger, "Connected to Ethereum node";
-                            "most_recent_block" => &number.to_string()),
+    match ethereum.lock().unwrap().block_number().wait() {
+        Ok(number) => {
+            info!(logger, "Connected to Ethereum node";
+                  "most_recent_block" => &number.to_string());
+        }
         Err(e) => {
             error!(logger, "Was a valid Ethereum node endpoint provided?");
             panic!("Failed to connect to Ethereum node: {}", e);
         }
     }
 
-    let runtime_host_builder = WASMRuntimeHostBuilder::new(
-        &logger,
-        Arc::new(Mutex::new(ethereum_watcher)),
-        ipfs_client,
-        protected_store.clone(),
-    );
-    let runtime_manager =
-        graph_core::RuntimeManager::new(&logger, protected_store.clone(), runtime_host_builder);
+    // Prepare for hosting WASM runtimes and managing subgraph instances
+    let runtime_host_builder =
+        WASMRuntimeHostBuilder::new(&logger, ethereum.clone(), ipfs_client, store.clone());
+    let subgraph_instance_manager =
+        SubgraphInstanceManager::new(&logger, store.clone(), runtime_host_builder);
 
-    // Forward subgraph events from the subgraph provider to the runtime manager
-    tokio::spawn(forward(&mut subgraph_provider, &runtime_manager).unwrap());
+    // Forward subgraph events from the subgraph provider to the subgraph instance manager
+    tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());
 
     // Forward schema events from the subgraph provider to the GraphQL server.
     let graphql_server_logger = logger.clone();
