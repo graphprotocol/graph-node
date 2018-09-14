@@ -1,17 +1,16 @@
 use ethabi::{RawLog, Token};
-use ethereum_types::H256;
+use failure::Error;
 use futures::future;
 use futures::prelude::*;
 use futures::stream::iter_ok;
 use std::sync::Arc;
 use std::time::Duration;
-use web3;
-use web3::api::CreateFilter;
-use web3::api::{Eth, Web3};
-use web3::helpers::CallResult;
-use web3::types::*;
 
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
+use graph::web3;
+use graph::web3::api::{CreateFilter, Eth, Web3};
+use graph::web3::helpers::CallFuture;
+use graph::web3::types::*;
 
 pub struct EthereumAdapterConfig<T: web3::Transport> {
     pub transport: T,
@@ -28,11 +27,11 @@ impl<T: web3::Transport> EthereumAdapter<T> {
         }
     }
 
-    pub fn block_number(&self) -> CallResult<U256, T::Out> {
+    pub fn block_number(&self) -> CallFuture<U256, T::Out> {
         self.eth_client.eth().block_number()
     }
 
-    pub fn sha3(&self, data: &str) -> CallResult<H256, T::Out> {
+    pub fn sha3(&self, data: &str) -> CallFuture<H256, T::Out> {
         self.eth_client.web3().sha3(Bytes::from(data))
     }
 
@@ -46,8 +45,10 @@ impl<T: web3::Transport> EthereumAdapter<T> {
         self.eth_client.eth_filter().create_logs_filter(eth_filter)
     }
 
-    pub fn block(eth: Eth<T>, block_id: BlockId) -> CallResult<Block<H256>, T::Out> {
+    pub fn block(eth: Eth<T>, block_id: BlockId) -> impl Future<Item = Block<H256>, Error = Error> {
         eth.block(block_id)
+            .map_err(|e| format_err!("could not get block from Ethereum: {}", e))
+            .and_then(|block| block.ok_or(format_err!("no block returned from Ethereum")))
     }
 
     fn call(
@@ -55,7 +56,7 @@ impl<T: web3::Transport> EthereumAdapter<T> {
         contract_address: Address,
         call_data: Bytes,
         block_number: Option<BlockNumber>,
-    ) -> CallResult<Bytes, T::Out> {
+    ) -> CallFuture<Bytes, T::Out> {
         let req = CallRequest {
             from: None,
             to: contract_address,

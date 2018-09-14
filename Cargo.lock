@@ -718,13 +718,11 @@ dependencies = [
 name = "graph-datasource-ethereum"
 version = "0.1.0"
 dependencies = [
- "ethabi 5.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "ethereum-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ethabi 6.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.23 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.1.0",
  "jsonrpc-core 8.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "web3 0.3.1 (git+https://github.com/tomusdrw/rust-web3)",
 ]
 
 [[package]]
@@ -783,8 +781,7 @@ dependencies = [
 name = "graph-runtime-wasm"
 version = "0.1.0"
 dependencies = [
- "ethabi 5.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "ethereum-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ethabi 6.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.23 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.1.0",
@@ -794,7 +791,6 @@ dependencies = [
  "parity-wasm 0.31.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "wasmi 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "web3 0.3.1 (git+https://github.com/tomusdrw/rust-web3)",
 ]
 
 [[package]]
