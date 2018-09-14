@@ -11,7 +11,6 @@ extern crate graph;
 extern crate postgres;
 extern crate serde;
 extern crate uuid;
-extern crate web3;
 
 pub mod db_schema;
 mod entity_changes;

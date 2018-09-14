@@ -10,13 +10,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
-use web3::types::Block;
-use web3::types::Transaction;
-use web3::types::H256;
 
 use graph::components::store::{EventSource, Store as StoreTrait};
 use graph::prelude::*;
 use graph::serde_json;
+use graph::web3::types::{Block, Transaction, H256};
 use graph::{tokio, tokio::timer::Interval};
 
 use entity_changes::EntityChangeListener;
