@@ -14,8 +14,7 @@ fn object_field<'a>(object: &'a Option<q::Value>, field: &str) -> Option<&'a q::
         .and_then(|object| match object {
             q::Value::Object(ref data) => Some(data),
             _ => None,
-        })
-        .and_then(|data| data.get(field))
+        }).and_then(|data| data.get(field))
 }
 
 fn schema_type_objects(schema: &Schema) -> TypeObjectsMap {
@@ -193,8 +192,7 @@ fn interface_type_object(
                             .iter()
                             .find(|implemented_name| implemented_name == &&interface_type.name)
                             .is_some()
-                    })
-                    .map(|object_type| q::Value::String(object_type.name.to_owned()))
+                    }).map(|object_type| q::Value::String(object_type.name.to_owned()))
                     .collect(),
             ),
         ),
@@ -317,8 +315,7 @@ fn union_type_object(schema: &Schema, union_type: &s::UnionType) -> q::Value {
                             .iter()
                             .find(|implemented_name| implemented_name == &&union_type.name)
                             .is_some()
-                    })
-                    .map(|object_type| q::Value::String(object_type.name.to_owned()))
+                    }).map(|object_type| q::Value::String(object_type.name.to_owned()))
                     .collect(),
             ),
         ),
@@ -334,8 +331,7 @@ fn schema_directive_objects(schema: &Schema, type_objects: &mut TypeObjectsMap) 
             .filter_map(|d| match d {
                 s::Definition::DirectiveDefinition(dd) => Some(dd),
                 _ => None,
-            })
-            .map(|dd| directive_object(schema, type_objects, dd))
+            }).map(|dd| directive_object(schema, type_objects, dd))
             .collect(),
     )
 }
@@ -476,8 +472,7 @@ impl<'a> IntrospectionResolver<'a> {
             .and_then(|value| match value {
                 q::Value::String(s) => Some(s),
                 _ => None,
-            })
-            .and_then(|name| self.type_objects.get(name).cloned())
+            }).and_then(|name| self.type_objects.get(name).cloned())
             .unwrap_or(q::Value::Null)
     }
 }
@@ -498,8 +493,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                     .and_then(|value| match value {
                         q::Value::List(type_names) => Some(type_names.clone()),
                         _ => None,
-                    })
-                    .unwrap_or(vec![]);
+                    }).unwrap_or(vec![]);
 
                 if type_names.len() > 0 {
                     q::Value::List(
@@ -508,8 +502,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                             .filter_map(|type_name| match type_name {
                                 q::Value::String(ref type_name) => Some(type_name),
                                 _ => None,
-                            })
-                            .filter_map(|type_name| self.type_objects.get(type_name).cloned())
+                            }).filter_map(|type_name| self.type_objects.get(type_name).cloned())
                             .collect(),
                     )
                 } else {
@@ -537,14 +530,12 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                 .and_then(|value| match value {
                     q::Value::String(type_name) => self.type_objects.get(type_name).cloned(),
                     _ => Some(value.clone()),
-                })
-                .unwrap_or(q::Value::Null),
+                }).unwrap_or(q::Value::Null),
             "ofType" => object_field(parent, "ofType")
                 .and_then(|value| match value {
                     q::Value::String(type_name) => self.type_objects.get(type_name).cloned(),
                     _ => Some(value.clone()),
-                })
-                .unwrap_or(q::Value::Null),
+                }).unwrap_or(q::Value::Null),
             _ => object_field(parent, field.as_str())
                 .map(|value| value.clone())
                 .unwrap_or(q::Value::Null),

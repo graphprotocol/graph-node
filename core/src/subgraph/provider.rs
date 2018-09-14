@@ -65,8 +65,7 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
                         Err(e) => Err(SubgraphProviderError::SchemaValidationError(e)),
                         _ => Ok(subgraph),
                     },
-                )
-                .and_then(move |mut subgraph| {
+                ).and_then(move |mut subgraph| {
                     subgraph
                         .schema
                         .add_subgraph_id_directives(subgraph.id.clone());
@@ -79,14 +78,12 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
                                 .send(SubgraphProviderEvent::SubgraphRemoved(id))
                                 .map_err(|e| -> SubgraphProviderError {
                                     panic!("Failed to forward subgraph removal: {}", e)
-                                })
-                                .map(move |_| subgraph),
+                                }).map(move |_| subgraph),
                         ) as Box<Future<Item = _, Error = _> + Send>
                     } else {
                         Box::new(future::ok::<_, SubgraphProviderError>(subgraph))
                     }
-                })
-                .and_then(move |subgraph: SubgraphManifest| {
+                }).and_then(move |subgraph: SubgraphManifest| {
                     // Push the subgraph and the schema into their streams
                     schema_event_sink
                         .send(SchemaEvent::SchemaAdded(subgraph.schema.clone()))
@@ -95,8 +92,7 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
                             event_sink_add
                                 .send(SubgraphProviderEvent::SubgraphAdded(subgraph))
                                 .map_err(|e| panic!("Failed to forward subgraph: {}", e)),
-                        )
-                        .map(|_| ())
+                        ).map(|_| ())
                 }),
         )
     }
@@ -135,8 +131,7 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
                         .send(SubgraphProviderEvent::SubgraphRemoved(id))
                         .map(|_| ())
                         .map_err(|e| panic!("Failed to forward subgraph removal: {}", e)),
-                )
-                .map(|_| ()),
+                ).map(|_| ()),
         )
     }
 }

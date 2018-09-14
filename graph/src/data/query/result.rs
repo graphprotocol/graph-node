@@ -14,7 +14,10 @@ where
 /// The result of running a query, if successful.
 #[derive(Debug, Serialize)]
 pub struct QueryResult {
-    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "serialize_data")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_data"
+    )]
     pub data: Option<q::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub errors: Option<Vec<QueryError>>,

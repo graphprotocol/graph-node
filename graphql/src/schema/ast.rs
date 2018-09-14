@@ -48,8 +48,7 @@ pub fn get_root_query_type(schema: &Document) -> Option<&ObjectType> {
         .filter_map(|d| match d {
             Definition::TypeDefinition(TypeDefinition::Object(t)) if t.name == "Query" => Some(t),
             _ => None,
-        })
-        .peekable()
+        }).peekable()
         .next()
 }
 
@@ -63,8 +62,7 @@ pub fn get_root_subscription_type(schema: &Document) -> Option<&ObjectType> {
                 Some(t)
             }
             _ => None,
-        })
-        .peekable()
+        }).peekable()
         .next()
 }
 
@@ -76,8 +74,7 @@ pub fn get_type_definitions<'a>(schema: &'a Document) -> Vec<&'a TypeDefinition>
         .filter_map(|d| match d {
             Definition::TypeDefinition(typedef) => Some(typedef),
             _ => None,
-        })
-        .collect()
+        }).collect()
 }
 
 /// Returns all object type definitions in the schema.
@@ -88,8 +85,7 @@ pub fn get_object_type_definitions<'a>(schema: &'a Document) -> Vec<&'a ObjectTy
         .filter_map(|d| match d {
             Definition::TypeDefinition(TypeDefinition::Object(t)) => Some(t),
             _ => None,
-        })
-        .collect()
+        }).collect()
 }
 
 /// Returns all interface definitions in the schema.
@@ -100,8 +96,7 @@ pub fn get_interface_type_definitions<'a>(schema: &'a Document) -> Vec<&'a Inter
         .filter_map(|d| match d {
             Definition::TypeDefinition(TypeDefinition::Interface(t)) => Some(t),
             _ => None,
-        })
-        .collect()
+        }).collect()
 }
 
 /// Returns the type of a field of an object type.
@@ -117,8 +112,7 @@ pub fn get_named_type<'a>(schema: &'a Document, name: &Name) -> Option<&'a TypeD
         .filter_map(|def| match def {
             Definition::TypeDefinition(typedef) => Some(typedef),
             _ => None,
-        })
-        .find(|typedef| match typedef {
+        }).find(|typedef| match typedef {
             TypeDefinition::Object(t) => &t.name == name,
             TypeDefinition::Enum(t) => &t.name == name,
             TypeDefinition::InputObject(t) => &t.name == name,

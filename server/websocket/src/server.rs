@@ -105,8 +105,7 @@ where
             .incoming()
             .map_err(move |e| {
                 warn!(error_logger, "Connection error: {}", e);
-            })
-            .for_each(move |stream| {
+            }).for_each(move |stream| {
                 let logger = logger.clone();
                 let graphql_runner = graphql_runner.clone();
 

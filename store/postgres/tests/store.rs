@@ -52,8 +52,7 @@ where
         .block_on(future::lazy(|| {
             insert_test_data();
             future::ok::<_, ()>(())
-        }))
-        .expect("Failed to insert test data");
+        })).expect("Failed to insert test data");
 
     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
         runtime.block_on(future::lazy(|| test()))
@@ -63,8 +62,7 @@ where
         .block_on(future::lazy(|| {
             remove_test_data();
             future::ok::<_, ()>(())
-        }))
-        .expect("Failed to remove test data");
+        })).expect("Failed to remove test data");
 
     result.expect("Failed to run test").expect("Test failed");
 }
@@ -533,8 +531,7 @@ fn find_string_less_than_order_by_asc() {
                 entity
                     .get(&String::from("name"))
                     .expect("Entity without \"name\" attribute returned")
-            })
-            .collect();
+            }).collect();
         assert_eq!(
             names,
             vec![
@@ -576,8 +573,7 @@ fn find_string_less_than_order_by_desc() {
                 entity
                     .get(&String::from("name"))
                     .expect("Entity without \"name\" attribute returned")
-            })
-            .collect();
+            }).collect();
         assert_eq!(
             names,
             vec![
@@ -1692,8 +1688,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                     },
                     entity.clone(),
                     EventSource::EthereumBlock(H256::random()),
-                )
-                .expect("failed to add entity to the store");
+                ).expect("failed to add entity to the store");
         }
 
         // Update an entity in the store
@@ -1710,8 +1705,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 },
                 updated_entity.clone(),
                 EventSource::EthereumBlock(H256::random()),
-            )
-            .expect("failed to update entity in the store");
+            ).expect("failed to update entity in the store");
 
         // Delete an entity in the store
         store
@@ -1722,8 +1716,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                     id: String::from("2"),
                 },
                 EventSource::EthereumBlock(H256::random()),
-            )
-            .expect("failed to delete entity from the store");
+            ).expect("failed to delete entity from the store");
 
         // We're expecting four events to be written to the subscription stream
         subscription
@@ -1766,7 +1759,6 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 );
 
                 Ok(())
-            })
-            .and_then(|_| Ok(()))
+            }).and_then(|_| Ok(()))
     })
 }

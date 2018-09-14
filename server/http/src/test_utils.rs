@@ -23,8 +23,7 @@ pub fn assert_successful_response(
                 .as_object()
                 .expect("GraphQL \"data\" field must be an object")
                 .clone()
-        })
-        .map_err(|e| panic!("Truncated response body {:?}", e))
+        }).map_err(|e| panic!("Truncated response body {:?}", e))
         .wait()
         .unwrap()
 }
@@ -50,8 +49,7 @@ pub fn assert_error_response(
                 .as_array()
                 .expect("GraphQL \"errors\" field must be a vector")
                 .clone()
-        })
-        .map_err(|e| panic!("Truncated response body {:?}", e))
+        }).map_err(|e| panic!("Truncated response body {:?}", e))
         .wait()
         .unwrap()
 }

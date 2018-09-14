@@ -16,7 +16,10 @@ impl fmt::Display for Strings {
 
 #[derive(Clone, Debug, Serialize, Fail)]
 pub enum SchemaValidationError {
-    #[fail(display = "@entity directive missing on the following types: {}", _0)]
+    #[fail(
+        display = "@entity directive missing on the following types: {}",
+        _0
+    )]
     EntityDirectivesMissing(Strings),
 }
 

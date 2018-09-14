@@ -87,8 +87,7 @@ fn add_order_direction_enum(schema: &mut Document) {
                 description: None,
                 name: name.to_string(),
                 directives: vec![],
-            })
-            .collect(),
+            }).collect(),
     });
     let def = Definition::TypeDefinition(typedef);
     schema.definitions.push(def);
@@ -141,8 +140,7 @@ fn add_order_by_type(
                         description: None,
                         name: name.to_owned(),
                         directives: vec![],
-                    })
-                    .collect(),
+                    }).collect(),
             });
             let def = Definition::TypeDefinition(typedef);
             schema.definitions.push(def);
@@ -239,17 +237,16 @@ fn field_scalar_filter_input_values(
         ],
         _ => vec!["", "not"],
     }.into_iter()
-        .map(|filter_type| {
-            let field_type = Type::NamedType(field_type.name.to_owned());
-            let value_type = match filter_type {
-                "in" | "not_in" => Type::NonNullType(Box::new(Type::ListType(Box::new(
-                    Type::NonNullType(Box::new(field_type)),
-                )))),
-                _ => field_type,
-            };
-            input_value(&field.name, filter_type, value_type)
-        })
-        .collect()
+    .map(|filter_type| {
+        let field_type = Type::NamedType(field_type.name.to_owned());
+        let value_type = match filter_type {
+            "in" | "not_in" => Type::NonNullType(Box::new(Type::ListType(Box::new(
+                Type::NonNullType(Box::new(field_type)),
+            )))),
+            _ => field_type,
+        };
+        input_value(&field.name, filter_type, value_type)
+    }).collect()
 }
 
 /// Generates `*_filter` input values for the given enum field.
@@ -270,8 +267,8 @@ fn field_enum_filter_input_values(
             Type::NamedType(field_type.name.to_owned()),
         )),
     ].into_iter()
-        .filter_map(|value_opt| value_opt)
-        .collect()
+    .filter_map(|value_opt| value_opt)
+    .collect()
 }
 
 /// Generates `*_filter` input values for the given list field.
@@ -522,7 +519,8 @@ mod tests {
                 "name_not_starts_with",
                 "name_ends_with",
                 "name_not_ends_with"
-            ].iter()
+            ]
+                .iter()
                 .map(|name| name.to_string())
                 .collect::<Vec<String>>()
         );
@@ -584,27 +582,26 @@ mod tests {
                 "orderBy",
                 "orderDirection",
                 "where",
-            ].into_iter()
+            ]
+                .into_iter()
                 .map(|name| name.to_string())
                 .collect::<Vec<String>>()
         );
 
-        let user_profile_singular_field =
-            match query_type {
-                TypeDefinition::Object(t) => ast::get_field_type(t, &"userProfile".to_string()),
-                _ => None,
-            }.expect("\"userProfile\" field is missing on Query type");
+        let user_profile_singular_field = match query_type {
+            TypeDefinition::Object(t) => ast::get_field_type(t, &"userProfile".to_string()),
+            _ => None,
+        }.expect("\"userProfile\" field is missing on Query type");
 
         assert_eq!(
             user_profile_singular_field.field_type,
             Type::NamedType("UserProfile".to_string())
         );
 
-        let user_profile_plural_field =
-            match query_type {
-                TypeDefinition::Object(t) => ast::get_field_type(t, &"userProfiles".to_string()),
-                _ => None,
-            }.expect("\"userProfiles\" field is missing on Query type");
+        let user_profile_plural_field = match query_type {
+            TypeDefinition::Object(t) => ast::get_field_type(t, &"userProfiles".to_string()),
+            _ => None,
+        }.expect("\"userProfiles\" field is missing on Query type");
 
         assert_eq!(
             user_profile_plural_field.field_type,
@@ -673,7 +670,8 @@ mod tests {
                 "orderBy",
                 "orderDirection",
                 "where",
-            ].into_iter()
+            ]
+                .into_iter()
                 .map(|name| name.to_string())
                 .collect::<Vec<String>>()
         );

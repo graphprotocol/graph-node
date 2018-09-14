@@ -213,7 +213,6 @@ mod tests {
                         .expect("Query type missing in output schema");
                 });
                 res
-            }))
-            .unwrap();
+            })).unwrap();
     }
 }

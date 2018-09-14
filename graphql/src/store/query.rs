@@ -23,16 +23,14 @@ fn build_range(arguments: &HashMap<&q::Name, q::Value>) -> Option<StoreRange> {
         .and_then(|value| match value {
             q::Value::Int(n) => n.as_i64(),
             _ => None,
-        })
-        .and_then(|n| if n > 0 { Some(n as usize) } else { None });
+        }).and_then(|n| if n > 0 { Some(n as usize) } else { None });
 
     let skip = arguments
         .get(&"skip".to_string())
         .and_then(|value| match value {
             q::Value::Int(n) => n.as_i64(),
             _ => None,
-        })
-        .and_then(|n| if n >= 0 { Some(n as usize) } else { None });
+        }).and_then(|n| if n >= 0 { Some(n as usize) } else { None });
 
     match (first, skip) {
         (None, None) => None,
@@ -52,8 +50,7 @@ fn build_filter(
         .and_then(|value| match value {
             q::Value::Object(object) => Some(object),
             _ => None,
-        })
-        .map(|object| build_filter_from_object(entity, object))
+        }).map(|object| build_filter_from_object(entity, object))
 }
 
 /// Parses a GraphQL input object into a StoreFilter, if present.
@@ -90,8 +87,7 @@ fn build_filter_from_object(
                     NotEndsWith => StoreFilter::NotEndsWith(attribute, store_value),
                     Equal => StoreFilter::Equal(attribute, store_value),
                 }
-            })
-            .collect::<Vec<StoreFilter>>(),
+            }).collect::<Vec<StoreFilter>>(),
     )
 }
 
@@ -136,8 +132,7 @@ pub fn parse_subgraph_id(entity: &s::ObjectType) -> Option<String> {
                 .arguments
                 .into_iter()
                 .find(|(name, _)| name == &"id".to_string())
-        })
-        .and_then(|(_, value)| match value {
+        }).and_then(|(_, value)| match value {
             s::Value::String(id) => Some(id),
             _ => None,
         })

@@ -110,8 +110,7 @@ where
                     document: graphql_parser::parse_query("{ allUsers { name }}").unwrap(),
                     variables: None,
                 }
-            })
-            .collect::<Vec<Query>>();
+            }).collect::<Vec<Query>>();
 
         // Create task to generate mock queries
         Ok(Box::new(stream::iter_ok(requests).for_each(move |query| {

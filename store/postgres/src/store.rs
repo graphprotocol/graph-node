@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 use web3::types::Block;
-use web3::types::H256;
 use web3::types::Transaction;
+use web3::types::H256;
 
 use graph::components::store::{EventSource, Store as StoreTrait};
 use graph::prelude::*;
@@ -124,8 +124,7 @@ impl Store {
                     subscription
                         .entities
                         .contains(&(change.subgraph.clone(), change.entity.clone()))
-                })
-                .map(|(id, subscription)| (id.clone(), subscription.sender.clone()))
+                }).map(|(id, subscription)| (id.clone(), subscription.sender.clone()))
                 .collect::<Vec<_>>();
 
             let subscriptions = subscriptions.clone();
@@ -141,8 +140,7 @@ impl Store {
                     .map_err(move |_| {
                         debug!(logger, "Unsubscribe"; "id" => &id);
                         subscriptions.write().unwrap().remove(&id);
-                    })
-                    .and_then(|_| Ok(()))
+                    }).and_then(|_| Ok(()))
             })
         }));
     }
@@ -165,8 +163,7 @@ impl Store {
                                 Err(_) => Some(id.clone()),
                                 _ => None,
                             },
-                        )
-                        .collect::<Vec<_>>();
+                        ).collect::<Vec<_>>();
 
                     // Remove all stale subscriptions
                     for id in stale_ids {
@@ -175,8 +172,7 @@ impl Store {
                     }
 
                     Ok(())
-                })
-                .map_err(|_| unreachable!()),
+                }).map_err(|_| unreachable!()),
         );
     }
 
@@ -202,8 +198,7 @@ impl BasicStore for Store {
             .first::<serde_json::Value>(&*self.conn.lock().unwrap())
             .map(|value| {
                 serde_json::from_value::<Entity>(value).expect("Failed to deserialize entity")
-            })
-            .map_err(|_| ())
+            }).map_err(|_| ())
     }
 
     fn set(
@@ -237,8 +232,7 @@ impl BasicStore for Store {
                 subgraph.eq(&key.subgraph),
                 data.eq(&entity_json),
                 event_source.eq(&input_event_source.to_string()),
-            ))
-            .on_conflict((id, entity, subgraph))
+            )).on_conflict((id, entity, subgraph))
             .do_update()
             .set((
                 id.eq(&key.id),
@@ -246,8 +240,7 @@ impl BasicStore for Store {
                 subgraph.eq(&key.subgraph),
                 data.eq(&entity_json),
                 event_source.eq(&input_event_source.to_string()),
-            ))
-            .execute(&*self.conn.lock().unwrap())
+            )).execute(&*self.conn.lock().unwrap())
             .map(|_| ())
             .map_err(|_| ())
     }
@@ -265,7 +258,7 @@ impl BasicStore for Store {
                 input_event_source.to_string(),
                 false,
             )).execute(&*conn)
-                .unwrap();
+            .unwrap();
 
             // Delete from DB where rows match the subgraph ID, entity name and ID
             delete(
@@ -275,7 +268,7 @@ impl BasicStore for Store {
                     .filter(id.eq(&key.id)),
             ).execute(&*conn)
         }).map(|_| ())
-            .map_err(|_| ())
+        .map_err(|_| ())
     }
 
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()> {
@@ -305,8 +298,7 @@ impl BasicStore for Store {
                 .map(|direction| match direction {
                     StoreOrder::Ascending => String::from("ASC"),
                     StoreOrder::Descending => String::from("DESC"),
-                })
-                .unwrap_or(String::from("ASC"));
+                }).unwrap_or(String::from("ASC"));
 
             diesel_query = diesel_query.order(
                 sql::<Text>("data ->> ")
@@ -334,10 +326,8 @@ impl BasicStore for Store {
                     .map(|value| {
                         serde_json::from_value::<Entity>(value)
                             .expect("Error to deserialize entity")
-                    })
-                    .collect()
-            })
-            .map_err(|_| ())
+                    }).collect()
+            }).map_err(|_| ())
     }
 }
 
@@ -350,8 +340,7 @@ impl BlockStore for Store {
                 name.eq(network_name),
                 head_block_hash.eq::<Option<String>>(None),
                 head_block_number.eq::<Option<i64>>(None),
-            ))
-            .on_conflict(name)
+            )).on_conflict(name)
             .do_nothing()
             .execute(&*self.conn.lock().unwrap())?;
 

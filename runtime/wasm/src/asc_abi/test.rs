@@ -90,8 +90,7 @@ impl TestModule {
                 fn_name,
                 &[RuntimeValue::from(arg1), RuntimeValue::from(arg2)],
                 &mut NopExternals,
-            )
-            .expect("call failed")
+            ).expect("call failed")
             .expect("call returned nothing")
             .try_into()
             .expect("call did not return pointer")
@@ -115,8 +114,7 @@ impl AscHeap for TestModule {
                 "allocate_memory",
                 &[RuntimeValue::I32(bytes.len() as i32)],
                 &mut NopExternals,
-            )
-            .expect("call failed")
+            ).expect("call failed")
             .expect("call returned nothing")
             .try_into::<u32>()
             .expect("call did not return u32");
@@ -289,8 +287,7 @@ fn abi_ethabi_token_identity() {
             "token_to_bool",
             &[RuntimeValue::from(module.asc_new(&token_bool))],
             &mut NopExternals,
-        )
-        .expect("call failed")
+        ).expect("call failed")
         .expect("call returned nothing")
         .try_into::<bool>()
         .expect("call did not return bool");
@@ -377,8 +374,7 @@ fn abi_store_value() {
                 "array_from_values",
                 &[RuntimeValue::from(module.asc_new(string)), float_runtime],
                 &mut NopExternals,
-            )
-            .expect("call failed")
+            ).expect("call failed")
             .expect("call returned nothing")
             .try_into()
             .expect("call did not return ptr"),

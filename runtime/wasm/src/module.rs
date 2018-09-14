@@ -48,8 +48,7 @@ impl AscHeap for WasmiAscHeap {
                 "allocate_memory",
                 &[RuntimeValue::I32(bytes.len() as i32)],
                 &mut NopExternals,
-            )
-            .expect("Failed to invoke memory allocation function")
+            ).expect("Failed to invoke memory allocation function")
             .expect("Function did not return a value")
             .try_into::<u32>()
             .expect("Function did not return u32");
@@ -189,8 +188,7 @@ where
                 handler_name,
                 &[RuntimeValue::from(self.heap.asc_new(&event))],
                 &mut self.externals,
-            )
-            .unwrap_or_else(|e| {
+            ).unwrap_or_else(|e| {
                 warn!(self.logger, "Failed to handle Ethereum event";
                       "handler" => &handler_name,
                       "error" => format!("{}", e));
@@ -262,12 +260,10 @@ where
                 store_key,
                 entity_data,
                 EventSource::EthereumBlock(block_hash),
-            ))
-            .map_err(move |e| {
+            )).map_err(move |e| {
                 error!(logger, "Failed to forward runtime host event";
                         "error" => format!("{}", e));
-            })
-            .wait()
+            }).wait()
             .ok();
 
         Ok(None)
@@ -295,12 +291,10 @@ where
             .send(RuntimeHostEvent::EntityRemoved(
                 store_key,
                 EventSource::EthereumBlock(block_hash),
-            ))
-            .map_err(move |e| {
+            )).map_err(move |e| {
                 error!(logger, "Failed to forward runtime host event";
                         "error" => format!("{}", e));
-            })
-            .and_then(|_| Ok(()))
+            }).and_then(|_| Ok(()))
             .wait()
             .ok();
 
@@ -330,8 +324,7 @@ where
             .ok_or(host_error(format!(
                 "Unknown contract \"{}\" called from WASM runtime",
                 unresolved_call.contract_name
-            )))?
-            .contract
+            )))?.contract
             .clone();
 
         let function = contract
@@ -508,7 +501,8 @@ where
     /// function json.fromBytes(bytes: Bytes): JSONValue
     fn json_from_bytes(&self, bytes_ptr: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
         let bytes: Vec<u8> = self.heap.asc_get(bytes_ptr);
-        let json: serde_json::Value = serde_json::from_reader(&*bytes).map_err(HostExternalsError)?;
+        let json: serde_json::Value =
+            serde_json::from_reader(&*bytes).map_err(HostExternalsError)?;
         let json_obj = self.heap.asc_new(&json);
         Ok(Some(RuntimeValue::from(json_obj)))
     }
@@ -1031,8 +1025,7 @@ mod tests {
                         "testToU64",
                         &[RuntimeValue::from(module.heap.asc_new(&number.to_string()))],
                         &mut module.externals,
-                    )
-                    .expect("call failed")
+                    ).expect("call failed")
                     .expect("call returned nothing")
                     .try_into()
                     .expect("call did not return I64");
@@ -1046,8 +1039,7 @@ mod tests {
                         "testToI64",
                         &[RuntimeValue::from(module.heap.asc_new(&number.to_string()))],
                         &mut module.externals,
-                    )
-                    .expect("call failed")
+                    ).expect("call failed")
                     .expect("call returned nothing")
                     .try_into()
                     .expect("call did not return I64");
@@ -1063,8 +1055,7 @@ mod tests {
                             module.heap.asc_new(&number.to_float().to_string()),
                         )],
                         &mut module.externals,
-                    )
-                    .expect("call failed")
+                    ).expect("call failed")
                     .expect("call returned nothing")
                     .try_into()
                     .expect("call did not return F64");
@@ -1078,8 +1069,7 @@ mod tests {
                         "testToBigInt",
                         &[RuntimeValue::from(module.heap.asc_new(number))],
                         &mut module.externals,
-                    )
-                    .expect("call failed")
+                    ).expect("call failed")
                     .expect("call returned nothing")
                     .try_into()
                     .expect("call did not return pointer");

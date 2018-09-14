@@ -180,8 +180,7 @@ where
                                 } else {
                                     None
                                 }
-                            })
-                            .map(|fragment| {
+                            }).map(|fragment| {
                                 // We have a fragment that applies to the current object type,
                                 // collect its fields into response key groups
                                 collect_fields(
@@ -287,8 +286,7 @@ where
                 &field_definition.field_type,
                 &argument_values,
             )
-        })
-        .and_then(|value| complete_value(ctx, field, &field_definition.field_type, fields, value))
+        }).and_then(|value| complete_value(ctx, field, &field_definition.field_type, fields, value))
 }
 
 /// Resolves the value of a field.
@@ -657,8 +655,7 @@ where
             },
             abstract_type,
             object_value,
-        )
-        .ok_or(QueryExecutionError::AbstractTypeError(
+        ).ok_or(QueryExecutionError::AbstractTypeError(
             sast::get_type_name(abstract_type).to_string(),
         ))
 }
