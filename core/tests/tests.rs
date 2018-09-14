@@ -17,7 +17,7 @@ use std::time::Instant;
 
 use graph::components::ethereum::*;
 use graph::prelude::*;
-use graph_core::RuntimeManager;
+use graph_core::SubgraphInstanceManager;
 use graph_mock::FakeStore;
 use graph_runtime_wasm::RuntimeHostBuilder;
 

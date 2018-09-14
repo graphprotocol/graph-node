@@ -1,3 +1,4 @@
+extern crate failure;
 extern crate futures;
 extern crate graph;
 extern crate graph_graphql;
@@ -9,5 +10,4 @@ mod graphql;
 mod subgraph;
 
 pub use graphql::GraphQlRunner;
-pub use subgraph::RuntimeManager;
-pub use subgraph::SubgraphProvider;
+pub use subgraph::{SubgraphInstanceManager, SubgraphProvider};
