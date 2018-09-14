@@ -50,8 +50,7 @@ pub trait Resolver: Clone + Send + Sync {
             .and_then(|value| match value {
                 q::Value::List(values) => Some(values),
                 _ => None,
-            })
-            .and_then(|values| {
+            }).and_then(|values| {
                 let coerced_values: Vec<q::Value> = values
                     .iter()
                     .filter_map(|value| value.coerce(enum_type))
@@ -62,8 +61,7 @@ pub trait Resolver: Clone + Send + Sync {
                 } else {
                     None
                 }
-            })
-            .unwrap_or(q::Value::Null)
+            }).unwrap_or(q::Value::Null)
     }
 
     /// Resolves a list of scalar values for a given list type.
@@ -76,8 +74,7 @@ pub trait Resolver: Clone + Send + Sync {
             .and_then(|value| match value {
                 q::Value::List(values) => Some(values),
                 _ => None,
-            })
-            .and_then(|values| {
+            }).and_then(|values| {
                 let coerced_values: Vec<q::Value> = values
                     .iter()
                     .filter_map(|value| value.coerce(scalar_type))
@@ -88,8 +85,7 @@ pub trait Resolver: Clone + Send + Sync {
                 } else {
                     None
                 }
-            })
-            .unwrap_or(q::Value::Null)
+            }).unwrap_or(q::Value::Null)
     }
 
     // Resolves an abstract type into the specific type of an object.

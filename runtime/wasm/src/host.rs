@@ -120,8 +120,7 @@ impl RuntimeHost {
                         .into_stream()
                         .map(|_| panic!("sent into cancel guard"))
                         .map_err(|_| ()),
-                )
-                .for_each(|_| Ok(()))
+                ).for_each(|_| Ok(()))
                 .wait()
                 .ok();
 
@@ -234,8 +233,7 @@ impl RuntimeHost {
                         .find(|event_handler| {
                             util::ethereum::string_to_h256(event_handler.event.as_str())
                                 == event.event_signature
-                        })
-                        .expect("Received an Ethereum event not mentioned in the data set")
+                        }).expect("Received an Ethereum event not mentioned in the data set")
                         .to_owned();
 
                     debug!(event_logger, "  Call event handler";
@@ -244,8 +242,7 @@ impl RuntimeHost {
 
                     module.handle_ethereum_event(event_handler.handler.as_str(), event);
                 }
-            })
-            .map_err(move |e| error!(error_logger, "Event subscription failed: {}", e))
+            }).map_err(move |e| error!(error_logger, "Event subscription failed: {}", e))
     }
 }
 

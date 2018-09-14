@@ -138,18 +138,15 @@ impl<T: web3::Transport + Send + Sync + 'static> EthereumAdapterTrait for Ethere
                         .stream(Duration::from_millis(2000))
                         .map_err(EthereumSubscriptionError::from);
                     past_logs_stream.chain(future_logs_stream)
-                })
-                .flatten_stream()
+                }).flatten_stream()
                 .and_then(move |log| {
                     event
                         .parse_log(RawLog {
                             topics: log.topics.clone(),
                             data: log.clone().data.0,
-                        })
-                        .map_err(EthereumSubscriptionError::from)
+                        }).map_err(EthereumSubscriptionError::from)
                         .map(|log_data| (log, log_data))
-                })
-                .map(move |(log, log_data)| EthereumEvent {
+                }).map(move |(log, log_data)| EthereumEvent {
                     address: log.address,
                     event_signature: log.topics[0],
                     block_hash: log.block_hash.unwrap(),

@@ -45,9 +45,12 @@ impl Future for GraphQLRequest {
             )))?;
 
         // Ensure the "query" field is a string
-        let query_string = query_value.as_str().ok_or(GraphQLServerError::ClientError(
-            String::from("The\"query\" field is not a string"),
-        ))?;
+        let query_string =
+            query_value
+                .as_str()
+                .ok_or(GraphQLServerError::ClientError(String::from(
+                    "The\"query\" field is not a string",
+                )))?;
 
         // Parse the "query" field of the JSON body
         let document = graphql_parser::parse_query(query_string)

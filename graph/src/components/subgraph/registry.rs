@@ -55,8 +55,7 @@ where
                 } else {
                     None
                 }
-            })
-            .collect();
+            }).collect();
 
         for name in names {
             self.names_to_ids.write().unwrap().remove(&name);

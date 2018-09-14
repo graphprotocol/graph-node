@@ -246,8 +246,7 @@ where
                                        "connection" => stopped_connection_id,
                                        "id" => stopped_id);
                                 Ok(())
-                            })
-                            .select(
+                            }).select(
                                 graphql_runner
                                     .run_subscription(subscription)
                                     .map_err(move |e| {
@@ -262,8 +261,7 @@ where
                                                 error_sink.unbounded_send(msg.into()).unwrap();
                                             }
                                         };
-                                    })
-                                    .and_then(move |result_stream| {
+                                    }).and_then(move |result_stream| {
                                         // Send results back to the client as GQL_DATA
                                         result_stream
                                             .map(move |result| {
@@ -271,13 +269,10 @@ where
                                                     result_id.clone(),
                                                     result,
                                                 )
-                                            })
-                                            .map(WsMessage::from)
+                                            }).map(WsMessage::from)
                                             .forward(result_sink.sink_map_err(|_| ()))
-                                    })
-                                    .and_then(|_| Ok(())),
-                            )
-                            .then(|_| Ok(())),
+                                    }).and_then(|_| Ok(())),
+                            ).then(|_| Ok(())),
                     );
 
                     Ok(())
@@ -324,8 +319,7 @@ where
                 debug!(logger, "Sending message";
                        "connection" => &id,
                        "msg" => format!("{}", msg).as_str());
-            })
-            .forward(ws_sink.sink_map_err(|_| ()));
+            }).forward(ws_sink.sink_map_err(|_| ()));
 
         // Silently swallow internal send results and errors. There is nothing
         // we can do about these errors ourselves. Clients will be disconnected

@@ -1,6 +1,6 @@
 use web3::types::Block;
-use web3::types::H256;
 use web3::types::Transaction;
+use web3::types::H256;
 
 use graph::components::store::*;
 use graph::prelude::*;
@@ -37,8 +37,7 @@ impl BasicStore for MockStore {
                         &Value::String(ref s) => s == &key.id,
                         _ => false,
                     }
-                })
-                .map(|entity| entity.clone())
+                }).map(|entity| entity.clone())
                 .ok_or(())
         } else {
             unimplemented!()

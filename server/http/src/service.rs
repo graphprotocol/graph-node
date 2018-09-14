@@ -53,8 +53,7 @@ where
                         header::LOCATION,
                         header::HeaderValue::from_str(&format!("/{}", schema.name))
                             .expect("invalid subgraph name"),
-                    )
-                    .body(Body::empty())
+                    ).body(Body::empty())
                     .unwrap(),
             )),
             _ => self.handle_not_found(),
@@ -102,8 +101,7 @@ where
                     graphql_runner
                         .run_query(query)
                         .map_err(|e| GraphQLServerError::from(e))
-                })
-                .then(|result| GraphQLResponse::new(result)),
+                }).then(|result| GraphQLResponse::new(result)),
         )
     }
 
@@ -307,7 +305,6 @@ mod tests {
                     assert_eq!(name, "Jordi".to_string());
                 });
                 res
-            }))
-            .unwrap()
+            })).unwrap()
     }
 }

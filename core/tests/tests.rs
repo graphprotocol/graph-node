@@ -59,9 +59,9 @@ fn multiple_data_sources_per_subgraph() {
             // Replace "link to" placeholders in the subgraph manifest with hashes
             // of files just added into a local IPFS daemon on port 5001.
             let resolver = Arc::new(IpfsClient::default());
-            let subgraph_string = std::fs::read_to_string(
-                "tests/subgraph-two-datasources/two-datasources.yaml",
-            ).unwrap();
+            let subgraph_string =
+                std::fs::read_to_string("tests/subgraph-two-datasources/two-datasources.yaml")
+                    .unwrap();
             let mut ipfs_upload = Box::new(future::ok(subgraph_string))
                 as Box<Future<Item = String, Error = ()> + Send>;
             for file in &[
@@ -104,33 +104,30 @@ fn multiple_data_sources_per_subgraph() {
                         },
                         resolver,
                     ).map_err(|e| panic!("subgraph resolve error {:?}", e))
-                        .and_then(move |subgraph| {
-                            // Send the new subgraph to the manager.
-                            manager
-                                .event_sink()
-                                .send(SubgraphProviderEvent::SubgraphAdded(subgraph))
-                        })
-                        .and_then(move |_| {
-                            // If we subscribed to both events, then we're handling multiple data sets.
-                            // Wait for thirty seconds for that to happen, otherwise fail the test.
-                            let start_time = Instant::now();
-                            let max_wait = Duration::from_secs(30);
-                            loop {
-                                let subscriptions =
-                                    &eth_adapter.lock().unwrap().received_subscriptions;
-                                if subscriptions.contains(&"ExampleEvent".to_owned())
-                                    && subscriptions.contains(&"ExampleEvent2".to_owned())
-                                {
-                                    break;
-                                }
-                                if Instant::now().duration_since(start_time) > max_wait {
-                                    panic!("Test failed, events subscribed to: {:?}", subscriptions)
-                                }
-                                ::std::thread::yield_now();
+                    .and_then(move |subgraph| {
+                        // Send the new subgraph to the manager.
+                        manager
+                            .event_sink()
+                            .send(SubgraphProviderEvent::SubgraphAdded(subgraph))
+                    }).and_then(move |_| {
+                        // If we subscribed to both events, then we're handling multiple data sets.
+                        // Wait for thirty seconds for that to happen, otherwise fail the test.
+                        let start_time = Instant::now();
+                        let max_wait = Duration::from_secs(30);
+                        loop {
+                            let subscriptions = &eth_adapter.lock().unwrap().received_subscriptions;
+                            if subscriptions.contains(&"ExampleEvent".to_owned())
+                                && subscriptions.contains(&"ExampleEvent2".to_owned())
+                            {
+                                break;
                             }
-                            Ok(())
-                        })
+                            if Instant::now().duration_since(start_time) > max_wait {
+                                panic!("Test failed, events subscribed to: {:?}", subscriptions)
+                            }
+                            ::std::thread::yield_now();
+                        }
+                        Ok(())
+                    })
                 })
-        }))
-        .unwrap();
+        })).unwrap();
 }

@@ -93,8 +93,7 @@ mod test {
                     assert_eq!(message, "The \"query\" field missing in request data");
                     Ok(())
                 })
-            }))
-            .unwrap()
+            })).unwrap()
     }
 
     #[test]
@@ -176,8 +175,7 @@ mod test {
                     assert_eq!(column, 1);
                     Ok(())
                 })
-            }))
-            .unwrap()
+            })).unwrap()
     }
 
     #[test]
@@ -224,7 +222,6 @@ mod test {
 
                     Ok(())
                 })
-            }))
-            .unwrap()
+            })).unwrap()
     }
 }

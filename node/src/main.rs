@@ -222,8 +222,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 graphql_server.schema_event_sink().sink_map_err(move |e| {
                     error!(graphql_server_logger, "Error forwarding schema event {}", e);
                 }),
-            ))
-            .and_then(|_| Ok(())),
+            )).and_then(|_| Ok(())),
     );
 
     // Start admin JSON-RPC server.
@@ -252,8 +251,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 name.to_owned(),
                 hash.to_owned(),
                 "1".to_owned(),
-            ))
-            .send()
+            )).send()
             .expect("failed to make `subgraph_deploy` request");
 
         graph_server_json_rpc::parse_response(

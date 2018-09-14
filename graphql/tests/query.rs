@@ -10,8 +10,8 @@ extern crate web3;
 use graphql_parser::query as q;
 use std::sync::Mutex;
 use web3::types::Block;
-use web3::types::H256;
 use web3::types::Transaction;
+use web3::types::H256;
 
 use graph::components::store::EventSource;
 use graph::prelude::*;
@@ -140,8 +140,7 @@ impl BasicStore for TestStore {
             .find(|entity| {
                 entity.get("id") == Some(&Value::String(key.id.clone()))
                     && entity.get("__typename") == Some(&Value::String(key.entity.clone()))
-            })
-            .map_or(Err(()), |entity| Ok(entity.clone()))
+            }).map_or(Err(()), |entity| Ok(entity.clone()))
     }
 
     fn set(&mut self, _key: StoreKey, _entity: Entity, _source: EventSource) -> Result<(), ()> {

@@ -16,7 +16,10 @@ use std::sync::Arc;
 pub enum SubgraphProviderError {
     #[fail(display = "subgraph resolve error: {}", _0)]
     ResolveError(SubgraphManifestResolveError),
-    #[fail(display = "name {} is invalid, only ASCII alphanumerics, `-` and `_` are allowed", _0)]
+    #[fail(
+        display = "name {} is invalid, only ASCII alphanumerics, `-` and `_` are allowed",
+        _0
+    )]
     InvalidName(String),
     /// Occurs when attempting to remove a subgraph that's not hosted.
     #[fail(display = "subgraph not found: {}", _0)]
@@ -146,20 +149,19 @@ impl UnresolvedMapping {
             abis.into_iter()
                 .map(|unresolved_abi| unresolved_abi.resolve(resolver)),
         ).collect()
-            .join(
-                resolver
-                    .cat(&runtime)
-                    .and_then(|module_bytes| Ok(parity_wasm::deserialize_buffer(&module_bytes)?)),
-            )
-            .map(|(abis, runtime)| Mapping {
-                kind,
-                api_version,
-                language,
-                entities,
-                abis,
-                event_handlers,
-                runtime,
-            })
+        .join(
+            resolver
+                .cat(&runtime)
+                .and_then(|module_bytes| Ok(parity_wasm::deserialize_buffer(&module_bytes)?)),
+        ).map(|(abis, runtime)| Mapping {
+            kind,
+            api_version,
+            language,
+            entities,
+            abis,
+            event_handlers,
+            runtime,
+        })
     }
 }
 
@@ -253,8 +255,7 @@ impl SubgraphManifest {
                 // Parse the YAML data into an UnresolvedSubgraphManifest
                 let unresolved: UnresolvedSubgraphManifest = serde_yaml::from_value(raw)?;
                 Ok(unresolved)
-            })
-            .and_then(move |unresolved| {
+            }).and_then(move |unresolved| {
                 unresolved
                     .resolve(name, &*resolver)
                     .map_err(|e| SubgraphManifestResolveError::ResolveError(e))
@@ -282,13 +283,13 @@ impl UnresolvedSubgraphManifest {
                 .into_iter()
                 .map(|data_set| data_set.resolve(resolver)),
         ).collect()
-            .join(schema.resolve(id.clone(), name, resolver))
-            .map(|(data_sources, schema)| SubgraphManifest {
-                id,
-                location,
-                spec_version,
-                schema,
-                data_sources,
-            })
+        .join(schema.resolve(id.clone(), name, resolver))
+        .map(|(data_sources, schema)| SubgraphManifest {
+            id,
+            location,
+            spec_version,
+            schema,
+            data_sources,
+        })
     }
 }

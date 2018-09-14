@@ -8,8 +8,8 @@ use web3::transports::batch::Batch;
 use web3::types::Block;
 use web3::types::BlockId;
 use web3::types::BlockNumber;
-use web3::types::H256;
 use web3::types::Transaction;
+use web3::types::H256;
 use web3::BatchTransport;
 use web3::Transport;
 
@@ -46,7 +46,10 @@ where
         polling_interval: Duration,
     ) -> Result<BlockIngestor<S, T>, Error> {
         // Add a head block pointer for this network name if one does not already exist
-        store.lock().unwrap().add_network_if_missing(&network_name)?;
+        store
+            .lock()
+            .unwrap()
+            .add_network_if_missing(&network_name)?;
 
         Ok(BlockIngestor {
             store,
@@ -66,8 +69,7 @@ where
         tokio::timer::Interval::new(Instant::now(), static_self.polling_interval)
             .map_err(move |e| {
                 error!(static_self.logger, "timer::Interval failed: {:?}", e);
-            })
-            .for_each(move |_| {
+            }).for_each(move |_| {
                 // Attempt to poll
                 static_self.do_poll().then(move |result| {
                     if let Err(e) = result {
@@ -93,8 +95,7 @@ where
                 // ingest_blocks will return a (potentially incomplete) list of blocks that are
                 // missing.
                 self.ingest_blocks(stream::once(Ok(latest_block)))
-            })
-            .and_then(move |missing_block_hashes| {
+            }).and_then(move |missing_block_hashes| {
                 // Repeatedly fetch missing blocks, and ingest them.
                 // ingest_blocks will continue to tell us about more missing blocks until we have
                 // filled in all missing pieces of the blockchain (that we care about).
