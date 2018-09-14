@@ -5,16 +5,13 @@ extern crate pretty_assertions;
 extern crate graph;
 extern crate graph_core;
 extern crate graph_graphql;
-extern crate web3;
 
 use graphql_parser::query as q;
 use std::sync::Mutex;
-use web3::types::Block;
-use web3::types::Transaction;
-use web3::types::H256;
 
 use graph::components::store::EventSource;
 use graph::prelude::*;
+use graph::web3::types::{Block, Transaction, H256};
 use graph_graphql::prelude::*;
 
 fn test_schema() -> Schema {
