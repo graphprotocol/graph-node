@@ -1,9 +1,6 @@
-use web3::types::Block;
-use web3::types::Transaction;
-use web3::types::H256;
-
 use graph::components::store::*;
 use graph::prelude::*;
+use graph::web3::types::{Block, Transaction, H256};
 
 /// A mock `Store`.
 pub struct MockStore {
