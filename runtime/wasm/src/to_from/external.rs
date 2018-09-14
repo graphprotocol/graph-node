@@ -1,78 +1,78 @@
 use ethabi;
-use ethereum_types;
 use graph::serde_json;
 
 use graph::components::ethereum::EthereumEvent;
 use graph::data::store;
+use graph::web3::types as web3;
 
 use asc_abi::class::*;
 use asc_abi::{AscHeap, AscPtr, FromAscObj, ToAscObj};
 
 use UnresolvedContractCall;
 
-impl ToAscObj<ArrayBuffer<u8>> for ethereum_types::H160 {
+impl ToAscObj<ArrayBuffer<u8>> for web3::H160 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u8> {
         self.0.to_asc_obj(heap)
     }
 }
 
-impl FromAscObj<ArrayBuffer<u8>> for ethereum_types::H160 {
+impl FromAscObj<ArrayBuffer<u8>> for web3::H160 {
     fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<u8>, heap: &H) -> Self {
-        ethereum_types::H160(<[u8; 20]>::from_asc_obj(array_buffer, heap))
+        web3::H160(<[u8; 20]>::from_asc_obj(array_buffer, heap))
     }
 }
 
-impl ToAscObj<Uint8Array> for ethereum_types::H160 {
+impl ToAscObj<Uint8Array> for web3::H160 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> Uint8Array {
         self.0.to_asc_obj(heap)
     }
 }
 
-impl FromAscObj<Uint8Array> for ethereum_types::H160 {
+impl FromAscObj<Uint8Array> for web3::H160 {
     fn from_asc_obj<H: AscHeap>(typed_array: Uint8Array, heap: &H) -> Self {
-        ethereum_types::H160(<[u8; 20]>::from_asc_obj(typed_array, heap))
+        web3::H160(<[u8; 20]>::from_asc_obj(typed_array, heap))
     }
 }
 
-impl FromAscObj<Uint8Array> for ethereum_types::H256 {
+impl FromAscObj<Uint8Array> for web3::H256 {
     fn from_asc_obj<H: AscHeap>(typed_array: Uint8Array, heap: &H) -> Self {
-        ethereum_types::H256(<[u8; 32]>::from_asc_obj(typed_array, heap))
+        web3::H256(<[u8; 32]>::from_asc_obj(typed_array, heap))
     }
 }
 
-impl ToAscObj<ArrayBuffer<u8>> for ethereum_types::H256 {
+impl ToAscObj<ArrayBuffer<u8>> for web3::H256 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u8> {
         self.0.to_asc_obj(heap)
     }
 }
 
-impl ToAscObj<Uint8Array> for ethereum_types::H256 {
+impl ToAscObj<Uint8Array> for web3::H256 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> Uint8Array {
         self.0.to_asc_obj(heap)
     }
 }
 
-impl ToAscObj<ArrayBuffer<u64>> for ethereum_types::U256 {
+impl ToAscObj<ArrayBuffer<u64>> for web3::U256 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u64> {
         self.0.to_asc_obj(heap)
     }
 }
 
-impl FromAscObj<ArrayBuffer<u64>> for ethereum_types::U256 {
+impl FromAscObj<ArrayBuffer<u64>> for web3::U256 {
     fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<u64>, heap: &H) -> Self {
-        ethereum_types::U256(<[u64; 4]>::from_asc_obj(array_buffer, heap))
+        web3::U256(<[u64; 4]>::from_asc_obj(array_buffer, heap))
     }
 }
 
-impl ToAscObj<Uint64Array> for ethereum_types::U256 {
+impl ToAscObj<Uint64Array> for web3::U256 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> Uint64Array {
         self.0.to_asc_obj(heap)
     }
 }
 
-impl FromAscObj<Uint64Array> for ethereum_types::U256 {
+impl FromAscObj<Uint64Array> for web3::U256 {
     fn from_asc_obj<H: AscHeap>(array_buffer: Uint64Array, heap: &H) -> Self {
-        ethereum_types::U256(<[u64; 4]>::from_asc_obj(array_buffer, heap))
+        web3::U256(<[u64; 4]>::from_asc_obj(array_buffer, heap))
     }
 }
 
