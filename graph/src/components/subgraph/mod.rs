@@ -1,9 +1,11 @@
 mod host;
-mod manager;
+mod instance;
+mod instance_manager;
 mod provider;
 mod registry;
 
 pub use self::host::{RuntimeHost, RuntimeHostBuilder, RuntimeHostEvent};
-pub use self::manager::RuntimeManager;
+pub use self::instance::SubgraphInstance;
+pub use self::instance_manager::SubgraphInstanceManager;
 pub use self::provider::{SchemaEvent, SubgraphProvider, SubgraphProviderEvent};
 pub use self::registry::SubgraphRegistry;

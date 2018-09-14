@@ -12,6 +12,9 @@ use tokio::prelude::*;
 
 use std::sync::Arc;
 
+/// The ID of a subgraph.
+pub type SubgraphId = String;
+
 #[derive(Fail, Debug)]
 pub enum SubgraphProviderError {
     #[fail(display = "subgraph resolve error: {}", _0)]
@@ -62,7 +65,7 @@ pub struct SchemaData {
 impl SchemaData {
     pub fn resolve(
         self,
-        id: String,
+        id: SubgraphId,
         name: String,
         resolver: &impl LinkResolver,
     ) -> impl Future<Item = Schema, Error = failure::Error> + Send {
@@ -198,7 +201,7 @@ impl UnresolvedDataSource {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct BaseSubgraphManifest<S, D> {
-    pub id: String,
+    pub id: SubgraphId,
     pub location: String,
     #[serde(rename = "specVersion")]
     pub spec_version: String,
