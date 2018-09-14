@@ -1,9 +1,7 @@
-use ethereum_types::H256;
 use failure::Error;
 use futures::Future;
 use futures::Stream;
-use web3::types::Block;
-use web3::types::Transaction;
+use web3::types::{Block, Transaction, H256};
 
 use data::store::*;
 use std::fmt;

@@ -1,9 +1,8 @@
 use ethabi::{Bytes, Error as ABIError, Event, Function, LogParam, ParamType, Token};
-use ethereum_types::{Address, H256};
-use failure::SyncFailure;
+use failure::{Error, SyncFailure};
 use futures::{Future, Stream};
 use web3::error::Error as Web3Error;
-use web3::types::{BlockId, BlockNumber};
+use web3::types::{Address, BlockId, BlockNumber, H256};
 
 /// A request for the state of a contract at a specific block hash and address.
 pub struct EthereumContractStateRequest {
@@ -44,6 +43,8 @@ pub enum EthereumContractCallError {
         _1
     )]
     TypeError(Token, ParamType),
+    #[fail(display = "call error: {}", _0)]
+    Error(Error),
 }
 
 impl From<Web3Error> for EthereumContractCallError {
@@ -55,6 +56,12 @@ impl From<Web3Error> for EthereumContractCallError {
 impl From<ABIError> for EthereumContractCallError {
     fn from(e: ABIError) -> Self {
         EthereumContractCallError::ABIError(SyncFailure::new(e))
+    }
+}
+
+impl From<Error> for EthereumContractCallError {
+    fn from(e: Error) -> Self {
+        EthereumContractCallError::Error(e)
     }
 }
 

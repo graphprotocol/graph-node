@@ -1,6 +1,6 @@
 use ethabi::{Contract, Event};
-use ethereum_types::H256;
 use tiny_keccak::Keccak;
+use web3::types::H256;
 
 /// Hashes a string to a H256 hash.
 pub fn string_to_h256(s: &str) -> H256 {
