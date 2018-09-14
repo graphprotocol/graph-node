@@ -22,7 +22,7 @@ impl Transport {
     pub fn new_ipc(ipc: &str) -> (EventLoopHandle, Self) {
         ipc::Ipc::new(ipc)
             .map(|(event_loop, transport)| (event_loop, Transport::IPC(transport)))
-            .expect("Failed to connect to Ethereum RPC")
+            .expect("Failed to connect to Ethereum IPC")
     }
 
     /// Creates a WebSocket transport.
@@ -39,7 +39,7 @@ impl Transport {
     pub fn new_rpc(rpc: &str) -> (EventLoopHandle, Self) {
         http::Http::new(rpc)
             .map(|(event_loop, transport)| (event_loop, Transport::RPC(transport)))
-            .expect("Failed to connect to Ethereum WS")
+            .expect("Failed to connect to Ethereum RPC")
     }
 }
 
