@@ -3,10 +3,8 @@ name = "graph-datasource-ethereum"
 version = "0.1.0"
 
 [dependencies]
-ethereum-types = "0.3"
-ethabi = "5.1.1"
+ethabi = "6.0"
 failure = "0.1.2"
 futures = "0.1.21"
 jsonrpc-core = "8.0.1"
 graph = { path = "../../graph" }
-web3 = { git = "https://github.com/tomusdrw/rust-web3" }

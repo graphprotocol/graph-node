@@ -3,17 +3,13 @@ use std::fmt::Debug;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
-use web3::api::Web3;
-use web3::transports::batch::Batch;
-use web3::types::Block;
-use web3::types::BlockId;
-use web3::types::BlockNumber;
-use web3::types::Transaction;
-use web3::types::H256;
-use web3::BatchTransport;
-use web3::Transport;
 
 use graph::prelude::*;
+use graph::web3::api::Web3;
+use graph::web3::transports::batch::Batch;
+use graph::web3::types::{Block, BlockId, BlockNumber, Transaction, H256};
+use graph::web3::BatchTransport;
+use graph::web3::Transport;
 
 pub struct BlockIngestor<S, T>
 where
@@ -123,6 +119,7 @@ where
         web3.eth()
             .block_with_txs(BlockNumber::Latest.into())
             .map_err(|e| format_err!("could not get latest block from Ethereum: {}", e))
+            .and_then(|block| block.ok_or(format_err!("no block returned from Ethereum")))
     }
 
     /// Put some blocks into the block store (if they are not there already), and try to update the
@@ -164,6 +161,9 @@ where
                 web3.eth()
                     .block_with_txs(BlockId::from(*block_hash))
                     .map_err(|e| format_err!("could not get block from Ethereum: {}", e))
+                    .and_then(|block| {
+                        block.ok_or(format_err!("no block returned from Ethereum"))
+                    })
             })
             // Collect to ensure that `block_with_txs` calls happen before `submit_batch`
             .collect::<Vec<_>>();
