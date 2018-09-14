@@ -15,10 +15,9 @@ pub trait RuntimeHost: EventProducer<RuntimeHostEvent> + Send {
     fn subgraph_manifest(&self) -> &SubgraphManifest;
 }
 
-pub trait RuntimeHostBuilder: Send + 'static {
+pub trait RuntimeHostBuilder: Clone + Send + 'static {
     type Host: RuntimeHost;
 
     /// Build a new runtime host for a dataset.
-    fn build(&mut self, subgraph_manifest: SubgraphManifest, data_source: DataSource)
-        -> Self::Host;
+    fn build(&self, subgraph_manifest: SubgraphManifest, data_source: DataSource) -> Self::Host;
 }
