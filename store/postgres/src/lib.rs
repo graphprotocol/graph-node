@@ -12,6 +12,7 @@ extern crate postgres;
 extern crate serde;
 extern crate uuid;
 
+mod chain_head_listener;
 pub mod db_schema;
 mod entity_changes;
 mod filter;
@@ -19,4 +20,5 @@ pub mod functions;
 pub mod models;
 pub mod store;
 
+pub use self::chain_head_listener::ChainHeadUpdateListener;
 pub use self::store::{Store, StoreConfig};
