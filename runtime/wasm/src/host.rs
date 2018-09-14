@@ -1,4 +1,3 @@
-use ethereum_types::Address;
 use futures::sync::mpsc::{channel, Receiver};
 use futures::sync::oneshot;
 use std::str::FromStr;
@@ -13,6 +12,7 @@ use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
 use graph::util;
+use graph::web3::types::Address;
 
 use module::{WasmiModule, WasmiModuleConfig};
 

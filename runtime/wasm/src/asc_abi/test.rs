@@ -1,14 +1,16 @@
 extern crate parity_wasm;
 
-use super::class::*;
-use super::{AscHeap, AscPtr};
 use ethabi::Token;
-use ethereum_types::{H160, U256};
 use nan_preserving_float::F32;
 use wasmi::{
     self, ImportsBuilder, MemoryRef, ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals,
     RuntimeValue, Signature,
 };
+
+use graph::web3::types::{H160, U256};
+
+use super::class::*;
+use super::{AscHeap, AscPtr};
 
 struct TestModule {
     module: ModuleRef,

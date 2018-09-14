@@ -1,18 +1,14 @@
-use ethereum_types::{H160, H256, U256};
 use futures::sync::mpsc::Sender;
-use graph::serde_json;
 use nan_preserving_float::F64;
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Mutex;
-
 use wasmi::{
     Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder, MemoryRef, Module,
     ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue,
     Signature, Trap, TrapKind, ValueType,
 };
-use web3::types::BlockId;
 
 use graph::components::ethereum::*;
 use graph::components::store::{EventSource, StoreKey};
@@ -20,6 +16,8 @@ use graph::components::subgraph::RuntimeHostEvent;
 use graph::data::store::scalar;
 use graph::data::subgraph::DataSource;
 use graph::prelude::*;
+use graph::serde_json;
+use graph::web3::types::{BlockId, H160, H256, U256};
 
 use super::UnresolvedContractCall;
 use asc_abi::asc_ptr::*;
@@ -801,9 +799,7 @@ mod tests {
     extern crate graphql_parser;
     extern crate parity_wasm;
 
-    use self::graphql_parser::schema::Document;
     use ethabi::{LogParam, Token};
-    use ethereum_types::Address;
     use futures::sync::mpsc::channel;
     use std::collections::HashMap;
     use std::iter::FromIterator;
@@ -814,8 +810,11 @@ mod tests {
     use graph::components::subgraph::*;
     use graph::data::subgraph::*;
     use graph::util;
+    use graph::web3::types::Address;
 
     use super::*;
+
+    use self::graphql_parser::schema::Document;
 
     #[derive(Default)]
     struct MockEthereumAdapter {}

@@ -3,15 +3,13 @@ name = "graph-runtime-wasm"
 version = "0.1.0"
 
 [dependencies]
-ethabi = "5.1.1"
-ethereum-types = "0.3"
+ethabi = "6.0"
 futures = "0.1.21"
 hex = "0.3.2"
 nan-preserving-float = "0.1.0"
 graph = { path = "../../graph" }
 uuid = { version = "0.6", features = ["v4"] }
 wasmi = "0.3"
-web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 
 [dev-dependencies]
 failure = "0.1.2"
