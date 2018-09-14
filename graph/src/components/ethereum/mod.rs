@@ -1,5 +1,6 @@
 mod adapter;
 mod listener;
+mod stream;
 
 pub use self::adapter::{
     BlockNumberRange, EthereumAdapter, EthereumBlockPointer, EthereumContractCall,
@@ -7,8 +8,8 @@ pub use self::adapter::{
     EthereumContractStateRequest, EthereumEvent, EthereumEventSubscription,
     EthereumSubscriptionError,
 };
-
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener};
+pub use self::stream::{BlockStream, BlockStreamBuilder, EthereumBlock};
 
 pub use web3::types::BlockNumber;
 
