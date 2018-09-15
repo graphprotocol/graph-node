@@ -181,18 +181,40 @@ token.setAddress('owner', event.params.to)
 token.setU256('amount', event.params.tokens)
 ```
 
-There is also a global `Store` class which has a `set` method for setting the value(s) of a particular entity's attribute(s) in the store.
+There is also a global `Store` class which has a `set` and `get` methods for setting ang getting the value(s) of a particular entity's attribute(s) in the store.
 
-It expects the name of an entity type, the id of the entity and the `Entity` itself.
+
+#### `store.set(entity: string, id: string, data: Entity)`
+
+`store.set` expects the name of an entity type, the id of the entity and the `Entity` itself.
 
 ##### Example
 ```typescript
   store.set('Token', tokenId, token)
 ```
 
-The eventHandlers functions return `void`. The only way that entities may be added to the The Graph is by calling `Store.set()`. `Store.set()` may be called multiple times in an event handler.
+The eventHandlers functions return `void`. The only way that entities may be added to the The Graph is by calling `store.set()`. `store.set()` may be called multiple times in an event handler.
 
-**Note** `Store.set()` will only set the entity attributes that have explicitly been set on the `Entity`. Attributes which are not explicitly set, or unset by calling `Entity.unset(<attribute>)`, will not be overwritten.
+**Note** `store.set()` will only set the entity attributes that have explicitly been set on the `Entity`. Attributes which are not explicitly set, or unset by calling `Entity.unset(<attribute>)`, will not be overwritten.
+
+#### `store.get(entity: string, id: string)`
+
+You can use `store.get` to retreive information previously added with `store.get`.
+`store.get` expects entity type and the id of the entity.
+
+##### Example
+
+```javascript
+  store.set('Challenge', challengeId.toHex(), challenge)
+  let challenge2 = store.get('Challenge', challengeId.toHex())
+  let id = challenge2.getString("application")
+  let challenge2entity = new Entity()
+  challenge2entity.setString('id', id)
+  store.set('Challenge2', challengeId.toHex(), challenge2entity)
+```
+
+
+Along with `store.get()` you can use `.getString()`, `.getU256()`, etc... for getting property values from the entity.
 
 ## 4 Build
 
