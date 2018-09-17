@@ -68,8 +68,8 @@ pub mod prelude {
         StoreRange, SubgraphEntityPair,
     };
     pub use components::subgraph::{
-        RuntimeHost, RuntimeHostBuilder, RuntimeHostEvent, SchemaEvent, SubgraphInstance,
-        SubgraphInstanceManager, SubgraphProvider, SubgraphProviderEvent, SubgraphRegistry,
+        RuntimeHost, RuntimeHostBuilder, SchemaEvent, SubgraphInstance, SubgraphInstanceManager,
+        SubgraphProvider, SubgraphProviderEvent, SubgraphRegistry,
     };
     pub use components::{EventConsumer, EventProducer};
 
