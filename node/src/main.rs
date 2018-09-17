@@ -33,7 +33,7 @@ use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::{SubgraphInstanceManager, SubgraphProvider as IpfsSubgraphProvider};
-use graph_datasource_ethereum::{EventLoopHandle, Transport};
+use graph_datasource_ethereum::{BlockStreamBuilder, EventLoopHandle, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_json_rpc::{subgraph_deploy_request, JsonRpcServer};
@@ -233,8 +233,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Run the Ethereum block ingestor in the background
     tokio::spawn(block_ingestor.into_polling_stream());
 
-    // If we drop the event loop the transport will stop working. For now it's
-    // fine to just leak it.
+    // If we drop the event loop the transport will stop working.
+    // For now it's fine to just leak it.
     std::mem::forget(transport_event_loop);
 
     let ethereum = Arc::new(Mutex::new(graph_datasource_ethereum::EthereumAdapter::new(
@@ -252,11 +252,18 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         }
     }
 
+    // Prepare a block stream builder for subgraphs
+    let block_stream_builder = BlockStreamBuilder::new(store.clone(), ethereum.clone());
+
     // Prepare for hosting WASM runtimes and managing subgraph instances
     let runtime_host_builder =
         WASMRuntimeHostBuilder::new(&logger, ethereum.clone(), ipfs_client, store.clone());
-    let subgraph_instance_manager =
-        SubgraphInstanceManager::new(&logger, store.clone(), runtime_host_builder);
+    let subgraph_instance_manager = SubgraphInstanceManager::new(
+        &logger,
+        store.clone(),
+        runtime_host_builder,
+        block_stream_builder,
+    );
 
     // Forward subgraph events from the subgraph provider to the subgraph instance manager
     tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());
