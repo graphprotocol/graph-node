@@ -64,8 +64,8 @@ pub mod prelude {
     pub use components::server::subscription::SubscriptionServer;
     pub use components::store::{
         BasicStore, BlockStore, EntityChange, EntityChangeOperation, EntityChangeStream,
-        EventSource, Store, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
-        SubgraphEntityPair,
+        EntityOperation, EventSource, Store, StoreFilter, StoreKey, StoreOrder, StoreQuery,
+        StoreRange, SubgraphEntityPair,
     };
     pub use components::subgraph::{
         RuntimeHost, RuntimeHostBuilder, RuntimeHostEvent, SchemaEvent, SubgraphInstance,
