@@ -253,7 +253,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     }
 
     // Prepare a block stream builder for subgraphs
-    let block_stream_builder = BlockStreamBuilder::new(store.clone(), ethereum.clone());
+    let block_stream_builder = BlockStreamBuilder::new(
+        store.clone(),
+        ethereum.clone(),
+        ethereum_network_name.to_owned(),
+    );
 
     // Prepare for hosting WASM runtimes and managing subgraph instances
     let runtime_host_builder =
