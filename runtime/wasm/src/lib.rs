@@ -1,4 +1,5 @@
 extern crate ethabi;
+extern crate failure;
 extern crate futures;
 extern crate graph;
 extern crate hex;
