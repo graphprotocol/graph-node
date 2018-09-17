@@ -80,8 +80,8 @@ pub mod prelude {
     pub use data::schema::Schema;
     pub use data::store::{Attribute, Entity, Value};
     pub use data::subgraph::{
-        DataSource, Link, SubgraphId, SubgraphManifest, SubgraphManifestResolveError,
-        SubgraphProviderError,
+        DataSource, Link, MappingEventHandler, SubgraphId, SubgraphManifest,
+        SubgraphManifestResolveError, SubgraphProviderError,
     };
     pub use data::subscription::{
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
