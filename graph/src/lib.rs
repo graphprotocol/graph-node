@@ -63,7 +63,7 @@ pub mod prelude {
     pub use components::server::query::GraphQLServer;
     pub use components::server::subscription::SubscriptionServer;
     pub use components::store::{
-        BasicStore, BlockStore, EntityChange, EntityChangeOperation, EntityChangeStream,
+        BasicStore, ChainStore, EntityChange, EntityChangeOperation, EntityChangeStream,
         EntityOperation, EventSource, Store, StoreFilter, StoreKey, StoreOrder, StoreQuery,
         StoreRange, SubgraphEntityPair,
     };

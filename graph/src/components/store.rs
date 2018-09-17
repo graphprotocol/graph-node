@@ -1,10 +1,10 @@
 use failure::Error;
 use futures::Future;
 use futures::Stream;
+use std::fmt;
 use web3::types::{Block, Transaction, H256};
 
-use data::store::*;
-use std::fmt;
+use prelude::*;
 
 /// Key by which an individual entity in the store can be accessed.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -158,9 +158,19 @@ pub trait BasicStore: Send {
 /// A pair of subgraph ID and entity type name.
 pub type SubgraphEntityPair = (String, String);
 
-/// Common trait for block data store implementations.
-pub trait BlockStore {
-    /// Add a new network, but only if one with this name does not already exist in the block store
+/// Common trait for store implementations.
+pub trait Store: BasicStore + Send {
+    /// Subscribe to entity changes for specific subgraphs and entities.
+    ///
+    /// Returns a stream of entity changes that match the input arguments.
+    fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
+}
+
+/// Common trait for blockchain store implementations.
+pub trait ChainStore: Send {
+    type ChainHeadUpdateListener: ChainHeadUpdateListener;
+
+    /// Add a new network, but only if one with this name does not already exist in the block store.
     fn add_network_if_missing(
         &self,
         network_name: &str,
@@ -191,12 +201,7 @@ pub trait BlockStore {
         network_name: &str,
         ancestor_count: u64,
     ) -> Result<Vec<H256>, Error>;
-}
 
-/// Common trait for store implementations.
-pub trait Store: BasicStore + BlockStore + Send {
-    /// Subscribe to entity changes for specific subgraphs and entities.
-    ///
-    /// Returns a stream of entity changes that match the input arguments.
-    fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
+    /// Subscribe to chain head updates.
+    fn chain_head_updates(&self, network: &str) -> Self::ChainHeadUpdateListener;
 }
