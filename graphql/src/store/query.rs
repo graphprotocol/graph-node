@@ -367,7 +367,7 @@ mod tests {
             &default_object(),
             &HashMap::from_iter(
                 vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
-            )
+            ),
         ).order_by;
         assert_eq!(
             build_query(
