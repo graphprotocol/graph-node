@@ -495,19 +495,50 @@ impl StoreTrait for Store {
         }
 
         // Add order by filters to query
-        if let Some(order_attribute) = query.order_by {
+        if let Some((order_attribute, value_type)) = query.order_by {
             let direction = query
                 .order_direction
                 .map(|direction| match direction {
                     StoreOrder::Ascending => String::from("ASC"),
                     StoreOrder::Descending => String::from("DESC"),
                 }).unwrap_or(String::from("ASC"));
-
-            diesel_query = diesel_query.order(
-                sql::<Text>("data ->> ")
-                    .bind::<Text, _>(order_attribute)
-                    .sql(&format!(" {} ", direction)),
-            )
+            diesel_query = match value_type {
+                ValueType::BigInt => diesel_query.order(
+                    sql::<Text>("(data ->>")
+                        .bind::<Text, _>(order_attribute)
+                        .sql(&format!(")::bigint {} NULLS LAST", direction)),
+                ),
+                ValueType::Int => diesel_query.order(
+                    sql::<Text>("(data ->>")
+                        .bind::<Text, _>(order_attribute)
+                        .sql(&format!(")::bigint {} NULLS LAST", direction)),
+                ),
+                ValueType::String => diesel_query.order(
+                    sql::<Text>("(data ->>")
+                        .bind::<Text, _>(order_attribute)
+                        .sql(&format!(") {} NULLS LAST", direction)),
+                ),
+                ValueType::Float => diesel_query.order(
+                    sql::<Text>("(data ->>")
+                        .bind::<Text, _>(order_attribute)
+                        .sql(&format!(")::numeric {} NULLS LAST", direction)),
+                ),
+                ValueType::ID => diesel_query.order(
+                    sql::<Text>("(data ->>")
+                        .bind::<Text, _>(order_attribute)
+                        .sql(&format!(") {} NULLS LAST", direction)),
+                ),
+                ValueType::Bytes => diesel_query.order(
+                    sql::<Text>("(data ->>")
+                        .bind::<Text, _>(order_attribute)
+                        .sql(&format!(") {} NULLS LAST", direction)),
+                ),
+                ValueType::Boolean => diesel_query.order(
+                    sql::<Text>("(data ->>")
+                        .bind::<Text, _>(order_attribute)
+                        .sql(&format!(")::boolean {} NULLS LAST", direction)),
+                ),
+            };
         }
 
         // Add range filter to query
