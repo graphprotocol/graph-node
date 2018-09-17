@@ -2,6 +2,21 @@ use graph::components::store::*;
 use graph::prelude::*;
 use graph::web3::types::{Block, Transaction, H256};
 
+/// A mock `ChainHeadUpdateListener`
+pub struct MockChainHeadUpdateListener {}
+
+impl ChainHeadUpdateListener for MockChainHeadUpdateListener {
+    fn start(&mut self) {}
+}
+
+impl EventProducer<ChainHeadUpdate> for MockChainHeadUpdateListener {
+    fn take_event_stream(
+        &mut self,
+    ) -> Option<Box<Stream<Item = ChainHeadUpdate, Error = ()> + Send>> {
+        unimplemented!();
+    }
+}
+
 /// A mock `Store`.
 pub struct MockStore {
     entities: Vec<Entity>,
@@ -54,7 +69,9 @@ impl BasicStore for MockStore {
     }
 }
 
-impl BlockStore for MockStore {
+impl ChainStore for MockStore {
+    type ChainHeadUpdateListener = MockChainHeadUpdateListener;
+
     fn add_network_if_missing(&self, _: &str, _: &str, _: H256) -> Result<(), Error> {
         unimplemented!()
     }
@@ -72,6 +89,10 @@ impl BlockStore for MockStore {
 
     fn attempt_chain_head_update(&self, _: &str, _: u64) -> Result<Vec<H256>, Error> {
         unimplemented!()
+    }
+
+    fn chain_head_updates(&self, network: &str) -> Self::ChainHeadUpdateListener {
+        unimplemented!();
     }
 }
 
@@ -101,7 +122,9 @@ impl BasicStore for FakeStore {
     }
 }
 
-impl BlockStore for FakeStore {
+impl ChainStore for FakeStore {
+    type ChainHeadUpdateListener = MockChainHeadUpdateListener;
+
     fn add_network_if_missing(&self, _: &str, _: &str, _: H256) -> Result<(), Error> {
         panic!("called FakeStore")
     }
@@ -119,6 +142,10 @@ impl BlockStore for FakeStore {
 
     fn attempt_chain_head_update(&self, _: &str, _: u64) -> Result<Vec<H256>, Error> {
         panic!("called FakeStore")
+    }
+
+    fn chain_head_updates(&self, network: &str) -> Self::ChainHeadUpdateListener {
+        unimplemented!();
     }
 }
 
