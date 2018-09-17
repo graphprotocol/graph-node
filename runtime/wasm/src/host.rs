@@ -6,8 +6,8 @@ use std::thread;
 use uuid::Uuid;
 
 use graph::components::ethereum::*;
-use graph::components::subgraph::RuntimeHostEvent;
 use graph::components::store::Store;
+use graph::components::subgraph::RuntimeHostEvent;
 use graph::data::subgraph::DataSource;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
@@ -36,7 +36,12 @@ where
     L: LinkResolver,
     S: Store,
 {
-    pub fn new(logger: &Logger, ethereum_adapter: Arc<Mutex<T>>, link_resolver: Arc<L>, store: Arc<Mutex<S>>) -> Self {
+    pub fn new(
+        logger: &Logger,
+        ethereum_adapter: Arc<Mutex<T>>,
+        link_resolver: Arc<L>,
+        store: Arc<Mutex<S>>,
+    ) -> Self {
         RuntimeHostBuilder {
             logger: logger.new(o!("component" => "RuntimeHostBuilder")),
             ethereum_adapter,
@@ -57,7 +62,7 @@ where
     fn build(
         &mut self,
         subgraph_manifest: SubgraphManifest,
-        data_source: DataSource
+        data_source: DataSource,
     ) -> Self::Host {
         RuntimeHost::new(
             &self.logger,

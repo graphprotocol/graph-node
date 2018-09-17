@@ -9,7 +9,6 @@ use asc_abi::class::*;
 use asc_abi::{AscHeap, AscPtr, FromAscObj, ToAscObj};
 use std::collections::HashMap;
 
-
 use UnresolvedContractCall;
 
 impl ToAscObj<ArrayBuffer<u8>> for web3::H160 {

@@ -102,7 +102,7 @@ impl<T, L, S> Clone for WasmiModuleConfig<T, L, S> {
             event_sink: self.event_sink.clone(),
             ethereum_adapter: self.ethereum_adapter.clone(),
             link_resolver: self.link_resolver.clone(),
-            store: self.store.clone()
+            store: self.store.clone(),
         }
     }
 }
@@ -235,7 +235,7 @@ impl<T, L, S> HostExternals<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store
+    S: Store,
 {
     /// function store.set(entity: string, id: string, data: Entity): void
     fn store_set(
@@ -320,16 +320,15 @@ where
         };
 
         // Retrieve an Entity from the store
-        let get_result = self.store
+        let get_result = self
+            .store
             .lock()
             .unwrap()
-            .get(
-                store_key
-            )
+            .get(store_key)
             .map(|entity| entity);
         let get_result: HashMap<_, _> = match get_result {
             Ok(entity) => entity.into(),
-            Err(e) => return Err(host_error("Error getting entity".to_string())),
+            Err(_e) => return Err(host_error("Error getting entity".to_string())),
         };
         Ok(Some(RuntimeValue::from(self.heap.asc_new(&get_result))))
     }
@@ -607,10 +606,7 @@ where
                 args.nth_checked(1)?,
                 args.nth_checked(2)?,
             ),
-            STORE_GET_FUNC_INDEX => self.store_get(
-                args.nth_checked(0)?,
-                args.nth_checked(1)?
-            ),
+            STORE_GET_FUNC_INDEX => self.store_get(args.nth_checked(0)?, args.nth_checked(1)?),
             STORE_REMOVE_FUNC_INDEX => {
                 self.store_remove(args.nth_checked(0)?, args.nth_checked(1)?)
             }
@@ -840,9 +836,9 @@ impl ModuleImportResolver for IpfsModuleResolver {
 #[cfg(test)]
 mod tests {
     extern crate failure;
+    extern crate graph_mock;
     extern crate graphql_parser;
     extern crate parity_wasm;
-    extern crate graph_mock;
 
     use ethabi::{LogParam, Token};
     use futures::sync::mpsc::channel;
@@ -850,12 +846,12 @@ mod tests {
     use std::iter::FromIterator;
     use std::sync::Mutex;
 
+    use self::graph_mock::FakeStore;
     use graph::components::ethereum::*;
     use graph::components::store::*;
     use graph::components::subgraph::*;
     use graph::data::subgraph::*;
     use graph::util;
-    use self::graph_mock::FakeStore;
     use graph::web3::types::Address;
 
     use super::*;
@@ -948,7 +944,7 @@ mod tests {
                 event_sink: sender,
                 ethereum_adapter: mock_ethereum_adapter,
                 link_resolver: Arc::new(FakeLinkResolver),
-                store: Arc::new(Mutex::new(FakeStore))
+                store: Arc::new(Mutex::new(FakeStore)),
             },
         );
 
@@ -995,7 +991,7 @@ mod tests {
                         event_sink: sender,
                         ethereum_adapter: mock_ethereum_adapter,
                         link_resolver: Arc::new(FakeLinkResolver),
-                        store: Arc::new(Mutex::new(FakeStore))
+                        store: Arc::new(Mutex::new(FakeStore)),
                     },
                 );
 
@@ -1061,7 +1057,7 @@ mod tests {
                         event_sink: sender,
                         ethereum_adapter: mock_ethereum_adapter,
                         link_resolver: Arc::new(FakeLinkResolver),
-                        store: Arc::new(Mutex::new(FakeStore))
+                        store: Arc::new(Mutex::new(FakeStore)),
                     },
                 );
 
