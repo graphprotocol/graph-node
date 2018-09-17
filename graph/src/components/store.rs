@@ -1,10 +1,15 @@
 use failure::Error;
 use futures::Future;
 use futures::Stream;
+use graphql_parser::{schema as s};
+use web3::types::{Block, Transaction, H256};
+
+use data::store::*;
 use std::fmt;
 use web3::types::H256;
 
 use prelude::*;
+use std::ops::Deref;
 
 /// Key by which an individual entity in the store can be accessed.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -57,6 +62,40 @@ pub struct StoreRange {
     pub skip: usize,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum ValueType {
+    Boolean,
+    ID,
+    Int,
+    Float,
+    String,
+    Bytes,
+    BigInt,
+}
+
+impl From<s::Type> for ValueType {
+    fn from(schema_type: s::Type) -> ValueType {
+        match schema_type {
+            s::Type::NonNullType(ref inner) => match inner.deref() {
+                s::Type::NamedType(ref name) if name == "Boolean" => ValueType::Boolean,
+                s::Type::NamedType(ref name) if name == "BigInt" => ValueType::BigInt,
+                s::Type::NamedType(ref name) if name == "Bytes" => ValueType::Bytes,
+                s::Type::NamedType(ref name) if name == "Float" => ValueType::Float,
+                s::Type::NamedType(ref name) if name == "ID" => ValueType::ID,
+                s::Type::NamedType(ref name) if name == "String" => ValueType::String,
+                _ => panic!("Found unexpected NamedType variant when converting to ValueType"),
+            },
+            s::Type::NamedType(ref name) if name == "Boolean" => ValueType::Boolean,
+            s::Type::NamedType(ref name) if name == "BigInt" => ValueType::BigInt,
+            s::Type::NamedType(ref name) if name == "Bytes" => ValueType::Bytes,
+            s::Type::NamedType(ref name) if name == "Float" => ValueType::Float,
+            s::Type::NamedType(ref name) if name == "ID" => ValueType::ID,
+            s::Type::NamedType(ref name) if name == "String" => ValueType::String,
+            _ => panic!("Found unexpected NamedType variant when converting to ValueType"),
+        }
+    }
+}
+
 /// A query for entities in a store.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StoreQuery {
@@ -70,7 +109,7 @@ pub struct StoreQuery {
     pub filter: Option<StoreFilter>,
 
     /// An optional attribute to order the entities by.
-    pub order_by: Option<String>,
+    pub order_by: Option<(String, ValueType)>,
 
     /// The direction to order entities in.
     pub order_direction: Option<StoreOrder>,
