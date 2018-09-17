@@ -1,7 +1,7 @@
 use failure::Error;
 use futures::Future;
 use futures::Stream;
-use graphql_parser::{schema as s};
+use graphql_parser::schema as s;
 use web3::types::{Block, Transaction, H256};
 
 use data::store::*;
