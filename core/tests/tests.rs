@@ -98,8 +98,7 @@ fn multiple_data_sources_per_subgraph() {
                         fake_store.clone(),
                     );
 
-                    let manager =
-                        RuntimeManager::new(&logger, fake_store,host_builder);
+                    let manager = RuntimeManager::new(&logger, fake_store, host_builder);
 
                     // Load a subgraph with two data sets, one listening for `ExampleEvent`
                     // and the other for `ExampleEvent2`.
