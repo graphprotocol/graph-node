@@ -181,7 +181,7 @@ token.setAddress('owner', event.params.to)
 token.setU256('amount', event.params.tokens)
 ```
 
-There is also a global `Store` class which has a `set` and `get` methods for setting ang getting the value(s) of a particular entity's attribute(s) in the store.
+There is also a global `store` class which has `set` and `get` methods for setting and getting the value(s) of a particular entity's attribute(s) in the store.
 
 
 #### `store.set(entity: string, id: string, data: Entity)`
@@ -199,7 +199,7 @@ The eventHandlers functions return `void`. The only way that entities may be add
 
 #### `store.get(entity: string, id: string)`
 
-You can use `store.get` to retreive information previously added with `store.get`.
+You can use `store.get` to retreive information previously added with `store.set`.
 `store.get` expects entity type and the id of the entity.
 
 ##### Example
