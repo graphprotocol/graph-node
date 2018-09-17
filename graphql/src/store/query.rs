@@ -256,7 +256,7 @@ pub fn collect_entities_from_query_field(
 mod tests {
     use graphql_parser::{
         query as q, schema as s,
-        schema::{Directive, Field, ObjectType, Type},
+        schema::{Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
         Pos,
     };
     use std::collections::{BTreeMap, HashMap};
@@ -276,13 +276,38 @@ mod tests {
             position: Pos::default(),
             arguments: vec![subgraph_id_argument],
         };
+        let name_input_value = InputValue {
+            position: Pos::default(),
+            description: Some("name input".to_string()),
+            name: "name".to_string(),
+            value_type: Type::NamedType("String".to_string()),
+            default_value: Some(SchemaValue::String("name".to_string())),
+            directives: vec![],
+        };
+        let name_field = Field {
+            position: Pos::default(),
+            description: Some("name field".to_string()),
+            name: "name".to_string(),
+            arguments: vec![name_input_value.clone()],
+            field_type: Type::NamedType("String".to_string()),
+            directives: vec![],
+        };
+        let email_field = Field {
+            position: Pos::default(),
+            description: Some("email field".to_string()),
+            name: "email".to_string(),
+            arguments: vec![name_input_value],
+            field_type: Type::NamedType("String".to_string()),
+            directives: vec![],
+        };
+
         ObjectType {
             position: Default::default(),
             description: None,
             name: String::new(),
             implements_interfaces: vec![],
             directives: vec![subgraph_id_directive],
-            fields: vec![],
+            fields: vec![name_field, email_field],
         }
     }
 
@@ -338,15 +363,20 @@ mod tests {
 
     #[test]
     fn build_query_parses_order_by_from_enum_values_correctly() {
+        let order_test = build_query(
+            &default_object(),
+            &HashMap::from_iter(
+                vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
+            )
+        ).order_by;
         assert_eq!(
             build_query(
                 &default_object(),
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
                 )
-            ).unwrap()
-            .order_by,
-            Some("name".to_string())
+            ).order_by,
+            Some(("name".to_string(), ValueType::String))
         );
         assert_eq!(
             build_query(
@@ -354,9 +384,8 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("email".to_string()))].into_iter()
                 )
-            ).unwrap()
-            .order_by,
-            Some("email".to_string())
+            ).order_by,
+            Some(("email".to_string(), ValueType::String))
         );
     }
 
