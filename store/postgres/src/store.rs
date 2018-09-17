@@ -12,11 +12,12 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use graph::components::store::{EventSource, Store as StoreTrait};
-use graph::prelude::*;
+use graph::prelude::{ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, *};
 use graph::serde_json;
 use graph::web3::types::{Block, Transaction, H256};
 use graph::{tokio, tokio::timer::Interval};
 
+use chain_head_listener::ChainHeadUpdateListener;
 use entity_changes::EntityChangeListener;
 use functions::{attempt_chain_head_update, revert_block, set_config};
 
@@ -57,6 +58,7 @@ pub struct Store {
     logger: slog::Logger,
     subscriptions: Arc<RwLock<HashMap<String, Subscription>>>,
     change_listener: EntityChangeListener,
+    url: String,
     pub conn: Arc<Mutex<PgConnection>>,
 }
 
@@ -85,6 +87,7 @@ impl Store {
             logger: logger.clone(),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             change_listener,
+            url: config.url.clone(),
             conn: Arc::new(Mutex::new(conn)),
         };
 
@@ -329,7 +332,36 @@ impl BasicStore for Store {
     }
 }
 
-impl BlockStore for Store {
+impl StoreTrait for Store {
+    fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+        let subscriptions = self.subscriptions.clone();
+
+        // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions
+        let mut id = Uuid::new_v4().to_string();
+        while subscriptions.read().unwrap().contains_key(&id) {
+            id = Uuid::new_v4().to_string();
+        }
+
+        debug!(self.logger, "Subscribe";
+               "id" => &id,
+               "entities" => format!("{:?}", entities));
+
+        // Prepare the new subscription by creating a channel and a subscription object
+        let (sender, receiver) = channel(100);
+        let subscription = Subscription { entities, sender };
+
+        // Add the new subscription
+        let mut subscriptions = subscriptions.write().unwrap();
+        subscriptions.insert(id, subscription);
+
+        // Return the subscription ID and entity change stream
+        Box::new(receiver)
+    }
+}
+
+impl ChainStore for Store {
+    type ChainHeadUpdateListener = ChainHeadUpdateListener;
+
     fn add_network_if_missing(
         &self,
         new_network_name: &str,
@@ -450,31 +482,8 @@ impl BlockStore for Store {
             })
             .and_then(|r| r.map_err(Error::from))
     }
-}
 
-impl StoreTrait for Store {
-    fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
-        let subscriptions = self.subscriptions.clone();
-
-        // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions
-        let mut id = Uuid::new_v4().to_string();
-        while subscriptions.read().unwrap().contains_key(&id) {
-            id = Uuid::new_v4().to_string();
-        }
-
-        debug!(self.logger, "Subscribe";
-               "id" => &id,
-               "entities" => format!("{:?}", entities));
-
-        // Prepare the new subscription by creating a channel and a subscription object
-        let (sender, receiver) = channel(100);
-        let subscription = Subscription { entities, sender };
-
-        // Add the new subscription
-        let mut subscriptions = subscriptions.write().unwrap();
-        subscriptions.insert(id, subscription);
-
-        // Return the subscription ID and entity change stream
-        Box::new(receiver)
+    fn chain_head_updates(&self, network: &str) -> Self::ChainHeadUpdateListener {
+        Self::ChainHeadUpdateListener::new(self.url.clone(), network.to_string())
     }
 }

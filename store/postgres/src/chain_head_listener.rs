@@ -6,7 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 use futures::sync::mpsc::{channel, Receiver};
-use graph::prelude::*;
+use graph::prelude::{ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, *};
 use graph::serde_json;
 
 pub struct ChainHeadUpdateListener {
@@ -29,14 +29,6 @@ impl ChainHeadUpdateListener {
             terminate_worker,
             worker_barrier,
             started: false,
-        }
-    }
-
-    /// Begins processing notifications coming in from Postgres.
-    pub fn start(&mut self) {
-        if !self.started {
-            self.worker_barrier.wait();
-            self.started = true;
         }
     }
 
@@ -128,6 +120,15 @@ impl Drop for ChainHeadUpdateListener {
             .unwrap()
             .join()
             .expect("failed to terminate ChainHeadUpdateListener thread");
+    }
+}
+
+impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
+    fn start(&mut self) {
+        if !self.started {
+            self.worker_barrier.wait();
+            self.started = true;
+        }
     }
 }
 
