@@ -112,6 +112,24 @@ pub struct EthereumEvent {
     pub removed: bool,
 }
 
+impl Clone for EthereumEvent {
+    fn clone(&self) -> Self {
+        EthereumEvent {
+            address: self.address.clone(),
+            event_signature: self.event_signature.clone(),
+            block_hash: self.block_hash.clone(),
+            params: self
+                .params
+                .iter()
+                .map(|log_param| LogParam {
+                    name: log_param.name.clone(),
+                    value: log_param.value.clone(),
+                }).collect(),
+            removed: self.removed.clone(),
+        }
+    }
+}
+
 /// A block hash and block number from a specific Ethereum block.
 ///
 /// Maximum block number supported: 2^63 - 1
