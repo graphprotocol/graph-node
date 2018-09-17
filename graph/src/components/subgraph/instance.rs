@@ -1,18 +1,19 @@
 use failure::Error;
 use futures::prelude::*;
 
-use prelude::{EntityChange, EthereumEvent, RuntimeHostBuilder, SubgraphManifest};
+use prelude::{EntityOperation, EthereumEvent, RuntimeHostBuilder, SubgraphManifest};
 
 /// Represents a loaded instance of a subgraph.
-pub trait SubgraphInstance {
+pub trait SubgraphInstance<T>
+where
+    T: RuntimeHostBuilder,
+{
     /// Creates a subgraph instance from a manifest.
-    fn from_manifest<T>(manifest: SubgraphManifest, host_builder: T) -> Self
-    where
-        T: RuntimeHostBuilder;
+    fn from_manifest(manifest: SubgraphManifest, host_builder: T) -> Self;
 
-    /// Process an Ethereum event and return the resulting entity changes as a future.
+    /// Process an Ethereum event and return the resulting entity operations as a future.
     fn process_event(
-        &mut self,
+        &self,
         event: EthereumEvent,
-    ) -> Box<Future<Item = Vec<EntityChange>, Error = Error>>;
+    ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error>>;
 }

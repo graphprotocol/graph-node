@@ -1,18 +1,21 @@
+use failure::Error;
+use futures::prelude::*;
+
 use prelude::*;
 
-/// Events emitted by a runtime host.
-#[derive(Debug, Clone, PartialEq)]
-pub enum RuntimeHostEvent {
-    /// An entity should be created or updated.
-    EntitySet(StoreKey, Entity, EventSource),
-    /// An entity should be removed.
-    EntityRemoved(StoreKey, EventSource),
-}
-
 /// Common trait for runtime host implementations.
-pub trait RuntimeHost: EventProducer<RuntimeHostEvent> + Send {
+pub trait RuntimeHost: Send + Sync {
     /// The subgraph definition the runtime is for.
     fn subgraph_manifest(&self) -> &SubgraphManifest;
+
+    /// Returns true if the RuntimeHost has a handler for an EthereumEvent.
+    fn matches_event(&self, event: &EthereumEvent) -> bool;
+
+    /// Process an Ethereum event and return a vector of entity operations.
+    fn process_event(
+        &self,
+        event: EthereumEvent,
+    ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error>>;
 }
 
 pub trait RuntimeHostBuilder: Clone + Send + 'static {
