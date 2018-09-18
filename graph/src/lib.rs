@@ -54,8 +54,9 @@ pub mod prelude {
     pub use std::sync::Arc;
 
     pub use components::ethereum::{
-        BlockStream, BlockStreamBuilder, ChainHeadUpdate, ChainHeadUpdateListener, EthereumAdapter,
-        EthereumBlock, EthereumBlockPointer, EthereumEvent,
+        BlockStream, BlockStreamBuilder, BlockStreamController, ChainHeadUpdate,
+        ChainHeadUpdateListener, EthereumAdapter, EthereumBlock, EthereumBlockPointer,
+        EthereumEvent,
     };
     pub use components::graphql::{GraphQlRunner, QueryResultFuture, SubscriptionResultFuture};
     pub use components::link_resolver::LinkResolver;
