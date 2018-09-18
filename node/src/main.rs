@@ -127,6 +127,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .unwrap()
         .to_socket_addrs()
         .expect("could not parse IPFS url or domain");
+    let ipfs_addr = ipfs_socket_addr_iter.next().unwrap();
     let json_rpc_port = matches
         .value_of("admin-port")
         .unwrap()
@@ -151,21 +152,16 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     info!(logger, "Starting up");
 
+
     // Create system components
-    info!(logger, "Connecting to IPFS node...");
+    info!(logger, "Connecting to IPFS node at: {:#?}", ipfs_addr);
     let resolver = Arc::new(
         IpfsClient::new(
             &format!(
                 "{}",
-                ipfs_socket_addr_iter
-                    .next()
-                    .expect("no socket address made from given url or domain")
-                    .ip()
+                ipfs_addr.ip()
             ),
-            ipfs_socket_addr_iter
-                .next()
-                .expect("no socket address made from given url or domain")
-                .port(),
+            ipfs_addr.port(),
         ).expect("Failed to start IPFS client"),
     );
     let ipfs_test = resolver.version();
@@ -176,7 +172,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 error!(
                     ipfs_test_logger,
                     "Is there an IPFS node running at '{:#?}'?",
-                    ipfs_socket_addr_iter.next().unwrap()
+                    ipfs_addr
                 );
                 panic!("Failed to connect to IPFS: {}", e);
             }).map(|_| ()),
