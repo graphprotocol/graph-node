@@ -5,7 +5,7 @@ mod stream;
 pub use self::adapter::{
     BlockNumberRange, EthereumAdapter, EthereumBlockPointer, EthereumContractCall,
     EthereumContractCallError, EthereumContractState, EthereumContractStateError,
-    EthereumContractStateRequest, EthereumEvent, EthereumEventSubscription,
+    EthereumContractStateRequest, EthereumEvent, EthereumEventSubscription, EthereumLogFilter,
     EthereumSubscriptionError,
 };
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener};

@@ -6,22 +6,27 @@ use std::sync::{Arc, Mutex};
 
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait,
-    BlockStreamController as BlockStreamControllerTrait, EthereumBlock, *,
+    BlockStreamController as BlockStreamControllerTrait, *,
 };
-use graph::web3::types::{Block, Log, Transaction, H256};
+use graph::util::ethereum::string_to_h256;
+use graph::web3::types::{Address, Block, Log, Transaction, H256};
 
 /// Internal messages between the block stream controller and the block stream.
 enum ControlMessage {
     Advance { block_hash: H256 },
 }
 
-pub struct BlockStream {}
+pub struct BlockStream {
+    subgraph_id: String,
+    log_filter: EthereumLogFilter,
+}
 
 impl BlockStream {
-    pub fn new(network: String, subgraph: String) -> Self {
-        // TODO: Implement block stream algorithm whenever there is a chain update
-
-        BlockStream {}
+    pub fn new(network_name: String, subgraph_id: String, log_filter: EthereumLogFilter) -> Self {
+        BlockStream {
+            subgraph_id,
+            log_filter,
+        }
     }
 }
 
@@ -143,8 +148,8 @@ where
         let mut stream_controller = BlockStreamController::new();
 
         // Create the actual network- and subgraph-specific block stream
-        // TODO: Pass block filter information in here.
-        let block_stream = BlockStream::new(self.network.clone(), manifest.id.clone());
+        let log_filter = create_log_filter_from_subgraph(manifest);
+        let block_stream = BlockStream::new(self.network.clone(), manifest.id.clone(), log_filter);
 
         // Forward chain head updates from the listener to the block stream
         tokio::spawn(
@@ -170,4 +175,25 @@ where
 
         (block_stream, stream_controller)
     }
+}
+
+fn create_log_filter_from_subgraph(manifest: &SubgraphManifest) -> EthereumLogFilter {
+    manifest
+        .data_sources
+        .iter()
+        .flat_map(|data_source| {
+            let contract_addr: Address = data_source
+                .source
+                .address
+                .parse()
+                .expect("could not parse contract address in subgraph manifest");
+            data_source
+                .mapping
+                .event_handlers
+                .iter()
+                .map(move |event_handler| {
+                    let event_sig = string_to_h256(&event_handler.event);
+                    (contract_addr, event_sig)
+                })
+        }).collect::<EthereumLogFilter>()
 }
