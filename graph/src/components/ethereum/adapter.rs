@@ -1,8 +1,10 @@
 use ethabi::{Bytes, Error as ABIError, Event, Function, LogParam, ParamType, Token};
 use failure::{Error, SyncFailure};
 use futures::{Future, Stream};
+use std::collections::HashSet;
+use std::iter::FromIterator;
 use web3::error::Error as Web3Error;
-use web3::types::{Address, Block, BlockId, BlockNumber, H256};
+use web3::types::{Address, Block, BlockId, BlockNumber, Log, H2048, H256};
 
 /// A request for the state of a contract at a specific block hash and address.
 pub struct EthereumContractStateRequest {
@@ -158,25 +160,39 @@ impl<T> From<Block<T>> for EthereumBlockPointer {
     }
 }
 
-impl From<(H256, u64)> for EthereumBlockPointer {
-    fn from((hash, number): (H256, u64)) -> EthereumBlockPointer {
-        if number >= (1 << 63) {
-            panic!("block number out of range: {}", number);
-        }
+#[derive(Clone, Debug)]
+pub struct EthereumLogFilter {
+    pub contract_address_and_event_sig_pairs: HashSet<(Address, H256)>,
+}
 
-        EthereumBlockPointer { hash, number }
+impl EthereumLogFilter {
+    /// Check if log bloom filter indicates a possible match for this log filter.
+    /// Returns `true` to indicate that a matching `Log` _might_ be contained.
+    /// Returns `false` to indicate that a matching `Log` _is not_ contained.
+    pub fn check_bloom(&self, _bloom: H2048) -> bool {
+        // TODO issue #352: implement bloom filter check
+        true // not even wrong
+    }
+
+    /// Check if this filter matches the specified `Log`.
+    pub fn matches(&self, log: &Log) -> bool {
+        // First topic should be event sig
+        match log.topics.first() {
+            None => false,
+            Some(sig) => self
+                .contract_address_and_event_sig_pairs
+                .contains(&(log.address, *sig)),
+        }
     }
 }
 
-impl From<(H256, i64)> for EthereumBlockPointer {
-    fn from((hash, number): (H256, i64)) -> EthereumBlockPointer {
-        if number < 0 {
-            panic!("block number out of range: {}", number);
-        }
-
-        EthereumBlockPointer {
-            hash,
-            number: number as u64,
+impl FromIterator<(Address, H256)> for EthereumLogFilter {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = (Address, H256)>,
+    {
+        EthereumLogFilter {
+            contract_address_and_event_sig_pairs: iter.into_iter().collect(),
         }
     }
 }
