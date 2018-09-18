@@ -180,7 +180,7 @@ fn subgraph_provider_events() {
     let subgraph1_id = subgraph1_link.trim_left_matches("/ipfs/");
     let subgraph2_id = subgraph2_link.trim_left_matches("/ipfs/");
 
-    // Add "subgraph1"
+    // Deploy
     runtime
         .block_on(SubgraphProvider::deploy(
             &provider,
@@ -188,7 +188,7 @@ fn subgraph_provider_events() {
             subgraph1_link.clone(),
         )).unwrap();
 
-    // Update "subgraph1"
+    // Update
     runtime
         .block_on(SubgraphProvider::deploy(
             &provider,
@@ -196,10 +196,17 @@ fn subgraph_provider_events() {
             subgraph2_link.clone(),
         )).unwrap();
 
-    // Remove "subgraph1"
+    // Remove
     runtime
         .block_on(provider.remove("subgraph".to_owned()))
         .unwrap();
+
+    // Removing a subgraph that is not deployed is an error.
+    assert!(
+        runtime
+            .block_on(provider.remove("subgraph".to_owned()))
+            .is_err()
+    );
 
     // Finish the event streams.
     drop(provider);
@@ -242,4 +249,52 @@ fn subgraph_provider_events() {
         schema_events[3],
         SchemaEvent::SchemaRemoved("subgraph".to_owned(), subgraph2_id.to_owned())
     );
+}
+
+#[test]
+fn subgraph_list() {
+    let mut runtime = tokio::runtime::Runtime::new().unwrap();
+    let logger = Logger::root(slog::Discard, o!());
+    let provider = Arc::new(graph_core::SubgraphProvider::new(
+        logger,
+        Arc::new(IpfsClient::default()),
+    ));
+
+    let (subgraph1_link, subgraph2_link) = runtime
+        .block_on(future::lazy(|| {
+            let resolver = Arc::new(IpfsClient::default());
+            add_subgraph_to_ipfs(resolver.clone(), "two-datasources")
+                .join(add_subgraph_to_ipfs(resolver, "dummy"))
+        })).unwrap();
+    let subgraph1_id = subgraph1_link.trim_left_matches("/ipfs/").to_owned();
+    let subgraph2_id = subgraph2_link.trim_left_matches("/ipfs/").to_owned();
+
+    assert!(provider.list().is_empty());
+    runtime
+        .block_on(SubgraphProvider::deploy(
+            &provider,
+            "subgraph1".to_owned(),
+            subgraph1_link.clone(),
+        )).unwrap();
+    runtime
+        .block_on(SubgraphProvider::deploy(
+            &provider,
+            "subgraph2".to_owned(),
+            subgraph2_link.clone(),
+        )).unwrap();
+    assert_eq!(
+        provider.list(),
+        [
+            ("subgraph1".to_owned(), subgraph1_id),
+            ("subgraph2".to_owned(), subgraph2_id.clone())
+        ]
+    );
+    runtime
+        .block_on(provider.remove("subgraph1".to_owned()))
+        .unwrap();
+    assert_eq!(provider.list(), [("subgraph2".to_owned(), subgraph2_id)]);
+    runtime
+        .block_on(provider.remove("subgraph2".to_owned()))
+        .unwrap();
+    assert!(provider.list().is_empty());
 }
