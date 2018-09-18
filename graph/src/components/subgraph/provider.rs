@@ -1,10 +1,7 @@
-use components::EventProducer;
-use data::schema::Schema;
-use data::subgraph::{SubgraphManifest, SubgraphProviderError};
-use tokio::prelude::*;
+use prelude::*;
 
 /// Events emitted by [SubgraphProvider](trait.SubgraphProvider.html) implementations.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SubgraphProviderEvent {
     /// A subgraph was added to the provider.
     SubgraphAdded(SubgraphManifest),
@@ -13,7 +10,7 @@ pub enum SubgraphProviderEvent {
 }
 
 /// Schema-only events emitted by a [SubgraphProvider](trait.SubgraphProvider.html).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SchemaEvent {
     /// A subgraph with a new schema was added.
     SchemaAdded(Schema),
@@ -26,7 +23,7 @@ pub trait SubgraphProvider:
     EventProducer<SubgraphProviderEvent> + EventProducer<SchemaEvent> + Send + Sync + 'static
 {
     fn deploy(
-        &self,
+        arc_self: &Arc<Self>,
         name: String,
         link: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
@@ -35,4 +32,6 @@ pub trait SubgraphProvider:
         &self,
         name_or_id: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
+
+    fn list(&self) -> Vec<(String, String)>;
 }

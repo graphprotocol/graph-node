@@ -1,7 +1,7 @@
 use graphql_parser::{schema, Pos};
 
 /// A GraphQL schema with additional meta data.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Schema {
     pub name: String,
     pub id: String,
