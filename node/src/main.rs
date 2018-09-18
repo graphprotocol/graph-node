@@ -20,8 +20,7 @@ use clap::{App, Arg};
 use ipfs_api::IpfsClient;
 use reqwest::Client;
 use std::env;
-use std::net::SocketAddr;
-use std::str::FromStr;
+use std::net::ToSocketAddrs;
 use std::sync::Mutex;
 use std::time::Duration;
 use url::Url;
@@ -123,9 +122,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let ethereum_ws = matches.value_of("ethereum-ws");
 
     // Parse IPFS address
-    let ipfs_socket_addr = SocketAddr::from_str(matches.value_of("ipfs").unwrap())
-        .expect("could not parse IPFS address, expected format is host:port");
-
+    let mut ipfs_socket_addr_iter = matches
+        .value_of("ipfs")
+        .unwrap()
+        .to_socket_addrs()
+        .expect("could not parse IPFS url or domain");
     let json_rpc_port = matches
         .value_of("admin-port")
         .unwrap()
@@ -154,8 +155,17 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     info!(logger, "Connecting to IPFS node...");
     let resolver = Arc::new(
         IpfsClient::new(
-            &format!("{}", ipfs_socket_addr.ip()),
-            ipfs_socket_addr.port(),
+            &format!(
+                "{}",
+                ipfs_socket_addr_iter
+                    .next()
+                    .expect("no socket address made from given url or domain")
+                    .ip()
+            ),
+            ipfs_socket_addr_iter
+                .next()
+                .expect("no socket address made from given url or domain")
+                .port(),
         ).expect("Failed to start IPFS client"),
     );
     let ipfs_test = resolver.version();
@@ -165,7 +175,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             .map_err(move |e| {
                 error!(
                     ipfs_test_logger,
-                    "Is there an IPFS node running at '{}'?", ipfs_socket_addr
+                    "Is there an IPFS node running at '{:#?}'?",
+                    ipfs_socket_addr_iter.next().unwrap()
                 );
                 panic!("Failed to connect to IPFS: {}", e);
             }).map(|_| ()),
