@@ -38,6 +38,7 @@ impl<T: web3::Transport> EthereumAdapter<T> {
     pub fn event_filter(&self, subscription: EthereumEventSubscription) -> CreateFilter<T, Log> {
         let filter_builder = FilterBuilder::default();
         let eth_filter: Filter = filter_builder
+            .address(vec![subscription.address])
             .from_block(subscription.range.from)
             .to_block(subscription.range.to)
             .topics(Some(vec![subscription.event.signature()]), None, None, None)
