@@ -89,17 +89,16 @@ fn multiple_data_sources_per_subgraph() {
         }
     }
 
-    let resolver = Arc::new(IpfsClient::default());
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
 
-    let add_resolver = resolver.clone();
     let subgraph_link = runtime
         .block_on(future::lazy(move || {
-            add_subgraph_to_ipfs(add_resolver, "two-datasources")
+            add_subgraph_to_ipfs(Arc::new(IpfsClient::default()), "two-datasources")
         })).unwrap();
 
     runtime
         .block_on(future::lazy(|| {
+            let resolver = Arc::new(IpfsClient::default());
             let logger = Logger::root(slog::Discard, o!());
             let eth_adapter = Arc::new(Mutex::new(MockEthereumAdapter {
                 received_subscriptions: vec![],
@@ -147,4 +146,100 @@ fn multiple_data_sources_per_subgraph() {
                 Ok(())
             })
         })).unwrap();
+}
+
+fn added_subgraph_name_and_id(event: &SubgraphProviderEvent) -> (&str, &str) {
+    match event {
+        SubgraphProviderEvent::SubgraphAdded(manifest) => (&manifest.schema.name, &manifest.id),
+        _ => panic!("not `SubgraphAdded`"),
+    }
+}
+
+fn added_schema_name_and_id(event: &SchemaEvent) -> (&str, &str) {
+    match event {
+        SchemaEvent::SchemaAdded(schema) => (&schema.name, &schema.id),
+        _ => panic!("not `SchemaAdded`"),
+    }
+}
+
+#[test]
+fn subgraph_provider_events() {
+    let mut runtime = tokio::runtime::Runtime::new().unwrap();
+    let logger = Logger::root(slog::Discard, o!());
+    let mut provider = graph_core::SubgraphProvider::new(logger, Arc::new(IpfsClient::default()));
+    let provider_events = provider.take_event_stream().unwrap();
+    let schema_events = provider.take_event_stream().unwrap();
+    let provider = Arc::new(provider);
+
+    let (subgraph1_link, subgraph2_link) = runtime
+        .block_on(future::lazy(|| {
+            let resolver = Arc::new(IpfsClient::default());
+            add_subgraph_to_ipfs(resolver.clone(), "two-datasources")
+                .join(add_subgraph_to_ipfs(resolver, "dummy"))
+        })).unwrap();
+    let subgraph1_id = subgraph1_link.trim_left_matches("/ipfs/");
+    let subgraph2_id = subgraph2_link.trim_left_matches("/ipfs/");
+
+    // Add "subgraph1"
+    runtime
+        .block_on(SubgraphProvider::deploy(
+            &provider,
+            "subgraph".to_owned(),
+            subgraph1_link.clone(),
+        )).unwrap();
+
+    // Update "subgraph1"
+    runtime
+        .block_on(SubgraphProvider::deploy(
+            &provider,
+            "subgraph".to_owned(),
+            subgraph2_link.clone(),
+        )).unwrap();
+
+    // Remove "subgraph1"
+    runtime
+        .block_on(provider.remove("subgraph".to_owned()))
+        .unwrap();
+
+    // Finish the event streams.
+    drop(provider);
+
+    // Assert that the expected events were sent.
+    let provider_events = runtime.block_on(provider_events.collect()).unwrap();
+    assert_eq!(provider_events.len(), 4);
+    assert_eq!(
+        added_subgraph_name_and_id(&provider_events[0]),
+        ("subgraph", subgraph1_id)
+    );
+    assert_eq!(
+        provider_events[1],
+        SubgraphProviderEvent::SubgraphRemoved(subgraph1_id.to_owned())
+    );
+    assert_eq!(
+        added_subgraph_name_and_id(&provider_events[2]),
+        ("subgraph", subgraph2_id)
+    );
+    assert_eq!(
+        provider_events[3],
+        SubgraphProviderEvent::SubgraphRemoved(subgraph2_id.to_owned())
+    );
+
+    let schema_events = runtime.block_on(schema_events.collect()).unwrap();
+    assert_eq!(schema_events.len(), 4);
+    assert_eq!(
+        added_schema_name_and_id(&schema_events[0]),
+        ("subgraph", subgraph1_id)
+    );
+    assert_eq!(
+        schema_events[1],
+        SchemaEvent::SchemaRemoved("subgraph".to_owned(), subgraph1_id.to_owned())
+    );
+    assert_eq!(
+        added_schema_name_and_id(&schema_events[2]),
+        ("subgraph", subgraph2_id)
+    );
+    assert_eq!(
+        schema_events[3],
+        SchemaEvent::SchemaRemoved("subgraph".to_owned(), subgraph2_id.to_owned())
+    );
 }
