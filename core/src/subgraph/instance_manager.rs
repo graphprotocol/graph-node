@@ -143,7 +143,7 @@ impl SubgraphInstanceManager {
                     let events: Vec<_> = block
                         .logs
                         .iter()
-                        .filter_map(|log| instance.parse_log(log).ok())
+                        .filter_map(|log| instance.parse_log(&block.block, log).ok())
                         .collect();
 
                     info!(

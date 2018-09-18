@@ -2,7 +2,7 @@ use failure::Error;
 use futures::prelude::*;
 
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
-use graph::web3::types::Log;
+use graph::web3::types::{Block, Log, Transaction};
 
 pub struct SubgraphInstance<T>
 where
@@ -28,7 +28,7 @@ where
         SubgraphInstance { manifest, hosts }
     }
 
-    fn parse_log(&self, log: &Log) -> Result<EthereumEvent, Error> {
+    fn parse_log(&self, block: &Block<Transaction>, log: &Log) -> Result<EthereumEvent, Error> {
         unimplemented!();
     }
 
