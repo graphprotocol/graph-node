@@ -15,6 +15,7 @@ use jsonrpc_http_server::{
 };
 
 use std::collections::BTreeMap;
+use std::iter::FromIterator;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::RwLock;
 use std::{env, fmt, io};
@@ -73,6 +74,26 @@ pub struct JsonRpcServer<T> {
 }
 
 impl<T: SubgraphProvider> JsonRpcServer<T> {
+    fn require_master_token(auth: AuthorizationHeader) -> Result<(), jsonrpc_core::Error> {
+        let master_token = env::var(GRAPH_MASTER_TOKEN_VAR);
+        match &master_token {
+            Ok(master_token) if *master_token == auth.bearer_token => (), // Authorized.
+            Ok(_) => {
+                return Err(json_rpc_error(
+                    JSON_RPC_UNAUTHORIZED_ERROR,
+                    "authorization token is invalid".to_owned(),
+                ))
+            }
+            Err(_) => {
+                return Err(json_rpc_error(
+                    JSON_RPC_UNAUTHORIZED_ERROR,
+                    "internal error".to_owned(),
+                ))
+            }
+        }
+        Ok(())
+    }
+
     /// Handler for the `subgraph_deploy` endpoint.
     fn deploy_handler(
         &self,
@@ -91,11 +112,13 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
         }
 
         Box::new(
-            self.provider
-                .deploy(params.name, format!("/ipfs/{}", params.ipfs_hash))
-                .map_err(|e| json_rpc_error(JSON_RPC_DEPLOY_ERROR, e.to_string()))
-                .map(|_| Ok(Value::Null))
-                .flatten(),
+            SubgraphProvider::deploy(
+                &self.provider,
+                params.name,
+                format!("/ipfs/{}", params.ipfs_hash),
+            ).map_err(|e| json_rpc_error(JSON_RPC_DEPLOY_ERROR, e.to_string()))
+            .map(|_| Ok(Value::Null))
+            .flatten(),
         )
     }
 
@@ -140,27 +163,22 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
         auth: AuthorizationHeader,
     ) -> Result<Value, jsonrpc_core::Error> {
         info!(self.logger, "Received subgraph_authorize request"; "params" => params.to_string());
-
-        let master_token = env::var(GRAPH_MASTER_TOKEN_VAR);
-        match &master_token {
-            Ok(master_token) if *master_token == auth.bearer_token => (), // Authorized.
-            Ok(_) => {
-                return Err(json_rpc_error(
-                    JSON_RPC_UNAUTHORIZED_ERROR,
-                    "authorization token is invalid".to_owned(),
-                ))
-            }
-            Err(_) => {
-                return Err(json_rpc_error(
-                    JSON_RPC_UNAUTHORIZED_ERROR,
-                    "internal error".to_owned(),
-                ))
-            }
-        }
-
+        Self::require_master_token(auth)?;
         *self.subgraph_api_keys.write().unwrap() = params.subgraph_api_keys;
-
         Ok(Value::Null)
+    }
+
+    /// Handler for the `subgraph_list` endpoint.
+    ///
+    /// Returns the names and ids of deployed subgraphs.
+    fn list_handler(&self) -> Result<Value, jsonrpc_core::Error> {
+        info!(self.logger, "Received subgraph_list request");
+        let list = self
+            .provider
+            .list()
+            .into_iter()
+            .map(|(name, id)| (name, Value::from(id)));
+        Ok(Value::from(serde_json::Map::from_iter(list)))
     }
 }
 
@@ -206,6 +224,10 @@ impl<T: SubgraphProvider> JsonRpcServerTrait<T> for JsonRpcServer<T> {
                 .into_future()
                 .and_then(move |params| me.authorize_handler(params, auth))
         });
+
+        // `subgraph_list` handler.
+        let me = arc_self.clone();
+        handler.add_method_with_meta("subgraph_list", move |_, _| me.list_handler());
 
         /// Get the `Authorization: Bearer` header if present.
         fn auth_extractor(request: &Request) -> Option<AuthorizationHeader> {
