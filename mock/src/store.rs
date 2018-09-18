@@ -97,6 +97,10 @@ impl ChainStore for MockStore {
 }
 
 impl Store for MockStore {
+    fn transact(&mut self, operations: Vec<EntityOperation>) -> Result<(), ()> {
+        unimplemented!();
+    }
+
     fn subscribe(&mut self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
@@ -150,6 +154,10 @@ impl ChainStore for FakeStore {
 }
 
 impl Store for FakeStore {
+    fn transact(&mut self, operations: Vec<EntityOperation>) -> Result<(), ()> {
+        unimplemented!();
+    }
+
     fn subscribe(&mut self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
