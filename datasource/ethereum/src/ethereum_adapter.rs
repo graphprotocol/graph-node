@@ -1,4 +1,3 @@
-use ethabi::{RawLog, Token};
 use failure::Error;
 use futures::future;
 use futures::prelude::*;
@@ -7,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
+use graph::ethabi::{RawLog, Token};
 use graph::web3;
 use graph::web3::api::{CreateFilter, Eth, Web3};
 use graph::web3::helpers::CallFuture;
