@@ -160,6 +160,9 @@ pub type SubgraphEntityPair = (String, String);
 
 /// Common trait for store implementations.
 pub trait Store: BasicStore + Send {
+    /// Transact many entity operations at once.
+    fn transact(&mut self, operations: Vec<EntityOperation>) -> Result<(), ()>;
+
     /// Subscribe to entity changes for specific subgraphs and entities.
     ///
     /// Returns a stream of entity changes that match the input arguments.
