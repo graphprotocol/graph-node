@@ -9,8 +9,4 @@ pub use self::adapter::{
     EthereumSubscriptionError,
 };
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener};
-pub use self::stream::{BlockStream, BlockStreamBuilder, EthereumBlock};
-
-pub use web3::types::BlockNumber;
-
-pub use ethabi::{Contract, Event};
+pub use self::stream::{BlockStream, BlockStreamBuilder, BlockStreamController, EthereumBlock};
