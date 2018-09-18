@@ -333,6 +333,14 @@ impl BasicStore for Store {
 }
 
 impl StoreTrait for Store {
+    fn transact(&mut self, operations: Vec<EntityOperation>) -> Result<(), ()> {
+        // NOTE: The biggest challenge here is to merge changes into existing
+        // entities. Right now we're using `get()` inside `set()` to achieve this.
+        // However, we may want to implement this in Postgres instead to avoid
+        // roundtrips.
+        unimplemented!();
+    }
+
     fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         let subscriptions = self.subscriptions.clone();
 
