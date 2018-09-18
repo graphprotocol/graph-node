@@ -2,7 +2,7 @@ use failure::Error;
 use futures::prelude::*;
 
 use prelude::{EntityOperation, EthereumEvent, RuntimeHostBuilder, SubgraphManifest};
-use web3::types::Log;
+use web3::types::{Block, Log, Transaction};
 
 /// Represents a loaded instance of a subgraph.
 pub trait SubgraphInstance<T>
@@ -13,7 +13,7 @@ where
     fn from_manifest(manifest: SubgraphManifest, host_builder: T) -> Self;
 
     /// Parses an Ethereum log into an event; fails if it doesn't match the subgraph contracts.
-    fn parse_log(&self, log: &Log) -> Result<EthereumEvent, Error>;
+    fn parse_log(&self, block: &Block<Transaction>, log: &Log) -> Result<EthereumEvent, Error>;
 
     /// Process an Ethereum event and return the resulting entity operations as a future.
     fn process_event(
