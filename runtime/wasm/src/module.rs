@@ -311,12 +311,10 @@ where
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let entity: String = self.heap.asc_get(entity_ptr);
-        let id: String = self.heap.asc_get(id_ptr);
         let store_key = StoreKey {
             subgraph: self.subgraph.id.clone(),
-            entity,
-            id,
+            entity: self.heap.asc_get(entity_ptr),
+            id: self.heap.asc_get(id_ptr),
         };
 
         // Retrieve an Entity from the store
