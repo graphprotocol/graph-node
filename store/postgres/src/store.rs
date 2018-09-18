@@ -499,18 +499,17 @@ impl StoreTrait for Store {
             let direction = query
                 .order_direction
                 .map(|direction| match direction {
-                    StoreOrder::Ascending => String::from("ASC"),
-                    StoreOrder::Descending => String::from("DESC"),
-                }).unwrap_or(String::from("ASC"));
+                    StoreOrder::Ascending => "ASC",
+                    StoreOrder::Descending => "DESC",
+                }).unwrap_or("ASC");
             let cast_type = match value_type {
-                ValueType::BigInt => "::bigint".to_string(),
-                ValueType::Boolean => "::boolean".to_string(),
-                ValueType::Bytes => "".to_string(),
-                ValueType::Float => "::numeric".to_string(),
-                ValueType::ID => "".to_string(),
-                ValueType::Int => "::bigint".to_string(),
-                ValueType::String => "".to_string(),
-                _ => "",
+                ValueType::BigInt => "::numeric",
+                ValueType::Boolean => "::boolean",
+                ValueType::Bytes => "",
+                ValueType::Float => "::float",
+                ValueType::ID => "",
+                ValueType::Int => "::bigint",
+                ValueType::String => "",
             };
             diesel_query = diesel_query.order(
                 sql::<Text>("(data ->>")
