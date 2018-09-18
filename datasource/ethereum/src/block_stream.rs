@@ -1,6 +1,7 @@
 use failure::Error;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use std;
 use std::sync::{Arc, Mutex};
 
 use graph::prelude::{
@@ -17,10 +18,7 @@ enum ControlMessage {
 pub struct BlockStream {}
 
 impl BlockStream {
-    pub fn new<C>(network: String, subgraph: String, chain_updates: C) -> Self
-    where
-        C: ChainHeadUpdateListener,
-    {
+    pub fn new(network: String, subgraph: String) -> Self {
         // TODO: Implement block stream algorithm whenever there is a chain update
 
         BlockStream {}
@@ -40,6 +38,12 @@ impl Stream for BlockStream {
 
 impl EventConsumer<ControlMessage> for BlockStream {
     fn event_sink(&self) -> Box<Sink<SinkItem = ControlMessage, SinkError = ()> + Send> {
+        unimplemented!();
+    }
+}
+
+impl EventConsumer<ChainHeadUpdate> for BlockStream {
+    fn event_sink(&self) -> Box<Sink<SinkItem = ChainHeadUpdate, SinkError = ()> + Send> {
         unimplemented!();
     }
 }
@@ -121,12 +125,15 @@ where
     type StreamController = BlockStreamController;
 
     fn from_subgraph(&self, manifest: &SubgraphManifest) -> (Self::Stream, Self::StreamController) {
+        // TODO: Extract contract addresses and events from the subgraph manifest.
+        // Use that information as filters for polling blocks in the block stream.
+
         // Create chain update listener for the network used at the moment.
         //
         // NOTE: We only support a single network at this point, this is why
         // we're just picking the one that was passed in to the block stream
         // builder at the moment
-        let chain_update_listener = self
+        let mut chain_head_update_listener = self
             .store
             .lock()
             .unwrap()
@@ -136,11 +143,21 @@ where
         let mut stream_controller = BlockStreamController::new();
 
         // Create the actual network- and subgraph-specific block stream
-        let block_stream = BlockStream::new(
-            self.network.clone(),
-            manifest.id.clone(),
-            chain_update_listener,
+        // TODO: Pass block filter information in here.
+        let block_stream = BlockStream::new(self.network.clone(), manifest.id.clone());
+
+        // Forward chain head updates from the listener to the block stream
+        tokio::spawn(
+            chain_head_update_listener
+                .take_event_stream()
+                .unwrap()
+                .forward(block_stream.event_sink().sink_map_err(|_| ()))
+                .and_then(|_| Ok(())),
         );
+
+        // Leak the chain update listener; we'll terminate it by closing the
+        // block stream's chain head update sink
+        std::mem::forget(chain_head_update_listener);
 
         // Forward control messages from the stream controller to the block stream
         tokio::spawn(
