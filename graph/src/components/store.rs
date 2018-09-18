@@ -6,6 +6,7 @@ use web3::types::{Block, Transaction, H256};
 
 use data::store::*;
 use std::fmt;
+use std::str::FromStr;
 use web3::types::H256;
 
 use prelude::*;
@@ -65,33 +66,51 @@ pub struct StoreRange {
 #[derive(Clone, Debug, PartialEq)]
 pub enum ValueType {
     Boolean,
+    BigInt,
+    Bytes,
+    Float,
     ID,
     Int,
-    Float,
     String,
-    Bytes,
-    BigInt,
 }
 
+#[derive(Debug, Fail)]
+pub enum ValueTypeError {
+    #[fail(display = "Found unexpected type name: {}", name)]
+    UnexpectedTypeName { name: String },
+    #[fail(display = "Cannot convert from ListType to ValueType")]
+    CannotConvertFromListType,
+    #[fail(display = "Found invalid schema type: nested NonNull type")]
+    NestedNonNullType,
+}
+
+impl FromStr for ValueType {
+    type Err = ValueTypeError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Boolean" => Ok(ValueType::Boolean),
+            "BigInt" => Ok(ValueType::BigInt),
+            "Bytes" => Ok(ValueType::Bytes),
+            "Float" => Ok(ValueType::Float),
+            "ID" => Ok(ValueType::ID),
+            "Int" => Ok(ValueType::Int),
+            "String" => Ok(ValueType::String),
+            e => Err(ValueTypeError::UnexpectedTypeName {
+                name: e.to_string(),
+            }),
+        }
+    }
+}
 impl From<s::Type> for ValueType {
     fn from(schema_type: s::Type) -> ValueType {
         match schema_type {
-            s::Type::NonNullType(ref inner) => match inner.deref() {
-                s::Type::NamedType(ref name) if name == "Boolean" => ValueType::Boolean,
-                s::Type::NamedType(ref name) if name == "BigInt" => ValueType::BigInt,
-                s::Type::NamedType(ref name) if name == "Bytes" => ValueType::Bytes,
-                s::Type::NamedType(ref name) if name == "Float" => ValueType::Float,
-                s::Type::NamedType(ref name) if name == "ID" => ValueType::ID,
-                s::Type::NamedType(ref name) if name == "String" => ValueType::String,
-                _ => panic!("Found unexpected NamedType variant when converting to ValueType"),
+            s::Type::NamedType(ref name) => ValueType::from_str(&name).unwrap(),
+            s::Type::NonNullType(inner) => match *inner {
+                s::Type::NamedType(ref name) => ValueType::from_str(&name).unwrap(),
+                s::Type::NonNullType(inner) => panic!(ValueTypeError::NestedNonNullType),
+                s::Type::ListType(inner) => panic!(ValueTypeError::CannotConvertFromListType),
             },
-            s::Type::NamedType(ref name) if name == "Boolean" => ValueType::Boolean,
-            s::Type::NamedType(ref name) if name == "BigInt" => ValueType::BigInt,
-            s::Type::NamedType(ref name) if name == "Bytes" => ValueType::Bytes,
-            s::Type::NamedType(ref name) if name == "Float" => ValueType::Float,
-            s::Type::NamedType(ref name) if name == "ID" => ValueType::ID,
-            s::Type::NamedType(ref name) if name == "String" => ValueType::String,
-            _ => panic!("Found unexpected NamedType variant when converting to ValueType"),
+            s::Type::ListType(inner) => panic!(ValueTypeError::CannotConvertFromListType),
         }
     }
 }
