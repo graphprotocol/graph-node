@@ -502,43 +502,21 @@ impl StoreTrait for Store {
                     StoreOrder::Ascending => String::from("ASC"),
                     StoreOrder::Descending => String::from("DESC"),
                 }).unwrap_or(String::from("ASC"));
-            diesel_query = match value_type {
-                ValueType::BigInt => diesel_query.order(
-                    sql::<Text>("(data ->>")
-                        .bind::<Text, _>(order_attribute)
-                        .sql(&format!(")::bigint {} NULLS LAST", direction)),
-                ),
-                ValueType::Int => diesel_query.order(
-                    sql::<Text>("(data ->>")
-                        .bind::<Text, _>(order_attribute)
-                        .sql(&format!(")::bigint {} NULLS LAST", direction)),
-                ),
-                ValueType::String => diesel_query.order(
-                    sql::<Text>("(data ->>")
-                        .bind::<Text, _>(order_attribute)
-                        .sql(&format!(") {} NULLS LAST", direction)),
-                ),
-                ValueType::Float => diesel_query.order(
-                    sql::<Text>("(data ->>")
-                        .bind::<Text, _>(order_attribute)
-                        .sql(&format!(")::numeric {} NULLS LAST", direction)),
-                ),
-                ValueType::ID => diesel_query.order(
-                    sql::<Text>("(data ->>")
-                        .bind::<Text, _>(order_attribute)
-                        .sql(&format!(") {} NULLS LAST", direction)),
-                ),
-                ValueType::Bytes => diesel_query.order(
-                    sql::<Text>("(data ->>")
-                        .bind::<Text, _>(order_attribute)
-                        .sql(&format!(") {} NULLS LAST", direction)),
-                ),
-                ValueType::Boolean => diesel_query.order(
-                    sql::<Text>("(data ->>")
-                        .bind::<Text, _>(order_attribute)
-                        .sql(&format!(")::boolean {} NULLS LAST", direction)),
-                ),
+            let cast_type = match value_type {
+                ValueType::BigInt => "::bigint".to_string(),
+                ValueType::Boolean => "::boolean".to_string(),
+                ValueType::Bytes => "".to_string(),
+                ValueType::Float => "::numeric".to_string(),
+                ValueType::ID => "".to_string(),
+                ValueType::Int => "::bigint".to_string(),
+                ValueType::String => "".to_string(),
+                _ => "",
             };
+            diesel_query = diesel_query.order(
+                sql::<Text>("(data ->>")
+                    .bind::<Text, _>(order_attribute)
+                    .sql(&format!("){} {} NULLS LAST", cast_type, direction)),
+            );
         }
 
         // Add range filter to query
