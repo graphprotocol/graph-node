@@ -192,7 +192,7 @@ impl<T: SubgraphProvider> JsonRpcServerTrait<T> for JsonRpcServer<T> {
 
         let arc_self = Arc::new(JsonRpcServer {
             provider,
-            logger,
+            logger: logger.new(o!("component" => "JsonRpcServer")),
             subgraph_api_keys: Arc::new(RwLock::new(BTreeMap::new())),
         });
         // `subgraph_deploy` handler.
