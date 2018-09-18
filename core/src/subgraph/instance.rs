@@ -2,6 +2,7 @@ use failure::Error;
 use futures::prelude::*;
 
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
+use graph::web3::types::Log;
 
 pub struct SubgraphInstance<T>
 where
@@ -27,10 +28,14 @@ where
         SubgraphInstance { manifest, hosts }
     }
 
+    fn parse_log(&self, log: &Log) -> Result<EthereumEvent, Error> {
+        unimplemented!();
+    }
+
     fn process_event(
         &self,
         event: EthereumEvent,
-    ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error>> {
+    ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send> {
         // Identify runtime hosts that will handle this event
         let matching_hosts = self.hosts.iter().filter(|host| host.matches_event(&event));
 

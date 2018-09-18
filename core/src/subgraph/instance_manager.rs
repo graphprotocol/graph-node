@@ -74,6 +74,7 @@ impl SubgraphInstanceManager {
                         instances.clone(),
                         host_builder.clone(),
                         block_stream_builder.clone(),
+                        store.clone(),
                         manifest,
                     )
                 }
@@ -87,29 +88,39 @@ impl SubgraphInstanceManager {
         }));
     }
 
-    fn handle_subgraph_added<B, T>(
+    fn handle_subgraph_added<B, T, S>(
         logger: Logger,
         instances: InstanceShutdownMap,
         host_builder: T,
         block_stream_builder: B,
+        store: Arc<Mutex<S>>,
         manifest: SubgraphManifest,
     ) where
         T: RuntimeHostBuilder,
         B: BlockStreamBuilder,
+        S: Store + 'static,
     {
         let id = manifest.id.clone();
 
         // Request a block stream for this subgraph
-        let block_stream = block_stream_builder.from_subgraph(&manifest);
+        let (block_stream, block_stream_controller) = block_stream_builder.from_subgraph(&manifest);
+
+        // Wrap the stream controller so we can move ownership easier
+        let block_stream_controller = Arc::new(block_stream_controller);
 
         // Load the subgraph
-        let instance = SubgraphInstance::from_manifest(manifest, host_builder);
+        let instance = Arc::new(SubgraphInstance::from_manifest(manifest, host_builder));
 
-        // Forward block stream events to the subgraph for processing
-        let (shutdown_sender, shutdown_receiver) = oneshot::channel();
+        // Prepare loggers for different parts of the async processing
         let block_logger = logger.clone();
         let stream_err_logger = logger.clone();
         let shutdown_logger = logger.clone();
+        let process_err_logger = logger.clone();
+
+        // Use a oneshot channel for shutting down the subgraph instance and block stream
+        let (shutdown_sender, shutdown_receiver) = oneshot::channel();
+
+        // Forward block stream events to the subgraph for processing
         tokio::spawn(
             block_stream
                 .map(Some)
@@ -122,48 +133,57 @@ impl SubgraphInstanceManager {
                         .map_err(move |_| {
                             info!(shutdown_logger, "Subgraph shut down");
                         }),
-                ).map(move |block| {
-                    match block {
-                        Some(block) => {
-                            info!(block_logger, "Process {} events from block", block.logs.len();
-                                  "block_number" => format!("{:?}", block.block.number),
-                                  "block_hash" => format!("{:?}", block.block.hash));
+                ).filter_map(|block| block)
+                .and_then(move |block| {
+                    info!(block_logger, "Process events from block";
+                          "block_number" => format!("{:?}", block.block.number),
+                          "block_hash" => format!("{:?}", block.block.hash));
 
-                            // TODO: Process all events in order, collect their results
-                            //for async event in block.logs {
-                            //    let ops = instance.process_event(event, prev_ops)
-                            //}
-                            //
-                            //let state = {
-                            //    block,
-                            //    remaining_events: block.logs.clone(),
-                            //    operations_so_far: vec![],
-                            //};
-                            //stream::unfold(state, |mut state| {
-                            //    instance.process_event(event.clone(), state.operations_so_far.clone())
-                            //        .and_then(move |ops| {
-                            //            state.operations_so_far.extend(ops)
-                            //            Ok(state)
-                            //        })
-                            //})
+                    // Translate block logs into Ethereum events
+                    let events: Vec<_> = block
+                        .logs
+                        .iter()
+                        .filter_map(|log| instance.parse_log(log).ok())
+                        .collect();
 
-                            Some(vec![])
-                        }
-                        None => None,
-                    }
-                }).for_each(|entity_operations: Option<Vec<EntityOperation>>| {
-                    //match entity_operations {
-                    //    Some(ops) => {
-                    //        // TODO: Transact operations into the store
-                    //        // TODO: Advance the block stream (unless the block stream does
-                    //        //       it by itself)
-                    //    },
-                    //    None => {
-                    //        // Continue
-                    //    }
-                    //};
-                    Ok(())
-                }).and_then(|_| Ok(())),
+                    info!(
+                        block_logger,
+                        "{} events are relevant for this subgraph",
+                        events.len()
+                    );
+
+                    // Prepare ownership for async closures
+                    let instance = instance.clone();
+                    let process_err_logger = process_err_logger.clone();
+
+                    // Process events one after the other, passing in entity operations
+                    // collected previously to every new event being processed
+                    stream::iter_ok::<_, ()>(events)
+                        .fold(vec![], move |mut entity_operations, event| {
+                            let process_err_logger = process_err_logger.clone();
+
+                            // TODO: Pass in the block, the event's transaction and collected
+                            // entity operations so far; the block and transaction should
+                            // probably become part of `EthereumEvent` and be added in
+                            // `instance.parse_log()` earlier.
+                            instance
+                                .process_event(event)
+                                .map(|ops| {
+                                    entity_operations.extend(ops.into_iter());
+                                    entity_operations
+                                }).map_err(move |e| {
+                                    error!(process_err_logger, "Failed to process event: {}", e);
+                                })
+                        }).map(|operations| (block, operations))
+                }).for_each(move |(block, entity_operations)| {
+                    let block_stream_controller = block_stream_controller.clone();
+                    let block_hash = block.block.hash.expect("encountered block without hash");
+
+                    // Transact entities into the store; if that succeeds, advance the
+                    // block stream
+                    future::result(store.lock().unwrap().transact(entity_operations))
+                        .and_then(move |_| block_stream_controller.advance(block_hash))
+                }),
         );
 
         // Remember the shutdown sender to shut down the subgraph instance later
