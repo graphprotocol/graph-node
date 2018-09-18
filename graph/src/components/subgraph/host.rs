@@ -15,7 +15,7 @@ pub trait RuntimeHost: Send + Sync {
     fn process_event(
         &self,
         event: EthereumEvent,
-    ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error>>;
+    ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send>;
 }
 
 pub trait RuntimeHostBuilder: Clone + Send + 'static {
