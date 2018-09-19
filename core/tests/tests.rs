@@ -75,18 +75,6 @@ fn multiple_data_sources_per_subgraph() {
         ) -> Box<Future<Item = Vec<ethabi::Token>, Error = EthereumContractCallError>> {
             unimplemented!()
         }
-
-        fn subscribe_to_event(
-            &mut self,
-            subscription: EthereumEventSubscription,
-        ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
-            self.received_subscriptions.push(subscription.event.name);
-            Box::new(stream::iter_ok(vec![]))
-        }
-
-        fn unsubscribe_from_event(&mut self, _subscription_id: String) -> bool {
-            unimplemented!()
-        }
     }
 
     let mut runtime = tokio::runtime::Runtime::new().unwrap();

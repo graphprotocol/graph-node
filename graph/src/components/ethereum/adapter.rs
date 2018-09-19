@@ -207,13 +207,4 @@ pub trait EthereumAdapter: Send + 'static {
         &mut self,
         call: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>>;
-
-    /// Subscribe to an event of a smart contract.
-    fn subscribe_to_event(
-        &mut self,
-        subscription: EthereumEventSubscription,
-    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>>;
-
-    /// Cancel a specific event subscription. Returns true when the subscription existed before.
-    fn unsubscribe_from_event(&mut self, subscription_id: String) -> bool;
 }
