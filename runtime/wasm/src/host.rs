@@ -118,13 +118,17 @@ impl RuntimeHost {
         let (cancel_sender, cancel_receiver) = oneshot::channel();
 
         // wasmi modules are not `Send` therefore they cannot be scheduled by
-        // the regular tokio executor, so we create a dedicated thread inside
-        // which we may wait on futures.
+        // the regular tokio executor, so we create a dedicated thread.
+        //
+        // This thread can spawn tasks on the runtime by sending them to
+        // `task_receiver`.
+        let (task_sender, task_receiver) = channel(100);
+        tokio::spawn(task_receiver.for_each(tokio::spawn));
         thread::spawn(move || {
             let data_source = wasmi_config.data_source.clone();
 
             // Load the mappings as a WASM module
-            let module = WasmiModule::new(&logger, wasmi_config);
+            let module = WasmiModule::new(&logger, wasmi_config, task_sender);
 
             // Process one event at a time, blocking the thread when waiting for
             // the next event. Also check for a cancelation signal.
@@ -150,16 +154,17 @@ impl RuntimeHost {
 
     /// Subscribe to all smart contract events of `data_source` contained in
     /// `subgraph`.
-    fn subscribe_to_events<T, L, S>(
+    fn subscribe_to_events<T, L, S, U>(
         logger: &Logger,
         data_source: DataSource,
-        mut module: WasmiModule<T, L, S>,
+        mut module: WasmiModule<T, L, S, U>,
         ethereum_adapter: Arc<Mutex<T>>,
     ) -> impl Stream<Item = (), Error = ()> + 'static
     where
         T: EthereumAdapter + 'static,
         L: LinkResolver + 'static,
         S: Store + 'static,
+        U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + 'static,
     {
         info!(logger, "Subscribe to events");
 

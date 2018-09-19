@@ -16,3 +16,4 @@ failure = "0.1.2"
 graphql-parser = "0.2.0"
 parity-wasm = "0.31"
 graph-mock = { path = "../../mock" }
+ipfs-api = "0.5.0-alpha2"
