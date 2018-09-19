@@ -17,7 +17,6 @@ export function testToI64(decimal: string): i64 {
 }
 
 export function testToU64(decimal: string): u64 {
-    //return 0;
     return json.toU64(decimal);
 }
 

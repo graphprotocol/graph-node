@@ -10,6 +10,7 @@ use wasmi::{
     Signature, Trap, TrapKind, ValueType,
 };
 
+use futures::sync::oneshot;
 use graph::components::ethereum::*;
 use graph::components::store::{EventSource, StoreKey};
 use graph::components::subgraph::RuntimeHostEvent;
@@ -108,21 +109,22 @@ impl<T, L, S> Clone for WasmiModuleConfig<T, L, S> {
 }
 
 /// A WASM module based on wasmi that powers a subgraph runtime.
-pub struct WasmiModule<T, L, S> {
+pub struct WasmiModule<T, L, S, U> {
     pub logger: Logger,
     pub module: ModuleRef,
-    externals: HostExternals<T, L, S>,
+    externals: HostExternals<T, L, S, U>,
     heap: WasmiAscHeap,
 }
 
-impl<T, L, S> WasmiModule<T, L, S>
+impl<T, L, S, U> WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
     S: Store,
+    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone,
 {
     /// Creates a new wasmi module
-    pub fn new(logger: &Logger, config: WasmiModuleConfig<T, L, S>) -> Self {
+    pub fn new(logger: &Logger, config: WasmiModuleConfig<T, L, S>, task_sink: U) -> Self {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
         let module = Module::from_parity_wasm_module(config.data_source.mapping.runtime.clone())
@@ -169,6 +171,7 @@ where
             link_resolver: config.link_resolver.clone(),
             block_hash: H256::zero(),
             store: config.store.clone(),
+            task_sink,
         };
 
         let module = module
@@ -218,7 +221,7 @@ fn host_error(message: String) -> Trap {
 }
 
 /// Hosted functions for external use by wasm module
-pub struct HostExternals<T, L, S> {
+pub struct HostExternals<T, L, S, U> {
     logger: Logger,
     subgraph: SubgraphManifest,
     data_source: DataSource,
@@ -229,13 +232,15 @@ pub struct HostExternals<T, L, S> {
     // Block hash of the event being mapped.
     block_hash: H256,
     store: Arc<Mutex<S>>,
+    task_sink: U,
 }
 
-impl<T, L, S> HostExternals<T, L, S>
+impl<T, L, S, U> HostExternals<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
     S: Store,
+    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone,
 {
     /// function store.set(entity: string, id: string, data: Entity): void
     fn store_set(
@@ -534,11 +539,11 @@ where
     /// function ipfs.cat(link: String): Bytes
     fn ipfs_cat(&self, link_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
         let link = self.heap.asc_get(link_ptr);
-        let bytes = self
-            .link_resolver
-            .cat(&Link { link })
-            .wait()
-            .map_err(|e| HostExternalsError(e.to_string()))?;
+        let bytes = self.block_on(
+            self.link_resolver
+                .cat(&Link { link })
+                .map_err(|e| HostExternalsError(e.to_string())),
+        )?;
         let bytes_obj: AscPtr<Uint8Array> = self.heap.asc_new(&*bytes);
         Ok(Some(RuntimeValue::from(bytes_obj)))
     }
@@ -579,13 +584,29 @@ where
         let big_int_ptr: AscPtr<BigInt> = self.heap.asc_new(&*big_int.to_signed_bytes_le());
         Ok(Some(RuntimeValue::from(big_int_ptr)))
     }
+
+    fn block_on<I: Send + 'static, E: Send + 'static>(
+        &self,
+        future: impl Future<Item = I, Error = E> + Send + 'static,
+    ) -> Result<I, E> {
+        let (return_sender, return_receiver) = oneshot::channel();
+        self.task_sink
+            .clone()
+            .send(Box::new(future.then(|res| {
+                return_sender.send(res).map_err(|_| unreachable!())
+            }))).wait()
+            .map_err(|_| panic!("task receiver dropped"))
+            .unwrap();
+        return_receiver.wait().expect("`return_sender` dropped")
+    }
 }
 
-impl<T, L, S> Externals for HostExternals<T, L, S>
+impl<T, L, S, U> Externals for HostExternals<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
     S: Store,
+    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone,
 {
     fn invoke_index(
         &mut self,
@@ -830,11 +851,13 @@ mod tests {
     extern crate failure;
     extern crate graph_mock;
     extern crate graphql_parser;
+    extern crate ipfs_api;
     extern crate parity_wasm;
 
     use ethabi::{LogParam, Token};
-    use futures::sync::mpsc::channel;
+    use futures::sync::mpsc::{channel, Receiver};
     use std::collections::HashMap;
+    use std::io::Cursor;
     use std::iter::FromIterator;
     use std::sync::Mutex;
 
@@ -873,12 +896,39 @@ mod tests {
         }
     }
 
-    struct FakeLinkResolver;
-
-    impl LinkResolver for FakeLinkResolver {
-        fn cat(&self, _: &Link) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send> {
-            unimplemented!()
-        }
+    fn test_module(
+        data_source: DataSource,
+    ) -> (
+        WasmiModule<
+            MockEthereumAdapter,
+            ipfs_api::IpfsClient,
+            FakeStore,
+            Sender<Box<Future<Item = (), Error = ()> + Send>>,
+        >,
+        Receiver<RuntimeHostEvent>,
+    ) {
+        let logger = slog::Logger::root(slog::Discard, o!());
+        let (sender, receiver) = channel(100);
+        let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
+        let (task_sender, task_receiver) = channel(100);
+        let mut runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.spawn(task_receiver.for_each(tokio::spawn));
+        ::std::mem::forget(runtime);
+        (
+            WasmiModule::new(
+                &logger,
+                WasmiModuleConfig {
+                    subgraph: mock_subgraph(),
+                    data_source,
+                    event_sink: sender,
+                    ethereum_adapter: mock_ethereum_adapter,
+                    link_resolver: Arc::new(ipfs_api::IpfsClient::default()),
+                    store: Arc::new(Mutex::new(FakeStore)),
+                },
+                task_sender,
+            ),
+            receiver,
+        )
     }
 
     fn mock_subgraph() -> SubgraphManifest {
@@ -924,21 +974,7 @@ mod tests {
         // This test passing means the module doesn't crash when an invalid
         // event handler is called or when the event handler execution fails.
 
-        // Load the module
-        let logger = slog::Logger::root(slog::Discard, o!());
-        let (sender, _receiver) = channel(1);
-        let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
-        let mut module = WasmiModule::new(
-            &logger,
-            WasmiModuleConfig {
-                subgraph: mock_subgraph(),
-                data_source: mock_data_source("wasm_test/example_event_handler.wasm"),
-                event_sink: sender,
-                ethereum_adapter: mock_ethereum_adapter,
-                link_resolver: Arc::new(FakeLinkResolver),
-                store: Arc::new(Mutex::new(FakeStore)),
-            },
-        );
+        let (mut module, _) = test_module(mock_data_source("wasm_test/example_event_handler.wasm"));
 
         // Create a mock Ethereum event
         let ethereum_event = EthereumEvent {
@@ -962,159 +998,145 @@ mod tests {
 
     #[test]
     fn call_event_handler_and_receive_store_event() {
-        tokio::run(future::lazy(|| {
-            Ok({
-                // Load the example_event_handler.wasm test module. All this module does
-                // is implement an `handleExampleEvent` function that calls `store.set()`
-                // with sample data taken from the event parameters.
-                //
-                // This test verifies that the event is delivered and the example data
-                // is returned to the RuntimeHostEvent stream.
+        // Load the example_event_handler.wasm test module. All this module does
+        // is implement an `handleExampleEvent` function that calls `store.set()`
+        // with sample data taken from the event parameters.
+        //
+        // This test verifies that the event is delivered and the example data
+        // is returned to the RuntimeHostEvent stream.
 
-                // Load the module
-                let logger = slog::Logger::root(slog::Discard, o!());
-                let (sender, receiver) = channel(1);
-                let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
-                let mut module = WasmiModule::new(
-                    &logger,
-                    WasmiModuleConfig {
-                        subgraph: mock_subgraph(),
-                        data_source: mock_data_source("wasm_test/example_event_handler.wasm"),
-                        event_sink: sender,
-                        ethereum_adapter: mock_ethereum_adapter,
-                        link_resolver: Arc::new(FakeLinkResolver),
-                        store: Arc::new(Mutex::new(FakeStore)),
-                    },
-                );
+        let (mut module, receiver) =
+            test_module(mock_data_source("wasm_test/example_event_handler.wasm"));
 
-                // Create a mock Ethereum event
-                let ethereum_event = EthereumEvent {
-                    address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
-                    event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
-                    block_hash: util::ethereum::string_to_h256("example block hash"),
-                    params: vec![LogParam {
-                        name: String::from("exampleParam"),
-                        value: Token::String(String::from("some data")),
-                    }],
-                    removed: false,
-                };
+        // Create a mock Ethereum event
+        let ethereum_event = EthereumEvent {
+            address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
+            event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
+            block_hash: util::ethereum::string_to_h256("example block hash"),
+            params: vec![LogParam {
+                name: String::from("exampleParam"),
+                value: Token::String(String::from("some data")),
+            }],
+            removed: false,
+        };
 
-                // Call the event handler in the test module and pass the event to it
-                module.handle_ethereum_event("handleExampleEvent", ethereum_event);
+        // Call the event handler in the test module and pass the event to it
+        module.handle_ethereum_event("handleExampleEvent", ethereum_event);
 
-                // Expect a store set call to be made by the handler and a
-                // RuntimeHostEvent::EntitySet event to be written to the event stream
-                let work = receiver.take(1).into_future();
-                let store_event = work
-                    .wait()
-                    .expect("No store event received from runtime")
-                    .0
-                    .expect("Store event must not be None");
+        // Expect a store set call to be made by the handler and a
+        // RuntimeHostEvent::EntitySet event to be written to the event stream
+        let work = receiver.take(1).into_future();
+        let store_event = work
+            .wait()
+            .expect("No store event received from runtime")
+            .0
+            .expect("Store event must not be None");
 
-                // Verify that this event matches what the test module is sending
-                assert_eq!(
-                    store_event,
-                    RuntimeHostEvent::EntitySet(
-                        StoreKey {
-                            subgraph: String::from("example subgraph"),
-                            entity: String::from("ExampleEntity"),
-                            id: String::from("example id"),
-                        },
-                        Entity::from(HashMap::from_iter(
-                            vec![(String::from("exampleAttribute"), Value::from("some data"))]
-                                .into_iter()
-                        )),
-                        EventSource::EthereumBlock(util::ethereum::string_to_h256(
-                            "example block hash",
-                        )),
-                    )
-                );
-            })
-        }))
+        // Verify that this event matches what the test module is sending
+        assert_eq!(
+            store_event,
+            RuntimeHostEvent::EntitySet(
+                StoreKey {
+                    subgraph: String::from("example subgraph"),
+                    entity: String::from("ExampleEntity"),
+                    id: String::from("example id"),
+                },
+                Entity::from(HashMap::from_iter(
+                    vec![(String::from("exampleAttribute"), Value::from("some data"))].into_iter()
+                )),
+                EventSource::EthereumBlock(util::ethereum::string_to_h256("example block hash",)),
+            )
+        );
     }
 
     #[test]
     fn json_conversions() {
-        tokio::run(future::lazy(|| {
-            Ok({
-                // Load the module
-                let logger = slog::Logger::root(slog::Discard, o!());
-                let (sender, _) = channel(1);
-                let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
-                let mut module = WasmiModule::new(
-                    &logger,
-                    WasmiModuleConfig {
-                        subgraph: mock_subgraph(),
-                        data_source: mock_data_source("wasm_test/string_to_number.wasm"),
-                        event_sink: sender,
-                        ethereum_adapter: mock_ethereum_adapter,
-                        link_resolver: Arc::new(FakeLinkResolver),
-                        store: Arc::new(Mutex::new(FakeStore)),
-                    },
-                );
+        let (mut module, _) = test_module(mock_data_source("wasm_test/string_to_number.wasm"));
 
-                // test u64 conversion
-                let number = 9223372036850770800;
-                let converted: u64 = module
-                    .module
-                    .invoke_export(
-                        "testToU64",
-                        &[RuntimeValue::from(module.heap.asc_new(&number.to_string()))],
-                        &mut module.externals,
-                    ).expect("call failed")
-                    .expect("call returned nothing")
-                    .try_into()
-                    .expect("call did not return I64");
-                assert_eq!(number, converted);
+        // test u64 conversion
+        let number = 9223372036850770800;
+        let converted: u64 = module
+            .module
+            .invoke_export(
+                "testToU64",
+                &[RuntimeValue::from(module.heap.asc_new(&number.to_string()))],
+                &mut module.externals,
+            ).expect("call failed")
+            .expect("call returned nothing")
+            .try_into()
+            .expect("call did not return I64");
+        assert_eq!(number, converted);
 
-                // test i64 conversion
-                let number = -9223372036850770800;
-                let converted: i64 = module
-                    .module
-                    .invoke_export(
-                        "testToI64",
-                        &[RuntimeValue::from(module.heap.asc_new(&number.to_string()))],
-                        &mut module.externals,
-                    ).expect("call failed")
-                    .expect("call returned nothing")
-                    .try_into()
-                    .expect("call did not return I64");
-                assert_eq!(number, converted);
+        // test i64 conversion
+        let number = -9223372036850770800;
+        let converted: i64 = module
+            .module
+            .invoke_export(
+                "testToI64",
+                &[RuntimeValue::from(module.heap.asc_new(&number.to_string()))],
+                &mut module.externals,
+            ).expect("call failed")
+            .expect("call returned nothing")
+            .try_into()
+            .expect("call did not return I64");
+        assert_eq!(number, converted);
 
-                // test f64 conversion
-                let number = F64::from(-9223372036850770.92345034);
-                let converted: F64 = module
-                    .module
-                    .invoke_export(
-                        "testToF64",
-                        &[RuntimeValue::from(
-                            module.heap.asc_new(&number.to_float().to_string()),
-                        )],
-                        &mut module.externals,
-                    ).expect("call failed")
-                    .expect("call returned nothing")
-                    .try_into()
-                    .expect("call did not return F64");
-                assert_eq!(number, converted);
+        // test f64 conversion
+        let number = F64::from(-9223372036850770.92345034);
+        let converted: F64 = module
+            .module
+            .invoke_export(
+                "testToF64",
+                &[RuntimeValue::from(
+                    module.heap.asc_new(&number.to_float().to_string()),
+                )],
+                &mut module.externals,
+            ).expect("call failed")
+            .expect("call returned nothing")
+            .try_into()
+            .expect("call did not return F64");
+        assert_eq!(number, converted);
 
-                // test BigInt conversion
-                let number = "-922337203685077092345034";
-                let big_int_obj: AscPtr<BigInt> = module
-                    .module
-                    .invoke_export(
-                        "testToBigInt",
-                        &[RuntimeValue::from(module.heap.asc_new(number))],
-                        &mut module.externals,
-                    ).expect("call failed")
-                    .expect("call returned nothing")
-                    .try_into()
-                    .expect("call did not return pointer");
-                let bytes: Vec<u8> = module.heap.asc_get(big_int_obj);
-                assert_eq!(
-                    scalar::BigInt::from_str(number).unwrap(),
-                    scalar::BigInt::from_signed_bytes_le(&bytes)
-                );
-            })
-        }))
+        // test BigInt conversion
+        let number = "-922337203685077092345034";
+        let big_int_obj: AscPtr<BigInt> = module
+            .module
+            .invoke_export(
+                "testToBigInt",
+                &[RuntimeValue::from(module.heap.asc_new(number))],
+                &mut module.externals,
+            ).expect("call failed")
+            .expect("call returned nothing")
+            .try_into()
+            .expect("call did not return pointer");
+        let bytes: Vec<u8> = module.heap.asc_get(big_int_obj);
+        assert_eq!(
+            scalar::BigInt::from_str(number).unwrap(),
+            scalar::BigInt::from_signed_bytes_le(&bytes)
+        );
+    }
+
+    #[test]
+    fn ipfs_cat() {
+        let (mut module, _) = test_module(mock_data_source("wasm_test/ipfs_cat.wasm"));
+        let ipfs = Arc::new(ipfs_api::IpfsClient::default());
+
+        let hash = module
+            .externals
+            .block_on(ipfs.add(Cursor::new("42")))
+            .unwrap()
+            .hash;
+        let converted: AscPtr<AscString> = module
+            .module
+            .invoke_export(
+                "ipfsCat",
+                &[RuntimeValue::from(module.heap.asc_new(&hash))],
+                &mut module.externals,
+            ).expect("call failed")
+            .expect("call returned nothing")
+            .try_into()
+            .expect("call did not return pointer");
+        let data: String = module.heap.asc_get(converted);
+        assert_eq!(data, "42");
     }
 }
