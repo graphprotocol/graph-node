@@ -8,9 +8,9 @@ use graphql_parser;
 use parity_wasm;
 use parity_wasm::elements::Module;
 use serde_yaml;
-use tokio::prelude::*;
-
 use std::sync::Arc;
+use tokio::prelude::*;
+use web3::types::Address;
 
 /// The ID of a subgraph.
 pub type SubgraphId = String;
@@ -80,7 +80,7 @@ impl SchemaData {
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct Source {
-    pub address: String,
+    pub address: Address,
     pub abi: String,
 }
 
