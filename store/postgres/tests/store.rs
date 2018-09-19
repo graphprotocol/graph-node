@@ -1504,7 +1504,7 @@ fn revert_block() {
             EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes())).to_string();
 
         // Revert all events associated with event_source, "znuyjijnezBiGFuZAW9Q"
-        store.revert_events(event_source);
+        store.revert_events(event_source, this_query.subgraph.clone());
 
         let returned_entities = store
             .find(this_query.clone())
@@ -1563,7 +1563,7 @@ fn revert_block_with_delete() {
             .expect("Store.delete operation failed");
 
         // Revert all events associated with our random event_source
-        store.revert_events(revert_event_source);
+        store.revert_events(revert_event_source, this_query.subgraph.clone());
 
         let returned_entities = store
             .find(this_query.clone())
@@ -1586,7 +1586,7 @@ fn revert_block_with_delete() {
         store
             .delete(del_key.clone(), event_source)
             .expect("Store.delete operation failed");
-        store.revert_events(revert_event_source);
+        store.revert_events(revert_event_source, this_query.subgraph.clone());
         let returned_entities = store
             .find(this_query.clone())
             .expect("store.find operation failed");
@@ -1631,7 +1631,7 @@ fn revert_block_with_partial_update() {
             .expect("Failed to update entity that already exists");
 
         // Perform revert operation, reversing the partial update
-        store.revert_events(revert_event_source.clone());
+        store.revert_events(revert_event_source.clone(), entity_key.subgraph.clone());
 
         // Obtain the reverted entity from the store
         let reverted_entity = store.get(entity_key.clone()).unwrap();
@@ -1641,7 +1641,7 @@ fn revert_block_with_partial_update() {
 
         // Perform revert operation again and verify the same results to confirm the
         // idempotent nature of the revert_events function
-        store.revert_events(revert_event_source);
+        store.revert_events(revert_event_source, entity_key.subgraph.clone());
         let reverted_entity = store.get(entity_key).unwrap();
         assert_eq!(reverted_entity, original_entity);
 
