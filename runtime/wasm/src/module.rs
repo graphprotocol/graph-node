@@ -318,17 +318,12 @@ where
         };
 
         // Retrieve an Entity from the store
-        let get_result = self
-            .store
+        self.store
             .lock()
             .unwrap()
             .get(store_key)
-            .map(|entity| entity);
-        let get_result: HashMap<_, _> = match get_result {
-            Ok(entity) => entity.into(),
-            Err(_e) => return Err(host_error("Error getting entity".to_string())),
-        };
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(&get_result))))
+            .map_err(|_| host_error("Error getting entity".to_string()))
+            .and_then(|result| Ok(Some(RuntimeValue::from(self.heap.asc_new(&result)))))
     }
 
     /// function ethereum.call(call: SmartContractCall): Array<Token>
