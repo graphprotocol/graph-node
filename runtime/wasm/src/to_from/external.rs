@@ -229,6 +229,14 @@ impl ToAscObj<AscEntity> for HashMap<String, store::Value> {
     }
 }
 
+impl ToAscObj<AscEntity> for store::Entity {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEntity {
+        AscTypedMap {
+            entries: heap.asc_new(&*self.iter().collect::<Vec<_>>()),
+        }
+    }
+}
+
 impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEnum<JsonValueKind> {
         use graph::serde_json::Value;
