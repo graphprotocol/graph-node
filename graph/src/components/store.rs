@@ -145,7 +145,12 @@ pub type SubgraphEntityPair = (String, String);
 /// Common trait for block data store implementations.
 pub trait BlockStore {
     /// Add a new network, but only if one with this name does not already exist in the block store
-    fn add_network_if_missing(&self, network_name: &str) -> Result<(), Error>;
+    fn add_network_if_missing(
+        &self,
+        network_name: &str,
+        net_version: &str,
+        genesis_block_hash: H256,
+    ) -> Result<(), Error>;
 
     /// Insert blocks into the store (or update if they are already present).
     fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(

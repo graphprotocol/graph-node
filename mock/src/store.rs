@@ -55,7 +55,7 @@ impl BasicStore for MockStore {
 }
 
 impl BlockStore for MockStore {
-    fn add_network_if_missing(&self, _: &str) -> Result<(), Error> {
+    fn add_network_if_missing(&self, _: &str, _: &str, _: H256) -> Result<(), Error> {
         unimplemented!()
     }
 
@@ -102,7 +102,7 @@ impl BasicStore for FakeStore {
 }
 
 impl BlockStore for FakeStore {
-    fn add_network_if_missing(&self, _: &str) -> Result<(), Error> {
+    fn add_network_if_missing(&self, _: &str, _: &str, _: H256) -> Result<(), Error> {
         panic!("called FakeStore")
     }
 
