@@ -5,6 +5,6 @@ authors = ["Leonardo Yvens Schwarzstein <leoyvens@gmail.com>"]
 
 [dependencies]
 graph = { path = "../../graph" }
-jsonrpc-http-server = { git = "https://github.com/paritytech/jsonrpc" }
+jsonrpc-http-server = { git = "https://github.com/paritytech/jsonrpc", rev = "3fd4d3dcd06a855a78238ef857276f91b64a1b3c" }
 serde = "1.0"
 serde_derive = "1.0"
