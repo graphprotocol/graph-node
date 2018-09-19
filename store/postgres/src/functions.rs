@@ -21,3 +21,8 @@ sql_function! {
     AttemptHeadUpdate,
     (net_name: Varchar, ancestor_count: BigInt) -> Array<Varchar>
 }
+sql_function! {
+    lookup_ancestor_block,
+    LookupAncestorBlock,
+    (start_block_hash: Varchar, ancestor_count: BigInt) -> Nullable<Jsonb>
+}
