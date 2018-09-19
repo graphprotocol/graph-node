@@ -41,12 +41,6 @@ where
         logger: slog::Logger,
         polling_interval: Duration,
     ) -> Result<BlockIngestor<S, T>, Error> {
-        // Add a head block pointer for this network name if one does not already exist
-        store
-            .lock()
-            .unwrap()
-            .add_network_if_missing(&network_name)?;
-
         Ok(BlockIngestor {
             store,
             network_name,
@@ -61,24 +55,55 @@ where
         // Currently, there is no way to stop block ingestion, so just leak self
         let static_self: &'static _ = Box::leak(Box::new(self));
 
-        // Create stream that emits at polling interval
-        tokio::timer::Interval::new(Instant::now(), static_self.polling_interval)
+        // First, add Ethereum network info it store
+        static_self
+            .add_network_to_store()
             .map_err(move |e| {
-                error!(static_self.logger, "timer::Interval failed: {:?}", e);
-            }).for_each(move |_| {
-                // Attempt to poll
-                static_self.do_poll().then(move |result| {
-                    if let Err(e) = result {
-                        // Some polls will fail due to transient issues
-                        warn!(
-                            static_self.logger,
-                            "failed to poll for latest block: {:?}", e
-                        );
-                    }
+                panic!("Failed to load Ethereum network info: {}", e);
+            }).and_then(move |()| {
+                // Create stream that emits at polling interval
+                tokio::timer::Interval::new(Instant::now(), static_self.polling_interval)
+                    .map_err(move |e| {
+                        error!(static_self.logger, "timer::Interval failed: {:?}", e);
+                    }).for_each(move |_| {
+                        // Attempt to poll
+                        static_self.do_poll().then(move |result| {
+                            if let Err(e) = result {
+                                // Some polls will fail due to transient issues
+                                warn!(
+                                    static_self.logger,
+                                    "failed to poll for latest block: {:?}", e
+                                );
+                            }
 
-                    // Continue polling even if polling failed
-                    future::ok(())
-                })
+                            // Continue polling even if polling failed
+                            future::ok(())
+                        })
+                    })
+            })
+    }
+
+    fn add_network_to_store<'a>(&'a self) -> impl Future<Item = (), Error = Error> + 'a {
+        let web3 = Web3::new(self.web3_transport.clone());
+
+        // Ask Ethereum node for info to identify the network
+        let net_ver_future = web3.net().version();
+        let gen_block_future = web3.eth().block(BlockNumber::Earliest.into());
+        net_ver_future
+            .join(gen_block_future)
+            .map_err(|e| format_err!("could not get network info from Ethereum: {}", e))
+            .and_then(move |(net_version, gen_block)| {
+                let gen_block_hash = gen_block
+                    .expect("Ethereum node could not find genesis block")
+                    .hash
+                    .unwrap();
+
+                // Add Ethereum network info to store
+                self.store.lock().unwrap().add_network_if_missing(
+                    &self.network_name,
+                    &net_version,
+                    gen_block_hash,
+                )
             })
     }
 

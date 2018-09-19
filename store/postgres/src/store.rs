@@ -3,7 +3,7 @@ use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::sql_types::Text;
-use diesel::{debug_query, delete, insert_into, result, select};
+use diesel::{debug_query, delete, insert_into, result, select, update};
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
 use std::collections::HashMap;
@@ -330,17 +330,68 @@ impl BasicStore for Store {
 }
 
 impl BlockStore for Store {
-    fn add_network_if_missing(&self, network_name: &str) -> Result<(), Error> {
+    fn add_network_if_missing(
+        &self,
+        new_network_name: &str,
+        new_net_version: &str,
+        new_genesis_block_hash: H256,
+    ) -> Result<(), Error> {
         use db_schema::ethereum_networks::dsl::*;
 
-        insert_into(ethereum_networks)
-            .values((
-                name.eq(network_name),
-                head_block_hash.eq::<Option<String>>(None),
-                head_block_number.eq::<Option<i64>>(None),
-            )).on_conflict(name)
-            .do_nothing()
-            .execute(&*self.conn.lock().unwrap())?;
+        let network_identifiers_opt = ethereum_networks
+            .select((net_version, genesis_block_hash))
+            .filter(name.eq(new_network_name))
+            .first::<(Option<String>, Option<String>)>(&*self.conn.lock().unwrap())
+            .optional()?;
+
+        match network_identifiers_opt {
+            // Network is missing in database
+            None => {
+                insert_into(ethereum_networks)
+                    .values((
+                        name.eq(new_network_name),
+                        head_block_hash.eq::<Option<String>>(None),
+                        head_block_number.eq::<Option<i64>>(None),
+                        net_version.eq::<Option<String>>(Some(new_net_version.to_owned())),
+                        genesis_block_hash
+                            .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
+                    )).on_conflict(name)
+                    .do_nothing()
+                    .execute(&*self.conn.lock().unwrap())?;
+            }
+
+            // Network is in database and has identifiers
+            Some((Some(last_net_version), Some(last_genesis_block_hash))) => {
+                if last_net_version != new_net_version {
+                    panic!(
+                        "Ethereum node provided net_version {}, \
+                         but we expected {}. Did you change networks \
+                         without changing the network name?",
+                        new_net_version, last_net_version
+                    );
+                }
+
+                if last_genesis_block_hash.parse().ok() != Some(new_genesis_block_hash) {
+                    panic!(
+                        "Ethereum node provided genesis block hash {}, \
+                         but we expected {}. Did you change networks \
+                         without changing the network name?",
+                        new_genesis_block_hash, last_genesis_block_hash
+                    );
+                }
+            }
+
+            // Network is in database but is missing identifiers
+            Some(_) => {
+                update(ethereum_networks)
+                    .set((
+                        net_version.eq::<Option<String>>(Some(new_net_version.to_owned())),
+                        genesis_block_hash
+                            .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
+                    )).filter(name.eq(new_network_name))
+                    .execute(&*self.conn.lock().unwrap())?;
+            }
+        }
 
         Ok(())
     }

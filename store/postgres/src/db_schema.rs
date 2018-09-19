@@ -13,6 +13,8 @@ table! {
         name -> Varchar,
         head_block_hash -> Nullable<Varchar>,
         head_block_number -> Nullable<BigInt>,
+        net_version -> Nullable<Varchar>,
+        genesis_block_hash -> Nullable<Varchar>,
     }
 }
 

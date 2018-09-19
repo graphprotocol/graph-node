@@ -190,7 +190,7 @@ impl BasicStore for TestStore {
 }
 
 impl BlockStore for TestStore {
-    fn add_network_if_missing(&self, _network_name: &str) -> Result<(), Error> {
+    fn add_network_if_missing(&self, _: &str, _: &str, _: H256) -> Result<(), Error> {
         unimplemented!()
     }
 
