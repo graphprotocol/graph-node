@@ -4,7 +4,7 @@ use futures::{Future, Stream};
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use web3::error::Error as Web3Error;
-use web3::types::{Address, Block, BlockId, BlockNumber, Log, H2048, H256};
+use web3::types::*;
 
 /// A request for the state of a contract at a specific block hash and address.
 pub struct EthereumContractStateRequest {
@@ -225,6 +225,73 @@ impl FromIterator<(Address, H256)> for EthereumLogFilter {
 /// Implementations may be implemented against an in-process Ethereum node
 /// or a remote node over RPC.
 pub trait EthereumAdapter: Send + 'static {
+    /// Ask the Ethereum node for the block number of the most recent block that it has.
+    fn latest_block_number(&self) -> Box<Future<Item = U256, Error = Error> + Send>;
+
+    /// Find a block by its hash.
+    ///
+    /// Use this method instead of `block_by_number` whenever possible.
+    fn block_by_hash(
+        &self,
+        block_hash: H256,
+    ) -> Box<Future<Item = Option<Block<Transaction>>, Error = Error> + Send>;
+
+    /// Find a block by its number.
+    ///
+    /// Careful: don't use this function without considering race conditions.
+    /// Chain reorgs could happen at any time, and could affect the answer received.
+    /// Generally, it is only safe to use this function with blocks that have received enough
+    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
+    /// those confirmations.
+    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
+    /// reorgs.
+    fn block_by_number(
+        &self,
+        block_number: u64,
+    ) -> Box<Future<Item = Option<Block<Transaction>>, Error = Error> + Send>;
+
+    /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
+    /// node.
+    ///
+    /// Careful: don't use this function without considering race conditions.
+    /// Chain reorgs could happen at any time, and could affect the answer received.
+    /// Generally, it is only safe to use this function with blocks that have received enough
+    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
+    /// those confirmations.
+    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
+    /// reorgs.
+    fn is_on_main_chain(
+        &self,
+        block_ptr: EthereumBlockPointer,
+    ) -> Box<Future<Item = bool, Error = Error> + Send>;
+
+    /// Find the first few blocks in the specified range containing at least one transaction with
+    /// at least one log entry matching the specified `log_filter`.
+    ///
+    /// Careful: don't use this function without considering race conditions.
+    /// Chain reorgs could happen at any time, and could affect the answer received.
+    /// Generally, it is only safe to use this function with blocks that have received enough
+    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
+    /// those confirmations.
+    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
+    /// reorgs.
+    /// It is recommended that `to` be far behind the block number of latest block the Ethereum
+    /// node is aware of.
+    fn find_first_blocks_with_logs(
+        &self,
+        from: u64,
+        to: u64,
+        log_filter: EthereumLogFilter,
+    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
+
+    /// Find all logs from transactions in the specified `block` that match the specified
+    /// `log_filter`.
+    fn get_logs_in_block(
+        &self,
+        block: Block<Transaction>,
+        log_filter: EthereumLogFilter,
+    ) -> Box<Future<Item = Vec<Log>, Error = EthereumSubscriptionError>>;
+
     /// Call the function of a smart contract.
     fn contract_call(
         &mut self,
