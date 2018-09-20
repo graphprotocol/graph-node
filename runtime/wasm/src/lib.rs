@@ -11,13 +11,12 @@ mod host;
 mod module;
 mod to_from;
 
-use self::graph::web3::types::{Address, H256};
+use self::graph::web3::types::Address;
 
 pub use self::host::{RuntimeHost, RuntimeHostBuilder, RuntimeHostConfig};
 
 #[derive(Clone, Debug)]
 pub(crate) struct UnresolvedContractCall {
-    pub block_hash: H256,
     pub contract_name: String,
     pub contract_address: Address,
     pub function_name: String,
