@@ -34,7 +34,7 @@ impl<T, L, S> Clone for RuntimeHostBuilder<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store + Send + Sync,
+    S: Store,
 {
     fn clone(&self) -> Self {
         RuntimeHostBuilder {
@@ -50,7 +50,7 @@ impl<T, L, S> RuntimeHostBuilder<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store + Send + Sync,
+    S: Store,
 {
     pub fn new(
         logger: &Logger,
@@ -71,7 +71,7 @@ impl<T, L, S> RuntimeHostBuilderTrait for RuntimeHostBuilder<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store + Send + Sync + 'static,
+    S: Store + 'static,
 {
     type Host = RuntimeHost;
 
@@ -115,7 +115,7 @@ impl RuntimeHost {
     where
         T: EthereumAdapter,
         L: LinkResolver,
-        S: Store + Send + Sync + 'static,
+        S: Store + 'static,
     {
         let logger = logger.new(o!(
             "component" => "RuntimeHost",
