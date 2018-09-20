@@ -205,39 +205,21 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), ipfs_client.clone());
 
-    info!(logger, "Connecting to Postgres db...");
-    let store = Arc::new(DieselStore::new(StoreConfig { url: postgres_url }, &logger));
-    let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(&logger, store.clone()));
-    let mut graphql_server = GraphQLQueryServer::new(&logger, graphql_runner.clone());
-    let mut subscription_server = GraphQLSubscriptionServer::new(&logger, graphql_runner.clone());
-
-    // Create Ethereum adapter
+    // Set up Ethereum transport
     let (ethereum_network_name, (transport_event_loop, transport)) = ethereum_ipc
         .map(|s| new_transport(s, &logger, Transport::new_ipc))
         .or(ethereum_ws.map(|s| new_transport(s, &logger, Transport::new_ws)))
         .or(ethereum_rpc.map(|s| new_transport(s, &logger, Transport::new_rpc)))
         .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
 
-    // Create Ethereum block ingestor
-    let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
-        store.clone(),
-        ethereum_network_name.to_owned(),
-        transport.clone(),
-        400, // ancestor count, which we could make configuable
-        logger.clone(),
-        Duration::from_millis(500), // polling interval, which we could make configurable
-    ).expect("failed to create Ethereum block ingestor");
-
-    // Run the Ethereum block ingestor in the background
-    tokio::spawn(block_ingestor.into_polling_stream());
-
     // If we drop the event loop the transport will stop working.
     // For now it's fine to just leak it.
     std::mem::forget(transport_event_loop);
 
+    // Create Ethereum adapter
     let ethereum = Arc::new(graph_datasource_ethereum::EthereumAdapter::new(
         graph_datasource_ethereum::EthereumAdapterConfig {
-            transport,
+            transport: transport.clone(),
             logger: logger.clone(),
         },
     ));
@@ -253,12 +235,46 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         }
     }
 
-    // Prepare a block stream builder for subgraphs
-    let block_stream_builder = BlockStreamBuilder::new(
+    // Ask Ethereum node for network identifiers
+    let eth_net_identifiers = match ethereum.net_identifiers().wait() {
+        Ok(net) => {
+            info!(logger, "Connected to Ethereum node.");
+            net
+        }
+        Err(e) => {
+            error!(logger, "Was a valid Ethereum node endpoint provided?");
+            panic!("Failed to connect to Ethereum node: {}", e);
+        }
+    };
+
+    // Set up Store
+    info!(logger, "Connecting to Postgres db...");
+    let store = Arc::new(DieselStore::new(
+        StoreConfig {
+            url: postgres_url,
+            network_name: ethereum_network_name.to_owned(),
+        },
+        &logger,
+        eth_net_identifiers,
+    ));
+    let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(&logger, store.clone()));
+    let mut graphql_server = GraphQLQueryServer::new(&logger, graphql_runner.clone());
+    let mut subscription_server = GraphQLSubscriptionServer::new(&logger, graphql_runner.clone());
+
+    // Create Ethereum block ingestor
+    let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
         store.clone(),
-        ethereum.clone(),
-        ethereum_network_name.to_owned(),
-    );
+        transport.clone(),
+        400, // ancestor count, which we could make configuable
+        logger.clone(),
+        Duration::from_millis(500), // polling interval, which we could make configurable
+    ).expect("failed to create Ethereum block ingestor");
+
+    // Run the Ethereum block ingestor in the background
+    tokio::spawn(block_ingestor.into_polling_stream());
+
+    // Prepare a block stream builder for subgraphs
+    let block_stream_builder = BlockStreamBuilder::new(store.clone(), ethereum.clone());
 
     // Prepare for hosting WASM runtimes and managing subgraph instances
     let runtime_host_builder =

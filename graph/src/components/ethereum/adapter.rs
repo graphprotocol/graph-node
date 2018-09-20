@@ -6,6 +6,12 @@ use std::iter::FromIterator;
 use web3::error::Error as Web3Error;
 use web3::types::*;
 
+/// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
+pub struct EthereumNetworkIdentifiers {
+    pub net_version: String,
+    pub genesis_block_hash: H256,
+}
+
 /// A request for the state of a contract at a specific block hash and address.
 pub struct EthereumContractStateRequest {
     pub address: Address,
@@ -225,6 +231,12 @@ impl FromIterator<(Address, H256)> for EthereumLogFilter {
 /// Implementations may be implemented against an in-process Ethereum node
 /// or a remote node over RPC.
 pub trait EthereumAdapter: Send + Sync + 'static {
+    /// Ask the Ethereum node for some identifying information about the Ethereum network it is
+    /// connected to.
+    fn net_identifiers(
+        &self,
+    ) -> Box<Future<Item = EthereumNetworkIdentifiers, Error = Error> + Send>;
+
     /// Ask the Ethereum node for the block number of the most recent block that it has.
     fn latest_block_number(&self) -> Box<Future<Item = U256, Error = Error> + Send>;
 

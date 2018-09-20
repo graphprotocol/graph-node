@@ -51,6 +51,7 @@ fn initiate_schema(logger: &slog::Logger, conn: &PgConnection) {
 /// Configuration for the Diesel/Postgres store.
 pub struct StoreConfig {
     pub url: String,
+    pub network_name: String,
 }
 
 /// A Store based on Diesel and Postgres.
@@ -59,11 +60,16 @@ pub struct Store {
     subscriptions: Arc<RwLock<HashMap<String, Subscription>>>,
     change_listener: EntityChangeListener,
     url: String,
+    network_name: String,
     pub conn: Arc<Mutex<PgConnection>>,
 }
 
 impl Store {
-    pub fn new(config: StoreConfig, logger: &slog::Logger) -> Self {
+    pub fn new(
+        config: StoreConfig,
+        logger: &slog::Logger,
+        net_identifiers: EthereumNetworkIdentifiers,
+    ) -> Self {
         // Create a store-specific logger
         let logger = logger.new(o!("component" => "Store"));
 
@@ -88,8 +94,12 @@ impl Store {
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             change_listener,
             url: config.url.clone(),
+            network_name: config.network_name.clone(),
             conn: Arc::new(Mutex::new(conn)),
         };
+
+        // Add network to store and check network identifiers
+        store.add_network_if_missing(net_identifiers).unwrap();
 
         // Deal with store subscriptions
         store.handle_entity_changes(entity_changes);
@@ -100,6 +110,73 @@ impl Store {
 
         // Return the store
         store
+    }
+
+    fn add_network_if_missing(
+        &self,
+        new_net_identifiers: EthereumNetworkIdentifiers,
+    ) -> Result<(), Error> {
+        use db_schema::ethereum_networks::dsl::*;
+
+        let new_genesis_block_hash = new_net_identifiers.genesis_block_hash;
+        let new_net_version = new_net_identifiers.net_version;
+
+        let network_identifiers_opt = ethereum_networks
+            .select((net_version, genesis_block_hash))
+            .filter(name.eq(&self.network_name))
+            .first::<(Option<String>, Option<String>)>(&*self.conn.lock().unwrap())
+            .optional()?;
+
+        match network_identifiers_opt {
+            // Network is missing in database
+            None => {
+                insert_into(ethereum_networks)
+                    .values((
+                        name.eq(&self.network_name),
+                        head_block_hash.eq::<Option<String>>(None),
+                        head_block_number.eq::<Option<i64>>(None),
+                        net_version.eq::<Option<String>>(Some(new_net_version.to_owned())),
+                        genesis_block_hash
+                            .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
+                    )).on_conflict(name)
+                    .do_nothing()
+                    .execute(&*self.conn.lock().unwrap())?;
+            }
+
+            // Network is in database and has identifiers
+            Some((Some(last_net_version), Some(last_genesis_block_hash))) => {
+                if last_net_version != new_net_version {
+                    panic!(
+                        "Ethereum node provided net_version {}, \
+                         but we expected {}. Did you change networks \
+                         without changing the network name?",
+                        new_net_version, last_net_version
+                    );
+                }
+
+                if last_genesis_block_hash.parse().ok() != Some(new_genesis_block_hash) {
+                    panic!(
+                        "Ethereum node provided genesis block hash {}, \
+                         but we expected {}. Did you change networks \
+                         without changing the network name?",
+                        new_genesis_block_hash, last_genesis_block_hash
+                    );
+                }
+            }
+
+            // Network is in database but is missing identifiers
+            Some(_) => {
+                update(ethereum_networks)
+                    .set((
+                        net_version.eq::<Option<String>>(Some(new_net_version.to_owned())),
+                        genesis_block_hash
+                            .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
+                    )).filter(name.eq(&self.network_name))
+                    .execute(&*self.conn.lock().unwrap())?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Handles entity changes emitted by Postgres.
@@ -187,6 +264,14 @@ impl Store {
 }
 
 impl StoreTrait for Store {
+    fn add_subgraph_if_missing(&self, subgraph_id: SubgraphId) -> Result<(), Error> {
+        unimplemented!();
+    }
+
+    fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
+        unimplemented!();
+    }
+
     fn get(&self, key: StoreKey) -> Result<Entity, ()> {
         debug!(self.logger, "get"; "key" => format!("{:?}", key));
 
@@ -200,76 +285,6 @@ impl StoreTrait for Store {
             .map(|value| {
                 serde_json::from_value::<Entity>(value).expect("Failed to deserialize entity")
             }).map_err(|_| ())
-    }
-
-    fn set(
-        &self,
-        key: StoreKey,
-        input_entity: Entity,
-        input_event_source: EventSource,
-    ) -> Result<(), ()> {
-        debug!(self.logger, "set"; "key" => format!("{:?}", key));
-
-        use db_schema::entities::dsl::*;
-
-        // Update the existing entity, if necessary
-        let updated_entity = match self.get(key.clone()) {
-            Ok(mut existing_entity) => {
-                existing_entity.merge(input_entity);
-                existing_entity
-            }
-            Err(_) => input_entity,
-        };
-
-        // Convert Entity hashmap to serde_json::Value for insert
-        let entity_json: serde_json::Value =
-            serde_json::to_value(&updated_entity).expect("Failed to serialize entity");
-
-        // Insert entity, perform an update in case of a primary key conflict
-        insert_into(entities)
-            .values((
-                id.eq(&key.id),
-                entity.eq(&key.entity),
-                subgraph.eq(&key.subgraph),
-                data.eq(&entity_json),
-                event_source.eq(&input_event_source.to_string()),
-            )).on_conflict((id, entity, subgraph))
-            .do_update()
-            .set((
-                id.eq(&key.id),
-                entity.eq(&key.entity),
-                subgraph.eq(&key.subgraph),
-                data.eq(&entity_json),
-                event_source.eq(&input_event_source.to_string()),
-            )).execute(&*self.conn.lock().unwrap())
-            .map(|_| ())
-            .map_err(|_| ())
-    }
-
-    fn delete(&self, key: StoreKey, input_event_source: EventSource) -> Result<(), ()> {
-        debug!(self.logger, "delete"; "key" => format!("{:?}", key));
-
-        use db_schema::entities::dsl::*;
-
-        let conn = self.conn.lock().unwrap();
-        conn.transaction::<usize, result::Error, _>(|| {
-            // Set session variable to store the source of the event
-            select(set_config(
-                "vars.current_event_source",
-                input_event_source.to_string(),
-                false,
-            )).execute(&*conn)
-            .unwrap();
-
-            // Delete from DB where rows match the subgraph ID, entity name and ID
-            delete(
-                entities
-                    .filter(subgraph.eq(&key.subgraph))
-                    .filter(entity.eq(&key.entity))
-                    .filter(id.eq(&key.id)),
-            ).execute(&*conn)
-        }).map(|_| ())
-        .map_err(|_| ())
     }
 
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()> {
@@ -331,11 +346,35 @@ impl StoreTrait for Store {
             }).map_err(|_| ())
     }
 
-    fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()> {
+    fn set_block_ptr_with_no_changes(
+        &self,
+        subgraph_id: SubgraphId,
+        block_ptr_from: EthereumBlockPointer,
+        block_ptr_to: EthereumBlockPointer,
+    ) -> Result<(), Error> {
+        unimplemented!();
+    }
+
+    fn transact_block_operations(
+        &self,
+        subgraph_id: &str,
+        block_ptr_from: EthereumBlockPointer,
+        block_ptr_to: EthereumBlockPointer,
+        operations: Vec<EntityOperation>,
+    ) -> Result<(), Error> {
         // NOTE: The biggest challenge here is to merge changes into existing
         // entities. Right now we're using `get()` inside `set()` to achieve this.
         // However, we may want to implement this in Postgres instead to avoid
         // roundtrips.
+        unimplemented!();
+    }
+
+    fn revert_block_operations(
+        &self,
+        subgraph_id: &str,
+        block_ptr_from: EthereumBlockPointer,
+        block_ptr_to: EthereumBlockPointer,
+    ) -> Result<(), Error> {
         unimplemented!();
     }
 
@@ -368,81 +407,14 @@ impl StoreTrait for Store {
 impl ChainStore for Store {
     type ChainHeadUpdateListener = ChainHeadUpdateListener;
 
-    fn add_network_if_missing(
-        &self,
-        new_network_name: &str,
-        new_net_version: &str,
-        new_genesis_block_hash: H256,
-    ) -> Result<(), Error> {
-        use db_schema::ethereum_networks::dsl::*;
-
-        let network_identifiers_opt = ethereum_networks
-            .select((net_version, genesis_block_hash))
-            .filter(name.eq(new_network_name))
-            .first::<(Option<String>, Option<String>)>(&*self.conn.lock().unwrap())
-            .optional()?;
-
-        match network_identifiers_opt {
-            // Network is missing in database
-            None => {
-                insert_into(ethereum_networks)
-                    .values((
-                        name.eq(new_network_name),
-                        head_block_hash.eq::<Option<String>>(None),
-                        head_block_number.eq::<Option<i64>>(None),
-                        net_version.eq::<Option<String>>(Some(new_net_version.to_owned())),
-                        genesis_block_hash
-                            .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
-                    )).on_conflict(name)
-                    .do_nothing()
-                    .execute(&*self.conn.lock().unwrap())?;
-            }
-
-            // Network is in database and has identifiers
-            Some((Some(last_net_version), Some(last_genesis_block_hash))) => {
-                if last_net_version != new_net_version {
-                    panic!(
-                        "Ethereum node provided net_version {}, \
-                         but we expected {}. Did you change networks \
-                         without changing the network name?",
-                        new_net_version, last_net_version
-                    );
-                }
-
-                if last_genesis_block_hash.parse().ok() != Some(new_genesis_block_hash) {
-                    panic!(
-                        "Ethereum node provided genesis block hash {}, \
-                         but we expected {}. Did you change networks \
-                         without changing the network name?",
-                        new_genesis_block_hash, last_genesis_block_hash
-                    );
-                }
-            }
-
-            // Network is in database but is missing identifiers
-            Some(_) => {
-                update(ethereum_networks)
-                    .set((
-                        net_version.eq::<Option<String>>(Some(new_net_version.to_owned())),
-                        genesis_block_hash
-                            .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
-                    )).filter(name.eq(new_network_name))
-                    .execute(&*self.conn.lock().unwrap())?;
-            }
-        }
-
-        Ok(())
-    }
-
     fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
         &self,
-        net_name: &str,
         blocks: B,
     ) -> Box<Future<Item = (), Error = Error> + Send + 'a> {
         use db_schema::ethereum_blocks::dsl::*;
 
         let conn = self.conn.clone();
-        let net_name = net_name.to_owned();
+        let net_name = self.network_name.clone();
         Box::new(blocks.for_each(move |block| {
             let json_blob = serde_json::to_value(&block).expect("Failed to serialize block");
             let values = (
@@ -464,13 +436,9 @@ impl ChainStore for Store {
         }))
     }
 
-    fn attempt_chain_head_update(
-        &self,
-        network_name: &str,
-        ancestor_count: u64,
-    ) -> Result<Vec<H256>, Error> {
+    fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error> {
         // Call attempt_head_update SQL function
-        select(attempt_chain_head_update(network_name, ancestor_count as i64))
+        select(attempt_chain_head_update(&self.network_name, ancestor_count as i64))
             .load(&*self.conn.lock().unwrap())
             .map_err(Error::from)
 
@@ -489,7 +457,23 @@ impl ChainStore for Store {
             .and_then(|r| r.map_err(Error::from))
     }
 
-    fn chain_head_updates(&self, network: &str) -> Self::ChainHeadUpdateListener {
-        Self::ChainHeadUpdateListener::new(self.url.clone(), network.to_string())
+    fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener {
+        Self::ChainHeadUpdateListener::new(self.url.clone(), self.network_name.clone())
+    }
+
+    fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+        unimplemented!();
+    }
+
+    fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {
+        unimplemented!();
+    }
+
+    fn ancestor_block(
+        &self,
+        block_ptr: EthereumBlockPointer,
+        offset: u64,
+    ) -> Result<Option<Block<Transaction>>, Error> {
+        unimplemented!();
     }
 }

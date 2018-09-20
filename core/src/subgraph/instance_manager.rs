@@ -101,6 +101,7 @@ impl SubgraphInstanceManager {
         S: Store + 'static,
     {
         let id = manifest.id.clone();
+        let id_for_transact = manifest.id.clone();
 
         // Request a block stream for this subgraph
         let (block_stream, block_stream_controller) = block_stream_builder.from_subgraph(&manifest);
@@ -116,6 +117,7 @@ impl SubgraphInstanceManager {
         let stream_err_logger = logger.clone();
         let shutdown_logger = logger.clone();
         let process_err_logger = logger.clone();
+        let store_err_logger = logger.clone();
 
         // Use a oneshot channel for shutting down the subgraph instance and block stream
         let (shutdown_sender, shutdown_receiver) = oneshot::channel();
@@ -177,12 +179,23 @@ impl SubgraphInstanceManager {
                         }).map(|operations| (block, operations))
                 }).for_each(move |(block, entity_operations)| {
                     let block_stream_controller = block_stream_controller.clone();
-                    let block_hash = block.block.hash.expect("encountered block without hash");
+                    let store_err_logger = store_err_logger.clone();
 
-                    // Transact entities into the store; if that succeeds, advance the
-                    // block stream
-                    future::result(store.transact(entity_operations))
-                        .and_then(move |_| block_stream_controller.advance(block_hash))
+                    let block_ptr_now = EthereumBlockPointer::to_parent(&block.block);
+                    let block_ptr_after = EthereumBlockPointer::from(block.block);
+
+                    // Transact entities into the store
+                    future::result(store.transact_block_operations(
+                        &id_for_transact,
+                        block_ptr_now,
+                        block_ptr_after,
+                        entity_operations,
+                    )).map_err(move |e| {
+                        error!(
+                            &store_err_logger,
+                            "Error while processing block stream for a subgraph: {}", e
+                        );
+                    })
                 }),
         );
 

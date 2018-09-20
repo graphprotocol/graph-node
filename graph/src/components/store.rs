@@ -145,20 +145,56 @@ pub type SubgraphEntityPair = (String, String);
 
 /// Common trait for store implementations.
 pub trait Store: Send + Sync {
-    /// Transact many entity operations at once.
-    fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()>;
+    /// Register a new subgraph ID in the store.
+    /// Each subgraph has its own entities and separate block processing state.
+    fn add_subgraph_if_missing(&self, subgraph_id: SubgraphId) -> Result<(), Error>;
+
+    /// Get a pointer to the most recently processed block in the subgraph.
+    fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error>;
 
     /// Looks up an entity using the given store key.
+    // TODO need to validate block ptr
     fn get(&self, key: StoreKey) -> Result<Entity, ()>;
 
-    /// Updates an entity using the given store key and entity data.
-    fn set(&self, key: StoreKey, entity: Entity, event_source: EventSource) -> Result<(), ()>;
-
-    /// Deletes an entity using the given store key.
-    fn delete(&self, key: StoreKey, event_source: EventSource) -> Result<(), ()>;
-
     /// Queries the store for entities that match the store query.
+    // TODO need to validate block ptr
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()>;
+
+    /// Updates the block pointer.  Careful: this is only safe to use if it is known that no store
+    /// changes are needed to go from `block_ptr_from` to `block_ptr_to`.
+    ///
+    /// `block_ptr_from` must match the current value of the subgraph block pointer.
+    fn set_block_ptr_with_no_changes(
+        &self,
+        subgraph_id: SubgraphId,
+        block_ptr_from: EthereumBlockPointer,
+        block_ptr_to: EthereumBlockPointer,
+    ) -> Result<(), Error>;
+
+    /// Transact the entity changes from a single block atomically into the store, and update the
+    /// subgraph block pointer from `block_ptr_from` to `block_ptr_to`.
+    ///
+    /// `block_ptr_from` must match the current value of the subgraph block pointer.
+    /// `block_ptr_to` must point to a child block of `block_ptr_from`.
+    fn transact_block_operations(
+        &self,
+        subgraph_id: &str,
+        block_ptr_from: EthereumBlockPointer,
+        block_ptr_to: EthereumBlockPointer,
+        operations: Vec<EntityOperation>,
+    ) -> Result<(), Error>;
+
+    /// Revert the entity changes from a single block atomically in the store, and update the
+    /// subgraph block pointer from `block_ptr_from` to `block_ptr_to`.
+    ///
+    /// `block_ptr_from` must match the current value of the subgraph block pointer.
+    /// `block_ptr_to` must point to the parent block of `block_ptr_from`.
+    fn revert_block_operations(
+        &self,
+        subgraph_id: &str,
+        block_ptr_from: EthereumBlockPointer,
+        block_ptr_to: EthereumBlockPointer,
+    ) -> Result<(), Error>;
 
     /// Subscribe to entity changes for specific subgraphs and entities.
     ///
@@ -170,18 +206,9 @@ pub trait Store: Send + Sync {
 pub trait ChainStore: Send + Sync {
     type ChainHeadUpdateListener: ChainHeadUpdateListener;
 
-    /// Add a new network, but only if one with this name does not already exist in the block store.
-    fn add_network_if_missing(
-        &self,
-        network_name: &str,
-        net_version: &str,
-        genesis_block_hash: H256,
-    ) -> Result<(), Error>;
-
     /// Insert blocks into the store (or update if they are already present).
     fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
         &self,
-        network_name: &str,
         blocks: B,
     ) -> Box<Future<Item = (), Error = Error> + Send + 'a>;
 
@@ -196,12 +223,29 @@ pub trait ChainStore: Send + Sync {
     ///
     /// If the candidate new head block had one or more missing ancestors, returns
     /// `Ok(missing_blocks)`, where `missing_blocks` is a nonexhaustive list of missing blocks.
-    fn attempt_chain_head_update(
-        &self,
-        network_name: &str,
-        ancestor_count: u64,
-    ) -> Result<Vec<H256>, Error>;
+    fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error>;
 
     /// Subscribe to chain head updates.
-    fn chain_head_updates(&self, network: &str) -> Self::ChainHeadUpdateListener;
+    fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener;
+
+    /// Get the current head block pointer for this chain.
+    /// Any changes to the head block pointer will be to a block with a larger block number, never
+    /// to a block with a smaller or equal block number.
+    ///
+    /// The head block pointer will be None on initial set up.
+    fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
+
+    /// Get Some(block) if it is present in the chain store, or None.
+    fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error>;
+
+    /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
+    /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to
+    /// missing blocks in the chain store.
+    ///
+    /// Returns an error if the offset would reach past the genesis block.
+    fn ancestor_block(
+        &self,
+        block_ptr: EthereumBlockPointer,
+        offset: u64,
+    ) -> Result<Option<Block<Transaction>>, Error>;
 }
