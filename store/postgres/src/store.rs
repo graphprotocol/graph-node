@@ -186,7 +186,7 @@ impl Store {
     }
 }
 
-impl BasicStore for Store {
+impl StoreTrait for Store {
     fn get(&self, key: StoreKey) -> Result<Entity, ()> {
         debug!(self.logger, "get"; "key" => format!("{:?}", key));
 
@@ -330,9 +330,7 @@ impl BasicStore for Store {
                     }).collect()
             }).map_err(|_| ())
     }
-}
 
-impl StoreTrait for Store {
     fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()> {
         // NOTE: The biggest challenge here is to merge changes into existing
         // entities. Right now we're using `get()` inside `set()` to achieve this.
