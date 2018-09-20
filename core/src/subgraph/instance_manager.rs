@@ -1,7 +1,7 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use futures::sync::oneshot;
 use std::collections::HashMap;
-use std::sync::{Mutex, RwLock};
+use std::sync::RwLock;
 
 use graph::components::subgraph::SubgraphProviderEvent;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
@@ -19,12 +19,12 @@ impl SubgraphInstanceManager {
     /// Creates a new runtime manager.
     pub fn new<B, S, T>(
         logger: &Logger,
-        store: Arc<Mutex<S>>,
+        store: Arc<S>,
         host_builder: T,
         block_stream_builder: B,
     ) -> Self
     where
-        S: Store + 'static,
+        S: Store + Send + Sync + 'static,
         T: RuntimeHostBuilder + 'static,
         B: BlockStreamBuilder + 'static,
     {
@@ -52,11 +52,11 @@ impl SubgraphInstanceManager {
     fn handle_subgraph_events<B, S, T>(
         logger: Logger,
         receiver: Receiver<SubgraphProviderEvent>,
-        store: Arc<Mutex<S>>,
+        store: Arc<S>,
         host_builder: T,
         block_stream_builder: B,
     ) where
-        S: Store + 'static,
+        S: Store + Send + Sync + 'static,
         T: RuntimeHostBuilder + 'static,
         B: BlockStreamBuilder + 'static,
     {
@@ -93,12 +93,12 @@ impl SubgraphInstanceManager {
         instances: InstanceShutdownMap,
         host_builder: T,
         block_stream_builder: B,
-        store: Arc<Mutex<S>>,
+        store: Arc<S>,
         manifest: SubgraphManifest,
     ) where
         T: RuntimeHostBuilder,
         B: BlockStreamBuilder,
-        S: Store + 'static,
+        S: Store + Send + Sync + 'static,
     {
         let id = manifest.id.clone();
 
@@ -181,7 +181,7 @@ impl SubgraphInstanceManager {
 
                     // Transact entities into the store; if that succeeds, advance the
                     // block stream
-                    future::result(store.lock().unwrap().transact(entity_operations))
+                    future::result(store.transact(entity_operations))
                         .and_then(move |_| block_stream_controller.advance(block_hash))
                 }),
         );

@@ -98,7 +98,7 @@ pub struct WasmiModuleConfig<T, L, S> {
     pub data_source: DataSource,
     pub ethereum_adapter: Arc<Mutex<T>>,
     pub link_resolver: Arc<L>,
-    pub store: Arc<Mutex<S>>,
+    pub store: Arc<S>,
 }
 
 impl<T, L, S> Clone for WasmiModuleConfig<T, L, S> {
@@ -125,7 +125,7 @@ impl<T, L, S, U> WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store,
+    S: Store + Send + Sync,
     U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone,
 {
     /// Creates a new wasmi module
@@ -250,7 +250,7 @@ pub struct HostExternals<T, L, S, U> {
     link_resolver: Arc<L>,
     // Block hash of the event being mapped.
     block_hash: H256,
-    store: Arc<Mutex<S>>,
+    store: Arc<S>,
     // Entity operations collected while handling events
     entity_operations: Vec<EntityOperation>,
     task_sink: U,
@@ -260,7 +260,7 @@ impl<T, L, S, U> HostExternals<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store,
+    S: Store + Send + Sync,
     U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone,
 {
     /// function store.set(entity: string, id: string, data: Entity): void
@@ -318,8 +318,6 @@ where
 
         // Retrieve an Entity from the store
         self.store
-            .lock()
-            .unwrap()
             .get(store_key)
             .and_then(|result| Ok(Some(RuntimeValue::from(self.heap.asc_new(&result)))))
             .or(Ok(Some(RuntimeValue::from(0))))
@@ -606,7 +604,7 @@ impl<T, L, S, U> Externals for HostExternals<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store,
+    S: Store + Send + Sync,
     U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone,
 {
     fn invoke_index(

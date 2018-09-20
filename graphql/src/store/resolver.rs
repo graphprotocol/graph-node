@@ -2,7 +2,7 @@ use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::result;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use graph::components::store::*;
 use graph::prelude::*;
@@ -15,12 +15,12 @@ use store::query::{collect_entities_from_query_field, parse_subgraph_id};
 /// A resolver that fetches entities from a `Store`.
 pub struct StoreResolver<S> {
     logger: Logger,
-    store: Arc<Mutex<S>>,
+    store: Arc<S>,
 }
 
 impl<S> Clone for StoreResolver<S>
 where
-    S: Store,
+    S: Store + Send + Sync,
 {
     fn clone(&self) -> Self {
         StoreResolver {
@@ -32,9 +32,9 @@ where
 
 impl<S> StoreResolver<S>
 where
-    S: Store,
+    S: Store + Send + Sync,
 {
-    pub fn new(logger: &Logger, store: Arc<Mutex<S>>) -> Self {
+    pub fn new(logger: &Logger, store: Arc<S>) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,
@@ -186,7 +186,7 @@ where
 
 impl<S> Resolver for StoreResolver<S>
 where
-    S: Store,
+    S: Store + Send + Sync,
 {
     fn resolve_objects(
         &self,
@@ -217,8 +217,7 @@ where
             Self::add_filter_for_reference_field(&mut query, parent, field_definition, object_type);
         }
 
-        let store = self.store.lock().unwrap();
-        store
+        self.store
             .find(query)
             .map(|entities| {
                 q::Value::List(
@@ -244,8 +243,8 @@ where
         });
 
         if let Some(id) = id {
-            let store = self.store.lock().unwrap();
-            return store
+            return self
+                .store
                 .get(StoreKey {
                     subgraph: parse_subgraph_id(object_type).expect(
                         format!("Failed to get subgraph ID from type: {}", object_type.name)
@@ -261,8 +260,6 @@ where
             Some(q::Value::Object(parent_object)) => match parent_object.get(field) {
                 Some(q::Value::String(id)) => self
                     .store
-                    .lock()
-                    .unwrap()
                     .get(StoreKey {
                         subgraph: parse_subgraph_id(object_type).expect(
                             format!("Failed to get subgraph ID from type: {}", object_type.name)
@@ -288,8 +285,6 @@ where
                 query.range = Some(StoreRange { first: 1, skip: 0 });
 
                 self.store
-                    .lock()
-                    .unwrap()
                     .find(query)
                     .map(|entities| {
                         entities
@@ -321,6 +316,6 @@ where
         let entities = collect_entities_from_query_field(schema, object_type, field);
 
         // Subscribe to the store and return the entity change stream
-        Ok(self.store.lock().unwrap().subscribe(entities))
+        Ok(self.store.subscribe(entities))
     }
 }

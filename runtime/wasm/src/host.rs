@@ -27,14 +27,14 @@ pub struct RuntimeHostBuilder<T, L, S> {
     logger: Logger,
     ethereum_adapter: Arc<Mutex<T>>,
     link_resolver: Arc<L>,
-    store: Arc<Mutex<S>>,
+    store: Arc<S>,
 }
 
 impl<T, L, S> Clone for RuntimeHostBuilder<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store,
+    S: Store + Send + Sync,
 {
     fn clone(&self) -> Self {
         RuntimeHostBuilder {
@@ -50,13 +50,13 @@ impl<T, L, S> RuntimeHostBuilder<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store,
+    S: Store + Send + Sync,
 {
     pub fn new(
         logger: &Logger,
         ethereum_adapter: Arc<Mutex<T>>,
         link_resolver: Arc<L>,
-        store: Arc<Mutex<S>>,
+        store: Arc<S>,
     ) -> Self {
         RuntimeHostBuilder {
             logger: logger.new(o!("component" => "RuntimeHostBuilder")),
@@ -71,7 +71,7 @@ impl<T, L, S> RuntimeHostBuilderTrait for RuntimeHostBuilder<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store + 'static,
+    S: Store + Send + Sync + 'static,
 {
     type Host = RuntimeHost;
 
@@ -109,13 +109,13 @@ impl RuntimeHost {
         logger: &Logger,
         ethereum_adapter: Arc<Mutex<T>>,
         link_resolver: Arc<L>,
-        store: Arc<Mutex<S>>,
+        store: Arc<S>,
         config: RuntimeHostConfig,
     ) -> Self
     where
         T: EthereumAdapter,
         L: LinkResolver,
-        S: Store + 'static,
+        S: Store + Send + Sync + 'static,
     {
         let logger = logger.new(o!(
             "component" => "RuntimeHost",
