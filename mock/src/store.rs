@@ -56,11 +56,11 @@ impl BasicStore for MockStore {
         }
     }
 
-    fn set(&mut self, _key: StoreKey, _entity: Entity, _source: EventSource) -> Result<(), ()> {
+    fn set(&self, _key: StoreKey, _entity: Entity, _source: EventSource) -> Result<(), ()> {
         unimplemented!();
     }
 
-    fn delete(&mut self, _key: StoreKey, _source: EventSource) -> Result<(), ()> {
+    fn delete(&self, _key: StoreKey, _source: EventSource) -> Result<(), ()> {
         unimplemented!();
     }
 
@@ -97,11 +97,11 @@ impl ChainStore for MockStore {
 }
 
 impl Store for MockStore {
-    fn transact(&mut self, operations: Vec<EntityOperation>) -> Result<(), ()> {
+    fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()> {
         unimplemented!();
     }
 
-    fn subscribe(&mut self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
 }
@@ -113,11 +113,11 @@ impl BasicStore for FakeStore {
         panic!("called FakeStore")
     }
 
-    fn set(&mut self, _: StoreKey, _: Entity, _source: EventSource) -> Result<(), ()> {
+    fn set(&self, _: StoreKey, _: Entity, _source: EventSource) -> Result<(), ()> {
         panic!("called FakeStore")
     }
 
-    fn delete(&mut self, _: StoreKey, _source: EventSource) -> Result<(), ()> {
+    fn delete(&self, _: StoreKey, _source: EventSource) -> Result<(), ()> {
         panic!("called FakeStore")
     }
 
@@ -148,17 +148,17 @@ impl ChainStore for FakeStore {
         panic!("called FakeStore")
     }
 
-    fn chain_head_updates(&self, network: &str) -> Self::ChainHeadUpdateListener {
+    fn chain_head_updates(&self, _: &str) -> Self::ChainHeadUpdateListener {
         unimplemented!();
     }
 }
 
 impl Store for FakeStore {
-    fn transact(&mut self, operations: Vec<EntityOperation>) -> Result<(), ()> {
+    fn transact(&self, _: Vec<EntityOperation>) -> Result<(), ()> {
         unimplemented!();
     }
 
-    fn subscribe(&mut self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
 }

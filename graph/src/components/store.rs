@@ -146,10 +146,10 @@ pub trait BasicStore: Send {
     fn get(&self, key: StoreKey) -> Result<Entity, ()>;
 
     /// Updates an entity using the given store key and entity data.
-    fn set(&mut self, key: StoreKey, entity: Entity, event_source: EventSource) -> Result<(), ()>;
+    fn set(&self, key: StoreKey, entity: Entity, event_source: EventSource) -> Result<(), ()>;
 
     /// Deletes an entity using the given store key.
-    fn delete(&mut self, key: StoreKey, event_source: EventSource) -> Result<(), ()>;
+    fn delete(&self, key: StoreKey, event_source: EventSource) -> Result<(), ()>;
 
     /// Queries the store for entities that match the store query.
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()>;
@@ -161,12 +161,12 @@ pub type SubgraphEntityPair = (String, String);
 /// Common trait for store implementations.
 pub trait Store: BasicStore + Send {
     /// Transact many entity operations at once.
-    fn transact(&mut self, operations: Vec<EntityOperation>) -> Result<(), ()>;
+    fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()>;
 
     /// Subscribe to entity changes for specific subgraphs and entities.
     ///
     /// Returns a stream of entity changes that match the input arguments.
-    fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
+    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
 }
 
 /// Common trait for blockchain store implementations.
