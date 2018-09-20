@@ -224,7 +224,7 @@ impl FromIterator<(Address, H256)> for EthereumLogFilter {
 ///
 /// Implementations may be implemented against an in-process Ethereum node
 /// or a remote node over RPC.
-pub trait EthereumAdapter: Send + 'static {
+pub trait EthereumAdapter: Send + Sync + 'static {
     /// Ask the Ethereum node for the block number of the most recent block that it has.
     fn latest_block_number(&self) -> Box<Future<Item = U256, Error = Error> + Send>;
 
@@ -294,7 +294,7 @@ pub trait EthereumAdapter: Send + 'static {
 
     /// Call the function of a smart contract.
     fn contract_call(
-        &mut self,
+        &self,
         call: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>>;
 }

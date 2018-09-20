@@ -2,7 +2,7 @@ use failure::Error;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait,
@@ -93,7 +93,7 @@ impl BlockStreamControllerTrait for BlockStreamController {
 
 pub struct BlockStreamBuilder<S, E> {
     store: Arc<S>,
-    ethereum: Arc<Mutex<E>>,
+    ethereum: Arc<E>,
     network: String,
 }
 
@@ -112,7 +112,7 @@ where
     S: ChainStore,
     E: EthereumAdapter,
 {
-    pub fn new(store: Arc<S>, ethereum: Arc<Mutex<E>>, network: String) -> Self {
+    pub fn new(store: Arc<S>, ethereum: Arc<E>, network: String) -> Self {
         BlockStreamBuilder {
             store,
             ethereum,

@@ -25,6 +25,7 @@ use itertools::Itertools;
 use reqwest::Client;
 use std::env;
 use std::net::ToSocketAddrs;
+use std::str::FromStr;
 use std::sync::Mutex;
 use std::time::Duration;
 use url::Url;
@@ -234,14 +235,14 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // For now it's fine to just leak it.
     std::mem::forget(transport_event_loop);
 
-    let ethereum = Arc::new(Mutex::new(graph_datasource_ethereum::EthereumAdapter::new(
+    let ethereum = Arc::new(graph_datasource_ethereum::EthereumAdapter::new(
         graph_datasource_ethereum::EthereumAdapterConfig {
             transport,
             logger: logger.clone(),
         },
-    )));
+    ));
 
-    match ethereum.lock().unwrap().latest_block_number().wait() {
+    match ethereum.latest_block_number().wait() {
         Ok(number) => {
             info!(logger, "Connected to Ethereum node";
                   "most_recent_block" => &number.to_string());

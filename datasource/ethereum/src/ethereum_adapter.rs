@@ -355,7 +355,7 @@ where
     }
 
     fn contract_call(
-        &mut self,
+        &self,
         call: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
         // Emit custom error for type mismatches.
