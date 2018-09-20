@@ -104,7 +104,7 @@ impl Store {
 
     /// Handles entity changes emitted by Postgres.
     fn handle_entity_changes(
-        &mut self,
+        &self,
         entity_changes: Box<Stream<Item = EntityChange, Error = ()> + Send>,
     ) {
         let logger = self.logger.clone();
@@ -146,7 +146,7 @@ impl Store {
         }));
     }
 
-    fn periodically_clean_up_stale_subscriptions(&mut self) {
+    fn periodically_clean_up_stale_subscriptions(&self) {
         let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
 
@@ -203,7 +203,7 @@ impl BasicStore for Store {
     }
 
     fn set(
-        &mut self,
+        &self,
         key: StoreKey,
         input_entity: Entity,
         input_event_source: EventSource,
@@ -246,7 +246,7 @@ impl BasicStore for Store {
             .map_err(|_| ())
     }
 
-    fn delete(&mut self, key: StoreKey, input_event_source: EventSource) -> Result<(), ()> {
+    fn delete(&self, key: StoreKey, input_event_source: EventSource) -> Result<(), ()> {
         debug!(self.logger, "delete"; "key" => format!("{:?}", key));
 
         use db_schema::entities::dsl::*;
@@ -333,7 +333,7 @@ impl BasicStore for Store {
 }
 
 impl StoreTrait for Store {
-    fn transact(&mut self, operations: Vec<EntityOperation>) -> Result<(), ()> {
+    fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()> {
         // NOTE: The biggest challenge here is to merge changes into existing
         // entities. Right now we're using `get()` inside `set()` to achieve this.
         // However, we may want to implement this in Postgres instead to avoid
@@ -341,7 +341,7 @@ impl StoreTrait for Store {
         unimplemented!();
     }
 
-    fn subscribe(&mut self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         let subscriptions = self.subscriptions.clone();
 
         // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions
