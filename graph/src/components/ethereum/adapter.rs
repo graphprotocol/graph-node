@@ -160,6 +160,29 @@ impl<T> From<Block<T>> for EthereumBlockPointer {
     }
 }
 
+impl From<(H256, u64)> for EthereumBlockPointer {
+    fn from((hash, number): (H256, u64)) -> EthereumBlockPointer {
+        if number >= (1 << 63) {
+            panic!("block number out of range: {}", number);
+        }
+
+        EthereumBlockPointer { hash, number }
+    }
+}
+
+impl From<(H256, i64)> for EthereumBlockPointer {
+    fn from((hash, number): (H256, i64)) -> EthereumBlockPointer {
+        if number < 0 {
+            panic!("block number out of range: {}", number);
+        }
+
+        EthereumBlockPointer {
+            hash,
+            number: number as u64,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct EthereumLogFilter {
     pub contract_address_and_event_sig_pairs: HashSet<(Address, H256)>,
