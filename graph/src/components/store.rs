@@ -140,8 +140,14 @@ impl fmt::Display for EventSource {
     }
 }
 
-/// Common trait for store implementations that don't require interaction with the system.
-pub trait BasicStore: Send {
+/// A pair of subgraph ID and entity type name.
+pub type SubgraphEntityPair = (String, String);
+
+/// Common trait for store implementations.
+pub trait Store: Send + Sync {
+    /// Transact many entity operations at once.
+    fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()>;
+
     /// Looks up an entity using the given store key.
     fn get(&self, key: StoreKey) -> Result<Entity, ()>;
 
@@ -153,15 +159,6 @@ pub trait BasicStore: Send {
 
     /// Queries the store for entities that match the store query.
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()>;
-}
-
-/// A pair of subgraph ID and entity type name.
-pub type SubgraphEntityPair = (String, String);
-
-/// Common trait for store implementations.
-pub trait Store: BasicStore + Send + Sync {
-    /// Transact many entity operations at once.
-    fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()>;
 
     /// Subscribe to entity changes for specific subgraphs and entities.
     ///

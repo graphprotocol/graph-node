@@ -38,7 +38,7 @@ impl MockStore {
     }
 }
 
-impl BasicStore for MockStore {
+impl Store for MockStore {
     fn get(&self, key: StoreKey) -> Result<Entity, ()> {
         if key.entity == "User" {
             self.entities
@@ -66,6 +66,14 @@ impl BasicStore for MockStore {
 
     fn find(&self, _query: StoreQuery) -> Result<Vec<Entity>, ()> {
         Ok(self.entities.clone())
+    }
+
+    fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()> {
+        unimplemented!();
+    }
+
+    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+        unimplemented!();
     }
 }
 
@@ -96,19 +104,9 @@ impl ChainStore for MockStore {
     }
 }
 
-impl Store for MockStore {
-    fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()> {
-        unimplemented!();
-    }
-
-    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
-        unimplemented!();
-    }
-}
-
 pub struct FakeStore;
 
-impl BasicStore for FakeStore {
+impl Store for FakeStore {
     fn get(&self, _: StoreKey) -> Result<Entity, ()> {
         panic!("called FakeStore")
     }
@@ -123,6 +121,14 @@ impl BasicStore for FakeStore {
 
     fn find(&self, _: StoreQuery) -> Result<Vec<Entity>, ()> {
         panic!("called FakeStore")
+    }
+
+    fn transact(&self, _: Vec<EntityOperation>) -> Result<(), ()> {
+        unimplemented!();
+    }
+
+    fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+        unimplemented!();
     }
 }
 
@@ -149,16 +155,6 @@ impl ChainStore for FakeStore {
     }
 
     fn chain_head_updates(&self, _: &str) -> Self::ChainHeadUpdateListener {
-        unimplemented!();
-    }
-}
-
-impl Store for FakeStore {
-    fn transact(&self, _: Vec<EntityOperation>) -> Result<(), ()> {
-        unimplemented!();
-    }
-
-    fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
 }

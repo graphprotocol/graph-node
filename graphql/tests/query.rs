@@ -130,7 +130,11 @@ impl TestStore {
     }
 }
 
-impl BasicStore for TestStore {
+impl Store for TestStore {
+    fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()> {
+        unimplemented!()
+    }
+
     fn get(&self, key: StoreKey) -> Result<Entity, ()> {
         self.entities
             .iter()
