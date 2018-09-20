@@ -109,7 +109,7 @@ impl<S, E> Clone for BlockStreamBuilder<S, E> {
 
 impl<S, E> BlockStreamBuilder<S, E>
 where
-    S: ChainStore + Send + Sync,
+    S: ChainStore,
     E: EthereumAdapter,
 {
     pub fn new(store: Arc<S>, ethereum: Arc<Mutex<E>>, network: String) -> Self {
@@ -123,7 +123,7 @@ where
 
 impl<S, E> BlockStreamBuilderTrait for BlockStreamBuilder<S, E>
 where
-    S: ChainStore + Send + Sync,
+    S: ChainStore,
     E: EthereumAdapter,
 {
     type Stream = BlockStream;

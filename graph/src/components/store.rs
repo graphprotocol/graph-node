@@ -159,7 +159,7 @@ pub trait BasicStore: Send {
 pub type SubgraphEntityPair = (String, String);
 
 /// Common trait for store implementations.
-pub trait Store: BasicStore + Send {
+pub trait Store: BasicStore + Send + Sync {
     /// Transact many entity operations at once.
     fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()>;
 
@@ -170,7 +170,7 @@ pub trait Store: BasicStore + Send {
 }
 
 /// Common trait for blockchain store implementations.
-pub trait ChainStore: Send {
+pub trait ChainStore: Send + Sync {
     type ChainHeadUpdateListener: ChainHeadUpdateListener;
 
     /// Add a new network, but only if one with this name does not already exist in the block store.

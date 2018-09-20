@@ -24,7 +24,7 @@ impl SubgraphInstanceManager {
         block_stream_builder: B,
     ) -> Self
     where
-        S: Store + Send + Sync + 'static,
+        S: Store + 'static,
         T: RuntimeHostBuilder + 'static,
         B: BlockStreamBuilder + 'static,
     {
@@ -56,7 +56,7 @@ impl SubgraphInstanceManager {
         host_builder: T,
         block_stream_builder: B,
     ) where
-        S: Store + Send + Sync + 'static,
+        S: Store + 'static,
         T: RuntimeHostBuilder + 'static,
         B: BlockStreamBuilder + 'static,
     {
@@ -98,7 +98,7 @@ impl SubgraphInstanceManager {
     ) where
         T: RuntimeHostBuilder,
         B: BlockStreamBuilder,
-        S: Store + Send + Sync + 'static,
+        S: Store + 'static,
     {
         let id = manifest.id.clone();
 

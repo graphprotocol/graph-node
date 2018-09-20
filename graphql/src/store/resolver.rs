@@ -20,7 +20,7 @@ pub struct StoreResolver<S> {
 
 impl<S> Clone for StoreResolver<S>
 where
-    S: Store + Send + Sync,
+    S: Store,
 {
     fn clone(&self) -> Self {
         StoreResolver {
@@ -32,7 +32,7 @@ where
 
 impl<S> StoreResolver<S>
 where
-    S: Store + Send + Sync,
+    S: Store,
 {
     pub fn new(logger: &Logger, store: Arc<S>) -> Self {
         StoreResolver {
@@ -186,7 +186,7 @@ where
 
 impl<S> Resolver for StoreResolver<S>
 where
-    S: Store + Send + Sync,
+    S: Store,
 {
     fn resolve_objects(
         &self,
