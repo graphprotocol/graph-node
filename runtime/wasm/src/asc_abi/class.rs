@@ -398,7 +398,6 @@ pub(crate) type AscJson = AscTypedMap<AscString, AscEnum<JsonValueKind>>;
 
 #[repr(C)]
 pub(crate) struct AscUnresolvedContractCall {
-    pub block_hash: AscPtr<AscH256>,
     pub contract_name: AscPtr<AscString>,
     pub contract_address: AscPtr<AscAddress>,
     pub function_name: AscPtr<AscString>,

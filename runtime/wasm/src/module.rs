@@ -336,7 +336,6 @@ where
               "address" => &unresolved_call.contract_address.to_string(),
               "contract" => &unresolved_call.contract_name,
               "function" => &unresolved_call.function_name,
-              "block_hash" => &unresolved_call.block_hash.to_string(),
               );
 
         // Obtain the path to the contract ABI
@@ -363,7 +362,7 @@ where
 
         let call = EthereumContractCall {
             address: unresolved_call.contract_address.clone(),
-            block_id: BlockId::Hash(unresolved_call.block_hash.clone()),
+            block_id: BlockId::Hash(self.block_hash.clone()),
             function: function.clone(),
             args: unresolved_call.function_args.clone(),
         };

@@ -271,7 +271,6 @@ impl ToAscObj<AscEthereumEvent> for EthereumEvent {
 impl FromAscObj<AscUnresolvedContractCall> for UnresolvedContractCall {
     fn from_asc_obj<H: AscHeap>(asc_call: AscUnresolvedContractCall, heap: &H) -> Self {
         UnresolvedContractCall {
-            block_hash: heap.asc_get(asc_call.block_hash),
             contract_name: heap.asc_get(asc_call.contract_name),
             contract_address: heap.asc_get(asc_call.contract_address),
             function_name: heap.asc_get(asc_call.function_name),
