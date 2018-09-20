@@ -4,7 +4,6 @@ use nan_preserving_float::F64;
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
-use std::sync::Mutex;
 use tiny_keccak;
 
 use wasmi::{
@@ -96,7 +95,7 @@ const CRYPTO_KECCAK_256_INDEX: usize = 22;
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph: SubgraphManifest,
     pub data_source: DataSource,
-    pub ethereum_adapter: Arc<Mutex<T>>,
+    pub ethereum_adapter: Arc<T>,
     pub link_resolver: Arc<L>,
     pub store: Arc<S>,
 }
@@ -246,7 +245,7 @@ pub struct HostExternals<T, L, S, U> {
     subgraph: SubgraphManifest,
     data_source: DataSource,
     heap: WasmiAscHeap,
-    ethereum_adapter: Arc<Mutex<T>>,
+    ethereum_adapter: Arc<T>,
     link_resolver: Arc<L>,
     // Block hash of the event being mapped.
     block_hash: H256,
@@ -364,8 +363,6 @@ where
         };
 
         self.ethereum_adapter
-            .lock()
-            .unwrap()
             .contract_call(call)
             .wait()
             .map(|result| Some(RuntimeValue::from(self.heap.asc_new(&*result))))

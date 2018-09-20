@@ -2,7 +2,6 @@ use failure::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use futures::sync::oneshot;
 use std::str::FromStr;
-use std::sync::Mutex;
 use std::thread;
 use uuid::Uuid;
 
@@ -25,7 +24,7 @@ pub struct RuntimeHostConfig {
 
 pub struct RuntimeHostBuilder<T, L, S> {
     logger: Logger,
-    ethereum_adapter: Arc<Mutex<T>>,
+    ethereum_adapter: Arc<T>,
     link_resolver: Arc<L>,
     store: Arc<S>,
 }
@@ -54,7 +53,7 @@ where
 {
     pub fn new(
         logger: &Logger,
-        ethereum_adapter: Arc<Mutex<T>>,
+        ethereum_adapter: Arc<T>,
         link_resolver: Arc<L>,
         store: Arc<S>,
     ) -> Self {
@@ -107,7 +106,7 @@ pub struct RuntimeHost {
 impl RuntimeHost {
     pub fn new<T, L, S>(
         logger: &Logger,
-        ethereum_adapter: Arc<Mutex<T>>,
+        ethereum_adapter: Arc<T>,
         link_resolver: Arc<L>,
         store: Arc<S>,
         config: RuntimeHostConfig,
