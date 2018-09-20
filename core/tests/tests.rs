@@ -182,19 +182,13 @@ fn subgraph_provider_events() {
 
     // Deploy
     runtime
-        .block_on(SubgraphProvider::deploy(
-            &provider,
-            "subgraph".to_owned(),
-            subgraph1_link.clone(),
-        )).unwrap();
+        .block_on(provider.deploy("subgraph".to_owned(), subgraph1_link.clone()))
+        .unwrap();
 
     // Update
     runtime
-        .block_on(SubgraphProvider::deploy(
-            &provider,
-            "subgraph".to_owned(),
-            subgraph2_link.clone(),
-        )).unwrap();
+        .block_on(provider.deploy("subgraph".to_owned(), subgraph2_link.clone()))
+        .unwrap();
 
     // Remove
     runtime
@@ -271,17 +265,11 @@ fn subgraph_list() {
 
     assert!(provider.list().is_empty());
     runtime
-        .block_on(SubgraphProvider::deploy(
-            &provider,
-            "subgraph1".to_owned(),
-            subgraph1_link.clone(),
-        )).unwrap();
+        .block_on(provider.deploy("subgraph1".to_owned(), subgraph1_link.clone()))
+        .unwrap();
     runtime
-        .block_on(SubgraphProvider::deploy(
-            &provider,
-            "subgraph2".to_owned(),
-            subgraph2_link.clone(),
-        )).unwrap();
+        .block_on(provider.deploy("subgraph2".to_owned(), subgraph2_link.clone()))
+        .unwrap();
     assert_eq!(
         provider.list(),
         [

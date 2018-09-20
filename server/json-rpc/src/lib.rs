@@ -112,13 +112,11 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
         }
 
         Box::new(
-            SubgraphProvider::deploy(
-                &self.provider,
-                params.name,
-                format!("/ipfs/{}", params.ipfs_hash),
-            ).map_err(|e| json_rpc_error(JSON_RPC_DEPLOY_ERROR, e.to_string()))
-            .map(|_| Ok(Value::Null))
-            .flatten(),
+            self.provider
+                .deploy(params.name, format!("/ipfs/{}", params.ipfs_hash))
+                .map_err(|e| json_rpc_error(JSON_RPC_DEPLOY_ERROR, e.to_string()))
+                .map(|_| Ok(Value::Null))
+                .flatten(),
         )
     }
 

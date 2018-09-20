@@ -23,7 +23,7 @@ pub trait SubgraphProvider:
     EventProducer<SubgraphProviderEvent> + EventProducer<SchemaEvent> + Send + Sync + 'static
 {
     fn deploy(
-        arc_self: &Arc<Self>,
+        &self,
         name: String,
         link: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;

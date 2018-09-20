@@ -41,24 +41,37 @@ impl<L: LinkResolver> SubgraphProvider<L> {
         name: String,
         id: String,
     ) -> impl Future<Item = (), Error = SubgraphProviderError> + Send + 'static {
-        let graphql_remove_sink = self.schema_event_sink.clone();
-        let host_remove_sink = self.event_sink.clone();
-        graphql_remove_sink
+        self.schema_event_sink
+            .clone()
             .send(SchemaEvent::SchemaRemoved(name, id.clone()))
-            .map_err(|e| panic!("Failed to forward schema removal: {}", e))
+            .map_err(|e| panic!("failed to forward schema removal: {}", e))
             .map(|_| ())
             .join(
-                host_remove_sink
+                self.event_sink
+                    .clone()
                     .send(SubgraphProviderEvent::SubgraphRemoved(id))
                     .map(|_| ())
-                    .map_err(|e| panic!("Failed to forward subgraph removal: {}", e)),
+                    .map_err(|e| panic!("failed to forward subgraph removal: {}", e)),
             ).map(|_| ())
+    }
+
+    /// Clones but forcing receivers to `None`.
+    fn clone(&self) -> Self {
+        SubgraphProvider {
+            _logger: self._logger.clone(),
+            event_stream: None,
+            event_sink: self.event_sink.clone(),
+            schema_event_stream: None,
+            schema_event_sink: self.schema_event_sink.clone(),
+            resolver: self.resolver.clone(),
+            subgraphs: self.subgraphs.clone(),
+        }
     }
 }
 
 impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
     fn deploy(
-        arc_self: &Arc<Self>,
+        &self,
         name: String,
         link: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static> {
@@ -70,9 +83,9 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
             return Box::new(Err(SubgraphProviderError::InvalidName(name)).into_future());
         }
 
-        let arc_self = arc_self.clone();
+        let self_clone = self.clone();
         Box::new(
-            SubgraphManifest::resolve(name.clone(), Link { link }, arc_self.resolver.clone())
+            SubgraphManifest::resolve(name.clone(), Link { link }, self_clone.resolver.clone())
                 .map_err(SubgraphProviderError::ResolveError)
                 .and_then(
                     // Validate the subgraph schema before deploying the subgraph
@@ -85,38 +98,33 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
                         .schema
                         .add_subgraph_id_directives(subgraph.id.clone());
 
-                    let old_id = arc_self
+                    let old_id = self_clone
                         .subgraphs
                         .lock()
                         .unwrap()
                         .insert(name.clone(), subgraph.id.clone());
 
                     // If a subgraph is being updated, remove the old subgraph.
-                    let removal_arc_self = arc_self.clone();
                     if let Some(id) = old_id {
-                        Box::new(
-                            arc_self
-                                .send_remove_events(name, id)
-                                .map(move |_| (removal_arc_self, subgraph)),
-                        )
-                            as Box<Future<Item = _, Error = _> + Send + 'static>
+                        Box::new(self_clone.send_remove_events(name, id))
                     } else {
-                        Box::new(future::ok::<_, SubgraphProviderError>((arc_self, subgraph)))
-                    }
-                }).and_then(|(arc_self, subgraph)| {
-                    // Push the subgraph and the schema into their streams
-                    arc_self
-                        .schema_event_sink
-                        .clone()
-                        .send(SchemaEvent::SchemaAdded(subgraph.schema.clone()))
-                        .map_err(|e| panic!("Failed to forward subgraph schema: {}", e))
-                        .join(
-                            arc_self
-                                .event_sink
-                                .clone()
-                                .send(SubgraphProviderEvent::SubgraphAdded(subgraph))
-                                .map_err(|e| panic!("Failed to forward subgraph: {}", e)),
-                        ).map(|_| ())
+                        Box::new(future::ok(()))
+                            as Box<Future<Item = _, Error = _> + Send + 'static>
+                    }.and_then(move |_| {
+                        // Push the subgraph and the schema into their streams
+                        self_clone
+                            .schema_event_sink
+                            .clone()
+                            .send(SchemaEvent::SchemaAdded(subgraph.schema.clone()))
+                            .map_err(|e| panic!("failed to forward subgraph schema: {}", e))
+                            .join(
+                                self_clone
+                                    .event_sink
+                                    .clone()
+                                    .send(SubgraphProviderEvent::SubgraphAdded(subgraph))
+                                    .map_err(|e| panic!("failed to forward subgraph: {}", e)),
+                            ).map(|_| ())
+                    })
                 }),
         )
     }
@@ -188,7 +196,7 @@ fn rejects_name_bad_for_urls() {
     let logger = slog::Logger::root(slog::Discard, o!());
     let provider = Arc::new(SubgraphProvider::new(logger, Arc::new(FakeLinkResolver)));
     let bad = "/../funky%2F:9001".to_owned();
-    let result = SubgraphProvider::deploy(&provider, bad.clone(), "".to_owned());
+    let result = provider.deploy(bad.clone(), "".to_owned());
     match result.wait() {
         Err(SubgraphProviderError::InvalidName(name)) => assert_eq!(name, bad),
         x => panic!("unexpected test result {:?}", x),
