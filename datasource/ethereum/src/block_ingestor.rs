@@ -18,7 +18,6 @@ where
     <T as BatchTransport>::Batch: Send,
 {
     store: Arc<S>,
-    network_name: String,
     web3_transport: T,
     ancestor_count: u64,
     logger: slog::Logger,
@@ -34,7 +33,6 @@ where
 {
     pub fn new(
         store: Arc<S>,
-        network_name: String,
         web3_transport: T,
         ancestor_count: u64,
         logger: slog::Logger,
@@ -42,7 +40,6 @@ where
     ) -> Result<BlockIngestor<S, T>, Error> {
         Ok(BlockIngestor {
             store,
-            network_name,
             web3_transport,
             ancestor_count,
             logger: logger.new(o!("component" => "BlockIngestor")),
@@ -54,52 +51,24 @@ where
         // Currently, there is no way to stop block ingestion, so just leak self
         let static_self: &'static _ = Box::leak(Box::new(self));
 
-        // First, add Ethereum network info it store
-        static_self
-            .add_network_to_store()
+        // Create stream that emits at polling interval
+        tokio::timer::Interval::new(Instant::now(), static_self.polling_interval)
             .map_err(move |e| {
-                panic!("Failed to load Ethereum network info: {}", e);
-            }).and_then(move |()| {
-                // Create stream that emits at polling interval
-                tokio::timer::Interval::new(Instant::now(), static_self.polling_interval)
-                    .map_err(move |e| {
-                        error!(static_self.logger, "timer::Interval failed: {:?}", e);
-                    }).for_each(move |_| {
-                        // Attempt to poll
-                        static_self.do_poll().then(move |result| {
-                            if let Err(e) = result {
-                                // Some polls will fail due to transient issues
-                                warn!(
-                                    static_self.logger,
-                                    "failed to poll for latest block: {:?}", e
-                                );
-                            }
+                error!(static_self.logger, "timer::Interval failed: {:?}", e);
+            }).for_each(move |_| {
+                // Attempt to poll
+                static_self.do_poll().then(move |result| {
+                    if let Err(e) = result {
+                        // Some polls will fail due to transient issues
+                        warn!(
+                            static_self.logger,
+                            "failed to poll for latest block: {:?}", e
+                        );
+                    }
 
-                            // Continue polling even if polling failed
-                            future::ok(())
-                        })
-                    })
-            })
-    }
-
-    fn add_network_to_store<'a>(&'a self) -> impl Future<Item = (), Error = Error> + 'a {
-        let web3 = Web3::new(self.web3_transport.clone());
-
-        // Ask Ethereum node for info to identify the network
-        let net_ver_future = web3.net().version();
-        let gen_block_future = web3.eth().block(BlockNumber::Earliest.into());
-        net_ver_future
-            .join(gen_block_future)
-            .map_err(|e| format_err!("could not get network info from Ethereum: {}", e))
-            .and_then(move |(net_version, gen_block)| {
-                let gen_block_hash = gen_block
-                    .expect("Ethereum node could not find genesis block")
-                    .hash
-                    .unwrap();
-
-                // Add Ethereum network info to store
-                self.store
-                    .add_network_if_missing(&self.network_name, &net_version, gen_block_hash)
+                    // Continue polling even if polling failed
+                    future::ok(())
+                })
             })
     }
 
@@ -151,11 +120,8 @@ where
         blocks: B,
     ) -> impl Future<Item = Vec<H256>, Error = Error> + Send + 'a {
         self.store
-            .upsert_blocks(&self.network_name, blocks)
-            .and_then(move |()| {
-                self.store
-                    .attempt_chain_head_update(&self.network_name, self.ancestor_count)
-            })
+            .upsert_blocks(blocks)
+            .and_then(move |()| self.store.attempt_chain_head_update(self.ancestor_count))
     }
 
     /// Requests the specified blocks via web3, returning them in a stream (potentially out of

@@ -56,23 +56,47 @@ impl Store for MockStore {
         }
     }
 
-    fn set(&self, _key: StoreKey, _entity: Entity, _source: EventSource) -> Result<(), ()> {
-        unimplemented!();
-    }
-
-    fn delete(&self, _key: StoreKey, _source: EventSource) -> Result<(), ()> {
-        unimplemented!();
-    }
-
     fn find(&self, _query: StoreQuery) -> Result<Vec<Entity>, ()> {
         Ok(self.entities.clone())
     }
 
-    fn transact(&self, operations: Vec<EntityOperation>) -> Result<(), ()> {
+    fn add_subgraph_if_missing(&self, _: SubgraphId) -> Result<(), Error> {
         unimplemented!();
     }
 
-    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn block_ptr(&self, _: SubgraphId) -> Result<EthereumBlockPointer, Error> {
+        unimplemented!();
+    }
+
+    fn set_block_ptr_with_no_changes(
+        &self,
+        _: SubgraphId,
+        _: EthereumBlockPointer,
+        _: EthereumBlockPointer,
+    ) -> Result<(), Error> {
+        unimplemented!();
+    }
+
+    fn transact_block_operations(
+        &self,
+        _: &str,
+        _: EthereumBlockPointer,
+        _: EthereumBlockPointer,
+        _: Vec<EntityOperation>,
+    ) -> Result<(), Error> {
+        unimplemented!();
+    }
+
+    fn revert_block_operations(
+        &self,
+        _: &str,
+        _: EthereumBlockPointer,
+        _: EthereumBlockPointer,
+    ) -> Result<(), Error> {
+        unimplemented!();
+    }
+
+    fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
 }
@@ -80,26 +104,34 @@ impl Store for MockStore {
 impl ChainStore for MockStore {
     type ChainHeadUpdateListener = MockChainHeadUpdateListener;
 
-    fn add_network_if_missing(&self, _: &str, _: &str, _: H256) -> Result<(), Error> {
-        unimplemented!()
-    }
-
-    fn upsert_blocks<'a, B>(
+    fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
         &self,
-        _: &str,
         _: B,
-    ) -> Box<Future<Item = (), Error = Error> + Send + 'a>
-    where
-        B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a,
-    {
-        unimplemented!()
+    ) -> Box<Future<Item = (), Error = Error> + Send + 'a> {
+        unimplemented!();
     }
 
-    fn attempt_chain_head_update(&self, _: &str, _: u64) -> Result<Vec<H256>, Error> {
-        unimplemented!()
+    fn attempt_chain_head_update(&self, _: u64) -> Result<Vec<H256>, Error> {
+        unimplemented!();
     }
 
-    fn chain_head_updates(&self, network: &str) -> Self::ChainHeadUpdateListener {
+    fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener {
+        unimplemented!();
+    }
+
+    fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+        unimplemented!();
+    }
+
+    fn block(&self, _: H256) -> Result<Option<Block<Transaction>>, Error> {
+        unimplemented!();
+    }
+
+    fn ancestor_block(
+        &self,
+        _: EthereumBlockPointer,
+        _: u64,
+    ) -> Result<Option<Block<Transaction>>, Error> {
         unimplemented!();
     }
 }
@@ -108,22 +140,46 @@ pub struct FakeStore;
 
 impl Store for FakeStore {
     fn get(&self, _: StoreKey) -> Result<Entity, ()> {
-        panic!("called FakeStore")
-    }
-
-    fn set(&self, _: StoreKey, _: Entity, _source: EventSource) -> Result<(), ()> {
-        panic!("called FakeStore")
-    }
-
-    fn delete(&self, _: StoreKey, _source: EventSource) -> Result<(), ()> {
-        panic!("called FakeStore")
+        unimplemented!();
     }
 
     fn find(&self, _: StoreQuery) -> Result<Vec<Entity>, ()> {
-        panic!("called FakeStore")
+        unimplemented!();
     }
 
-    fn transact(&self, _: Vec<EntityOperation>) -> Result<(), ()> {
+    fn add_subgraph_if_missing(&self, _: SubgraphId) -> Result<(), Error> {
+        unimplemented!();
+    }
+
+    fn block_ptr(&self, _: SubgraphId) -> Result<EthereumBlockPointer, Error> {
+        unimplemented!();
+    }
+
+    fn set_block_ptr_with_no_changes(
+        &self,
+        _: SubgraphId,
+        _: EthereumBlockPointer,
+        _: EthereumBlockPointer,
+    ) -> Result<(), Error> {
+        unimplemented!();
+    }
+
+    fn transact_block_operations(
+        &self,
+        _: &str,
+        _: EthereumBlockPointer,
+        _: EthereumBlockPointer,
+        _: Vec<EntityOperation>,
+    ) -> Result<(), Error> {
+        unimplemented!();
+    }
+
+    fn revert_block_operations(
+        &self,
+        _: &str,
+        _: EthereumBlockPointer,
+        _: EthereumBlockPointer,
+    ) -> Result<(), Error> {
         unimplemented!();
     }
 
@@ -135,26 +191,34 @@ impl Store for FakeStore {
 impl ChainStore for FakeStore {
     type ChainHeadUpdateListener = MockChainHeadUpdateListener;
 
-    fn add_network_if_missing(&self, _: &str, _: &str, _: H256) -> Result<(), Error> {
-        panic!("called FakeStore")
-    }
-
-    fn upsert_blocks<'a, B>(
+    fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
         &self,
-        _: &str,
         _: B,
-    ) -> Box<Future<Item = (), Error = Error> + Send + 'a>
-    where
-        B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a,
-    {
-        panic!("called FakeStore")
+    ) -> Box<Future<Item = (), Error = Error> + Send + 'a> {
+        unimplemented!();
     }
 
-    fn attempt_chain_head_update(&self, _: &str, _: u64) -> Result<Vec<H256>, Error> {
-        panic!("called FakeStore")
+    fn attempt_chain_head_update(&self, _: u64) -> Result<Vec<H256>, Error> {
+        unimplemented!();
     }
 
-    fn chain_head_updates(&self, _: &str) -> Self::ChainHeadUpdateListener {
+    fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener {
+        unimplemented!();
+    }
+
+    fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+        unimplemented!();
+    }
+
+    fn block(&self, _: H256) -> Result<Option<Block<Transaction>>, Error> {
+        unimplemented!();
+    }
+
+    fn ancestor_block(
+        &self,
+        _: EthereumBlockPointer,
+        _: u64,
+    ) -> Result<Option<Block<Transaction>>, Error> {
         unimplemented!();
     }
 }

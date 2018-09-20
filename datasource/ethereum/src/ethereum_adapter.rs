@@ -203,6 +203,37 @@ where
     T: web3::Transport + Send + Sync + 'static,
     T::Out: Send,
 {
+    fn net_identifiers(
+        &self,
+    ) -> Box<Future<Item = EthereumNetworkIdentifiers, Error = Error> + Send> {
+        let net_version_future = self
+            .eth_client
+            .net()
+            .version()
+            .map_err(SyncFailure::new)
+            .from_err();
+        let gen_block_hash_future = self
+            .eth_client
+            .eth()
+            .block(BlockNumber::Earliest.into())
+            .map_err(SyncFailure::new)
+            .from_err()
+            .and_then(|gen_block_opt| {
+                future::result(
+                    gen_block_opt
+                        .ok_or(format_err!("Ethereum node could not find genesis block"))
+                        .map(|gen_block| gen_block.hash.unwrap()),
+                )
+            });
+
+        Box::new(net_version_future.join(gen_block_hash_future).map(
+            |(net_version, genesis_block_hash)| EthereumNetworkIdentifiers {
+                net_version,
+                genesis_block_hash,
+            },
+        ))
+    }
+
     fn latest_block_number(&self) -> Box<Future<Item = U256, Error = Error> + Send> {
         Box::new(
             self.eth_client

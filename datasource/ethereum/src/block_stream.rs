@@ -22,7 +22,7 @@ pub struct BlockStream {
 }
 
 impl BlockStream {
-    pub fn new(network_name: String, subgraph_id: String, log_filter: EthereumLogFilter) -> Self {
+    pub fn new(subgraph_id: String, log_filter: EthereumLogFilter) -> Self {
         BlockStream {
             subgraph_id,
             log_filter,
@@ -94,7 +94,6 @@ impl BlockStreamControllerTrait for BlockStreamController {
 pub struct BlockStreamBuilder<S, E> {
     store: Arc<S>,
     ethereum: Arc<E>,
-    network: String,
 }
 
 impl<S, E> Clone for BlockStreamBuilder<S, E> {
@@ -102,7 +101,6 @@ impl<S, E> Clone for BlockStreamBuilder<S, E> {
         BlockStreamBuilder {
             store: self.store.clone(),
             ethereum: self.ethereum.clone(),
-            network: self.network.clone(),
         }
     }
 }
@@ -112,12 +110,8 @@ where
     S: ChainStore,
     E: EthereumAdapter,
 {
-    pub fn new(store: Arc<S>, ethereum: Arc<E>, network: String) -> Self {
-        BlockStreamBuilder {
-            store,
-            ethereum,
-            network,
-        }
+    pub fn new(store: Arc<S>, ethereum: Arc<E>) -> Self {
+        BlockStreamBuilder { store, ethereum }
     }
 }
 
@@ -130,22 +124,15 @@ where
     type StreamController = BlockStreamController;
 
     fn from_subgraph(&self, manifest: &SubgraphManifest) -> (Self::Stream, Self::StreamController) {
-        // TODO: Extract contract addresses and events from the subgraph manifest.
-        // Use that information as filters for polling blocks in the block stream.
-
-        // Create chain update listener for the network used at the moment.
-        //
-        // NOTE: We only support a single network at this point, this is why
-        // we're just picking the one that was passed in to the block stream
-        // builder at the moment
-        let mut chain_head_update_listener = self.store.chain_head_updates(self.network.as_str());
+        // Listen for chain head block updates
+        let mut chain_head_update_listener = self.store.chain_head_updates();
 
         // Create block stream controller
         let mut stream_controller = BlockStreamController::new();
 
-        // Create the actual network- and subgraph-specific block stream
+        // Create the actual subgraph-specific block stream
         let log_filter = create_log_filter_from_subgraph(manifest);
-        let block_stream = BlockStream::new(self.network.clone(), manifest.id.clone(), log_filter);
+        let block_stream = BlockStream::new(manifest.id.clone(), log_filter);
 
         // Forward chain head updates from the listener to the block stream
         tokio::spawn(
