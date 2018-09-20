@@ -238,10 +238,13 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     std::mem::forget(transport_event_loop);
 
     let ethereum = Arc::new(Mutex::new(graph_datasource_ethereum::EthereumAdapter::new(
-        graph_datasource_ethereum::EthereumAdapterConfig { transport },
+        graph_datasource_ethereum::EthereumAdapterConfig {
+            transport,
+            logger: logger.clone(),
+        },
     )));
 
-    match ethereum.lock().unwrap().block_number().wait() {
+    match ethereum.lock().unwrap().latest_block_number().wait() {
         Ok(number) => {
             info!(logger, "Connected to Ethereum node";
                   "most_recent_block" => &number.to_string());
