@@ -92,7 +92,7 @@ impl BlockStreamControllerTrait for BlockStreamController {
 }
 
 pub struct BlockStreamBuilder<S, E> {
-    store: Arc<Mutex<S>>,
+    store: Arc<S>,
     ethereum: Arc<Mutex<E>>,
     network: String,
 }
@@ -109,10 +109,10 @@ impl<S, E> Clone for BlockStreamBuilder<S, E> {
 
 impl<S, E> BlockStreamBuilder<S, E>
 where
-    S: ChainStore,
+    S: ChainStore + Send + Sync,
     E: EthereumAdapter,
 {
-    pub fn new(store: Arc<Mutex<S>>, ethereum: Arc<Mutex<E>>, network: String) -> Self {
+    pub fn new(store: Arc<S>, ethereum: Arc<Mutex<E>>, network: String) -> Self {
         BlockStreamBuilder {
             store,
             ethereum,
@@ -123,7 +123,7 @@ where
 
 impl<S, E> BlockStreamBuilderTrait for BlockStreamBuilder<S, E>
 where
-    S: ChainStore,
+    S: ChainStore + Send + Sync,
     E: EthereumAdapter,
 {
     type Stream = BlockStream;
@@ -138,11 +138,7 @@ where
         // NOTE: We only support a single network at this point, this is why
         // we're just picking the one that was passed in to the block stream
         // builder at the moment
-        let mut chain_head_update_listener = self
-            .store
-            .lock()
-            .unwrap()
-            .chain_head_updates(self.network.as_str());
+        let mut chain_head_update_listener = self.store.chain_head_updates(self.network.as_str());
 
         // Create block stream controller
         let mut stream_controller = BlockStreamController::new();

@@ -1,6 +1,5 @@
 use failure::Error;
 use std::fmt::Debug;
-use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -13,12 +12,12 @@ use graph::web3::Transport;
 
 pub struct BlockIngestor<S, T>
 where
-    S: ChainStore + Send + 'static,
+    S: ChainStore + Send + Sync + 'static,
     T: BatchTransport + Send + Sync + Debug + Clone + 'static,
     <T as Transport>::Out: Send,
     <T as BatchTransport>::Batch: Send,
 {
-    store: Arc<Mutex<S>>,
+    store: Arc<S>,
     network_name: String,
     web3_transport: T,
     ancestor_count: u64,
@@ -28,13 +27,13 @@ where
 
 impl<S, T> BlockIngestor<S, T>
 where
-    S: ChainStore + Send + 'static,
+    S: ChainStore + Send + Sync + 'static,
     T: BatchTransport + Send + Sync + Debug + Clone + 'static,
     <T as Transport>::Out: Send,
     <T as BatchTransport>::Batch: Send,
 {
     pub fn new(
-        store: Arc<Mutex<S>>,
+        store: Arc<S>,
         network_name: String,
         web3_transport: T,
         ancestor_count: u64,
@@ -99,11 +98,8 @@ where
                     .unwrap();
 
                 // Add Ethereum network info to store
-                self.store.lock().unwrap().add_network_if_missing(
-                    &self.network_name,
-                    &net_version,
-                    gen_block_hash,
-                )
+                self.store
+                    .add_network_if_missing(&self.network_name, &net_version, gen_block_hash)
             })
     }
 
@@ -155,13 +151,9 @@ where
         blocks: B,
     ) -> impl Future<Item = Vec<H256>, Error = Error> + Send + 'a {
         self.store
-            .lock()
-            .unwrap()
             .upsert_blocks(&self.network_name, blocks)
             .and_then(move |()| {
                 self.store
-                    .lock()
-                    .unwrap()
                     .attempt_chain_head_update(&self.network_name, self.ancestor_count)
             })
     }
