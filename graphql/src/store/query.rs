@@ -164,7 +164,11 @@ fn build_order_by(
             q::Value::Enum(name) => {
                 let field = sast::get_field_type(entity, &name)
                     .expect("order by attribute does not belong to entity");
-                Some((name.to_owned(), ValueType::from(field.field_type.clone())))
+                let value = sast::get_value_type(field.field_type.clone());
+                match value {
+                    Ok(v) => Some((name.to_owned(), v)),
+                    Err(_) => None,
+                }
             }
             _ => None,
         }))
