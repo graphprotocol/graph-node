@@ -19,7 +19,7 @@ use graph::{tokio, tokio::timer::Interval};
 
 use chain_head_listener::ChainHeadUpdateListener;
 use entity_changes::EntityChangeListener;
-use functions::{attempt_chain_head_update, revert_block, set_config};
+use functions::{attempt_chain_head_update, lookup_ancestor_block, revert_block, set_config};
 
 embed_migrations!("./migrations");
 
@@ -264,12 +264,41 @@ impl Store {
 }
 
 impl StoreTrait for Store {
-    fn add_subgraph_if_missing(&self, subgraph_id: SubgraphId) -> Result<(), Error> {
-        unimplemented!();
+    fn add_subgraph_if_missing(
+        &self,
+        subgraph_id: SubgraphId,
+        block_ptr: EthereumBlockPointer,
+    ) -> Result<(), Error> {
+        use db_schema::subgraphs::dsl::*;
+
+        insert_into(subgraphs)
+            .values((
+                id.eq(&subgraph_id),
+                network_name.eq(&self.network_name),
+                latest_block_hash.eq(block_ptr.hash_hex()),
+                latest_block_number.eq(block_ptr.number as i64),
+            )).on_conflict(id)
+            .do_nothing()
+            .execute(&*self.conn.lock().unwrap())
+            .map_err(Error::from)
+            .map(|_| ())
     }
 
     fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
-        unimplemented!();
+        use db_schema::subgraphs::dsl::*;
+
+        subgraphs
+            .select((latest_block_hash, latest_block_number))
+            .filter(id.eq(&subgraph_id))
+            .first::<(String, i64)>(&*self.conn.lock().unwrap())
+            .map(|(hash, number)| {
+                (
+                    hash.parse()
+                        .expect("subgraph block ptr hash in database should be a valid H256"),
+                    number,
+                )
+                    .into()
+            }).map_err(Error::from)
     }
 
     fn get(&self, key: StoreKey) -> Result<Entity, ()> {
@@ -352,7 +381,24 @@ impl StoreTrait for Store {
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), Error> {
-        unimplemented!();
+        use db_schema::subgraphs::dsl::*;
+
+        update(subgraphs)
+            .set((
+                latest_block_hash.eq(block_ptr_to.hash_hex()),
+                latest_block_number.eq(block_ptr_to.number as i64),
+            )).filter(id.eq(subgraph_id))
+            .filter(latest_block_hash.eq(block_ptr_from.hash_hex()))
+            .filter(latest_block_number.eq(block_ptr_from.number as i64))
+            .execute(&*self.conn.lock().unwrap())
+            .map_err(Error::from)
+            .and_then(|row_count| match row_count {
+                0 => Err(format_err!(
+                    "failed to update subgraph block pointer: block_ptr_from must match"
+                )),
+                1 => Ok(()),
+                _ => unreachable!(),
+            })
     }
 
     fn transact_block_operations(
@@ -462,11 +508,38 @@ impl ChainStore for Store {
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
-        unimplemented!();
+        use db_schema::ethereum_networks::dsl::*;
+
+        ethereum_networks
+            .select((head_block_hash, head_block_number))
+            .filter(name.eq(&self.network_name))
+            .load::<(Option<String>, Option<i64>)>(&*self.conn.lock().unwrap())
+            .map(|rows| {
+                rows.first()
+                    .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
+                        (Some(hash), Some(number)) => Some((hash.parse().unwrap(), *number).into()),
+                        (None, None) => None,
+                        _ => unreachable!(),
+                    }).and_then(|opt| opt)
+            }).map_err(Error::from)
     }
 
     fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {
-        unimplemented!();
+        use db_schema::ethereum_blocks::dsl::*;
+
+        ethereum_blocks
+            .select(data)
+            .filter(network_name.eq(&self.network_name))
+            .filter(hash.eq(format!("{:x}", block_hash)))
+            .load::<serde_json::Value>(&*self.conn.lock().unwrap())
+            .map(|json_blocks| match json_blocks.len() {
+                0 => None,
+                1 => Some(
+                    serde_json::from_value::<Block<Transaction>>(json_blocks[0].clone())
+                        .expect("Failed to deserialize block"),
+                ),
+                _ => unreachable!(),
+            }).map_err(Error::from)
     }
 
     fn ancestor_block(
@@ -474,6 +547,17 @@ impl ChainStore for Store {
         block_ptr: EthereumBlockPointer,
         offset: u64,
     ) -> Result<Option<Block<Transaction>>, Error> {
-        unimplemented!();
+        if block_ptr.number < offset {
+            bail!("block offset points to before genesis block");
+        }
+
+        select(lookup_ancestor_block(block_ptr.hash_hex(), offset as i64))
+            .first::<Option<serde_json::Value>>(&*self.conn.lock().unwrap())
+            .map(|val_opt| {
+                val_opt.map(|val| {
+                    serde_json::from_value::<Block<Transaction>>(val)
+                        .expect("Failed to deserialize block from database")
+                })
+            }).map_err(Error::from)
     }
 }

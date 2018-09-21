@@ -141,13 +141,18 @@ impl fmt::Display for EventSource {
 }
 
 /// A pair of subgraph ID and entity type name.
-pub type SubgraphEntityPair = (String, String);
+pub type SubgraphEntityPair = (SubgraphId, String);
 
 /// Common trait for store implementations.
 pub trait Store: Send + Sync {
-    /// Register a new subgraph ID in the store.
+    /// Register a new subgraph ID in the store, and initialize the subgraph's block pointer to the
+    /// specified value.
     /// Each subgraph has its own entities and separate block processing state.
-    fn add_subgraph_if_missing(&self, subgraph_id: SubgraphId) -> Result<(), Error>;
+    fn add_subgraph_if_missing(
+        &self,
+        subgraph_id: SubgraphId,
+        block_ptr: EthereumBlockPointer,
+    ) -> Result<(), Error>;
 
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error>;
