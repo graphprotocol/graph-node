@@ -60,7 +60,7 @@ impl Store for MockStore {
         Ok(self.entities.clone())
     }
 
-    fn add_subgraph_if_missing(&self, _: SubgraphId) -> Result<(), Error> {
+    fn add_subgraph_if_missing(&self, _: SubgraphId, _: EthereumBlockPointer) -> Result<(), Error> {
         unimplemented!();
     }
 
@@ -147,7 +147,7 @@ impl Store for FakeStore {
         unimplemented!();
     }
 
-    fn add_subgraph_if_missing(&self, _: SubgraphId) -> Result<(), Error> {
+    fn add_subgraph_if_missing(&self, _: SubgraphId, _: EthereumBlockPointer) -> Result<(), Error> {
         unimplemented!();
     }
 

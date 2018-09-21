@@ -155,6 +155,15 @@ impl EthereumBlockPointer {
             number: b.number.unwrap().as_u64() - 1,
         }
     }
+
+    /// Encodes the block hash into a hexadecimal string **without** a "0x" prefix.
+    /// Hashes are stored in the database in this format.
+    ///
+    /// This mainly exists because of backwards incompatible changes in how the Web3 library
+    /// implements `H256::to_string`.
+    pub fn hash_hex(&self) -> String {
+        format!("{:x}", self.hash)
+    }
 }
 
 impl<T> From<Block<T>> for EthereumBlockPointer {
