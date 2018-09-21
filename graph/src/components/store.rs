@@ -101,19 +101,6 @@ impl FromStr for ValueType {
         }
     }
 }
-impl From<s::Type> for ValueType {
-    fn from(schema_type: s::Type) -> ValueType {
-        match schema_type {
-            s::Type::NamedType(ref name) => ValueType::from_str(&name).unwrap(),
-            s::Type::NonNullType(inner) => match *inner {
-                s::Type::NamedType(ref name) => ValueType::from_str(&name).unwrap(),
-                s::Type::NonNullType(inner) => panic!(ValueTypeError::NestedNonNullType),
-                s::Type::ListType(inner) => panic!(ValueTypeError::CannotConvertFromListType),
-            },
-            s::Type::ListType(inner) => panic!(ValueTypeError::CannotConvertFromListType),
-        }
-    }
-}
 
 /// A query for entities in a store.
 #[derive(Clone, Debug, PartialEq)]
