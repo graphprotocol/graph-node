@@ -53,6 +53,12 @@ impl ToAscObj<Uint8Array> for web3::H256 {
     }
 }
 
+impl ToAscObj<ArrayBuffer<u64>> for web3::U128 {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u64> {
+        self.0.to_asc_obj(heap)
+    }
+}
+
 impl ToAscObj<ArrayBuffer<u64>> for web3::U256 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u64> {
         self.0.to_asc_obj(heap)
@@ -62,6 +68,12 @@ impl ToAscObj<ArrayBuffer<u64>> for web3::U256 {
 impl FromAscObj<ArrayBuffer<u64>> for web3::U256 {
     fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<u64>, heap: &H) -> Self {
         web3::U256(<[u64; 4]>::from_asc_obj(array_buffer, heap))
+    }
+}
+
+impl ToAscObj<Uint64Array> for web3::U128 {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> Uint64Array {
+        self.0.to_asc_obj(heap)
     }
 }
 

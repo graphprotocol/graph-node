@@ -362,6 +362,7 @@ pub(crate) type BigInt = Uint8Array;
 pub(crate) type AscAddress = Uint8Array;
 pub(crate) type AscH160 = Uint8Array;
 pub(crate) type AscH256 = Uint8Array;
+pub(crate) type AscU128 = Uint64Array;
 pub(crate) type AscU256 = Uint64Array;
 
 pub(crate) type AscLogParamArray = Array<AscPtr<AscLogParam>>;
