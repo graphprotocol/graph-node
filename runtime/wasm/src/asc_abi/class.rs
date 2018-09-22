@@ -368,10 +368,39 @@ pub(crate) type AscU256 = Uint64Array;
 pub(crate) type AscLogParamArray = Array<AscPtr<AscLogParam>>;
 
 #[repr(C)]
+pub(crate) struct AscEthereumBlock {
+    pub hash: AscPtr<AscH256>,
+    pub parent_hash: AscPtr<AscH256>,
+    pub uncles_hash: AscPtr<AscH256>,
+    pub author: AscPtr<AscH160>,
+    pub state_root: AscPtr<AscH256>,
+    pub transactions_root: AscPtr<AscH256>,
+    pub receipts_root: AscPtr<AscH256>,
+    pub number: AscPtr<AscU128>,
+    pub gas_used: AscPtr<AscU256>,
+    pub gas_limit: AscPtr<AscU256>,
+    pub timestamp: AscPtr<AscU256>,
+    pub difficulty: AscPtr<AscU256>,
+    pub total_difficulty: AscPtr<AscU256>,
+}
+
+impl AscType for AscEthereumBlock {}
+
+#[repr(C)]
+pub(crate) struct AscEthereumTransaction {
+    pub hash: AscPtr<AscH256>,
+    pub block_hash: AscPtr<AscH256>,
+    pub block_number: AscPtr<AscU256>,
+    pub gas_used: AscPtr<AscU256>,
+}
+
+impl AscType for AscEthereumTransaction {}
+
+#[repr(C)]
 pub(crate) struct AscEthereumEvent {
     pub address: AscPtr<AscAddress>,
-    pub event_signature: AscPtr<AscH256>,
-    pub block_hash: AscPtr<AscH256>,
+    pub block: AscPtr<AscEthereumBlock>,
+    pub transaction: AscPtr<AscEthereumTransaction>,
     pub params: AscPtr<AscLogParamArray>,
 }
 

@@ -1,7 +1,7 @@
 use ethabi;
 use graph::serde_json;
 
-use graph::components::ethereum::EthereumEvent;
+use graph::components::ethereum::{EthereumBlockData, EthereumEventData, EthereumTransactionData};
 use graph::data::store;
 use graph::web3::types as web3;
 
@@ -269,12 +269,43 @@ impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
     }
 }
 
-impl ToAscObj<AscEthereumEvent> for EthereumEvent {
+impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEthereumBlock {
+        AscEthereumBlock {
+            hash: heap.asc_new(&self.hash),
+            parent_hash: heap.asc_new(&self.parent_hash),
+            uncles_hash: heap.asc_new(&self.uncles_hash),
+            author: heap.asc_new(&self.author),
+            state_root: heap.asc_new(&self.state_root),
+            transactions_root: heap.asc_new(&self.transactions_root),
+            receipts_root: heap.asc_new(&self.receipts_root),
+            number: heap.asc_new::<AscU128, _>(&self.number),
+            gas_used: heap.asc_new(&self.gas_used),
+            gas_limit: heap.asc_new(&self.gas_limit),
+            timestamp: heap.asc_new(&self.timestamp),
+            difficulty: heap.asc_new(&self.difficulty),
+            total_difficulty: heap.asc_new(&self.total_difficulty),
+        }
+    }
+}
+
+impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEthereumTransaction {
+        AscEthereumTransaction {
+            hash: heap.asc_new(&self.hash),
+            block_hash: heap.asc_new(&self.block_hash),
+            block_number: heap.asc_new(&self.block_number),
+            gas_used: heap.asc_new(&self.gas_used),
+        }
+    }
+}
+
+impl ToAscObj<AscEthereumEvent> for EthereumEventData {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEthereumEvent {
         AscEthereumEvent {
             address: heap.asc_new(&self.address),
-            event_signature: heap.asc_new(&self.event_signature),
-            block_hash: heap.asc_new(&self.block_hash),
+            block: heap.asc_new(&self.block),
+            transaction: heap.asc_new(&self.transaction),
             params: heap.asc_new(self.params.as_slice()),
         }
     }
