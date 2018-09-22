@@ -349,7 +349,7 @@ where
         &self,
         block: Block<Transaction>,
         log_filter: EthereumLogFilter,
-    ) -> Box<Future<Item = Vec<Log>, Error = EthereumSubscriptionError>> {
+    ) -> Box<Future<Item = Vec<Log>, Error = EthereumError>> {
         if !log_filter.check_bloom(block.logs_bloom) {
             return Box::new(future::ok(vec![]));
         }
@@ -365,7 +365,7 @@ where
                             &tx.hash
                         )).into())
                     })
-                }).map_err(EthereumSubscriptionError::from)
+                }).map_err(EthereumError::from)
         });
 
         Box::new(
