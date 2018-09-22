@@ -73,6 +73,14 @@ impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 20] {
     }
 }
 
+impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 16] {
+    fn from_asc_obj<H: AscHeap>(typed_array: TypedArray<T>, heap: &H) -> Self {
+        let mut array: [T; 16] = [T::default(); 16];
+        array.copy_from_slice(&typed_array.get_buffer(heap).content);
+        array
+    }
+}
+
 impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 4] {
     fn from_asc_obj<H: AscHeap>(typed_array: TypedArray<T>, heap: &H) -> Self {
         let mut array: [T; 4] = [T::default(); 4];
