@@ -6,6 +6,8 @@ use std::iter::FromIterator;
 use web3::error::Error as Web3Error;
 use web3::types::*;
 
+use super::types::*;
+
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
 pub struct EthereumNetworkIdentifiers {
     pub net_version: String,
@@ -90,94 +92,6 @@ impl From<Web3Error> for EthereumError {
 impl From<ABIError> for EthereumError {
     fn from(err: ABIError) -> EthereumError {
         EthereumError::ABIError(SyncFailure::new(err))
-    }
-}
-
-/// An event logged for a specific contract address and event signature.
-#[derive(Debug)]
-pub struct EthereumEvent {
-    pub address: Address,
-    pub event_signature: H256,
-    pub block_hash: H256,
-    pub params: Vec<LogParam>,
-    pub removed: bool,
-}
-
-impl Clone for EthereumEvent {
-    fn clone(&self) -> Self {
-        EthereumEvent {
-            address: self.address.clone(),
-            event_signature: self.event_signature.clone(),
-            block_hash: self.block_hash.clone(),
-            params: self
-                .params
-                .iter()
-                .map(|log_param| LogParam {
-                    name: log_param.name.clone(),
-                    value: log_param.value.clone(),
-                }).collect(),
-            removed: self.removed.clone(),
-        }
-    }
-}
-
-/// A block hash and block number from a specific Ethereum block.
-///
-/// Maximum block number supported: 2^63 - 1
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct EthereumBlockPointer {
-    pub hash: H256,
-    pub number: u64,
-}
-
-impl EthereumBlockPointer {
-    /// Creates a pointer to the parent of the specified block.
-    pub fn to_parent<T>(b: &Block<T>) -> EthereumBlockPointer {
-        EthereumBlockPointer {
-            hash: b.parent_hash,
-            number: b.number.unwrap().as_u64() - 1,
-        }
-    }
-
-    /// Encodes the block hash into a hexadecimal string **without** a "0x" prefix.
-    /// Hashes are stored in the database in this format.
-    ///
-    /// This mainly exists because of backwards incompatible changes in how the Web3 library
-    /// implements `H256::to_string`.
-    pub fn hash_hex(&self) -> String {
-        format!("{:x}", self.hash)
-    }
-}
-
-impl<T> From<Block<T>> for EthereumBlockPointer {
-    fn from(b: Block<T>) -> EthereumBlockPointer {
-        EthereumBlockPointer {
-            hash: b.hash.unwrap(),
-            number: b.number.unwrap().as_u64(),
-        }
-    }
-}
-
-impl From<(H256, u64)> for EthereumBlockPointer {
-    fn from((hash, number): (H256, u64)) -> EthereumBlockPointer {
-        if number >= (1 << 63) {
-            panic!("block number out of range: {}", number);
-        }
-
-        EthereumBlockPointer { hash, number }
-    }
-}
-
-impl From<(H256, i64)> for EthereumBlockPointer {
-    fn from((hash, number): (H256, i64)) -> EthereumBlockPointer {
-        if number < 0 {
-            panic!("block number out of range: {}", number);
-        }
-
-        EthereumBlockPointer {
-            hash,
-            number: number as u64,
-        }
     }
 }
 
