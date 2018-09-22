@@ -7,10 +7,22 @@ use futures::stream;
 use graphql_parser;
 use parity_wasm;
 use parity_wasm::elements::Module;
+use serde::de::{Deserialize, Deserializer, Error};
 use serde_yaml;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::prelude::*;
 use web3::types::Address;
+
+/// Deserialize an Address (with or without '0x' prefix).
+fn deserialize_address<'de, D>(deserializer: D) -> Result<Address, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    let address = s.trim_left_matches("0x");
+    Address::from_str(address).map_err(D::Error::custom)
+}
 
 /// The ID of a subgraph.
 pub type SubgraphId = String;
@@ -80,6 +92,7 @@ impl SchemaData {
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct Source {
+    #[serde(deserialize_with = "deserialize_address")]
     pub address: Address,
     pub abi: String,
 }
