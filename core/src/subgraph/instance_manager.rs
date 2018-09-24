@@ -1,3 +1,4 @@
+use failure::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use futures::sync::oneshot;
 use std::collections::HashMap;
@@ -104,20 +105,14 @@ impl SubgraphInstanceManager {
         let id_for_transact = manifest.id.clone();
 
         // Request a block stream for this subgraph
-        let (block_stream, block_stream_controller) = block_stream_builder.from_subgraph(&manifest);
-
-        // Wrap the stream controller so we can move ownership easier
-        let block_stream_controller = Arc::new(block_stream_controller);
+        let (block_stream, _) = block_stream_builder.from_subgraph(&manifest);
 
         // Load the subgraph
         let instance = Arc::new(SubgraphInstance::from_manifest(manifest, host_builder));
 
         // Prepare loggers for different parts of the async processing
         let block_logger = logger.clone();
-        let stream_err_logger = logger.clone();
-        let shutdown_logger = logger.clone();
-        let process_err_logger = logger.clone();
-        let store_err_logger = logger.clone();
+        let error_logger = logger.clone();
 
         // Use a oneshot channel for shutting down the subgraph instance and block stream
         let (shutdown_sender, shutdown_receiver) = oneshot::channel();
@@ -126,76 +121,75 @@ impl SubgraphInstanceManager {
         tokio::spawn(
             block_stream
                 .map(Some)
-                .map_err(move |e| {
-                    warn!(stream_err_logger, "Block stream error: {}", e);
-                }).select(
+                .map_err(|e| format_err!("Block stream error: {}", e))
+                .select(
                     shutdown_receiver
                         .into_stream()
                         .map(|_| None)
-                        .map_err(move |_| {
-                            info!(shutdown_logger, "Subgraph shut down");
-                        }),
+                        .map_err(|e| format_err!("Subgraph shut down: {}", e)),
                 ).filter_map(|block| block)
                 .and_then(move |block| {
                     info!(block_logger, "Process events from block";
                           "block_number" => format!("{:?}", block.block.number),
                           "block_hash" => format!("{:?}", block.block.hash));
 
-                    // Translate block logs into Ethereum events
-                    let events: Vec<_> = block
+                    // Extract logs relevant to the subgraph
+                    let logs: Vec<_> = block
                         .logs
                         .iter()
-                        .filter_map(|log| instance.parse_log(&block.block, log).ok())
+                        .filter(|log| instance.matches_log(&log))
+                        .cloned()
                         .collect();
 
                     info!(
                         block_logger,
                         "{} events are relevant for this subgraph",
-                        events.len()
+                        logs.len()
                     );
 
                     // Prepare ownership for async closures
                     let instance = instance.clone();
-                    let process_err_logger = process_err_logger.clone();
+                    let block = Arc::new(block);
+                    let block_forward = block.clone();
 
                     // Process events one after the other, passing in entity operations
                     // collected previously to every new event being processed
-                    stream::iter_ok::<_, ()>(events)
-                        .fold(vec![], move |mut entity_operations, event| {
-                            let process_err_logger = process_err_logger.clone();
+                    stream::iter_ok::<_, Error>(logs)
+                        .fold(vec![], move |entity_operations, log| {
+                            let instance = instance.clone();
+                            let block_for_processing = block.clone();
 
-                            // TODO: Pass in the block, the event's transaction and collected
-                            // entity operations so far; the block and transaction should
-                            // probably become part of `EthereumEvent` and be added in
-                            // `instance.parse_log()` earlier.
-                            instance
-                                .process_event(event)
-                                .map(|ops| {
-                                    entity_operations.extend(ops.into_iter());
-                                    entity_operations
-                                }).map_err(move |e| {
-                                    error!(process_err_logger, "Failed to process event: {}", e);
-                                })
-                        }).map(|operations| (block, operations))
+                            let transaction = block
+                                .transaction_for_log(&log)
+                                .map(Arc::new)
+                                .ok_or(format_err!("Found no transaction for event"));
+
+                            future::result(transaction).and_then(move |transaction| {
+                                instance
+                                    .process_log(
+                                        block_for_processing,
+                                        transaction,
+                                        log,
+                                        entity_operations,
+                                    ).map_err(|e| format_err!("Failed to process event: {}", e))
+                            })
+                        }).map(move |operations| (block_forward, operations))
                 }).for_each(move |(block, entity_operations)| {
-                    let block_stream_controller = block_stream_controller.clone();
-                    let store_err_logger = store_err_logger.clone();
-
                     let block_ptr_now = EthereumBlockPointer::to_parent(&block.block);
-                    let block_ptr_after = EthereumBlockPointer::from(block.block);
+                    let block_ptr_after = EthereumBlockPointer::from(&block.block);
 
-                    // Transact entities into the store
+                    // Transact entity operations into the store and update the
+                    // subgraph's block stream pointer
                     future::result(store.transact_block_operations(
                         &id_for_transact,
                         block_ptr_now,
                         block_ptr_after,
                         entity_operations,
-                    )).map_err(move |e| {
-                        error!(
-                            &store_err_logger,
-                            "Error while processing block stream for a subgraph: {}", e
-                        );
+                    )).map_err(|e| {
+                        format_err!("Error while processing block stream for a subgraph: {}", e)
                     })
+                }).map_err(move |e| {
+                    error!(error_logger, "Subgraph instance failed to run: {}", e);
                 }),
         );
 
