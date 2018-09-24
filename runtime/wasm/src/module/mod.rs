@@ -3,6 +3,7 @@ use futures::sync::mpsc::Sender;
 use nan_preserving_float::F64;
 use std::collections::HashMap;
 use std::fmt;
+use std::ops::Deref;
 use std::str::FromStr;
 use tiny_keccak;
 
@@ -14,12 +15,13 @@ use wasmi::{
 
 use futures::sync::oneshot;
 use graph::components::ethereum::*;
-use graph::components::store::{EventSource, StoreKey};
+use graph::components::store::StoreKey;
 use graph::data::store::scalar;
 use graph::data::subgraph::DataSource;
+use graph::ethabi::LogParam;
 use graph::prelude::*;
 use graph::serde_json;
-use graph::web3::types::{BlockId, H160, H256, U256};
+use graph::web3::types::{BlockId, Log, Transaction, H160, H256, U256};
 
 use super::UnresolvedContractCall;
 
@@ -175,7 +177,7 @@ where
             link_resolver: config.link_resolver.clone(),
             block_hash: H256::zero(),
             store: config.store.clone(),
-            entity_operations: vec![],
+            entity_operations: None,
             task_sink,
         };
 
@@ -194,12 +196,27 @@ where
     pub fn handle_ethereum_event(
         &mut self,
         handler_name: &str,
-        event: EthereumEvent,
+        block: Arc<EthereumBlock>,
+        transaction: Arc<Transaction>,
+        log: Arc<Log>,
+        params: Vec<LogParam>,
+        entity_operations: Vec<EntityOperation>,
     ) -> Result<Vec<EntityOperation>, FailureError> {
-        self.externals.block_hash = event.block_hash.clone();
+        self.externals.block_hash = block
+            .block
+            .hash
+            .expect("encountered Ethereum block without hash");
 
         // Create new vector for entity operations generated while handling this event
-        self.externals.entity_operations.clear();
+        self.externals.entity_operations = Some(entity_operations);
+
+        // Prepare an EthereumEvent for the WASM runtime
+        let event = EthereumEventData {
+            block: EthereumBlockData::from(&block.block),
+            transaction: EthereumTransactionData::from(transaction.deref()),
+            address: log.address.clone(),
+            params,
+        };
 
         // Invoke the event handler
         let result = self.module.invoke_export(
@@ -210,7 +227,7 @@ where
 
         // Return either the collected entity operations or an error
         result
-            .map(|_| self.externals.entity_operations.clone())
+            .map(|_| self.externals.entity_operations.take().unwrap())
             .map_err(|e| {
                 format_err!(
                     "Failed to handle Ethereum event with handler \"{}\": {}",
@@ -251,7 +268,7 @@ pub struct HostExternals<T, L, S, U> {
     block_hash: H256,
     store: Arc<S>,
     // Entity operations collected while handling events
-    entity_operations: Vec<EntityOperation>,
+    entity_operations: Option<Vec<EntityOperation>>,
     task_sink: U,
 }
 
@@ -274,12 +291,14 @@ where
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
 
-        self.entity_operations.push(EntityOperation::Set {
-            subgraph: self.subgraph.id.clone(),
-            entity,
-            id,
-            data: Entity::from(data),
-        });
+        self.entity_operations
+            .get_or_insert(vec![])
+            .push(EntityOperation::Set {
+                subgraph: self.subgraph.id.clone(),
+                entity,
+                id,
+                data: Entity::from(data),
+            });
 
         Ok(None)
     }
@@ -294,11 +313,13 @@ where
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
 
-        self.entity_operations.push(EntityOperation::Remove {
-            subgraph: self.subgraph.id.clone(),
-            entity,
-            id,
-        });
+        self.entity_operations
+            .get_or_insert(vec![])
+            .push(EntityOperation::Remove {
+                subgraph: self.subgraph.id.clone(),
+                entity,
+                id,
+            });
 
         Ok(None)
     }
