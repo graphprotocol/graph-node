@@ -9,7 +9,7 @@ use graph::prelude::{
     BlockStreamController as BlockStreamControllerTrait, *,
 };
 use graph::util::ethereum::string_to_h256;
-use graph::web3::types::{Address, Block, Log, Transaction, H256};
+use graph::web3::types::{Address, H256};
 
 /// Internal messages between the block stream controller and the block stream.
 enum ControlMessage {
@@ -165,11 +165,7 @@ fn create_log_filter_from_subgraph(manifest: &SubgraphManifest) -> EthereumLogFi
         .data_sources
         .iter()
         .flat_map(|data_source| {
-            let contract_addr: Address = data_source
-                .source
-                .address
-                .parse()
-                .expect("could not parse contract address in subgraph manifest");
+            let contract_addr = data_source.source.address;
             data_source
                 .mapping
                 .event_handlers
