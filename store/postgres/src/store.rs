@@ -262,6 +262,170 @@ impl Store {
             .execute(&*self.conn.lock().unwrap())
             .unwrap();
     }
+
+    /// Gets an entity from Postgres, returns an entity with just an ID if none is found.
+    fn get_entity(
+        &self,
+        conn: &PgConnection,
+        op_subgraph: &String,
+        op_entity: &String,
+        op_id: &String,
+    ) -> Result<Entity, Error> {
+        use db_schema::entities::dsl::*;
+
+        match entities
+            .find((op_id, op_subgraph, op_entity))
+            .select(data)
+            .first::<serde_json::Value>(conn)
+        {
+            Ok(json) => serde_json::from_value::<Entity>(json).map_err(|e| {
+                format_err!(
+                    "Encountered invalid entity ({}, {}, {}) in the store: {}",
+                    op_subgraph,
+                    op_entity,
+                    op_id,
+                    e
+                )
+            }),
+            Err(_) => Ok(Entity::from(vec![("id", Value::from(op_id.clone()))])),
+        }
+    }
+
+    /// Applies a set operation in Postgres.
+    fn apply_set_operation(
+        &self,
+        conn: &PgConnection,
+        operation: EntityOperation,
+        block_ptr_to: &EthereumBlockPointer,
+    ) -> Result<usize, Error> {
+        use db_schema::entities::dsl::*;
+
+        let (op_subgraph, op_entity, op_id) = operation.entity_info();
+
+        // Load the entity if exists
+        let existing_entity = self.get_entity(conn, op_subgraph, op_entity, op_id)?;
+
+        // Apply the operation
+        let updated_entity = operation.apply(Some(existing_entity));
+        let updated_json: serde_json::Value =
+            serde_json::to_value(&updated_entity).map_err(|e| {
+                format_err!(
+                    "Entity ({}, {}, {}) invalid after operation: {}",
+                    op_subgraph,
+                    op_entity,
+                    op_id,
+                    e
+                )
+            })?;
+
+        // Either add or update the entity in Postgres
+        insert_into(entities)
+            .values((
+                id.eq(op_id),
+                entity.eq(op_entity),
+                subgraph.eq(op_subgraph),
+                data.eq(&updated_json),
+                event_source.eq(block_ptr_to.hash.to_string()),
+            )).on_conflict((id, entity, subgraph))
+            .do_update()
+            .set((
+                id.eq(op_id),
+                entity.eq(op_entity),
+                subgraph.eq(op_subgraph),
+                data.eq(&updated_json),
+                event_source.eq(block_ptr_to.hash.to_string()),
+            )).execute(conn)
+            .map_err(|e| {
+                format_err!(
+                    "Failed to set entity ({}, {}, {}): {}",
+                    op_subgraph,
+                    op_entity,
+                    op_id,
+                    e
+                )
+            })
+    }
+
+    /// Applies a remove operation by deleting the entity from Postgres.
+    fn apply_remove_operation(
+        &self,
+        conn: &PgConnection,
+        operation: EntityOperation,
+    ) -> Result<usize, Error> {
+        use db_schema::entities::dsl::*;
+
+        let (op_subgraph, op_entity, op_id) = operation.entity_info();
+
+        delete(
+            entities
+                .filter(subgraph.eq(op_subgraph))
+                .filter(entity.eq(op_entity))
+                .filter(id.eq(op_id)),
+        ).execute(conn)
+        .map_err(|e| {
+            format_err!(
+                "Failed to remove entity ({}, {}, {}) {}",
+                op_subgraph,
+                op_entity,
+                op_id,
+                e
+            )
+        })
+    }
+
+    /// Apply an entity operation in Postgres.
+    fn apply_entity_operation(
+        &self,
+        conn: &PgConnection,
+        operation: EntityOperation,
+        block_ptr_to: &EthereumBlockPointer,
+    ) -> Result<usize, Error> {
+        match operation {
+            EntityOperation::Set { .. } => self.apply_set_operation(conn, operation, block_ptr_to),
+            EntityOperation::Remove { .. } => self.apply_remove_operation(conn, operation),
+        }
+    }
+
+    /// Apply a series of entity operations in Postgres.
+    fn apply_entity_operations(
+        &self,
+        conn: &PgConnection,
+        operations: Vec<EntityOperation>,
+        block_ptr_to: &EthereumBlockPointer,
+    ) -> Result<(), Error> {
+        for operation in operations.into_iter() {
+            self.apply_entity_operation(conn, operation, block_ptr_to)?;
+        }
+        Ok(())
+    }
+
+    /// Update the block pointer of the subgraph with the given ID.
+    fn update_subgraph_block_pointer(
+        &self,
+        conn: &PgConnection,
+        subgraph_id: &str,
+        from: EthereumBlockPointer,
+        to: EthereumBlockPointer,
+    ) -> Result<(), Error> {
+        use db_schema::subgraphs::dsl::*;
+
+        update(subgraphs)
+            .set((
+                latest_block_hash.eq(to.hash_hex()),
+                latest_block_number.eq(to.number as i64),
+            )).filter(id.eq(subgraph_id))
+            .filter(latest_block_hash.eq(from.hash_hex()))
+            .filter(latest_block_number.eq(from.number as i64))
+            .execute(conn)
+            .map_err(Error::from)
+            .and_then(|row_count| match row_count {
+                0 => Err(format_err!(
+                    "failed to update subgraph block pointer: block_ptr_from must match"
+                )),
+                1 => Ok(()),
+                _ => unreachable!(),
+            })
+    }
 }
 
 impl StoreTrait for Store {
@@ -384,24 +548,13 @@ impl StoreTrait for Store {
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), Error> {
-        use db_schema::subgraphs::dsl::*;
-
-        update(subgraphs)
-            .set((
-                latest_block_hash.eq(block_ptr_to.hash_hex()),
-                latest_block_number.eq(block_ptr_to.number as i64),
-            )).filter(id.eq(subgraph_id))
-            .filter(latest_block_hash.eq(block_ptr_from.hash_hex()))
-            .filter(latest_block_number.eq(block_ptr_from.number as i64))
-            .execute(&*self.conn.lock().unwrap())
-            .map_err(Error::from)
-            .and_then(|row_count| match row_count {
-                0 => Err(format_err!(
-                    "failed to update subgraph block pointer: block_ptr_from must match"
-                )),
-                1 => Ok(()),
-                _ => unreachable!(),
-            })
+        let conn = self.conn.lock().unwrap();
+        self.update_subgraph_block_pointer(
+            &*conn,
+            subgraph_id.as_str(),
+            block_ptr_from,
+            block_ptr_to,
+        )
     }
 
     fn transact_block_operations(
@@ -411,18 +564,22 @@ impl StoreTrait for Store {
         block_ptr_to: EthereumBlockPointer,
         operations: Vec<EntityOperation>,
     ) -> Result<(), Error> {
-        // NOTE: The biggest challenge here is to merge changes into existing
-        // entities. Right now we're using `get()` inside `set()` to achieve this.
-        // However, we may want to implement this in Postgres instead to avoid
-        // roundtrips.
-        unimplemented!();
+        // Fold the operations of each entity into a single one
+        let operations = EntityOperation::fold(&operations);
+
+        let conn = self.conn.lock().unwrap();
+
+        conn.transaction::<(), _, _>(|| {
+            self.apply_entity_operations(&*conn, operations, &block_ptr_to)?;
+            self.update_subgraph_block_pointer(&*conn, subgraph_id, block_ptr_from, block_ptr_to)
+        })
     }
 
     fn revert_block_operations(
         &self,
-        subgraph_id: &str,
-        block_ptr_from: EthereumBlockPointer,
-        block_ptr_to: EthereumBlockPointer,
+        _subgraph_id: &str,
+        _block_ptr_from: EthereumBlockPointer,
+        _block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), Error> {
         unimplemented!();
     }
