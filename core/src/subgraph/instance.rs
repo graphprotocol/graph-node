@@ -1,15 +1,17 @@
 use failure::Error;
 use futures::prelude::*;
+use std::str::FromStr;
+use std::sync::Arc;
 
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
-use graph::web3::types::{Block, Log, Transaction};
+use graph::web3::types::{Address, Block, Log, Transaction};
 
 pub struct SubgraphInstance<T>
 where
     T: RuntimeHostBuilder,
 {
     manifest: SubgraphManifest,
-    hosts: Vec<T::Host>,
+    hosts: Vec<Arc<T::Host>>,
 }
 
 impl<T> SubgraphInstanceTrait<T> for SubgraphInstance<T>
@@ -22,38 +24,49 @@ where
             .data_sources
             .iter()
             .map(|d| host_builder.build(manifest.clone(), d.clone()))
+            .map(Arc::new)
             .collect();
 
         // Remember manifest and managed hosts
-        SubgraphInstance { manifest, hosts }
+        SubgraphInstance {
+            manifest,
+            hosts: hosts,
+        }
     }
 
-    fn parse_log(&self, block: &Block<Transaction>, log: &Log) -> Result<EthereumEvent, Error> {
-        unimplemented!();
+    /// Returns true if the subgraph has a handler for an Ethereum event.
+    fn matches_log(&self, log: &Log) -> bool {
+        self.hosts.iter().any(|host| host.matches_log(log))
     }
 
-    fn process_event(
+    fn process_log(
         &self,
-        event: EthereumEvent,
+        block: Arc<EthereumBlock>,
+        transaction: Arc<Transaction>,
+        log: Log,
+        entity_operations: Vec<EntityOperation>,
     ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send> {
         // Identify runtime hosts that will handle this event
-        let matching_hosts = self.hosts.iter().filter(|host| host.matches_event(&event));
+        let matching_hosts: Vec<_> = self
+            .hosts
+            .iter()
+            .filter(|host| host.matches_log(&log))
+            .cloned()
+            .collect();
 
-        // Process the event in each of these hosts in order; the result of each
-        // host.process_event() call is a Vec<EntityOperation> future
-        let futures = matching_hosts
-            .map(|host| host.process_event(event.clone()))
-            .collect::<Vec<_>>();
+        let log = Arc::new(log);
 
-        // Collect the results of the event handlers in the right order and
-        // flatten the entity operations
-        Box::new(
-            // FIXME: `futures_ordered` does not guarantee the futures are executed
-            // in the desired order; their results will just be returned in the same
-            // order
-            stream::futures_ordered(futures)
-                .collect()
-                .map(|vecs| vecs.into_iter().flatten().collect()),
-        )
+        // Process the log in each host in a deterministic order
+        Box::new(stream::iter_ok(matching_hosts).fold(
+            entity_operations,
+            move |entity_operations, host| {
+                host.process_log(
+                    block.clone(),
+                    transaction.clone(),
+                    log.clone(),
+                    entity_operations,
+                )
+            },
+        ))
     }
 }
