@@ -1,7 +1,8 @@
 use failure::Error;
 use futures::prelude::*;
+use std::sync::Arc;
 
-use prelude::{EntityOperation, EthereumEvent, RuntimeHostBuilder, SubgraphManifest};
+use prelude::*;
 use web3::types::{Block, Log, Transaction};
 
 /// Represents a loaded instance of a subgraph.
@@ -12,12 +13,15 @@ where
     /// Creates a subgraph instance from a manifest.
     fn from_manifest(manifest: SubgraphManifest, host_builder: T) -> Self;
 
-    /// Parses an Ethereum log into an event; fails if it doesn't match the subgraph contracts.
-    fn parse_log(&self, block: &Block<Transaction>, log: &Log) -> Result<EthereumEvent, Error>;
+    /// Returns true if the subgraph has a handler for an Ethereum event.
+    fn matches_log(&self, log: &Log) -> bool;
 
     /// Process an Ethereum event and return the resulting entity operations as a future.
-    fn process_event(
+    fn process_log(
         &self,
-        event: EthereumEvent,
+        block: Arc<EthereumBlock>,
+        transaction: Arc<Transaction>,
+        log: Log,
+        entity_operations: Vec<EntityOperation>,
     ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send>;
 }
