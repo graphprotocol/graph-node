@@ -296,7 +296,7 @@ impl Store {
         &self,
         conn: &PgConnection,
         operation: EntityOperation,
-        block_ptr_to: &EthereumBlockPointer,
+        block_ptr_to: EthereumBlockPointer,
     ) -> Result<usize, Error> {
         use db_schema::entities::dsl::*;
 
@@ -378,7 +378,7 @@ impl Store {
         &self,
         conn: &PgConnection,
         operation: EntityOperation,
-        block_ptr_to: &EthereumBlockPointer,
+        block_ptr_to: EthereumBlockPointer,
     ) -> Result<usize, Error> {
         match operation {
             EntityOperation::Set { .. } => self.apply_set_operation(conn, operation, block_ptr_to),
@@ -391,7 +391,7 @@ impl Store {
         &self,
         conn: &PgConnection,
         operations: Vec<EntityOperation>,
-        block_ptr_to: &EthereumBlockPointer,
+        block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), Error> {
         for operation in operations.into_iter() {
             self.apply_entity_operation(conn, operation, block_ptr_to)?;
@@ -570,7 +570,7 @@ impl StoreTrait for Store {
         let conn = self.conn.lock().unwrap();
 
         conn.transaction::<(), _, _>(|| {
-            self.apply_entity_operations(&*conn, operations, &block_ptr_to)?;
+            self.apply_entity_operations(&*conn, operations, block_ptr_to)?;
             self.update_subgraph_block_pointer(&*conn, subgraph_id, block_ptr_from, block_ptr_to)
         })
     }
