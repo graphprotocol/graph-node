@@ -10,6 +10,14 @@ pub struct EthereumBlock {
     pub logs: Vec<Log>,
 }
 
+impl EthereumBlock {
+    pub fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
+        log.transaction_hash
+            .and_then(|hash| self.block.transactions.iter().find(|tx| tx.hash == hash))
+            .cloned()
+    }
+}
+
 pub trait BlockStream: Stream<Item = EthereumBlock, Error = Error> {}
 
 pub trait BlockStreamController: Send + Sync {
