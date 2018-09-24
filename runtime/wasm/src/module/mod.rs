@@ -336,10 +336,49 @@ where
             id: self.heap.asc_get(id_ptr),
         };
 
-        // Retrieve an Entity from the store
+        // Get all operations for this entity
+        let matching_operations: Vec<_> = self
+            .entity_operations
+            .clone()
+            .map(|ops| {
+                ops.iter()
+                    .cloned()
+                    .filter(|op| op.matches_entity(&store_key))
+                    .collect()
+            }).unwrap_or_default();
+
+        // Shortcut 1: If the latest operation for this entity was a removal,
+        // return None (= undefined) to the runtime
+        if matching_operations
+            .iter()
+            .peekable()
+            .peek()
+            .map(|op| op.is_remove())
+            .unwrap_or(false)
+        {
+            return Ok(None);
+        }
+
+        // Shortcut 2: If there is a removal in the operations, the
+        // entity will be the result of the operations after that, so we
+        // don't have to hit the store for anything
+        if matching_operations
+            .iter()
+            .find(|op| op.is_remove())
+            .is_some()
+        {
+            let entity = EntityOperation::apply_all(None, &matching_operations);
+            return Ok(entity.map(|entity| RuntimeValue::from(self.heap.asc_new(&entity))));
+        }
+
+        // No removal in the operations => read the entity from the store, then apply
+        // the operations to it to obtain the result
         self.store
             .get(store_key)
-            .and_then(|result| Ok(Some(RuntimeValue::from(self.heap.asc_new(&result)))))
+            .and_then(|entity| {
+                let entity = EntityOperation::apply_all(Some(entity), &matching_operations);
+                Ok(entity.map(|entity| RuntimeValue::from(self.heap.asc_new(&entity))))
+            })
             .or(Ok(Some(RuntimeValue::from(0))))
     }
 
