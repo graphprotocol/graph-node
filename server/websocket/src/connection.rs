@@ -369,7 +369,7 @@ where
         let id = self.id.clone();
         let ws_writer = msg_stream
             .inspect(move |msg| {
-                debug!(logger, "Sending message";
+                trace!(logger, "Sending message";
                        "connection" => &id,
                        "msg" => format!("{}", msg).as_str());
             }).forward(ws_sink.sink_map_err(|_| ()));
