@@ -110,17 +110,140 @@ pub type EntityChangeStream = Box<Stream<Item = EntityChange, Error = ()> + Send
 /// An entity operation that can be transacted into the store.
 #[derive(Clone, Debug)]
 pub enum EntityOperation {
+    /// An entity is created or updated.
     Set {
         subgraph: String,
         entity: String,
         id: String,
         data: Entity,
     },
+    /// An entity is removed.
     Remove {
         subgraph: String,
         entity: String,
         id: String,
     },
+}
+
+impl EntityOperation {
+    /// Returns true if the operation is an entity removal.
+    pub fn is_remove(&self) -> bool {
+        use self::EntityOperation::*;
+
+        match self {
+            Remove { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn entity_info(&self) -> (&String, &String, &String) {
+        use self::EntityOperation::*;
+        match self {
+            Set {
+                subgraph,
+                entity,
+                id,
+                ..
+            } => (subgraph, entity, id),
+            Remove {
+                subgraph,
+                entity,
+                id,
+            } => (subgraph, entity, id),
+        }
+    }
+
+    /// Returns true if the operation matches a given store key.
+    pub fn matches_entity(&self, key: &StoreKey) -> bool {
+        self.entity_info() == (&key.subgraph, &key.entity, &key.id)
+    }
+
+    /// Returns true if the two operations match the same entity.
+    pub fn matches_same_entity(&self, other: &EntityOperation) -> bool {
+        self.entity_info() == other.entity_info()
+    }
+
+    /// Applies the operation to an existing entity (may be None).
+    ///
+    /// Returns `Some(entity)` with an updated entity if the operation is a `Set`.
+    /// Returns `None` if the operation is a `Remove`.
+    pub fn apply(&self, entity: Option<Entity>) -> Option<Entity> {
+        use self::EntityOperation::*;
+        match self {
+            Set { data, .. } => Some(
+                entity
+                    .map(|entity| {
+                        let mut entity = entity.clone();
+                        entity.merge(data.clone());
+                        entity
+                    }).unwrap_or(data.clone()),
+            ),
+            Remove { .. } => None,
+        }
+    }
+
+    /// Merges another operation into this operation. Returns the modified operation.
+    ///
+    /// Panics if the two operations are for different entities.
+    pub fn merge(&self, other: &EntityOperation) -> Self {
+        use self::EntityOperation::*;
+
+        assert_ne!(self.entity_info(), other.entity_info());
+
+        match other {
+            Remove { .. } => other.clone(),
+            Set {
+                subgraph,
+                entity,
+                id,
+                data,
+            } => EntityOperation::Set {
+                subgraph: subgraph.clone(),
+                entity: entity.clone(),
+                id: id.clone(),
+                data: {
+                    let mut entity = match self {
+                        Set { data, .. } => data.clone(),
+                        _ => Entity::new(),
+                    };
+                    entity.merge(data.clone());
+                    entity
+                },
+            },
+        }
+    }
+
+    /// Applies all entity operations to the given entity in order.
+    pub fn apply_all(entity: Option<Entity>, ops: &Vec<EntityOperation>) -> Option<Entity> {
+        // If there is a remove operations, we only need to consider the operations after that
+        ops.iter()
+            .rev()
+            .take_while(|op| !op.is_remove())
+            .collect::<Vec<_>>()
+            .iter()
+            .rev()
+            .fold(entity, |entity, op| op.apply(entity))
+    }
+
+    /// Folds all entity operations for the same entity into a single operation.
+    pub fn fold(ops: &Vec<EntityOperation>) -> Vec<EntityOperation> {
+        ops.iter().fold(
+            vec![],
+            |mut out: Vec<EntityOperation>, op: &EntityOperation| {
+                let mut op_updated = false;
+                for existing_op in out.iter_mut() {
+                    if existing_op.matches_same_entity(op) {
+                        *existing_op = existing_op.merge(op);
+                        op_updated = true;
+                    }
+                }
+                if !op_updated {
+                    out.push(op.clone());
+                }
+                out
+            },
+        )
+    }
 }
 
 /// The source of the events being sent to the store
