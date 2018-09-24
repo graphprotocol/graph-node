@@ -3,7 +3,7 @@ use futures::stream::SplitStream;
 use futures::sync::{mpsc, oneshot};
 use graphql_parser::parse_query;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::iter::FromIterator;
 use tokio_tungstenite::tungstenite::{Error as WsError, Message as WsMessage};
 use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;
@@ -69,6 +69,99 @@ impl From<OutgoingMessage> for WsMessage {
     }
 }
 
+/// Helper function to send outgoing messages.
+fn send_message(
+    sink: &mpsc::UnboundedSender<WsMessage>,
+    msg: OutgoingMessage,
+) -> Result<(), WsError> {
+    sink.unbounded_send(msg.into())
+        .map_err(|_| WsError::Http(500))
+}
+
+/// Helper function to send error messages.
+fn send_error_string(
+    sink: &mpsc::UnboundedSender<WsMessage>,
+    id: String,
+    s: String,
+) -> Result<(), WsError> {
+    sink.unbounded_send(OutgoingMessage::from_error_string(id, s).into())
+        .map_err(|_| WsError::Http(500))
+}
+
+/// Responsible for recording operation ids and stopping them.
+/// On drop, cancels all operations.
+struct Operations {
+    operations: HashMap<String, oneshot::Sender<()>>,
+    msg_sink: mpsc::UnboundedSender<WsMessage>,
+    connection_id: String,
+    logger: Logger,
+}
+
+impl Operations {
+    fn new(
+        logger: Logger,
+        connection_id: String,
+        msg_sink: mpsc::UnboundedSender<WsMessage>,
+    ) -> Self {
+        Self {
+            operations: HashMap::new(),
+            msg_sink,
+            connection_id,
+            logger,
+        }
+    }
+
+    fn contains(&self, id: &str) -> bool {
+        self.operations.contains_key(id)
+    }
+
+    fn insert(&mut self, id: String) -> impl Future<Item = (), Error = ()> {
+        // Create a oneshot channel to stop the subscription later.
+        let (stopper, stopped) = oneshot::channel();
+        self.operations.insert(id.clone(), stopper);
+        let logger = self.logger.clone();
+        let connection_id = self.connection_id.clone();
+        stopped.map_err(move |_| {
+            debug!(logger, "Stopped operation";
+                           "connection" => connection_id,
+                           "id" => id)
+        })
+    }
+
+    fn stop(&mut self, operation_id: String) -> Result<(), WsError> {
+        // Remove the operation with this ID from the known operations.
+        match self.operations.remove(&operation_id) {
+            Some(stopper) => {
+                // Cancel the subscription result stream.
+                drop(stopper);
+
+                // Send a GQL_COMPLETE to indicate the operation is been completed.
+                send_message(
+                    &self.msg_sink,
+                    OutgoingMessage::Complete {
+                        id: operation_id.clone(),
+                    },
+                )
+            }
+            None => send_error_string(
+                &self.msg_sink,
+                operation_id.clone(),
+                format!("Unknown operation ID: {}", operation_id),
+            ),
+        }
+    }
+}
+
+impl Drop for Operations {
+    fn drop(&mut self) {
+        let ids = Vec::from_iter(self.operations.keys().cloned());
+        for id in ids {
+            // Discard errors, the connection is being shutdown anyways.
+            let _ = self.stop(id);
+        }
+    }
+}
+
 /// A WebSocket connection implementing the GraphQL over WebSocket protocol.
 pub struct GraphQlConnection<Q, S> {
     id: String,
@@ -111,21 +204,8 @@ where
         subgraph: String,
         graphql_runner: Arc<Q>,
     ) -> impl Future<Item = (), Error = WsError> {
-        // Set up a mapping of operation IDs to oneshot senders that
-        // can stop each operation
-        let mut operations: HashMap<String, oneshot::Sender<()>> = HashMap::new();
-
-        // Helper function to send outgoing messages
-        let send_message = |sink: &mpsc::UnboundedSender<WsMessage>, msg: OutgoingMessage| {
-            sink.unbounded_send(msg.into())
-                .map_err(|_| WsError::Http(500))
-        };
-
-        // Helper function to send error messages
-        let send_error_string = |sink: &mpsc::UnboundedSender<WsMessage>, id, s| {
-            sink.unbounded_send(OutgoingMessage::from_error_string(id, s).into())
-                .map_err(|_| WsError::Http(500))
-        };
+        let mut operations =
+            Operations::new(logger.clone(), connection_id.clone(), msg_sink.clone());
 
         // Process incoming messages as long as the WebSocket is open
         ws_stream.for_each(move |ws_msg| {
@@ -156,28 +236,12 @@ where
                 }
 
                 // When receiving a stop request
-                Stop { id } => {
-                    // Remove the operation with this ID from the known operations
-                    match operations.remove(&id) {
-                        Some(stopper) => {
-                            // Cancel the subscription result stream
-                            drop(stopper);
-
-                            // Send a GQL_COMPLETE to indicate the operation is been completed
-                            send_message(&msg_sink, Complete { id: id.clone() })
-                        }
-                        None => send_error_string(
-                            &msg_sink,
-                            id.clone(),
-                            format!("Unknown operation ID: {}", id),
-                        ),
-                    }
-                }
+                Stop { id } => operations.stop(id),
 
                 // When receiving a start request
                 Start { id, payload } => {
                     // Respond with a GQL_ERROR if we already have an operation with this ID
-                    if operations.contains_key(&id) {
+                    if operations.contains(&id) {
                         return send_error_string(
                             &msg_sink,
                             id.clone(),
@@ -220,11 +284,8 @@ where
                         },
                     };
 
-                    // Create a oneshot channel to stop the subscription later
-                    let (stopper, stopped) = oneshot::channel();
-
-                    // Remember the stopper for this subscription
-                    operations.insert(id.clone(), stopper);
+                    // Get a `stopped` handle for this subscription.
+                    let stopped = operations.insert(id.clone());
 
                     debug!(logger, "Start operation";
                            "connection" => &connection_id,
@@ -236,17 +297,9 @@ where
                     let result_sink = msg_sink.clone();
                     let result_id = id.clone();
                     let err_id = id.clone();
-                    let stopped_connection_id = connection_id.clone();
-                    let stopped_id = id.clone();
-                    let stopped_logger = logger.clone();
                     tokio::spawn(
                         stopped
-                            .then(move |_| {
-                                debug!(stopped_logger, "Stop operation";
-                                       "connection" => stopped_connection_id,
-                                       "id" => stopped_id);
-                                Ok(())
-                            }).select(
+                            .select(
                                 graphql_runner
                                     .run_subscription(subscription)
                                     .map_err(move |e| {
