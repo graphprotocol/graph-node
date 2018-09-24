@@ -1,3 +1,5 @@
+use failure::*;
+
 use graph::components::store::*;
 use graph::prelude::*;
 use graph::web3::types::{Block, Transaction, H256};
@@ -39,7 +41,7 @@ impl MockStore {
 }
 
 impl Store for MockStore {
-    fn get(&self, key: StoreKey) -> Result<Entity, ()> {
+    fn get(&self, key: StoreKey) -> Result<Entity, Error> {
         if key.entity == "User" {
             self.entities
                 .iter()
@@ -50,7 +52,7 @@ impl Store for MockStore {
                         _ => false,
                     }
                 }).map(|entity| entity.clone())
-                .ok_or(())
+                .ok_or(format_err!("Failed to get entity from mock store"))
         } else {
             unimplemented!()
         }
@@ -139,7 +141,7 @@ impl ChainStore for MockStore {
 pub struct FakeStore;
 
 impl Store for FakeStore {
-    fn get(&self, _: StoreKey) -> Result<Entity, ()> {
+    fn get(&self, _: StoreKey) -> Result<Entity, Error> {
         unimplemented!();
     }
 

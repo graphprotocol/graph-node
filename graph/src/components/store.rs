@@ -282,7 +282,7 @@ pub trait Store: Send + Sync {
 
     /// Looks up an entity using the given store key.
     // TODO need to validate block ptr
-    fn get(&self, key: StoreKey) -> Result<Entity, ()>;
+    fn get(&self, key: StoreKey) -> Result<Entity, Error>;
 
     /// Queries the store for entities that match the store query.
     // TODO need to validate block ptr
