@@ -93,23 +93,6 @@ impl From<ABIError> for EthereumError {
     }
 }
 
-/// A range to allow event subscriptions to limit the block numbers to consider.
-#[derive(Debug)]
-pub struct BlockNumberRange {
-    pub from: BlockNumber,
-    pub to: BlockNumber,
-}
-
-/// A subscription to a specific contract address, event signature and block range.
-#[derive(Debug)]
-pub struct EthereumEventSubscription {
-    /// An ID that uniquely identifies the subscription (e.g. a GUID).
-    pub subscription_id: String,
-    pub address: Address,
-    pub range: BlockNumberRange,
-    pub event: Event,
-}
-
 /// An event logged for a specific contract address and event signature.
 #[derive(Debug)]
 pub struct EthereumEvent {
