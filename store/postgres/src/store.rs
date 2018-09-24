@@ -4,6 +4,7 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::sql_types::Text;
 use diesel::{debug_query, delete, insert_into, result, select, update};
+use failure::*;
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
 use std::collections::HashMap;
@@ -301,7 +302,7 @@ impl StoreTrait for Store {
             }).map_err(Error::from)
     }
 
-    fn get(&self, key: StoreKey) -> Result<Entity, ()> {
+    fn get(&self, key: StoreKey) -> Result<Entity, Error> {
         debug!(self.logger, "get"; "key" => format!("{:?}", key));
 
         use db_schema::entities::dsl::*;
@@ -311,9 +312,11 @@ impl StoreTrait for Store {
             .find((key.id, key.subgraph, key.entity))
             .select(data)
             .first::<serde_json::Value>(&*self.conn.lock().unwrap())
-            .map(|value| {
-                serde_json::from_value::<Entity>(value).expect("Failed to deserialize entity")
-            }).map_err(|_| ())
+            .map_err(|e| format_err!("Failed to get entity from store: {}", e))
+            .and_then(|value| {
+                serde_json::from_value::<Entity>(value)
+                    .map_err(|e| format_err!("Broken entity found in store: {}", e))
+            })
     }
 
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, ()> {
