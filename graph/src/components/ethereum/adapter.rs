@@ -74,22 +74,22 @@ impl From<Error> for EthereumContractCallError {
 }
 
 #[derive(Fail, Debug)]
-pub enum EthereumSubscriptionError {
+pub enum EthereumError {
     #[fail(display = "RPC error: {}", _0)]
     RpcError(SyncFailure<Web3Error>),
     #[fail(display = "ABI error: {}", _0)]
     ABIError(SyncFailure<ABIError>),
 }
 
-impl From<Web3Error> for EthereumSubscriptionError {
-    fn from(err: Web3Error) -> EthereumSubscriptionError {
-        EthereumSubscriptionError::RpcError(SyncFailure::new(err))
+impl From<Web3Error> for EthereumError {
+    fn from(err: Web3Error) -> EthereumError {
+        EthereumError::RpcError(SyncFailure::new(err))
     }
 }
 
-impl From<ABIError> for EthereumSubscriptionError {
-    fn from(err: ABIError) -> EthereumSubscriptionError {
-        EthereumSubscriptionError::ABIError(SyncFailure::new(err))
+impl From<ABIError> for EthereumError {
+    fn from(err: ABIError) -> EthereumError {
+        EthereumError::ABIError(SyncFailure::new(err))
     }
 }
 
@@ -311,7 +311,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         block: Block<Transaction>,
         log_filter: EthereumLogFilter,
-    ) -> Box<Future<Item = Vec<Log>, Error = EthereumSubscriptionError>>;
+    ) -> Box<Future<Item = Vec<Log>, Error = EthereumError>>;
 
     /// Call the function of a smart contract.
     fn contract_call(
