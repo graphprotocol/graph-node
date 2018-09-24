@@ -1,20 +1,25 @@
 use failure::Error;
 use futures::prelude::*;
+use std::sync::Arc;
 
 use prelude::*;
+use web3::types::{Block, Log, Transaction};
 
 /// Common trait for runtime host implementations.
 pub trait RuntimeHost: Send + Sync {
     /// The subgraph definition the runtime is for.
     fn subgraph_manifest(&self) -> &SubgraphManifest;
 
-    /// Returns true if the RuntimeHost has a handler for an EthereumEvent.
-    fn matches_event(&self, event: &EthereumEvent) -> bool;
+    /// Returns true if the RuntimeHost has a handler for an Ethereum event.
+    fn matches_log(&self, log: &Log) -> bool;
 
     /// Process an Ethereum event and return a vector of entity operations.
-    fn process_event(
+    fn process_log(
         &self,
-        event: EthereumEvent,
+        block: Arc<EthereumBlock>,
+        transaction: Arc<Transaction>,
+        log: Arc<Log>,
+        entity_operations: Vec<EntityOperation>,
     ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send>;
 }
 
