@@ -93,7 +93,6 @@ where
             .collect::<HashSet<H256>>()
             .into_iter()
             .collect::<Vec<H256>>();
-        debug!(self.logger, "event sigs: {:?}", &event_sigs);
 
         let eth_adapter = self.clone();
         stream::unfold(from, move |mut chunk_offset| {
@@ -232,16 +231,6 @@ where
                 genesis_block_hash,
             },
         ))
-    }
-
-    fn latest_block_number(&self) -> Box<Future<Item = U256, Error = Error> + Send> {
-        Box::new(
-            self.eth_client
-                .eth()
-                .block_number()
-                .map_err(SyncFailure::new)
-                .from_err(),
-        )
     }
 
     fn block_by_hash(
