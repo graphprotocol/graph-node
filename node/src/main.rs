@@ -274,7 +274,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     tokio::spawn(block_ingestor.into_polling_stream());
 
     // Prepare a block stream builder for subgraphs
-    let block_stream_builder = BlockStreamBuilder::new(store.clone(), ethereum.clone());
+    let block_stream_builder =
+        BlockStreamBuilder::new(store.clone(), store.clone(), ethereum.clone());
 
     // Prepare for hosting WASM runtimes and managing subgraph instances
     let runtime_host_builder =

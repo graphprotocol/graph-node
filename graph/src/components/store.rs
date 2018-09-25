@@ -306,7 +306,7 @@ pub trait Store: Send + Sync {
     /// `block_ptr_to` must point to a child block of `block_ptr_from`.
     fn transact_block_operations(
         &self,
-        subgraph_id: &str,
+        subgraph_id: SubgraphId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
         operations: Vec<EntityOperation>,
@@ -319,7 +319,7 @@ pub trait Store: Send + Sync {
     /// `block_ptr_to` must point to the parent block of `block_ptr_from`.
     fn revert_block_operations(
         &self,
-        subgraph_id: &str,
+        subgraph_id: SubgraphId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), Error>;
@@ -333,6 +333,9 @@ pub trait Store: Send + Sync {
 /// Common trait for blockchain store implementations.
 pub trait ChainStore: Send + Sync {
     type ChainHeadUpdateListener: ChainHeadUpdateListener;
+
+    /// Get a pointer to this blockchain's genesis block.
+    fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
 
     /// Insert blocks into the store (or update if they are already present).
     fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(

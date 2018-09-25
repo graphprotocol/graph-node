@@ -2,7 +2,7 @@ use failure::*;
 
 use graph::components::store::*;
 use graph::prelude::*;
-use graph::web3::types::{Block, Transaction, H256};
+use graph::web3::types::H256;
 
 /// A mock `ChainHeadUpdateListener`
 pub struct MockChainHeadUpdateListener {}
@@ -81,7 +81,7 @@ impl Store for MockStore {
 
     fn transact_block_operations(
         &self,
-        _: &str,
+        _: SubgraphId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
         _: Vec<EntityOperation>,
@@ -91,7 +91,7 @@ impl Store for MockStore {
 
     fn revert_block_operations(
         &self,
-        _: &str,
+        _: SubgraphId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
     ) -> Result<(), Error> {
@@ -105,6 +105,10 @@ impl Store for MockStore {
 
 impl ChainStore for MockStore {
     type ChainHeadUpdateListener = MockChainHeadUpdateListener;
+
+    fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error> {
+        unimplemented!();
+    }
 
     fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
         &self,
@@ -168,7 +172,7 @@ impl Store for FakeStore {
 
     fn transact_block_operations(
         &self,
-        _: &str,
+        _: SubgraphId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
         _: Vec<EntityOperation>,
@@ -178,7 +182,7 @@ impl Store for FakeStore {
 
     fn revert_block_operations(
         &self,
-        _: &str,
+        _: SubgraphId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
     ) -> Result<(), Error> {
@@ -192,6 +196,10 @@ impl Store for FakeStore {
 
 impl ChainStore for FakeStore {
     type ChainHeadUpdateListener = MockChainHeadUpdateListener;
+
+    fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error> {
+        unimplemented!();
+    }
 
     fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
         &self,

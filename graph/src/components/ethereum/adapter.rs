@@ -147,12 +147,10 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn latest_block_number(&self) -> Box<Future<Item = U256, Error = Error> + Send>;
 
     /// Find a block by its hash.
-    ///
-    /// Use this method instead of `block_by_number` whenever possible.
     fn block_by_hash(
         &self,
         block_hash: H256,
-    ) -> Box<Future<Item = Option<Block<Transaction>>, Error = Error> + Send>;
+    ) -> Box<Future<Item = Option<EthereumBlock>, Error = Error> + Send>;
 
     /// Find a block by its number.
     ///
@@ -163,10 +161,10 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// those confirmations.
     /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
     /// reorgs.
-    fn block_by_number(
+    fn block_hash_by_block_number(
         &self,
         block_number: u64,
-    ) -> Box<Future<Item = Option<Block<Transaction>>, Error = Error> + Send>;
+    ) -> Box<Future<Item = Option<H256>, Error = Error> + Send>;
 
     /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
     /// node.
@@ -201,14 +199,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         to: u64,
         log_filter: EthereumLogFilter,
     ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
-
-    /// Find all logs from transactions in the specified `block` that match the specified
-    /// `log_filter`.
-    fn get_logs_in_block(
-        &self,
-        block: Block<Transaction>,
-        log_filter: EthereumLogFilter,
-    ) -> Box<Future<Item = Vec<Log>, Error = EthereumError>>;
 
     /// Call the function of a smart contract.
     fn contract_call(

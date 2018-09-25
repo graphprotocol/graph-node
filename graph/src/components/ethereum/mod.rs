@@ -9,7 +9,8 @@ pub use self::adapter::{
     EthereumNetworkIdentifiers,
 };
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener};
-pub use self::stream::{BlockStream, BlockStreamBuilder, BlockStreamController, EthereumBlock};
+pub use self::stream::{BlockStream, BlockStreamBuilder};
 pub use self::types::{
-    EthereumBlockData, EthereumBlockPointer, EthereumEventData, EthereumTransactionData,
+    EthereumBlock, EthereumBlockData, EthereumBlockPointer, EthereumEventData,
+    EthereumTransactionData,
 };
