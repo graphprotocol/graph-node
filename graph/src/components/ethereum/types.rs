@@ -1,6 +1,20 @@
 use ethabi::LogParam;
 use web3::types::*;
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct EthereumBlock {
+    pub block: Block<Transaction>,
+    pub transaction_receipts: Vec<TransactionReceipt>,
+}
+
+impl EthereumBlock {
+    pub fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
+        log.transaction_hash
+            .and_then(|hash| self.block.transactions.iter().find(|tx| tx.hash == hash))
+            .cloned()
+    }
+}
+
 /// Ethereum block data.
 #[derive(Clone, Debug, Serialize)]
 pub struct EthereumBlockData {
@@ -96,10 +110,10 @@ pub struct EthereumBlockPointer {
 
 impl EthereumBlockPointer {
     /// Creates a pointer to the parent of the specified block.
-    pub fn to_parent<T>(b: &Block<T>) -> EthereumBlockPointer {
+    pub fn to_parent(b: &EthereumBlock) -> EthereumBlockPointer {
         EthereumBlockPointer {
-            hash: b.parent_hash,
-            number: b.number.unwrap().as_u64() - 1,
+            hash: b.block.parent_hash,
+            number: b.block.number.unwrap().as_u64() - 1,
         }
     }
 
@@ -127,6 +141,24 @@ impl<'a, T> From<&'a Block<T>> for EthereumBlockPointer {
         EthereumBlockPointer {
             hash: b.hash.unwrap(),
             number: b.number.unwrap().as_u64(),
+        }
+    }
+}
+
+impl From<EthereumBlock> for EthereumBlockPointer {
+    fn from(b: EthereumBlock) -> EthereumBlockPointer {
+        EthereumBlockPointer {
+            hash: b.block.hash.unwrap(),
+            number: b.block.number.unwrap().as_u64(),
+        }
+    }
+}
+
+impl<'a> From<&'a EthereumBlock> for EthereumBlockPointer {
+    fn from(b: &'a EthereumBlock) -> EthereumBlockPointer {
+        EthereumBlockPointer {
+            hash: b.block.hash.unwrap(),
+            number: b.block.number.unwrap().as_u64(),
         }
     }
 }

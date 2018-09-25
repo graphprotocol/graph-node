@@ -3,7 +3,7 @@ use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::sql_types::Text;
-use diesel::{debug_query, delete, insert_into, result, select, update};
+use diesel::{debug_query, delete, insert_into, select, update};
 use failure::*;
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
@@ -12,10 +12,10 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-use graph::components::store::{EventSource, Store as StoreTrait};
-use graph::prelude::{ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, *};
+use graph::components::store::Store as StoreTrait;
+use graph::prelude::*;
 use graph::serde_json;
-use graph::web3::types::{Block, Transaction, H256};
+use graph::web3::types::H256;
 use graph::{tokio, tokio::timer::Interval};
 
 use chain_head_listener::ChainHeadUpdateListener;
@@ -62,6 +62,7 @@ pub struct Store {
     change_listener: EntityChangeListener,
     url: String,
     network_name: String,
+    genesis_block_ptr: EthereumBlockPointer,
     pub conn: Arc<Mutex<PgConnection>>,
 }
 
@@ -96,6 +97,7 @@ impl Store {
             change_listener,
             url: config.url.clone(),
             network_name: config.network_name.clone(),
+            genesis_block_ptr: (net_identifiers.genesis_block_hash, 0u64).into(),
             conn: Arc::new(Mutex::new(conn)),
         };
 
@@ -403,7 +405,7 @@ impl Store {
     fn update_subgraph_block_pointer(
         &self,
         conn: &PgConnection,
-        subgraph_id: &str,
+        subgraph_id: SubgraphId,
         from: EthereumBlockPointer,
         to: EthereumBlockPointer,
     ) -> Result<(), Error> {
@@ -413,14 +415,16 @@ impl Store {
             .set((
                 latest_block_hash.eq(to.hash_hex()),
                 latest_block_number.eq(to.number as i64),
-            )).filter(id.eq(subgraph_id))
+            )).filter(id.eq(&subgraph_id))
             .filter(latest_block_hash.eq(from.hash_hex()))
             .filter(latest_block_number.eq(from.number as i64))
             .execute(conn)
             .map_err(Error::from)
-            .and_then(|row_count| match row_count {
+            .and_then(move |row_count| match row_count {
                 0 => Err(format_err!(
-                    "failed to update subgraph block pointer: block_ptr_from must match"
+                    "failed to update subgraph block pointer from {:?} to {:?}",
+                    from,
+                    to
                 )),
                 1 => Ok(()),
                 _ => unreachable!(),
@@ -549,17 +553,12 @@ impl StoreTrait for Store {
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), Error> {
         let conn = self.conn.lock().unwrap();
-        self.update_subgraph_block_pointer(
-            &*conn,
-            subgraph_id.as_str(),
-            block_ptr_from,
-            block_ptr_to,
-        )
+        self.update_subgraph_block_pointer(&*conn, subgraph_id, block_ptr_from, block_ptr_to)
     }
 
     fn transact_block_operations(
         &self,
-        subgraph_id: &str,
+        subgraph_id: SubgraphId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
         operations: Vec<EntityOperation>,
@@ -577,7 +576,7 @@ impl StoreTrait for Store {
 
     fn revert_block_operations(
         &self,
-        _subgraph_id: &str,
+        _subgraph_id: SubgraphId,
         _block_ptr_from: EthereumBlockPointer,
         _block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), Error> {
@@ -612,6 +611,10 @@ impl StoreTrait for Store {
 
 impl ChainStore for Store {
     type ChainHeadUpdateListener = ChainHeadUpdateListener;
+
+    fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error> {
+        Ok(self.genesis_block_ptr)
+    }
 
     fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
         &self,

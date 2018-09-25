@@ -25,7 +25,7 @@ impl SubgraphInstanceManager {
         block_stream_builder: B,
     ) -> Self
     where
-        S: Store + 'static,
+        S: Store + ChainStore + 'static,
         T: RuntimeHostBuilder + 'static,
         B: BlockStreamBuilder + 'static,
     {
@@ -57,7 +57,7 @@ impl SubgraphInstanceManager {
         host_builder: T,
         block_stream_builder: B,
     ) where
-        S: Store + 'static,
+        S: Store + ChainStore + 'static,
         T: RuntimeHostBuilder + 'static,
         B: BlockStreamBuilder + 'static,
     {
@@ -99,13 +99,13 @@ impl SubgraphInstanceManager {
     ) where
         T: RuntimeHostBuilder,
         B: BlockStreamBuilder,
-        S: Store + 'static,
+        S: Store + ChainStore + 'static,
     {
         let id = manifest.id.clone();
         let id_for_transact = manifest.id.clone();
 
         // Request a block stream for this subgraph
-        let (block_stream, _) = block_stream_builder.from_subgraph(&manifest);
+        let block_stream = block_stream_builder.from_subgraph(&manifest, logger.clone());
 
         // Load the subgraph
         let instance = Arc::new(SubgraphInstance::from_manifest(manifest, host_builder));
@@ -176,13 +176,13 @@ impl SubgraphInstanceManager {
                             })
                         }).map(move |operations| (block_forward, operations))
                 }).for_each(move |(block, entity_operations)| {
-                    let block_ptr_now = EthereumBlockPointer::to_parent(&block.block);
-                    let block_ptr_after = EthereumBlockPointer::from(&block.block);
+                    let block_ptr_now = EthereumBlockPointer::to_parent(&block);
+                    let block_ptr_after = EthereumBlockPointer::from(&*block);
 
                     // Transact entity operations into the store and update the
                     // subgraph's block stream pointer
                     future::result(store.transact_block_operations(
-                        &id_for_transact,
+                        id_for_transact.clone(),
                         block_ptr_now,
                         block_ptr_after,
                         entity_operations,

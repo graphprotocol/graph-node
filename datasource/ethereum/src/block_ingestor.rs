@@ -62,7 +62,7 @@ where
                         // Some polls will fail due to transient issues
                         warn!(
                             static_self.logger,
-                            "failed to poll for latest block: {:?}", e
+                            "Trying again after block polling failed: {:?}", e
                         );
                     }
 
@@ -144,13 +144,14 @@ where
                             .transaction_receipt(tx_hash)
                             .map_err(move |e| {
                                 format_err!(
-                                    "could not get transaction receipt from Ethereum: {}",
-                                    tx_hash
+                                    "could not get transaction receipt {} from Ethereum: {}",
+                                    tx_hash,
+                                    e
                                 )
                             }).and_then(move |receipt_opt| {
                                 receipt_opt.ok_or_else(move || {
                                     format_err!(
-                                        "Ethereum node could not find transaction receipt: {}",
+                                        "Ethereum node could not find transaction receipt {}",
                                         tx_hash
                                     )
                                 })
@@ -210,7 +211,7 @@ where
                                 let tx_hash = tx.hash;
 
                                 web3.eth().transaction_receipt(tx_hash)
-                                    .map_err(move |e| format_err!("could not get transaction receipt from Ethereum: {}", tx_hash))
+                                    .map_err(move |e| format_err!("could not get transaction receipt {} from Ethereum: {}", tx_hash, e))
                                     .and_then(move |receipt_opt| {
                                         receipt_opt.ok_or_else(move || format_err!("Ethereum node could not find transaction receipt: {}", tx_hash))
                                     })

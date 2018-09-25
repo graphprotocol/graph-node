@@ -2,161 +2,721 @@ use failure::Error;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std;
+use std::mem;
 use std::sync::Arc;
+use std::sync::Mutex;
 
+use graph::components::forward;
 use graph::prelude::{
-    BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait,
-    BlockStreamController as BlockStreamControllerTrait, *,
+    BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
 };
 use graph::util::ethereum::string_to_h256;
-use graph::web3::types::{Address, H256};
+use graph::web3::types::*;
 
-/// Internal messages between the block stream controller and the block stream.
-enum ControlMessage {
-    Advance { block_hash: H256 },
-}
+const REORG_THRESHOLD: u64 = 400;
 
-pub struct BlockStream {
-    subgraph_id: String,
+pub struct BlockStream<S, C, E> {
+    state: Mutex<BlockStreamState>,
     log_filter: EthereumLogFilter,
+    chain_head_update_sink: Sender<ChainHeadUpdate>,
+    chain_head_update_stream: Receiver<ChainHeadUpdate>,
+    ctx: BlockStreamContext<S, C, E>,
 }
 
-impl BlockStream {
-    pub fn new(subgraph_id: String, log_filter: EthereumLogFilter) -> Self {
+struct BlockStreamContext<S, C, E> {
+    subgraph_store: Arc<S>,
+    chain_store: Arc<C>,
+    eth_adapter: Arc<E>,
+    subgraph_id: String,
+    logger: Logger,
+}
+
+impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
+    fn clone(&self) -> Self {
+        Self {
+            subgraph_store: self.subgraph_store.clone(),
+            chain_store: self.chain_store.clone(),
+            eth_adapter: self.eth_adapter.clone(),
+            subgraph_id: self.subgraph_id.clone(),
+            logger: self.logger.clone(),
+        }
+    }
+}
+
+enum BlockStreamState {
+    /// Valid next states: Reconciliation
+    New,
+
+    /// Valid next states: YieldingBlocks, Idle
+    Reconciliation(
+        Box<
+            Future<
+                    Item = Option<Box<Stream<Item = EthereumBlock, Error = Error> + Send>>,
+                    Error = Error,
+                > + Send,
+        >,
+    ),
+
+    /// Valid next states: Reconciliation, Idle
+    YieldingBlocks(Box<Stream<Item = EthereumBlock, Error = Error> + Send>),
+
+    /// Valid next states: Reconciliation
+    Idle,
+
+    /// Not a real state, only used when going from one state to another.
+    Transition,
+}
+
+/// The next step to take in reconciling the state of the subgraph store with the new state of the
+/// chain store.
+enum ReconciliationStep {
+    /// Revert the current block pointed at by the subgraph pointer.
+    RevertBlock(EthereumBlockPointer),
+
+    /// Move forwards, processing one or more blocks.
+    ProcessDescendantBlocks {
+        from: EthereumBlockPointer,
+        descendant_blocks: Vec<EthereumBlock>,
+    },
+
+    /// Skip forwards from `from` to `to`, with no processing needed.
+    AdvanceToDescendantBlock {
+        from: EthereumBlockPointer,
+        to: EthereumBlockPointer,
+    },
+
+    /// This step is a no-op, but we need to check again for a next step.
+    Retry,
+
+    /// Subgraph pointer now matches chain head pointer.
+    /// Reconciliation is complete.
+    Done,
+}
+
+impl<S, C, E> BlockStream<S, C, E>
+where
+    S: Store,
+    C: ChainStore,
+    E: EthereumAdapter,
+{
+    pub fn new(
+        subgraph_store: Arc<S>,
+        chain_store: Arc<C>,
+        eth_adapter: Arc<E>,
+        subgraph_id: String,
+        log_filter: EthereumLogFilter,
+        logger: Logger,
+    ) -> Self {
+        let logger = logger.new(o!("component" => "BlockStream"));
+
+        let (chain_head_update_sink, chain_head_update_stream) = channel(100);
+
         BlockStream {
-            subgraph_id,
+            state: Mutex::new(BlockStreamState::New),
             log_filter,
+            chain_head_update_sink,
+            chain_head_update_stream,
+            ctx: BlockStreamContext {
+                subgraph_store,
+                chain_store,
+                eth_adapter,
+                subgraph_id,
+                logger,
+            },
         }
     }
 }
 
-impl BlockStreamTrait for BlockStream {}
+impl<S, C, E> BlockStreamContext<S, C, E>
+where
+    S: Store + 'static,
+    C: ChainStore + 'static,
+    E: EthereumAdapter,
+{
+    fn next_blocks(
+        &self,
+        log_filter: EthereumLogFilter,
+    ) -> Box<
+        Future<
+                Item = Option<Box<Stream<Item = EthereumBlock, Error = Error> + Send>>,
+                Error = Error,
+            > + Send,
+    > {
+        let ctx = self.clone();
 
-impl Stream for BlockStream {
-    type Item = EthereumBlock;
-    type Error = Error;
+        // Loop until we can return a Stream of EthereumBlocks or None
+        Box::new(future::loop_fn(
+            (),
+            move |()| -> Box<Future<Item = _, Error = _> + Send> {
+                let ctx = ctx.clone();
 
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        Ok(Async::Ready(None))
+                let step_future = ctx.next_reconciliation_step(log_filter.clone());
+
+                Box::new(step_future.and_then(move |step| -> Box<Future<Item = _, Error = _> + Send> {
+                    // We now know where to take the subgraph ptr.
+                    match step {
+                        ReconciliationStep::Retry => Box::new(future::ok(future::Loop::Continue(()))),
+                        ReconciliationStep::Done => Box::new(future::ok(future::Loop::Break(None))),
+                        ReconciliationStep::RevertBlock(subgraph_ptr) => {
+                            // We would like to move to the parent of the current block.
+                            // This means we need to revert this block.
+
+                            // First, load the block in order to get the parent hash.
+                            Box::new(ctx.load_block(subgraph_ptr.hash).and_then(move |block| {
+                                // Produce pointer to parent block (using parent hash).
+                                let parent_ptr = EthereumBlockPointer::to_parent(&block);
+
+                                // Revert entity changes from this block, and update subgraph ptr.
+                                future::result(ctx.subgraph_store
+                                    .revert_block_operations(ctx.subgraph_id.clone(), subgraph_ptr, parent_ptr)
+                                    .map_err(Error::from)
+                                    .map(|()| {
+                                        // At this point, the loop repeats, and we try to move the subgraph ptr another
+                                        // step in the right direction.
+                                        future::Loop::Continue(())
+                                    })
+                                )
+                            }))
+                        }
+                        ReconciliationStep::AdvanceToDescendantBlock { from, to } => {
+                            debug!(
+                                ctx.logger,
+                                "Skipping {} block(s) with no relevant events...",
+                                to.number - from.number
+                            );
+
+                            Box::new(future::result(ctx.subgraph_store.set_block_ptr_with_no_changes(
+                                ctx.subgraph_id.clone(),
+                                from,
+                                to,
+                            )).map(|()| future::Loop::Continue(())))
+                        }
+                        ReconciliationStep::ProcessDescendantBlocks { from, descendant_blocks } => {
+                            let descendant_block_count = descendant_blocks.len();
+                            debug!(
+                                ctx.logger,
+                                "Processing {} block(s) in block range {}-{}...", descendant_block_count,
+                                from.number + 1, descendant_blocks.last().unwrap().block.number.unwrap()
+                            );
+
+                            let mut subgraph_ptr = from;
+
+                            // Advance the subgraph ptr to each of the specified descendants.
+                            Box::new(future::ok(future::Loop::Break(
+                                Some(Box::new(
+                                    stream::iter_ok(descendant_blocks.into_iter())
+                                        .map(move |descendant_block| {
+                                            // First, check if there are blocks between subgraph_ptr and
+                                            // descendant_block.
+                                            let descendant_parent_ptr = EthereumBlockPointer::to_parent(&descendant_block);
+                                            if subgraph_ptr != descendant_parent_ptr {
+                                                // descendant_block is not a direct child.
+                                                // Therefore, there are blocks that are irrelevant to this subgraph
+                                                // that we can skip.
+
+                                                debug!(
+                                                    ctx.logger,
+                                                    "Skipping {} block(s) with no relevant events...",
+                                                    descendant_parent_ptr.number - subgraph_ptr.number
+                                                );
+
+                                                // Update subgraph_ptr in store to skip the irrelevant blocks.
+                                                ctx.subgraph_store.set_block_ptr_with_no_changes(
+                                                    ctx.subgraph_id.clone(),
+                                                    subgraph_ptr,
+                                                    descendant_parent_ptr,
+                                                ).unwrap();
+                                            }
+
+                                            // Update our copy of the subgraph ptr to reflect the
+                                            // value it will have after descendant_block is
+                                            // processed.
+                                            subgraph_ptr = (&descendant_block).into();
+
+                                            descendant_block
+                                        })
+                                ) as Box<Stream<Item = _, Error = _> + Send>)
+                            )))
+                        }
+                    }
+                }))
+            },
+        ))
     }
-}
 
-impl EventConsumer<ControlMessage> for BlockStream {
-    fn event_sink(&self) -> Box<Sink<SinkItem = ControlMessage, SinkError = ()> + Send> {
-        unimplemented!();
-    }
-}
+    fn next_reconciliation_step(
+        &self,
+        log_filter: EthereumLogFilter,
+    ) -> impl Future<Item = ReconciliationStep, Error = Error> + Send {
+        let ctx = self.clone();
 
-impl EventConsumer<ChainHeadUpdate> for BlockStream {
-    fn event_sink(&self) -> Box<Sink<SinkItem = ChainHeadUpdate, SinkError = ()> + Send> {
-        unimplemented!();
-    }
-}
+        // Get pointers from database for comparison
+        let head_ptr = ctx
+            .chain_store
+            .chain_head_ptr()
+            .unwrap()
+            .expect("should not receive head block update before head block pointer is set");
+        let subgraph_ptr = ctx
+            .subgraph_store
+            .block_ptr(ctx.subgraph_id.clone())
+            .unwrap();
 
-pub struct BlockStreamController {
-    sink: Sender<ControlMessage>,
-    stream: Option<Receiver<ControlMessage>>,
-}
+        debug!(ctx.logger, "head_ptr = {:?}", head_ptr);
+        debug!(ctx.logger, "subgraph_ptr = {:?}", subgraph_ptr);
 
-impl BlockStreamController {
-    pub fn new() -> Self {
-        let (sink, stream) = channel(100);
+        // Only continue if the subgraph block ptr is behind the head block ptr.
+        // subgraph_ptr > head_ptr shouldn't happen, but if it does, it's safest to just stop.
+        if subgraph_ptr.number >= head_ptr.number {
+            return Box::new(future::ok(ReconciliationStep::Done))
+                as Box<Future<Item = _, Error = _> + Send>;
+        }
 
-        BlockStreamController {
-            sink,
-            stream: Some(stream),
+        // Subgraph ptr is behind head ptr.
+        // Let's try to move the subgraph ptr one step in the right direction.
+        // First question: which direction should the ptr be moved?
+        //
+        // We will use a different approach to deciding the step direction depending on how far
+        // the subgraph ptr is behind the head ptr.
+        //
+        // Normally, we need to worry about chain reorganizations -- situations where the
+        // Ethereum client discovers a new longer chain of blocks different from the one we had
+        // processed so far, forcing us to rollback one or more blocks we had already
+        // processed.
+        // We can't assume that blocks we receive are permanent.
+        //
+        // However, as a block receives more and more confirmations, eventually it becomes safe
+        // to assume that that block will be permanent.
+        // The probability of a block being "uncled" approaches zero as more and more blocks
+        // are chained on after that block.
+        // Eventually, the probability is so low, that a block is effectively permanent.
+        // The "effectively permanent" part is what makes blockchains useful.
+        //
+        // Accordingly, if the subgraph ptr is really far behind the head ptr, then we can
+        // trust that the Ethereum node knows what the real, permanent block is for that block
+        // number.
+        // We'll define "really far" to mean "greater than REORG_THRESHOLD blocks".
+        //
+        // If the subgraph ptr is not too far behind the head ptr (i.e. less than
+        // REORG_THRESHOLD blocks behind), then we have to allow for the possibility that the
+        // block might be on the main chain now, but might become uncled in the future.
+        //
+        // Most importantly: Our ability to make this assumption (or not) will determine what
+        // Ethereum RPC calls can give us accurate data without race conditions.
+        // (This is mostly due to some unfortunate API design decisions on the Ethereum side)
+        if (head_ptr.number - subgraph_ptr.number) > REORG_THRESHOLD {
+            // Since we are beyond the reorg threshold, the Ethereum node knows what block has
+            // been permanently assigned this block number.
+            // This allows us to ask the node: does subgraph_ptr point to a block that was
+            // permanently accepted into the main chain, or does it point to a block that was
+            // uncled?
+            Box::new(ctx.eth_adapter
+                .is_on_main_chain(subgraph_ptr)
+                .and_then(move |is_on_main_chain| -> Box<Future<Item = _, Error = _> + Send> {
+                    if is_on_main_chain {
+                        // The subgraph ptr points to a block on the main chain.
+                        // This means that the last block we processed does not need to be
+                        // reverted.
+                        // Therefore, our direction of travel will be forward, towards the
+                        // chain head.
+
+                        // As an optimization, instead of advancing one block, we will use an
+                        // Ethereum RPC call to find the first few blocks between the subgraph
+                        // ptr and the reorg threshold that has event(s) we are interested in.
+                        // Note that we use block numbers here.
+                        // This is an artifact of Ethereum RPC limitations.
+                        // It is only safe to use block numbers because we are beyond the reorg
+                        // threshold.
+
+                        // Start with first block after subgraph ptr
+                        let from = subgraph_ptr.number + 1;
+
+                        // End just prior to reorg threshold.
+                        // It isn't safe to go any farther due to race conditions.
+                        let to = head_ptr.number - REORG_THRESHOLD;
+
+                        debug!(ctx.logger, "Finding next blocks with relevant events...");
+                        Box::new(
+                        ctx.eth_adapter
+                            .find_first_blocks_with_logs(from, to, log_filter.clone())
+                            .and_then(move |descendant_ptrs| -> Box<Future<Item = _, Error = _> + Send> {
+                                debug!(ctx.logger, "Done finding next blocks.");
+
+                                if descendant_ptrs.is_empty() {
+                                    // No matching events in range.
+                                    // Therefore, we can update the subgraph ptr without any
+                                    // changes to the entity data.
+
+                                    // We need to look up what block hash corresponds to the
+                                    // block number `to`.
+                                    // Again, this is only safe from race conditions due to
+                                    // being beyond the reorg threshold.
+                                    Box::new(ctx.eth_adapter
+                                        .block_hash_by_block_number(to)
+                                        .and_then(move |to_block_hash_opt| {
+                                            to_block_hash_opt
+                                                .ok_or_else(|| {
+                                                    format_err!("Ethereum node could not find block with number {}", to)
+                                                })
+                                                .map(|to_block_hash| {
+                                                    ReconciliationStep::AdvanceToDescendantBlock {
+                                                        from: subgraph_ptr,
+                                                        to: (to_block_hash, to).into(),
+                                                    }
+                                                })
+                                        }))
+                                } else {
+                                    // The next few interesting blocks are at descendant_ptrs.
+                                    // In particular, descendant_ptrs is a list of all blocks
+                                    // between subgraph_ptr and descendant_ptrs.last() that
+                                    // contain relevant events.
+                                    // This will allow us to advance the subgraph_ptr to
+                                    // descendant_ptrs.last() while being confident that we did
+                                    // not miss any relevant events.
+
+                                    // Load the blocks
+                                    debug!(
+                                        ctx.logger,
+                                        "Found {} block(s) with events. Loading blocks...",
+                                        descendant_ptrs.len()
+                                    );
+                                    Box::new(stream::futures_ordered(
+                                        descendant_ptrs.into_iter().map(|descendant_ptr| {
+                                            ctx.load_block(descendant_ptr.hash)
+                                        }),
+                                    ).collect()
+                                        .map(move |descendant_blocks| {
+                                            // Proceed to those blocks
+                                            ReconciliationStep::ProcessDescendantBlocks {
+                                                from: subgraph_ptr,
+                                                descendant_blocks,
+                                            }
+                                        })
+                                    )
+                                }
+                            })
+                        )
+                    } else {
+                        // The subgraph ptr points to a block that was uncled.
+                        // We need to revert this block.
+                        Box::new(future::ok(ReconciliationStep::RevertBlock(subgraph_ptr)))
+                    }
+                })
+            )
+        } else {
+            // The subgraph ptr is not too far behind the head ptr.
+            // This means a few things.
+            //
+            // First, because we are still within the reorg threshold,
+            // we can't trust the Ethereum RPC methods that use block numbers.
+            // Block numbers in this region are not yet immutable pointers to blocks;
+            // the block associated with a particular block number on the Ethereum node could
+            // change under our feet at any time.
+            //
+            // Second, due to how the BlockIngestor is designed, we get a helpful guarantee:
+            // the head block and at least its REORG_THRESHOLD most recent ancestors will be
+            // present in the block store.
+            // This allows us to work locally in the block store instead of relying on
+            // Ethereum RPC calls, so that we are not subject to the limitations of the RPC
+            // API.
+
+            // To determine the step direction, we need to find out if the subgraph ptr refers
+            // to a block that is an ancestor of the head block.
+            // We can do so by walking back up the chain from the head block to the appropriate
+            // block number, and checking to see if the block we found matches the
+            // subgraph_ptr.
+
+            // Precondition: subgraph_ptr.number < head_ptr.number
+            // Walk back to one block short of subgraph_ptr.number
+            let offset = head_ptr.number - subgraph_ptr.number - 1;
+            let head_ancestor_opt = ctx.chain_store.ancestor_block(head_ptr, offset).unwrap();
+            match head_ancestor_opt {
+                None => {
+                    // Block is missing in the block store.
+                    // This generally won't happen often, but can happen if the head ptr has
+                    // been updated since we retrieved the head ptr, and the block store has
+                    // been garbage collected.
+                    // It's easiest to start over at this point.
+                    Box::new(future::ok(ReconciliationStep::Retry))
+                }
+                Some(head_ancestor) => {
+                    // We stopped one block short, so we'll compare the parent hash to the
+                    // subgraph ptr.
+                    if head_ancestor.block.parent_hash == subgraph_ptr.hash {
+                        // The subgraph ptr is an ancestor of the head block.
+                        // We cannot use an RPC call here to find the first interesting block
+                        // due to the race conditions previously mentioned,
+                        // so instead we will advance the subgraph ptr by one block.
+                        // Note that head_ancestor is a child of subgraph_ptr.
+                        Box::new(future::ok(ReconciliationStep::ProcessDescendantBlocks {
+                            from: subgraph_ptr,
+                            descendant_blocks: vec![head_ancestor],
+                        }))
+                    } else {
+                        // The subgraph ptr is not on the main chain.
+                        // We will need to step back (possibly repeatedly) one block at a time
+                        // until we are back on the main chain.
+                        Box::new(future::ok(ReconciliationStep::RevertBlock(subgraph_ptr)))
+                    }
+                }
+            }
         }
     }
-}
 
-impl EventProducer<ControlMessage> for BlockStreamController {
-    fn take_event_stream(
-        &mut self,
-    ) -> Option<Box<Stream<Item = ControlMessage, Error = ()> + Send>> {
-        self.stream
-            .take()
-            .map(|s| Box::new(s) as Box<Stream<Item = ControlMessage, Error = ()> + Send>)
-    }
-}
+    fn load_block(
+        &self,
+        block_hash: H256,
+    ) -> impl Future<Item = EthereumBlock, Error = Error> + Send {
+        let ctx = self.clone();
 
-impl BlockStreamControllerTrait for BlockStreamController {
-    fn advance(&self, block_hash: H256) -> Box<Future<Item = (), Error = ()> + Send> {
-        Box::new(
-            self.sink
-                .clone()
-                .send(ControlMessage::Advance { block_hash })
-                .map(|_| ())
-                .map_err(|_| ()),
+        // Check store first
+        future::result(ctx.chain_store.block(block_hash)).and_then(
+            move |local_block_opt| -> Box<Future<Item = _, Error = _> + Send> {
+                // If found in store
+                if let Some(local_block) = local_block_opt {
+                    Box::new(future::ok(local_block))
+                } else {
+                    // Request from Ethereum node instead
+                    Box::new(
+                        ctx.eth_adapter
+                            .block_by_hash(block_hash)
+                            .and_then(move |block_opt| {
+                                block_opt.ok_or_else(move || {
+                                    format_err!(
+                                        "Ethereum node could not find block with hash {}",
+                                        block_hash
+                                    )
+                                })
+                            }).and_then(move |block| {
+                                // Cache in store for later
+                                ctx.chain_store
+                                    .upsert_blocks(stream::once(Ok(block.clone())))
+                                    .map(move |()| block)
+                            }),
+                    )
+                }
+            },
         )
     }
 }
 
-pub struct BlockStreamBuilder<S, E> {
-    store: Arc<S>,
-    ethereum: Arc<E>,
+impl<S, C, E> BlockStreamTrait for BlockStream<S, C, E>
+where
+    S: Store + 'static,
+    C: ChainStore + 'static,
+    E: EthereumAdapter,
+{}
+
+impl<S, C, E> Stream for BlockStream<S, C, E>
+where
+    S: Store + 'static,
+    C: ChainStore + 'static,
+    E: EthereumAdapter,
+{
+    type Item = EthereumBlock;
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        let mut state_lock = self.state.lock().unwrap();
+
+        let mut state = BlockStreamState::Transition;
+        mem::swap(&mut *state_lock, &mut state);
+
+        let poll = loop {
+            match state {
+                // First time being polled
+                BlockStreamState::New => {
+                    // Start the reconciliation process by asking for blocks
+                    let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());
+                    state = BlockStreamState::Reconciliation(next_blocks_future);
+
+                    // Poll the next_blocks() future
+                    continue;
+                }
+
+                // Waiting for the reconciliation to complete or yield blocks
+                BlockStreamState::Reconciliation(mut next_blocks_future) => {
+                    match next_blocks_future.poll()? {
+                        // Reconciliation found blocks to process
+                        Async::Ready(Some(next_blocks)) => {
+                            // Switch to yielding state until next_blocks is depleted
+                            state = BlockStreamState::YieldingBlocks(next_blocks);
+
+                            // Yield the first block in next_blocks
+                            continue;
+                        }
+
+                        // Reconciliation completed. We're caught up to chain head.
+                        Async::Ready(None) => {
+                            // Switch to idle
+                            state = BlockStreamState::Idle;
+
+                            // Poll for chain head update
+                            continue;
+                        }
+
+                        Async::NotReady => {
+                            // Nothing to change or yield yet.
+                            state = BlockStreamState::Reconciliation(next_blocks_future);
+                            break Async::NotReady;
+                        }
+                    }
+                }
+
+                // Yielding blocks from reconciliation process
+                BlockStreamState::YieldingBlocks(mut next_blocks) => {
+                    match next_blocks.poll()? {
+                        // Yield one block
+                        Async::Ready(Some(next_block)) => {
+                            state = BlockStreamState::YieldingBlocks(next_blocks);
+                            break Async::Ready(Some(next_block));
+                        }
+
+                        // Done yielding blocks
+                        Async::Ready(None) => {
+                            // Restart reconciliation until more blocks or done
+                            let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());
+                            state = BlockStreamState::Reconciliation(next_blocks_future);
+
+                            // Poll the next_blocks() future
+                            continue;
+                        }
+
+                        Async::NotReady => {
+                            // Nothing to change or yield yet
+                            state = BlockStreamState::YieldingBlocks(next_blocks);
+                            break Async::NotReady;
+                        }
+                    }
+                }
+
+                // Waiting for a chain head update
+                BlockStreamState::Idle => {
+                    match self.chain_head_update_stream.poll() {
+                        // Chain head was updated
+                        Ok(Async::Ready(Some(_chain_head_update))) => {
+                            // Start reconciliation process
+                            let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());
+                            state = BlockStreamState::Reconciliation(next_blocks_future);
+
+                            // Poll the next_blocks() future
+                            continue;
+                        }
+
+                        // Chain head update stream ended
+                        Ok(Async::Ready(None)) => {
+                            // Should not happen
+                            bail!("chain head update stream ended unexpectedly");
+                        }
+
+                        Ok(Async::NotReady) => {
+                            // Stay idle
+                            state = BlockStreamState::Idle;
+                            break Async::NotReady;
+                        }
+
+                        // mpsc channel failed
+                        Err(()) => {
+                            // Should not happen
+                            bail!("chain head update Receiver failed");
+                        }
+                    }
+                }
+
+                // This will only happen if this poll function fails to complete normally then is
+                // called again.
+                BlockStreamState::Transition => unreachable!(),
+            }
+        };
+
+        mem::replace(&mut *state_lock, state);
+
+        Ok(poll)
+    }
 }
 
-impl<S, E> Clone for BlockStreamBuilder<S, E> {
+impl<S, C, E> EventConsumer<ChainHeadUpdate> for BlockStream<S, C, E>
+where
+    S: Store,
+    C: ChainStore,
+    E: EthereumAdapter,
+{
+    fn event_sink(&self) -> Box<Sink<SinkItem = ChainHeadUpdate, SinkError = ()> + Send> {
+        let logger = self.ctx.logger.clone();
+
+        Box::new(self.chain_head_update_sink.clone().sink_map_err(move |e| {
+            error!(logger, "Component was dropped: {}", e);
+        }))
+    }
+}
+
+pub struct BlockStreamBuilder<S, C, E> {
+    subgraph_store: Arc<S>,
+    chain_store: Arc<C>,
+    eth_adapter: Arc<E>,
+}
+
+impl<S, C, E> Clone for BlockStreamBuilder<S, C, E> {
     fn clone(&self) -> Self {
         BlockStreamBuilder {
-            store: self.store.clone(),
-            ethereum: self.ethereum.clone(),
+            subgraph_store: self.subgraph_store.clone(),
+            chain_store: self.chain_store.clone(),
+            eth_adapter: self.eth_adapter.clone(),
         }
     }
 }
 
-impl<S, E> BlockStreamBuilder<S, E>
+impl<S, C, E> BlockStreamBuilder<S, C, E>
 where
-    S: ChainStore,
+    S: Store,
+    C: ChainStore,
     E: EthereumAdapter,
 {
-    pub fn new(store: Arc<S>, ethereum: Arc<E>) -> Self {
-        BlockStreamBuilder { store, ethereum }
+    pub fn new(subgraph_store: Arc<S>, chain_store: Arc<C>, eth_adapter: Arc<E>) -> Self {
+        BlockStreamBuilder {
+            subgraph_store,
+            chain_store,
+            eth_adapter,
+        }
     }
 }
 
-impl<S, E> BlockStreamBuilderTrait for BlockStreamBuilder<S, E>
+impl<S, C, E> BlockStreamBuilderTrait for BlockStreamBuilder<S, C, E>
 where
-    S: ChainStore,
+    S: Store + 'static,
+    C: ChainStore + 'static,
     E: EthereumAdapter,
 {
-    type Stream = BlockStream;
-    type StreamController = BlockStreamController;
+    type Stream = BlockStream<S, C, E>;
 
-    fn from_subgraph(&self, manifest: &SubgraphManifest) -> (Self::Stream, Self::StreamController) {
+    fn from_subgraph(&self, manifest: &SubgraphManifest, logger: Logger) -> Self::Stream {
+        // Add entry to subgraphs table in Store
+        let genesis_block_ptr = self.chain_store.genesis_block_ptr().unwrap();
+        self.subgraph_store
+            .add_subgraph_if_missing(manifest.id.clone(), genesis_block_ptr)
+            .unwrap();
+
         // Listen for chain head block updates
-        let mut chain_head_update_listener = self.store.chain_head_updates();
-
-        // Create block stream controller
-        let mut stream_controller = BlockStreamController::new();
+        let mut chain_head_update_listener = self.chain_store.chain_head_updates();
 
         // Create the actual subgraph-specific block stream
         let log_filter = create_log_filter_from_subgraph(manifest);
-        let block_stream = BlockStream::new(manifest.id.clone(), log_filter);
+        let block_stream = BlockStream::new(
+            self.subgraph_store.clone(),
+            self.chain_store.clone(),
+            self.eth_adapter.clone(),
+            manifest.id.clone(),
+            log_filter,
+            logger,
+        );
 
         // Forward chain head updates from the listener to the block stream
-        tokio::spawn(
-            chain_head_update_listener
-                .take_event_stream()
-                .unwrap()
-                .forward(block_stream.event_sink().sink_map_err(|_| ()))
-                .and_then(|_| Ok(())),
-        );
+        tokio::spawn(forward(&mut chain_head_update_listener, &block_stream).unwrap());
 
         // Leak the chain update listener; we'll terminate it by closing the
         // block stream's chain head update sink
         std::mem::forget(chain_head_update_listener);
 
-        // Forward control messages from the stream controller to the block stream
-        tokio::spawn(
-            stream_controller
-                .take_event_stream()
-                .unwrap()
-                .forward(block_stream.event_sink().sink_map_err(|_| ()))
-                .and_then(|_| Ok(())),
-        );
-
-        (block_stream, stream_controller)
+        block_stream
     }
 }
 

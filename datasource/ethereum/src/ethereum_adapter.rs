@@ -1,6 +1,6 @@
 use futures::future;
 use futures::prelude::*;
-use graph::ethabi::{RawLog, Token};
+use graph::ethabi::Token;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
@@ -89,7 +89,7 @@ where
         let event_sigs = log_filter
             .contract_address_and_event_sig_pairs
             .iter()
-            .map(|(addr, sig)| sig.to_owned())
+            .map(|(_addr, sig)| sig.to_owned())
             .collect::<HashSet<H256>>()
             .into_iter()
             .collect::<Vec<H256>>();
@@ -247,26 +247,60 @@ where
     fn block_by_hash(
         &self,
         block_hash: H256,
-    ) -> Box<Future<Item = Option<Block<Transaction>>, Error = Error> + Send> {
+    ) -> Box<Future<Item = Option<EthereumBlock>, Error = Error> + Send> {
+        let eth_client = self.eth_client.clone();
+
         Box::new(
-            self.eth_client
+            eth_client
                 .eth()
                 .block_with_txs(BlockId::Hash(block_hash))
                 .map_err(SyncFailure::new)
-                .from_err(),
+                .from_err()
+                .and_then(move |block_opt| {
+                    block_opt.map(move |block| {
+                        let receipt_futures = block
+                            .transactions
+                            .iter()
+                            .map(move |tx| {
+                                let tx_hash = tx.hash;
+
+                                eth_client
+                                    .eth()
+                                    .transaction_receipt(tx_hash)
+                                    .map_err(SyncFailure::new)
+                                    .from_err()
+                                    .and_then(move |receipt_opt| {
+                                        receipt_opt.ok_or_else(move || {
+                                            format_err!(
+                                                "Ethereum node is missing transaction receipt: {}",
+                                                tx_hash
+                                            )
+                                        })
+                                    })
+                            }).collect::<Vec<_>>();
+
+                        stream::futures_ordered(receipt_futures).collect().map(
+                            move |transaction_receipts| EthereumBlock {
+                                block,
+                                transaction_receipts,
+                            },
+                        )
+                    })
+                }),
         )
     }
 
-    fn block_by_number(
+    fn block_hash_by_block_number(
         &self,
         block_number: u64,
-    ) -> Box<Future<Item = Option<Block<Transaction>>, Error = Error> + Send> {
+    ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
         Box::new(
             self.eth_client
                 .eth()
-                .block_with_txs(BlockId::Number(block_number.into()))
+                .block(BlockId::Number(block_number.into()))
                 .map_err(SyncFailure::new)
-                .from_err(),
+                .from_err()
+                .map(|block_opt| block_opt.map(|block| block.hash.unwrap())),
         )
     }
 
@@ -341,47 +375,6 @@ where
                         _ => unreachable!(),
                     }
                 }),
-        )
-    }
-
-    // TODO issue #350: investigate storing receipts in DB and moving this fn to BlockStore
-    fn get_logs_in_block(
-        &self,
-        block: Block<Transaction>,
-        log_filter: EthereumLogFilter,
-    ) -> Box<Future<Item = Vec<Log>, Error = EthereumError>> {
-        if !log_filter.check_bloom(block.logs_bloom) {
-            return Box::new(future::ok(vec![]));
-        }
-
-        let tx_receipt_futures = block.transactions.clone().into_iter().map(|tx| {
-            self.eth_client
-                .eth()
-                .transaction_receipt(tx.hash)
-                .and_then(move |opt| {
-                    opt.map(|receipt| Ok(receipt)).unwrap_or_else(|| {
-                        Err(web3::error::ErrorKind::Msg(format!(
-                            "got null receipt for TX {:?}",
-                            &tx.hash
-                        )).into())
-                    })
-                }).map_err(EthereumError::from)
-        });
-
-        Box::new(
-            stream::futures_ordered(tx_receipt_futures)
-                .map(move |receipt| {
-                    let log_filter = log_filter.clone();
-                    let block = block.clone();
-
-                    stream::iter_ok(
-                        receipt
-                            .logs
-                            .into_iter()
-                            .filter(move |log| log_filter.matches(&log)),
-                    )
-                }).flatten()
-                .collect(),
         )
     }
 
