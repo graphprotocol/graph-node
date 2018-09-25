@@ -28,6 +28,9 @@ pub enum QueryExecutionError {
     UnknownField(Pos, String, String),
     EmptyQuery,
     MultipleSubscriptionFields,
+    SubgraphParseError(String),
+    BuildRangeTypeError,
+    BuildFilterError,
 }
 
 impl Error for QueryExecutionError {
@@ -95,6 +98,9 @@ impl fmt::Display for QueryExecutionError {
                 f,
                 "Only a single top-level field is allowed in subscriptions"
             ),
+            QueryExecutionError::SubgraphParseError(s) => write!(f, "Failed to get subgraph ID from type: {}", s),
+            QueryExecutionError::BuildRangeTypeError => write!(f, "Range inputs must be an integer"),
+            QueryExecutionError::BuildFilterError=> write!(f, "Filter must by an object"),
         }
     }
 }

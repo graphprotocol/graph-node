@@ -172,6 +172,10 @@ where
     // We have established that this exists earlier in the subscription execution
     let subscription_type = sast::get_root_subscription_type(&ctx.schema.document).unwrap();
 
-    execute_selection_set(ctx, &subscription.selection_set, subscription_type, &None)
-        .unwrap_or_else(QueryResult::from)
+    let result = execute_selection_set(ctx, &subscription.selection_set, subscription_type, &None);
+
+    match result {
+        Ok(value) => QueryResult::new(Some(value)),
+        Err(e) => QueryResult::from(e),
+    }
 }

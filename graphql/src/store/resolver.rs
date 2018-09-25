@@ -196,7 +196,7 @@ where
         object_type: &s::ObjectType,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        let mut query = build_query(&object_type, arguments);
+        let mut query = build_query(&object_type, arguments)?;
 
         // Add matching filter for derived fields
         let is_derived =
@@ -271,7 +271,7 @@ where
                 _ => Ok(q::Value::Null),
             },
             _ => {
-                let mut query = build_query(&object_type, arguments);
+                let mut query = build_query(&object_type, arguments)?;
 
                 // Add matching filter for derived fields
                 Self::add_filter_for_derived_field(
