@@ -159,7 +159,7 @@ impl RuntimeHost {
             let name = module_config.data_source.name.clone();
 
             // Start the mapping as a WASM module
-            let module = WasmiModule::new(&module_logger, wasmi_config, task_sender);
+            let mut module = WasmiModule::new(&module_logger, wasmi_config, task_sender);
 
             // Pass incoming events to the WASM module and send entity changes back;
             // stop when cancelled from the outside
