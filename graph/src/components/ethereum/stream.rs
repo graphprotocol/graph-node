@@ -2,12 +2,12 @@ use failure::Error;
 use futures::Stream;
 
 use prelude::*;
-use web3::types::{Block, Log, Transaction, H256};
+use web3::types::{Block, Log, Transaction, TransactionReceipt, H256};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EthereumBlock {
     pub block: Block<Transaction>,
-    pub logs: Vec<Log>,
+    pub transaction_receipts: Vec<TransactionReceipt>,
 }
 
 impl EthereumBlock {

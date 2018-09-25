@@ -106,7 +106,7 @@ impl Store for MockStore {
 impl ChainStore for MockStore {
     type ChainHeadUpdateListener = MockChainHeadUpdateListener;
 
-    fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
+    fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
         &self,
         _: B,
     ) -> Box<Future<Item = (), Error = Error> + Send + 'a> {
@@ -125,7 +125,7 @@ impl ChainStore for MockStore {
         unimplemented!();
     }
 
-    fn block(&self, _: H256) -> Result<Option<Block<Transaction>>, Error> {
+    fn block(&self, _: H256) -> Result<Option<EthereumBlock>, Error> {
         unimplemented!();
     }
 
@@ -133,7 +133,7 @@ impl ChainStore for MockStore {
         &self,
         _: EthereumBlockPointer,
         _: u64,
-    ) -> Result<Option<Block<Transaction>>, Error> {
+    ) -> Result<Option<EthereumBlock>, Error> {
         unimplemented!();
     }
 }
@@ -193,7 +193,7 @@ impl Store for FakeStore {
 impl ChainStore for FakeStore {
     type ChainHeadUpdateListener = MockChainHeadUpdateListener;
 
-    fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
+    fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
         &self,
         _: B,
     ) -> Box<Future<Item = (), Error = Error> + Send + 'a> {
@@ -212,7 +212,7 @@ impl ChainStore for FakeStore {
         unimplemented!();
     }
 
-    fn block(&self, _: H256) -> Result<Option<Block<Transaction>>, Error> {
+    fn block(&self, _: H256) -> Result<Option<EthereumBlock>, Error> {
         unimplemented!();
     }
 
@@ -220,7 +220,7 @@ impl ChainStore for FakeStore {
         &self,
         _: EthereumBlockPointer,
         _: u64,
-    ) -> Result<Option<Block<Transaction>>, Error> {
+    ) -> Result<Option<EthereumBlock>, Error> {
         unimplemented!();
     }
 }

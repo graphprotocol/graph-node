@@ -335,7 +335,7 @@ pub trait ChainStore: Send + Sync {
     type ChainHeadUpdateListener: ChainHeadUpdateListener;
 
     /// Insert blocks into the store (or update if they are already present).
-    fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
+    fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
         &self,
         blocks: B,
     ) -> Box<Future<Item = (), Error = Error> + Send + 'a>;
@@ -364,7 +364,7 @@ pub trait ChainStore: Send + Sync {
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
 
     /// Get Some(block) if it is present in the chain store, or None.
-    fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error>;
+    fn block(&self, block_hash: H256) -> Result<Option<EthereumBlock>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to
@@ -375,5 +375,5 @@ pub trait ChainStore: Send + Sync {
         &self,
         block_ptr: EthereumBlockPointer,
         offset: u64,
-    ) -> Result<Option<Block<Transaction>>, Error>;
+    ) -> Result<Option<EthereumBlock>, Error>;
 }
