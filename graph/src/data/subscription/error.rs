@@ -7,6 +7,8 @@ use prelude::QueryExecutionError;
 pub enum SubscriptionError {
     #[fail(display = "GraphQL error: {}", _0)]
     GraphQLError(QueryExecutionError),
+    #[fail(display = "GraphQL errors: {:?}", _0)]
+    GraphQLErrorList(Vec<QueryExecutionError>),
 }
 
 impl From<QueryExecutionError> for SubscriptionError {
@@ -15,6 +17,11 @@ impl From<QueryExecutionError> for SubscriptionError {
     }
 }
 
+impl From<Vec<QueryExecutionError>> for SubscriptionError {
+    fn from(e: Vec<QueryExecutionError>) -> Self {
+        SubscriptionError::GraphQLErrorList(e)
+    }
+}
 impl Serialize for SubscriptionError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
