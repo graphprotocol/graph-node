@@ -506,11 +506,11 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                             .collect(),
                     ))
                 } else {
-                    Err(QueryExecutionError::ObjectFieldError)
+                    Ok(q::Value::Null)
                 }
             }
             _ => object_field(parent, field.as_str())
-                .map_or(Err(QueryExecutionError::ObjectFieldError), |value| {
+                .map_or(Ok(q::Value::Null), |value| {
                     Ok(value.clone())
                 }),
         }

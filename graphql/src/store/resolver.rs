@@ -268,7 +268,7 @@ where
                         id: id.to_owned(),
                     })
                     .map(|entity| entity.into()),
-                _ => Err(QueryExecutionError::ObjectFieldError),
+                _ => Ok(q::Value::Null),
             },
             _ => {
                 let mut query = build_query(&object_type, arguments);
