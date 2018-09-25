@@ -79,5 +79,4 @@ pub mod prelude {
     pub use data::subscription::{
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
     };
-    pub use util::stream::StreamError;
 }
