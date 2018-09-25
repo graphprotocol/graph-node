@@ -143,9 +143,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
     ) -> Box<Future<Item = EthereumNetworkIdentifiers, Error = Error> + Send>;
 
-    /// Ask the Ethereum node for the block number of the most recent block that it has.
-    fn latest_block_number(&self) -> Box<Future<Item = U256, Error = Error> + Send>;
-
     /// Find a block by its hash.
     fn block_by_hash(
         &self,

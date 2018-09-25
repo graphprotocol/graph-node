@@ -224,17 +224,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         },
     ));
 
-    match ethereum.latest_block_number().wait() {
-        Ok(number) => {
-            info!(logger, "Connected to Ethereum node";
-                  "most_recent_block" => &number.to_string());
-        }
-        Err(e) => {
-            error!(logger, "Was a valid Ethereum node endpoint provided?");
-            panic!("Failed to connect to Ethereum node: {}", e);
-        }
-    }
-
     // Ask Ethereum node for network identifiers
     let eth_net_identifiers = match ethereum.net_identifiers().wait() {
         Ok(net) => {
