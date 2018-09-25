@@ -135,10 +135,11 @@ impl SubgraphInstanceManager {
 
                     // Extract logs relevant to the subgraph
                     let logs: Vec<_> = block
-                        .logs
+                        .transaction_receipts
                         .iter()
-                        .filter(|log| instance.matches_log(&log))
-                        .cloned()
+                        .flat_map(|receipt| {
+                            receipt.logs.iter().filter(|log| instance.matches_log(&log))
+                        }).cloned()
                         .collect();
 
                     info!(

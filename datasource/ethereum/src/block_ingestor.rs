@@ -6,7 +6,7 @@ use std::time::Instant;
 use graph::prelude::*;
 use graph::web3::api::Web3;
 use graph::web3::transports::batch::Batch;
-use graph::web3::types::{Block, BlockId, BlockNumber, Transaction, H256};
+use graph::web3::types::*;
 use graph::web3::BatchTransport;
 use graph::web3::Transport;
 
@@ -75,7 +75,7 @@ where
     fn do_poll<'a>(&'a self) -> impl Future<Item = (), Error = Error> + 'a {
         // Ask for latest block from Ethereum node
         self.get_latest_block()
-            .and_then(move |latest_block: Block<Transaction>| {
+            .and_then(move |latest_block: EthereumBlock| {
                 // Check how far behind we are and (possibly) tell the user
                 self.store
                     .chain_head_ptr()
@@ -85,7 +85,7 @@ where
                                 info!(self.logger, "Downloading latest blocks from Ethereum. This may take a few minutes...");
                             }
                             Some(head_block_ptr) => {
-                                let latest_number = latest_block.number.unwrap().as_u64() as i64;
+                                let latest_number = latest_block.block.number.unwrap().as_u64() as i64;
                                 let head_number = head_block_ptr.number as i64;
                                 let distance = latest_number - head_number;
                                 if distance > 10 && distance <= 50 {
@@ -98,7 +98,7 @@ where
                         latest_block
                     })
             })
-            .and_then(move |latest_block: Block<Transaction>| {
+            .and_then(move |latest_block: EthereumBlock| {
                 // Store latest block in block store.
                 // Might be a no-op if latest block is one that we have seen.
                 // ingest_blocks will return a (potentially incomplete) list of blocks that are
@@ -127,18 +127,49 @@ where
             })
     }
 
-    fn get_latest_block(&self) -> impl Future<Item = Block<Transaction>, Error = Error> {
+    fn get_latest_block<'a>(&'a self) -> impl Future<Item = EthereumBlock, Error = Error> + 'a {
         let web3 = Web3::new(self.web3_transport.clone());
         web3.eth()
             .block_with_txs(BlockNumber::Latest.into())
             .map_err(|e| format_err!("could not get latest block from Ethereum: {}", e))
-            .and_then(|block| block.ok_or(format_err!("no block returned from Ethereum")))
+            .and_then(|block_opt| block_opt.ok_or(format_err!("no block returned from Ethereum")))
+            .and_then(move |block| {
+                let receipt_futures = block
+                    .transactions
+                    .iter()
+                    .map(move |tx| {
+                        let tx_hash = tx.hash;
+
+                        web3.eth()
+                            .transaction_receipt(tx_hash)
+                            .map_err(move |e| {
+                                format_err!(
+                                    "could not get transaction receipt from Ethereum: {}",
+                                    tx_hash
+                                )
+                            }).and_then(move |receipt_opt| {
+                                receipt_opt.ok_or_else(move || {
+                                    format_err!(
+                                        "Ethereum node could not find transaction receipt: {}",
+                                        tx_hash
+                                    )
+                                })
+                            })
+                    }).collect::<Vec<_>>();
+
+                stream::futures_ordered(receipt_futures).collect().map(
+                    move |transaction_receipts| EthereumBlock {
+                        block,
+                        transaction_receipts,
+                    },
+                )
+            })
     }
 
     /// Put some blocks into the block store (if they are not there already), and try to update the
     /// head block pointer. If missing blocks prevent such an update, return a Vec with at least
     /// one of the missing blocks' hashes.
-    fn ingest_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
+    fn ingest_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
         &'a self,
         blocks: B,
     ) -> impl Future<Item = Vec<H256>, Error = Error> + Send + 'a {
@@ -152,23 +183,44 @@ where
     fn get_blocks<'a>(
         &'a self,
         block_hashes: &[H256],
-    ) -> Box<Stream<Item = Block<Transaction>, Error = Error> + Send + 'a> {
+    ) -> Box<Stream<Item = EthereumBlock, Error = Error> + Send + 'a> {
         // Don't bother with a batch request if nothing to request
         if block_hashes.is_empty() {
             return Box::new(stream::empty());
         }
 
-        let web3 = Web3::new(Batch::new(self.web3_transport.clone()));
+        let batching_web3 = Web3::new(Batch::new(self.web3_transport.clone()));
 
         // Add requests to batch
         let block_futures = block_hashes
             .into_iter()
             .map(|block_hash| {
-                web3.eth()
+                batching_web3.eth()
                     .block_with_txs(BlockId::from(*block_hash))
                     .map_err(|e| format_err!("could not get block from Ethereum: {}", e))
-                    .and_then(|block| {
-                        block.ok_or(format_err!("no block returned from Ethereum"))
+                    .and_then(|block_opt| {
+                        block_opt.ok_or(format_err!("no block returned from Ethereum"))
+                    })
+                    .and_then(move |block| {
+                        let web3 = Web3::new(self.web3_transport.clone());
+
+                        let receipt_futures = block.transactions
+                            .iter()
+                            .map(|tx| {
+                                let tx_hash = tx.hash;
+
+                                web3.eth().transaction_receipt(tx_hash)
+                                    .map_err(move |e| format_err!("could not get transaction receipt from Ethereum: {}", tx_hash))
+                                    .and_then(move |receipt_opt| {
+                                        receipt_opt.ok_or_else(move || format_err!("Ethereum node could not find transaction receipt: {}", tx_hash))
+                                    })
+                            })
+                            .collect::<Vec<_>>();
+
+                        stream::futures_ordered(receipt_futures).collect()
+                            .map(move |transaction_receipts| EthereumBlock {
+                                block, transaction_receipts
+                            })
                     })
             })
             // Collect to ensure that `block_with_txs` calls happen before `submit_batch`
@@ -176,7 +228,8 @@ where
 
         // Submit all requests in batch
         Box::new(
-            web3.transport()
+            batching_web3
+                .transport()
                 .submit_batch()
                 .map_err(|e| format_err!("could not get blocks from Ethereum: {}", e))
                 .map(|_| stream::futures_unordered(block_futures))

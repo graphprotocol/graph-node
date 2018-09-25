@@ -613,7 +613,7 @@ impl StoreTrait for Store {
 impl ChainStore for Store {
     type ChainHeadUpdateListener = ChainHeadUpdateListener;
 
-    fn upsert_blocks<'a, B: Stream<Item = Block<Transaction>, Error = Error> + Send + 'a>(
+    fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
         &self,
         blocks: B,
     ) -> Box<Future<Item = (), Error = Error> + Send + 'a> {
@@ -624,9 +624,9 @@ impl ChainStore for Store {
         Box::new(blocks.for_each(move |block| {
             let json_blob = serde_json::to_value(&block).expect("Failed to serialize block");
             let values = (
-                hash.eq(format!("{:#x}", block.hash.unwrap())),
-                number.eq(block.number.unwrap().as_u64() as i64),
-                parent_hash.eq(format!("{:#x}", block.parent_hash)),
+                hash.eq(format!("{:#x}", block.block.hash.unwrap())),
+                number.eq(block.block.number.unwrap().as_u64() as i64),
+                parent_hash.eq(format!("{:#x}", block.block.parent_hash)),
                 network_name.eq(&net_name),
                 data.eq(json_blob),
             );
@@ -684,7 +684,7 @@ impl ChainStore for Store {
             }).map_err(Error::from)
     }
 
-    fn block(&self, block_hash: H256) -> Result<Option<Block<Transaction>>, Error> {
+    fn block(&self, block_hash: H256) -> Result<Option<EthereumBlock>, Error> {
         use db_schema::ethereum_blocks::dsl::*;
 
         ethereum_blocks
@@ -695,7 +695,7 @@ impl ChainStore for Store {
             .map(|json_blocks| match json_blocks.len() {
                 0 => None,
                 1 => Some(
-                    serde_json::from_value::<Block<Transaction>>(json_blocks[0].clone())
+                    serde_json::from_value::<EthereumBlock>(json_blocks[0].clone())
                         .expect("Failed to deserialize block"),
                 ),
                 _ => unreachable!(),
@@ -706,7 +706,7 @@ impl ChainStore for Store {
         &self,
         block_ptr: EthereumBlockPointer,
         offset: u64,
-    ) -> Result<Option<Block<Transaction>>, Error> {
+    ) -> Result<Option<EthereumBlock>, Error> {
         if block_ptr.number < offset {
             bail!("block offset points to before genesis block");
         }
@@ -715,7 +715,7 @@ impl ChainStore for Store {
             .first::<Option<serde_json::Value>>(&*self.conn.lock().unwrap())
             .map(|val_opt| {
                 val_opt.map(|val| {
-                    serde_json::from_value::<Block<Transaction>>(val)
+                    serde_json::from_value::<EthereumBlock>(val)
                         .expect("Failed to deserialize block from database")
                 })
             }).map_err(Error::from)
