@@ -1,6 +1,7 @@
 extern crate clap;
 extern crate env_logger;
 extern crate futures;
+extern crate itertools;
 extern crate reqwest;
 #[macro_use]
 extern crate sentry;
@@ -20,6 +21,8 @@ extern crate url;
 use clap::{App, Arg};
 use http::uri::InvalidUri;
 use ipfs_api::IpfsClient;
+use itertools::FoldWhile::{Continue, Done};
+use itertools::Itertools;
 use reqwest::Client;
 use std::env;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -123,16 +126,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let ethereum_ipc = matches.value_of("ethereum-ipc");
     let ethereum_ws = matches.value_of("ethereum-ws");
 
-    // Parse one or more IPFS address from URL or domain
-    // Create iterator over set of addresses
-    let ipfs_endpoint = matches.value_of("ipfs").unwrap();
-    let mut ipfs_socket_addr_iter = ipfs_endpoint
-        .to_socket_addrs()
-        .expect(&format!(
-            "could not parse IPFS url or domain: {}",
-            ipfs_endpoint
-        )).peekable();
-
     // Parse rpc port
     let json_rpc_port = matches
         .value_of("admin-port")
@@ -158,61 +151,59 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     info!(logger, "Starting up");
 
-    // Iterator over IPFS addresses until successful instantiation of IpfsClient
-    // or each is found to be an InvalidUri
-    let ipfs_logger = logger.clone();
-    let mut failed_sockets: Vec<(SocketAddr, InvalidUri)> = vec![];
-    let (resolver, ipfs_socket_addr) = loop {
-        let socket_addr = ipfs_socket_addr_iter.next().unwrap();
-        info!(
-            ipfs_logger,
-            "Connecting to IPFS node at: {}:{}",
-            socket_addr.ip(),
-            socket_addr.port()
-        );
-        let ipfs_client = IpfsClient::new(&format!("{}", socket_addr.ip()), socket_addr.port());
-        match ipfs_client {
-            Ok(r) => break (Arc::new(r), socket_addr),
-            Err(e) => {
-                if ipfs_socket_addr_iter.peek().is_some() {
-                    failed_sockets.push((socket_addr, e));
-                    continue;
-                } else {
-                    error!(ipfs_logger, "Failed to build IPFS client");
-                    for (bad_socket, socket_error) in failed_sockets {
-                        error!(
-                            ipfs_logger,
-                            "Socket address {:?} failed with error: {:?}", bad_socket, socket_error
-                        );
-                    }
-                    panic!("Invalid IPFS endpoint provided")
-                };
+    // Try to create an IPFS client for one of the resolved IPFS addresses
+    let ipfs_address = matches.value_of("ipfs").unwrap();
+    let (ipfs_client, ipfs_address) = match ipfs_address
+        // Resolve the IPFS address into socket addresses
+        .to_socket_addrs()
+        .expect(&format!("failed to parse IPFS address: {}", ipfs_address))
+        // Try to create an IPFS client for one of these addresses; collect
+        // errors in case we can't create a client for any of them
+        .fold_while(Err(vec![]), |result, address| {
+            info!(logger, "Trying IPFS node at: {}", address);
+
+            match IpfsClient::new(&format!("{}", address.ip()), address.port()) {
+                Ok(client) => Done(Ok((Arc::new(client), address))),
+                Err(e) => Continue(result.map_err(|mut errors| {
+                    errors.push((address, e));
+                    errors
+                })),
             }
-        };
+        }).into_inner()
+    {
+        Ok((client, address)) => (client, address),
+        Err(errors) => {
+            for (address, e) in errors.iter() {
+                error!(
+                    logger, "Failed to create IPFS client for address: {}", address;
+                    "error" => format!("{}", e),
+                )
+            }
+            panic!("Could not connect to IPFS");
+        }
     };
 
     // Test the IPFS client by getting the version from the IPFS daemon
-    let ipfs_test = resolver.version();
-    let ipfs_test_logger = logger.clone();
+    let ipfs_test = ipfs_client.version();
+    let ipfs_ok_logger = logger.clone();
+    let ipfs_err_logger = logger.clone();
     tokio::spawn(
         ipfs_test
             .map_err(move |e| {
                 error!(
-                    ipfs_test_logger,
-                    "Is there an IPFS node running at '{:#?}'?", ipfs_socket_addr
+                    ipfs_err_logger,
+                    "Is there an IPFS node running at \"{}\"?", ipfs_address
                 );
                 panic!("Failed to connect to IPFS: {}", e);
             }).map(move |_| {
                 info!(
-                    ipfs_logger,
-                    "Successfully connected to IPFS node at: {}:{}",
-                    ipfs_socket_addr.ip(),
-                    ipfs_socket_addr.port()
+                    ipfs_ok_logger,
+                    "Successfully connected to IPFS node at: {}", ipfs_address
                 );
             }),
     );
 
-    let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), resolver.clone());
+    let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), ipfs_client.clone());
 
     info!(logger, "Connecting to Postgres db...");
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger);
@@ -262,7 +253,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let runtime_host_builder = WASMRuntimeHostBuilder::new(
         &logger,
         Arc::new(Mutex::new(ethereum_watcher)),
-        resolver,
+        ipfs_client,
         protected_store.clone(),
     );
     let runtime_manager =
