@@ -471,8 +471,6 @@ impl StoreTrait for Store {
     }
 
     fn get(&self, key: StoreKey) -> Result<Entity, Error> {
-        debug!(self.logger, "get"; "key" => format!("{:?}", key));
-
         use db_schema::entities::dsl::*;
 
         // Use primary key fields to get the entity; deserialize the result JSON
@@ -529,9 +527,6 @@ impl StoreTrait for Store {
                 .limit(range.first as i64)
                 .offset(range.skip as i64);
         }
-
-        debug!(self.logger, "find";
-                "sql" => format!("{:?}", debug_query::<Pg, _>(&diesel_query)));
 
         // Process results; deserialize JSON data
         diesel_query
