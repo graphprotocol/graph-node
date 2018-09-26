@@ -795,6 +795,9 @@ where
         // Forward chain head updates from the listener to the block stream
         tokio::spawn(forward(&mut chain_head_update_listener, &block_stream).unwrap());
 
+        // Start listening for chain head updates
+        chain_head_update_listener.start();
+
         // Leak the chain update listener; we'll terminate it by closing the
         // block stream's chain head update sink
         std::mem::forget(chain_head_update_listener);
