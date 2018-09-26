@@ -68,14 +68,20 @@ impl SubgraphInstanceManager {
             use self::SubgraphProviderEvent::*;
 
             match event {
-                SubgraphAdded(manifest) => {
-                    info!(logger, "Subgraph added"; "id" => &manifest.id);
+                SubgraphAdded(name, manifest) => {
+                    info!(
+                        logger, "Subgraph added";
+                        "subgraph_name" => &name,
+                        "subgraph_id" => &manifest.id
+                    );
+
                     Self::handle_subgraph_added(
                         logger.clone(),
                         instances.clone(),
                         host_builder.clone(),
                         block_stream_builder.clone(),
                         store.clone(),
+                        name,
                         manifest,
                     )
                 }
@@ -95,6 +101,7 @@ impl SubgraphInstanceManager {
         host_builder: T,
         block_stream_builder: B,
         store: Arc<S>,
+        name: String,
         manifest: SubgraphManifest,
     ) where
         T: RuntimeHostBuilder,
@@ -106,7 +113,7 @@ impl SubgraphInstanceManager {
         let id_for_transact = manifest.id.clone();
 
         // Request a block stream for this subgraph
-        let block_stream = block_stream_builder.from_subgraph(&manifest, logger.clone());
+        let block_stream = block_stream_builder.from_subgraph(name, &manifest, logger.clone());
 
         // Load the subgraph
         let instance = Arc::new(SubgraphInstance::from_manifest(manifest, host_builder));
