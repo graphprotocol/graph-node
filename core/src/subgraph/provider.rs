@@ -83,6 +83,8 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
             return Box::new(Err(SubgraphProviderError::InvalidName(name)).into_future());
         }
 
+        let subgraph_added_name = name.clone();
+
         let self_clone = self.clone();
         Box::new(
             SubgraphManifest::resolve(name.clone(), Link { link }, self_clone.resolver.clone())
@@ -121,8 +123,10 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
                                 self_clone
                                     .event_sink
                                     .clone()
-                                    .send(SubgraphProviderEvent::SubgraphAdded(subgraph))
-                                    .map_err(|e| panic!("failed to forward subgraph: {}", e)),
+                                    .send(SubgraphProviderEvent::SubgraphAdded(
+                                        subgraph_added_name,
+                                        subgraph,
+                                    )).map_err(|e| panic!("failed to forward subgraph: {}", e)),
                             ).map(|_| ())
                     })
                 }),
