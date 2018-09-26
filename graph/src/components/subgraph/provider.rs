@@ -3,9 +3,9 @@ use prelude::*;
 /// Events emitted by [SubgraphProvider](trait.SubgraphProvider.html) implementations.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SubgraphProviderEvent {
-    /// A subgraph was added to the provider.
-    SubgraphAdded(SubgraphManifest),
-    /// A subgraph with the given ID was removed from the provider.
+    /// A subgraph with the given name and manifest was added.
+    SubgraphAdded(String, SubgraphManifest),
+    /// A subgraph with the given ID was removed.
     SubgraphRemoved(String),
 }
 
