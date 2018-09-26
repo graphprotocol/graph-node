@@ -15,38 +15,14 @@ use graph::web3::types::*;
 
 const REORG_THRESHOLD: u64 = 400;
 
-pub struct BlockStream<S, C, E> {
-    state: Mutex<BlockStreamState>,
-    log_filter: EthereumLogFilter,
-    chain_head_update_sink: Sender<ChainHeadUpdate>,
-    chain_head_update_stream: Receiver<ChainHeadUpdate>,
-    ctx: BlockStreamContext<S, C, E>,
-}
-
-struct BlockStreamContext<S, C, E> {
-    subgraph_store: Arc<S>,
-    chain_store: Arc<C>,
-    eth_adapter: Arc<E>,
-    subgraph_id: String,
-    logger: Logger,
-}
-
-impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
-    fn clone(&self) -> Self {
-        Self {
-            subgraph_store: self.subgraph_store.clone(),
-            chain_store: self.chain_store.clone(),
-            eth_adapter: self.eth_adapter.clone(),
-            subgraph_id: self.subgraph_id.clone(),
-            logger: self.logger.clone(),
-        }
-    }
-}
-
 enum BlockStreamState {
+    /// The BlockStream is new and has not yet been polled.
+    ///
     /// Valid next states: Reconciliation
     New,
 
+    /// The BlockStream is reconciling the subgraph store state with the chain store state.
+    ///
     /// Valid next states: YieldingBlocks, Idle
     Reconciliation(
         Box<
@@ -57,9 +33,15 @@ enum BlockStreamState {
         >,
     ),
 
-    /// Valid next states: Reconciliation, Idle
+    /// The BlockStream is emitting blocks that must be processed in order to bring the subgraph
+    /// store up to date with the chain store.
+    ///
+    /// Valid next states: Reconciliation
     YieldingBlocks(Box<Stream<Item = EthereumBlock, Error = Error> + Send>),
 
+    /// The BlockStream has reconciled the subgraph store and chain store states.
+    /// No more work is needed until a chain head update.
+    ///
     /// Valid next states: Reconciliation
     Idle,
 
@@ -67,7 +49,7 @@ enum BlockStreamState {
     Transition,
 }
 
-/// The next step to take in reconciling the state of the subgraph store with the new state of the
+/// A single next step to take in reconciling the state of the subgraph store with the state of the
 /// chain store.
 enum ReconciliationStep {
     /// Revert the current block pointed at by the subgraph pointer.
@@ -91,6 +73,47 @@ enum ReconciliationStep {
     /// Subgraph pointer now matches chain head pointer.
     /// Reconciliation is complete.
     Done,
+}
+
+/// The result of performing a single ReconciliationStep.
+enum ReconciliationStepOutcome {
+    /// These blocks must be processed before reconciliation can continue.
+    YieldBlocks(Box<Stream<Item = EthereumBlock, Error = Error> + Send>),
+
+    /// Continue to the next reconciliation step.
+    MoreSteps,
+
+    /// Subgraph pointer now matches chain head pointer.
+    /// Reconciliation is complete.
+    Done,
+}
+
+struct BlockStreamContext<S, C, E> {
+    subgraph_store: Arc<S>,
+    chain_store: Arc<C>,
+    eth_adapter: Arc<E>,
+    subgraph_id: String,
+    logger: Logger,
+}
+
+impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
+    fn clone(&self) -> Self {
+        Self {
+            subgraph_store: self.subgraph_store.clone(),
+            chain_store: self.chain_store.clone(),
+            eth_adapter: self.eth_adapter.clone(),
+            subgraph_id: self.subgraph_id.clone(),
+            logger: self.logger.clone(),
+        }
+    }
+}
+
+pub struct BlockStream<S, C, E> {
+    state: Mutex<BlockStreamState>,
+    log_filter: EthereumLogFilter,
+    chain_head_update_sink: Sender<ChainHeadUpdate>,
+    chain_head_update_stream: Receiver<ChainHeadUpdate>,
+    ctx: BlockStreamContext<S, C, E>,
 }
 
 impl<S, C, E> BlockStream<S, C, E>
@@ -144,107 +167,35 @@ where
     > {
         let ctx = self.clone();
 
-        // Loop until we can return a Stream of EthereumBlocks or None
-        Box::new(future::loop_fn(
-            (),
-            move |()| -> Box<Future<Item = _, Error = _> + Send> {
-                let ctx = ctx.clone();
+        // Perform reconciliation steps until there are blocks to yield or we are up-to-date.
+        Box::new(future::loop_fn((), move |()| {
+            let ctx = ctx.clone();
 
-                let step_future = ctx.next_reconciliation_step(log_filter.clone());
+            // Determine the next step.
+            ctx.get_next_step(log_filter.clone())
 
-                Box::new(step_future.and_then(move |step| -> Box<Future<Item = _, Error = _> + Send> {
-                    // We now know where to take the subgraph ptr.
-                    match step {
-                        ReconciliationStep::Retry => Box::new(future::ok(future::Loop::Continue(()))),
-                        ReconciliationStep::Done => Box::new(future::ok(future::Loop::Break(None))),
-                        ReconciliationStep::RevertBlock(subgraph_ptr) => {
-                            // We would like to move to the parent of the current block.
-                            // This means we need to revert this block.
+                // Do the next step.
+                .and_then(move |step| ctx.do_step(step))
 
-                            // First, load the block in order to get the parent hash.
-                            Box::new(ctx.load_block(subgraph_ptr.hash).and_then(move |block| {
-                                // Produce pointer to parent block (using parent hash).
-                                let parent_ptr = EthereumBlockPointer::to_parent(&block);
-
-                                // Revert entity changes from this block, and update subgraph ptr.
-                                future::result(ctx.subgraph_store
-                                    .revert_block_operations(ctx.subgraph_id.clone(), subgraph_ptr, parent_ptr)
-                                    .map_err(Error::from)
-                                    .map(|()| {
-                                        // At this point, the loop repeats, and we try to move the subgraph ptr another
-                                        // step in the right direction.
-                                        future::Loop::Continue(())
-                                    })
-                                )
-                            }))
-                        }
-                        ReconciliationStep::AdvanceToDescendantBlock { from, to } => {
-                            debug!(
-                                ctx.logger,
-                                "Skipping {} block(s) with no relevant events...",
-                                to.number - from.number
-                            );
-
-                            Box::new(future::result(ctx.subgraph_store.set_block_ptr_with_no_changes(
-                                ctx.subgraph_id.clone(),
-                                from,
-                                to,
-                            )).map(|()| future::Loop::Continue(())))
-                        }
-                        ReconciliationStep::ProcessDescendantBlocks { from, descendant_blocks } => {
-                            let descendant_block_count = descendant_blocks.len();
-                            debug!(
-                                ctx.logger,
-                                "Processing {} block(s) in block range {}-{}...", descendant_block_count,
-                                from.number + 1, descendant_blocks.last().unwrap().block.number.unwrap()
-                            );
-
-                            let mut subgraph_ptr = from;
-
-                            // Advance the subgraph ptr to each of the specified descendants.
-                            Box::new(future::ok(future::Loop::Break(
-                                Some(Box::new(
-                                    stream::iter_ok(descendant_blocks.into_iter())
-                                        .map(move |descendant_block| {
-                                            // First, check if there are blocks between subgraph_ptr and
-                                            // descendant_block.
-                                            let descendant_parent_ptr = EthereumBlockPointer::to_parent(&descendant_block);
-                                            if subgraph_ptr != descendant_parent_ptr {
-                                                // descendant_block is not a direct child.
-                                                // Therefore, there are blocks that are irrelevant to this subgraph
-                                                // that we can skip.
-
-                                                debug!(
-                                                    ctx.logger,
-                                                    "Skipping {} block(s) with no relevant events...",
-                                                    descendant_parent_ptr.number - subgraph_ptr.number
-                                                );
-
-                                                // Update subgraph_ptr in store to skip the irrelevant blocks.
-                                                ctx.subgraph_store.set_block_ptr_with_no_changes(
-                                                    ctx.subgraph_id.clone(),
-                                                    subgraph_ptr,
-                                                    descendant_parent_ptr,
-                                                ).unwrap();
-                                            }
-
-                                            // Update our copy of the subgraph ptr to reflect the
-                                            // value it will have after descendant_block is
-                                            // processed.
-                                            subgraph_ptr = (&descendant_block).into();
-
-                                            descendant_block
-                                        })
-                                ) as Box<Stream<Item = _, Error = _> + Send>)
-                            )))
-                        }
+                // Check outcome.
+                // Exit loop if done or there are blocks to process.
+                .map(|outcome| {
+                    match outcome {
+                        ReconciliationStepOutcome::YieldBlocks(next_blocks) => {
+                            future::Loop::Break(Some(next_blocks))
+                        },
+                        ReconciliationStepOutcome::MoreSteps => {
+                            future::Loop::Continue(())
+                        },
+                        ReconciliationStepOutcome::Done => {
+                            future::Loop::Break(None)
+                        },
                     }
-                }))
-            },
-        ))
+                })
+        }))
     }
 
-    fn next_reconciliation_step(
+    fn get_next_step(
         &self,
         log_filter: EthereumLogFilter,
     ) -> impl Future<Item = ReconciliationStep, Error = Error> + Send {
@@ -458,6 +409,109 @@ where
                         Box::new(future::ok(ReconciliationStep::RevertBlock(subgraph_ptr)))
                     }
                 }
+            }
+        }
+    }
+
+    fn do_step(
+        &self,
+        step: ReconciliationStep,
+    ) -> Box<Future<Item = ReconciliationStepOutcome, Error = Error> + Send> {
+        let ctx = self.clone();
+
+        // We now know where to take the subgraph ptr.
+        match step {
+            ReconciliationStep::Retry => Box::new(future::ok(ReconciliationStepOutcome::MoreSteps)),
+            ReconciliationStep::Done => Box::new(future::ok(ReconciliationStepOutcome::Done)),
+            ReconciliationStep::RevertBlock(subgraph_ptr) => {
+                // We would like to move to the parent of the current block.
+                // This means we need to revert this block.
+
+                // First, load the block in order to get the parent hash.
+                Box::new(ctx.load_block(subgraph_ptr.hash).and_then(move |block| {
+                    // Produce pointer to parent block (using parent hash).
+                    let parent_ptr = EthereumBlockPointer::to_parent(&block);
+
+                    // Revert entity changes from this block, and update subgraph ptr.
+                    future::result(ctx.subgraph_store
+                        .revert_block_operations(ctx.subgraph_id.clone(), subgraph_ptr, parent_ptr)
+                        .map_err(Error::from)
+                        .map(|()| {
+                            // At this point, the loop repeats, and we try to move the subgraph ptr another
+                            // step in the right direction.
+                            ReconciliationStepOutcome::MoreSteps
+                        })
+                    )
+                }))
+            }
+            ReconciliationStep::AdvanceToDescendantBlock { from, to } => {
+                debug!(
+                    ctx.logger,
+                    "Skipping {} block(s) with no relevant events...",
+                    to.number - from.number
+                );
+
+                Box::new(
+                    future::result(ctx.subgraph_store.set_block_ptr_with_no_changes(
+                        ctx.subgraph_id.clone(),
+                        from,
+                        to,
+                    )).map(|()| ReconciliationStepOutcome::MoreSteps),
+                )
+            }
+            ReconciliationStep::ProcessDescendantBlocks {
+                from,
+                descendant_blocks,
+            } => {
+                let descendant_block_count = descendant_blocks.len();
+                debug!(
+                    ctx.logger,
+                    "Processing {} block(s) in block range {}-{}...",
+                    descendant_block_count,
+                    from.number + 1,
+                    descendant_blocks.last().unwrap().block.number.unwrap()
+                );
+
+                let mut subgraph_ptr = from;
+
+                // Advance the subgraph ptr to each of the specified descendants and yield each
+                // block with relevant events.
+                Box::new(future::ok(ReconciliationStepOutcome::YieldBlocks(
+                    Box::new(stream::iter_ok(descendant_blocks.into_iter()).map(
+                        move |descendant_block| {
+                            // First, check if there are blocks between subgraph_ptr and
+                            // descendant_block.
+                            let descendant_parent_ptr =
+                                EthereumBlockPointer::to_parent(&descendant_block);
+                            if subgraph_ptr != descendant_parent_ptr {
+                                // descendant_block is not a direct child.
+                                // Therefore, there are blocks that are irrelevant to this subgraph
+                                // that we can skip.
+
+                                debug!(
+                                    ctx.logger,
+                                    "Skipping {} block(s) with no relevant events...",
+                                    descendant_parent_ptr.number - subgraph_ptr.number
+                                );
+
+                                // Update subgraph_ptr in store to skip the irrelevant blocks.
+                                ctx.subgraph_store
+                                    .set_block_ptr_with_no_changes(
+                                        ctx.subgraph_id.clone(),
+                                        subgraph_ptr,
+                                        descendant_parent_ptr,
+                                    ).unwrap();
+                            }
+
+                            // Update our copy of the subgraph ptr to reflect the
+                            // value it will have after descendant_block is
+                            // processed.
+                            subgraph_ptr = (&descendant_block).into();
+
+                            descendant_block
+                        },
+                    )) as Box<Stream<Item = _, Error = _> + Send>,
+                )))
             }
         }
     }
