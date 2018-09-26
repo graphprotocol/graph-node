@@ -254,7 +254,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
         store.clone(),
         transport.clone(),
-        400, // ancestor count, which we could make configuable
+        50, // ancestor count, which we could make configuable
         logger.clone(),
         Duration::from_millis(500), // polling interval, which we could make configurable
     ).expect("failed to create Ethereum block ingestor");

@@ -13,7 +13,7 @@ use graph::prelude::{
 use graph::util::ethereum::string_to_h256;
 use graph::web3::types::*;
 
-const REORG_THRESHOLD: u64 = 400;
+const REORG_THRESHOLD: u64 = 50;
 
 enum BlockStreamState {
     /// The BlockStream is new and has not yet been polled.
