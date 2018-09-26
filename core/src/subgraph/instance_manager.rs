@@ -109,14 +109,20 @@ impl SubgraphInstanceManager {
         S: Store + ChainStore + 'static,
     {
         let id = manifest.id.clone();
+        let name_for_log = name.clone();
         let id_for_log = manifest.id.clone();
         let id_for_transact = manifest.id.clone();
 
         // Request a block stream for this subgraph
-        let block_stream = block_stream_builder.from_subgraph(name, &manifest, logger.clone());
+        let block_stream =
+            block_stream_builder.from_subgraph(name.clone(), &manifest, logger.clone());
 
         // Load the subgraph
-        let instance = Arc::new(SubgraphInstance::from_manifest(manifest, host_builder));
+        let instance = Arc::new(SubgraphInstance::from_manifest(
+            name,
+            manifest,
+            host_builder,
+        ));
 
         // Prepare loggers for different parts of the async processing
         let block_logger = logger.clone();
@@ -137,10 +143,13 @@ impl SubgraphInstanceManager {
                         .map_err(|e| format_err!("Subgraph shut down: {}", e)),
                 ).filter_map(|block| block)
                 .and_then(move |block| {
-                    info!(block_logger, "Process events from block";
-                          "block_number" => format!("{:?}", block.block.number.unwrap()),
-                          "block_hash" => format!("{:?}", block.block.hash.unwrap()),
-                          "subgraph_id" => &id_for_log);
+                    info!(
+                        block_logger, "Process events from block";
+                        "block_number" => format!("{:?}", block.block.number.unwrap()),
+                        "block_hash" => format!("{:?}", block.block.hash.unwrap()),
+                        "subgraph_name" => &name_for_log,
+                        "subgraph_id" => &id_for_log
+                    );
 
                     // Extract logs relevant to the subgraph
                     let logs: Vec<_> = block
@@ -154,7 +163,9 @@ impl SubgraphInstanceManager {
                     info!(
                         block_logger,
                         "{} events are relevant for this subgraph",
-                        logs.len()
+                        logs.len();
+                        "subgraph_name" => &name_for_log,
+                        "subgraph_id" => &id_for_log,
                     );
 
                     // Prepare ownership for async closures

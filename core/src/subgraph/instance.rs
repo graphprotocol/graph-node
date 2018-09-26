@@ -18,12 +18,12 @@ impl<T> SubgraphInstanceTrait<T> for SubgraphInstance<T>
 where
     T: RuntimeHostBuilder,
 {
-    fn from_manifest(manifest: SubgraphManifest, host_builder: T) -> Self {
+    fn from_manifest(name: String, manifest: SubgraphManifest, host_builder: T) -> Self {
         // Create a new runtime host for each data source in the subgraph manifest
         let hosts = manifest
             .data_sources
             .iter()
-            .map(|d| host_builder.build(manifest.clone(), d.clone()))
+            .map(|d| host_builder.build(name.clone(), manifest.clone(), d.clone()))
             .map(Arc::new)
             .collect();
 

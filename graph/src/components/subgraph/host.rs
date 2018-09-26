@@ -26,6 +26,11 @@ pub trait RuntimeHost: Send + Sync {
 pub trait RuntimeHostBuilder: Clone + Send + 'static {
     type Host: RuntimeHost;
 
-    /// Build a new runtime host for a dataset.
-    fn build(&self, subgraph_manifest: SubgraphManifest, data_source: DataSource) -> Self::Host;
+    /// Build a new runtime host for a subgraph data source.
+    fn build(
+        &self,
+        subgraph_name: String,
+        subgraph_manifest: SubgraphManifest,
+        data_source: DataSource,
+    ) -> Self::Host;
 }
