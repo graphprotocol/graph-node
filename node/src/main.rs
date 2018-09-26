@@ -218,9 +218,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Create Ethereum adapter
     let ethereum = Arc::new(graph_datasource_ethereum::EthereumAdapter::new(
+        &logger,
         graph_datasource_ethereum::EthereumAdapterConfig {
             transport: transport.clone(),
-            logger: logger.clone(),
         },
     ));
 
