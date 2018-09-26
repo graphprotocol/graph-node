@@ -1,11 +1,14 @@
 use graph::prelude::*;
-use graphql_parser::{query as q, schema as s};
+use graphql_parser::{query as q, schema as s, Pos};
 use schema::ast as sast;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
 
 /// Builds a StoreQuery from GraphQL arguments.
-pub fn build_query(entity: &s::ObjectType, arguments: &HashMap<&q::Name, q::Value>) -> Result<StoreQuery, QueryExecutionError> {
+pub fn build_query(
+    entity: &s::ObjectType,
+    arguments: &HashMap<&q::Name, q::Value>,
+) -> Result<StoreQuery, QueryExecutionError> {
     Ok(StoreQuery {
         subgraph: parse_subgraph_id(entity)?,
         entity: entity.name.to_owned(),
@@ -17,22 +20,38 @@ pub fn build_query(entity: &s::ObjectType, arguments: &HashMap<&q::Name, q::Valu
 }
 
 /// Parses GraphQL arguments into a StoreRange, if present.
-fn build_range(arguments: &HashMap<&q::Name, q::Value>) -> Result<Option<StoreRange>, QueryExecutionError> {
-    let first = arguments
-        .get(&"first".to_string())
-        .and_then(|value| match value {
-            q::Value::Int(n) => n.as_i64(),
-            _ => None,
-        }).ok_or(QueryExecutionError::BuildRangeTypeError)
-        .and_then(|n| if n > 0 { Ok(Some(n as usize)) } else { Ok(None) });
+fn build_range(
+    arguments: &HashMap<&q::Name, q::Value>,
+) -> Result<Option<StoreRange>, QueryExecutionError> {
+    let first = match arguments.get(&"first".to_string()) {
+        Some(value) => match value {
+            q::Value::Int(n) => Ok(n.as_i64()),
+            _ => Err(QueryExecutionError::BuildRangeTypeError),
+        },
+        None => Ok(None),
+    }.and_then(|n| match n {
+        Some(n) => if n > 0 {
+            Ok(Some(n as usize))
+        } else {
+            Ok(None)
+        },
+        None => Ok(None),
+    });
 
-    let skip = arguments
-        .get(&"skip".to_string())
-        .and_then(|value| match value {
-            q::Value::Int(n) => n.as_i64(),
-            _ => None,
-        }).ok_or(QueryExecutionError::BuildRangeTypeError)
-        .and_then(|n| if n >= 0 { Ok(Some(n as usize)) } else { Ok(None) });
+    let skip = match arguments.get(&"skip".to_string()) {
+        Some(value) => match value {
+            q::Value::Int(n) => Ok(n.as_i64()),
+            _ => Err(QueryExecutionError::BuildRangeTypeError),
+        },
+        None => Ok(None),
+    }.and_then(|n| match n {
+        Some(n) => if n >= 0 {
+            Ok(Some(n as usize))
+        } else {
+            Ok(None)
+        },
+        None => Ok(None),
+    });
 
     Ok(match (first?, skip?) {
         (None, None) => None,
@@ -47,14 +66,13 @@ fn build_filter(
     entity: &s::ObjectType,
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<Option<StoreFilter>, QueryExecutionError> {
-    arguments
-        .get(&"where".to_string())
-        .and_then(|value| match value {
-            q::Value::Object(object) => Some(object),
-            _ => None,
-        })
-        .ok_or(QueryExecutionError::BuildFilterError)
-        .and_then(|object| build_filter_from_object(entity, object))
+    match arguments.get(&"where".to_string()) {
+        Some(value) => match value {
+            q::Value::Object(object) => Ok(object),
+            _ => return Err(QueryExecutionError::BuildFilterError),
+        },
+        None => return Ok(None),
+    }.and_then(|object| build_filter_from_object(entity, &object))
 }
 
 /// Parses a GraphQL input object into a StoreFilter, if present.
@@ -62,7 +80,7 @@ fn build_filter_from_object(
     entity: &s::ObjectType,
     object: &BTreeMap<q::Name, q::Value>,
 ) -> Result<Option<StoreFilter>, QueryExecutionError> {
-    Ok(Some(StoreFilter::And(
+    Ok(Some(StoreFilter::And({
         object
             .iter()
             .map(|(key, value)| {
@@ -71,18 +89,19 @@ fn build_filter_from_object(
                 let (attribute, op) = sast::parse_field_as_filter(key);
 
                 let field = sast::get_field_type(entity, &attribute)
-                    .expect("attribute does not belong to entity");
+                    .ok_or(QueryExecutionError::EntityAttributeError)?;
+
                 let ty = &field.field_type;
                 let store_value = Value::from_query_value(value, &ty);
 
-                match op {
+                Ok(match op {
                     Not => StoreFilter::Not(attribute, store_value),
                     GreaterThan => StoreFilter::GreaterThan(attribute, store_value),
                     LessThan => StoreFilter::LessThan(attribute, store_value),
                     GreaterOrEqual => StoreFilter::GreaterOrEqual(attribute, store_value),
                     LessOrEqual => StoreFilter::LessOrEqual(attribute, store_value),
-                    In => StoreFilter::In(attribute, list_values(store_value)),
-                    NotIn => StoreFilter::NotIn(attribute, list_values(store_value)),
+                    In => StoreFilter::In(attribute, list_values(store_value)?),
+                    NotIn => StoreFilter::NotIn(attribute, list_values(store_value)?),
                     Contains => StoreFilter::Contains(attribute, store_value),
                     NotContains => StoreFilter::NotContains(attribute, store_value),
                     StartsWith => StoreFilter::StartsWith(attribute, store_value),
@@ -90,33 +109,39 @@ fn build_filter_from_object(
                     EndsWith => StoreFilter::EndsWith(attribute, store_value),
                     NotEndsWith => StoreFilter::NotEndsWith(attribute, store_value),
                     Equal => StoreFilter::Equal(attribute, store_value),
-                }
-            }).collect::<Vec<StoreFilter>>(),
-    )))
+                })
+            }).collect::<Result<Vec<_>, _>>()?
+    })))
 }
 
 /// Parses a list of GraphQL values into a vector of entity attribute values.
-fn list_values(value: Value) -> Vec<Value> {
+fn list_values(value: Value) -> Result<Vec<Value>, QueryExecutionError> {
     match value {
         Value::List(ref values) if !values.is_empty() => {
             // Check that all values in list are of the same type
+            let root_discriminant = discriminant(&values[0]);
             values
                 .into_iter()
                 .map(|value| {
-                    if discriminant(&values[0]) == discriminant(value) {
-                        value.clone()
+                    let current_discriminant = discriminant(value);
+                    if root_discriminant == current_discriminant {
+                        Ok(value.clone())
                     } else {
-                        panic!("list value contains multiple value types");
+                        Err(QueryExecutionError::ListTypesError(
+                            root_discriminant,
+                            current_discriminant,
+                        ))
                     }
-                })
-                .collect::<Vec<Value>>()
+                }).collect::<Result<Vec<_>, _>>()
         }
-        _ => panic!("value is not a list"),
+        _ => Err(QueryExecutionError::ListFilterError),
     }
 }
 
 /// Parses GraphQL arguments into an attribute name to order by, if present.
-fn build_order_by(arguments: &HashMap<&q::Name, q::Value>) -> Result<Option<String>, QueryExecutionError> {
+fn build_order_by(
+    arguments: &HashMap<&q::Name, q::Value>,
+) -> Result<Option<String>, QueryExecutionError> {
     Ok(arguments
         .get(&"orderBy".to_string())
         .and_then(|value| match value {
@@ -126,7 +151,9 @@ fn build_order_by(arguments: &HashMap<&q::Name, q::Value>) -> Result<Option<Stri
 }
 
 /// Parses GraphQL arguments into a StoreOrder, if present.
-fn build_order_direction(arguments: &HashMap<&q::Name, q::Value>) -> Result<Option<StoreOrder>, QueryExecutionError> {
+fn build_order_direction(
+    arguments: &HashMap<&q::Name, q::Value>,
+) -> Result<Option<StoreOrder>, QueryExecutionError> {
     Ok(arguments
         .get(&"orderDirection".to_string())
         .and_then(|value| match value {
@@ -260,11 +287,15 @@ mod tests {
     #[test]
     fn build_query_uses_the_entity_name() {
         assert_eq!(
-            build_query(&object("Entity1"), &HashMap::new()).unwrap().entity,
+            build_query(&object("Entity1"), &HashMap::new())
+                .unwrap()
+                .entity,
             "Entity1".to_string()
         );
         assert_eq!(
-            build_query(&object("Entity2"), &HashMap::new()).unwrap().entity,
+            build_query(&object("Entity2"), &HashMap::new())
+                .unwrap()
+                .entity,
             "Entity2".to_string()
         );
     }
@@ -272,11 +303,15 @@ mod tests {
     #[test]
     fn build_query_yields_no_order_if_order_arguments_are_missing() {
         assert_eq!(
-            build_query(&default_object(), &HashMap::new()).unwrap().order_by,
+            build_query(&default_object(), &HashMap::new())
+                .unwrap()
+                .order_by,
             None,
         );
         assert_eq!(
-            build_query(&default_object(), &HashMap::new()).unwrap().order_direction,
+            build_query(&default_object(), &HashMap::new())
+                .unwrap()
+                .order_direction,
             None,
         );
     }
@@ -289,7 +324,8 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
                 )
-            ).unwrap().order_by,
+            ).unwrap()
+            .order_by,
             Some("name".to_string())
         );
         assert_eq!(
@@ -298,7 +334,8 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("email".to_string()))].into_iter()
                 )
-            ).unwrap().order_by,
+            ).unwrap()
+            .order_by,
             Some("email".to_string())
         );
     }
@@ -312,7 +349,8 @@ mod tests {
                     vec![(&"orderBy".to_string(), q::Value::String("name".to_string()))]
                         .into_iter()
                 ),
-            ).unwrap().order_by,
+            ).unwrap()
+            .order_by,
             None,
         );
         assert_eq!(
@@ -324,7 +362,8 @@ mod tests {
                         q::Value::String("email".to_string()),
                     )].into_iter(),
                 )
-            ).unwrap().order_by,
+            ).unwrap()
+            .order_by,
             None,
         );
     }
@@ -340,7 +379,8 @@ mod tests {
                         q::Value::Enum("asc".to_string()),
                     )].into_iter(),
                 )
-            ).unwrap().order_direction,
+            ).unwrap()
+            .order_direction,
             Some(StoreOrder::Ascending)
         );
         assert_eq!(
@@ -352,7 +392,8 @@ mod tests {
                         q::Value::Enum("desc".to_string()),
                     )].into_iter()
                 )
-            ).unwrap().order_direction,
+            ).unwrap()
+            .order_direction,
             Some(StoreOrder::Descending)
         );
         assert_eq!(
@@ -364,7 +405,8 @@ mod tests {
                         q::Value::Enum("ascending...".to_string()),
                     )].into_iter()
                 )
-            ).unwrap().order_direction,
+            ).unwrap()
+            .order_direction,
             None,
         );
     }
@@ -380,7 +422,8 @@ mod tests {
                         q::Value::String("asc".to_string()),
                     )].into_iter()
                 ),
-            ).unwrap().order_direction,
+            ).unwrap()
+            .order_direction,
             None,
         );
         assert_eq!(
@@ -392,14 +435,20 @@ mod tests {
                         q::Value::String("desc".to_string()),
                     )].into_iter(),
                 )
-            ).unwrap().order_direction,
+            ).unwrap()
+            .order_direction,
             None,
         );
     }
 
     #[test]
     fn build_query_yields_no_range_if_none_is_present() {
-        assert_eq!(build_query(&default_object(), &HashMap::new()).unwrap().range, None,);
+        assert_eq!(
+            build_query(&default_object(), &HashMap::new())
+                .unwrap()
+                .range,
+            None,
+        );
     }
 
     #[test]
@@ -410,7 +459,8 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(&"skip".to_string(), q::Value::Int(q::Number::from(50)))].into_iter()
                 )
-            ).unwrap().range,
+            ).unwrap()
+            .range,
             Some(StoreRange {
                 first: 100,
                 skip: 50,
@@ -426,7 +476,8 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(&"first".to_string(), q::Value::Int(q::Number::from(70)))].into_iter()
                 )
-            ).unwrap().range,
+            ).unwrap()
+            .range,
             Some(StoreRange { first: 70, skip: 0 }),
         );
     }
@@ -448,7 +499,8 @@ mod tests {
                         )])),
                     )].into_iter(),
                 )
-            ).unwrap().filter,
+            ).unwrap()
+            .filter,
             Some(StoreFilter::And(vec![StoreFilter::EndsWith(
                 "name".to_string(),
                 Value::String("ello".to_string()),

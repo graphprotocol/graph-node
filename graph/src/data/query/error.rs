@@ -1,8 +1,10 @@
+use data::store::Value;
 use graphql_parser::{query as q, Pos};
 use serde::ser::*;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::mem::Discriminant;
 use std::string::FromUtf8Error;
 
 /// Error caused while executing a [Query](struct.Query.html).
@@ -31,6 +33,9 @@ pub enum QueryExecutionError {
     SubgraphParseError(String),
     BuildRangeTypeError,
     BuildFilterError,
+    EntityAttributeError,
+    ListTypesError(Discriminant<Value>, Discriminant<Value>),
+    ListFilterError,
 }
 
 impl Error for QueryExecutionError {
@@ -98,9 +103,24 @@ impl fmt::Display for QueryExecutionError {
                 f,
                 "Only a single top-level field is allowed in subscriptions"
             ),
-            QueryExecutionError::SubgraphParseError(s) => write!(f, "Failed to get subgraph ID from type: {}", s),
-            QueryExecutionError::BuildRangeTypeError => write!(f, "Range inputs must be an integer"),
-            QueryExecutionError::BuildFilterError=> write!(f, "Filter must by an object"),
+            QueryExecutionError::SubgraphParseError(s) => {
+                write!(f, "Failed to get subgraph ID from type: {}", s)
+            }
+            QueryExecutionError::BuildRangeTypeError => {
+                write!(f, "Range inputs must be an integer")
+            }
+            QueryExecutionError::BuildFilterError => write!(f, "Filter must by an object"),
+            QueryExecutionError::EntityAttributeError => {
+                write!(f, "Attribute does not belong to entity")
+            }
+            QueryExecutionError::ListTypesError(t, d) => {
+                write!(f, "List field contains inconsistent Value types")
+            }
+            QueryExecutionError::ListFilterError => write!(
+                f,
+                "Non-list value resolved for list filter  \
+                 *Hint*: IN and NOT_IN filters take an array of values"
+            ),
         }
     }
 }
