@@ -187,10 +187,6 @@ impl RuntimeHost {
                             result_sender,
                         } = request;
 
-                        debug!(event_logger, "  Call event handler";
-                               "name" => &handler.handler,
-                               "signature" => &handler.event);
-
                         let result = module.handle_ethereum_event(
                             handler.handler.as_str(),
                             block,
@@ -331,7 +327,14 @@ impl RuntimeHostTrait for RuntimeHost {
             }
         };
 
-        debug!(self.logger, "Process Ethereum event"; "signature" => &event_handler.event);
+        debug!(
+            self.logger, "Process Ethereum event";
+            "block_number" => match block.block.number {
+                Some(number) => format!("{}", number),
+                None => String::from("None"),
+            },
+            "signature" => &event_handler.event,
+            "handler" => &event_handler.handler);
 
         // Call the event handler and asynchronously wait for the result
         let (result_sender, result_receiver) = oneshot::channel();
