@@ -99,7 +99,7 @@ where
                 let mut chunk_futures = vec![];
 
                 if chunk_offset < 4_000_000 {
-                    let chunk_end = (chunk_offset + 100_000).min(to).min(4_000_000);
+                    let chunk_end = (chunk_offset + 100_000 - 1).min(to).min(4_000_000);
 
                     debug!(
                         eth_adapter.logger,
