@@ -245,31 +245,54 @@ $$ LANGUAGE plpgsql;
 *
 * Revert the row store events related to a particular block
 * Rerun all of an entities changes that come after the row store events related to that block
-* Parameters: block_hash, subgraph
 **************************************************************/
-CREATE OR REPLACE FUNCTION revert_block(block_hash_to_revert VARCHAR, subgraph_id VARCHAR)
+CREATE OR REPLACE FUNCTION revert_block(block_to_revert_hash VARCHAR, block_to_revert_number BIGINT, target_block_hash VARCHAR, subgraph_id VARCHAR)
     RETURNS VOID AS
 $$
 DECLARE
     event_row RECORD;
     entity_row RECORD;
+    subgraph_ptr_hash VARCHAR;
+    subgraph_ptr_number BIGINT;
 BEGIN
+    -- Read subgraph pointer
+    PERFORM
+        latest_block_hash AS subgraph_ptr_hash,
+        latest_block_number AS subgraph_ptr_number
+    FROM subgraphs
+    WHERE subgraphs.id = subgraph_id;
+
+    -- Check that subgraph ptr points to block_to_revert
+    IF
+        subgraph_ptr_hash != block_to_revert_hash OR
+        subgraph_ptr_number != block_to_revert_number
+    THEN
+        RAISE 'cannot revert block when it is not latest block in subgraph';
+    END IF;
+
+    -- Revert all relevant events
     FOR event_row IN
         -- Get all events associated with the given block
         SELECT
-            entity_history.event_id as event_id
+            entity_history.event_id AS event_id
         FROM entity_history
         JOIN event_meta_data ON
             entity_history.event_id = event_meta_data.id
-        WHERE event_meta_data.source = block_hash_to_revert AND
+        WHERE event_meta_data.source = block_to_revert_hash AND
             entity_history.subgraph = subgraph_id
         GROUP BY
             entity_history.event_id
         ORDER BY entity_history.event_id DESC
-    -- For each event perform the reverse operation
     LOOP
         PERFORM revert_transaction(event_row.event_id::integer);
     END LOOP;
+
+    -- Update the subgraph ptr
+    UPDATE subgraphs
+    SET
+        latest_block_hash = target_block_hash,
+        latest_block_number = block_to_revert_number - 1
+    WHERE subgraphs.id = subgraph_id;
 END;
 $$ LANGUAGE plpgsql;
 

@@ -257,14 +257,6 @@ impl Store {
         );
     }
 
-    /// Handles block reorganizations.
-    /// Revert all store events related to the given block
-    pub fn revert_events(&self, block_hash: String, subgraph_id: String) {
-        select(revert_block(block_hash, subgraph_id))
-            .execute(&*self.conn.lock().unwrap())
-            .unwrap();
-    }
-
     /// Gets an entity from Postgres, returns an entity with just an ID if none is found.
     fn get_entity(
         &self,
@@ -571,11 +563,23 @@ impl StoreTrait for Store {
 
     fn revert_block_operations(
         &self,
-        _subgraph_id: SubgraphId,
-        _block_ptr_from: EthereumBlockPointer,
-        _block_ptr_to: EthereumBlockPointer,
+        subgraph_id: SubgraphId,
+        block_ptr_from: EthereumBlockPointer,
+        block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), Error> {
-        unimplemented!();
+        // Sanity check on block numbers
+        if block_ptr_from.number != block_ptr_to.number + 1 {
+            panic!("revert_block_operations must revert a single block only");
+        }
+
+        select(revert_block(
+            &block_ptr_from.hash_hex(),
+            block_ptr_from.number as i64,
+            &block_ptr_to.hash_hex(),
+            subgraph_id,
+        )).execute(&*self.conn.lock().unwrap())
+        .map_err(|e| format_err!("Error reverting block: {}", e))
+        .map(|_| ())
     }
 
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
