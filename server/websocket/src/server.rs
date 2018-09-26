@@ -6,18 +6,34 @@ use std::sync::{Arc, Mutex};
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::{handshake::server::Request, Error as WsError};
 
+use graph::extension::CancelGuard;
 use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
 use graph::tokio::net::TcpListener;
 use graph_graphql::prelude::api_schema;
 
 use connection::GraphQlConnection;
 
+/// On drop, cancels all connections to this subgraph.
+pub(crate) struct GuardedSchema {
+    pub(crate) schema: Schema,
+    connection_guards: Vec<CancelGuard>,
+}
+
+impl GuardedSchema {
+    fn new(schema: Schema) -> Self {
+        Self {
+            schema,
+            connection_guards: Vec::new(),
+        }
+    }
+}
+
 /// A GraphQL subscription server based on Hyper / Websockets.
 pub struct SubscriptionServer<Q> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     schema_event_sink: Sender<SchemaEvent>,
-    subgraphs: SubgraphRegistry<Schema>,
+    subgraphs: SubgraphRegistry<GuardedSchema>,
 }
 
 impl<Q> SubscriptionServer<Q>
@@ -50,24 +66,29 @@ where
         tokio::spawn(stream.for_each(move |event| {
             info!(logger, "Received schema event");
 
-            if let SchemaEvent::SchemaAdded(new_schema) = event {
-                let derived_schema = match api_schema(&new_schema.document) {
-                    Ok(document) => Schema {
-                        name: new_schema.name.clone(),
-                        id: new_schema.id.clone(),
-                        document,
-                    },
-                    Err(e) => return Ok(error!(logger, "error deriving schema {}", e)),
-                };
+            match event {
+                SchemaEvent::SchemaAdded(new_schema) => {
+                    let derived_schema = match api_schema(&new_schema.document) {
+                        Ok(document) => Schema {
+                            name: new_schema.name.clone(),
+                            id: new_schema.id.clone(),
+                            document,
+                        },
+                        Err(e) => return Ok(error!(logger, "error deriving schema {}", e)),
+                    };
 
-                // Add the subgraph name, ID and schema to the subgraph registry
-                subgraphs.insert(
-                    Some(derived_schema.name.clone()),
-                    derived_schema.id.clone(),
-                    derived_schema,
-                );
-            } else {
-                panic!("schema removal is yet not supported")
+                    // Add the subgraph name, ID and schema to the subgraph registry
+                    subgraphs.insert(
+                        Some(derived_schema.name.clone()),
+                        derived_schema.id.clone(),
+                        GuardedSchema::new(derived_schema),
+                    );
+                }
+                SchemaEvent::SchemaRemoved(name, _) => {
+                    // On removal, the `GuardedSchema` will be dropped and all
+                    // connections to it will be terminated.
+                    subgraphs.remove_name(name);
+                }
             }
 
             Ok(())
@@ -137,19 +158,30 @@ where
                             let service = GraphQlConnection::new(
                                 &logger,
                                 subgraphs.clone(),
-                                subgraph,
+                                subgraph.clone(),
                                 ws_stream,
                                 graphql_runner.clone(),
                             );
-                            tokio::spawn(service.into_future()).into_future()
+
+                            let cancel_subgraph = subgraph.clone();
+                            let (service, guard) = service.into_future().cancelable(move || {
+                                debug!(
+                                    logger,
+                                    "Canceling subscriptions for subgraph `{}`", cancel_subgraph
+                                );
+                            });
+                            subgraphs.mutate(&subgraph, |subgraph| {
+                                subgraph.connection_guards.push(guard)
+                            });
+                            tokio::spawn(service);
                         }
                         Err(e) => {
                             // We gracefully skip over failed connection attempts rather
                             // than tearing down the entire stream
                             warn!(logger, "Failed to establish WebSocket connection: {}", e);
-                            future::ok(())
                         }
                     }
+                    Ok(())
                 })
             });
 

@@ -11,6 +11,8 @@ use uuid::Uuid;
 use graph::prelude::*;
 use graph::serde_json;
 
+use server::GuardedSchema;
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StartPayload {
@@ -168,7 +170,7 @@ pub struct GraphQlConnection<Q, S> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     stream: WebSocketStream<S>,
-    subgraphs: SubgraphRegistry<Schema>,
+    subgraphs: SubgraphRegistry<GuardedSchema>,
     subgraph: String,
 }
 
@@ -178,9 +180,9 @@ where
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
     /// Creates a new GraphQL subscription service.
-    pub fn new(
+    pub(crate) fn new(
         logger: &Logger,
-        subgraphs: SubgraphRegistry<Schema>,
+        subgraphs: SubgraphRegistry<GuardedSchema>,
         subgraph: String,
         stream: WebSocketStream<S>,
         graphql_runner: Arc<Q>,
@@ -200,7 +202,7 @@ where
         mut msg_sink: mpsc::UnboundedSender<WsMessage>,
         logger: Logger,
         connection_id: String,
-        subgraphs: SubgraphRegistry<Schema>,
+        subgraphs: SubgraphRegistry<GuardedSchema>,
         subgraph: String,
         graphql_runner: Arc<Q>,
     ) -> impl Future<Item = (), Error = WsError> {
@@ -250,7 +252,9 @@ where
                     }
 
                     // Respond with a GQL_ERROR if the subgraph name or ID is unknown
-                    let schema = if let Some(schema) = subgraphs.resolve(&subgraph) {
+                    let schema = if let Some(schema) =
+                        subgraphs.resolve_by(&subgraph, |s| s.schema.clone())
+                    {
                         schema
                     } else {
                         return send_error_string(
