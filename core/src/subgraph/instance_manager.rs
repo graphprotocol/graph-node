@@ -102,6 +102,7 @@ impl SubgraphInstanceManager {
         S: Store + ChainStore + 'static,
     {
         let id = manifest.id.clone();
+        let id_for_log = manifest.id.clone();
         let id_for_transact = manifest.id.clone();
 
         // Request a block stream for this subgraph
@@ -130,8 +131,9 @@ impl SubgraphInstanceManager {
                 ).filter_map(|block| block)
                 .and_then(move |block| {
                     info!(block_logger, "Process events from block";
-                          "block_number" => format!("{:?}", block.block.number),
-                          "block_hash" => format!("{:?}", block.block.hash));
+                          "block_number" => format!("{:?}", block.block.number.unwrap()),
+                          "block_hash" => format!("{:?}", block.block.hash.unwrap()),
+                          "subgraph_id" => &id_for_log);
 
                     // Extract logs relevant to the subgraph
                     let logs: Vec<_> = block
