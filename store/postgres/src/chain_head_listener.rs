@@ -98,7 +98,7 @@ impl ChainHeadUpdateListener {
 
                     // We'll assume here that if sending fails, this means that the
                     // listener has already been dropped, the receiving
-                    // is gone and we should terminate the listener loop
+                    // end is gone and we should terminate the listener loop
                     if sender.clone().send(update).wait().is_err() {
                         break;
                     }
