@@ -14,7 +14,6 @@ use graph::web3::types::{Filter, *};
 
 pub struct EthereumAdapterConfig<T: web3::Transport> {
     pub transport: T,
-    pub logger: Logger,
 }
 
 #[derive(Clone)]
@@ -34,10 +33,10 @@ where
     T: web3::Transport + Send + Sync + 'static,
     T::Out: Send,
 {
-    pub fn new(config: EthereumAdapterConfig<T>) -> Self {
+    pub fn new(logger: &Logger, config: EthereumAdapterConfig<T>) -> Self {
         EthereumAdapter {
             eth_client: Arc::new(Web3::new(config.transport)),
-            logger: config.logger,
+            logger: logger.new(o!("component" => "EthereumAdapter")),
         }
     }
 
