@@ -19,13 +19,12 @@ extern crate ipfs_api;
 extern crate url;
 
 use clap::{App, Arg};
-use http::uri::InvalidUri;
 use ipfs_api::IpfsClient;
 use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
 use reqwest::Client;
 use std::env;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::ToSocketAddrs;
 use std::sync::Mutex;
 use std::time::Duration;
 use url::Url;

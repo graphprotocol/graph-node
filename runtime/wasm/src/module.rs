@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Mutex;
+use tiny_keccak;
 use wasmi::{
     Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder, MemoryRef, Module,
     ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue,
@@ -85,6 +86,7 @@ const JSON_TO_BIG_INT_FUNC_INDEX: usize = 18;
 const IPFS_CAT_FUNC_INDEX: usize = 19;
 const STORE_GET_FUNC_INDEX: usize = 20;
 const TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX: usize = 21;
+const CRYPTO_KECCAK_256_INDEX: usize = 22;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph: SubgraphManifest,
@@ -143,6 +145,7 @@ where
         imports.push_resolver("typeConversion", &TypeConversionModuleResolver);
         imports.push_resolver("json", &JsonModuleResolver);
         imports.push_resolver("ipfs", &IpfsModuleResolver);
+        imports.push_resolver("crypto", &CryptoModuleResolver);
 
         // Instantiate the runtime module using hosted functions and import resolver
         let module =
@@ -585,6 +588,14 @@ where
         Ok(Some(RuntimeValue::from(big_int_ptr)))
     }
 
+    /// function crypto.keccak256(input: Bytes): Bytes
+    fn crypto_keccak_256(&self, input: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
+        let input: Vec<u8> = self.heap.asc_get(input);
+        let hash_ptr: AscPtr<Uint8Array> =
+            self.heap.asc_new(tiny_keccak::keccak256(&input).as_ref());
+        Ok(Some(RuntimeValue::from(hash_ptr)))
+    }
+
     fn block_on<I: Send + 'static, E: Send + 'static>(
         &self,
         future: impl Future<Item = I, Error = E> + Send + 'static,
@@ -651,6 +662,7 @@ where
             TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX => {
                 self.big_int_to_int256(args.nth_checked(0)?)
             }
+            CRYPTO_KECCAK_256_INDEX => self.crypto_keccak_256(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -835,6 +847,25 @@ impl ModuleImportResolver for IpfsModuleResolver {
             "cat" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 IPFS_CAT_FUNC_INDEX,
+            ),
+            _ => {
+                return Err(Error::Instantiation(format!(
+                    "Export '{}' not found",
+                    field_name
+                )))
+            }
+        })
+    }
+}
+
+struct CryptoModuleResolver;
+
+impl ModuleImportResolver for CryptoModuleResolver {
+    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
+        Ok(match field_name {
+            "keccak256" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                CRYPTO_KECCAK_256_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(
