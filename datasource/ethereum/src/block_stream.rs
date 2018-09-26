@@ -202,15 +202,20 @@ where
         let ctx = self.clone();
 
         // Get pointers from database for comparison
-        let head_ptr = ctx
-            .chain_store
-            .chain_head_ptr()
-            .unwrap()
-            .expect("should not receive head block update before head block pointer is set");
+        let head_ptr_opt = ctx.chain_store.chain_head_ptr().unwrap();
         let subgraph_ptr = ctx
             .subgraph_store
             .block_ptr(ctx.subgraph_id.clone())
             .unwrap();
+
+        // If chain head ptr is not set yet
+        if head_ptr_opt.is_none() {
+            // Don't do any reconciliation until the chain store has more blocks
+            return Box::new(future::ok(ReconciliationStep::Done))
+                as Box<Future<Item = _, Error = _> + Send>;
+        }
+
+        let head_ptr = head_ptr_opt.unwrap();
 
         debug!(ctx.logger, "head_ptr = {:?}", head_ptr);
         debug!(ctx.logger, "subgraph_ptr = {:?}", subgraph_ptr);
