@@ -11,7 +11,7 @@ where
     T: RuntimeHostBuilder,
 {
     /// Creates a subgraph instance from a manifest.
-    fn from_manifest(manifest: SubgraphManifest, host_builder: T) -> Self;
+    fn from_manifest(name: String, manifest: SubgraphManifest, host_builder: T) -> Self;
 
     /// Returns true if the subgraph has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool;
