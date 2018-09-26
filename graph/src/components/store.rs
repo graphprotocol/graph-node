@@ -188,7 +188,7 @@ impl EntityOperation {
     pub fn merge(&self, other: &EntityOperation) -> Self {
         use self::EntityOperation::*;
 
-        assert_ne!(self.entity_info(), other.entity_info());
+        assert_eq!(self.entity_info(), other.entity_info());
 
         match other {
             Remove { .. } => other.clone(),
