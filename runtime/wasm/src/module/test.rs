@@ -6,6 +6,7 @@ extern crate parity_wasm;
 
 use ethabi::{LogParam, Token};
 use futures::sync::mpsc::{channel, Receiver};
+use hex;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::iter::FromIterator;
@@ -288,4 +289,24 @@ fn ipfs_cat() {
         .expect("call did not return pointer");
     let data: String = module.heap.asc_get(converted);
     assert_eq!(data, "42");
+}
+
+#[test]
+fn crypto_keccak256() {
+    let (mut module, _) = test_module(mock_data_source("wasm_test/crypto.wasm"));
+    let input: &[u8] = "eth".as_ref();
+    let input: AscPtr<Uint8Array> = module.heap.asc_new(input);
+
+    let hash: AscPtr<Uint8Array> = module
+        .module
+        .invoke_export("hash", &[RuntimeValue::from(input)], &mut module.externals)
+        .expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    let hash: Vec<u8> = module.heap.asc_get(hash);
+    assert_eq!(
+        hex::encode(hash),
+        "4f5b812789fc606be1b3b16908db13fc7a9adf7ca72641f84d75b47069d3d7f0"
+    );
 }
