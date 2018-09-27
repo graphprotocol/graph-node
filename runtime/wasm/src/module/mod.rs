@@ -333,8 +333,8 @@ where
             .lock()
             .unwrap()
             .get(store_key)
-            .map_err(|_| host_error("Error getting entity".to_string()))
             .and_then(|result| Ok(Some(RuntimeValue::from(self.heap.asc_new(&result)))))
+            .or(Ok(Some(RuntimeValue::from(0))))
     }
 
     /// function ethereum.call(call: SmartContractCall): Array<Token>
