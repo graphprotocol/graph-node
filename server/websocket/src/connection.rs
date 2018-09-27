@@ -83,10 +83,10 @@ fn send_message(
 /// Helper function to send error messages.
 fn send_error_string(
     sink: &mpsc::UnboundedSender<WsMessage>,
-    id: String,
-    s: String,
+    operation_id: String,
+    error: String,
 ) -> Result<(), WsError> {
-    sink.unbounded_send(OutgoingMessage::from_error_string(id, s).into())
+    sink.unbounded_send(OutgoingMessage::from_error_string(operation_id, error).into())
         .map_err(|_| WsError::Http(500))
 }
 
