@@ -112,6 +112,7 @@ impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
 
 pub struct BlockStream<S, C, E> {
     state: Mutex<BlockStreamState>,
+    consecutive_err_count: u32,
     log_filter: EthereumLogFilter,
     chain_head_update_sink: Sender<ChainHeadUpdate>,
     chain_head_update_stream: Receiver<ChainHeadUpdate>,
@@ -143,6 +144,7 @@ where
 
         BlockStream {
             state: Mutex::new(BlockStreamState::New),
+            consecutive_err_count: 0,
             log_filter,
             chain_head_update_sink,
             chain_head_update_stream,
@@ -619,9 +621,9 @@ where
 
                 // Waiting for the reconciliation to complete or yield blocks
                 BlockStreamState::Reconciliation(mut next_blocks_future) => {
-                    match next_blocks_future.poll()? {
+                    match next_blocks_future.poll() {
                         // Reconciliation found blocks to process
-                        Async::Ready(Some(next_blocks)) => {
+                        Ok(Async::Ready(Some(next_blocks))) => {
                             // Switch to yielding state until next_blocks is depleted
                             state = BlockStreamState::YieldingBlocks(next_blocks);
 
@@ -630,7 +632,10 @@ where
                         }
 
                         // Reconciliation completed. We're caught up to chain head.
-                        Async::Ready(None) => {
+                        Ok(Async::Ready(None)) => {
+                            // Reset error count
+                            self.consecutive_err_count = 0;
+
                             // Switch to idle
                             state = BlockStreamState::Idle;
 
@@ -638,25 +643,46 @@ where
                             continue;
                         }
 
-                        Async::NotReady => {
+                        Ok(Async::NotReady) => {
                             // Nothing to change or yield yet.
                             state = BlockStreamState::Reconciliation(next_blocks_future);
                             break Async::NotReady;
+                        }
+
+                        Err(e) => {
+                            self.consecutive_err_count += 1;
+
+                            // If too many errors without progress, give up
+                            if self.consecutive_err_count >= 10 {
+                                return Err(e);
+                            }
+
+                            warn!(self.ctx.logger, "Trying again after error in block stream reconcile: {}", e);
+
+                            // Try again by restarting reconciliation
+                            let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());
+                            state = BlockStreamState::Reconciliation(next_blocks_future);
+
+                            // Poll the next_blocks() future
+                            continue;
                         }
                     }
                 }
 
                 // Yielding blocks from reconciliation process
                 BlockStreamState::YieldingBlocks(mut next_blocks) => {
-                    match next_blocks.poll()? {
+                    match next_blocks.poll() {
                         // Yield one block
-                        Async::Ready(Some(next_block)) => {
+                        Ok(Async::Ready(Some(next_block))) => {
                             state = BlockStreamState::YieldingBlocks(next_blocks);
                             break Async::Ready(Some(next_block));
                         }
 
                         // Done yielding blocks
-                        Async::Ready(None) => {
+                        Ok(Async::Ready(None)) => {
+                            // Reset error count
+                            self.consecutive_err_count = 0;
+
                             // Restart reconciliation until more blocks or done
                             let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());
                             state = BlockStreamState::Reconciliation(next_blocks_future);
@@ -665,10 +691,28 @@ where
                             continue;
                         }
 
-                        Async::NotReady => {
+                        Ok(Async::NotReady) => {
                             // Nothing to change or yield yet
                             state = BlockStreamState::YieldingBlocks(next_blocks);
                             break Async::NotReady;
+                        }
+
+                        Err(e) => {
+                            self.consecutive_err_count += 1;
+
+                            // If too many errors without progress, give up
+                            if self.consecutive_err_count >= 10 {
+                                return Err(e);
+                            }
+
+                            warn!(self.ctx.logger, "Trying again after error yielding blocks to block stream: {}", e);
+
+                            // Try again by restarting reconciliation
+                            let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());
+                            state = BlockStreamState::Reconciliation(next_blocks_future);
+
+                            // Poll the next_blocks() future
+                            continue;
                         }
                     }
                 }
