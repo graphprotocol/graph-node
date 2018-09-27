@@ -23,7 +23,7 @@ impl<T> SubgraphRegistry<T> {
         }
     }
 
-    pub fn resolve_by<U, F: FnOnce(&T) -> U>(&self, id_or_name: &String, by: F) -> Option<U> {
+    pub fn resolve_map<U, F: FnOnce(&T) -> U>(&self, id_or_name: &String, by: F) -> Option<U> {
         let names_to_ids = self.names_to_ids.read().unwrap();
         let ids_to_values = self.ids_to_values.read().unwrap();
 
