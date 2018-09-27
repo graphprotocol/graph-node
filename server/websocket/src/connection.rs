@@ -253,7 +253,7 @@ where
 
                     // Respond with a GQL_ERROR if the subgraph name or ID is unknown
                     let schema = if let Some(schema) =
-                        subgraphs.resolve_by(&subgraph, |s| s.schema.clone())
+                        subgraphs.resolve_map(&subgraph, |s| s.schema.clone())
                     {
                         schema
                     } else {
