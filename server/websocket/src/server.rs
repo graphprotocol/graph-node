@@ -166,8 +166,8 @@ where
                             let (connection, guard) = service.into_future().cancelable(move || {
                                 debug!(
                                     logger,
-                                    "Canceling subscriptions for subgraph `{}`", cancel_subgraph
-                                );
+                                    "Canceling subscriptions"; "subgraph" => &cancel_subgraph
+                                )
                             });
                             subgraphs.mutate(&subgraph, |subgraph| {
                                 subgraph.connection_guards.push(guard)
