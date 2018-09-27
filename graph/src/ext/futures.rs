@@ -17,9 +17,10 @@ impl<S: Stream, C: Fn() -> S::Error> Stream for Cancelable<S, C> {
     type Error = S::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        // Error if the stream was canceled, otherwise poll it.
+        // Error if the stream was canceled by dropping the sender.
         if self.canceled.poll().is_err() {
             Err((self.on_cancel)())
+        // Otherwise poll it.
         } else {
             self.cancelable.poll()
         }
@@ -31,9 +32,10 @@ impl<F: Future, C: Fn() -> F::Error> Future for Cancelable<F, C> {
     type Error = F::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        // Error if the future was canceled, otherwise poll it.
+        // Error if the future was canceled by dropping the sender.
         if self.canceled.poll().is_err() {
             Err((self.on_cancel)())
+        // Otherwise poll it.
         } else {
             self.cancelable.poll()
         }
