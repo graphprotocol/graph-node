@@ -657,7 +657,10 @@ where
                                 return Err(e);
                             }
 
-                            warn!(self.ctx.logger, "Trying again after error in block stream reconcile: {}", e);
+                            warn!(
+                                self.ctx.logger,
+                                "Trying again after error in block stream reconcile: {}", e
+                            );
 
                             // Try again by restarting reconciliation
                             let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());
@@ -705,7 +708,10 @@ where
                                 return Err(e);
                             }
 
-                            warn!(self.ctx.logger, "Trying again after error yielding blocks to block stream: {}", e);
+                            warn!(
+                                self.ctx.logger,
+                                "Trying again after error yielding blocks to block stream: {}", e
+                            );
 
                             // Try again by restarting reconciliation
                             let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());

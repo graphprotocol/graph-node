@@ -25,8 +25,6 @@ use itertools::Itertools;
 use reqwest::Client;
 use std::env;
 use std::net::ToSocketAddrs;
-use std::str::FromStr;
-use std::sync::Mutex;
 use std::time::Duration;
 use url::Url;
 
@@ -225,6 +223,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     ));
 
     // Ask Ethereum node for network identifiers
+    info!(logger, "Connecting to Ethereum...");
     let eth_net_identifiers = match ethereum.net_identifiers().wait() {
         Ok(net) => {
             info!(logger, "Connected to Ethereum node.");

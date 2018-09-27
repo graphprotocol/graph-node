@@ -378,8 +378,7 @@ where
             .and_then(|entity| {
                 let entity = EntityOperation::apply_all(Some(entity), &matching_operations);
                 Ok(entity.map(|entity| RuntimeValue::from(self.heap.asc_new(&entity))))
-            })
-            .or(Ok(Some(RuntimeValue::from(0))))
+            }).or(Ok(Some(RuntimeValue::from(0))))
     }
 
     /// function ethereum.call(call: SmartContractCall): Array<Token>
