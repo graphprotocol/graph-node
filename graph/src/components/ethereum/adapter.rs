@@ -35,7 +35,7 @@ pub struct EthereumContractState {
 #[derive(Clone, Debug)]
 pub struct EthereumContractCall {
     pub address: Address,
-    pub block_id: BlockId,
+    pub block_ptr: EthereumBlockPointer,
     pub function: Function,
     pub args: Vec<Token>,
 }

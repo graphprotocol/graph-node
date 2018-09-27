@@ -179,10 +179,10 @@ where
     }
 
     fn call(
-        eth: Eth<T>,
+        &self,
         contract_address: Address,
         call_data: Bytes,
-        block_number: Option<BlockNumber>,
+        block_number_opt: Option<BlockNumber>,
     ) -> impl Future<Item = Bytes, Error = web3::Error> {
         let req = CallRequest {
             from: None,
@@ -192,7 +192,7 @@ where
             value: None,
             data: Some(call_data),
         };
-        eth.call(req, block_number)
+        self.eth_client.eth().call(req, block_number_opt)
     }
 }
 
@@ -384,42 +384,22 @@ where
             }
         }
 
-        // Obtain a handle on the Ethereum client
-        let eth_client = self.eth_client.clone();
-
-        // Prepare for the function call, encoding the call parameters according
-        // to the ABI
-        let call_address = call.address;
+        // Encode the call parameters according to the ABI
         let call_data = call.function.encode_input(&call.args).unwrap();
-        let block_id = call.block_id.clone();
 
         Box::new(
-            // Resolve the block ID into a block number
-            eth_client.eth().block(block_id.clone())
-                .map_err(EthereumContractCallError::from)
-                .and_then(move |block_opt| {
-                    block_opt.ok_or(EthereumContractCallError::Error(
-                        format_err!("could not find block with id {:?}", block_id)
-                    ))
-                })
-                .and_then(move |block| {
-                    // Make the actual function call
-                    Self::call(
-                        eth_client.eth(),
-                        call_address,
-                        Bytes(call_data),
-                        block
-                            .number
-                            .map(|number| number.as_u64())
-                            .map(BlockNumber::Number),
-                    ).map_err(EthereumContractCallError::from)
-                })
+            // Make the actual function call
+            self.call(
+                call.address,
+                Bytes(call_data),
+                Some(call.block_ptr.number.into()),
+            ).map_err(EthereumContractCallError::from)
+            .and_then(move |output| {
                 // Decode the return values according to the ABI
-                .and_then(move |output| {
-                    call.function
-                        .decode_output(&output.0)
-                        .map_err(EthereumContractCallError::from)
-                }),
+                call.function
+                    .decode_output(&output.0)
+                    .map_err(EthereumContractCallError::from)
+            }),
         )
     }
 }

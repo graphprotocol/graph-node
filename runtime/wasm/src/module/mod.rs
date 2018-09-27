@@ -175,7 +175,7 @@ where
             heap: heap.clone(),
             ethereum_adapter: config.ethereum_adapter.clone(),
             link_resolver: config.link_resolver.clone(),
-            block_hash: H256::zero(),
+            block: None,
             store: config.store.clone(),
             entity_operations: None,
             task_sink,
@@ -202,10 +202,7 @@ where
         params: Vec<LogParam>,
         entity_operations: Vec<EntityOperation>,
     ) -> Result<Vec<EntityOperation>, FailureError> {
-        self.externals.block_hash = block
-            .block
-            .hash
-            .expect("encountered Ethereum block without hash");
+        self.externals.block = Some(block.clone());
 
         // Create new vector for entity operations generated while handling this event
         self.externals.entity_operations = Some(entity_operations);
@@ -264,8 +261,8 @@ pub struct HostExternals<T, L, S, U> {
     heap: WasmiAscHeap,
     ethereum_adapter: Arc<T>,
     link_resolver: Arc<L>,
-    // Block hash of the event being mapped.
-    block_hash: H256,
+    // Block containing the event being mapped.
+    block: Option<Arc<EthereumBlock>>,
     store: Arc<S>,
     // Entity operations collected while handling events
     entity_operations: Option<Vec<EntityOperation>>,
@@ -286,7 +283,6 @@ where
         id_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<AscEntity>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let block_hash: H256 = self.block_hash.clone();
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
@@ -309,7 +305,6 @@ where
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let block_hash: H256 = self.block_hash.clone();
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
 
@@ -416,7 +411,12 @@ where
 
         let call = EthereumContractCall {
             address: unresolved_call.contract_address.clone(),
-            block_id: BlockId::Hash(self.block_hash.clone()),
+            block_ptr: self
+                .block
+                .as_ref()
+                .expect("HostExternals is missing block")
+                .deref()
+                .into(),
             function: function.clone(),
             args: unresolved_call.function_args.clone(),
         };
