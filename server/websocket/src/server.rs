@@ -2,11 +2,10 @@ use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::{handshake::server::Request, Error as WsError};
 
-use graph::extension::CancelGuard;
 use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
 use graph::tokio::net::TcpListener;
 use graph_graphql::prelude::api_schema;
