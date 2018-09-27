@@ -31,7 +31,7 @@ pub mod data;
 pub mod util;
 
 /// Extension traits for external types.
-pub mod extension;
+pub mod ext;
 
 /// A prelude that makes all system component traits and data types available.
 ///
@@ -82,5 +82,5 @@ pub mod prelude {
     pub use data::subscription::{
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
     };
-    pub use extension::{FutureExtension, StreamExtension};
+    pub use ext::futures::{CancelGuard, FutureExtension, SharedCancelGuard, StreamExtension};
 }
