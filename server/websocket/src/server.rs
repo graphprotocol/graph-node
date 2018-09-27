@@ -163,7 +163,7 @@ where
                             );
 
                             let cancel_subgraph = subgraph.clone();
-                            let (service, guard) = service.into_future().cancelable(move || {
+                            let (connection, guard) = service.into_future().cancelable(move || {
                                 debug!(
                                     logger,
                                     "Canceling subscriptions for subgraph `{}`", cancel_subgraph
@@ -172,7 +172,7 @@ where
                             subgraphs.mutate(&subgraph, |subgraph| {
                                 subgraph.connection_guards.push(guard)
                             });
-                            tokio::spawn(service);
+                            tokio::spawn(connection);
                         }
                         Err(e) => {
                             // We gracefully skip over failed connection attempts rather
