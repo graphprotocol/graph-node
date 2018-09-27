@@ -2,6 +2,9 @@ use futures::sync::oneshot;
 use std::sync::{Arc, Mutex};
 use tokio::prelude::{Future, Poll, Stream};
 
+/// A cancelable stream or future.
+///
+/// It can be canceled through the corresponding `CancelGuard`.
 pub struct Cancelable<T, C> {
     cancelable: T,
     canceled: oneshot::Receiver<()>,
