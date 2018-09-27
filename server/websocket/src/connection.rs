@@ -1,6 +1,6 @@
 use futures::future::IntoFuture;
 use futures::stream::SplitStream;
-use futures::sync::{mpsc, oneshot};
+use futures::sync::mpsc;
 use graphql_parser::parse_query;
 use std::collections::HashMap;
 use std::iter::FromIterator;
@@ -93,23 +93,15 @@ fn send_error_string(
 /// Responsible for recording operation ids and stopping them.
 /// On drop, cancels all operations.
 struct Operations {
-    operations: HashMap<String, oneshot::Sender<()>>,
+    operations: HashMap<String, CancelGuard>,
     msg_sink: mpsc::UnboundedSender<WsMessage>,
-    connection_id: String,
-    logger: Logger,
 }
 
 impl Operations {
-    fn new(
-        logger: Logger,
-        connection_id: String,
-        msg_sink: mpsc::UnboundedSender<WsMessage>,
-    ) -> Self {
+    fn new(msg_sink: mpsc::UnboundedSender<WsMessage>) -> Self {
         Self {
             operations: HashMap::new(),
             msg_sink,
-            connection_id,
-            logger,
         }
     }
 
@@ -117,17 +109,8 @@ impl Operations {
         self.operations.contains_key(id)
     }
 
-    fn insert(&mut self, id: String) -> impl Future<Item = (), Error = ()> {
-        // Create a oneshot channel to stop the subscription later.
-        let (stopper, stopped) = oneshot::channel();
-        self.operations.insert(id.clone(), stopper);
-        let logger = self.logger.clone();
-        let connection_id = self.connection_id.clone();
-        stopped.map_err(move |_| {
-            debug!(logger, "Stopped operation";
-                           "connection" => connection_id,
-                           "id" => id)
-        })
+    fn insert(&mut self, id: String, guard: CancelGuard) {
+        self.operations.insert(id, guard);
     }
 
     fn stop(&mut self, operation_id: String) -> Result<(), WsError> {
@@ -135,7 +118,7 @@ impl Operations {
         match self.operations.remove(&operation_id) {
             Some(stopper) => {
                 // Cancel the subscription result stream.
-                drop(stopper);
+                stopper.cancel();
 
                 // Send a GQL_COMPLETE to indicate the operation is been completed.
                 send_message(
@@ -206,8 +189,7 @@ where
         subgraph: String,
         graphql_runner: Arc<Q>,
     ) -> impl Future<Item = (), Error = WsError> {
-        let mut operations =
-            Operations::new(logger.clone(), connection_id.clone(), msg_sink.clone());
+        let mut operations = Operations::new(msg_sink.clone());
 
         // Process incoming messages as long as the WebSocket is open
         ws_stream.for_each(move |ws_msg| {
@@ -288,9 +270,6 @@ where
                         },
                     };
 
-                    // Get a `stopped` handle for this subscription.
-                    let stopped = operations.insert(id.clone());
-
                     debug!(logger, "Start operation";
                            "connection" => &connection_id,
                            "id" => &id);
@@ -301,37 +280,38 @@ where
                     let result_sink = msg_sink.clone();
                     let result_id = id.clone();
                     let err_id = id.clone();
-                    tokio::spawn(
-                        stopped
-                            .select(
-                                graphql_runner
-                                    .run_subscription(subscription)
-                                    .map_err(move |e| {
-                                        // Send errors back to the client as GQL_DATA
-                                        match e {
-                                            SubscriptionError::GraphQLError(e) => {
-                                                let result = QueryResult::from(e);
-                                                let msg = OutgoingMessage::from_query_result(
-                                                    err_id.clone(),
-                                                    result,
-                                                );
-                                                error_sink.unbounded_send(msg.into()).unwrap();
-                                            }
-                                        };
-                                    }).and_then(move |result_stream| {
-                                        // Send results back to the client as GQL_DATA
-                                        result_stream
-                                            .map(move |result| {
-                                                OutgoingMessage::from_query_result(
-                                                    result_id.clone(),
-                                                    result,
-                                                )
-                                            }).map(WsMessage::from)
-                                            .forward(result_sink.sink_map_err(|_| ()))
-                                    }).and_then(|_| Ok(())),
-                            ).then(|_| Ok(())),
-                    );
+                    let run_subscription = graphql_runner
+                        .run_subscription(subscription)
+                        .map_err(move |e| {
+                            // Send errors back to the client as GQL_DATA
+                            match e {
+                                SubscriptionError::GraphQLError(e) => {
+                                    let result = QueryResult::from(e);
+                                    let msg =
+                                        OutgoingMessage::from_query_result(err_id.clone(), result);
+                                    error_sink.unbounded_send(msg.into()).unwrap();
+                                }
+                            };
+                        }).and_then(move |result_stream| {
+                            // Send results back to the client as GQL_DATA
+                            result_stream
+                                .map(move |result| {
+                                    OutgoingMessage::from_query_result(result_id.clone(), result)
+                                }).map(WsMessage::from)
+                                .forward(result_sink.sink_map_err(|_| ()))
+                                .map(|_| ())
+                        });
 
+                    let logger = logger.clone();
+                    let cancel_id = id.clone();
+                    let connection_id = connection_id.clone();
+                    let (run_subscription, guard) = run_subscription.cancelable(move || {
+                        debug!(logger, "Stopped operation";
+                                       "connection" => &connection_id,
+                                       "id" => &cancel_id)
+                    });
+                    operations.insert(id, guard);
+                    tokio::spawn(run_subscription);
                     Ok(())
                 }
             }
