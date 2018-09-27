@@ -19,6 +19,7 @@ extern crate slog_async;
 extern crate slog_term;
 extern crate tiny_keccak;
 pub extern crate tokio;
+extern crate tokio_retry;
 pub extern crate web3;
 
 /// Traits and types for all system components.
@@ -88,4 +89,5 @@ pub mod prelude {
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
     };
     pub use ext::futures::{CancelGuard, FutureExtension, SharedCancelGuard, StreamExtension};
+    pub use util::futures::with_retry;
 }
