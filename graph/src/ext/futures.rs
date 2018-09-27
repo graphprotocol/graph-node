@@ -69,7 +69,7 @@ impl SharedCancelGuard {
     }
 
     pub fn is_canceled(&self) -> bool {
-        self.guard.lock().unwrap().is_some()
+        self.guard.lock().unwrap().is_none()
     }
 }
 
