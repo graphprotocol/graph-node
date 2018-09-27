@@ -3,8 +3,6 @@ use futures::prelude::*;
 use graph::ethabi::Token;
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Duration;
-use std::time::Instant;
 
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::*;
@@ -18,7 +16,7 @@ pub struct EthereumAdapterConfig<T: web3::Transport> {
 
 #[derive(Clone)]
 pub struct EthereumAdapter<T: web3::Transport> {
-    eth_client: Arc<Web3<T>>,
+    web3: Arc<Web3<T>>,
     logger: Logger,
 }
 
@@ -35,7 +33,7 @@ where
 {
     pub fn new(logger: &Logger, config: EthereumAdapterConfig<T>) -> Self {
         EthereumAdapter {
-            eth_client: Arc::new(Web3::new(config.transport)),
+            web3: Arc::new(Web3::new(config.transport)),
             logger: logger.new(o!("component" => "EthereumAdapter")),
         }
     }
@@ -47,28 +45,30 @@ where
         event_signatures: Vec<H256>,
     ) -> impl Future<Item = Vec<Log>, Error = Error> {
         let eth_adapter = self.clone();
-        with_retry(self.logger.clone(), move || {
-            // Create a log filter
-            let log_filter: Filter = FilterBuilder::default()
-                .from_block(from.into())
-                .to_block(to.into())
-                .topics(Some(event_signatures.clone()), None, None, None)
-                .build();
+        with_retry(
+            self.logger.clone(),
+            "eth_getLogs RPC call".to_owned(),
+            move || {
+                // Create a log filter
+                let log_filter: Filter = FilterBuilder::default()
+                    .from_block(from.into())
+                    .to_block(to.into())
+                    .topics(Some(event_signatures.clone()), None, None, None)
+                    .build();
 
-            // Request logs from client
-            let logger = eth_adapter.logger.clone();
-            Box::new(
+                // Request logs from client
+                let logger = eth_adapter.logger.clone();
                 eth_adapter
-                    .eth_client
+                    .web3
                     .eth()
                     .logs(log_filter)
                     .map(move |logs| {
                         debug!(logger, "Received logs for [{}, {}].", from, to);
                         logs
                     }).map_err(SyncFailure::new)
-                    .from_err(),
-            )
-        })
+                    .from_err()
+            },
+        )
     }
 
     fn log_stream(
@@ -183,16 +183,27 @@ where
         contract_address: Address,
         call_data: Bytes,
         block_number_opt: Option<BlockNumber>,
-    ) -> impl Future<Item = Bytes, Error = web3::Error> {
-        let req = CallRequest {
-            from: None,
-            to: contract_address,
-            gas: None,
-            gas_price: None,
-            value: None,
-            data: Some(call_data),
-        };
-        self.eth_client.eth().call(req, block_number_opt)
+    ) -> impl Future<Item = Bytes, Error = Error> {
+        let web3 = self.web3.clone();
+
+        with_retry(
+            self.logger.clone(),
+            "eth_call RPC call".to_owned(),
+            move || {
+                let req = CallRequest {
+                    from: None,
+                    to: contract_address,
+                    gas: None,
+                    gas_price: None,
+                    value: None,
+                    data: Some(call_data.clone()),
+                };
+                web3.eth()
+                    .call(req, block_number_opt)
+                    .map_err(SyncFailure::new)
+                    .from_err()
+            },
+        )
     }
 }
 
@@ -204,25 +215,31 @@ where
     fn net_identifiers(
         &self,
     ) -> Box<Future<Item = EthereumNetworkIdentifiers, Error = Error> + Send> {
-        let net_version_future = self
-            .eth_client
-            .net()
-            .version()
-            .map_err(SyncFailure::new)
-            .from_err();
-        let gen_block_hash_future = self
-            .eth_client
-            .eth()
-            .block(BlockNumber::Earliest.into())
-            .map_err(SyncFailure::new)
-            .from_err()
-            .and_then(|gen_block_opt| {
-                future::result(
-                    gen_block_opt
-                        .ok_or(format_err!("Ethereum node could not find genesis block"))
-                        .map(|gen_block| gen_block.hash.unwrap()),
-                )
-            });
+        let web3 = self.web3.clone();
+        let net_version_future = with_retry(
+            self.logger.clone(),
+            "net_version RPC call".to_owned(),
+            move || web3.net().version().map_err(SyncFailure::new).from_err(),
+        );
+
+        let web3 = self.web3.clone();
+        let gen_block_hash_future = with_retry(
+            self.logger.clone(),
+            "eth_getBlockByNumber(0, false) RPC call".to_owned(),
+            move || {
+                web3.eth()
+                    .block(BlockNumber::Earliest.into())
+                    .map_err(SyncFailure::new)
+                    .from_err()
+                    .and_then(|gen_block_opt| {
+                        future::result(
+                            gen_block_opt
+                                .ok_or(format_err!("Ethereum node could not find genesis block"))
+                                .map(|gen_block| gen_block.hash.unwrap()),
+                        )
+                    })
+            },
+        );
 
         Box::new(net_version_future.join(gen_block_hash_future).map(
             |(net_version, genesis_block_hash)| EthereumNetworkIdentifiers {
@@ -236,24 +253,37 @@ where
         &self,
         block_hash: H256,
     ) -> Box<Future<Item = Option<EthereumBlock>, Error = Error> + Send> {
-        let eth_client = self.eth_client.clone();
+        let web3 = self.web3.clone();
+        let logger = self.logger.clone();
 
-        Box::new(
-            eth_client
-                .eth()
-                .block_with_txs(BlockId::Hash(block_hash))
-                .map_err(SyncFailure::new)
-                .from_err()
-                .and_then(move |block_opt| {
-                    block_opt.map(move |block| {
-                        let receipt_futures = block
-                            .transactions
-                            .iter()
-                            .map(move |tx| {
-                                let tx_hash = tx.hash;
+        let block_future = with_retry(
+            logger.clone(),
+            "eth_getBlockByHash RPC call".to_owned(),
+            move || {
+                web3.eth()
+                    .block_with_txs(BlockId::Hash(block_hash))
+                    .map_err(SyncFailure::new)
+                    .from_err()
+            },
+        );
 
-                                eth_client
-                                    .eth()
+        let web3 = self.web3.clone();
+        Box::new(block_future.and_then(move |block_opt| {
+            let web3 = web3.clone();
+
+            block_opt.map(move |block| {
+                let receipt_futures = block
+                    .transactions
+                    .iter()
+                    .map(move |tx| {
+                        let tx_hash = tx.hash;
+                        let web3 = web3.clone();
+
+                        with_retry(
+                            logger.clone(),
+                            "eth_getTransactionReceipt RPC call".to_owned(),
+                            move || {
+                                web3.eth()
                                     .transaction_receipt(tx_hash)
                                     .map_err(SyncFailure::new)
                                     .from_err()
@@ -265,53 +295,52 @@ where
                                             )
                                         })
                                     })
-                            }).collect::<Vec<_>>();
-
-                        stream::futures_ordered(receipt_futures).collect().map(
-                            move |transaction_receipts| EthereumBlock {
-                                block,
-                                transaction_receipts,
                             },
                         )
-                    })
-                }),
-        )
+                    }).collect::<Vec<_>>();
+
+                stream::futures_ordered(receipt_futures).collect().map(
+                    move |transaction_receipts| EthereumBlock {
+                        block,
+                        transaction_receipts,
+                    },
+                )
+            })
+        }))
     }
 
     fn block_hash_by_block_number(
         &self,
         block_number: u64,
     ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
-        Box::new(
-            self.eth_client
-                .eth()
-                .block(BlockId::Number(block_number.into()))
-                .map_err(SyncFailure::new)
-                .from_err()
-                .map(|block_opt| block_opt.map(|block| block.hash.unwrap())),
-        )
+        let web3 = self.web3.clone();
+
+        Box::new(with_retry(
+            self.logger.clone(),
+            "eth_getBlockByNumber RPC call".to_owned(),
+            move || {
+                web3.eth()
+                    .block(BlockId::Number(block_number.into()))
+                    .map_err(SyncFailure::new)
+                    .from_err()
+                    .map(|block_opt| block_opt.map(|block| block.hash.unwrap()))
+            },
+        ))
     }
 
     fn is_on_main_chain(
         &self,
         block_ptr: EthereumBlockPointer,
     ) -> Box<Future<Item = bool, Error = Error> + Send> {
-        Box::new(
-            self.eth_client
-                .eth()
-                .block(BlockId::Number(block_ptr.number.into()))
-                .map_err(SyncFailure::new)
-                .from_err()
-                .and_then(move |block_opt| {
-                    let block_hash = block_opt
-                        .ok_or(format_err!(
-                            "Ethereum node is missing block #{}",
-                            block_ptr.number
-                        ))?.hash
-                        .unwrap();
-                    Ok(block_hash == block_ptr.hash)
-                }),
-        )
+        Box::new(self.block_hash_by_block_number(block_ptr.number).and_then(
+            move |block_hash_opt| {
+                block_hash_opt
+                    .ok_or(format_err!(
+                        "Ethereum node is missing block #{}",
+                        block_ptr.number
+                    )).map(|block_hash| block_hash == block_ptr.hash)
+            },
+        ))
     }
 
     fn find_first_blocks_with_logs(
@@ -402,43 +431,4 @@ where
             }),
         )
     }
-}
-
-fn with_retry<'a, I, T>(
-    logger: Logger,
-    try_it: T,
-) -> Box<Future<Item = I, Error = Error> + Send + 'a>
-where
-    I: Send + 'a,
-    T: Fn() -> Box<Future<Item = I, Error = Error> + Send + 'a> + Send + 'a,
-{
-    Box::new(future::loop_fn((), move |()| {
-        let logger = logger.clone();
-
-        let mut retries_left = 10;
-        try_it()
-            .deadline(Instant::now() + Duration::from_secs(30))
-            .then(move |result| match result {
-                Ok(ret) => Ok(future::Loop::Break(ret)),
-                Err(deadline_err) => match deadline_err.into_inner() {
-                    Some(e) => {
-                        if retries_left > 0 {
-                            warn!(logger, "Ethereum RPC call failed: {}", e);
-                            warn!(logger, "Retrying...");
-                            retries_left -= 1;
-                            Ok(future::Loop::Continue(()))
-                        } else {
-                            Err(e)
-                        }
-                    }
-                    None => {
-                        info!(
-                            logger,
-                            "Ethereum RPC call is taking more than 30 seconds. Retrying..."
-                        );
-                        Ok(future::Loop::Continue(()))
-                    }
-                },
-            })
-    }))
 }
