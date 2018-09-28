@@ -123,7 +123,7 @@ fn mock_data_source(path: &str) -> DataSource {
         kind: String::from("ethereum/contract"),
         name: String::from("example data source"),
         source: Source {
-            address: Address::from_str("0123123123").unwrap(),
+            address: Address::from_str("0123123123012312312301231231230123123123").unwrap(),
             abi: String::from("123123"),
         },
         mapping: Mapping {
