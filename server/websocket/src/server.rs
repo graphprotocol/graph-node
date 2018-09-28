@@ -162,16 +162,20 @@ where
                                 graphql_runner.clone(),
                             );
 
+                            // Setup cancelation.
+                            let mut guard = CancelGuard::new();
                             let cancel_subgraph = subgraph.clone();
-                            let (connection, guard) = service.into_future().cancelable(move || {
-                                debug!(
-                                    logger,
-                                    "Canceling subscriptions"; "subgraph" => &cancel_subgraph
-                                )
-                            });
+                            let connection =
+                                service.into_future().cancelable(&mut guard, move || {
+                                    debug!(
+                                        logger,
+                                        "Canceling subscriptions"; "subgraph" => &cancel_subgraph
+                                    )
+                                });
                             subgraphs.mutate(&subgraph, |subgraph| {
                                 subgraph.connection_guards.push(guard)
                             });
+
                             tokio::spawn(connection);
                         }
                         Err(e) => {

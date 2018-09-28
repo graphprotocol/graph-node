@@ -302,15 +302,18 @@ where
                                 .map(|_| ())
                         });
 
+                    // Setup cancelation.
+                    let mut guard = CancelGuard::new();
                     let logger = logger.clone();
                     let cancel_id = id.clone();
                     let connection_id = connection_id.clone();
-                    let (run_subscription, guard) = run_subscription.cancelable(move || {
+                    let run_subscription = run_subscription.cancelable(&mut guard, move || {
                         debug!(logger, "Stopped operation";
                                        "connection" => &connection_id,
                                        "id" => &cancel_id)
                     });
                     operations.insert(id, guard);
+
                     tokio::spawn(run_subscription);
                     Ok(())
                 }
