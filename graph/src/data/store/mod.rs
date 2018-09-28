@@ -51,7 +51,19 @@ impl Value {
                     .map(|value| Self::from_query_value(value, &NamedType(n.to_string())))
                     .collect(),
             ),
-
+            (query::Value::Enum(e), NamedType(n)) => {
+                // Check if `ty` is a custom scalar type, otherwise assume it's
+                // just a string.
+                match n.as_str() {
+                    BYTES_SCALAR => {
+                        Value::Bytes(scalar::Bytes::from_str(e).expect("Value is not a hex string"))
+                    }
+                    BIG_INT_SCALAR => {
+                        Value::BigInt(scalar::BigInt::from_str(e).expect("Value is not a number"))
+                    }
+                    _ => Value::String(e.clone()),
+                }
+            }
             (query::Value::String(s), NamedType(n)) => {
                 // Check if `ty` is a custom scalar type, otherwise assume it's
                 // just a string.
@@ -74,7 +86,7 @@ impl Value {
             (query::Value::Float(f), _) => Value::Float(f.to_owned() as f32),
             (query::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
             (query::Value::Null, _) => Value::Null,
-            _ => unimplemented!(),
+            _ => Value::Null,
         }
     }
 }
