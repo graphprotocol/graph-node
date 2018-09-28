@@ -266,6 +266,8 @@ where
         // are chained on after that block.
         // Eventually, the probability is so low, that a block is effectively permanent.
         // The "effectively permanent" part is what makes blockchains useful.
+        // See here for more discussion:
+        // https://blog.ethereum.org/2016/05/09/on-settlement-finality/
         //
         // Accordingly, if the subgraph ptr is really far behind the head ptr, then we can
         // trust that the Ethereum node knows what the real, permanent block is for that block
