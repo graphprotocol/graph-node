@@ -127,10 +127,7 @@ fn list_values(value: Value) -> Result<Vec<Value>, QueryExecutionError> {
                     if root_discriminant == current_discriminant {
                         Ok(value.clone())
                     } else {
-                        Err(QueryExecutionError::ListTypesError(
-                            root_discriminant,
-                            current_discriminant,
-                        ))
+                        Err(QueryExecutionError::ListTypesError())
                     }
                 }).collect::<Result<Vec<_>, _>>()
         }
