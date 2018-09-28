@@ -2,7 +2,6 @@ use failure::Error;
 use futures::Stream;
 
 use prelude::*;
-use web3::types::{Block, Log, Transaction, TransactionReceipt, H256};
 
 pub trait BlockStream:
     Stream<Item = EthereumBlock, Error = Error> + EventConsumer<ChainHeadUpdate>

@@ -3,7 +3,7 @@ use futures::prelude::*;
 use std::sync::Arc;
 
 use prelude::*;
-use web3::types::{Block, Log, Transaction};
+use web3::types::{Log, Transaction};
 
 /// Represents a loaded instance of a subgraph.
 pub trait SubgraphInstance<T>

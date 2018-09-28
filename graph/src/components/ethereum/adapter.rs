@@ -1,6 +1,6 @@
-use ethabi::{Bytes, Error as ABIError, Event, Function, LogParam, ParamType, Token};
+use ethabi::{Bytes, Error as ABIError, Function, ParamType, Token};
 use failure::{Error, SyncFailure};
-use futures::{Future, Stream};
+use futures::Future;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use web3::error::Error as Web3Error;
