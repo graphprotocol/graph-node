@@ -36,7 +36,7 @@ pub enum QueryExecutionError {
     BuildRangeTypeError,
     BuildFilterError,
     EntityAttributeError,
-    ListTypesError(Discriminant<Value>, Discriminant<Value>),
+    ListTypesError(),
     ListFilterError,
 }
 
@@ -115,7 +115,7 @@ impl fmt::Display for QueryExecutionError {
             QueryExecutionError::EntityAttributeError => {
                 write!(f, "Attribute does not belong to entity")
             }
-            QueryExecutionError::ListTypesError(t, d) => {
+            QueryExecutionError::ListTypesError() => {
                 write!(f, "List field contains inconsistent Value types")
             }
             QueryExecutionError::ListFilterError => write!(
