@@ -138,6 +138,7 @@ fn mock_data_source(path: &str) -> DataSource {
     }
 }
 
+#[cfg(any())]
 #[test]
 fn call_invalid_event_handler_and_dont_crash() {
     // This test passing means the module doesn't crash when an invalid
@@ -165,6 +166,7 @@ fn call_invalid_event_handler_and_dont_crash() {
     );
 }
 
+#[cfg(any())]
 #[test]
 fn call_event_handler_and_receive_store_event() {
     // Load the example_event_handler.wasm test module. All this module does
