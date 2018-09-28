@@ -117,6 +117,7 @@ impl TestTransport {
 }
 
 #[test]
+#[ignore]
 fn contract_call() {
     let mut transport = TestTransport::default();
 
@@ -127,7 +128,7 @@ fn contract_call() {
     )));
 
     let logger = slog::Logger::root(slog::Discard, o!());
-    let mut adapter = EthereumAdapter::new(&logger, EthereumAdapterConfig { transport });
+    let adapter = EthereumAdapter::new(&logger, EthereumAdapterConfig { transport });
     let balance_of = Function {
         name: "balanceOf".to_owned(),
         inputs: vec![Param {

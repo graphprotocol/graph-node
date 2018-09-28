@@ -8,6 +8,7 @@ extern crate graph_store_postgres;
 use diesel::pg::PgConnection;
 use diesel::*;
 use std::fmt::Debug;
+use std::mem;
 use std::panic;
 use std::sync::Mutex;
 
@@ -31,9 +32,10 @@ lazy_static! {
 }
 
 /// Test harness for running database integration tests.
+#[cfg(any())]
 fn run_test<R, F>(test: F) -> ()
 where
-    F: FnOnce() -> R + Send + 'static,
+    F: FnOnce(Arc<DieselStore>) -> R + Send + 'static,
     R: IntoFuture + Send + 'static,
     R::Item: Send,
     R::Error: Send + Debug,
@@ -45,17 +47,33 @@ where
         Err(err) => err.into_inner(),
     };
 
+    // Set up Store
+    let logger = Logger::root(slog::Discard, o!());
+    let url = postgres_test_url();
+    let net_identifiers = EthereumNetworkIdentifiers {
+        net_version: "graph test suite".to_owned(),
+        genesis_block_hash: H256::random(),
+    };
+    let network_name = "fake_network".to_owned();
+    let store = Arc::new(DieselStore::new(
+        StoreConfig { url, network_name },
+        &logger,
+        net_identifiers,
+    ));
+
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
 
     runtime
-        .block_on(future::lazy(|| {
-            insert_test_data();
+        .block_on(future::lazy(move || {
+            insert_test_data(store.clone());
             future::ok::<_, ()>(())
         })).expect("Failed to insert test data");
 
-    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        runtime.block_on(future::lazy(|| test()))
+    let result = panic::catch_unwind(panic::AssertUnwindSafe(move || {
+        runtime.block_on(future::lazy(move || test(store.clone())))
     }));
+
+    mem::drop(store);
 
     runtime
         .block_on(future::lazy(|| {
@@ -96,11 +114,8 @@ fn create_test_entity(
 }
 
 /// Inserts test data into the store.
-fn insert_test_data() {
-    let logger = Logger::root(slog::Discard, o!());
-    let url = postgres_test_url();
-    let mut store = DieselStore::new(StoreConfig { url }, &logger);
-
+#[cfg(any())]
+fn insert_test_data(store: Arc<DieselStore>) {
     let test_entity_1 = create_test_entity(
         String::from("1"),
         String::from("user"),
@@ -170,12 +185,10 @@ fn remove_test_data() {
 }
 
 #[test]
+#[cfg(any())]
 fn delete_entity() {
-    run_test(|| -> Result<(), ()> {
+    run_test(|store| -> Result<(), ()> {
         use db_schema::entities::dsl::*;
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let mut store = DieselStore::new(StoreConfig { url }, &logger);
 
         let test_key = StoreKey {
             subgraph: String::from("test_subgraph"),
@@ -199,12 +212,9 @@ fn delete_entity() {
 }
 
 #[test]
+#[cfg(any())]
 fn get_entity() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
-
+    run_test(|store| -> Result<(), ()> {
         let key = StoreKey {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -230,13 +240,10 @@ fn get_entity() {
 }
 
 #[test]
+#[cfg(any())]
 fn insert_entity() {
-    run_test(|| -> Result<(), ()> {
+    run_test(|store| -> Result<(), ()> {
         use db_schema::entities::dsl::*;
-
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let mut store = DieselStore::new(StoreConfig { url }, &logger);
 
         let test_entity_1 = create_test_entity(
             String::from("7"),
@@ -264,12 +271,9 @@ fn insert_entity() {
 }
 
 #[test]
+#[cfg(any())]
 fn update_existing() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let mut store = DieselStore::new(StoreConfig { url }, &logger);
-
+    run_test(|store| -> Result<(), ()> {
         let entity_key = StoreKey {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -303,12 +307,9 @@ fn update_existing() {
 }
 
 #[test]
+#[cfg(any())]
 fn partially_update_existing() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let mut store = DieselStore::new(StoreConfig { url }, &logger);
-
+    run_test(|store| -> Result<(), ()> {
         let entity_key = StoreKey {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -350,11 +351,9 @@ fn partially_update_existing() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_contains() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -378,11 +377,9 @@ fn find_string_contains() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_equal() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -406,11 +403,9 @@ fn find_string_equal() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_not_equal() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -438,11 +433,9 @@ fn find_string_not_equal() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_greater_than() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -470,11 +463,9 @@ fn find_string_greater_than() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_less_than() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -502,11 +493,9 @@ fn find_string_less_than() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_less_than_order_by_asc() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -544,11 +533,9 @@ fn find_string_less_than_order_by_asc() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_less_than_order_by_desc() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -586,11 +573,9 @@ fn find_string_less_than_order_by_desc() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_less_than_range() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -618,11 +603,9 @@ fn find_string_less_than_range() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_multiple_and() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -650,11 +633,9 @@ fn find_string_multiple_and() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_ends_with() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -682,11 +663,9 @@ fn find_string_ends_with() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_not_ends_with() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -714,11 +693,9 @@ fn find_string_not_ends_with() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_in() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -746,11 +723,9 @@ fn find_string_in() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_string_not_in() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -779,11 +754,9 @@ fn find_string_not_in() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_float_equal() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -811,11 +784,9 @@ fn find_float_equal() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_float_not_equal() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -843,11 +814,9 @@ fn find_float_not_equal() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_float_greater_than() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -875,11 +844,9 @@ fn find_float_greater_than() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_float_less_than() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -907,11 +874,9 @@ fn find_float_less_than() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_float_less_than_order_by_desc() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -939,11 +904,9 @@ fn find_float_less_than_order_by_desc() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_float_less_than_range() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -970,11 +933,9 @@ fn find_float_less_than_range() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_float_in() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1002,11 +963,9 @@ fn find_float_in() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_float_not_in() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1034,11 +993,9 @@ fn find_float_not_in() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_int_equal() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1066,11 +1023,9 @@ fn find_int_equal() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_int_not_equal() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1098,11 +1053,9 @@ fn find_int_not_equal() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_int_greater_than() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1130,11 +1083,9 @@ fn find_int_greater_than() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_int_greater_or_equal() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1162,11 +1113,9 @@ fn find_int_greater_or_equal() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_int_less_than() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1194,11 +1143,9 @@ fn find_int_less_than() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_int_less_or_equal() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1226,11 +1173,9 @@ fn find_int_less_or_equal() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_int_less_than_order_by_desc() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1258,11 +1203,9 @@ fn find_int_less_than_order_by_desc() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_int_less_than_range() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1290,11 +1233,9 @@ fn find_int_less_than_range() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_int_in() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1322,11 +1263,9 @@ fn find_int_in() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_int_not_in() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1354,11 +1293,9 @@ fn find_int_not_in() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_bool_equal() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1386,11 +1323,9 @@ fn find_bool_equal() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_bool_not_equal() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1418,11 +1353,9 @@ fn find_bool_not_equal() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_bool_in() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1450,11 +1383,9 @@ fn find_bool_in() {
 }
 
 #[test]
+#[cfg(any())]
 fn find_bool_not_in() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1482,11 +1413,9 @@ fn find_bool_not_in() {
 }
 
 #[test]
+#[cfg(any())]
 fn revert_block() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1531,11 +1460,9 @@ fn revert_block() {
 }
 
 #[test]
+#[cfg(any())]
 fn revert_block_with_delete() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let mut store = DieselStore::new(StoreConfig { url }, &logger);
+    run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1600,12 +1527,9 @@ fn revert_block_with_delete() {
 }
 
 #[test]
+#[cfg(any())]
 fn revert_block_with_partial_update() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let mut store = DieselStore::new(StoreConfig { url }, &logger);
-
+    run_test(|store| -> Result<(), ()> {
         let entity_key = StoreKey {
             subgraph: String::from("test_subgraph"),
             entity: String::from("user"),
@@ -1650,12 +1574,9 @@ fn revert_block_with_partial_update() {
 }
 
 #[test]
+#[cfg(any())]
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
-    run_test(|| {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let mut store = DieselStore::new(StoreConfig { url }, &logger);
-
+    run_test(|store| {
         // Create a store subscription
         let subscription =
             store.subscribe(vec![(String::from("subgraph-id"), String::from("User"))]);

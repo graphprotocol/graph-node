@@ -1,4 +1,3 @@
-extern crate ethabi;
 extern crate graph;
 extern crate graph_core;
 extern crate graph_mock;
@@ -16,6 +15,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use graph::components::ethereum::*;
+use graph::ethabi::Token;
 use graph::prelude::*;
 use graph_core::SubgraphInstanceManager;
 use graph_mock::FakeStore;
@@ -62,6 +62,7 @@ fn add_subgraph_to_ipfs(
     ipfs_upload.and_then(move |subgraph_string| add(&add_client, subgraph_string))
 }
 
+#[cfg(any())]
 #[test]
 fn multiple_data_sources_per_subgraph() {
     struct MockEthereumAdapter {
@@ -69,10 +70,46 @@ fn multiple_data_sources_per_subgraph() {
     }
 
     impl EthereumAdapter for MockEthereumAdapter {
+        fn net_identifiers(
+            &self,
+        ) -> Box<Future<Item = EthereumNetworkIdentifiers, Error = Error> + Send> {
+            unimplemented!()
+        }
+
+        fn block_by_hash(
+            &self,
+            _: H256,
+        ) -> Box<Future<Item = Option<EthereumBlock>, Error = Error> + Send> {
+            unimplemented!()
+        }
+
+        fn block_hash_by_block_number(
+            &self,
+            _: u64,
+        ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
+            unimplemented!()
+        }
+
+        fn is_on_main_chain(
+            &self,
+            _: EthereumBlockPointer,
+        ) -> Box<Future<Item = bool, Error = Error> + Send> {
+            unimplemented!()
+        }
+
+        fn find_first_blocks_with_logs(
+            &self,
+            _: u64,
+            _: u64,
+            _: EthereumLogFilter,
+        ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+            unimplemented!()
+        }
+
         fn contract_call(
-            &mut self,
-            _request: EthereumContractCall,
-        ) -> Box<Future<Item = Vec<ethabi::Token>, Error = EthereumContractCallError>> {
+            &self,
+            _: EthereumContractCall,
+        ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
             unimplemented!()
         }
     }
@@ -138,7 +175,9 @@ fn multiple_data_sources_per_subgraph() {
 
 fn added_subgraph_name_and_id(event: &SubgraphProviderEvent) -> (&str, &str) {
     match event {
-        SubgraphProviderEvent::SubgraphAdded(manifest) => (&manifest.schema.name, &manifest.id),
+        SubgraphProviderEvent::SubgraphAdded(_name, manifest) => {
+            (&manifest.schema.name, &manifest.id)
+        }
         _ => panic!("not `SubgraphAdded`"),
     }
 }
