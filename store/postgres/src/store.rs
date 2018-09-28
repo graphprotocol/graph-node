@@ -304,7 +304,7 @@ impl Store {
         let updated_json: serde_json::Value =
             serde_json::to_value(&updated_entity).map_err(|e| {
                 format_err!(
-                    "Entity ({}, {}, {}) invalid after operation: {}",
+                    "Failed to set entity ({}, {}, {}) as setting it would break it: {}",
                     op_subgraph,
                     op_entity,
                     op_id,
@@ -358,7 +358,7 @@ impl Store {
         ).execute(conn)
         .map_err(|e| {
             format_err!(
-                "Failed to remove entity ({}, {}, {}) {}",
+                "Failed to remove entity ({}, {}, {}): {}",
                 op_subgraph,
                 op_entity,
                 op_id,
@@ -491,9 +491,12 @@ impl StoreTrait for Store {
         // Add specified filter to query
         if let Some(filter) = query.filter {
             diesel_query = store_filter(diesel_query, filter).map_err(|e| {
-                error!(self.logger, "value does not support this filter";
-                                    "value" => format!("{:?}", e.value),
-                                    "filter" => e.filter)
+                error!(
+                    self.logger,
+                    "value does not support this filter";
+                    "value" => format!("{:?}", e.value),
+                    "filter" => e.filter
+                )
             })?;
         }
 
