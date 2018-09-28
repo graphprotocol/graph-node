@@ -42,20 +42,38 @@ impl<F: Future, C: Fn() -> F::Error> Future for Cancelable<F, C> {
     }
 }
 
-#[derive(Debug)]
+/// A `CancelGuard` or `SharedCancelGuard`.
+pub trait CancelGuardTrait {
+    /// Adds `canceler` to the set being guarded.
+    fn add_canceler(&mut self, canceler: oneshot::Sender<()>);
+}
+
+/// Cancels any guarded futures and streams when dropped.
+#[derive(Debug, Default)]
 pub struct CancelGuard {
-    canceler: oneshot::Sender<()>,
+    cancelers: Vec<oneshot::Sender<()>>,
 }
 
 impl CancelGuard {
+    /// Creates a guard that initially guards nothing.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// A more readable `drop`.
     pub fn cancel(self) {}
 
     /// Convert into a `SharedGuard`.
     pub fn shared(self) -> SharedCancelGuard {
         SharedCancelGuard {
-            guard: Arc::new(Mutex::new(Some(self.canceler))),
+            guard: Arc::new(Mutex::new(Some(self))),
         }
+    }
+}
+
+impl CancelGuardTrait for CancelGuard {
+    fn add_canceler(&mut self, canceler: oneshot::Sender<()>) {
+        self.cancelers.push(canceler);
     }
 }
 
@@ -64,7 +82,7 @@ impl CancelGuard {
 /// To cancel the stream, call `cancel` on one of the guards or drop all guards.
 #[derive(Clone, Debug)]
 pub struct SharedCancelGuard {
-    guard: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    guard: Arc<Mutex<Option<CancelGuard>>>,
 }
 
 impl SharedCancelGuard {
@@ -78,26 +96,40 @@ impl SharedCancelGuard {
     }
 }
 
+impl CancelGuardTrait for SharedCancelGuard {
+    /// A noop if `self` has already been canceled.
+    fn add_canceler(&mut self, canceler: oneshot::Sender<()>) {
+        if let Some(ref mut guard) = *self.guard.lock().unwrap() {
+            guard.add_canceler(canceler);
+        }
+    }
+}
+
 pub trait StreamExtension: Stream + Sized {
     /// When `cancel` is called on a `CancelGuard` or it is dropped,
     /// `Cancelable` receives an error.
     ///
     /// `on_cancel` is called to make an error value upon cancelation.
-    fn cancelable<C: Fn() -> Self::Error>(self, on_cancel: C)
-        -> (Cancelable<Self, C>, CancelGuard);
+    fn cancelable<C: Fn() -> Self::Error>(
+        self,
+        guard: &mut impl CancelGuardTrait,
+        on_cancel: C,
+    ) -> Cancelable<Self, C>;
 }
 
 impl<S: Stream> StreamExtension for S {
-    fn cancelable<C: Fn() -> S::Error>(self, on_cancel: C) -> (Cancelable<Self, C>, CancelGuard) {
+    fn cancelable<C: Fn() -> S::Error>(
+        self,
+        guard: &mut impl CancelGuardTrait,
+        on_cancel: C,
+    ) -> Cancelable<Self, C> {
         let (canceler, canceled) = oneshot::channel();
-        (
-            Cancelable {
-                cancelable: self,
-                canceled,
-                on_cancel,
-            },
-            CancelGuard { canceler },
-        )
+        guard.add_canceler(canceler);
+        Cancelable {
+            cancelable: self,
+            canceled,
+            on_cancel,
+        }
     }
 }
 
@@ -106,20 +138,25 @@ pub trait FutureExtension: Future + Sized {
     /// `Cancelable` receives an error.
     ///
     /// `on_cancel` is called to make an error value upon cancelation.
-    fn cancelable<C: Fn() -> Self::Error>(self, on_cancel: C)
-        -> (Cancelable<Self, C>, CancelGuard);
+    fn cancelable<C: Fn() -> Self::Error>(
+        self,
+        guard: &mut impl CancelGuardTrait,
+        on_cancel: C,
+    ) -> Cancelable<Self, C>;
 }
 
 impl<F: Future> FutureExtension for F {
-    fn cancelable<C: Fn() -> F::Error>(self, on_cancel: C) -> (Cancelable<Self, C>, CancelGuard) {
+    fn cancelable<C: Fn() -> F::Error>(
+        self,
+        guard: &mut impl CancelGuardTrait,
+        on_cancel: C,
+    ) -> Cancelable<Self, C> {
         let (canceler, canceled) = oneshot::channel();
-        (
-            Cancelable {
-                cancelable: self,
-                canceled,
-                on_cancel,
-            },
-            CancelGuard { canceler },
-        )
+        guard.add_canceler(canceler);
+        Cancelable {
+            cancelable: self,
+            canceled,
+            on_cancel,
+        }
     }
 }
