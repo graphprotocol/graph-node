@@ -1,5 +1,5 @@
 use graph::prelude::*;
-use graphql_parser::{query as q, schema as s, Pos};
+use graphql_parser::{query as q, schema as s};
 use schema::ast as sast;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
@@ -92,7 +92,7 @@ fn build_filter_from_object(
                     .ok_or(QueryExecutionError::EntityAttributeError)?;
 
                 let ty = &field.field_type;
-                let store_value = Value::from_query_value(value, &ty);
+                let store_value = Value::from_query_value(value, &ty)?;
 
                 Ok(match op {
                     Not => StoreFilter::Not(attribute, store_value),
@@ -110,7 +110,7 @@ fn build_filter_from_object(
                     NotEndsWith => StoreFilter::NotEndsWith(attribute, store_value),
                     Equal => StoreFilter::Equal(attribute, store_value),
                 })
-            }).collect::<Result<Vec<_>, _>>()?
+            }).collect::<Result<Vec<StoreFilter>, QueryExecutionError>>()?
     })))
 }
 
