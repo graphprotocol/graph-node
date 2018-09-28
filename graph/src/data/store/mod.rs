@@ -1,3 +1,4 @@
+use prelude::QueryExecutionError;
 use graphql_parser::query;
 use graphql_parser::schema;
 
@@ -31,35 +32,35 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn from_query_value(value: &query::Value, ty: &schema::Type) -> Value {
+    pub fn from_query_value(value: &query::Value, ty: &schema::Type) -> Result<Value, QueryExecutionError>{
         use self::schema::Type::{ListType, NamedType, NonNullType};
 
-        match (value, ty) {
+        Ok(match (value, ty) {
             // When dealing with non-null types, use the inner type to convert the value
-            (value, NonNullType(t)) => Value::from_query_value(value, t),
+            (value, NonNullType(t)) => Value::from_query_value(value, t)?,
 
             (query::Value::List(values), ListType(ty)) => Value::List(
                 values
                     .iter()
                     .map(|value| Self::from_query_value(value, ty))
-                    .collect(),
+                    .collect::<Result<Vec<_>, _>>()?,
             ),
 
             (query::Value::List(values), NamedType(n)) => Value::List(
                 values
                     .iter()
                     .map(|value| Self::from_query_value(value, &NamedType(n.to_string())))
-                    .collect(),
+                    .collect::<Result<Vec<_>, _>>()?,
             ),
             (query::Value::Enum(e), NamedType(n)) => {
                 // Check if `ty` is a custom scalar type, otherwise assume it's
                 // just a string.
                 match n.as_str() {
                     BYTES_SCALAR => {
-                        Value::Bytes(scalar::Bytes::from_str(e).expect("Value is not a hex string"))
+                        Value::Bytes(scalar::Bytes::from_str(e)?)
                     }
                     BIG_INT_SCALAR => {
-                        Value::BigInt(scalar::BigInt::from_str(e).expect("Value is not a number"))
+                        Value::BigInt(scalar::BigInt::from_str(e)?)
                     }
                     _ => Value::String(e.clone()),
                 }
@@ -69,10 +70,10 @@ impl Value {
                 // just a string.
                 match n.as_str() {
                     BYTES_SCALAR => {
-                        Value::Bytes(scalar::Bytes::from_str(s).expect("Value is not a hex string"))
+                        Value::Bytes(scalar::Bytes::from_str(s)?)
                     }
                     BIG_INT_SCALAR => {
-                        Value::BigInt(scalar::BigInt::from_str(s).expect("Value is not a number"))
+                        Value::BigInt(scalar::BigInt::from_str(s)?)
                     }
                     _ => Value::String(s.clone()),
                 }
@@ -80,14 +81,14 @@ impl Value {
             (query::Value::Int(i), _) => Value::Int(
                 i.to_owned()
                     .as_i64()
-                    .expect("Unable to parse graphql_parser::query::Number into i64")
+                    .ok_or(QueryExecutionError::NamedTypeError("Int".to_string()))?
                     as i32,
             ),
             (query::Value::Float(f), _) => Value::Float(f.to_owned() as f32),
             (query::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
             (query::Value::Null, _) => Value::Null,
             _ => Value::Null,
-        }
+        })
     }
 }
 
@@ -192,7 +193,7 @@ impl<'a> From<Vec<(&'a str, Value)>> for Entity {
 fn value_bytes() {
     let graphql_value = query::Value::String("0x8f494c66afc1d3f8ac1b45df21f02a46".to_owned());
     let ty = query::Type::NamedType(BYTES_SCALAR.to_owned());
-    let from_query = Value::from_query_value(&graphql_value, &ty);
+    let from_query = Value::from_query_value(&graphql_value, &ty).unwrap();
     assert_eq!(
         from_query,
         Value::Bytes(scalar::Bytes::from(
@@ -207,7 +208,7 @@ fn value_bigint() {
     let big_num = "340282366920938463463374607431768211456";
     let graphql_value = query::Value::String(big_num.to_owned());
     let ty = query::Type::NamedType(BIG_INT_SCALAR.to_owned());
-    let from_query = Value::from_query_value(&graphql_value, &ty);
+    let from_query = Value::from_query_value(&graphql_value, &ty).unwrap();
     assert_eq!(
         from_query,
         Value::BigInt(FromStr::from_str(big_num).unwrap())

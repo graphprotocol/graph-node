@@ -1,11 +1,14 @@
 use data::store::Value;
 use graphql_parser::{query as q, Pos};
+use hex::FromHexError;
+use num_bigint;
 use serde::ser::*;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::mem::Discriminant;
-use std::string::FromUtf8Error;
+use std::string::{FromUtf8Error};
+use std::str::FromStr;
 
 /// Error caused while executing a [Query](struct.Query.html).
 #[derive(Debug)]
@@ -26,7 +29,6 @@ pub enum QueryExecutionError {
     MissingArgumentError(Pos, String),
     StoreQueryError(String),
     FilterNotSupportedError(String, String),
-    //    ExecutionErrorList(Vec<QueryExecutionError>),
     UnknownField(Pos, String, String),
     EmptyQuery,
     MultipleSubscriptionFields,
@@ -128,6 +130,18 @@ impl fmt::Display for QueryExecutionError {
 impl From<QueryExecutionError> for Vec<QueryExecutionError> {
     fn from(e: QueryExecutionError) -> Self {
         vec![e]
+    }
+}
+
+impl From<FromHexError> for QueryExecutionError {
+    fn from(_e: FromHexError) -> Self {
+        QueryExecutionError::NamedTypeError("Bytes".to_string())
+    }
+}
+
+impl From<num_bigint::ParseBigIntError> for QueryExecutionError {
+    fn from(_e: num_bigint::ParseBigIntError) -> Self {
+        QueryExecutionError::NamedTypeError("BigInt".to_string())
     }
 }
 
