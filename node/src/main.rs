@@ -236,7 +236,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     };
 
     // Set up Store
-    info!(logger, "Connecting to Postgres db...");
+    info!(logger, "Connecting to Postgres"; "url" => &postgres_url);
     let store = Arc::new(DieselStore::new(
         StoreConfig {
             url: postgres_url,
