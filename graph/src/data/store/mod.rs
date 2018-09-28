@@ -1,6 +1,6 @@
-use prelude::QueryExecutionError;
 use graphql_parser::query;
 use graphql_parser::schema;
+use prelude::QueryExecutionError;
 
 use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
@@ -32,7 +32,10 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn from_query_value(value: &query::Value, ty: &schema::Type) -> Result<Value, QueryExecutionError>{
+    pub fn from_query_value(
+        value: &query::Value,
+        ty: &schema::Type,
+    ) -> Result<Value, QueryExecutionError> {
         use self::schema::Type::{ListType, NamedType, NonNullType};
 
         Ok(match (value, ty) {
@@ -56,12 +59,8 @@ impl Value {
                 // Check if `ty` is a custom scalar type, otherwise assume it's
                 // just a string.
                 match n.as_str() {
-                    BYTES_SCALAR => {
-                        Value::Bytes(scalar::Bytes::from_str(e)?)
-                    }
-                    BIG_INT_SCALAR => {
-                        Value::BigInt(scalar::BigInt::from_str(e)?)
-                    }
+                    BYTES_SCALAR => Value::Bytes(scalar::Bytes::from_str(e)?),
+                    BIG_INT_SCALAR => Value::BigInt(scalar::BigInt::from_str(e)?),
                     _ => Value::String(e.clone()),
                 }
             }
@@ -69,12 +68,8 @@ impl Value {
                 // Check if `ty` is a custom scalar type, otherwise assume it's
                 // just a string.
                 match n.as_str() {
-                    BYTES_SCALAR => {
-                        Value::Bytes(scalar::Bytes::from_str(s)?)
-                    }
-                    BIG_INT_SCALAR => {
-                        Value::BigInt(scalar::BigInt::from_str(s)?)
-                    }
+                    BYTES_SCALAR => Value::Bytes(scalar::Bytes::from_str(s)?),
+                    BIG_INT_SCALAR => Value::BigInt(scalar::BigInt::from_str(s)?),
                     _ => Value::String(s.clone()),
                 }
             }

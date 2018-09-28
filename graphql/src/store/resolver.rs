@@ -266,8 +266,7 @@ where
                         ),
                         entity: object_type.name.to_owned(),
                         id: id.to_owned(),
-                    })
-                    .map(|entity| entity.into()),
+                    }).map(|entity| entity.into()),
                 _ => Ok(q::Value::Null),
             },
             _ => {

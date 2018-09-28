@@ -510,9 +510,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                 }
             }
             _ => object_field(parent, field.as_str())
-                .map_or(Ok(q::Value::Null), |value| {
-                    Ok(value.clone())
-                }),
+                .map_or(Ok(q::Value::Null), |value| Ok(value.clone())),
         }
     }
 
