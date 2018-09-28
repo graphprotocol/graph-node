@@ -533,7 +533,7 @@ impl StoreTrait for Store {
                         serde_json::from_value::<Entity>(value)
                             .expect("Error to deserialize entity")
                     }).collect()
-            }).map_err(|_| ())
+            }).map_err(|e| error!(self.logger, "query error"; "error" => e.to_string()))
     }
 
     fn set_block_ptr_with_no_changes(
