@@ -5,7 +5,8 @@ extern crate ipfs_api;
 extern crate parity_wasm;
 
 use ethabi::{LogParam, Token};
-use futures::sync::mpsc::{channel, Receiver};
+use failure::Error;
+use futures::sync::mpsc::{channel, Receiver, Sender};
 use hex;
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -20,7 +21,7 @@ use graph::data::subgraph::*;
 use graph::util;
 use graph::web3::types::Address;
 
-use super::*;
+use super::{Error as WasmiError, *};
 
 use self::graphql_parser::schema::Document;
 
@@ -28,57 +29,74 @@ use self::graphql_parser::schema::Document;
 struct MockEthereumAdapter {}
 
 impl EthereumAdapter for MockEthereumAdapter {
+    fn net_identifiers(
+        &self,
+    ) -> Box<Future<Item = EthereumNetworkIdentifiers, Error = Error> + Send> {
+        unimplemented!();
+    }
+
+    fn block_by_hash(
+        &self,
+        block_hash: H256,
+    ) -> Box<Future<Item = Option<EthereumBlock>, Error = Error> + Send> {
+        unimplemented!();
+    }
+
+    fn block_hash_by_block_number(
+        &self,
+        block_number: u64,
+    ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
+        unimplemented!();
+    }
+
+    fn is_on_main_chain(
+        &self,
+        block_ptr: EthereumBlockPointer,
+    ) -> Box<Future<Item = bool, Error = Error> + Send> {
+        unimplemented!();
+    }
+
+    fn find_first_blocks_with_logs(
+        &self,
+        from: u64,
+        to: u64,
+        log_filter: EthereumLogFilter,
+    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+        unimplemented!();
+    }
+
     fn contract_call(
-        &mut self,
-        _call: EthereumContractCall,
+        &self,
+        call: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
-        unimplemented!()
-    }
-
-    fn subscribe_to_event(
-        &mut self,
-        _subscription: EthereumEventSubscription,
-    ) -> Box<Stream<Item = EthereumEvent, Error = EthereumSubscriptionError>> {
-        unimplemented!()
-    }
-
-    fn unsubscribe_from_event(&mut self, _subscription_id: String) -> bool {
-        false
+        unimplemented!();
     }
 }
 
 fn test_module(
     data_source: DataSource,
-) -> (
-    WasmiModule<
-        MockEthereumAdapter,
-        ipfs_api::IpfsClient,
-        FakeStore,
-        Sender<Box<Future<Item = (), Error = ()> + Send>>,
-    >,
-    Receiver<RuntimeHostEvent>,
-) {
+) -> (WasmiModule<
+    MockEthereumAdapter,
+    ipfs_api::IpfsClient,
+    FakeStore,
+    Sender<Box<Future<Item = (), Error = ()> + Send>>,
+>) {
     let logger = slog::Logger::root(slog::Discard, o!());
-    let (sender, receiver) = channel(100);
-    let mock_ethereum_adapter = Arc::new(Mutex::new(MockEthereumAdapter::default()));
+    let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
     let (task_sender, task_receiver) = channel(100);
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     runtime.spawn(task_receiver.for_each(tokio::spawn));
     ::std::mem::forget(runtime);
-    (
-        WasmiModule::new(
-            &logger,
-            WasmiModuleConfig {
-                subgraph: mock_subgraph(),
-                data_source,
-                event_sink: sender,
-                ethereum_adapter: mock_ethereum_adapter,
-                link_resolver: Arc::new(ipfs_api::IpfsClient::default()),
-                store: Arc::new(Mutex::new(FakeStore)),
-            },
-            task_sender,
-        ),
-        receiver,
+    WasmiModule::new(
+        &logger,
+        WasmiModuleConfig {
+            subgraph: mock_subgraph(),
+            data_source,
+            ethereum_adapter: mock_ethereum_adapter,
+            link_resolver: Arc::new(ipfs_api::IpfsClient::default()),
+            store: Arc::new(FakeStore),
+        },
+        task_sender,
     )
 }
 
@@ -105,7 +123,7 @@ fn mock_data_source(path: &str) -> DataSource {
         kind: String::from("ethereum/contract"),
         name: String::from("example data source"),
         source: Source {
-            address: String::from("0123123123"),
+            address: Address::from_str("0123123123").unwrap(),
             abi: String::from("123123"),
         },
         mapping: Mapping {
@@ -202,7 +220,7 @@ fn call_event_handler_and_receive_store_event() {
 
 #[test]
 fn json_conversions() {
-    let (mut module, _) = test_module(mock_data_source("wasm_test/string_to_number.wasm"));
+    let mut module = test_module(mock_data_source("wasm_test/string_to_number.wasm"));
 
     // test u64 conversion
     let number = 9223372036850770800;
@@ -269,7 +287,7 @@ fn json_conversions() {
 
 #[test]
 fn ipfs_cat() {
-    let (mut module, _) = test_module(mock_data_source("wasm_test/ipfs_cat.wasm"));
+    let mut module = test_module(mock_data_source("wasm_test/ipfs_cat.wasm"));
     let ipfs = Arc::new(ipfs_api::IpfsClient::default());
 
     let hash = module
@@ -293,7 +311,7 @@ fn ipfs_cat() {
 
 #[test]
 fn crypto_keccak256() {
-    let (mut module, _) = test_module(mock_data_source("wasm_test/crypto.wasm"));
+    let mut module = test_module(mock_data_source("wasm_test/crypto.wasm"));
     let input: &[u8] = "eth".as_ref();
     let input: AscPtr<Uint8Array> = module.heap.asc_new(input);
 

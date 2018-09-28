@@ -1,5 +1,4 @@
-use failure::{Error as FailureError, *};
-use futures::sync::mpsc::Sender;
+use failure::Error as FailureError;
 use nan_preserving_float::F64;
 use std::collections::HashMap;
 use std::fmt;
@@ -21,7 +20,7 @@ use graph::data::subgraph::DataSource;
 use graph::ethabi::LogParam;
 use graph::prelude::*;
 use graph::serde_json;
-use graph::web3::types::{BlockId, Log, Transaction, H160, H256, U256};
+use graph::web3::types::{Log, Transaction, H160, H256, U256};
 
 use super::UnresolvedContractCall;
 
