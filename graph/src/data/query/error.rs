@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::mem::Discriminant;
-use std::string::{FromUtf8Error};
 use std::str::FromStr;
+use std::string::FromUtf8Error;
 
 /// Error caused while executing a [Query](struct.Query.html).
 #[derive(Debug)]

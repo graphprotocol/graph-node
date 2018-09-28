@@ -660,8 +660,7 @@ where
             },
             abstract_type,
             object_value,
-        )
-        .ok_or(vec![QueryExecutionError::AbstractTypeError(
+        ).ok_or(vec![QueryExecutionError::AbstractTypeError(
             sast::get_type_name(abstract_type).to_string(),
         )])
 }
