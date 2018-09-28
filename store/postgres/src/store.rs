@@ -3,7 +3,7 @@ use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::sql_types::Text;
-use diesel::{debug_query, delete, insert_into, select, update};
+use diesel::{delete, insert_into, select, update};
 use failure::*;
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
@@ -20,7 +20,7 @@ use graph::{tokio, tokio::timer::Interval};
 
 use chain_head_listener::ChainHeadUpdateListener;
 use entity_changes::EntityChangeListener;
-use functions::{attempt_chain_head_update, lookup_ancestor_block, revert_block, set_config};
+use functions::{attempt_chain_head_update, lookup_ancestor_block, revert_block};
 
 embed_migrations!("./migrations");
 
