@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use graph::components::ethereum::EthereumContractCall;
 use graph::ethabi::{Function, Param, ParamType, Token};
 use graph::prelude::EthereumAdapter as EthereumAdapterTrait;
+use graph::prelude::*;
 use graph::serde_json;
 use graph::web3::error::{Error, ErrorKind};
 use graph::web3::helpers::*;
@@ -125,7 +126,8 @@ fn contract_call() {
         H256::from(100000)
     )));
 
-    let mut adapter = EthereumAdapter::new(EthereumAdapterConfig { transport });
+    let logger = slog::Logger::root(slog::Discard, o!());
+    let mut adapter = EthereumAdapter::new(&logger, EthereumAdapterConfig { transport });
     let balance_of = Function {
         name: "balanceOf".to_owned(),
         inputs: vec![Param {
@@ -143,7 +145,7 @@ fn contract_call() {
     let holder_addr = Address::from_str("00d04c4b12C4686305bb4F4fC93487CdFBa62580").unwrap();
     let call = EthereumContractCall {
         address: gnt_addr,
-        block_id: BlockId::Number(BlockNumber::Latest),
+        block_ptr: EthereumBlockPointer::from((H256::zero(), 0 as i64)),
         function: function,
         args: vec![Token::Address(holder_addr)],
     };

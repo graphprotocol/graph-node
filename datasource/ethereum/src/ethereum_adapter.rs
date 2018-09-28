@@ -9,7 +9,7 @@ use std::time::Instant;
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::*;
 use graph::web3;
-use graph::web3::api::{Eth, Web3};
+use graph::web3::api::Web3;
 use graph::web3::types::{Filter, *};
 
 pub struct EthereumAdapterConfig<T: web3::Transport> {
