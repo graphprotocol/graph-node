@@ -193,7 +193,7 @@ impl Store for TestStore {
     }
 }
 
-impl BlockStore for TestStore {
+impl ChainStore for TestStore {
     fn add_network_if_missing(&self, _: &str, _: &str, _: H256) -> Result<(), Error> {
         unimplemented!()
     }
