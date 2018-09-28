@@ -1,17 +1,16 @@
 use failure::Error;
 use futures::prelude::*;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
-use graph::web3::types::{Address, Block, Log, Transaction};
+use graph::web3::types::{Log, Transaction};
 
 pub struct SubgraphInstance<T>
 where
     T: RuntimeHostBuilder,
 {
     /// The manifest of the subgraph instance.
-    manifest: SubgraphManifest,
+    _manifest: SubgraphManifest,
 
     /// Runtime hosts, one for each data source mapping.
     ///
@@ -38,7 +37,7 @@ where
 
         // Remember manifest and managed hosts
         SubgraphInstance {
-            manifest,
+            _manifest: manifest,
             hosts: hosts,
         }
     }
