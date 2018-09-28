@@ -6,7 +6,6 @@ use std::thread;
 use graph::components::ethereum::*;
 use graph::components::store::Store;
 use graph::data::subgraph::DataSource;
-use graph::ethabi::Contract;
 use graph::ethabi::LogParam;
 use graph::ethabi::RawLog;
 use graph::prelude::{
@@ -164,14 +163,11 @@ impl RuntimeHost {
                 store: store.clone(),
             };
 
-            let name = module_config.data_source.name.clone();
-
             // Start the mapping as a WASM module
             let mut module = WasmiModule::new(&module_logger, wasmi_config, task_sender);
 
             // Pass incoming events to the WASM module and send entity changes back;
             // stop when cancelled from the outside
-            let event_logger = module_logger.clone();
             handle_event_receiver
                 .map(Some)
                 .select(cancel_receiver.into_stream().map(|_| None).map_err(|_| ()))
