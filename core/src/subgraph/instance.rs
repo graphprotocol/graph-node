@@ -10,7 +10,14 @@ pub struct SubgraphInstance<T>
 where
     T: RuntimeHostBuilder,
 {
+    /// The manifest of the subgraph instance.
     manifest: SubgraphManifest,
+
+    /// Runtime hosts, one for each data source mapping.
+    ///
+    /// The runtime hosts are created and added in the same order the
+    /// data sources appear in the subgraph manifest. Incoming block
+    /// stream events are processed by the mappings in this same order.
     hosts: Vec<Arc<T::Host>>,
 }
 
@@ -19,7 +26,9 @@ where
     T: RuntimeHostBuilder,
 {
     fn from_manifest(name: String, manifest: SubgraphManifest, host_builder: T) -> Self {
-        // Create a new runtime host for each data source in the subgraph manifest
+        // Create a new runtime host for each data source in the subgraph manifest;
+        // we use the same order here as in the subgraph manifest to make the
+        // event processing behavior predictable
         let hosts = manifest
             .data_sources
             .iter()
@@ -56,7 +65,8 @@ where
 
         let log = Arc::new(log);
 
-        // Process the log in each host in a deterministic order
+        // Process the log in each host in the same order the corresponding
+        // data sources appear in the subgraph manifest
         Box::new(stream::iter_ok(matching_hosts).fold(
             entity_operations,
             move |entity_operations, host| {
