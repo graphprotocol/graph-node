@@ -456,9 +456,9 @@ where
                 Box::new(ctx.load_block(subgraph_ptr.hash).and_then(move |block| {
                     debug!(
                         ctx.logger,
-                        "Reverting block #{} to get back to main chain",
-                        block.block.number.unwrap();
-                        "block_hash" => format!("{:?}", block.block.hash.unwrap())
+                        "Reverting block to get back to main chain";
+                        "block_number" => format!("{}", block.block.number.unwrap()),
+                        "block_hash" => format!("{}", block.block.hash.unwrap())
                     );
 
                     // Produce pointer to parent block (using parent hash).
