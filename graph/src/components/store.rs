@@ -2,7 +2,7 @@ use failure::Error;
 use futures::Future;
 use futures::Stream;
 use std::fmt;
-use web3::types::{Block, Transaction, H256};
+use web3::types::H256;
 
 use prelude::*;
 

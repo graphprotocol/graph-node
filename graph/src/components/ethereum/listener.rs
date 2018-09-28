@@ -1,4 +1,3 @@
-use futures::prelude::*;
 use serde::de::{Deserialize, Deserializer, Error as DeserializerError};
 use std::str::FromStr;
 use web3::types::H256;
