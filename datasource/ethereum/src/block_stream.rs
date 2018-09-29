@@ -166,6 +166,7 @@ where
     C: ChainStore + 'static,
     E: EthereumAdapter,
 {
+    /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
     fn next_blocks(
         &self,
         log_filter: EthereumLogFilter,
@@ -177,7 +178,6 @@ where
     > {
         let ctx = self.clone();
 
-        // Perform reconciliation steps until there are blocks to yield or we are up-to-date.
         Box::new(future::loop_fn((), move |()| {
             let ctx = ctx.clone();
 
@@ -205,6 +205,7 @@ where
         }))
     }
 
+    /// Determine the next reconciliation step. Does not modify Store or ChainStore.
     fn get_next_step(
         &self,
         log_filter: EthereumLogFilter,
@@ -440,6 +441,7 @@ where
         }
     }
 
+    /// Perform a reconciliation step.
     fn do_step(
         &self,
         step: ReconciliationStep,
