@@ -4,17 +4,20 @@ extern crate futures;
 extern crate lazy_static;
 extern crate graph;
 extern crate graph_store_postgres;
+extern crate hex;
 
 use diesel::pg::PgConnection;
 use diesel::*;
 use std::fmt::Debug;
 use std::mem;
 use std::panic;
+use std::str::FromStr;
 use std::sync::Mutex;
 
 use graph::components::store::{
     EventSource, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
 };
+use graph::data::store::scalar;
 use graph::prelude::*;
 use graph::web3::types::H256;
 use graph_store_postgres::{db_schema, Store as DieselStore, StoreConfig};
@@ -101,7 +104,9 @@ fn create_test_entity(
         id: id,
     };
     let mut test_entity = Entity::new();
+    let hex_name = scalar::Bytes::from_str(&hex::encode(&name)).unwrap();
     test_entity.insert(String::from("name"), Value::String(name));
+    test_entity.insert(String::from("hex_name"), Value::Bytes(hex_name));
     test_entity.insert(String::from("email"), Value::String(email));
     test_entity.insert(String::from("age"), Value::Int(age));
     test_entity.insert(String::from("weight"), Value::Float(weight));
@@ -223,7 +228,11 @@ fn get_entity() {
         let result = store.get(key).unwrap();
 
         let mut expected_entity = Entity::new();
-        expected_entity.insert(String::from("name"), Value::String(String::from("Johnton")));
+
+        let name = "Johnton".to_owned();
+        let hex_name = format!("0x{}", hex::encode(&name));
+        expected_entity.insert(String::from("hex_name"), Value::String(hex_name));
+        expected_entity.insert(String::from("name"), Value::String(name));
         expected_entity.insert(
             String::from("email"),
             Value::String(String::from("tonofjohn@email.com")),
@@ -280,7 +289,7 @@ fn update_existing() {
             id: String::from("1"),
         };
 
-        let test_entity_1 = create_test_entity(
+        let mut test_entity_1 = create_test_entity(
             String::from("1"),
             String::from("user"),
             String::from("Wanjon"),
@@ -299,7 +308,16 @@ fn update_existing() {
             .set(test_entity_1.0, test_entity_1.1.clone(), test_entity_1.2)
             .expect("Failed to update entity that already exists");
 
-        // Verify that the entity in the store has changed to what we have set
+        // Verify that the entity in the store has changed to what we have set.
+        // The `hex_name` will be returned as a `Value::String`.
+        let hex_name = match test_entity_1.1.get("hex_name") {
+            Some(Value::Bytes(bytes)) => bytes.clone(),
+            _ => unreachable!(),
+        };
+        test_entity_1.1.insert(
+            String::from("hex_name"),
+            Value::String(hex_name.to_string()),
+        );
         assert_eq!(store.get(entity_key).unwrap(), test_entity_1.1);
 
         Ok(())
@@ -1680,5 +1698,37 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 
                 Ok(())
             }).and_then(|_| Ok(()))
+    })
+}
+
+#[test]
+fn find_bytes_equal() {
+    run_test(|| -> Result<(), ()> {
+        let logger = Logger::root(slog::Discard, o!());
+        let url = postgres_test_url();
+        let store = DieselStore::new(StoreConfig { url }, &logger);
+        let this_query = StoreQuery {
+            subgraph: String::from("test_subgraph"),
+            entity: String::from("user"),
+            filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
+                String::from("hex_name"),
+                Value::Bytes(scalar::Bytes::from_str(&hex::encode("Johnton")).unwrap()),
+            )])),
+            order_by: Some(String::from("name")),
+            order_direction: Some(StoreOrder::Descending),
+            range: None,
+        };
+        let returned_entities = store.find(this_query).expect("store.find operation failed");
+
+        // Check if the first user in the result vector is "Johnton"
+        let returned_name = returned_entities[0].get(&String::from("name"));
+        let test_value = Value::String(String::from("Johnton"));
+        assert!(returned_name.is_some());
+        assert_eq!(&test_value, returned_name.unwrap());
+
+        // There should be 1 users returned in results
+        assert_eq!(1, returned_entities.len());
+
+        Ok(())
     })
 }

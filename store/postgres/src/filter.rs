@@ -181,18 +181,14 @@ fn store_filter_by_mode<'a>(
                             .bind::<Text, _>(query_array),
                     )
                 }
-                Value::Bytes(query_value) => {
-                    let hex_string =
-                        serde_json::to_string(&query_value).expect("Failed to serialize Value");
-                    add_filter(
-                        query,
-                        filter_mode,
-                        sql("(data ->> ")
-                            .bind::<Text, _>(attribute)
-                            .sql(op)
-                            .bind::<Text, _>(hex_string),
-                    )
-                }
+                Value::Bytes(query_value) => add_filter(
+                    query,
+                    filter_mode,
+                    sql("data ->> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(op)
+                        .bind::<Text, _>(query_value.to_string()),
+                ),
                 Value::BigInt(query_value) => add_filter(
                     query,
                     filter_mode,
