@@ -14,6 +14,7 @@ use graph::prelude::{
 use graph::util;
 use graph::web3::types::{Log, Transaction};
 
+use super::EventHandlerContext;
 use module::{WasmiModule, WasmiModuleConfig};
 
 #[derive(Clone)]
@@ -183,13 +184,17 @@ impl RuntimeHost {
                             result_sender,
                         } = request;
 
-                        let result = module.handle_ethereum_event(
-                            handler.handler.as_str(),
+                        let ctx = EventHandlerContext {
                             block,
                             transaction,
+                            entity_operations,
+                        };
+
+                        let result = module.handle_ethereum_event(
+                            ctx,
+                            handler.handler.as_str(),
                             log,
                             params,
-                            entity_operations,
                         );
                         future::result(result_sender.send(result).map_err(|_| ()))
                     } else {
