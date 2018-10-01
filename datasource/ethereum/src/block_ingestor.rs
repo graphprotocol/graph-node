@@ -4,7 +4,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 use graph::prelude::*;
-use graph::tokio::timer::Delay;
 use graph::web3::api::Web3;
 use graph::web3::transports::batch::Batch;
 use graph::web3::types::*;
@@ -168,47 +167,28 @@ where
     ) -> impl Future<Item = TransactionReceipt, Error = Error> + 'a {
         let web3 = Web3::new(self.web3_transport.clone());
 
-        future::loop_fn(10, move |retries_left| {
-            web3.eth()
-                .transaction_receipt(tx_hash)
-                .map_err(move |e| {
-                    format_err!(
-                        "could not get transaction receipt {} from Ethereum: {}",
-                        tx_hash,
-                        e
-                    )
-                }).and_then(move |receipt_opt| {
-                    receipt_opt.ok_or_else(move || {
+        with_retry(
+            self.logger.clone(),
+            "eth_getTransactionReceipt RPC call".to_owned(),
+            move || {
+                web3.eth()
+                    .transaction_receipt(tx_hash)
+                    .map_err(move |e| {
                         format_err!(
-                            "Ethereum node could not find transaction receipt {}",
-                            tx_hash
+                            "could not get transaction receipt {} from Ethereum: {}",
+                            tx_hash,
+                            e
                         )
+                    }).and_then(move |receipt_opt| {
+                        receipt_opt.ok_or_else(move || {
+                            format_err!(
+                                "Ethereum node could not find transaction receipt {}",
+                                tx_hash
+                            )
+                        })
                     })
-                }).then(
-                    move |receipt_result| -> Box<Future<Item = _, Error = Error> + Send> {
-                        match receipt_result {
-                            Ok(receipt) => Box::new(future::ok(future::Loop::Break(receipt))),
-                            Err(e) => {
-                                if retries_left > 0 {
-                                    trace!(
-                                        self.logger,
-                                        "Receipt retry #{} - {}",
-                                        10 - retries_left + 1,
-                                        tx_hash
-                                    );
-                                    Box::new(
-                                        Delay::new(Instant::now() + Duration::from_millis(2000))
-                                            .map(move |()| future::Loop::Continue(retries_left - 1))
-                                            .map_err(|e| format_err!("tokio Delay error: {}", e)),
-                                    )
-                                } else {
-                                    Box::new(future::err(e))
-                                }
-                            }
-                        }
-                    },
-                )
-        })
+            },
+        )
     }
 
     /// Put some blocks into the block store (if they are not there already), and try to update the
