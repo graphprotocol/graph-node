@@ -303,11 +303,11 @@ where
                         });
 
                     // Setup cancelation.
-                    let mut guard = CancelGuard::new();
+                    let guard = CancelGuard::new();
                     let logger = logger.clone();
                     let cancel_id = id.clone();
                     let connection_id = connection_id.clone();
-                    let run_subscription = run_subscription.cancelable(&mut guard, move || {
+                    let run_subscription = run_subscription.cancelable(&guard, move || {
                         debug!(logger, "Stopped operation";
                                        "connection" => &connection_id,
                                        "id" => &cancel_id)

@@ -163,15 +163,14 @@ where
                             );
 
                             // Setup cancelation.
-                            let mut guard = CancelGuard::new();
+                            let guard = CancelGuard::new();
                             let cancel_subgraph = subgraph.clone();
-                            let connection =
-                                service.into_future().cancelable(&mut guard, move || {
-                                    debug!(
+                            let connection = service.into_future().cancelable(&guard, move || {
+                                debug!(
                                         logger,
                                         "Canceling subscriptions"; "subgraph" => &cancel_subgraph
                                     )
-                                });
+                            });
                             subgraphs.mutate(&subgraph, |subgraph| {
                                 subgraph.connection_guards.push(guard)
                             });
