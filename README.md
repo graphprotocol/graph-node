@@ -33,26 +33,41 @@ For Ethereum network data you can either run a local node or use Infura.io:
 
 ### Running a local Graph Node
 
+This is a quick example to get you up and running, it uses a [subgraph for ENS](https://github.com/graphprotocol/ens-subgraph) that we built as a reference.
+                                                   
 1. Install IPFS and run `ipfs init` followed by `ipfs daemon`
-2. Install PostgreSQL and run `initdb -D .postgres` followed by `createdb adchain-subgraph`
+2. Install PostgreSQL and run `initdb -D .postgres` followed by `createdb graph-node`
 3. If using Ubuntu, you may need to install additional packages:
    - `sudo apt-get install -y clang libpq-dev libssl-dev pkg-config`
-4. Clone https://github.com/graphprotocol/adchain-subgraph, build it with `yarn install; yarn build-ipfs --verbosity debug` and copy the IPFS hash for use in the step below
+4. Clone https://github.com/graphprotocol/ens-subgraph, install dependencies and generate types for contract ABIs:
+
+```
+yarn install
+yarn codegen
+```
+
 5. Clone https://github.com/graphprotocol/graph-node and run `cargo build`
 
 Once you have all the dependencies set up you can run the following:
 
 ```
 cargo run -p graph-node --release -- \
-  --postgres-url postgresql://USERNAME[:PASSWORD]@localhost:5432/adchain-subgraph \
+  --postgres-url postgresql://USERNAME[:PASSWORD]@localhost:5432/graph-node \
   --ethereum-ws mainnet:wss://mainnet.infura.io/_ws \
   --ipfs 127.0.0.1:5001 \
-  --subgraph IPFS_HASH
 ```
 
-Try your OS username as `USERNAME` and `PASSWORD` is optional (it can be anything).
+Try your OS username as `USERNAME` and `PASSWORD`. The password might be optional, it depends on your setup. 
 
 This will also spin up a GraphiQL interface at `http://127.0.0.1:8000/`.
+
+6. Back in your subgraph directory, run
+
+```
+yarn deploy --verbosity debug`
+```
+
+in order to build and deploy your subgraph to the Graph Node. It should start indexing the subgraph immediately.
 
 ### Command-line interface
 

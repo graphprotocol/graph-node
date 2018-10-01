@@ -1,11 +1,11 @@
 # 1 Queries
 # 1.1 Basics
-For each type `Entity` which you define in your schema, an `entity` and `entities` field will be generated on the top-level `Query` type.
+For each type `Entity` that you define in your schema, an `entity` and `entities` field will be generated on the top-level `Query` type. Note that `query` does not need to be included at the top of the `graphql` query when using The Graph. 
 
 #### Example
 Query for a single `Token` entity defined in your schema:
 ```graphql
-query {
+{
   token(id: "1") {
     id
     owner
@@ -17,7 +17,7 @@ When querying for a single entity, the `id` field is required.
 #### Example
 Query all `Token` entities:
 ```graphql
-query {
+{
   tokens {
     id
     owner
@@ -29,8 +29,8 @@ When querying a collection, the `orderBy` parameter may be used to sort by a spe
 
 #### Example
 ```graphql
-query (orderBy: price, orderDirection: asc ) {
-  tokens {
+{
+  tokens(orderBy: price, orderDirection: asc ) {
     id
     owner
   }
@@ -38,12 +38,12 @@ query (orderBy: price, orderDirection: asc ) {
 ```
 
 # 1.3 Pagination
-When querying a collection, the `first` or `last` parameters can be used to paginate from the beginning or the end of the collection, respectively.
+When querying a collection, the `first` or `last` parameters can be used to paginate from the beginning or the end of the collection, respectively. 
 
 #### Example
 Query the first ten tokens:
 ```graphql
-query {
+{
   tokens(first: 10) {
     id
     owner
@@ -56,7 +56,7 @@ In order to query for groups of entities in the middle of a collection, the `ski
 #### Example
 Query ten `Token` entities, offset by ten places from the end of the collection:
 ```graphql
-query {
+{
   tokens(last: 10, skip: 10) {
     id
     owner
@@ -69,7 +69,7 @@ Additionally, the `after` or `before` parameters may be used to fetch a group of
 #### Example
 Query the ten `Token` entities located after the `Token` with an `id` of `A1234` in the collection:
 ```graphql
-query {
+{
   tokens(first: 10, after: "A1234") {
     id
     owner
@@ -80,7 +80,7 @@ query {
 #### Example
 Query the ten `Token` entities located before the `Token` with an `id` of `A1234` in the collection:
 ```graphql
-query {
+{
   tokens(last: 10, before: "A1234") {
     id
     owner
@@ -149,7 +149,7 @@ GraphQL requests consist of three basic operations: `query`, `subscription` and 
 
 **Note** Our API does not expose mutations because developers are expected to issue transactions directly against the underlying blockchain from their applications.
 
-It is typical for developers to define their own root `Query` and `Subscription` types when building a GraphQL API server, but with The Graph we generate these top level types based on the entities that you define in your schema, as well as several other types for exploring blockchain data, which we describe in depth in the [Query API](# Queries).
+It is typical for developers to define their own root `Query` and `Subscription` types when building a GraphQL API server, but with The Graph we generate these top level types based on the entities that you define in your schema, as well as several other types for exploring blockchain data, which we describe in depth in the [Query API](#Queries).
 
 ## 3.2 Entities
 
