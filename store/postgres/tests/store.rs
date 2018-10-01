@@ -50,7 +50,7 @@ where
     // Set up Store
     let logger = Logger::root(slog::Discard, o!());
     let url = postgres_test_url();
-    let net_identifiers = EthereumNetworkIdentifiers {
+    let net_identifiers = EthereumNetworkIdentifier {
         net_version: "graph test suite".to_owned(),
         genesis_block_hash: H256::random(),
     };

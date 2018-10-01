@@ -31,7 +31,7 @@ struct MockEthereumAdapter {}
 impl EthereumAdapter for MockEthereumAdapter {
     fn net_identifiers(
         &self,
-    ) -> Box<Future<Item = EthereumNetworkIdentifiers, Error = Error> + Send> {
+    ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
         unimplemented!();
     }
 

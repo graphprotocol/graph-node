@@ -57,7 +57,7 @@ pub mod prelude {
     pub use components::ethereum::{
         BlockStream, BlockStreamBuilder, ChainHeadUpdate, ChainHeadUpdateListener, EthereumAdapter,
         EthereumBlock, EthereumBlockData, EthereumBlockPointer, EthereumEventData,
-        EthereumLogFilter, EthereumNetworkIdentifiers, EthereumTransactionData,
+        EthereumLogFilter, EthereumNetworkIdentifier, EthereumTransactionData,
     };
     pub use components::graphql::{GraphQlRunner, QueryResultFuture, SubscriptionResultFuture};
     pub use components::link_resolver::LinkResolver;

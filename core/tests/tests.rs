@@ -72,7 +72,7 @@ fn multiple_data_sources_per_subgraph() {
     impl EthereumAdapter for MockEthereumAdapter {
         fn net_identifiers(
             &self,
-        ) -> Box<Future<Item = EthereumNetworkIdentifiers, Error = Error> + Send> {
+        ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
             unimplemented!()
         }
 

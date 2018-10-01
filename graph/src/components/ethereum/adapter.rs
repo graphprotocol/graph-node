@@ -9,7 +9,7 @@ use web3::types::*;
 use super::types::*;
 
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
-pub struct EthereumNetworkIdentifiers {
+pub struct EthereumNetworkIdentifier {
     pub net_version: String,
     pub genesis_block_hash: H256,
 }
@@ -141,7 +141,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// connected to.
     fn net_identifiers(
         &self,
-    ) -> Box<Future<Item = EthereumNetworkIdentifiers, Error = Error> + Send>;
+    ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send>;
 
     /// Find a block by its hash.
     fn block_by_hash(
