@@ -70,7 +70,7 @@ impl Store {
     pub fn new(
         config: StoreConfig,
         logger: &slog::Logger,
-        net_identifiers: EthereumNetworkIdentifiers,
+        net_identifiers: EthereumNetworkIdentifier,
     ) -> Self {
         // Create a store-specific logger
         let logger = logger.new(o!("component" => "Store"));
@@ -117,7 +117,7 @@ impl Store {
 
     fn add_network_if_missing(
         &self,
-        new_net_identifiers: EthereumNetworkIdentifiers,
+        new_net_identifiers: EthereumNetworkIdentifier,
     ) -> Result<(), Error> {
         use db_schema::ethereum_networks::dsl::*;
 

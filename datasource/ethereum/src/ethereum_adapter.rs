@@ -214,7 +214,7 @@ where
 {
     fn net_identifiers(
         &self,
-    ) -> Box<Future<Item = EthereumNetworkIdentifiers, Error = Error> + Send> {
+    ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
         let web3 = self.web3.clone();
         let net_version_future = with_retry(
             self.logger.clone(),
@@ -242,7 +242,7 @@ where
         );
 
         Box::new(net_version_future.join(gen_block_hash_future).map(
-            |(net_version, genesis_block_hash)| EthereumNetworkIdentifiers {
+            |(net_version, genesis_block_hash)| EthereumNetworkIdentifier {
                 net_version,
                 genesis_block_hash,
             },
