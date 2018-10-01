@@ -155,6 +155,8 @@ It is typical for developers to define their own root `Query` and `Subscription`
 
 All GraphQL types with `@entity` directives in your schema will be treated as entities, and must have an `ID` field.
 
+**Note** Currently all types in your schema must have an `@entity` directive. In the future, we will treat types without an `@entity` directive as value objects, but this is not yet supported.
+
 #### Example
 Define a `Token` entity:
 
