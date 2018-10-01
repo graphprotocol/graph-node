@@ -14,7 +14,8 @@ mod host;
 mod module;
 mod to_from;
 
-use self::graph::web3::types::Address;
+use self::graph::prelude::*;
+use self::graph::web3::types::{Address, Transaction};
 
 pub use self::host::{RuntimeHost, RuntimeHostBuilder, RuntimeHostConfig};
 
@@ -24,4 +25,11 @@ pub(crate) struct UnresolvedContractCall {
     pub contract_address: Address,
     pub function_name: String,
     pub function_args: Vec<ethabi::Token>,
+}
+
+#[derive(Debug)]
+pub(crate) struct EventHandlerContext {
+    block: Arc<EthereumBlock>,
+    transaction: Arc<Transaction>,
+    entity_operations: Vec<EntityOperation>,
 }

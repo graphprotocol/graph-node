@@ -20,9 +20,9 @@ use graph::data::subgraph::DataSource;
 use graph::ethabi::LogParam;
 use graph::prelude::*;
 use graph::serde_json;
-use graph::web3::types::{Log, Transaction, H160, H256, U256};
+use graph::web3::types::{Log, H160, H256, U256};
 
-use super::UnresolvedContractCall;
+use super::{EventHandlerContext, UnresolvedContractCall};
 
 use asc_abi::asc_ptr::*;
 use asc_abi::class::*;
@@ -174,10 +174,9 @@ where
             heap: heap.clone(),
             ethereum_adapter: config.ethereum_adapter.clone(),
             link_resolver: config.link_resolver.clone(),
-            block: None,
             store: config.store.clone(),
-            entity_operations: None,
             task_sink,
+            ctx: None,
         };
 
         let module = module
@@ -192,24 +191,21 @@ where
         }
     }
 
-    pub fn handle_ethereum_event(
+    pub(crate) fn handle_ethereum_event(
         &mut self,
+        ctx: EventHandlerContext,
         handler_name: &str,
-        block: Arc<EthereumBlock>,
-        transaction: Arc<Transaction>,
         log: Arc<Log>,
         params: Vec<LogParam>,
-        entity_operations: Vec<EntityOperation>,
     ) -> Result<Vec<EntityOperation>, FailureError> {
-        self.externals.block = Some(block.clone());
-
-        // Create new vector for entity operations generated while handling this event
-        self.externals.entity_operations = Some(entity_operations);
+        self.externals.ctx = Some(ctx);
 
         // Prepare an EthereumEvent for the WASM runtime
         let event = EthereumEventData {
-            block: EthereumBlockData::from(&block.block),
-            transaction: EthereumTransactionData::from(transaction.deref()),
+            block: EthereumBlockData::from(&self.externals.ctx.as_ref().unwrap().block.block),
+            transaction: EthereumTransactionData::from(
+                self.externals.ctx.as_ref().unwrap().transaction.deref(),
+            ),
             address: log.address.clone(),
             params,
         };
@@ -223,8 +219,13 @@ where
 
         // Return either the collected entity operations or an error
         result
-            .map(|_| self.externals.entity_operations.take().unwrap())
-            .map_err(|e| {
+            .map(|_| {
+                self.externals
+                    .ctx
+                    .take()
+                    .expect("processing event without context")
+                    .entity_operations
+            }).map_err(|e| {
                 format_err!(
                     "Failed to handle Ethereum event with handler \"{}\": {}",
                     handler_name,
@@ -260,12 +261,9 @@ pub struct HostExternals<T, L, S, U> {
     heap: WasmiAscHeap,
     ethereum_adapter: Arc<T>,
     link_resolver: Arc<L>,
-    // Block containing the event being mapped.
-    block: Option<Arc<EthereumBlock>>,
     store: Arc<S>,
-    // Entity operations collected while handling events
-    entity_operations: Option<Vec<EntityOperation>>,
     task_sink: U,
+    ctx: Option<EventHandlerContext>,
 }
 
 impl<T, L, S, U> HostExternals<T, L, S, U>
@@ -286,8 +284,10 @@ where
         let id: String = self.heap.asc_get(id_ptr);
         let data: HashMap<String, Value> = self.heap.asc_get(data_ptr);
 
-        self.entity_operations
-            .get_or_insert(vec![])
+        self.ctx
+            .as_mut()
+            .map(|ctx| &mut ctx.entity_operations)
+            .expect("processing event without context")
             .push(EntityOperation::Set {
                 subgraph: self.subgraph.id.clone(),
                 entity,
@@ -307,8 +307,10 @@ where
         let entity: String = self.heap.asc_get(entity_ptr);
         let id: String = self.heap.asc_get(id_ptr);
 
-        self.entity_operations
-            .get_or_insert(vec![])
+        self.ctx
+            .as_mut()
+            .map(|ctx| &mut ctx.entity_operations)
+            .expect("processing event without context")
             .push(EntityOperation::Remove {
                 subgraph: self.subgraph.id.clone(),
                 entity,
@@ -332,14 +334,15 @@ where
 
         // Get all operations for this entity
         let matching_operations: Vec<_> = self
-            .entity_operations
+            .ctx
+            .as_ref()
+            .map(|ctx| &ctx.entity_operations)
+            .expect("processing event without context")
             .clone()
-            .map(|ops| {
-                ops.iter()
-                    .cloned()
-                    .filter(|op| op.matches_entity(&store_key))
-                    .collect()
-            }).unwrap_or_default();
+            .iter()
+            .cloned()
+            .filter(|op| op.matches_entity(&store_key))
+            .collect();
 
         // Shortcut 1: If the latest operation for this entity was a removal,
         // return None (= undefined) to the runtime
@@ -411,9 +414,10 @@ where
         let call = EthereumContractCall {
             address: unresolved_call.contract_address.clone(),
             block_ptr: self
-                .block
+                .ctx
                 .as_ref()
-                .expect("HostExternals is missing block")
+                .map(|ctx| ctx.block.as_ref())
+                .expect("processing event without context")
                 .deref()
                 .into(),
             function: function.clone(),
