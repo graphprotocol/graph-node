@@ -657,7 +657,7 @@ where
                             self.consecutive_err_count += 1;
 
                             // If too many errors without progress, give up
-                            if self.consecutive_err_count >= 10 {
+                            if self.consecutive_err_count >= 100 {
                                 return Err(e);
                             }
 
@@ -708,7 +708,7 @@ where
                             self.consecutive_err_count += 1;
 
                             // If too many errors without progress, give up
-                            if self.consecutive_err_count >= 10 {
+                            if self.consecutive_err_count >= 100 {
                                 return Err(e);
                             }
 
