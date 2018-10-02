@@ -491,8 +491,7 @@ impl StoreTrait for Store {
         // Add specified filter to query
         if let Some(filter) = query.filter {
             diesel_query = store_filter(diesel_query, filter).map_err(|e| {
-                QueryExecutionError::FilterNotSupportedError(format!("{:?}", e.value), e.filter
-                )
+                QueryExecutionError::FilterNotSupportedError(format!("{}", e.value), e.filter)
             })?;
         }
 

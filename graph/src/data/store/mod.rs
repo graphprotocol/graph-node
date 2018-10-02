@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
+use std::fmt;
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -82,8 +83,31 @@ impl Value {
             (query::Value::Float(f), _) => Value::Float(f.to_owned() as f32),
             (query::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
             (query::Value::Null, _) => Value::Null,
-            _ => Value::Null,
+            _ => {
+                return Err(QueryExecutionError::AttributeTypeError(
+                    value.to_string(),
+                    ty.to_string(),
+                ))
+            }
         })
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let printable = match self {
+            Value::String(s) => s.to_string(),
+            Value::Int(i) => i.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::Bool(b) => b.to_string(),
+            Value::Null => "null".to_string(),
+            Value::List(ref values) => {
+                values.into_iter().map(|value| format!("{}", value)).collect()
+            }
+            Value::Bytes(ref bytes) => bytes.to_string(),
+            Value::BigInt(ref number) => number.to_string(),
+        };
+        write!(f, "{}", printable)
     }
 }
 
