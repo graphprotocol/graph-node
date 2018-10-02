@@ -144,7 +144,10 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
                     }
                 }).collect::<Result<Vec<_>, _>>()
         }
-        _ => Err(QueryExecutionError::ListFilterError),
+        Value::List(ref values) if values.is_empty() => Ok(vec![]),
+        _ => Err(QueryExecutionError::ListFilterError(
+            filter_type.to_string(),
+        )),
     }
 }
 

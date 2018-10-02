@@ -31,7 +31,7 @@ pub enum QueryExecutionError {
     InvalidFilterError,
     EntityAttributeError(String, String),
     ListTypesError(String),
-    ListFilterError,
+    ListFilterError(String),
     ValueParseError(String, String),
     AttributeTypeError(String, String),
 }
@@ -109,11 +109,9 @@ impl fmt::Display for QueryExecutionError {
                 "Values passed to filter {} must be of the same type but are of different types",
                 s
             ),
-            QueryExecutionError::ListFilterError => write!(
-                f,
-                "Non-list value passed to list filter. \
-                 Hint: _in and _not_in filters take a list of values."
-            ),
+            QueryExecutionError::ListFilterError(s) => {
+                write!(f, "Non-list value passed to {} filter", s)
+            }
             QueryExecutionError::ValueParseError(t, e) => {
                 write!(f, "Failed to decode {} value, {}", t, e)
             }
