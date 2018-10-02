@@ -58,7 +58,7 @@ enum ReconciliationStep {
     /// Move forwards, processing one or more blocks.
     ProcessDescendantBlocks {
         from: EthereumBlockPointer,
-        descendant_blocks: Vec<EthereumBlock>,
+        descendant_blocks: Box<Stream<Item = EthereumBlock, Error = Error> + Send>,
     },
 
     /// Skip forwards from `from` to `to`, with no processing needed.
@@ -355,22 +355,17 @@ where
                                     // Load the blocks
                                     debug!(
                                         ctx.logger,
-                                        "Found {} block(s) with events. Loading blocks...",
+                                        "Found {} block(s) with events.",
                                         descendant_ptrs.len()
                                     );
-                                    Box::new(stream::futures_ordered(
-                                        descendant_ptrs.into_iter().map(|descendant_ptr| {
-                                            ctx.load_block(descendant_ptr.hash)
-                                        }),
-                                    ).collect()
-                                        .map(move |descendant_blocks| {
-                                            // Proceed to those blocks
-                                            ReconciliationStep::ProcessDescendantBlocks {
-                                                from: subgraph_ptr,
-                                                descendant_blocks,
-                                            }
-                                        })
-                                    )
+                                    let descendant_hashes = descendant_ptrs.into_iter().map(|ptr| ptr.hash).collect();
+                                    Box::new(future::ok(
+                                        // Proceed to those blocks
+                                        ReconciliationStep::ProcessDescendantBlocks {
+                                            from: subgraph_ptr,
+                                            descendant_blocks: Box::new(ctx.load_blocks(descendant_hashes)),
+                                        }
+                                    ))
                                 }
                             })
                         )
@@ -428,7 +423,7 @@ where
                         // Note that head_ancestor is a child of subgraph_ptr.
                         Box::new(future::ok(ReconciliationStep::ProcessDescendantBlocks {
                             from: subgraph_ptr,
-                            descendant_blocks: vec![head_ancestor],
+                            descendant_blocks: Box::new(stream::once(Ok(head_ancestor))),
                         }))
                     } else {
                         // The subgraph ptr is not on the main chain.
@@ -499,57 +494,76 @@ where
                 from,
                 descendant_blocks,
             } => {
-                let descendant_block_count = descendant_blocks.len();
-                debug!(
-                    ctx.logger,
-                    "Processing {} block(s) in block range {}-{}...",
-                    descendant_block_count,
-                    from.number + 1,
-                    descendant_blocks.last().unwrap().block.number.unwrap()
-                );
-
                 let mut subgraph_ptr = from;
 
                 // Advance the subgraph ptr to each of the specified descendants and yield each
                 // block with relevant events.
                 Box::new(future::ok(ReconciliationStepOutcome::YieldBlocks(
-                    Box::new(stream::iter_ok(descendant_blocks.into_iter()).map(
-                        move |descendant_block| {
-                            // First, check if there are blocks between subgraph_ptr and
-                            // descendant_block.
-                            let descendant_parent_ptr =
-                                EthereumBlockPointer::to_parent(&descendant_block);
-                            if subgraph_ptr != descendant_parent_ptr {
-                                // descendant_block is not a direct child.
-                                // Therefore, there are blocks that are irrelevant to this subgraph
-                                // that we can skip.
+                    Box::new(descendant_blocks.map(move |descendant_block| {
+                        // First, check if there are blocks between subgraph_ptr and
+                        // descendant_block.
+                        let descendant_parent_ptr =
+                            EthereumBlockPointer::to_parent(&descendant_block);
+                        if subgraph_ptr != descendant_parent_ptr {
+                            // descendant_block is not a direct child.
+                            // Therefore, there are blocks that are irrelevant to this subgraph
+                            // that we can skip.
 
-                                debug!(
-                                    ctx.logger,
-                                    "Skipping {} block(s) with no relevant events...",
-                                    descendant_parent_ptr.number - subgraph_ptr.number
-                                );
+                            debug!(
+                                ctx.logger,
+                                "Skipping {} block(s) with no relevant events...",
+                                descendant_parent_ptr.number - subgraph_ptr.number
+                            );
 
-                                // Update subgraph_ptr in store to skip the irrelevant blocks.
-                                ctx.subgraph_store
-                                    .set_block_ptr_with_no_changes(
-                                        ctx.subgraph_id.clone(),
-                                        subgraph_ptr,
-                                        descendant_parent_ptr,
-                                    ).unwrap();
-                            }
+                            // Update subgraph_ptr in store to skip the irrelevant blocks.
+                            ctx.subgraph_store
+                                .set_block_ptr_with_no_changes(
+                                    ctx.subgraph_id.clone(),
+                                    subgraph_ptr,
+                                    descendant_parent_ptr,
+                                ).unwrap();
+                        }
 
-                            // Update our copy of the subgraph ptr to reflect the
-                            // value it will have after descendant_block is
-                            // processed.
-                            subgraph_ptr = (&descendant_block).into();
+                        // Update our copy of the subgraph ptr to reflect the
+                        // value it will have after descendant_block is
+                        // processed.
+                        subgraph_ptr = (&descendant_block).into();
 
-                            descendant_block
-                        },
-                    )) as Box<Stream<Item = _, Error = _> + Send>,
+                        descendant_block
+                    })) as Box<Stream<Item = _, Error = _> + Send>,
                 )))
             }
         }
+    }
+
+    /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
+    fn load_blocks(
+        &self,
+        block_hashes: Vec<H256>,
+    ) -> impl Stream<Item = EthereumBlock, Error = Error> + Send {
+        let ctx = self.clone();
+
+        let block_hashes_batches = block_hashes
+            .chunks(200) // max batch size
+            .map(|chunk| chunk.to_vec())
+            .collect::<Vec<_>>();
+
+        // Return a stream that lazily loads batches of blocks
+        stream::iter_ok::<_, Error>(block_hashes_batches)
+            .map(move |block_hashes_batch| {
+                debug!(
+                    ctx.logger,
+                    "Requesting {} block(s) in parallel...",
+                    block_hashes_batch.len()
+                );
+
+                // Start loading all blocks in this batch
+                let block_futures = block_hashes_batch
+                    .into_iter()
+                    .map(|block_hash| ctx.load_block(block_hash));
+
+                stream::futures_ordered(block_futures)
+            }).flatten()
     }
 
     fn load_block(

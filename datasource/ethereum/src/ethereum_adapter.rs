@@ -366,11 +366,6 @@ where
                         1 => {
                             let mut block_ptrs = vec![];
                             for log in chunks[0].iter() {
-                                if block_ptrs.len() >= 100 {
-                                    // That's enough to process in one iteration
-                                    break;
-                                }
-
                                 let hash = log
                                     .block_hash
                                     .expect("log from Eth node is missing block hash");
