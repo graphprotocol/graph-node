@@ -268,6 +268,9 @@ fn store_filter_by_mode<'a>(
         // Is `attribute` equal to some `v` in `query_values`?
         StoreFilter::In(attribute, query_values) => {
             let op = " = ANY (";
+            if query_values.is_empty() {
+                return Ok(add_filter(query, filter_mode, sql("true")));
+            }
             match query_values[0].clone() {
                 Value::Bool(_) => add_filter(
                     query,
@@ -336,6 +339,9 @@ fn store_filter_by_mode<'a>(
         }
         // Is `attribute` different from all `query_values`?
         StoreFilter::NotIn(attribute, query_values) => {
+            if query_values.is_empty() {
+                return Ok(add_filter(query, filter_mode, sql("true")));
+            }
             query_values.into_iter().try_fold(query, |q, v| {
                 store_filter_by_mode(q, StoreFilter::Not(attribute.clone(), v), FilterMode::And)
             })?
