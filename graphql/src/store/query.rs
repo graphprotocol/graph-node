@@ -29,13 +29,13 @@ fn build_range(
             _ => Err("first".to_string()),
         },
         None => Ok(None),
-    }.and_then(|n| match n {
+    }.map(|n| match n {
         Some(n) => if n > 0 {
-            Ok(Some(n as usize))
+            Some(n as usize)
         } else {
-            Ok(None)
+            None
         },
-        None => Ok(None),
+        None => None,
     });
 
     let skip = match arguments.get(&"skip".to_string()) {
@@ -44,13 +44,13 @@ fn build_range(
             _ => Err("skip".to_string()),
         },
         None => Ok(None),
-    }.and_then(|n| match n {
+    }.map(|n| match n {
         Some(n) => if n >= 0 {
-            Ok(Some(n as usize))
+            Some(n as usize)
         } else {
-            Ok(None)
+            None
         },
-        None => Ok(None),
+        None => None,
     });
 
     if first.is_err() || skip.is_err() {

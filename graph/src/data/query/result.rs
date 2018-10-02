@@ -39,8 +39,9 @@ impl From<QueryExecutionError> for QueryResult {
 
 impl From<Vec<QueryExecutionError>> for QueryResult {
     fn from(e: Vec<QueryExecutionError>) -> Self {
-        let mut result = Self::new(None);
-        result.errors = Some(e.into_iter().map(|error| QueryError::from(error)).collect());
-        result
+        QueryResult {
+            data: None,
+            errors: Some(e.into_iter().map(|error| QueryError::from(error)).collect()),
+        }
     }
 }
