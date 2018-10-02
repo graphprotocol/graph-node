@@ -36,7 +36,7 @@ impl Transport {
     /// Note: JSON-RPC over HTTP doesn't always support subscribing to new
     /// blocks (one such example is Infura's HTTP endpoint).
     pub fn new_rpc(rpc: &str) -> (EventLoopHandle, Self) {
-        http::Http::new(rpc)
+        http::Http::with_max_parallel(rpc, 2048)
             .map(|(event_loop, transport)| (event_loop, Transport::RPC(transport)))
             .expect("Failed to connect to Ethereum RPC")
     }
