@@ -43,3 +43,18 @@ where
         RetryError::TimerError(e) => panic!("tokio timer error: {}", e),
     })
 }
+
+pub fn with_retry_no_logging<F, R, I, E>(try_it: F) -> impl Future<Item = I, Error = E> + Send
+where
+    F: Fn() -> R + Send,
+    R: Future<Item = I, Error = E> + Send,
+    I: Send,
+    E: Send,
+{
+    let retry_strategy = ExponentialBackoff::from_millis(2).map(jitter);
+
+    Retry::spawn(retry_strategy, try_it).map_err(|e| match e {
+        RetryError::OperationError(e) => e,
+        RetryError::TimerError(e) => panic!("tokio timer error: {}", e),
+    })
+}
