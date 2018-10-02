@@ -113,8 +113,8 @@ fn build_filter_from_object(
                     LessThan => StoreFilter::LessThan(attribute, store_value),
                     GreaterOrEqual => StoreFilter::GreaterOrEqual(attribute, store_value),
                     LessOrEqual => StoreFilter::LessOrEqual(attribute, store_value),
-                    In => StoreFilter::In(attribute, list_values(store_value)?),
-                    NotIn => StoreFilter::NotIn(attribute, list_values(store_value)?),
+                    In => StoreFilter::In(attribute, list_values(store_value, "_in")?),
+                    NotIn => StoreFilter::NotIn(attribute, list_values(store_value, "_not_in")?),
                     Contains => StoreFilter::Contains(attribute, store_value),
                     NotContains => StoreFilter::NotContains(attribute, store_value),
                     StartsWith => StoreFilter::StartsWith(attribute, store_value),
@@ -128,7 +128,7 @@ fn build_filter_from_object(
 }
 
 /// Parses a list of GraphQL values into a vector of entity attribute values.
-fn list_values(value: Value) -> Result<Vec<Value>, QueryExecutionError> {
+fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecutionError> {
     match value {
         Value::List(ref values) if !values.is_empty() => {
             // Check that all values in list are of the same type
@@ -140,7 +140,7 @@ fn list_values(value: Value) -> Result<Vec<Value>, QueryExecutionError> {
                     if root_discriminant == current_discriminant {
                         Ok(value.clone())
                     } else {
-                        Err(QueryExecutionError::ListTypesError())
+                        Err(QueryExecutionError::ListTypesError(filter_type.to_string()))
                     }
                 }).collect::<Result<Vec<_>, _>>()
         }
