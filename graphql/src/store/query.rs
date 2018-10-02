@@ -26,7 +26,7 @@ fn build_range(
     let first = match arguments.get(&"first".to_string()) {
         Some(value) => match value {
             q::Value::Int(n) => Ok(n.as_i64()),
-            _ => Err(QueryExecutionError::BuildRangeTypeError),
+            _ => Err("first".to_string()),
         },
         None => Ok(None),
     }.and_then(|n| match n {
@@ -41,7 +41,7 @@ fn build_range(
     let skip = match arguments.get(&"skip".to_string()) {
         Some(value) => match value {
             q::Value::Int(n) => Ok(n.as_i64()),
-            _ => Err(QueryExecutionError::BuildRangeTypeError),
+            _ => Err("skip".to_string()),
         },
         None => Ok(None),
     }.and_then(|n| match n {
@@ -53,7 +53,16 @@ fn build_range(
         None => Ok(None),
     });
 
-    Ok(match (first?, skip?) {
+    if first.is_err() || skip.is_err() {
+        let errors: Vec<String> = vec![first.clone(), skip.clone()]
+            .into_iter()
+            .filter(|r| r.is_err())
+            .map(|e| e.unwrap_err())
+            .collect();
+        return Err(QueryExecutionError::RangeArgumentsError(errors));
+    }
+
+    Ok(match (first.unwrap(), skip.unwrap()) {
         (None, None) => None,
         (Some(first), None) => Some(StoreRange { first, skip: 0 }),
         (Some(first), Some(skip)) => Some(StoreRange { first, skip }),
@@ -69,7 +78,7 @@ fn build_filter(
     match arguments.get(&"where".to_string()) {
         Some(value) => match value {
             q::Value::Object(object) => Ok(object),
-            _ => return Err(QueryExecutionError::BuildFilterError),
+            _ => return Err(QueryExecutionError::InvalidFilterError),
         },
         None => return Ok(None),
     }.and_then(|object| build_filter_from_object(entity, &object))
@@ -88,8 +97,12 @@ fn build_filter_from_object(
 
                 let (attribute, op) = sast::parse_field_as_filter(key);
 
-                let field = sast::get_field_type(entity, &attribute)
-                    .ok_or(QueryExecutionError::EntityAttributeError)?;
+                let field = sast::get_field_type(entity, &attribute).ok_or(
+                    QueryExecutionError::EntityAttributeError(
+                        entity.clone().name,
+                        attribute.clone(),
+                    ),
+                )?;
 
                 let ty = &field.field_type;
                 let store_value = Value::from_query_value(value, &ty)?;
@@ -175,7 +188,7 @@ pub fn parse_subgraph_id(entity: &s::ObjectType) -> Result<String, QueryExecutio
         }).and_then(|(_, value)| match value {
             s::Value::String(id) => Some(id),
             _ => None,
-        }).ok_or(QueryExecutionError::SubgraphParseError(entity.clone().name))
+        }).ok_or(QueryExecutionError::SupgraphIdError(entity.clone().name))
 }
 
 /// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.

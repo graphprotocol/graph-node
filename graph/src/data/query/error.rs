@@ -1,4 +1,3 @@
-use data::store::Value;
 use graphql_parser::{query as q, Pos};
 use hex::FromHexError;
 use num_bigint;
@@ -6,8 +5,6 @@ use serde::ser::*;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use std::mem::Discriminant;
-use std::str::FromStr;
 use std::string::FromUtf8Error;
 
 /// Error caused while executing a [Query](struct.Query.html).
@@ -18,26 +15,25 @@ pub enum QueryExecutionError {
     NotSupported(String),
     NoRootQueryObjectType,
     NoRootSubscriptionObjectType,
-    ResolveEntityError(Pos, String),
-    ResolveListError,
     NonNullError(Pos, String),
     ListValueError(Pos, String),
     NamedTypeError(String),
-    ObjectFieldError,
     AbstractTypeError(String),
     InvalidArgumentError(Pos, String, q::Value),
     MissingArgumentError(Pos, String),
-    StoreQueryError(String),
+    ResolveEntitiesError(String),
     FilterNotSupportedError(String, String),
     UnknownField(Pos, String, String),
     EmptyQuery,
     MultipleSubscriptionFields,
-    SubgraphParseError(String),
-    BuildRangeTypeError,
-    BuildFilterError,
-    EntityAttributeError,
-    ListTypesError(),
+    SupgraphIdError(String),
+    RangeArgumentsError(Vec<String>),
+    InvalidFilterError,
+    EntityAttributeError(String, String),
+    ListTypesError(String),
     ListFilterError,
+    ValueParseError(String, String),
+    AttributeTypeError(String, String),
 }
 
 impl Error for QueryExecutionError {
@@ -64,9 +60,6 @@ impl fmt::Display for QueryExecutionError {
             QueryExecutionError::NoRootSubscriptionObjectType => {
                 write!(f, "No root Subscription type defined in the schema")
             }
-            QueryExecutionError::ResolveEntityError(_, s) => {
-                write!(f, "Failed to resolve entity: {}", s)
-            }
             QueryExecutionError::NonNullError(_, s) => {
                 write!(f, "Null value resolved for non-null field: {}", s)
             }
@@ -76,7 +69,6 @@ impl fmt::Display for QueryExecutionError {
             QueryExecutionError::NamedTypeError(s) => {
                 write!(f, "Failed to resolve named type: {}", s)
             }
-            QueryExecutionError::ObjectFieldError => write!(f, "Object field contains 0 types"),
             QueryExecutionError::AbstractTypeError(s) => {
                 write!(f, "Failed to resolve abstract type: {}", s)
             }
@@ -86,16 +78,11 @@ impl fmt::Display for QueryExecutionError {
             QueryExecutionError::MissingArgumentError(_, s) => {
                 write!(f, "No value provided for required argument: {}", s)
             }
-            QueryExecutionError::StoreQueryError(s) => {
-                write!(f, "Failed to resolve store query, error: {}", s)
+            QueryExecutionError::ResolveEntitiesError(s) => {
+                write!(f, "Failed to resolve entities: {}", s)
             }
-            QueryExecutionError::FilterNotSupportedError(value, filter) => write!(
-                f,
-                "Value does not support this filter, value: {}, filter: {}",
-                value, filter
-            ),
-            QueryExecutionError::ResolveListError => {
-                write!(f, "Failed to resolve named type within list type")
+            QueryExecutionError::FilterNotSupportedError(value, filter) => {
+                write!(f, "Filter not supported by value, {}:{}", value, filter)
             }
             QueryExecutionError::UnknownField(_, t, s) => {
                 write!(f, "Type \"{}\" has no field \"{}\"", t, s)
@@ -105,23 +92,35 @@ impl fmt::Display for QueryExecutionError {
                 f,
                 "Only a single top-level field is allowed in subscriptions"
             ),
-            QueryExecutionError::SubgraphParseError(s) => {
+            QueryExecutionError::SupgraphIdError(s) => {
                 write!(f, "Failed to get subgraph ID from type: {}", s)
             }
-            QueryExecutionError::BuildRangeTypeError => {
-                write!(f, "Range inputs must be an integer")
+            QueryExecutionError::RangeArgumentsError(s) => write!(
+                f,
+                "Range inputs must be an integer, {:}",
+                s.iter().fold(String::new(), |acc, value| acc + &value)
+            ),
+            QueryExecutionError::InvalidFilterError => write!(f, "Filter must by an object"),
+            QueryExecutionError::EntityAttributeError(e, a) => {
+                write!(f, "Entity {} has no attribute {}", e, a)
             }
-            QueryExecutionError::BuildFilterError => write!(f, "Filter must by an object"),
-            QueryExecutionError::EntityAttributeError => {
-                write!(f, "Attribute does not belong to entity")
-            }
-            QueryExecutionError::ListTypesError() => {
-                write!(f, "List field contains inconsistent Value types")
-            }
+            QueryExecutionError::ListTypesError(s) => write!(
+                f,
+                "Values passed to filter {} must be of the same type but are of different types",
+                s
+            ),
             QueryExecutionError::ListFilterError => write!(
                 f,
-                "Non-list value resolved for list filter  \
-                 *Hint*: IN and NOT_IN filters take an array of values"
+                "Non-list value passed to list filter. \
+                 Hint: _in and _not_in filters take a list of values."
+            ),
+            QueryExecutionError::ValueParseError(t, e) => {
+                write!(f, "Failed to decode {} value, {}", t, e)
+            }
+            QueryExecutionError::AttributeTypeError(value, ty) => write!(
+                f,
+                "Query contains attribute with invalid type, {}:{}",
+                value, ty
             ),
         }
     }
@@ -134,14 +133,14 @@ impl From<QueryExecutionError> for Vec<QueryExecutionError> {
 }
 
 impl From<FromHexError> for QueryExecutionError {
-    fn from(_e: FromHexError) -> Self {
-        QueryExecutionError::NamedTypeError("Bytes".to_string())
+    fn from(e: FromHexError) -> Self {
+        QueryExecutionError::ValueParseError("Bytes".to_string(), e.description().to_string())
     }
 }
 
 impl From<num_bigint::ParseBigIntError> for QueryExecutionError {
-    fn from(_e: num_bigint::ParseBigIntError) -> Self {
-        QueryExecutionError::NamedTypeError("BigInt".to_string())
+    fn from(e: num_bigint::ParseBigIntError) -> Self {
+        QueryExecutionError::ValueParseError("BigInt".to_string(), format!("{}", e))
     }
 }
 
@@ -240,8 +239,7 @@ impl Serialize for QueryError {
             }
 
             // Serialize entity resolution errors using their position
-            QueryError::ExecutionError(QueryExecutionError::ResolveEntityError(pos, _))
-            | QueryError::ExecutionError(QueryExecutionError::NonNullError(pos, _))
+            QueryError::ExecutionError(QueryExecutionError::NonNullError(pos, _))
             | QueryError::ExecutionError(QueryExecutionError::ListValueError(pos, _))
             | QueryError::ExecutionError(QueryExecutionError::InvalidArgumentError(pos, _, _))
             | QueryError::ExecutionError(QueryExecutionError::MissingArgumentError(pos, _)) => {
