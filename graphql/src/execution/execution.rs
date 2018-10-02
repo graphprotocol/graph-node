@@ -110,7 +110,7 @@ where
         }
     }
 
-    if errors.is_empty() & !result_map.is_empty() {
+    if errors.is_empty() && !result_map.is_empty() {
         Ok(q::Value::Object(result_map))
     } else {
         Err(errors)
@@ -354,11 +354,9 @@ where
             &ctx.schema.document
         },
         type_name,
-    ).ok_or(vec![QueryExecutionError::NamedTypeError(
-        type_name.to_string(),
-    )])?;
+    ).ok_or(QueryExecutionError::NamedTypeError(type_name.to_string()))?;
 
-    let value = match named_type {
+    match named_type {
         // Let the resolver decide how the field (with the given object type)
         // is resolved into an entity based on the (potential) parent object
         s::TypeDefinition::Object(t) => if ctx.introspecting {
@@ -410,15 +408,12 @@ where
         s::TypeDefinition::Union(_) => unimplemented!(),
 
         _ => unimplemented!(),
-    };
-
-    match value {
-        Ok(v) => Ok(v),
-        Err(e) => Err(vec![
+    }.map_err(|e| {
+        vec![
             e,
             QueryExecutionError::NamedTypeError(type_name.to_string()),
-        ]),
-    }
+        ]
+    })
 }
 
 /// Resolves the value of a field that corresponds to a list type.
@@ -459,29 +454,23 @@ where
             match named_type {
                 // Let the resolver decide how the list field (with the given item object type)
                 // is resolved into a entities based on the (potential) parent object
-                s::TypeDefinition::Object(t) => {
-                    let object = if ctx.introspecting {
-                        ctx.introspection_resolver.resolve_objects(
-                            object_value,
-                            &field.name,
-                            field_definition,
-                            &t,
-                            argument_values,
-                        )
-                    } else {
-                        ctx.resolver.resolve_objects(
-                            object_value,
-                            &field.name,
-                            field_definition,
-                            &t,
-                            argument_values,
-                        )
-                    };
-                    match object {
-                        Ok(v) => Ok(v),
-                        Err(e) => Err(vec![e]),
-                    }
-                }
+                s::TypeDefinition::Object(t) => if ctx.introspecting {
+                    ctx.introspection_resolver.resolve_objects(
+                        object_value,
+                        &field.name,
+                        field_definition,
+                        &t,
+                        argument_values,
+                    )
+                } else {
+                    ctx.resolver.resolve_objects(
+                        object_value,
+                        &field.name,
+                        field_definition,
+                        &t,
+                        argument_values,
+                    )
+                }.map_err(|e| vec![e]),
 
                 // Let the resolver decide how values in the resolved object value
                 // map to values of GraphQL enums
