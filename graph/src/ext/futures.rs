@@ -1,13 +1,13 @@
 use futures::sync::oneshot;
 use std::sync::{Arc, Mutex, Weak};
-use tokio::prelude::{Future, Poll, Stream};
+use tokio::prelude::{future::Fuse, Future, Poll, Stream};
 
 /// A cancelable stream or future.
 ///
 /// It can be canceled through the corresponding `CancelGuard`.
 pub struct Cancelable<T, C> {
     cancelable: T,
-    canceled: oneshot::Receiver<()>,
+    canceled: Fuse<oneshot::Receiver<()>>,
     on_cancel: C,
 }
 
@@ -18,6 +18,7 @@ impl<S: Stream, C: Fn() -> S::Error> Stream for Cancelable<S, C> {
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         // Error if the stream was canceled by dropping the sender.
+        // `canceled` is fused so we may ignore `Ok`s.
         if self.canceled.poll().is_err() {
             Err((self.on_cancel)())
         // Otherwise poll it.
@@ -33,6 +34,7 @@ impl<F: Future, C: Fn() -> F::Error> Future for Cancelable<F, C> {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         // Error if the future was canceled by dropping the sender.
+        // `canceled` is fused so we may ignore `Ok`s.
         if self.canceled.poll().is_err() {
             Err((self.on_cancel)())
         // Otherwise poll it.
@@ -100,13 +102,13 @@ impl CancelGuardTrait for CancelHandle {
     }
 }
 
-/// A version of `CancelGuard` that can be canceled through a shared reference.
+/// A cancelation guard that can be canceled through a shared reference such as
+/// an `Arc`.
 ///
-/// To cancel guarded streams or futures, call `cancel` on one of the guards or
-/// drop all guards.
-#[derive(Clone, Debug, Default)]
+/// To cancel guarded streams or futures, call `cancel` or drop the guard.
+#[derive(Debug, Default)]
 pub struct SharedCancelGuard {
-    guard: Arc<Mutex<Option<CancelGuard>>>,
+    guard: Mutex<Option<CancelGuard>>,
 }
 
 impl SharedCancelGuard {
@@ -135,11 +137,25 @@ impl SharedCancelGuard {
 }
 
 impl CancelGuardTrait for SharedCancelGuard {
-    /// A noop if `self` has already been canceled.
+    /// Cancels immediately if `self` has already been canceled.
     fn add_canceler(&self, canceler: oneshot::Sender<()>) {
         if let Some(ref mut guard) = *self.guard.lock().unwrap() {
             guard.add_canceler(canceler);
+        } else {
+            drop(canceler)
         }
+    }
+}
+
+/// An implementor of `CancelGuardTrait` that never cancels,
+/// making `cancelable` a noop.
+#[derive(Debug, Default)]
+pub struct DummyCancelGuard;
+
+impl CancelGuardTrait for DummyCancelGuard {
+    fn add_canceler(&self, canceler: oneshot::Sender<()>) {
+        // Send to the channel, preventing cancelation.
+        let _ = canceler.send(());
     }
 }
 
@@ -165,7 +181,7 @@ impl<S: Stream> StreamExtension for S {
         guard.add_canceler(canceler);
         Cancelable {
             cancelable: self,
-            canceled,
+            canceled: canceled.fuse(),
             on_cancel,
         }
     }
@@ -193,7 +209,7 @@ impl<F: Future> FutureExtension for F {
         guard.add_canceler(canceler);
         Cancelable {
             cancelable: self,
-            canceled,
+            canceled: canceled.fuse(),
             on_cancel,
         }
     }
