@@ -180,7 +180,7 @@ impl Store for TestStore {
                 entity.get("id") == Some(&Value::String(key.id.clone()))
                     && entity.get("__typename") == Some(&Value::String(key.entity.clone()))
             }).map_or(
-        Err(QueryExecutionError::StoreQueryError(String::from(
+                Err(QueryExecutionError::ResolveEntitiesError(String::from(
                     "Mock get query error",
                 ))),
             |entity| Ok(entity.clone()),

@@ -52,7 +52,7 @@ impl Store for MockStore {
                         _ => false,
                     }
                 }).map(|entity| entity.clone())
-                .ok_or(QueryExecutionError::StoreQueryError(String::from(
+                .ok_or(QueryExecutionError::ResolveEntitiesError(String::from(
                     "Mock store error",
                 )))
         } else {
