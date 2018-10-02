@@ -1701,6 +1701,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     })
 }
 
+#[cfg(any())]
 #[test]
 fn find_bytes_equal() {
     run_test(|| -> Result<(), ()> {
