@@ -27,14 +27,17 @@ before_install:
 
 matrix:
   fast_finish: true
-# Allow nightly to fail
+  # Allow nightly to fail
   allow_failures:
     - rust: nightly
     - rust: beta # until ipfs-api is un-regressed
   # Only check formatting when running against stable
   include:
     - env: CHECK_FORMATTING=true
-      if: group = stable
+  # Build tagged commits in release mode
+  include:
+    - env: RELEASE=true
+      if: tag IS present
 
 # Cache dependencies
 cache: cargo
@@ -57,5 +60,20 @@ script:
   - if [ "$CHECK_FORMATTING" = "true" ]; then
       cargo fmt --all -- --check;
     fi
-  # Run unit and sccenario tests
+  # Run tests
   - RUST_BACKTRACE=1 cargo test --verbose --all -- --nocapture
+  - if [ "$RELEASE" = "true" ]; then
+      cargo build -p graph-node --release;
+      mv target/release/graph-node target/release/graph-node-$TRAVIS_OS_NAME;
+    fi
+
+
+deploy:
+  provider: releases
+  api_key:
+    secure: ygpZedRG+/Qg/lPhifyNQ+4rExjZ4nGyJjB4DYT1fuePMyKXfiCPGicaWRGR3ZnZGNRjdKaIkF97vBsZ0aHwW+AykwOxlXrkAFvCKA0Tb82vaYqCLrBs/Y5AEhuCWLFDz5cXDPMkptf+uLX/s3JCF0Mxo5EBN2JfBQ8vS6ScKEwqn2TiLLBQKTQ4658TFM4H5KiXktpyVVdlRvpoS3pRIPMqNU/QpGPQigaiKyYD5+azCrAXeaKT9bBS1njVbxI69Go4nraWZn7wIhZCrwJ+MxGNTOxwasypsWm/u1umhRVLM1rL2i7RRqkIvzwn22YMaU7FZKCx8huXcj0cB8NtHZSw7GhJDDDv3e7puZxl3m/c/7ks76UF95syLzoM/9FWEFew8Ti+5MApzKQj5YWHOCIEzBWPeqAcA8Y+Az7w2h1ZgNbjDgSvjGAFSpE8m+SM0A2TOOZ1g/t/yfbEl8CWO6Y8v2x1EONkp7X0CqJgASMp+h8kzKCbuYyRnghlToY+5wYuh4M9Qg9UeJCt9dOblRBVJwW5CFr62kgE/gso8F9tXXHkRTv3hfk5madZR1Vn5A7KadEO8epfV4IQNsd+VHfoxoJSprx5f77Q2bLMBD1GT/qMqECgSznoTkU5ajkKJRqUw4AwLTohrYir76j61eQfxOhXExY/EM8xvlxpd1w=
+  file: target/release/graph-node-$TRAVIS_OS_NAME
+  repo: graphprotocol/graph-node
+  on:
+    tags: true
+  skip_cleanup: true
