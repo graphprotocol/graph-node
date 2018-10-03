@@ -462,7 +462,7 @@ impl StoreTrait for Store {
             }).map_err(Error::from)
     }
 
-    fn get(&self, key: StoreKey) -> Result<Entity, Error> {
+    fn get(&self, key: StoreKey) -> Result<Entity, QueryExecutionError> {
         use db_schema::entities::dsl::*;
 
         // Use primary key fields to get the entity; deserialize the result JSON
@@ -470,10 +470,10 @@ impl StoreTrait for Store {
             .find((key.id, key.subgraph, key.entity))
             .select(data)
             .first::<serde_json::Value>(&*self.conn.lock().unwrap())
-            .map_err(|e| format_err!("Failed to get entity from store: {}", e))
+            .map_err(|e| QueryExecutionError::ResolveEntitiesError(e.to_string()))
             .and_then(|value| {
                 serde_json::from_value::<Entity>(value)
-                    .map_err(|e| format_err!("Broken entity found in store: {}", e))
+                    .map_err(|e| QueryExecutionError::EntityParseError(e.to_string()))
             })
     }
 
