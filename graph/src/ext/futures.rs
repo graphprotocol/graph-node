@@ -57,7 +57,7 @@ pub trait Canceler {
 pub struct CancelGuard {
     /// This is the only non-temporary strong reference to this `Arc`, therefore
     /// the `Vec` should be dropped shortly after `self` is dropped.
-    cancelers: Arc<Mutex<Vec<oneshot::Sender<()>>>>,
+    cancel_senders: Arc<Mutex<Vec<oneshot::Sender<()>>>>,
 }
 
 impl CancelGuard {
@@ -71,14 +71,14 @@ impl CancelGuard {
 
     pub fn handle(&self) -> CancelHandle {
         CancelHandle {
-            guard: Arc::downgrade(&self.cancelers),
+            guard: Arc::downgrade(&self.cancel_senders),
         }
     }
 }
 
 impl Canceler for CancelGuard {
     fn add_canceler(&self, cancel_sender: oneshot::Sender<()>) {
-        self.cancelers.lock().unwrap().push(cancel_sender);
+        self.cancel_senders.lock().unwrap().push(cancel_sender);
     }
 }
 
