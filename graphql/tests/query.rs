@@ -183,7 +183,7 @@ impl Store for TestStore {
                 Err(QueryExecutionError::ResolveEntitiesError(String::from(
                     "Mock get query error",
                 ))),
-            |entity| Ok(entity.clone()),
+                |entity| Ok(entity.clone()),
             )
     }
 
