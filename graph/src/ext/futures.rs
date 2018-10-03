@@ -4,10 +4,11 @@ use tokio::prelude::{future::Fuse, Future, Poll, Stream};
 
 /// A cancelable stream or future.
 ///
-/// It can be canceled through the corresponding `CancelGuard`.
+/// Created by calling `cancelable` extension method.
+/// Can be canceled through the corresponding `CancelGuard`.
 pub struct Cancelable<T, C> {
-    cancelable: T,
-    canceled: Fuse<oneshot::Receiver<()>>,
+    inner: T,
+    cancel_receiver: Fuse<oneshot::Receiver<()>>,
     on_cancel: C,
 }
 
@@ -18,12 +19,12 @@ impl<S: Stream, C: Fn() -> S::Error> Stream for Cancelable<S, C> {
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         // Error if the stream was canceled by dropping the sender.
-        // `canceled` is fused so we may ignore `Ok`s.
-        if self.canceled.poll().is_err() {
+        // `cancel_receiver` is fused so we may ignore `Ok`s.
+        if self.cancel_receiver.poll().is_err() {
             Err((self.on_cancel)())
         // Otherwise poll it.
         } else {
-            self.cancelable.poll()
+            self.inner.poll()
         }
     }
 }
@@ -34,20 +35,21 @@ impl<F: Future, C: Fn() -> F::Error> Future for Cancelable<F, C> {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         // Error if the future was canceled by dropping the sender.
-        // `canceled` is fused so we may ignore `Ok`s.
-        if self.canceled.poll().is_err() {
+        // `cancel_receiver` is fused so we may ignore `Ok`s.
+        if self.cancel_receiver.poll().is_err() {
             Err((self.on_cancel)())
         // Otherwise poll it.
         } else {
-            self.cancelable.poll()
+            self.inner.poll()
         }
     }
 }
 
 /// A `CancelGuard` or `SharedCancelGuard`.
-pub trait CancelGuardTrait {
-    /// Adds `canceler` to the set being guarded.
-    fn add_canceler(&self, canceler: oneshot::Sender<()>);
+pub trait Canceler {
+    /// Adds `cancel_sender` to the set being guarded.
+    /// Avoid calling directly and prefer using `cancelable`.
+    fn add_canceler(&self, cancel_sender: oneshot::Sender<()>);
 }
 
 /// Cancels any guarded futures and streams when dropped.
@@ -74,9 +76,9 @@ impl CancelGuard {
     }
 }
 
-impl CancelGuardTrait for CancelGuard {
-    fn add_canceler(&self, canceler: oneshot::Sender<()>) {
-        self.cancelers.lock().unwrap().push(canceler);
+impl Canceler for CancelGuard {
+    fn add_canceler(&self, cancel_sender: oneshot::Sender<()>) {
+        self.cancelers.lock().unwrap().push(cancel_sender);
     }
 }
 
@@ -90,14 +92,14 @@ pub struct CancelHandle {
     guard: Weak<Mutex<Vec<oneshot::Sender<()>>>>,
 }
 
-impl CancelGuardTrait for CancelHandle {
-    fn add_canceler(&self, canceler: oneshot::Sender<()>) {
+impl Canceler for CancelHandle {
+    fn add_canceler(&self, cancel_sender: oneshot::Sender<()>) {
         if let Some(guard) = self.guard.upgrade() {
             // If the guard exists, register the canceler.
-            guard.lock().unwrap().push(canceler);
+            guard.lock().unwrap().push(cancel_sender);
         } else {
             // Otherwise cancel immediately.
-            drop(canceler)
+            drop(cancel_sender)
         }
     }
 }
@@ -136,26 +138,26 @@ impl SharedCancelGuard {
     }
 }
 
-impl CancelGuardTrait for SharedCancelGuard {
+impl Canceler for SharedCancelGuard {
     /// Cancels immediately if `self` has already been canceled.
-    fn add_canceler(&self, canceler: oneshot::Sender<()>) {
+    fn add_canceler(&self, cancel_sender: oneshot::Sender<()>) {
         if let Some(ref mut guard) = *self.guard.lock().unwrap() {
-            guard.add_canceler(canceler);
+            guard.add_canceler(cancel_sender);
         } else {
-            drop(canceler)
+            drop(cancel_sender)
         }
     }
 }
 
-/// An implementor of `CancelGuardTrait` that never cancels,
+/// An implementor of `Canceler` that never cancels,
 /// making `cancelable` a noop.
 #[derive(Debug, Default)]
 pub struct DummyCancelGuard;
 
-impl CancelGuardTrait for DummyCancelGuard {
-    fn add_canceler(&self, canceler: oneshot::Sender<()>) {
+impl Canceler for DummyCancelGuard {
+    fn add_canceler(&self, cancel_sender: oneshot::Sender<()>) {
         // Send to the channel, preventing cancelation.
-        let _ = canceler.send(());
+        let _ = cancel_sender.send(());
     }
 }
 
@@ -166,7 +168,7 @@ pub trait StreamExtension: Stream + Sized {
     /// `on_cancel` is called to make an error value upon cancelation.
     fn cancelable<C: Fn() -> Self::Error>(
         self,
-        guard: &impl CancelGuardTrait,
+        guard: &impl Canceler,
         on_cancel: C,
     ) -> Cancelable<Self, C>;
 }
@@ -174,14 +176,14 @@ pub trait StreamExtension: Stream + Sized {
 impl<S: Stream> StreamExtension for S {
     fn cancelable<C: Fn() -> S::Error>(
         self,
-        guard: &impl CancelGuardTrait,
+        guard: &impl Canceler,
         on_cancel: C,
     ) -> Cancelable<Self, C> {
-        let (canceler, canceled) = oneshot::channel();
+        let (canceler, cancel_receiver) = oneshot::channel();
         guard.add_canceler(canceler);
         Cancelable {
-            cancelable: self,
-            canceled: canceled.fuse(),
+            inner: self,
+            cancel_receiver: cancel_receiver.fuse(),
             on_cancel,
         }
     }
@@ -194,7 +196,7 @@ pub trait FutureExtension: Future + Sized {
     /// `on_cancel` is called to make an error value upon cancelation.
     fn cancelable<C: Fn() -> Self::Error>(
         self,
-        guard: &impl CancelGuardTrait,
+        guard: &impl Canceler,
         on_cancel: C,
     ) -> Cancelable<Self, C>;
 }
@@ -202,14 +204,14 @@ pub trait FutureExtension: Future + Sized {
 impl<F: Future> FutureExtension for F {
     fn cancelable<C: Fn() -> F::Error>(
         self,
-        guard: &impl CancelGuardTrait,
+        guard: &impl Canceler,
         on_cancel: C,
     ) -> Cancelable<Self, C> {
-        let (canceler, canceled) = oneshot::channel();
+        let (canceler, cancel_receiver) = oneshot::channel();
         guard.add_canceler(canceler);
         Cancelable {
-            cancelable: self,
-            canceled: canceled.fuse(),
+            inner: self,
+            cancel_receiver: cancel_receiver.fuse(),
             on_cancel,
         }
     }
