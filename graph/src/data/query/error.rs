@@ -34,6 +34,7 @@ pub enum QueryExecutionError {
     ListFilterError(String),
     ValueParseError(String, String),
     AttributeTypeError(String, String),
+    EntityParseError(String),
 }
 
 impl Error for QueryExecutionError {
@@ -79,7 +80,7 @@ impl fmt::Display for QueryExecutionError {
                 write!(f, "No value provided for required argument: {}", s)
             }
             QueryExecutionError::ResolveEntitiesError(s) => {
-                write!(f, "Failed to resolve entities: {}", s)
+                write!(f, "Failed to get entity from store: {}", s)
             }
             QueryExecutionError::FilterNotSupportedError(value, filter) => {
                 write!(f, "Filter not supported by value, {}:{}", value, filter)
@@ -120,6 +121,9 @@ impl fmt::Display for QueryExecutionError {
                 "Query contains attribute with invalid type, {}:{}",
                 value, ty
             ),
+            QueryExecutionError::EntityParseError(s) => {
+                write!(f, "Broken entity found in store: {}", s)
+            }
         }
     }
 }
