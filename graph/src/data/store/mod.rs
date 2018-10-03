@@ -3,10 +3,10 @@ use graphql_parser::schema;
 use prelude::QueryExecutionError;
 
 use std::collections::{BTreeMap, HashMap};
+use std::fmt;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
-use std::fmt;
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -101,9 +101,10 @@ impl fmt::Display for Value {
             Value::Float(f) => f.to_string(),
             Value::Bool(b) => b.to_string(),
             Value::Null => "null".to_string(),
-            Value::List(ref values) => {
-                values.into_iter().map(|value| format!("{}", value)).collect()
-            }
+            Value::List(ref values) => values
+                .into_iter()
+                .map(|value| format!("{}", value))
+                .collect(),
             Value::Bytes(ref bytes) => bytes.to_string(),
             Value::BigInt(ref number) => number.to_string(),
         };

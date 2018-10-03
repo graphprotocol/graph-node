@@ -217,9 +217,7 @@ where
             Self::add_filter_for_reference_field(&mut query, parent, field_definition, object_type);
         }
 
-        self.store
-            .find(query)
-            .map(|entities| {
+        self.store.find(query).map(|entities| {
             q::Value::List(
                 entities
                     .into_iter()
@@ -282,9 +280,7 @@ where
 
                 query.range = Some(StoreRange { first: 1, skip: 0 });
 
-                self.store
-                    .find(query)
-                    .map(|entities| {
+                self.store.find(query).map(|entities| {
                     entities
                         .into_iter()
                         .next()
