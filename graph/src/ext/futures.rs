@@ -49,7 +49,7 @@ impl<F: Future, C: Fn() -> F::Error> Future for Cancelable<F, C> {
 pub trait Canceler {
     /// Adds `cancel_sender` to the set being guarded.
     /// Avoid calling directly and prefer using `cancelable`.
-    fn add_canceler(&self, cancel_sender: oneshot::Sender<()>);
+    fn add_cancel_sender(&self, cancel_sender: oneshot::Sender<()>);
 }
 
 /// Cancels any guarded futures and streams when dropped.
@@ -77,7 +77,7 @@ impl CancelGuard {
 }
 
 impl Canceler for CancelGuard {
-    fn add_canceler(&self, cancel_sender: oneshot::Sender<()>) {
+    fn add_cancel_sender(&self, cancel_sender: oneshot::Sender<()>) {
         self.cancel_senders.lock().unwrap().push(cancel_sender);
     }
 }
@@ -93,7 +93,7 @@ pub struct CancelHandle {
 }
 
 impl Canceler for CancelHandle {
-    fn add_canceler(&self, cancel_sender: oneshot::Sender<()>) {
+    fn add_cancel_sender(&self, cancel_sender: oneshot::Sender<()>) {
         if let Some(guard) = self.guard.upgrade() {
             // If the guard exists, register the canceler.
             guard.lock().unwrap().push(cancel_sender);
@@ -140,9 +140,9 @@ impl SharedCancelGuard {
 
 impl Canceler for SharedCancelGuard {
     /// Cancels immediately if `self` has already been canceled.
-    fn add_canceler(&self, cancel_sender: oneshot::Sender<()>) {
+    fn add_cancel_sender(&self, cancel_sender: oneshot::Sender<()>) {
         if let Some(ref mut guard) = *self.guard.lock().unwrap() {
-            guard.add_canceler(cancel_sender);
+            guard.add_cancel_sender(cancel_sender);
         } else {
             drop(cancel_sender)
         }
@@ -155,7 +155,7 @@ impl Canceler for SharedCancelGuard {
 pub struct DummyCancelGuard;
 
 impl Canceler for DummyCancelGuard {
-    fn add_canceler(&self, cancel_sender: oneshot::Sender<()>) {
+    fn add_cancel_sender(&self, cancel_sender: oneshot::Sender<()>) {
         // Send to the channel, preventing cancelation.
         let _ = cancel_sender.send(());
     }
@@ -180,7 +180,7 @@ impl<S: Stream> StreamExtension for S {
         on_cancel: C,
     ) -> Cancelable<Self, C> {
         let (canceler, cancel_receiver) = oneshot::channel();
-        guard.add_canceler(canceler);
+        guard.add_cancel_sender(canceler);
         Cancelable {
             inner: self,
             cancel_receiver: cancel_receiver.fuse(),
@@ -208,7 +208,7 @@ impl<F: Future> FutureExtension for F {
         on_cancel: C,
     ) -> Cancelable<Self, C> {
         let (canceler, cancel_receiver) = oneshot::channel();
-        guard.add_canceler(canceler);
+        guard.add_cancel_sender(canceler);
         Cancelable {
             inner: self,
             cancel_receiver: cancel_receiver.fuse(),
