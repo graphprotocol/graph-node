@@ -168,25 +168,31 @@ where
         let web3 = Web3::new(self.web3_transport.clone());
 
         // Infura frequently fails to find transaction receipts for new blocks,
-        // so retry without logging failed attempts.
-        with_retry_no_logging(move || {
-            web3.eth()
-                .transaction_receipt(tx_hash)
-                .map_err(move |e| {
-                    format_err!(
-                        "could not get transaction receipt {} from Ethereum: {}",
-                        tx_hash,
-                        e
-                    )
-                }).and_then(move |receipt_opt| {
-                    receipt_opt.ok_or_else(move || {
+        // so retry without logging unless there are at least 16 failed
+        // attempts.
+        with_retry_log_after(
+            self.logger.clone(),
+            "block ingestor eth_getTransactionReceipt RPC call".to_owned(),
+            16,
+            move || {
+                web3.eth()
+                    .transaction_receipt(tx_hash)
+                    .map_err(move |e| {
                         format_err!(
-                            "Ethereum node could not find transaction receipt {}",
-                            tx_hash
+                            "could not get transaction receipt {} from Ethereum: {}",
+                            tx_hash,
+                            e
                         )
+                    }).and_then(move |receipt_opt| {
+                        receipt_opt.ok_or_else(move || {
+                            format_err!(
+                                "Ethereum node could not find transaction receipt {}",
+                                tx_hash
+                            )
+                        })
                     })
-                })
-        })
+            },
+        )
     }
 
     /// Put some blocks into the block store (if they are not there already), and try to update the
