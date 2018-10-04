@@ -1,4 +1,6 @@
+use failure::Error;
 use futures::sync::oneshot;
+use std::fmt;
 use std::sync::{Arc, Mutex, Weak};
 use tokio::prelude::{future::Fuse, Future, Poll, Stream};
 
@@ -90,6 +92,13 @@ impl Canceler for CancelGuard {
 #[derive(Clone, Debug)]
 pub struct CancelHandle {
     guard: Weak<Mutex<Vec<oneshot::Sender<()>>>>,
+}
+
+impl CancelHandle {
+    pub fn is_canceled(&self) -> bool {
+        // Has been canceled if and only if the guard is gone.
+        self.guard.upgrade().is_none()
+    }
 }
 
 impl Canceler for CancelHandle {
@@ -213,6 +222,30 @@ impl<F: Future> FutureExtension for F {
             inner: self,
             cancel_receiver: cancel_receiver.fuse(),
             on_cancel,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum CancelableError<E> {
+    Cancel,
+    Error(E),
+}
+
+impl From<Error> for CancelableError<Error> {
+    fn from(e: Error) -> Self {
+        CancelableError::Error(e)
+    }
+}
+
+impl<E> fmt::Display for CancelableError<E>
+where
+    E: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            CancelableError::Error(e) => e.fmt(f),
+            CancelableError::Cancel => write!(f, "operation canceled"),
         }
     }
 }

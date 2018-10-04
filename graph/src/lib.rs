@@ -88,6 +88,9 @@ pub mod prelude {
     pub use data::subscription::{
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
     };
-    pub use ext::futures::{CancelGuard, FutureExtension, SharedCancelGuard, StreamExtension};
+    pub use ext::futures::{
+        CancelGuard, CancelHandle, CancelableError, FutureExtension, SharedCancelGuard,
+        StreamExtension,
+    };
     pub use util::futures::with_retry;
 }
