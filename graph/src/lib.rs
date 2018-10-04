@@ -92,5 +92,5 @@ pub mod prelude {
         CancelGuard, CancelHandle, CancelableError, FutureExtension, SharedCancelGuard,
         StreamExtension,
     };
-    pub use util::futures::{with_retry, with_retry_no_logging};
+    pub use util::futures::{with_retry, with_retry_log_after};
 }

@@ -4,9 +4,32 @@ use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Error as RetryError;
 use tokio_retry::Retry;
 
+/// Repeatedly invoke `try_it` until the future it returns resolves to an `Ok`.
+/// `operation_name` is used in log messages.
+/// Warnings will be logged after failed attempts.
 pub fn with_retry<F, R, I, E>(
     logger: Logger,
     operation_name: String,
+    try_it: F,
+) -> impl Future<Item = I, Error = E> + Send
+where
+    F: Fn() -> R + Send,
+    R: Future<Item = I, Error = E> + Send,
+    I: Send,
+    E: Send,
+{
+    // Start logging immediately after first failed attempt
+    with_retry_log_after(logger, operation_name, 1, try_it)
+}
+
+/// Repeatedly invoke `try_it` until the future it returns resolves to an `Ok`.
+/// `operation_name` is used in log messages.
+/// Warnings will be logged after failed attempts, but only after at least
+/// `log_after` failed attempts.
+pub fn with_retry_log_after<F, R, I, E>(
+    logger: Logger,
+    operation_name: String,
+    log_after: u64,
     try_it: F,
 ) -> impl Future<Item = I, Error = E> + Send
 where
@@ -28,32 +51,19 @@ where
         let delay_ms = 1 << attempt_count;
 
         try_it().map_err(move |e| {
-            warn!(
-                logger,
-                "Trying again in ~{} seconds after {} failed (attempt #{})",
-                (delay_ms as f64 / 1000.0).round(),
-                &operation_name,
-                attempt_count + 1,
-            );
+            if attempt_count >= log_after {
+                warn!(
+                    logger,
+                    "Trying again in ~{} seconds after {} failed (attempt #{})",
+                    (delay_ms as f64 / 1000.0).round(),
+                    &operation_name,
+                    attempt_count + 1,
+                );
+            }
 
             e
         })
     }).map_err(|e| match e {
-        RetryError::OperationError(e) => e,
-        RetryError::TimerError(e) => panic!("tokio timer error: {}", e),
-    })
-}
-
-pub fn with_retry_no_logging<F, R, I, E>(try_it: F) -> impl Future<Item = I, Error = E> + Send
-where
-    F: Fn() -> R + Send,
-    R: Future<Item = I, Error = E> + Send,
-    I: Send,
-    E: Send,
-{
-    let retry_strategy = ExponentialBackoff::from_millis(2).map(jitter);
-
-    Retry::spawn(retry_strategy, try_it).map_err(|e| match e {
         RetryError::OperationError(e) => e,
         RetryError::TimerError(e) => panic!("tokio timer error: {}", e),
     })
