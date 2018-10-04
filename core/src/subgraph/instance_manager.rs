@@ -1,6 +1,5 @@
 use failure::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use futures::sync::oneshot;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
@@ -9,7 +8,7 @@ use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 
 use super::SubgraphInstance;
 
-type InstanceShutdownMap = Arc<RwLock<HashMap<SubgraphId, oneshot::Sender<()>>>>;
+type InstanceShutdownMap = Arc<RwLock<HashMap<SubgraphId, CancelGuard>>>;
 
 pub struct SubgraphInstanceManager {
     logger: Logger,
@@ -114,8 +113,11 @@ impl SubgraphInstanceManager {
         let id_for_transact = manifest.id.clone();
 
         // Request a block stream for this subgraph
-        let block_stream =
-            block_stream_builder.from_subgraph(name.clone(), &manifest, logger.clone());
+        let block_stream_canceler = CancelGuard::new();
+        let block_stream = block_stream_builder
+            .from_subgraph(name.clone(), &manifest, logger.clone())
+            .from_err()
+            .cancelable(&block_stream_canceler, || CancelableError::Cancel);
 
         // Load the subgraph
         let instance = Arc::new(SubgraphInstance::from_manifest(
@@ -128,20 +130,9 @@ impl SubgraphInstanceManager {
         let block_logger = logger.clone();
         let error_logger = logger.clone();
 
-        // Use a oneshot channel for shutting down the subgraph instance and block stream
-        let (shutdown_sender, shutdown_receiver) = oneshot::channel();
-
         // Forward block stream events to the subgraph for processing
         tokio::spawn(
             block_stream
-                .map(Some)
-                .map_err(|e| format_err!("Block stream error: {}", e))
-                .select(
-                    shutdown_receiver
-                        .into_stream()
-                        .map(|_| None)
-                        .map_err(|e| format_err!("Subgraph shut down: {}", e)),
-                ).filter_map(|block| block)
                 .and_then(move |block| {
                     info!(
                         block_logger, "Process events from block";
@@ -175,7 +166,7 @@ impl SubgraphInstanceManager {
 
                     // Process events one after the other, passing in entity operations
                     // collected previously to every new event being processed
-                    stream::iter_ok::<_, Error>(logs)
+                    stream::iter_ok::<_, CancelableError<Error>>(logs)
                         .fold(vec![], move |entity_operations, log| {
                             let instance = instance.clone();
                             let block_for_processing = block.clone();
@@ -208,18 +199,20 @@ impl SubgraphInstanceManager {
                         entity_operations,
                     )).map_err(|e| {
                         format_err!("Error while processing block stream for a subgraph: {}", e)
-                    })
+                    }).from_err()
                 }).map_err(move |e| {
-                    error!(error_logger, "Subgraph instance failed to run: {}", e);
+                    if let CancelableError::Error(e) = e {
+                        error!(error_logger, "Subgraph instance failed to run: {}", e);
+                    }
                 }),
         );
 
-        // Remember the shutdown sender to shut down the subgraph instance later
-        instances.write().unwrap().insert(id, shutdown_sender);
+        // Keep the cancel guard for shutting down the subgraph instance later
+        instances.write().unwrap().insert(id, block_stream_canceler);
     }
 
     fn handle_subgraph_removed(instances: InstanceShutdownMap, id: SubgraphId) {
-        // Drop the shutdown sender to shut down the subgraph now
+        // Drop the cancel guard to shut down the subgraph now
         let mut instances = instances.write().unwrap();
         instances.remove(&id);
     }

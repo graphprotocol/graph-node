@@ -620,6 +620,7 @@ where
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        // Lock Mutex to perform a state transition
         let mut state_lock = self.state.lock().unwrap();
 
         let mut state = BlockStreamState::Transition;
@@ -672,7 +673,7 @@ where
 
                             // If too many errors without progress, give up
                             if self.consecutive_err_count >= 100 {
-                                return Err(e);
+                                return Err(e.into());
                             }
 
                             warn!(
@@ -723,7 +724,7 @@ where
 
                             // If too many errors without progress, give up
                             if self.consecutive_err_count >= 100 {
-                                return Err(e);
+                                return Err(e.into());
                             }
 
                             warn!(
@@ -757,7 +758,9 @@ where
                         // Chain head update stream ended
                         Ok(Async::Ready(None)) => {
                             // Should not happen
-                            bail!("chain head update stream ended unexpectedly");
+                            return Err(
+                                format_err!("chain head update stream ended unexpectedly").into()
+                            );
                         }
 
                         Ok(Async::NotReady) => {
@@ -769,7 +772,7 @@ where
                         // mpsc channel failed
                         Err(()) => {
                             // Should not happen
-                            bail!("chain head update Receiver failed");
+                            return Err(format_err!("chain head update Receiver failed").into());
                         }
                     }
                 }
