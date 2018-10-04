@@ -127,7 +127,7 @@ fn build_filter_from_object(
     })))
 }
 
-/// Parses a list of GraphQL values into a vector of entity attribute values.
+/// Parses a list of GraphQL values into a vector of entity field values.
 fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecutionError> {
     match value {
         Value::List(ref values) if !values.is_empty() => {
@@ -140,7 +140,7 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
                     if root_discriminant == current_discriminant {
                         Ok(value.clone())
                     } else {
-                        Err(QueryExecutionError::ListTypesError(filter_type.to_string()))
+                        Err(QueryExecutionError::ListTypesError(filter_type.to_string(), vec![values[0].to_string(), value.to_string()]))
                     }
                 }).collect::<Result<Vec<_>, _>>()
         }

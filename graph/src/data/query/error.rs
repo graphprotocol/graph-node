@@ -29,8 +29,8 @@ pub enum QueryExecutionError {
     SupgraphIdError(String),
     RangeArgumentsError(Vec<String>),
     InvalidFilterError,
-    EntityAttributeError(String, String),
-    ListTypesError(String),
+    EntityFieldError(String, String),
+    ListTypesError(String, Vec<String>),
     ListFilterError(String),
     ValueParseError(String, String),
     AttributeTypeError(String, String),
@@ -83,7 +83,7 @@ impl fmt::Display for QueryExecutionError {
                 write!(f, "Failed to get entity from store: {}", s)
             }
             QueryExecutionError::FilterNotSupportedError(value, filter) => {
-                write!(f, "Filter not supported by value, {}:{}", value, filter)
+                write!(f, "Filter not supported by value {}:{}", value, filter)
             }
             QueryExecutionError::UnknownField(_, t, s) => {
                 write!(f, "Type \"{}\" has no field \"{}\"", t, s)
@@ -96,31 +96,29 @@ impl fmt::Display for QueryExecutionError {
             QueryExecutionError::SupgraphIdError(s) => {
                 write!(f, "Failed to get subgraph ID from type: {}", s)
             }
-            QueryExecutionError::RangeArgumentsError(s) => write!(
-                f,
-                "Range inputs must be an integer, {:}",
-                s.iter().fold(String::new(), |acc, value| acc + &value)
-            ),
+            QueryExecutionError::RangeArgumentsError(s) => {
+                write!(f, "Range arguments must be properly formed integer: {:}", s.join(", "))
+            }
             QueryExecutionError::InvalidFilterError => write!(f, "Filter must by an object"),
-            QueryExecutionError::EntityAttributeError(e, a) => {
+            QueryExecutionError::EntityFieldError(e, a) => {
                 write!(f, "Entity {} has no attribute {}", e, a)
             }
-            QueryExecutionError::ListTypesError(s) => write!(
+
+            QueryExecutionError::ListTypesError(s, v) => write!(
                 f,
-                "Values passed to filter {} must be of the same type but are of different types",
-                s
+                "Values passed to filter {} must be of the same type but are of different types: {}",
+                s,
+                v.join(", ")
             ),
             QueryExecutionError::ListFilterError(s) => {
                 write!(f, "Non-list value passed to {} filter", s)
             }
             QueryExecutionError::ValueParseError(t, e) => {
-                write!(f, "Failed to decode {} value, {}", t, e)
+                write!(f, "Failed to decode {} value: {}", t, e)
             }
-            QueryExecutionError::AttributeTypeError(value, ty) => write!(
-                f,
-                "Query contains attribute with invalid type, {}:{}",
-                value, ty
-            ),
+            QueryExecutionError::AttributeTypeError(value, ty) => {
+                write!(f, "Query contains value with invalid type {}:{}", ty, value)
+            }
             QueryExecutionError::EntityParseError(s) => {
                 write!(f, "Broken entity found in store: {}", s)
             }
