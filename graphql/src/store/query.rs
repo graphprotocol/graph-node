@@ -23,35 +23,38 @@ pub fn build_query(
 fn build_range(
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<Option<StoreRange>, QueryExecutionError> {
-    let first = match arguments.get(&"first".to_string()) {
-        Some(value) => match value {
-            q::Value::Int(n) => Ok(n.as_i64()),
-            _ => Err("first".to_string()),
-        },
-        None => Ok(None),
-    }.map(|n| match n {
-        Some(n) => if n > 0 {
-            Some(n as usize)
-        } else {
-            None
-        },
-        None => None,
-    });
+    let first = arguments
+        .get(&"first".to_string())
+        .map_or(Ok(None), |value| {
+            if let q::Value::Int(n) = value {
+                match n.as_i64() {
+                    Some(n) => Ok(Some(n)),
+                    None => Err("first".to_string())
+                }
+            } else {
+                Err("first".to_string())
+            }
+        }).map(|n| match n {
+            Some(n) if n >= 0 => Some(n as usize),
+            _ => None
+        });
 
-    let skip = match arguments.get(&"skip".to_string()) {
-        Some(value) => match value {
-            q::Value::Int(n) => Ok(n.as_i64()),
-            _ => Err("skip".to_string()),
-        },
-        None => Ok(None),
-    }.map(|n| match n {
-        Some(n) => if n >= 0 {
-            Some(n as usize)
-        } else {
-            None
-        },
-        None => None,
-    });
+    let skip = arguments
+        .get(&"skip".to_string())
+        .map_or(Ok(None), |value| {
+            if let q::Value::Int(n) = value {
+                match n.as_i64() {
+                    Some(n) => Ok(Some(n)),
+                    None => Err("first".to_string())
+                }
+            } else {
+                Err("skip".to_string())
+            }
+        })
+        .map(|n| match n {
+            Some(n) if n >= 0 => Some(n as usize),
+            _ => None
+        });
 
     if first.is_err() || skip.is_err() {
         let errors: Vec<String> = vec![first.clone(), skip.clone()]
