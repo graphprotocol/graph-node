@@ -95,20 +95,23 @@ impl Value {
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let printable = match self {
-            Value::String(s) => s.to_string(),
-            Value::Int(i) => i.to_string(),
-            Value::Float(f) => f.to_string(),
-            Value::Bool(b) => b.to_string(),
-            Value::Null => "null".to_string(),
-            Value::List(ref values) => values
-                .into_iter()
-                .map(|value| format!("{}", value))
-                .collect(),
-            Value::Bytes(ref bytes) => bytes.to_string(),
-            Value::BigInt(ref number) => number.to_string(),
-        };
-        write!(f, "{}", printable)
+        write!(
+            f,
+            "{}",
+            match self {
+                Value::String(s) => s.to_string(),
+                Value::Int(i) => i.to_string(),
+                Value::Float(f) => f.to_string(),
+                Value::Bool(b) => b.to_string(),
+                Value::Null => "null".to_string(),
+                Value::List(ref values) => values
+                    .into_iter()
+                    .map(|value| format!("{}", value))
+                    .collect(),
+                Value::Bytes(ref bytes) => bytes.to_string(),
+                Value::BigInt(ref number) => number.to_string(),
+            }
+        )
     }
 }
 
