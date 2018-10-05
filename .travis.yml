@@ -67,7 +67,6 @@ script:
       mv target/release/graph-node target/release/graph-node-$TRAVIS_OS_NAME;
     fi
 
-
 deploy:
   provider: releases
   api_key:
