@@ -181,20 +181,20 @@ fn build_order_direction(
 
 /// Parses the subgraph ID from the ObjectType directives.
 pub fn parse_subgraph_id(entity: &s::ObjectType) -> Result<String, QueryExecutionError> {
+    let entity_name = entity.name.clone();
     entity
-        .clone()
         .directives
-        .into_iter()
+        .iter()
         .find(|directive| directive.name == "subgraphId".to_string())
         .and_then(|directive| {
             directive
                 .arguments
-                .into_iter()
+                .iter()
                 .find(|(name, _)| name == &"id".to_string())
         }).and_then(|(_, value)| match value {
-            s::Value::String(id) => Some(id),
+            s::Value::String(id) => Some(id.clone()),
             _ => None,
-        }).ok_or(QueryExecutionError::SupgraphIdError(entity.clone().name))
+        }).ok_or(QueryExecutionError::SupgraphIdError(entity_name))
 }
 
 /// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.
