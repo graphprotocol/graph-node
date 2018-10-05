@@ -29,14 +29,14 @@ fn build_range(
             if let q::Value::Int(n) = value {
                 match n.as_i64() {
                     Some(n) => Ok(Some(n)),
-                    None => Err("first".to_string())
+                    None => Err("first".to_string()),
                 }
             } else {
                 Err("first".to_string())
             }
         }).map(|n| match n {
             Some(n) if n >= 0 => Some(n as usize),
-            _ => None
+            _ => None,
         });
 
     let skip = arguments
@@ -45,15 +45,14 @@ fn build_range(
             if let q::Value::Int(n) = value {
                 match n.as_i64() {
                     Some(n) => Ok(Some(n)),
-                    None => Err("first".to_string())
+                    None => Err("first".to_string()),
                 }
             } else {
                 Err("skip".to_string())
             }
-        })
-        .map(|n| match n {
+        }).map(|n| match n {
             Some(n) if n >= 0 => Some(n as usize),
-            _ => None
+            _ => None,
         });
 
     if first.is_err() || skip.is_err() {
@@ -98,33 +97,30 @@ fn build_filter_from_object(
             .map(|(key, value)| {
                 use self::sast::FilterOp::*;
 
-                let (attribute, op) = sast::parse_field_as_filter(key);
+                let (field_name, op) = sast::parse_field_as_filter(key);
 
-                let field = sast::get_field_type(entity, &attribute).ok_or(
-                    QueryExecutionError::EntityAttributeError(
-                        entity.clone().name,
-                        attribute.clone(),
-                    ),
+                let field = sast::get_field_type(entity, &field_name).ok_or(
+                    QueryExecutionError::EntityFieldError(entity.clone().name, field_name.clone()),
                 )?;
 
                 let ty = &field.field_type;
                 let store_value = Value::from_query_value(value, &ty)?;
 
                 Ok(match op {
-                    Not => StoreFilter::Not(attribute, store_value),
-                    GreaterThan => StoreFilter::GreaterThan(attribute, store_value),
-                    LessThan => StoreFilter::LessThan(attribute, store_value),
-                    GreaterOrEqual => StoreFilter::GreaterOrEqual(attribute, store_value),
-                    LessOrEqual => StoreFilter::LessOrEqual(attribute, store_value),
-                    In => StoreFilter::In(attribute, list_values(store_value, "_in")?),
-                    NotIn => StoreFilter::NotIn(attribute, list_values(store_value, "_not_in")?),
-                    Contains => StoreFilter::Contains(attribute, store_value),
-                    NotContains => StoreFilter::NotContains(attribute, store_value),
-                    StartsWith => StoreFilter::StartsWith(attribute, store_value),
-                    NotStartsWith => StoreFilter::NotStartsWith(attribute, store_value),
-                    EndsWith => StoreFilter::EndsWith(attribute, store_value),
-                    NotEndsWith => StoreFilter::NotEndsWith(attribute, store_value),
-                    Equal => StoreFilter::Equal(attribute, store_value),
+                    Not => StoreFilter::Not(field_name, store_value),
+                    GreaterThan => StoreFilter::GreaterThan(field_name, store_value),
+                    LessThan => StoreFilter::LessThan(field_name, store_value),
+                    GreaterOrEqual => StoreFilter::GreaterOrEqual(field_name, store_value),
+                    LessOrEqual => StoreFilter::LessOrEqual(field_name, store_value),
+                    In => StoreFilter::In(field_name, list_values(store_value, "_in")?),
+                    NotIn => StoreFilter::NotIn(field_name, list_values(store_value, "_not_in")?),
+                    Contains => StoreFilter::Contains(field_name, store_value),
+                    NotContains => StoreFilter::NotContains(field_name, store_value),
+                    StartsWith => StoreFilter::StartsWith(field_name, store_value),
+                    NotStartsWith => StoreFilter::NotStartsWith(field_name, store_value),
+                    EndsWith => StoreFilter::EndsWith(field_name, store_value),
+                    NotEndsWith => StoreFilter::NotEndsWith(field_name, store_value),
+                    Equal => StoreFilter::Equal(field_name, store_value),
                 })
             }).collect::<Result<Vec<StoreFilter>, QueryExecutionError>>()?
     })))
@@ -143,7 +139,10 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
                     if root_discriminant == current_discriminant {
                         Ok(value.clone())
                     } else {
-                        Err(QueryExecutionError::ListTypesError(filter_type.to_string(), vec![values[0].to_string(), value.to_string()]))
+                        Err(QueryExecutionError::ListTypesError(
+                            filter_type.to_string(),
+                            vec![values[0].to_string(), value.to_string()],
+                        ))
                     }
                 }).collect::<Result<Vec<_>, _>>()
         }
@@ -154,7 +153,7 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
     }
 }
 
-/// Parses GraphQL arguments into an attribute name to order by, if present.
+/// Parses GraphQL arguments into an field name to order by, if present.
 fn build_order_by(
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<Option<String>, QueryExecutionError> {
