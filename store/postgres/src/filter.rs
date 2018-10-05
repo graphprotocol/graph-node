@@ -269,7 +269,7 @@ fn store_filter_by_mode<'a>(
         StoreFilter::In(attribute, query_values) => {
             let op = " = ANY (";
             if query_values.is_empty() {
-                return Ok(add_filter(query, filter_mode, sql("true")));
+                return Ok(add_filter(query, filter_mode, sql("false")));
             }
             match query_values[0].clone() {
                 Value::Bool(_) => add_filter(
