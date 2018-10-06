@@ -52,7 +52,7 @@ where
 
         try_it().map_err(move |e| {
             if attempt_count >= log_after {
-                warn!(
+                debug!(
                     logger,
                     "Trying again in ~{} seconds after {} failed (attempt #{})",
                     (delay_ms as f64 / 1000.0).round(),
