@@ -38,3 +38,11 @@ table! {
 }
 allow_tables_to_appear_in_same_query!(entities, subgraphs);
 joinable!(entities -> subgraphs (subgraph));
+
+table! {
+    subgraph_names (subgraph_name) {
+        subgraph_name -> Varchar,
+        subgraph_id -> Nullable<Varchar>,
+        access_token -> Nullable<Varchar>,
+    }
+}

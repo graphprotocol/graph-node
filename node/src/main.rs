@@ -201,8 +201,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             }),
     );
 
-    let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), ipfs_client.clone());
-
     // Set up Ethereum transport
     let (ethereum_network_name, (transport_event_loop, transport)) = ethereum_ipc
         .map(|s| new_transport(s, &logger, Transport::new_ipc))
@@ -255,7 +253,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         transport.clone(),
         50, // ancestor count, which we could make configuable
         logger.clone(),
-        Duration::from_millis(500), // polling interval, which we could make configurable
+        Duration::from_millis(5000), // polling interval, which we could make configurable
     ).expect("failed to create Ethereum block ingestor");
 
     // Run the Ethereum block ingestor in the background
@@ -266,14 +264,24 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         BlockStreamBuilder::new(store.clone(), store.clone(), ethereum.clone());
 
     // Prepare for hosting WASM runtimes and managing subgraph instances
-    let runtime_host_builder =
-        WASMRuntimeHostBuilder::new(&logger, ethereum.clone(), ipfs_client, store.clone());
+    let runtime_host_builder = WASMRuntimeHostBuilder::new(
+        &logger,
+        ethereum.clone(),
+        ipfs_client.clone(),
+        store.clone(),
+    );
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger,
         store.clone(),
         runtime_host_builder,
         block_stream_builder,
     );
+
+    // Create IPFS-based subgraph provider
+    let mut subgraph_provider =
+        IpfsSubgraphProvider::init(logger.clone(), ipfs_client, store.clone())
+            .wait()
+            .expect("failed to initialize subgraph provider");
 
     // Forward subgraph events from the subgraph provider to the subgraph instance manager
     tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());
@@ -292,9 +300,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
 
     // Start admin JSON-RPC server.
-    let json_rpc_server =
-        JsonRpcServer::serve(json_rpc_port, Arc::new(subgraph_provider), logger.clone())
-            .expect("Failed to start admin server");
+    let json_rpc_server = JsonRpcServer::serve(
+        json_rpc_port,
+        Arc::new(subgraph_provider),
+        store.clone(),
+        logger.clone(),
+    ).expect("Failed to start admin server");
 
     // Let the server run forever.
     std::mem::forget(json_rpc_server);
