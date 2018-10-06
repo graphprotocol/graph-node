@@ -83,7 +83,7 @@ impl fmt::Display for QueryExecutionError {
                 write!(f, "Failed to get entity from store: {}", s)
             }
             QueryExecutionError::FilterNotSupportedError(value, filter) => {
-                write!(f, "Filter not supported by value {}:{}", value, filter)
+                write!(f, "Filter not supported by value {} : {}", value, filter)
             }
             QueryExecutionError::UnknownField(_, t, s) => {
                 write!(f, "Type \"{}\" has no field \"{}\"", t, s)
@@ -117,7 +117,7 @@ impl fmt::Display for QueryExecutionError {
                 write!(f, "Failed to decode {} value: {}", t, e)
             }
             QueryExecutionError::AttributeTypeError(value, ty) => {
-                write!(f, "Query contains value with invalid type {}:{}", ty, value)
+                write!(f, "Query contains value with invalid type {} : {}", ty, value)
             }
             QueryExecutionError::EntityParseError(s) => {
                 write!(f, "Broken entity found in store: {}", s)
