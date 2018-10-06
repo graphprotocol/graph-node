@@ -3,10 +3,10 @@ use prelude::*;
 /// Events emitted by [SubgraphProvider](trait.SubgraphProvider.html) implementations.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SubgraphProviderEvent {
-    /// A subgraph with the given name and manifest was added.
-    SubgraphAdded(String, SubgraphManifest),
-    /// A subgraph with the given ID was removed.
-    SubgraphRemoved(String),
+    /// A subgraph with the given name and manifest should start processing.
+    SubgraphStart(String, SubgraphManifest),
+    /// The subgraph with the given ID should stop processing.
+    SubgraphStop(String),
 }
 
 /// Schema-only events emitted by a [SubgraphProvider](trait.SubgraphProvider.html).
@@ -33,5 +33,5 @@ pub trait SubgraphProvider:
         name: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
 
-    fn list(&self) -> Vec<(String, String)>;
+    fn list(&self) -> Result<Vec<(String, Option<SubgraphId>)>, Error>;
 }

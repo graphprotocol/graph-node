@@ -268,7 +268,32 @@ impl fmt::Display for EventSource {
 pub type SubgraphEntityPair = (SubgraphId, String);
 
 /// Common trait for store implementations.
-pub trait Store: Send + Sync {
+pub trait Store: Send + Sync + 'static {
+    // Set access token for the specified subgraph name.
+    fn authorize_subgraph_name(&self, name: String, new_access_token: String) -> Result<(), Error>;
+
+    // Check access token against the token in the Store for the specified subgraph name.
+    fn check_subgraph_name_access_token(
+        &self,
+        name: String,
+        untrusted_access_token: String,
+    ) -> Result<bool, Error>;
+
+    // List all subgraph names and their associated subgraph IDs.
+    fn read_all_subgraph_names(&self) -> Result<Vec<(String, Option<SubgraphId>)>, Error>;
+
+    // Get the subgraph ID currently associated with specified subgraph name.
+    fn read_subgraph_name(&self, name: String) -> Result<Option<Option<SubgraphId>>, Error>;
+
+    // Set the subgraph ID currently associated with specified subgraph name.
+    fn write_subgraph_name(&self, name: String, id: Option<SubgraphId>) -> Result<(), Error>;
+
+    // Find subgraph names associated with the specified subgraph ID
+    fn find_subgraph_names_by_id(&self, id: SubgraphId) -> Result<Vec<String>, Error>;
+
+    // Set the subgraph ID currently associated with specified subgraph name.
+    fn delete_subgraph_name(&self, name: String) -> Result<(), Error>;
+
     /// Register a new subgraph ID in the store, and initialize the subgraph's block pointer to the
     /// specified value.
     /// Each subgraph has its own entities and separate block processing state.

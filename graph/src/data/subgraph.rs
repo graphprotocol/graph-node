@@ -42,6 +42,8 @@ pub enum SubgraphProviderError {
     /// Occurs when a subgraph's GraphQL schema is invalid.
     #[fail(display = "GraphQL schema error: {}", _0)]
     SchemaValidationError(failure::Error),
+    #[fail(display = "subgraph provider error: {}", _0)]
+    Unknown(failure::Error),
 }
 
 #[derive(Fail, Debug)]

@@ -211,8 +211,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             }),
     );
 
-    let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), ipfs_client.clone());
-
     // Parse the Ethereum URL
     let (ethereum_network_name, ethereum_node_url) = parse_ethereum_network_and_node(
         [ethereum_ipc, ethereum_rpc, ethereum_ws]
@@ -293,14 +291,24 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         BlockStreamBuilder::new(store.clone(), store.clone(), ethereum.clone());
 
     // Prepare for hosting WASM runtimes and managing subgraph instances
-    let runtime_host_builder =
-        WASMRuntimeHostBuilder::new(&logger, ethereum.clone(), ipfs_client, store.clone());
+    let runtime_host_builder = WASMRuntimeHostBuilder::new(
+        &logger,
+        ethereum.clone(),
+        ipfs_client.clone(),
+        store.clone(),
+    );
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger,
         store.clone(),
         runtime_host_builder,
         block_stream_builder,
     );
+
+    // Create IPFS-based subgraph provider
+    let mut subgraph_provider =
+        IpfsSubgraphProvider::init(logger.clone(), ipfs_client, store.clone())
+            .wait()
+            .expect("failed to initialize subgraph provider");
 
     // Forward subgraph events from the subgraph provider to the subgraph instance manager
     tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());
@@ -319,9 +327,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
 
     // Start admin JSON-RPC server.
-    let json_rpc_server =
-        JsonRpcServer::serve(json_rpc_port, Arc::new(subgraph_provider), logger.clone())
-            .expect("Failed to start admin server");
+    let json_rpc_server = JsonRpcServer::serve(
+        json_rpc_port,
+        Arc::new(subgraph_provider),
+        store.clone(),
+        logger.clone(),
+    ).expect("Failed to start admin server");
 
     // Let the server run forever.
     std::mem::forget(json_rpc_server);
