@@ -157,7 +157,7 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
 fn build_order_by(
     entity: &s::ObjectType,
     arguments: &HashMap<&q::Name, q::Value>,
-) -> Result<Option<String>, QueryExecutionError> {
+) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     Ok(arguments
         .get(&"orderBy".to_string())
         .and_then(|value| match value {
@@ -372,14 +372,14 @@ mod tests {
             &HashMap::from_iter(
                 vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
             ),
-        ).order_by;
+        ).unwrap().order_by;
         assert_eq!(
             build_query(
                 &default_object(),
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
                 )
-            ).order_by,
+            ).unwrap().order_by,
             Some(("name".to_string(), ValueType::String))
         );
         assert_eq!(
@@ -388,7 +388,7 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("email".to_string()))].into_iter()
                 )
-            ).order_by,
+            ).unwrap().order_by,
             Some(("email".to_string(), ValueType::String))
         );
     }

@@ -1,16 +1,12 @@
 use failure::Error;
 use futures::Future;
 use futures::Stream;
-use graphql_parser::schema as s;
-use web3::types::{Block, Transaction, H256};
-
-use data::store::*;
 use std::fmt;
 use std::str::FromStr;
 use web3::types::H256;
 
+use data::store::*;
 use prelude::*;
-use std::ops::Deref;
 
 /// Key by which an individual entity in the store can be accessed.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
