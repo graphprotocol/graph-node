@@ -60,7 +60,7 @@ where
                 static_self.do_poll().then(move |result| {
                     if let Err(e) = result {
                         // Some polls will fail due to transient issues
-                        warn!(
+                        debug!(
                             static_self.logger,
                             "Trying again after block polling failed: {:?}", e
                         );
@@ -82,22 +82,6 @@ where
                 self.get_latest_block()
                     // Compare latest block with head ptr, alert user if far behind
                     .and_then(move |latest_block: Block<Transaction>| -> Box<Future<Item=_, Error=_> + Send> {
-                        match head_block_ptr_opt {
-                            None => {
-                                info!(self.logger, "Downloading latest blocks from Ethereum. This may take a few minutes...");
-                            }
-                            Some(head_block_ptr) => {
-                                let latest_number = latest_block.number.unwrap().as_u64() as i64;
-                                let head_number = head_block_ptr.number as i64;
-                                let distance = latest_number - head_number;
-                                if distance > 10 && distance <= 50 {
-                                    info!(self.logger, "Downloading latest blocks from Ethereum. This may take a few seconds...");
-                                } else if distance > 50 {
-                                    info!(self.logger, "Downloading latest blocks from Ethereum. This may take a few minutes...");
-                                }
-                            }
-                        }
-
                         // If latest block matches head block in store
                         if Some((&latest_block).into()) == head_block_ptr_opt {
                             // We're done
