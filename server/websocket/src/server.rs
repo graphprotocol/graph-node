@@ -124,7 +124,7 @@ where
         let task = socket
             .incoming()
             .map_err(move |e| {
-                warn!(error_logger, "Connection error: {}", e);
+                trace!(error_logger, "Connection error: {}", e);
             }).for_each(move |stream| {
                 let logger = logger.clone();
                 let graphql_runner = graphql_runner.clone();
@@ -180,7 +180,7 @@ where
                         Err(e) => {
                             // We gracefully skip over failed connection attempts rather
                             // than tearing down the entire stream
-                            warn!(logger, "Failed to establish WebSocket connection: {}", e);
+                            trace!(logger, "Failed to establish WebSocket connection: {}", e);
                         }
                     }
                     Ok(())
