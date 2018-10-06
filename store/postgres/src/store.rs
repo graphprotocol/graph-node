@@ -434,6 +434,104 @@ impl Store {
 }
 
 impl StoreTrait for Store {
+    fn authorize_subgraph_name(&self, name: String, new_access_token: String) -> Result<(), Error> {
+        use db_schema::subgraph_names::dsl::*;
+
+        insert_into(subgraph_names)
+            .values((
+                subgraph_name.eq(&name),
+                subgraph_id.eq::<Option<SubgraphId>>(None),
+                access_token.eq(&new_access_token),
+            )).on_conflict(subgraph_name)
+            .do_update()
+            .set(access_token.eq(&new_access_token))
+            .execute(&*self.conn.lock().unwrap())
+            .map(|_| ())
+            .map_err(Error::from)
+    }
+
+    fn check_subgraph_name_access_token(
+        &self,
+        name: String,
+        untrusted_access_token: String,
+    ) -> Result<bool, Error> {
+        use db_schema::subgraph_names::dsl::*;
+
+        let real_access_token_opt = subgraph_names
+            .select(access_token)
+            .filter(subgraph_name.eq(&name))
+            .first::<Option<String>>(&*self.conn.lock().unwrap())?;
+
+        match real_access_token_opt {
+            None => {
+                debug!(
+                    self.logger,
+                    "Subgraph name {:?} has no associated access token. Access denied by default.",
+                    access_token
+                );
+
+                Ok(false)
+            }
+            Some(real_access_token) => {
+                // Issue #451: make this constant-time
+                Ok(real_access_token == untrusted_access_token)
+            }
+        }
+    }
+
+    fn read_all_subgraph_names(&self) -> Result<Vec<(String, Option<SubgraphId>)>, Error> {
+        use db_schema::subgraph_names::dsl::*;
+
+        subgraph_names
+            .select((subgraph_name, subgraph_id))
+            .load::<(String, Option<String>)>(&*self.conn.lock().unwrap())
+            .map_err(Error::from)
+    }
+
+    fn read_subgraph_name(&self, name: String) -> Result<Option<Option<SubgraphId>>, Error> {
+        use db_schema::subgraph_names::dsl::*;
+
+        subgraph_names
+            .select(subgraph_id)
+            .filter(subgraph_name.eq(name))
+            .first::<Option<String>>(&*self.conn.lock().unwrap())
+            .optional()
+            .map_err(Error::from)
+    }
+
+    fn write_subgraph_name(&self, name: String, id_opt: Option<SubgraphId>) -> Result<(), Error> {
+        use db_schema::subgraph_names::dsl::*;
+
+        insert_into(subgraph_names)
+            .values((subgraph_id.eq(&id_opt), subgraph_name.eq(&name)))
+            .on_conflict(subgraph_name)
+            .do_update()
+            .set(subgraph_id.eq(&id_opt))
+            .execute(&*self.conn.lock().unwrap())
+            .map_err(Error::from)
+            .map(|_| ())
+    }
+
+    fn find_subgraph_names_by_id(&self, id: SubgraphId) -> Result<Vec<String>, Error> {
+        use db_schema::subgraph_names::dsl::*;
+
+        subgraph_names
+            .select(subgraph_name)
+            .filter(subgraph_id.eq(&id))
+            .load::<String>(&*self.conn.lock().unwrap())
+            .map_err(Error::from)
+    }
+
+    fn delete_subgraph_name(&self, name: String) -> Result<(), Error> {
+        use db_schema::subgraph_names::dsl::*;
+
+        delete(subgraph_names)
+            .filter(subgraph_name.eq(&name))
+            .execute(&*self.conn.lock().unwrap())
+            .map(|_| ())
+            .map_err(Error::from)
+    }
+
     fn add_subgraph_if_missing(
         &self,
         subgraph_id: SubgraphId,

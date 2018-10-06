@@ -67,14 +67,14 @@ impl SubgraphInstanceManager {
             use self::SubgraphProviderEvent::*;
 
             match event {
-                SubgraphAdded(name, manifest) => {
+                SubgraphStart(name, manifest) => {
                     info!(
-                        logger, "Subgraph added";
+                        logger, "Starting subgraph";
                         "subgraph_name" => &name,
                         "subgraph_id" => &manifest.id
                     );
 
-                    Self::handle_subgraph_added(
+                    Self::start_subgraph(
                         logger.clone(),
                         instances.clone(),
                         host_builder.clone(),
@@ -84,9 +84,9 @@ impl SubgraphInstanceManager {
                         manifest,
                     )
                 }
-                SubgraphRemoved(id) => {
-                    info!(logger, "Subgraph removed"; "id" => &id);
-                    Self::handle_subgraph_removed(instances.clone(), id);
+                SubgraphStop(id) => {
+                    info!(logger, "Stopping subgraph"; "subgraph_id" => &id);
+                    Self::stop_subgraph(instances.clone(), id);
                 }
             };
 
@@ -94,7 +94,7 @@ impl SubgraphInstanceManager {
         }));
     }
 
-    fn handle_subgraph_added<B, T, S>(
+    fn start_subgraph<B, T, S>(
         logger: Logger,
         instances: InstanceShutdownMap,
         host_builder: T,
@@ -217,7 +217,7 @@ impl SubgraphInstanceManager {
         instances.write().unwrap().insert(id, block_stream_canceler);
     }
 
-    fn handle_subgraph_removed(instances: InstanceShutdownMap, id: SubgraphId) {
+    fn stop_subgraph(instances: InstanceShutdownMap, id: SubgraphId) {
         // Drop the cancel guard to shut down the subgraph now
         let mut instances = instances.write().unwrap();
         instances.remove(&id);
