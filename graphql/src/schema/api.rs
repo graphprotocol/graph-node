@@ -1,35 +1,16 @@
 use graphql_parser::schema::*;
 use graphql_parser::Pos;
 use inflector::Inflector;
-use std::error::Error;
-use std::fmt;
 use std::iter::IntoIterator;
 
 use schema::ast;
 
-#[derive(Debug)]
+#[derive(Fail, Debug)]
 pub enum APISchemaError {
+    #[fail(display = "type {} already exists in the input schema", _0)]
     TypeExists(String),
-}
-
-impl Error for APISchemaError {
-    fn description(&self) -> &str {
-        "API schema error"
-    }
-
-    fn cause(&self) -> Option<&Error> {
-        None
-    }
-}
-
-impl fmt::Display for APISchemaError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            APISchemaError::TypeExists(s) => {
-                write!(f, "Type \"{}\" already exists in the input schema", s)
-            }
-        }
-    }
+    #[fail(display = "Type {} not found", _0)]
+    TypeNotFound(String),
 }
 
 /// Derives a full-fledged GraphQL API schema from an input schema.
@@ -165,7 +146,7 @@ fn add_filter_type(
                 description: None,
                 name: filter_type_name,
                 directives: vec![],
-                fields: field_input_values(schema, fields),
+                fields: field_input_values(schema, fields)?,
             });
             let def = Definition::TypeDefinition(typedef);
             schema.definitions.push(def);
@@ -177,11 +158,19 @@ fn add_filter_type(
 }
 
 /// Generates `*_filter` input values for the given set of fields.
-fn field_input_values(schema: &Document, fields: &Vec<Field>) -> Vec<InputValue> {
-    fields
-        .iter()
-        .flat_map(|field| field_filter_input_values(schema, &field, &field.field_type))
-        .collect()
+fn field_input_values(
+    schema: &Document,
+    fields: &Vec<Field>,
+) -> Result<Vec<InputValue>, APISchemaError> {
+    let mut input_values = vec![];
+    for field in fields {
+        input_values.extend(field_filter_input_values(
+            schema,
+            &field,
+            &field.field_type,
+        )?);
+    }
+    Ok(input_values)
 }
 
 /// Generates `*_filter` input values for the given field.
@@ -189,18 +178,18 @@ fn field_filter_input_values(
     schema: &Document,
     field: &Field,
     field_type: &Type,
-) -> Vec<InputValue> {
+) -> Result<Vec<InputValue>, APISchemaError> {
     match field_type {
         Type::NamedType(ref name) => {
             let named_type = ast::get_named_type(schema, name)
-                .expect(format!("Unable to resolve named type: {}", name).as_str());
-            match named_type {
+                .ok_or(APISchemaError::TypeNotFound(name.clone()))?;
+            Ok(match named_type {
                 TypeDefinition::Scalar(ref t) => field_scalar_filter_input_values(schema, field, t),
                 TypeDefinition::Enum(ref t) => field_enum_filter_input_values(schema, field, t),
                 _ => vec![],
-            }
+            })
         }
-        Type::ListType(ref t) => field_list_filter_input_values(schema, field, t),
+        Type::ListType(ref t) => Ok(field_list_filter_input_values(schema, field, t)),
         Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
     }
 }
