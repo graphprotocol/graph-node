@@ -5,12 +5,25 @@ use slog_envlogger;
 use slog_term;
 use std::{env, panic};
 
-use slog::Drain;
+use slog::{Drain, FilterLevel};
 
-pub fn logger() -> slog::Logger {
+pub fn logger(show_debug: bool) -> slog::Logger {
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::CompactFormat::new(decorator).build().fuse();
-    let drain = slog_envlogger::new(drain);
+    let drain = slog_envlogger::LogBuilder::new(drain)
+        .filter(
+            None,
+            if show_debug {
+                FilterLevel::Debug
+            } else {
+                FilterLevel::Info
+            },
+        ).parse(
+            env::var_os("GRAPH_LOG")
+                .unwrap_or("".into())
+                .to_str()
+                .unwrap(),
+        ).build();
     let drain = slog_async::Async::new(drain).build().fuse();
     slog::Logger::root(drain, o!())
 }
