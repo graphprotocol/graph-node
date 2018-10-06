@@ -183,7 +183,7 @@ where
         contract_address: Address,
         call_data: Bytes,
         block_number_opt: Option<BlockNumber>,
-    ) -> impl Future<Item = Bytes, Error = Error> {
+    ) -> impl Future<Item = Bytes, Error = Error> + Send {
         let web3 = self.web3.clone();
 
         with_retry(
@@ -393,7 +393,7 @@ where
     fn contract_call(
         &self,
         call: EthereumContractCall,
-    ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
+    ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
         // Emit custom error for type mismatches.
         for (token, kind) in call
             .args
