@@ -201,5 +201,5 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn contract_call(
         &self,
         call: EthereumContractCall,
-    ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>>;
+    ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send>;
 }
