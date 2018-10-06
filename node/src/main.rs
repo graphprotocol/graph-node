@@ -260,7 +260,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         transport.clone(),
         50, // ancestor count, which we could make configuable
         logger.clone(),
-        Duration::from_millis(500), // polling interval, which we could make configurable
+        Duration::from_millis(5000), // polling interval, which we could make configurable
     ).expect("failed to create Ethereum block ingestor");
 
     // Run the Ethereum block ingestor in the background
