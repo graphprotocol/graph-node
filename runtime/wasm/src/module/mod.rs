@@ -2,6 +2,7 @@ use failure::Error as FailureError;
 use nan_preserving_float::F64;
 use std::collections::HashMap;
 use std::fmt;
+use std::mem;
 use std::ops::Deref;
 use std::str::FromStr;
 use tiny_keccak;
@@ -92,6 +93,16 @@ const IPFS_CAT_FUNC_INDEX: usize = 19;
 const STORE_GET_FUNC_INDEX: usize = 20;
 const TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX: usize = 21;
 const CRYPTO_KECCAK_256_INDEX: usize = 22;
+const TYPE_CONVERSION_U64_TO_U256_INDEX: usize = 23;
+const TYPE_CONVERSION_I64_TO_U256_INDEX: usize = 24;
+const TYPE_CONVERSION_U256_TO_U8_INDEX: usize = 25;
+const TYPE_CONVERSION_U256_TO_U16_INDEX: usize = 26;
+const TYPE_CONVERSION_U256_TO_U32_INDEX: usize = 27;
+const TYPE_CONVERSION_U256_TO_U64_INDEX: usize = 28;
+const TYPE_CONVERSION_U256_TO_I8_INDEX: usize = 29;
+const TYPE_CONVERSION_U256_TO_I16_INDEX: usize = 30;
+const TYPE_CONVERSION_U256_TO_I32_INDEX: usize = 31;
+const TYPE_CONVERSION_U256_TO_I64_INDEX: usize = 32;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph: SubgraphManifest,
@@ -459,7 +470,7 @@ where
         let mut bytes: Vec<u8> = Vec::new();
         for x in u64_array {
             // This is just `x.to_bytes()` which is unstable.
-            let x_bytes: [u8; 8] = unsafe { ::std::mem::transmute(x) };
+            let x_bytes: [u8; 8] = unsafe { mem::transmute(x) };
             bytes.extend(x_bytes.iter());
         }
 
@@ -477,7 +488,7 @@ where
         let mut bytes: Vec<u8> = Vec::new();
         for x in u64_array {
             // This is just `x.to_bytes()` which is unstable.
-            let x_bytes: [u8; 8] = unsafe { ::std::mem::transmute(x) };
+            let x_bytes: [u8; 8] = unsafe { mem::transmute(x) };
             bytes.extend(x_bytes.iter());
         }
 
@@ -643,6 +654,155 @@ where
         Ok(Some(RuntimeValue::from(hash_ptr)))
     }
 
+    /// function typeConversion.u64ToU256(x: u64): U64Array
+    fn u64_to_u256(&self, x: u64) -> Result<Option<RuntimeValue>, Trap> {
+        let u256 = U256::from(x);
+        let u256_ptr: AscPtr<Uint64Array> = self.heap.asc_new(&u256);
+        Ok(Some(RuntimeValue::from(u256_ptr)))
+    }
+
+    /// function typeConversion.i64ToU256(x: i64): U64Array
+    fn i64_to_u256(&self, x: i64) -> Result<Option<RuntimeValue>, Trap> {
+        // Sign extension: pad with 0s or 1s depending on sign of x.
+        let mut bytes = if x > 0 { [0; 32] } else { [255; 32] };
+
+        // This is just `x.to_bytes()` which is unstable.
+        let x_bytes: [u8; 8] = unsafe { mem::transmute(x) };
+        bytes[..8].copy_from_slice(&x_bytes);
+        let u256 = U256::from_little_endian(&bytes);
+        let u256_ptr: AscPtr<Uint64Array> = self.heap.asc_new(&u256);
+        Ok(Some(RuntimeValue::from(u256_ptr)))
+    }
+
+    /// Cast U256 to u64, checking that it respects `max_value`.
+    fn u256_as_u64(
+        &self,
+        x: AscPtr<Uint64Array>,
+        max_value: u64,
+        n_name: &str,
+    ) -> Result<u64, Trap> {
+        let u256: U256 = self.heap.asc_get(x);
+
+        // Check for overflow.
+        let max_value = U256::from(max_value);
+        if u256 > max_value {
+            return Err(host_error(format!(
+                "number `{}` is too large for an {}",
+                u256, n_name
+            )));
+        }
+        Ok(u64::from(u256))
+    }
+
+    /// function typeConversion.u256ToU8(x: U64Array): u8
+    fn u256_to_u8(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
+        let value = self.u256_as_u64(x, u8::max_value().into(), "u8")? as u8;
+        Ok(Some(RuntimeValue::from(value)))
+    }
+
+    /// function typeConversion.u256ToU16(x: U64Array): u16
+    fn u256_to_u16(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
+        let value = self.u256_as_u64(x, u16::max_value().into(), "u16")? as u16;
+        Ok(Some(RuntimeValue::from(value)))
+    }
+
+    /// function typeConversion.u256ToU32(x: U64Array): u32
+    fn u256_to_u32(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
+        let value = self.u256_as_u64(x, u32::max_value().into(), "u32")? as u32;
+        Ok(Some(RuntimeValue::from(value)))
+    }
+
+    /// function typeConversion.u256ToU64(x: U64Array): u64
+    fn u256_to_u64(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
+        let value = self.u256_as_u64(x, u64::max_value().into(), "u64")?;
+        Ok(Some(RuntimeValue::from(value)))
+    }
+
+    /// Checks that `x >= min_value` and `x <= max_value`
+    /// and returns the byte representation of `x`.
+    fn u256_checked_bytes(
+        &self,
+        x: AscPtr<Uint64Array>,
+        min_value: i64,
+        max_value: i64,
+        n_name: &str,
+    ) -> Result<[u8; 8], Trap> {
+        let u256: U256 = self.heap.asc_get(x);
+
+        // The number is negative if the most-significant bit is set.
+        let is_negative = u256.bit(255);
+        if !is_negative {
+            // Check for overflow.
+            let max_value = U256::from(max_value);
+            if u256 > max_value {
+                return Err(host_error(format!(
+                    "number `{}` is too large for an {}",
+                    u256, n_name
+                )));
+            }
+        } else {
+            // Check for underflow.
+            // Do two's complement to get the absolute value.
+            let u256_abs = !u256 + 1;
+
+            // The absolute value of `T::min_value` is `T::max_value + 1` for a primitive `T`,
+            // so we do a math trick to get around that, the `+ 1`s here cancel each other.
+            let min_value_abs = U256::from((min_value + 1).abs()) + 1;
+            if u256_abs > min_value_abs {
+                return Err(host_error(format!(
+                    "number `-{}` is too small for an {}",
+                    u256_abs, n_name
+                )));
+            }
+        }
+
+        // This is just `u256.low_u64().to_bytes()` which is unstable.
+        Ok(unsafe { mem::transmute(u256.low_u64()) })
+    }
+
+    /// function typeConversion.u256ToI8(x: U64Array): i8
+    fn u256_to_i8(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
+        let bytes =
+            self.u256_checked_bytes(x, i8::min_value().into(), i8::max_value().into(), "i8")?;
+
+        // This is just `i8::from_bytes` which is unstable.
+        let value: i8 = unsafe { mem::transmute(bytes[0]) };
+        Ok(Some(RuntimeValue::from(value)))
+    }
+
+    /// function typeConversion.u256ToI16(x: U64Array): i16
+    fn u256_to_i16(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
+        let bytes =
+            self.u256_checked_bytes(x, i16::min_value().into(), i16::max_value().into(), "i16")?;
+
+        // This is just `i16::from_bytes` which is unstable.
+        let value: i16 = unsafe { mem::transmute([bytes[0], bytes[1]]) };
+        Ok(Some(RuntimeValue::from(value)))
+    }
+
+    /// function typeConversion.u256ToI32(x: U64Array): i32
+    fn u256_to_i32(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
+        let bytes =
+            self.u256_checked_bytes(x, i32::min_value().into(), i32::max_value().into(), "i32")?;
+
+        // This is just `i32::from_bytes` which is unstable.
+        let value: i32 = unsafe { mem::transmute([bytes[0], bytes[1], bytes[2], bytes[3]]) };
+        Ok(Some(RuntimeValue::from(value)))
+    }
+
+    /// function typeConversion.u256ToI64(x: U64Array): i64
+    fn u256_to_i64(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
+        let bytes = self.u256_checked_bytes(x, i64::min_value(), i64::max_value(), "i64")?;
+
+        // This is just `i64::from_bytes` which is unstable.
+        let value: i64 = unsafe {
+            mem::transmute([
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            ])
+        };
+        Ok(Some(RuntimeValue::from(value)))
+    }
+
     fn block_on<I: Send + 'static, E: Send + 'static>(
         &self,
         future: impl Future<Item = I, Error = E> + Send + 'static,
@@ -710,6 +870,16 @@ where
                 self.big_int_to_int256(args.nth_checked(0)?)
             }
             CRYPTO_KECCAK_256_INDEX => self.crypto_keccak_256(args.nth_checked(0)?),
+            TYPE_CONVERSION_U64_TO_U256_INDEX => self.u64_to_u256(args.nth_checked(0)?),
+            TYPE_CONVERSION_I64_TO_U256_INDEX => self.i64_to_u256(args.nth_checked(0)?),
+            TYPE_CONVERSION_U256_TO_U8_INDEX => self.u256_to_u8(args.nth_checked(0)?),
+            TYPE_CONVERSION_U256_TO_U16_INDEX => self.u256_to_u16(args.nth_checked(0)?),
+            TYPE_CONVERSION_U256_TO_U32_INDEX => self.u256_to_u32(args.nth_checked(0)?),
+            TYPE_CONVERSION_U256_TO_U64_INDEX => self.u256_to_u64(args.nth_checked(0)?),
+            TYPE_CONVERSION_U256_TO_I8_INDEX => self.u256_to_i8(args.nth_checked(0)?),
+            TYPE_CONVERSION_U256_TO_I16_INDEX => self.u256_to_i16(args.nth_checked(0)?),
+            TYPE_CONVERSION_U256_TO_I32_INDEX => self.u256_to_i32(args.nth_checked(0)?),
+            TYPE_CONVERSION_U256_TO_I64_INDEX => self.u256_to_i64(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -840,6 +1010,46 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
             "bigIntToInt256" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX,
+            ),
+            "u64ToU256" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I64][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_U64_TO_U256_INDEX,
+            ),
+            "i64ToU256" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I64][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_I64_TO_U256_INDEX,
+            ),
+            "u256ToU8" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_U256_TO_U8_INDEX,
+            ),
+            "u256ToU16" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_U256_TO_U16_INDEX,
+            ),
+            "u256ToU32" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_U256_TO_U32_INDEX,
+            ),
+            "u256ToU64" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I64)),
+                TYPE_CONVERSION_U256_TO_U64_INDEX,
+            ),
+            "u256ToI8" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_U256_TO_I8_INDEX,
+            ),
+            "u256ToI16" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_U256_TO_I16_INDEX,
+            ),
+            "u256ToI32" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_U256_TO_I32_INDEX,
+            ),
+            "u256ToI64" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I64)),
+                TYPE_CONVERSION_U256_TO_I64_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(
