@@ -111,6 +111,7 @@ impl SubgraphInstanceManager {
         let name_for_log = name.clone();
         let id_for_log = manifest.id.clone();
         let id_for_transact = manifest.id.clone();
+        let id_for_err = manifest.id.clone();
 
         // Request a block stream for this subgraph
         let block_stream_canceler = CancelGuard::new();
@@ -201,8 +202,13 @@ impl SubgraphInstanceManager {
                         format_err!("Error while processing block stream for a subgraph: {}", e)
                     }).from_err()
                 }).map_err(move |e| {
-                    if let CancelableError::Error(e) = e {
-                        error!(error_logger, "Subgraph instance failed to run: {}", e);
+                    match e {
+                        CancelableError::Cancel => {
+                            info!(error_logger, "Subgraph block stream shut down cleanly"; "id" => id_for_err);
+                        }
+                        CancelableError::Error(e) => {
+                            error!(error_logger, "Subgraph instance failed to run: {}", e; "id" => id_for_err);
+                        }
                     }
                 }),
         );
