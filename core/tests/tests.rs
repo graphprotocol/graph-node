@@ -150,7 +150,7 @@ fn multiple_data_sources_per_subgraph() {
                 // Send the new subgraph to the manager.
                 manager
                     .event_sink()
-                    .send(SubgraphProviderEvent::SubgraphAdded(subgraph))
+                    .send(SubgraphProviderEvent::SubgraphStart(subgraph))
             }).and_then(move |_| {
                 // If we subscribed to both events, then we're handling multiple data sets.
                 // Wait for thirty seconds for that to happen, otherwise fail the test.
@@ -175,17 +175,17 @@ fn multiple_data_sources_per_subgraph() {
 
 fn added_subgraph_name_and_id(event: &SubgraphProviderEvent) -> (&str, &str) {
     match event {
-        SubgraphProviderEvent::SubgraphAdded(_name, manifest) => {
+        SubgraphProviderEvent::SubgraphStart(_name, manifest) => {
             (&manifest.schema.name, &manifest.id)
         }
-        _ => panic!("not `SubgraphAdded`"),
+        _ => panic!("not `SubgraphStart`"),
     }
 }
 
 fn added_schema_name_and_id(event: &SchemaEvent) -> (&str, &str) {
     match event {
-        SchemaEvent::SchemaAdded(schema) => (&schema.name, &schema.id),
-        _ => panic!("not `SchemaAdded`"),
+        SchemaEvent::SchemaStart(schema) => (&schema.name, &schema.id),
+        _ => panic!("not `SchemaStart`"),
     }
 }
 
@@ -241,7 +241,7 @@ fn subgraph_provider_events() {
     );
     assert_eq!(
         provider_events[1],
-        SubgraphProviderEvent::SubgraphRemoved(subgraph1_id.to_owned())
+        SubgraphProviderEvent::SubgraphStop(subgraph1_id.to_owned())
     );
     assert_eq!(
         added_subgraph_name_and_id(&provider_events[2]),
@@ -249,7 +249,7 @@ fn subgraph_provider_events() {
     );
     assert_eq!(
         provider_events[3],
-        SubgraphProviderEvent::SubgraphRemoved(subgraph2_id.to_owned())
+        SubgraphProviderEvent::SubgraphStop(subgraph2_id.to_owned())
     );
 
     let schema_events = runtime.block_on(schema_events.collect()).unwrap();

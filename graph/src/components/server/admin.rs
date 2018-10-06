@@ -4,8 +4,13 @@ use std::sync::Arc;
 use prelude::Logger;
 
 /// Common trait for JSON-RPC admin server implementations.
-pub trait JsonRpcServer<T> {
+pub trait JsonRpcServer<P, S> {
     type Server;
 
-    fn serve(port: u16, provider: Arc<T>, logger: Logger) -> Result<Self::Server, io::Error>;
+    fn serve(
+        port: u16,
+        provider: Arc<P>,
+        store: Arc<S>,
+        logger: Logger,
+    ) -> Result<Self::Server, io::Error>;
 }
