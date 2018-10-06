@@ -298,6 +298,7 @@ impl<L, S> EventProducer<SchemaEvent> for SubgraphProvider<L, S> {
     }
 }
 
+#[cfg(any())]
 #[test]
 fn rejects_name_bad_for_urls() {
     extern crate failure;
