@@ -59,43 +59,50 @@ where
                 stream::iter_ok(subgraph_names_by_id.into_iter()).for_each(move |(id, name)| {
                     let self_clone = self_clone.clone();
 
-                    SubgraphManifest::resolve(name.clone(), Link { link: format!("/ipfs/{}", id) }, self_clone.resolver.clone())
-                        .map_err(|e| format_err!("subgraph manifest resolve error: {}", e))
-                        .and_then(
-                            // Validate the subgraph schema before deploying the subgraph
-                            |subgraph| match validate_schema(&subgraph.schema.document) {
-                                Err(e) => Err(e),
-                                _ => Ok(subgraph),
-                            }
-                        ).and_then(move |mut subgraph| {
-                            let self_clone = self_clone.clone();
+                    SubgraphManifest::resolve(
+                        name.clone(),
+                        Link {
+                            link: format!("/ipfs/{}", id),
+                        },
+                        self_clone.resolver.clone(),
+                    ).map_err(|e| format_err!("subgraph manifest resolve error: {}", e))
+                    .and_then(
+                        // Validate the subgraph schema before deploying the subgraph
+                        |subgraph| match validate_schema(&subgraph.schema.document) {
+                            Err(e) => Err(e),
+                            _ => Ok(subgraph),
+                        },
+                    ).and_then(move |mut subgraph| {
+                        let self_clone = self_clone.clone();
 
-                            subgraph.schema.add_subgraph_id_directives(subgraph.id.clone());
+                        subgraph
+                            .schema
+                            .add_subgraph_id_directives(subgraph.id.clone());
 
-                            self_clone
-                                .send_add_events(subgraph, name.clone())
-                                .map_err(|e| format_err!("failed to deploy saved subgraph: {}", e))
-                        })
+                        self_clone
+                            .send_add_events(subgraph, name.clone())
+                            .map_err(|e| format_err!("failed to deploy saved subgraph: {}", e))
+                    })
                 })
             },
         )
     }
 
-    fn send_add_events(&self, subgraph: SubgraphManifest, name: String) -> impl Future<Item=(), Error=Error> {
+    fn send_add_events(
+        &self,
+        subgraph: SubgraphManifest,
+        name: String,
+    ) -> impl Future<Item = (), Error = Error> {
         // Push the subgraph and the schema into their streams
-        self
-            .schema_event_sink
+        self.schema_event_sink
             .clone()
             .send(SchemaEvent::SchemaAdded(subgraph.schema.clone()))
             .map_err(|e| panic!("failed to forward subgraph schema: {}", e))
             .join(
-                self
-                    .event_sink
+                self.event_sink
                     .clone()
-                    .send(SubgraphProviderEvent::SubgraphStart(
-                        name,
-                        subgraph,
-                    )).map_err(|e| panic!("failed to forward subgraph: {}", e)),
+                    .send(SubgraphProviderEvent::SubgraphStart(name, subgraph))
+                    .map_err(|e| panic!("failed to forward subgraph: {}", e)),
             ).map(|_| ())
     }
 
@@ -211,7 +218,8 @@ where
                             }
                         },
                     ).and_then(move |_| {
-                        self_clone3.send_add_events(subgraph, subgraph_added_name)
+                        self_clone3
+                            .send_add_events(subgraph, subgraph_added_name)
                             .map_err(SubgraphProviderError::Unknown)
                     })
                 }),
