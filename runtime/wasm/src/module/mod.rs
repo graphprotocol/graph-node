@@ -435,16 +435,16 @@ where
             args: unresolved_call.function_args.clone(),
         };
 
-        self.ethereum_adapter
-            .contract_call(call)
-            .wait()
-            .map(|result| Some(RuntimeValue::from(self.heap.asc_new(&*result))))
-            .map_err(|e| {
+        // Run Ethereum call in tokio runtime
+        let eth_adapter = self.ethereum_adapter.clone();
+        self.block_on(future::lazy(move || {
+            eth_adapter.contract_call(call).map_err(move |e| {
                 host_error(format!(
                     "Failed to call function \"{}\" of contract \"{}\": {}",
                     unresolved_call.function_name, unresolved_call.contract_name, e
                 ))
             })
+        })).map(|result| Some(RuntimeValue::from(self.heap.asc_new(&*result))))
     }
 
     /// function typeConversion.bytesToString(bytes: Bytes): string
