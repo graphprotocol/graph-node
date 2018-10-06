@@ -47,7 +47,6 @@ fn main() {
 
 fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     env_logger::init();
-    let logger = logger();
 
     // Setup CLI using Clap, provide general info and capture postgres url
     let matches = App::new("graph-node")
@@ -111,7 +110,15 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .value_name("PORT")
                 .help("port for the admin JSON-RPC server"),
         )
+        .arg(
+            Arg::with_name("debug")
+                .long("debug")
+                .help("Enable debug logging"),
+        )
         .get_matches();
+
+    // Set up logger
+    let logger = logger(matches.is_present("debug"));
 
     // Safe to unwrap because a value is required by CLI
     let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
