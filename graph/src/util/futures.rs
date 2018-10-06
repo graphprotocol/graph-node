@@ -1,4 +1,5 @@
 use slog::Logger;
+use std::time::Duration;
 use tokio::prelude::*;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Error as RetryError;
@@ -40,7 +41,9 @@ where
 {
     trace!(logger, "with_retry: {}", operation_name);
 
-    let retry_strategy = ExponentialBackoff::from_millis(2).map(jitter);
+    let retry_strategy = ExponentialBackoff::from_millis(2)
+        .max_delay(Duration::from_secs(30))
+        .map(jitter);
 
     let mut attempt_count = 0;
     Retry::spawn(retry_strategy, move || {
