@@ -352,14 +352,7 @@ where
         );
 
         // Send outgoing messages asynchronously
-        let logger = self.logger.clone();
-        let id = self.id.clone();
-        let ws_writer = msg_stream
-            .inspect(move |msg| {
-                trace!(logger, "Sending message";
-                       "connection" => &id,
-                       "msg" => format!("{}", msg).as_str());
-            }).forward(ws_sink.sink_map_err(|_| ()));
+        let ws_writer = msg_stream.forward(ws_sink.sink_map_err(|_| ()));
 
         // Silently swallow internal send results and errors. There is nothing
         // we can do about these errors ourselves. Clients will be disconnected
