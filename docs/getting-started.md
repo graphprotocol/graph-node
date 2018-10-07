@@ -97,7 +97,7 @@ dataSources:
     entities:
     - Token
     abis:
-    - name: ER721
+    - name: ERC721
       file: ./abis/ERC721ABI.json
     eventHandlers:
     - event: Transfer(address,address,uint256)
