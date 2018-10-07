@@ -68,7 +68,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn contract_call(
         &self,
         call: EthereumContractCall,
-    ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
+    ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
         unimplemented!();
     }
 }
