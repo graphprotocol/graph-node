@@ -2,6 +2,7 @@ use futures::future;
 use futures::prelude::*;
 use graph::ethabi::Token;
 use std::collections::HashSet;
+use std::env;
 use std::sync::Arc;
 
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
@@ -84,6 +85,10 @@ where
             );
         }
 
+        let early_chunk_size: u64 = env::var_os("EARLY_LOG_CHUNK_SIZE")
+            .map(|s| s.to_str().unwrap().parse().unwrap())
+            .unwrap_or(100_000);
+
         // Find all event sigs
         let event_sigs = log_filter
             .contract_address_and_event_sig_pairs
@@ -99,7 +104,7 @@ where
                 let mut chunk_futures = vec![];
 
                 if chunk_offset < 4_000_000 {
-                    let chunk_end = (chunk_offset + 100_000 - 1).min(to).min(4_000_000);
+                    let chunk_end = (chunk_offset + early_chunk_size - 1).min(to).min(4_000_000);
 
                     debug!(
                         eth_adapter.logger,
