@@ -50,7 +50,8 @@ BEGIN
     WHERE
         block1.network_name = net_name
         AND block2.hash IS NULL -- cases where no block2 was found
-        AND block1.number > (new_head_number - ancestor_count);
+        AND block1.number > (new_head_number - ancestor_count)
+        AND block1.number > 0;
 
     -- Stop now if there are any recent blocks with missing parents
     IF array_length(missing_parents, 1) > 0 THEN
