@@ -41,8 +41,9 @@ where
 {
     trace!(logger, "with_retry: {}", operation_name);
 
+    let max_delay_ms = 30_000;
     let retry_strategy = ExponentialBackoff::from_millis(2)
-        .max_delay(Duration::from_secs(30))
+        .max_delay(Duration::from_millis(max_delay_ms))
         .map(jitter);
 
     let mut attempt_count = 0;
@@ -51,7 +52,7 @@ where
         let logger = logger.clone();
 
         attempt_count += 1;
-        let delay_ms = 1 << attempt_count;
+        let delay_ms = (1 << attempt_count).min(max_delay_ms);
 
         try_it().map_err(move |e| {
             if attempt_count >= log_after {
