@@ -158,7 +158,9 @@ where
         web3.eth()
             .block_with_txs(BlockNumber::Latest.into())
             .map_err(|e| format_err!("could not get latest block from Ethereum: {}", e))
-            .and_then(|block_opt| block_opt.ok_or(format_err!("no block returned from Ethereum")))
+            .and_then(|block_opt| {
+                block_opt.ok_or(format_err!("no latest block returned from Ethereum"))
+            })
     }
 
     fn get_transaction_receipt<'a>(
