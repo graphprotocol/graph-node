@@ -100,7 +100,7 @@ fn build_filter_from_object(
                 let (field_name, op) = sast::parse_field_as_filter(key);
 
                 let field = sast::get_field_type(entity, &field_name).ok_or(
-                    QueryExecutionError::EntityFieldError(entity.clone().name, field_name.clone()),
+                    QueryExecutionError::EntityFieldError(entity.name.clone(), field_name.clone()),
                 )?;
 
                 let ty = &field.field_type;
@@ -158,20 +158,21 @@ fn build_order_by(
     entity: &s::ObjectType,
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
-    Ok(arguments
+    arguments
         .get(&"orderBy".to_string())
-        .and_then(|value| match value {
+        .map_or(Ok(None), |value| match value {
             q::Value::Enum(name) => {
-                let field = sast::get_field_type(entity, &name)
-                    .expect("order by attribute does not belong to entity");
+                let field = sast::get_field_type(entity, &name).ok_or(
+                    QueryExecutionError::EntityFieldError(entity.name.clone(), name.clone())
+                )?;
                 let value = sast::get_value_type(field.field_type.clone());
                 match value {
-                    Ok(v) => Some((name.to_owned(), v)),
-                    Err(_) => None,
+                    Ok(v) => Ok(Some((name.to_owned(), v))),
+                    Err(_) => Ok(None),
                 }
             }
-            _ => None,
-        }))
+            _ => Ok(None),
+        })
 }
 
 /// Parses GraphQL arguments into a StoreOrder, if present.
