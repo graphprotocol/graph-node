@@ -257,32 +257,34 @@ impl Store {
         );
     }
 
-    /// Gets an entity from Postgres, returns an entity with just an ID if none is found.
+    /// Gets an entity from Postgres
     fn get_entity(
         &self,
         conn: &PgConnection,
         op_subgraph: &String,
         op_entity: &String,
         op_id: &String,
-    ) -> Result<Entity, Error> {
+    ) -> Result<Option<Entity>, Error> {
         use db_schema::entities::dsl::*;
-
-        match entities
+        entities
             .find((op_id, op_subgraph, op_entity))
             .select(data)
             .first::<serde_json::Value>(conn)
-        {
-            Ok(json) => serde_json::from_value::<Entity>(json).map_err(|e| {
-                format_err!(
-                    "Encountered invalid entity ({}, {}, {}) in the store: {}",
-                    op_subgraph,
-                    op_entity,
-                    op_id,
-                    e
-                )
-            }),
-            Err(_) => Ok(Entity::from(vec![("id", Value::from(op_id.clone()))])),
-        }
+            .optional()
+            .and_then(|option| {
+                Ok(option.map(|value| {
+                    serde_json::from_value::<Entity>(value)
+                        .map_err(|e| {
+                            format_err!(
+                                "Encountered invalid entity ({}, {}, {}) in the store: {}",
+                                op_subgraph,
+                                op_entity,
+                                op_id,
+                                e
+                            )
+                        }).unwrap()
+                }))
+            }).map_err(Error::from)
     }
 
     /// Applies a set operation in Postgres.
@@ -300,7 +302,7 @@ impl Store {
         let existing_entity = self.get_entity(conn, op_subgraph, op_entity, op_id)?;
 
         // Apply the operation
-        let updated_entity = operation.apply(Some(existing_entity));
+        let updated_entity = operation.apply(existing_entity);
         let updated_json: serde_json::Value =
             serde_json::to_value(&updated_entity).map_err(|e| {
                 format_err!(
