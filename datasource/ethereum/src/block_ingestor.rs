@@ -194,7 +194,14 @@ where
                         })
                     })
             },
-        )
+        ).map_err(move |e| {
+            e.into_inner().unwrap_or_else(move || {
+                format_err!(
+                    "Ethereum node took too long to return transaction receipt {}",
+                    tx_hash
+                )
+            })
+        })
     }
 
     /// Put some blocks into the block store (if they are not there already), and try to update the

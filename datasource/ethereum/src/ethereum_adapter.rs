@@ -45,6 +45,7 @@ where
         event_signatures: Vec<H256>,
     ) -> impl Future<Item = Vec<Log>, Error = Error> {
         let eth_adapter = self.clone();
+        let event_sig_count = event_signatures.len();
         with_retry(
             self.logger.clone(),
             "eth_getLogs RPC call".to_owned(),
@@ -68,7 +69,11 @@ where
                     }).map_err(SyncFailure::new)
                     .from_err()
             },
-        )
+        ).map_err(move |e| {
+            e.into_inner().unwrap_or_else(move || {
+                format_err!("Ethereum node took too long to respond to eth_getLogs (from = {}, to = {}, # of event sigs = {})", from, to, event_sig_count)
+            })
+        })
     }
 
     fn log_stream(
@@ -203,7 +208,11 @@ where
                     .map_err(SyncFailure::new)
                     .from_err()
             },
-        )
+        ).map_err(|e| {
+            e.into_inner().unwrap_or_else(|| {
+                format_err!("Ethereum node took too long to perform function call")
+            })
+        })
     }
 }
 
@@ -241,12 +250,20 @@ where
             },
         );
 
-        Box::new(net_version_future.join(gen_block_hash_future).map(
-            |(net_version, genesis_block_hash)| EthereumNetworkIdentifier {
-                net_version,
-                genesis_block_hash,
-            },
-        ))
+        Box::new(
+            net_version_future
+                .join(gen_block_hash_future)
+                .map(
+                    |(net_version, genesis_block_hash)| EthereumNetworkIdentifier {
+                        net_version,
+                        genesis_block_hash,
+                    },
+                ).map_err(|e| {
+                    e.into_inner().unwrap_or_else(|| {
+                        format_err!("Ethereum node took too long to read network identifiers")
+                    })
+                }),
+        )
     }
 
     fn block_by_hash(
@@ -265,7 +282,11 @@ where
                     .map_err(SyncFailure::new)
                     .from_err()
             },
-        );
+        ).map_err(move |e| {
+            e.into_inner().unwrap_or_else(move || {
+                format_err!("Ethereum node took too long to return block {}", block_hash)
+            })
+        });
 
         let web3 = self.web3.clone();
         Box::new(block_future.and_then(move |block_opt| {
@@ -296,7 +317,14 @@ where
                                         })
                                     })
                             },
-                        )
+                        ).map_err(move |e| {
+                            e.into_inner().unwrap_or_else(move || {
+                                format_err!(
+                                    "Ethereum node took too long to return transaction receipt {}",
+                                    tx_hash
+                                )
+                            })
+                        })
                     }).collect::<Vec<_>>();
 
                 stream::futures_ordered(receipt_futures).collect().map(
@@ -315,17 +343,26 @@ where
     ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
         let web3 = self.web3.clone();
 
-        Box::new(with_retry(
-            self.logger.clone(),
-            "eth_getBlockByNumber RPC call".to_owned(),
-            move || {
-                web3.eth()
-                    .block(BlockId::Number(block_number.into()))
-                    .map_err(SyncFailure::new)
-                    .from_err()
-                    .map(|block_opt| block_opt.map(|block| block.hash.unwrap()))
-            },
-        ))
+        Box::new(
+            with_retry(
+                self.logger.clone(),
+                "eth_getBlockByNumber RPC call".to_owned(),
+                move || {
+                    web3.eth()
+                        .block(BlockId::Number(block_number.into()))
+                        .map_err(SyncFailure::new)
+                        .from_err()
+                        .map(|block_opt| block_opt.map(|block| block.hash.unwrap()))
+                },
+            ).map_err(move |e| {
+                e.into_inner().unwrap_or_else(move || {
+                    format_err!(
+                        "Ethereum node took too long to return data for block #{}",
+                        block_number
+                    )
+                })
+            }),
+        )
     }
 
     fn is_on_main_chain(
