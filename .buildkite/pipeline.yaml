@@ -1,7 +1,0 @@
-steps:
-  - label: Deploy to staging
-    trigger: the-graph-network-staging-deployment
-    branches: master
-  - label: Deploy staging docs
-    trigger: the-graph-network-staging-docs
-    branches: master
