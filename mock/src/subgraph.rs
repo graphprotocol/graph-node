@@ -29,7 +29,6 @@ impl MockSubgraphProvider {
             event_stream: Some(event_stream),
             schema_event_stream: Some(schema_event_stream),
             schemas: vec![Schema {
-                name: id.clone(),
                 id,
                 document: graphql_parser::parse_schema(
                     "type User {
@@ -50,7 +49,6 @@ impl MockSubgraphProvider {
             location: String::from("/tmp/example-data-source.yaml"),
             spec_version: String::from("0.1"),
             schema: Schema {
-                name: String::from("exampled name"),
                 id: String::from("exampled id"),
                 document: Document {
                     definitions: vec![],

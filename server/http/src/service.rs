@@ -1,4 +1,3 @@
-use http::header;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use itertools::Itertools;
@@ -18,10 +17,8 @@ pub type GraphQLServiceResponse =
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
 pub struct GraphQLService<Q> {
-    // Maps ids to names.
-    names: Arc<RwLock<BTreeMap<String, String>>>,
-    // Maps names to schemas.
-    schemas: Arc<RwLock<BTreeMap<String, Schema>>>,
+    // Maps IDs to schemas.
+    schemas: Arc<RwLock<BTreeMap<SubgraphId, Schema>>>,
     graphql_runner: Arc<Q>,
 }
 
@@ -31,33 +28,17 @@ where
 {
     /// Creates a new GraphQL service.
     pub fn new(
-        names: Arc<RwLock<BTreeMap<String, String>>>,
-        schemas: Arc<RwLock<BTreeMap<String, Schema>>>,
+        schemas: Arc<RwLock<BTreeMap<SubgraphId, Schema>>>,
         graphql_runner: Arc<Q>,
     ) -> Self {
         GraphQLService {
-            names,
             schemas,
             graphql_runner,
         }
     }
 
     fn index(&self) -> GraphQLServiceResponse {
-        let len = self.schemas.read().unwrap().len();
-        match self.schemas.read().unwrap().values().next() {
-            // If there's only 1 schema, redirect to it.
-            Some(schema) if len == 1 => Box::new(future::ok(
-                Response::builder()
-                    .status(StatusCode::SEE_OTHER)
-                    .header(
-                        header::LOCATION,
-                        header::HeaderValue::from_str(&format!("/{}", schema.name))
-                            .expect("invalid subgraph name"),
-                    ).body(Body::empty())
-                    .unwrap(),
-            )),
-            _ => self.handle_not_found(),
-        }
+        self.handle_not_found()
     }
 
     /// Serves a GraphiQL index.html.
