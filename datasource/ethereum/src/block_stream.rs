@@ -2,6 +2,7 @@ use failure::Error;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std;
+use std::env;
 use std::mem;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -543,8 +544,12 @@ where
     ) -> impl Stream<Item = EthereumBlock, Error = Error> + Send {
         let ctx = self.clone();
 
+        let block_batch_size: usize = env::var_os("BLOCK_BATCH_SIZE")
+            .map(|s| s.to_str().unwrap().parse().unwrap())
+            .unwrap_or(50);
+
         let block_hashes_batches = block_hashes
-            .chunks(200) // max batch size
+            .chunks(block_batch_size) // maximum batch size
             .map(|chunk| chunk.to_vec())
             .collect::<Vec<_>>();
 
