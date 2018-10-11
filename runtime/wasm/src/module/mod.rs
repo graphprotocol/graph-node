@@ -298,7 +298,7 @@ where
         match data.insert("id".to_string(), Value::String(id.clone())) {
             Some(ref v) if v != &Value::String(id.clone()) => {
                 return Err(host_error(format!(
-                    "Conflicting 'id' value set by mapping for '{}' entity: {} : {}",
+                    "Conflicting 'id' value set by mapping for {} entity: {} != {}",
                     entity, v, id,
                 )))
             }
