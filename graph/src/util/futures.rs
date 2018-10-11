@@ -55,7 +55,7 @@ where
         attempt_count += 1;
 
         try_it()
-            .deadline(Instant::now() + Duration::from_secs(60))
+            .deadline(Instant::now() + Duration::from_secs(30))
             .map_err(move |e| {
                 if e.is_elapsed() {
                     if attempt_count >= log_after {
