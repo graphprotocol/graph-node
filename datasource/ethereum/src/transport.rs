@@ -1,6 +1,7 @@
 use futures::prelude::*;
 use graph::serde_json::Value;
 use jsonrpc_core::types::Call;
+use std::env;
 
 use graph::web3;
 use graph::web3::transports::{http, ipc, ws};
@@ -36,7 +37,11 @@ impl Transport {
     /// Note: JSON-RPC over HTTP doesn't always support subscribing to new
     /// blocks (one such example is Infura's HTTP endpoint).
     pub fn new_rpc(rpc: &str) -> (EventLoopHandle, Self) {
-        http::Http::with_max_parallel(rpc, 2048)
+        let max_parallel_http: usize = env::var_os("MAX_PARALLEL_HTTP")
+            .map(|s| s.to_str().unwrap().parse().unwrap())
+            .unwrap_or(64);
+
+        http::Http::with_max_parallel(rpc, max_parallel_http)
             .map(|(event_loop, transport)| (event_loop, Transport::RPC(transport)))
             .expect("Failed to connect to Ethereum RPC")
     }
