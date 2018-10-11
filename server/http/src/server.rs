@@ -47,10 +47,8 @@ impl From<hyper::Error> for GraphQLServeError {
 pub struct GraphQLServer<Q> {
     logger: slog::Logger,
     schema_event_sink: Sender<SchemaEvent>,
-    // Maps a subgraph id to its name.
-    names: Arc<RwLock<BTreeMap<String, String>>>,
-    // Maps a subgraph name to its schema.
-    schemas: Arc<RwLock<BTreeMap<String, Schema>>>,
+    // Maps a subgraph id to its schema.
+    schemas: Arc<RwLock<BTreeMap<SubgraphId, Schema>>>,
     graphql_runner: Arc<Q>,
 }
 
@@ -64,7 +62,6 @@ impl<Q> GraphQLServer<Q> {
         let mut server = GraphQLServer {
             logger: logger.new(o!("component" => "GraphQLServer")),
             schema_event_sink,
-            names: Arc::new(RwLock::new(BTreeMap::new())),
             schemas: Arc::new(RwLock::new(BTreeMap::new())),
             graphql_runner: graphql_runner,
         };
@@ -80,18 +77,15 @@ impl<Q> GraphQLServer<Q> {
     fn handle_schema_events(&mut self, stream: Receiver<SchemaEvent>) {
         let logger = self.logger.clone();
         let schemas = self.schemas.clone();
-        let names = self.names.clone();
 
         tokio::spawn(stream.for_each(move |event| {
             info!(logger, "Received schema event");
 
             let mut schemas = schemas.write().unwrap();
-            let mut names = names.write().unwrap();
             match event {
                 SchemaEvent::SchemaAdded(new_schema) => {
                     let derived_schema = match api_schema(&new_schema.document) {
                         Ok(document) => Schema {
-                            name: new_schema.name.clone(),
                             id: new_schema.id.clone(),
                             document,
                         },
@@ -101,13 +95,11 @@ impl<Q> GraphQLServer<Q> {
                         }
                     };
 
-                    schemas.insert(derived_schema.name.clone(), derived_schema);
-                    names.insert(new_schema.id.clone(), new_schema.name.clone());
+                    schemas.insert(new_schema.id.clone(), derived_schema);
                 }
                 SchemaEvent::SchemaRemoved(name, id) => {
                     // If the event got this far, the subgraph must be hosted.
-                    schemas.remove(&name).expect("subgraph not hosted");
-                    names.remove(&id).expect("subgraph not hosted");
+                    schemas.remove(&id).expect("subgraph not hosted");
                 }
             }
 
@@ -137,11 +129,10 @@ where
         // On every incoming request, launch a new GraphQL service that writes
         // incoming queries to the query sink.
         let graphql_runner = self.graphql_runner.clone();
-        let names = self.names.clone();
         let schemas = self.schemas.clone();
         let new_service = move || {
             let service =
-                GraphQLService::new(names.clone(), schemas.clone(), graphql_runner.clone());
+                GraphQLService::new(schemas.clone(), graphql_runner.clone());
             future::ok::<GraphQLService<Q>, hyper::Error>(service)
         };
 

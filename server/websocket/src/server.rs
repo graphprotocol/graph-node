@@ -69,7 +69,6 @@ where
                 SchemaEvent::SchemaAdded(new_schema) => {
                     let derived_schema = match api_schema(&new_schema.document) {
                         Ok(document) => Schema {
-                            name: new_schema.name.clone(),
                             id: new_schema.id.clone(),
                             document,
                         },
@@ -81,7 +80,6 @@ where
 
                     // Add the subgraph name, ID and schema to the subgraph registry
                     subgraphs.insert(
-                        Some(derived_schema.name.clone()),
                         derived_schema.id.clone(),
                         GuardedSchema::new(derived_schema),
                     );

@@ -43,8 +43,6 @@ where
     }
 
     fn deploy_saved_subgraphs(&self) -> impl Future<Item = (), Error = Error> {
-        // TODO this is not really right when multiple subgraph names have same ID
-
         let self_clone = self.clone();
 
         future::result(self.store.read_all_subgraph_names()).and_then(
@@ -59,7 +57,7 @@ where
                 stream::iter_ok(subgraph_names_by_id.into_iter()).for_each(move |(id, name)| {
                     let self_clone = self_clone.clone();
 
-                    SubgraphManifest::resolve(name.clone(), Link { link: format!("/ipfs/{}", id) }, self_clone.resolver.clone())
+                    SubgraphManifest::resolve(Link { link: format!("/ipfs/{}", id) }, self_clone.resolver.clone())
                         .map_err(|e| format_err!("subgraph manifest resolve error: {}", e))
                         .and_then(
                             // Validate the subgraph schema before deploying the subgraph
@@ -167,7 +165,7 @@ where
         let self_clone2 = self.clone();
         let self_clone3 = self.clone();
         Box::new(
-            SubgraphManifest::resolve(name.clone(), Link { link }, self.resolver.clone())
+            SubgraphManifest::resolve(Link { link }, self.resolver.clone())
                 .map_err(SubgraphProviderError::ResolveError)
                 .and_then(
                     // Validate the subgraph schema before deploying the subgraph
@@ -197,10 +195,19 @@ where
                             // If a subgraph is being updated, remove the old subgraph.
                             match old_id_opt_opt {
                                 Some(Some(old_id)) => {
-                                    // TODO what if this is not the only subgraph name with id?
-                                    Box::new(
-                                        self_clone2.send_remove_events(vec![name_clone], old_id),
-                                    )
+                                    Box::new(future::result(self_clone2.store.find_subgraph_names_by_id(old_id.clone()))
+                                        .map_err(SubgraphProviderError::Unknown)
+                                        .and_then(move |names_with_old_id| -> Box<Future<Item=_, Error=_> + Send> {
+                                            if names_with_old_id.is_empty() {
+                                                // No more subgraph names map to this ID
+                                                Box::new(
+                                                    self_clone2.send_remove_events(vec![name_clone], old_id),
+                                                )
+                                            } else {
+                                                // Other subgraph names use this ID
+                                                Box::new(future::ok(()))
+                                            }
+                                        }))
                                 }
 
                                 // Subgraph name exists but has a null ID
