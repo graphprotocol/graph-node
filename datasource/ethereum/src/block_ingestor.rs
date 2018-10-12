@@ -60,10 +60,22 @@ where
                 static_self.do_poll().then(move |result| {
                     if let Err(e) = result {
                         // Some polls will fail due to transient issues
-                        warn!(
-                            static_self.logger,
-                            "Trying again after block polling failed: {:?}", e
-                        );
+                        match e {
+                            BlockIngestorError::BlockUnavailable(block_hash) => {
+                                trace!(
+                                    static_self.logger,
+                                    "Trying again after block polling failed: \
+                                    block data unavailable, block was likely uncled";
+                                    "block_hash" => format!("{:?}", block_hash)
+                                );
+                            }
+                            BlockIngestorError::Unknown(e) => {
+                                warn!(
+                                    static_self.logger,
+                                    "Trying again after block polling failed: {:?}", e
+                                );
+                            }
+                        }
                     }
 
                     // Continue polling even if polling failed
@@ -72,11 +84,12 @@ where
             })
     }
 
-    fn do_poll<'a>(&'a self) -> impl Future<Item = (), Error = Error> + 'a {
+    fn do_poll<'a>(&'a self) -> impl Future<Item = (), Error = BlockIngestorError> + 'a {
         trace!(self.logger, "BlockIngestor::do_poll");
 
         // Get chain head ptr from store
         future::result(self.chain_store.chain_head_ptr())
+            .from_err()
             .and_then(move |head_block_ptr_opt| {
                 // Ask for latest block from Ethereum node
                 self.get_latest_block()
@@ -104,22 +117,9 @@ where
                             return Box::new(future::ok(()));
                         }
 
-                        // Load transaction receipts
-                        let receipt_futures = latest_block
-                            .transactions
-                            .iter()
-                            .map(move |tx| {
-                                self.get_transaction_receipt(tx.hash)
-                            }).collect::<Vec<_>>();
-
                         Box::new(
-                            // Merge receipts with Block<Transaction> to get EthereumBlock
-                            stream::futures_ordered(receipt_futures).collect().map(
-                                move |transaction_receipts| EthereumBlock {
-                                    block: latest_block,
-                                    transaction_receipts,
-                                },
-                            ).and_then(move |latest_block: EthereumBlock| {
+                            self.load_full_block(latest_block)
+                            .and_then(move |latest_block: EthereumBlock| {
                                 // Store latest block in block store.
                                 // Might be a no-op if latest block is one that we have seen.
                                 // ingest_blocks will return a (potentially incomplete) list of blocks that are
@@ -153,20 +153,55 @@ where
 
     fn get_latest_block<'a>(
         &'a self,
-    ) -> impl Future<Item = Block<Transaction>, Error = Error> + 'a {
+    ) -> impl Future<Item = Block<Transaction>, Error = BlockIngestorError> + 'a {
         let web3 = Web3::new(self.web3_transport.clone());
         web3.eth()
             .block_with_txs(BlockNumber::Latest.into())
             .map_err(|e| format_err!("could not get latest block from Ethereum: {}", e))
+            .from_err()
             .and_then(|block_opt| {
-                block_opt.ok_or(format_err!("no latest block returned from Ethereum"))
+                block_opt.ok_or(format_err!("no latest block returned from Ethereum").into())
+            })
+    }
+
+    fn load_full_block<'a>(
+        &'a self,
+        block: Block<Transaction>,
+    ) -> impl Future<Item = EthereumBlock, Error = BlockIngestorError> + 'a {
+        let block_hash = block.hash.unwrap();
+
+        // Load transaction receipts
+        let receipt_futures = block
+            .transactions
+            .iter()
+            .map(move |tx| {
+                self.get_transaction_receipt(tx.hash)
+                    .and_then(move |receipt| {
+                        // Check if receipt is for the right block
+                        if receipt.block_hash != block_hash {
+                            // This block is no longer on the main chain according to the Ethereum
+                            // node.  Nothing we can do from here except give up trying to ingest
+                            // this block.
+                            Err(BlockIngestorError::BlockUnavailable(block_hash))
+                        } else {
+                            Ok(receipt)
+                        }
+                    })
+            }).collect::<Vec<_>>();
+
+        // Merge receipts with Block<Transaction> to get EthereumBlock
+        stream::futures_ordered(receipt_futures)
+            .collect()
+            .map(move |transaction_receipts| EthereumBlock {
+                block,
+                transaction_receipts,
             })
     }
 
     fn get_transaction_receipt<'a>(
         &'a self,
         tx_hash: H256,
-    ) -> impl Future<Item = TransactionReceipt, Error = Error> + 'a {
+    ) -> impl Future<Item = TransactionReceipt, Error = BlockIngestorError> + 'a {
         let web3 = Web3::new(self.web3_transport.clone());
 
         // Infura frequently fails to find transaction receipts for new blocks,
@@ -174,7 +209,10 @@ where
         // attempts.
         with_retry_log_after(
             self.logger.clone(),
-            "block ingestor eth_getTransactionReceipt RPC call".to_owned(),
+            format!(
+                "block ingestor eth_getTransactionReceipt({:?}) RPC call",
+                tx_hash
+            ),
             16,
             move || {
                 web3.eth()
@@ -201,19 +239,23 @@ where
                     tx_hash
                 )
             })
-        })
+        }).from_err()
     }
 
     /// Put some blocks into the block store (if they are not there already), and try to update the
     /// head block pointer. If missing blocks prevent such an update, return a Vec with at least
     /// one of the missing blocks' hashes.
-    fn ingest_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
+    fn ingest_blocks<
+        'a,
+        B: Stream<Item = EthereumBlock, Error = BlockIngestorError> + Send + 'a,
+    >(
         &'a self,
         blocks: B,
-    ) -> impl Future<Item = Vec<H256>, Error = Error> + Send + 'a {
+    ) -> impl Future<Item = Vec<H256>, Error = BlockIngestorError> + Send + 'a {
         self.chain_store.upsert_blocks(blocks).and_then(move |()| {
             self.chain_store
                 .attempt_chain_head_update(self.ancestor_count)
+                .map_err(BlockIngestorError::from)
         })
     }
 
@@ -222,7 +264,7 @@ where
     fn get_blocks<'a>(
         &'a self,
         block_hashes: &[H256],
-    ) -> Box<Stream<Item = EthereumBlock, Error = Error> + Send + 'a> {
+    ) -> Box<Stream<Item = EthereumBlock, Error = BlockIngestorError> + Send + 'a> {
         // Don't bother with a batch request if nothing to request
         if block_hashes.is_empty() {
             return Box::new(stream::empty());
@@ -234,24 +276,16 @@ where
         let block_futures = block_hashes
             .into_iter()
             .map(|block_hash| {
+                let block_hash = block_hash.to_owned();
+
                 batching_web3.eth()
-                    .block_with_txs(BlockId::from(*block_hash))
-                    .map_err(|e| format_err!("could not get block from Ethereum: {}", e))
-                    .and_then(|block_opt| {
-                        block_opt.ok_or(format_err!("no block returned from Ethereum"))
+                    .block_with_txs(BlockId::from(block_hash))
+                    .map_err(|e| format_err!("could not get block from Ethereum: {}", e).into())
+                    .and_then(move |block_opt| {
+                        block_opt.ok_or(BlockIngestorError::BlockUnavailable(block_hash))
                     })
                     .and_then(move |block| {
-                        let receipt_futures = block.transactions
-                            .iter()
-                            .map(move |tx| {
-                                self.get_transaction_receipt(tx.hash)
-                            })
-                            .collect::<Vec<_>>();
-
-                        stream::futures_ordered(receipt_futures).collect()
-                            .map(move |transaction_receipts| EthereumBlock {
-                                block, transaction_receipts
-                            })
+                        self.load_full_block(block)
                     })
             })
             // Collect to ensure that `block_with_txs` calls happen before `submit_batch`
@@ -262,9 +296,25 @@ where
             batching_web3
                 .transport()
                 .submit_batch()
-                .map_err(|e| format_err!("could not get blocks from Ethereum: {}", e))
+                .map_err(|e| format_err!("could not get blocks from Ethereum: {}", e).into())
                 .map(|_| stream::futures_unordered(block_futures))
                 .flatten_stream(),
         )
+    }
+}
+
+#[derive(Debug)]
+enum BlockIngestorError {
+    /// The Ethereum node does not know about this block for some reason, probably because it
+    /// disappeared in a chain reorg.
+    BlockUnavailable(H256),
+
+    /// An unexpected error occurred.
+    Unknown(Error),
+}
+
+impl From<Error> for BlockIngestorError {
+    fn from(e: Error) -> Self {
+        BlockIngestorError::Unknown(e)
     }
 }

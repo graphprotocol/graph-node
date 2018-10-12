@@ -112,10 +112,11 @@ impl ChainStore for MockStore {
         unimplemented!();
     }
 
-    fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
-        &self,
-        _: B,
-    ) -> Box<Future<Item = (), Error = Error> + Send + 'a> {
+    fn upsert_blocks<'a, B, E>(&self, _: B) -> Box<Future<Item = (), Error = E> + Send + 'a>
+    where
+        B: Stream<Item = EthereumBlock, Error = E> + Send + 'a,
+        E: From<Error> + Send + 'a,
+    {
         unimplemented!();
     }
 
@@ -203,10 +204,11 @@ impl ChainStore for FakeStore {
         unimplemented!();
     }
 
-    fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
-        &self,
-        _: B,
-    ) -> Box<Future<Item = (), Error = Error> + Send + 'a> {
+    fn upsert_blocks<'a, B, E>(&self, _: B) -> Box<Future<Item = (), Error = E> + Send + 'a>
+    where
+        B: Stream<Item = EthereumBlock, Error = E> + Send + 'a,
+        E: From<Error> + Send + 'a,
+    {
         unimplemented!();
     }
 
