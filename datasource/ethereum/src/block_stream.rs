@@ -544,7 +544,7 @@ where
     ) -> impl Stream<Item = EthereumBlock, Error = Error> + Send {
         let ctx = self.clone();
 
-        let block_batch_size: usize = env::var_os("BLOCK_BATCH_SIZE")
+        let block_batch_size: usize = env::var_os("ETHEREUM_BLOCK_BATCH_SIZE")
             .map(|s| s.to_str().unwrap().parse().unwrap())
             .unwrap_or(50);
 
