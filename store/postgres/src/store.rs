@@ -620,10 +620,11 @@ impl ChainStore for Store {
         Ok(self.genesis_block_ptr)
     }
 
-    fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
-        &self,
-        blocks: B,
-    ) -> Box<Future<Item = (), Error = Error> + Send + 'a> {
+    fn upsert_blocks<'a, B, E>(&self, blocks: B) -> Box<Future<Item = (), Error = E> + Send + 'a>
+    where
+        B: Stream<Item = EthereumBlock, Error = E> + Send + 'a,
+        E: From<Error> + Send + 'a,
+    {
         use db_schema::ethereum_blocks::dsl::*;
 
         let conn = self.conn.clone();
@@ -645,6 +646,7 @@ impl ChainStore for Store {
                 .set(values)
                 .execute(&*conn.lock().unwrap())
                 .map_err(Error::from)
+                .map_err(E::from)
                 .map(|_| ())
         }))
     }

@@ -339,10 +339,10 @@ pub trait ChainStore: Send + Sync {
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
 
     /// Insert blocks into the store (or update if they are already present).
-    fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
-        &self,
-        blocks: B,
-    ) -> Box<Future<Item = (), Error = Error> + Send + 'a>;
+    fn upsert_blocks<'a, B, E>(&self, blocks: B) -> Box<Future<Item = (), Error = E> + Send + 'a>
+    where
+        B: Stream<Item = EthereumBlock, Error = E> + Send + 'a,
+        E: From<Error> + Send + 'a;
 
     /// Try to update the head block pointer to the block with the highest block number.
     ///
