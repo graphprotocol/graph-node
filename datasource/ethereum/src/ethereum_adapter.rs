@@ -71,7 +71,13 @@ where
             },
         ).map_err(move |e| {
             e.into_inner().unwrap_or_else(move || {
-                format_err!("Ethereum node took too long to respond to eth_getLogs (from = {}, to = {}, # of event sigs = {})", from, to, event_sig_count)
+                format_err!(
+                    "Ethereum node took too long to respond to eth_getLogs \
+                     (from block {}, to block {}, {} event signatures)",
+                    from,
+                    to,
+                    event_sig_count
+                )
             })
         })
     }
