@@ -37,7 +37,7 @@ impl Transport {
     /// Note: JSON-RPC over HTTP doesn't always support subscribing to new
     /// blocks (one such example is Infura's HTTP endpoint).
     pub fn new_rpc(rpc: &str) -> (EventLoopHandle, Self) {
-        let max_parallel_http: usize = env::var_os("MAX_PARALLEL_HTTP")
+        let max_parallel_http: usize = env::var_os("ETHEREUM_RPC_MAX_PARALLEL_REQUESTS")
             .map(|s| s.to_str().unwrap().parse().unwrap())
             .unwrap_or(64);
 
