@@ -41,7 +41,7 @@ impl MockStore {
 }
 
 impl Store for MockStore {
-    fn get(&self, key: StoreKey) -> Result<Entity, QueryExecutionError> {
+    fn get(&self, key: StoreKey) -> Result<Option<Entity>, QueryExecutionError> {
         if key.entity == "User" {
             self.entities
                 .iter()
@@ -51,10 +51,8 @@ impl Store for MockStore {
                         &Value::String(ref s) => s == &key.id,
                         _ => false,
                     }
-                }).map(|entity| entity.clone())
-                .ok_or(QueryExecutionError::ResolveEntitiesError(String::from(
-                    "Mock store error",
-                )))
+                }).map(|entity| Some(entity.clone()))
+                .ok_or_else(|| unimplemented!())
         } else {
             unimplemented!()
         }
@@ -147,7 +145,7 @@ impl ChainStore for MockStore {
 pub struct FakeStore;
 
 impl Store for FakeStore {
-    fn get(&self, _: StoreKey) -> Result<Entity, QueryExecutionError> {
+    fn get(&self, _: StoreKey) -> Result<Option<Entity>, QueryExecutionError> {
         unimplemented!();
     }
 
