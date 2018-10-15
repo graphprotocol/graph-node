@@ -264,24 +264,33 @@ impl Store {
         op_subgraph: &String,
         op_entity: &String,
         op_id: &String,
-    ) -> Result<Entity, Error> {
+    ) -> Result<Option<Entity>, QueryExecutionError> {
         use db_schema::entities::dsl::*;
 
         match entities
             .find((op_id, op_subgraph, op_entity))
             .select(data)
             .first::<serde_json::Value>(conn)
-        {
-            Ok(json) => serde_json::from_value::<Entity>(json).map_err(|e| {
-                format_err!(
-                    "Encountered invalid entity ({}, {}, {}) in the store: {}",
-                    op_subgraph,
-                    op_entity,
-                    op_id,
-                    e
+            .optional()
+            .map_err(|e| {
+                QueryExecutionError::ResolveEntityError(
+                    op_subgraph.clone(),
+                    op_entity.clone(),
+                    op_id.clone(),
+                    format!("{}", e),
                 )
-            }),
-            Err(_) => Ok(Entity::from(vec![("id", Value::from(op_id.clone()))])),
+            })? {
+            Some(json) => serde_json::from_value::<Entity>(json)
+                .map(Some)
+                .map_err(|e| {
+                    QueryExecutionError::ResolveEntityError(
+                        op_subgraph.clone(),
+                        op_entity.clone(),
+                        op_id.clone(),
+                        format!("Invalid entity: {}", e),
+                    )
+                }),
+            None => Ok(None),
         }
     }
 
@@ -300,7 +309,7 @@ impl Store {
         let existing_entity = self.get_entity(conn, op_subgraph, op_entity, op_id)?;
 
         // Apply the operation
-        let updated_entity = operation.apply(Some(existing_entity));
+        let updated_entity = operation.apply(existing_entity);
         let updated_json: serde_json::Value =
             serde_json::to_value(&updated_entity).map_err(|e| {
                 format_err!(
@@ -462,19 +471,9 @@ impl StoreTrait for Store {
             }).map_err(Error::from)
     }
 
-    fn get(&self, key: StoreKey) -> Result<Entity, QueryExecutionError> {
-        use db_schema::entities::dsl::*;
-
-        // Use primary key fields to get the entity; deserialize the result JSON
-        entities
-            .find((key.id, key.subgraph, key.entity))
-            .select(data)
-            .first::<serde_json::Value>(&*self.conn.lock().unwrap())
-            .map_err(|e| QueryExecutionError::ResolveEntitiesError(e.to_string()))
-            .and_then(|value| {
-                serde_json::from_value::<Entity>(value)
-                    .map_err(|e| QueryExecutionError::EntityParseError(e.to_string()))
-            })
+    fn get(&self, key: StoreKey) -> Result<Option<Entity>, QueryExecutionError> {
+        let conn = self.conn.lock().unwrap();
+        self.get_entity(&*conn, &key.subgraph, &key.entity, &key.id)
     }
 
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, QueryExecutionError> {
