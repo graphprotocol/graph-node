@@ -74,26 +74,28 @@ fn store_filter_by_mode<'a>(
                 Value::String(query_value) => add_filter(
                     query,
                     filter_mode,
-                    sql("data ->> ")
+                    sql("data -> ")
                         .bind::<Text, _>(attribute)
+                        .sql("->> 'data'")
                         .sql(op)
                         .bind::<Text, _>(query_value),
                 ),
                 Value::Bytes(query_value) => add_filter(
                     query,
                     filter_mode,
-                    sql("data ->> ")
+                    sql("data -> ")
                         .bind::<Text, _>(attribute)
+                        .sql("->> 'data'")
                         .sql(op)
                         .bind::<Text, _>(query_value.to_string()),
                 ),
                 Value::List(query_value) => {
                     let query_array =
                         serde_json::to_string(&query_value).expect("Failed to serialize Value");
-                    // Is `query_array` contained in array `data ->> attribute`?
-                    let predicate = sql("data ->> ")
+                    // Is `query_array` contained in array `data -> attribute -> 'data'`?
+                    let predicate = sql("data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql(" @> ")
+                        .sql("->> 'data' @> ")
                         .bind::<Text, _>(query_array);
                     if not {
                         add_filter(query, filter_mode, dsl::not(predicate))
@@ -125,9 +127,9 @@ fn store_filter_by_mode<'a>(
                     query,
                     filter_mode,
                     sql("(")
-                        .sql("data ->> ")
+                        .sql("data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql(")")
+                        .sql("->> 'data')")
                         .sql(op)
                         .bind::<Text, _>(query_value),
                 ),
@@ -135,9 +137,9 @@ fn store_filter_by_mode<'a>(
                     query,
                     filter_mode,
                     sql("(")
-                        .sql("data ->> ")
+                        .sql("data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql(")")
+                        .sql("->> 'data')")
                         .sql("::float")
                         .sql(op)
                         .bind::<Float, _>(query_value),
@@ -145,9 +147,9 @@ fn store_filter_by_mode<'a>(
                 Value::Int(query_value) => add_filter(
                     query,
                     filter_mode,
-                    sql("(data ->> ")
+                    sql("(data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql(")")
+                        .sql("->> 'data')")
                         .sql("::int")
                         .sql(op)
                         .bind::<Integer, _>(query_value),
@@ -155,9 +157,9 @@ fn store_filter_by_mode<'a>(
                 Value::Bool(query_value) => add_filter(
                     query,
                     filter_mode,
-                    sql("(data ->> ")
+                    sql("(data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql(")")
+                        .sql("-> 'data')")
                         .sql("::boolean")
                         .sql(op)
                         .bind::<Bool, _>(query_value),
@@ -165,7 +167,9 @@ fn store_filter_by_mode<'a>(
                 Value::Null => add_filter(
                     query,
                     filter_mode,
-                    sql("data -> ").bind::<Text, _>(attribute).sql(" = 'null' "),
+                    sql("data -> ")
+                        .bind::<Text, _>(attribute)
+                        .sql(" -> 'data' = 'null' "),
                 ),
                 Value::List(query_value) => {
                     // Note that lists with the same elements but in different order
@@ -175,8 +179,9 @@ fn store_filter_by_mode<'a>(
                     add_filter(
                         query,
                         filter_mode,
-                        sql("data ->> ")
+                        sql("data -> ")
                             .bind::<Text, _>(attribute)
+                            .sql("->> 'data'")
                             .sql(op)
                             .bind::<Text, _>(query_array),
                     )
@@ -184,23 +189,24 @@ fn store_filter_by_mode<'a>(
                 Value::Bytes(query_value) => add_filter(
                     query,
                     filter_mode,
-                    sql("data ->> ")
+                    sql("data -> ")
                         .bind::<Text, _>(attribute)
+                        .sql("->> 'data'")
                         .sql(op)
                         .bind::<Text, _>(query_value.to_string()),
                 ),
                 Value::BigInt(query_value) => add_filter(
                     query,
                     filter_mode,
-                    sql("(data ->> ")
-                    .bind::<Text, _>(attribute)
-                .sql(")")
-                .sql("::numeric")
-                .sql(op)
-                // Using `BigDecimal::new(query_value.0, 0)` results in a
-                // mismatch of `bignum` versions, go through the string
-                // representation to work around that.
-                .bind::<Numeric, _>(BigDecimal::from_str(&query_value.to_string()).unwrap()),
+                    sql("(data -> ")
+                        .bind::<Text, _>(attribute)
+                        .sql("->> 'data')")
+                        .sql("::numeric")
+                        .sql(op)
+                    // Using `BigDecimal::new(query_value.0, 0)` results in a
+                    // mismatch of `bignum` versions, go through the string
+                    // representation to work around that.
+                        .bind::<Numeric, _>(BigDecimal::from_str(&query_value.to_string()).unwrap()),
                 ),
             }
         }
@@ -219,16 +225,18 @@ fn store_filter_by_mode<'a>(
                 Value::String(query_value) => add_filter(
                     query,
                     filter_mode,
-                    sql("data ->> ")
+                    sql("data -> ")
                         .bind::<Text, _>(attribute)
+                        .sql("->> 'data'")
                         .sql(op)
                         .bind::<Text, _>(query_value),
                 ),
                 Value::Float(query_value) => add_filter(
                     query,
                     filter_mode,
-                    sql("(data ->> ")
+                    sql("(data -> ")
                         .bind::<Text, _>(attribute)
+                        .sql("->> 'data'")
                         .sql(")")
                         .sql("::float")
                         .sql(op)
@@ -237,9 +245,9 @@ fn store_filter_by_mode<'a>(
                 Value::Int(query_value) => add_filter(
                     query,
                     filter_mode,
-                    sql("(data ->> ")
+                    sql("(data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql(")")
+                        .sql("->> 'data')")
                         .sql("::int")
                         .sql(op)
                         .bind::<Integer, _>(query_value),
@@ -247,9 +255,9 @@ fn store_filter_by_mode<'a>(
                 Value::BigInt(query_value) => add_filter(
                     query,
                     filter_mode,
-                    sql("(data ->> ")
+                    sql("(data -> ")
                     .bind::<Text, _>(attribute)
-                .sql(")")
+                .sql("->> 'data')")
                 .sql("::numeric")
                 .sql(op)
                 // Using `BigDecimal::new(query_value.0, 0)` results in a
@@ -275,9 +283,9 @@ fn store_filter_by_mode<'a>(
                 Value::Bool(_) => add_filter(
                     query,
                     filter_mode,
-                    sql("(data ->> ")
+                    sql("(data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql(")")
+                        .sql("->> 'data')")
                         .sql("::boolean")
                         .sql(op)
                         .bind::<Array<Bool>, _>(SqlValue::new_array(query_values))
@@ -286,9 +294,9 @@ fn store_filter_by_mode<'a>(
                 Value::BigInt(_) => add_filter(
                     query,
                     filter_mode,
-                    sql("data ->> ")
+                    sql("data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql(")")
+                        .sql("->> 'data')")
                         .sql("::numeric")
                         .sql(op)
                         .bind::<Array<Numeric>, _>(SqlValue::new_array(query_values))
@@ -297,8 +305,9 @@ fn store_filter_by_mode<'a>(
                 Value::Bytes(_) => add_filter(
                     query,
                     filter_mode,
-                    sql("data ->> ")
+                    sql("data -> ")
                         .bind::<Text, _>(attribute)
+                        .sql("->> 'data'")
                         .sql(op)
                         .bind::<Array<Text>, _>(SqlValue::new_array(query_values))
                         .sql(")"),
@@ -306,9 +315,9 @@ fn store_filter_by_mode<'a>(
                 Value::Float(_) => add_filter(
                     query,
                     filter_mode,
-                    sql("(data ->> ")
+                    sql("(data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql(")")
+                        .sql("->> 'data')")
                         .sql("::float")
                         .sql(op)
                         .bind::<Array<Float>, _>(SqlValue::new_array(query_values))
@@ -317,9 +326,9 @@ fn store_filter_by_mode<'a>(
                 Value::Int(_) => add_filter(
                     query,
                     filter_mode,
-                    sql("(data ->> ")
+                    sql("(data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql(")")
+                        .sql("->> 'data')")
                         .sql("::int")
                         .sql(op)
                         .bind::<Array<Integer>, _>(SqlValue::new_array(query_values))
@@ -328,8 +337,9 @@ fn store_filter_by_mode<'a>(
                 Value::String(_) => add_filter(
                     query,
                     filter_mode,
-                    sql("data ->> ")
+                    sql("data -> ")
                         .bind::<Text, _>(attribute)
+                        .sql("->> 'data'")
                         .sql(op)
                         .bind::<Array<Text>, _>(SqlValue::new_array(query_values))
                         .sql(")"),
@@ -356,8 +366,9 @@ fn store_filter_by_mode<'a>(
                 Value::String(query_value) => add_filter(
                     query,
                     filter_mode,
-                    sql("data ->> ")
+                    sql("data -> ")
                         .bind::<Text, _>(attribute)
+                        .sql("->> 'data'")
                         .sql(op)
                         .bind::<Text, _>(format!("{}%", query_value)),
                 ),
@@ -390,8 +401,9 @@ fn store_filter_by_mode<'a>(
                 Value::String(query_value) => add_filter(
                     query,
                     filter_mode,
-                    sql("data ->> ")
+                    sql("data -> ")
                         .bind::<Text, _>(attribute)
+                        .sql("->> 'data'")
                         .sql(op)
                         .bind::<Text, _>(format!("%{}", query_value)),
                 ),
