@@ -81,7 +81,7 @@ pub mod prelude {
         Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue, QueryVariables,
     };
     pub use data::schema::Schema;
-    pub use data::store::{Attribute, Entity, Value, ValueType, ValueTypeError};
+    pub use data::store::{Attribute, Entity, Value, ValueType};
     pub use data::subgraph::{
         DataSource, Link, MappingABI, MappingEventHandler, SubgraphId, SubgraphManifest,
         SubgraphManifestResolveError, SubgraphProviderError,
