@@ -1,7 +1,8 @@
+use failure::Error;
 use graphql_parser::schema::*;
 use std::str::FromStr;
 
-use graph::prelude::{ValueType, ValueTypeError};
+use graph::prelude::ValueType;
 
 pub(crate) enum FilterOp {
     Not,
@@ -107,16 +108,14 @@ pub fn get_field_type<'a>(object_type: &'a ObjectType, name: &Name) -> Option<&'
     object_type.fields.iter().find(|field| &field.name == name)
 }
 
-/// Returns the ValueType of a schema field
-pub fn get_value_type(schema_type: Type) -> Result<ValueType, ValueTypeError> {
-    match schema_type {
-        Type::NamedType(ref name) => Ok(ValueType::from_str(&name).unwrap()),
-        Type::NonNullType(inner) => match *inner {
-            Type::NamedType(ref name) => Ok(ValueType::from_str(&name).unwrap()),
-            Type::NonNullType(_) => Err(ValueTypeError::NestedNonNullType),
-            Type::ListType(_) => Err(ValueTypeError::CannotConvertFromListType),
-        },
-        Type::ListType(_) => Err(ValueTypeError::CannotConvertFromListType),
+/// Returns the value type for a GraphQL field type.
+pub fn get_field_value_type(field_type: &Type) -> Result<ValueType, Error> {
+    match field_type {
+        Type::NamedType(ref name) => ValueType::from_str(&name),
+        Type::NonNullType(inner) => get_field_value_type(&inner),
+        Type::ListType(_) => Err(format_err!(
+            "Only scalar values are supported in this context"
+        )),
     }
 }
 
