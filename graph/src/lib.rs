@@ -68,7 +68,7 @@ pub mod prelude {
     pub use components::store::{
         ChainStore, EntityChange, EntityChangeOperation, EntityChangeStream, EntityOperation,
         EventSource, Store, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
-        SubgraphEntityPair, ValueType,
+        SubgraphEntityPair,
     };
     pub use components::subgraph::{
         RuntimeHost, RuntimeHostBuilder, SchemaEvent, SubgraphInstance, SubgraphInstanceManager,
@@ -81,7 +81,7 @@ pub mod prelude {
         Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue, QueryVariables,
     };
     pub use data::schema::Schema;
-    pub use data::store::{Attribute, Entity, Value};
+    pub use data::store::{Attribute, Entity, Value, ValueType, ValueTypeError};
     pub use data::subgraph::{
         DataSource, Link, MappingABI, MappingEventHandler, SubgraphId, SubgraphManifest,
         SubgraphManifestResolveError, SubgraphProviderError,

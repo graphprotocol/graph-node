@@ -1,7 +1,6 @@
 use graphql_parser::query;
 use graphql_parser::schema;
 use prelude::QueryExecutionError;
-
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::iter::FromIterator;
@@ -17,6 +16,45 @@ pub type Attribute = String;
 pub const ID: &str = "ID";
 pub const BYTES_SCALAR: &str = "Bytes";
 pub const BIG_INT_SCALAR: &str = "BigInt";
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ValueType {
+    Boolean,
+    BigInt,
+    Bytes,
+    Float,
+    ID,
+    Int,
+    String,
+}
+
+#[derive(Debug, Fail)]
+pub enum ValueTypeError {
+    #[fail(display = "Found unexpected type name: {}", name)]
+    UnexpectedTypeName { name: String },
+    #[fail(display = "Cannot convert from ListType to ValueType")]
+    CannotConvertFromListType,
+    #[fail(display = "Found invalid schema type: nested NonNull type")]
+    NestedNonNullType,
+}
+
+impl FromStr for ValueType {
+    type Err = ValueTypeError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Boolean" => Ok(ValueType::Boolean),
+            "BigInt" => Ok(ValueType::BigInt),
+            "Bytes" => Ok(ValueType::Bytes),
+            "Float" => Ok(ValueType::Float),
+            "ID" => Ok(ValueType::ID),
+            "Int" => Ok(ValueType::Int),
+            "String" => Ok(ValueType::String),
+            e => Err(ValueTypeError::UnexpectedTypeName {
+                name: e.to_string(),
+            }),
+        }
+    }
+}
 
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
