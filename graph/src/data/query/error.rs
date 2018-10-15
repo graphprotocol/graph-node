@@ -21,6 +21,7 @@ pub enum QueryExecutionError {
     AbstractTypeError(String),
     InvalidArgumentError(Pos, String, q::Value),
     MissingArgumentError(Pos, String),
+    ResolveEntityError(String, String, String, String),
     ResolveEntitiesError(String),
     FilterNotSupportedError(String, String),
     UnknownField(Pos, String, String),
@@ -79,8 +80,11 @@ impl fmt::Display for QueryExecutionError {
             QueryExecutionError::MissingArgumentError(_, s) => {
                 write!(f, "No value provided for required argument: {}", s)
             }
-            QueryExecutionError::ResolveEntitiesError(s) => {
-                write!(f, "Failed to get entity from store: {}", s)
+            QueryExecutionError::ResolveEntityError(_, entity, id, e) => {
+                write!(f, "Failed to get {} entity with ID \"{}\" from store: {}", entity, id, e)
+            }
+            QueryExecutionError::ResolveEntitiesError(e) => {
+                write!(f, "Failed to get entities from store: {}", e)
             }
             QueryExecutionError::FilterNotSupportedError(value, filter) => {
                 write!(f, "Filter not supported by value {} : {}", value, filter)
