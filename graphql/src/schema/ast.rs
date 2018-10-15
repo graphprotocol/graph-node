@@ -111,11 +111,7 @@ pub fn get_field_type<'a>(object_type: &'a ObjectType, name: &Name) -> Option<&'
 pub fn get_value_type(schema_type: Type) -> Result<ValueType, ValueTypeError> {
     match schema_type {
         Type::NamedType(ref name) => Ok(ValueType::from_str(&name).unwrap()),
-        Type::NonNullType(inner) => match *inner {
-            Type::NamedType(ref name) => Ok(ValueType::from_str(&name).unwrap()),
-            Type::NonNullType(_) => Err(ValueTypeError::NestedNonNullType),
-            Type::ListType(_) => Err(ValueTypeError::CannotConvertFromListType),
-        },
+        Type::NonNullType(inner) => get_value_type(*inner),
         Type::ListType(_) => Err(ValueTypeError::CannotConvertFromListType),
     }
 }
