@@ -23,6 +23,7 @@ pub enum QueryExecutionError {
     MissingArgumentError(Pos, String),
     ResolveEntityError(String, String, String, String),
     ResolveEntitiesError(String),
+    OrderByNotSupportedError(String, String),
     FilterNotSupportedError(String, String),
     UnknownField(Pos, String, String),
     EmptyQuery,
@@ -85,6 +86,9 @@ impl fmt::Display for QueryExecutionError {
             }
             QueryExecutionError::ResolveEntitiesError(e) => {
                 write!(f, "Failed to get entities from store: {}", e)
+            }
+            QueryExecutionError::OrderByNotSupportedError(entity, field) => {
+                write!(f, "Ordering by \"{}\" is not supported for type \"{}\"", field, entity)
             }
             QueryExecutionError::FilterNotSupportedError(value, filter) => {
                 write!(f, "Filter not supported by value {} : {}", value, filter)
