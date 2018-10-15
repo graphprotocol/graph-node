@@ -496,19 +496,27 @@ impl StoreTrait for Store {
         }
 
         // Add order by filters to query
-        if let Some(order_attribute) = query.order_by {
+        if let Some((order_attribute, value_type)) = query.order_by {
             let direction = query
                 .order_direction
                 .map(|direction| match direction {
-                    StoreOrder::Ascending => String::from("ASC"),
-                    StoreOrder::Descending => String::from("DESC"),
-                }).unwrap_or(String::from("ASC"));
-
+                    StoreOrder::Ascending => "ASC",
+                    StoreOrder::Descending => "DESC",
+                }).unwrap_or("ASC");
+            let cast_type = match value_type {
+                ValueType::BigInt => "::numeric",
+                ValueType::Boolean => "::boolean",
+                ValueType::Bytes => "",
+                ValueType::Float => "::float",
+                ValueType::ID => "",
+                ValueType::Int => "::bigint",
+                ValueType::String => "",
+            };
             diesel_query = diesel_query.order(
-                sql::<Text>("data ->> ")
+                sql::<Text>("(data ->>")
                     .bind::<Text, _>(order_attribute)
-                    .sql(&format!(" {} ", direction)),
-            )
+                    .sql(&format!("){} {} NULLS LAST", cast_type, direction)),
+            );
         }
 
         // Add range filter to query

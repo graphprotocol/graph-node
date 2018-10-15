@@ -2,8 +2,10 @@ use failure::Error;
 use futures::Future;
 use futures::Stream;
 use std::fmt;
+use std::str::FromStr;
 use web3::types::H256;
 
+use data::store::*;
 use prelude::*;
 
 /// Key by which an individual entity in the store can be accessed.
@@ -57,6 +59,45 @@ pub struct StoreRange {
     pub skip: usize,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum ValueType {
+    Boolean,
+    BigInt,
+    Bytes,
+    Float,
+    ID,
+    Int,
+    String,
+}
+
+#[derive(Debug, Fail)]
+pub enum ValueTypeError {
+    #[fail(display = "Found unexpected type name: {}", name)]
+    UnexpectedTypeName { name: String },
+    #[fail(display = "Cannot convert from ListType to ValueType")]
+    CannotConvertFromListType,
+    #[fail(display = "Found invalid schema type: nested NonNull type")]
+    NestedNonNullType,
+}
+
+impl FromStr for ValueType {
+    type Err = ValueTypeError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Boolean" => Ok(ValueType::Boolean),
+            "BigInt" => Ok(ValueType::BigInt),
+            "Bytes" => Ok(ValueType::Bytes),
+            "Float" => Ok(ValueType::Float),
+            "ID" => Ok(ValueType::ID),
+            "Int" => Ok(ValueType::Int),
+            "String" => Ok(ValueType::String),
+            e => Err(ValueTypeError::UnexpectedTypeName {
+                name: e.to_string(),
+            }),
+        }
+    }
+}
+
 /// A query for entities in a store.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StoreQuery {
@@ -70,7 +111,7 @@ pub struct StoreQuery {
     pub filter: Option<StoreFilter>,
 
     /// An optional attribute to order the entities by.
-    pub order_by: Option<String>,
+    pub order_by: Option<(String, ValueType)>,
 
     /// The direction to order entities in.
     pub order_direction: Option<StoreOrder>,
