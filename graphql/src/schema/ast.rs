@@ -1,6 +1,7 @@
 use graphql_parser::schema::*;
-use graph::components::store::{ValueType, ValueTypeError};
 use std::str::FromStr;
+
+use graph::prelude::{ValueType, ValueTypeError};
 
 pub(crate) enum FilterOp {
     Not,
@@ -106,7 +107,6 @@ pub fn get_field_type<'a>(object_type: &'a ObjectType, name: &Name) -> Option<&'
     object_type.fields.iter().find(|field| &field.name == name)
 }
 
-
 /// Returns the ValueType of a schema field
 pub fn get_value_type(schema_type: Type) -> Result<ValueType, ValueTypeError> {
     match schema_type {
@@ -119,7 +119,6 @@ pub fn get_value_type(schema_type: Type) -> Result<ValueType, ValueTypeError> {
         Type::ListType(_) => Err(ValueTypeError::CannotConvertFromListType),
     }
 }
-
 
 /// Returns the type with the given name.
 pub fn get_named_type<'a>(schema: &'a Document, name: &Name) -> Option<&'a TypeDefinition> {
