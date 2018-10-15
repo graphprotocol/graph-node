@@ -366,7 +366,7 @@ where
             .collect();
 
         // Shortcut 1: If the latest operation for this entity was a removal,
-        // return None (= undefined) to the runtime
+        // return RuntimeValue::from(0) (= null) to the runtime
         if matching_operations
             .iter()
             .peekable()
@@ -374,7 +374,7 @@ where
             .map(|op| op.is_remove())
             .unwrap_or(false)
         {
-            return Ok(None);
+            return Ok(Some(RuntimeValue::from(0)));
         }
 
         // Shortcut 2: If there is a removal in the operations, the
@@ -386,17 +386,22 @@ where
             .is_some()
         {
             let entity = EntityOperation::apply_all(None, &matching_operations);
-            return Ok(entity.map(|entity| RuntimeValue::from(self.heap.asc_new(&entity))));
+            return Ok(Some(entity.map_or(RuntimeValue::from(0), |entity| {
+                RuntimeValue::from(self.heap.asc_new(&entity))
+            })));
         }
 
         // No removal in the operations => read the entity from the store, then apply
         // the operations to it to obtain the result
-        self.store
+        Ok(self
+            .store
             .get(store_key)
-            .and_then(|entity| {
+            .map(|entity| {
                 let entity = EntityOperation::apply_all(entity, &matching_operations);
-                Ok(entity.map(|entity| RuntimeValue::from(self.heap.asc_new(&entity))))
-            }).or(Ok(Some(RuntimeValue::from(0))))
+                Some(entity.map_or(RuntimeValue::from(0), |entity| {
+                    RuntimeValue::from(self.heap.asc_new(&entity))
+                }))
+            }).map_err(HostExternalsError)?)
     }
 
     /// function ethereum.call(call: SmartContractCall): Array<Token>
