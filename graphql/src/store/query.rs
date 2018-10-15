@@ -163,13 +163,16 @@ fn build_order_by(
         .map_or(Ok(None), |value| match value {
             q::Value::Enum(name) => {
                 let field = sast::get_field_type(entity, &name).ok_or(
-                    QueryExecutionError::EntityFieldError(entity.name.clone(), name.clone())
+                    QueryExecutionError::EntityFieldError(entity.name.clone(), name.clone()),
                 )?;
-                let value = sast::get_value_type(field.field_type.clone());
-                match value {
-                    Ok(v) => Ok(Some((name.to_owned(), v))),
-                    Err(_) => Ok(None),
-                }
+                sast::get_field_value_type(&field.field_type)
+                    .map(|value_type| Some((name.to_owned(), value_type)))
+                    .map_err(|_| {
+                        QueryExecutionError::OrderByNotSupportedError(
+                            entity.name.clone(),
+                            name.clone(),
+                        )
+                    })
             }
             _ => Ok(None),
         })
@@ -373,14 +376,16 @@ mod tests {
             &HashMap::from_iter(
                 vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
             ),
-        ).unwrap().order_by;
+        ).unwrap()
+        .order_by;
         assert_eq!(
             build_query(
                 &default_object(),
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
                 )
-            ).unwrap().order_by,
+            ).unwrap()
+            .order_by,
             Some(("name".to_string(), ValueType::String))
         );
         assert_eq!(
@@ -389,7 +394,8 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("email".to_string()))].into_iter()
                 )
-            ).unwrap().order_by,
+            ).unwrap()
+            .order_by,
             Some(("email".to_string(), ValueType::String))
         );
     }
