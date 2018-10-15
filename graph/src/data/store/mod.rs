@@ -20,7 +20,7 @@ pub const BIG_INT_SCALAR: &str = "BigInt";
 
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(untagged)]
+#[serde(tag = "type", content = "data")]
 pub enum Value {
     String(String),
     Int(i32),
