@@ -1,3 +1,4 @@
+use failure::Error;
 use graphql_parser::query;
 use graphql_parser::schema;
 use prelude::QueryExecutionError;
@@ -28,18 +29,9 @@ pub enum ValueType {
     String,
 }
 
-#[derive(Debug, Fail)]
-pub enum ValueTypeError {
-    #[fail(display = "Found unexpected type name: {}", name)]
-    UnexpectedTypeName { name: String },
-    #[fail(display = "Cannot convert from ListType to ValueType")]
-    CannotConvertFromListType,
-    #[fail(display = "Found invalid schema type: nested NonNull type")]
-    NestedNonNullType,
-}
-
 impl FromStr for ValueType {
-    type Err = ValueTypeError;
+    type Err = Error;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Boolean" => Ok(ValueType::Boolean),
@@ -49,9 +41,7 @@ impl FromStr for ValueType {
             "ID" => Ok(ValueType::ID),
             "Int" => Ok(ValueType::Int),
             "String" => Ok(ValueType::String),
-            e => Err(ValueTypeError::UnexpectedTypeName {
-                name: e.to_string(),
-            }),
+            s => Err(format_err!("Type not available in this context: {}", s)),
         }
     }
 }
