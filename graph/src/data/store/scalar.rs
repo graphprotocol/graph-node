@@ -87,7 +87,7 @@ impl<'de> Deserialize<'de> for Bytes {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use serde::de::Error;
 
-        let hex_string: &str = Deserialize::deserialize(deserializer)?;
-        Bytes::from_str(hex_string).map_err(D::Error::custom)
+        let hex_string = <String>::deserialize(deserializer)?;
+        Bytes::from_str(&hex_string).map_err(D::Error::custom)
     }
 }
