@@ -241,7 +241,7 @@ where
         });
 
         if let Some(id) = id {
-            return self
+            return Ok(self
                 .store
                 .get(StoreKey {
                     subgraph: parse_subgraph_id(object_type).expect(
@@ -250,12 +250,12 @@ where
                     ),
                     entity: object_type.name.to_owned(),
                     id: id.to_owned(),
-                }).map(|entity| entity.into());
+                })?.map_or(q::Value::Null, |entity| entity.into()));
         }
 
         match parent {
             Some(q::Value::Object(parent_object)) => match parent_object.get(field) {
-                Some(q::Value::String(id)) => self
+                Some(q::Value::String(id)) => Ok(self
                     .store
                     .get(StoreKey {
                         subgraph: parse_subgraph_id(object_type).expect(
@@ -264,7 +264,7 @@ where
                         ),
                         entity: object_type.name.to_owned(),
                         id: id.to_owned(),
-                    }).map(|entity| entity.into()),
+                    })?.map_or(q::Value::Null, |entity| entity.into())),
                 _ => Ok(q::Value::Null),
             },
             _ => {
