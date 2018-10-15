@@ -1,4 +1,5 @@
 extern crate backtrace;
+extern crate diesel;
 pub extern crate ethabi;
 extern crate futures;
 extern crate graphql_parser;

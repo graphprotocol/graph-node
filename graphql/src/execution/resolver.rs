@@ -1,3 +1,4 @@
+use failure::Error;
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 

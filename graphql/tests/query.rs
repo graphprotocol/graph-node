@@ -173,7 +173,7 @@ impl Store for TestStore {
         unimplemented!()
     }
 
-    fn get(&self, key: StoreKey) -> Result<Entity, QueryExecutionError> {
+    fn get(&self, key: StoreKey) -> Result<Option<Entity>, QueryExecutionError> {
         self.entities
             .iter()
             .find(|entity| {
@@ -183,7 +183,7 @@ impl Store for TestStore {
                 Err(QueryExecutionError::ResolveEntitiesError(String::from(
                     "Mock get query error",
                 ))),
-                |entity| Ok(entity.clone()),
+                |entity| Ok(Some(entity.clone())),
             )
     }
 
