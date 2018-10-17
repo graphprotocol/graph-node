@@ -303,13 +303,18 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 enum BlockIngestorError {
     /// The Ethereum node does not know about this block for some reason, probably because it
     /// disappeared in a chain reorg.
+    #[fail(
+        display = "block data unavailable, block was likely uncled (block hash = {:?})",
+        _0
+    )]
     BlockUnavailable(H256),
 
     /// An unexpected error occurred.
+    #[fail(display = "error in block ingestor: {}", _0)]
     Unknown(Error),
 }
 
