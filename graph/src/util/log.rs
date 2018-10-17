@@ -37,7 +37,14 @@ pub fn guarded_logger() -> (slog::Logger, slog_async::AsyncGuard) {
 
 pub fn register_panic_hook(panic_logger: slog::Logger) {
     panic::set_hook(Box::new(move |panic_info| {
-        let panic_payload = panic_info.payload().downcast_ref::<String>();
+        let panic_payload = panic_info
+            .payload()
+            .downcast_ref::<String>()
+            .cloned()
+            .or(panic_info
+                .payload()
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string()));
         let panic_location = if let Some(location) = panic_info.location() {
             format!("{}:{}", location.file(), location.line().to_string())
         } else {
