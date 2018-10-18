@@ -341,7 +341,7 @@ where
         Ok(None)
     }
 
-    /// function store.get(entity: string, id: string): void
+    /// function store.get(entity: string, id: string): Entity | null
     fn store_get(
         &self,
         entity_ptr: AscPtr<AscString>,
@@ -366,7 +366,7 @@ where
             .collect();
 
         // Shortcut 1: If the latest operation for this entity was a removal,
-        // return None (= undefined) to the runtime
+        // return 0 (= null) to the runtime
         if matching_operations
             .iter()
             .peekable()
@@ -374,7 +374,7 @@ where
             .map(|op| op.is_remove())
             .unwrap_or(false)
         {
-            return Ok(None);
+            return Ok(Some(RuntimeValue::from(0)));
         }
 
         // Shortcut 2: If there is a removal in the operations, the
@@ -385,18 +385,21 @@ where
             .find(|op| op.is_remove())
             .is_some()
         {
-            let entity = EntityOperation::apply_all(None, &matching_operations);
-            return Ok(entity.map(|entity| RuntimeValue::from(self.heap.asc_new(&entity))));
+            return Ok(EntityOperation::apply_all(None, &matching_operations)
+                .map(|entity| RuntimeValue::from(self.heap.asc_new(&entity)))
+                .or(Some(RuntimeValue::from(0))));
         }
 
         // No removal in the operations => read the entity from the store, then apply
         // the operations to it to obtain the result
-        self.store
+        Ok(self
+            .store
             .get(store_key)
-            .and_then(|entity| {
-                let entity = EntityOperation::apply_all(entity, &matching_operations);
-                Ok(entity.map(|entity| RuntimeValue::from(self.heap.asc_new(&entity))))
-            }).or(Ok(Some(RuntimeValue::from(0))))
+            .map(|entity| {
+                EntityOperation::apply_all(entity, &matching_operations)
+                    .map(|entity| RuntimeValue::from(self.heap.asc_new(&entity)))
+                    .or(Some(RuntimeValue::from(0)))
+            }).map_err(HostExternalsError)?)
     }
 
     /// function ethereum.call(call: SmartContractCall): Array<Token>
