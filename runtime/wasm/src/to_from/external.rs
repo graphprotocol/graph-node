@@ -11,18 +11,6 @@ use std::collections::HashMap;
 
 use UnresolvedContractCall;
 
-impl ToAscObj<ArrayBuffer<u8>> for web3::H160 {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u8> {
-        self.0.to_asc_obj(heap)
-    }
-}
-
-impl FromAscObj<ArrayBuffer<u8>> for web3::H160 {
-    fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<u8>, heap: &H) -> Self {
-        web3::H160(<[u8; 20]>::from_asc_obj(array_buffer, heap))
-    }
-}
-
 impl ToAscObj<Uint8Array> for web3::H160 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> Uint8Array {
         self.0.to_asc_obj(heap)
@@ -41,33 +29,9 @@ impl FromAscObj<Uint8Array> for web3::H256 {
     }
 }
 
-impl ToAscObj<ArrayBuffer<u8>> for web3::H256 {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u8> {
-        self.0.to_asc_obj(heap)
-    }
-}
-
 impl ToAscObj<Uint8Array> for web3::H256 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> Uint8Array {
         self.0.to_asc_obj(heap)
-    }
-}
-
-impl ToAscObj<ArrayBuffer<u64>> for web3::U128 {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u64> {
-        self.0.to_asc_obj(heap)
-    }
-}
-
-impl ToAscObj<ArrayBuffer<u64>> for web3::U256 {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<u64> {
-        self.0.to_asc_obj(heap)
-    }
-}
-
-impl FromAscObj<ArrayBuffer<u64>> for web3::U256 {
-    fn from_asc_obj<H: AscHeap>(array_buffer: ArrayBuffer<u64>, heap: &H) -> Self {
-        web3::U256(<[u64; 4]>::from_asc_obj(array_buffer, heap))
     }
 }
 
