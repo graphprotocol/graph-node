@@ -42,8 +42,8 @@ impl<'de> Deserialize<'de> for BigInt {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use serde::de::Error;
 
-        let decimal_string: &str = Deserialize::deserialize(deserializer)?;
-        BigInt::from_str(decimal_string).map_err(D::Error::custom)
+        let decimal_string = <String>::deserialize(deserializer)?;
+        BigInt::from_str(&decimal_string).map_err(D::Error::custom)
     }
 }
 
