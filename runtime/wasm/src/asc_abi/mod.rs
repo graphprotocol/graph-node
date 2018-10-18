@@ -109,7 +109,8 @@ pub trait AscType: Sized {
 
 /// An Asc primitive or an `AscPtr` into the Asc heap. A type marked as
 /// `AscValue` must have the same byte representation in Rust and Asc, including
-/// same size, and therefore use the default impl of `AscType`.
+/// same size, and therefore use the default impl of `AscType`. Also, size must
+/// be equal to alignment.
 pub trait AscValue: AscType + Copy + Default {}
 
 impl<T> AscType for AscPtr<T> {}
