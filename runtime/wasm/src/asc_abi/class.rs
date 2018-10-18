@@ -2,6 +2,7 @@ use super::{AscHeap, AscPtr, AscType, AscValue};
 use ethabi;
 use graph::data::store;
 use graph::serde_json;
+use std::marker::PhantomData;
 use std::mem::{self, size_of, size_of_val};
 
 ///! Rust types that have with a direct correspondence to an Asc class,
@@ -17,29 +18,52 @@ pub(crate) struct ArrayBuffer<T> {
     // elements in `content` will be aligned for any element type.
     _padding: [u8; 4],
     // In Asc this slice is layed out inline with the ArrayBuffer.
-    pub content: Box<[T]>,
+    pub content: Box<[u8]>,
+    ty: PhantomData<T>,
 }
 
 impl<T: AscValue> ArrayBuffer<T> {
-    pub fn new(content: &[T]) -> Self {
-        // An `AscValue` has the same size in Rust and Asc so:
-        let byte_length = size_of::<T>() * content.len();
+    fn new(values: &[T]) -> Self {
+        let content = values
+            .iter()
+            .map(AscType::to_asc_bytes)
+            // An `AscValue` has size equal to alignment, no padding required.
+            .fold(vec![], |mut bytes, value| {
+                bytes.extend(value);
+                bytes
+            });
 
         assert!(
-            byte_length <= u32::max_value() as usize,
+            content.len() <= u32::max_value() as usize,
             "slice cannot fit in WASM memory"
         );
-        let byte_length = byte_length as u32;
+        let byte_length = content.len() as u32;
 
         ArrayBuffer {
             byte_length,
             _padding: [0; 4],
             content: content.into(),
+            ty: PhantomData,
         }
+    }
+
+    /// Read `length` elements of type `T` starting at `byte_offset`.
+    ///
+    /// Panics if that tries to read beyond the lenght of `self.content`.
+    fn get(&self, byte_offset: u32, length: u32) -> Vec<T> {
+        let length = length as usize;
+        let byte_offset = byte_offset as usize;
+        self.content[byte_offset..]
+            .chunks(size_of::<T>())
+            .take(length)
+            .fold(vec![], |mut values, bytes| {
+                values.push(T::from_asc_bytes(bytes));
+                values
+            })
     }
 }
 
-impl<T: AscValue> AscType for ArrayBuffer<T> {
+impl<T> AscType for ArrayBuffer<T> {
     fn to_asc_bytes(&self) -> Vec<u8> {
         let mut asc_layout: Vec<u8> = Vec::new();
 
@@ -48,28 +72,20 @@ impl<T: AscValue> AscType for ArrayBuffer<T> {
         asc_layout.extend(&byte_length);
         let padding: [u8; 4] = [0, 0, 0, 0];
         asc_layout.extend(&padding);
-        for elem in self.content.iter() {
-            asc_layout.extend(elem.to_asc_bytes())
-        }
+        asc_layout.extend(Vec::from(self.content.clone()));
         asc_layout
     }
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        // Pointer for our current position within `asc_obj`,
-        // initially at the start of the content,
-        // skipping `byte_length` and the padding.
-        let mut offset = size_of::<u32>() + 4;
-
-        // Read the content.
-        let mut content = Vec::new();
-        while offset < asc_obj.len() {
-            let elem_bytes = &asc_obj[offset..(offset + size_of::<T>())];
-            content.push(T::from_asc_bytes(elem_bytes));
-            offset += size_of::<T>();
+        // Skip `byte_length` and the padding.
+        let content_offset = size_of::<u32>() + 4;
+        ArrayBuffer {
+            byte_length: u32::from_asc_bytes(&asc_obj[..size_of::<u32>()]),
+            _padding: [0; 4],
+            content: asc_obj[content_offset..].to_vec().into(),
+            ty: PhantomData,
         }
-
-        ArrayBuffer::new(&content)
     }
 
     fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> u32 {
@@ -101,8 +117,10 @@ impl<T: AscValue> TypedArray<T> {
         }
     }
 
-    pub(crate) fn get_buffer<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<T> {
-        self.buffer.read_ptr(heap)
+    pub(crate) fn to_vec<H: AscHeap>(&self, heap: &H) -> Vec<T> {
+        self.buffer
+            .read_ptr(heap)
+            .get(self.byte_offset, self.byte_length / size_of::<T>() as u32)
     }
 }
 
@@ -192,13 +210,13 @@ pub(crate) struct Array<T> {
 impl<T: AscValue> Array<T> {
     pub fn new<H: AscHeap>(content: &[T], heap: &H) -> Self {
         Array {
-            buffer: heap.asc_new(content),
+            buffer: AscPtr::alloc_obj(&ArrayBuffer::new(content), heap),
             length: content.len() as u32,
         }
     }
 
-    pub fn get_buffer<H: AscHeap>(&self, heap: &H) -> ArrayBuffer<T> {
-        self.buffer.read_ptr(heap)
+    pub(crate) fn to_vec<H: AscHeap>(&self, heap: &H) -> Vec<T> {
+        self.buffer.read_ptr(heap).get(0, self.length)
     }
 }
 
