@@ -20,9 +20,11 @@ However, other questions are more difficult to answer:
 
 For this you would need to process all [`Birth` events](https://github.com/dapperlabs/cryptokitties-bounty/blob/master/contracts/KittyBase.sol#L15) and then call the [`ownerOf` method](https://github.com/dapperlabs/cryptokitties-bounty/blob/master/contracts/KittyOwnership.sol#L144) for each cryptokitty that has been born into existence. (An alternate approach could involve processing all [`Transfer` events] and filtering on the most recent transfer for each cryptokitty in existence).
 
-Even for this relatively simple question, it would take hours to days for a decentralized application (dApp) running in a browser to get an answer. Indexing and caching data off blockchains is hard. There are edge cases around finality, chain reorganizations, uncled blocks, etc.
+Even for this relatively simple question, it would take hours to days for a decentralized application (dApp) running in a browser to get an answer. Indexing and caching data off blockchains is hard. There are 
+edge cases around finality, chain reorganizations, uncled blocks, etc.
 
-The Graph solves this today by providing an open source node implementation, [Graph Node](../README.md), which handles indexing and caching of blockchain data, which the entire community can contribute to and leverage. It exposes this functionality through a GraphQL API.
+The Graph solves this today by providing an open source node implementation, [Graph Node](../README.md), which handles indexing and caching of blockchain data, which the entire community can contribute to and 
+leverage. It exposes this functionality through a GraphQL API.
 
 ### 0.2 How Does it Work?
 
@@ -68,12 +70,12 @@ Below we outline the required steps to build a subgraph from scratch, that will 
 
 Now let's dig in!
 
-## 3 Defining The Subgraph 
+## 1 Defining The Subgraph 
 When we refer to a subgraph we are referring to the whole project. Once deployed to the decentralized network, it will form a part of a global graph of blockchain data.
 
 You can now create an empty repository to start the project. We will add the first file in section 3.1. 
 
-### 3.1 Define The Data Sources and Create a Manifest
+### 1.1 Define The Data Sources and Create a Manifest
 
 When building a subgraph you must decide ahead of time what blockchain data you want to index in a Graph Node. This is the `data source`, and it comprises of data on blockchain (i.e. an Ethereum smart contract).
 
@@ -122,7 +124,7 @@ If you are running into troubles here, double check the ABI and make sure the ev
 
 Once the `subgraph.yaml` file is created, you can move onto the next section. 
 
-### 3.2 Create The GraphQL Schema for the Data Source 
+### 1.2 Create The GraphQL Schema for the Data Source 
 GraphQL schemas are defined using the GraphQL interface definition language (IDL). If you've never written a GraphQL schema, we recommend checking out a [quick primer](https://graphql.org/learn/schema/#type-language) on the GraphQL type system.
 
 With The Graph, you don't have to define the top-level `Query` type, you simply define entity types, and Graph Node will generate top level fields for querying single instances and collections of that entity type. Each type that should be an entity is required to be annotated with an `@entity` directive.
@@ -152,14 +154,14 @@ schema:
 ```
 
 
-### 3.3 Graph CLI
+### 1.3 Graph CLI
 Once you have the `subgraph.yaml` manifest and the `./schema.graphql` file, you are ready to use the Graph CLI to set up the subgraph directory. The Graph CLI is a command line tool that contains helpful commands for deploying the subgraphs. Before continuing with this guide, please go to the [Graph CLI README](https://github.com/graphprotocol/graph-cli/) and follow the instructions up to Step 7 for setting up the subgraph directory.
 
 Once you run `yarn codegen` as outlined in the Graph CLI README, you are ready to create mappings! What this command does is it looks at the contract ABIs defined in the subgraph manifest, and generates TypeScript types for all of the ABIs (actually AssemblyScript types, but more on that later) for the smart contracts the mappings script will interface with, including the types of public methods and events.
 
 This is incredibly useful for writing correct mappings, as well as improving developer productivity using the TypeScript language support in your favorite editor or IDE.
 
-### 3.4 Writing Mappings
+### 1.4 Writing Mappings
 
 The mappings you write will perform transformations on the Ethereum data you are sourcing, and it will dictate how this data is loaded into The Graph Node. Mappings can be very simple, or they can get very complex, it depends how different you want the data to be, compared to how Ethereum delivers it through events and contract state. 
 
@@ -173,7 +175,9 @@ export function handleTransfer(event: Transfer): void {
 }
 ```
 
-As mentioned, AssemblyScript does not have untyped maps or plain old Javascript objects, so to represent a collection of key value tuples with heterogeneous types, an `Entity` type is included in the mapping types. This `Entity` type can be imported from the [Graph Typescript Library](https://github.com/graphprotocol/graph-ts), which is a typescript/assemblyscript library. The `Entity` type has different setter methods for different types, satisfying AssemblyScript's requirement of strictly typed functions (and no union or `any` types).
+As mentioned, AssemblyScript does not have untyped maps or plain old Javascript objects, so to represent a collection of key value tuples with heterogeneous types, an `Entity` type is included in the mapping 
+types. This `Entity` type can be imported from the [Graph Typescript Library](https://github.com/graphprotocol/graph-ts), which is a typescript/assemblyscript library. The `Entity` type has different setter 
+methods for different types, satisfying AssemblyScript's requirement of strictly typed functions (and no union or `any` types).
 
 Let's look at an example. Staying in line with our previous token example, lets write a mapping that will track the owner of a particular ERC721 token. 
 
@@ -200,20 +204,23 @@ There are a few things going on here:
 
 #### Using the `store` API 
 
-The event handlers functions return `void`. The only way that entities may be added to the Graph is by calling `store.set()`. `store.set()` may be called multiple times in an event handler. `store.set()` will only set the entity attributes that have explicitly been set on the `Entity`. Attributes which are not explicitly set, or unset by calling `Entity.unset(<attribute>)`, will not be overwritten. `store.set` expects the name of an entity type, the ID of the entity and the `Entity` itself. See the definition below:
+The event handlers functions return `void`. The only way that entities may be added to the Graph is by calling `store.set()`. `store.set()` may be called multiple times in an event handler. `store.set()` will 
+only set the entity attributes that have explicitly been set on the `Entity`. Attributes which are not explicitly set, or unset by calling `Entity.unset(<attribute>)`, will not be overwritten. `store.set` 
+expects the name of an entity type, the ID of the entity and the `Entity` itself. See the definition below:
 
 ```
-store.set(entity: string, id: string, data: Entity)`
+store.set(entity: string, id: string, data: Entity)
 ```
 
-You can use `store.get` to retrieve information previously added with `store.set`. `store.get` expects the entity type and ID of the entity. Along with `store.get()` you can use `.getString()`, `.getU256()`, etc. for getting attribute values from the entity (once again, all these functions come from the [Graph Typescript Library](https://github.com/graphprotocol/graph-ts)). See the definition below for `store.get()`:
+You can use `store.get` to retrieve information previously added with `store.set`. `store.get` expects the entity type and ID of the entity. Along with `store.get()` you can use `.getString()`, `.getU256()`, 
+etc. for getting attribute values from the entity (once again, all these functions come from the [Graph Typescript Library](https://github.com/graphprotocol/graph-ts)). See the definition below for `store.get()`:
 
 ```
 store.get(entity: string, id: string)
 ```
 
-##### Using store.get()
-Let's look at the token example to see how you can use `store.get()`. We showed in the previous example how to use `store.set()`. Now, let's consider that you have another mapping that needs to retrieve the currentOwner of an ERC721 token. In order to do this within a mapping, you would write the following:
+Let's look at the token example to see how you can use `store.get()`. We showed in the previous example how to use `store.set()`. Now, let's consider that you have another mapping that needs to retrieve the 
+currentOwner of an ERC721 token. In order to do this within a mapping, you would write the following:
 
 ```typescript
   let token = store.get('Token', tokenID.toHex())
@@ -224,9 +231,16 @@ Let's look at the token example to see how you can use `store.get()`. We showed 
 
 You now have the `owner` data, and you can use that in the mapping to set the owner value to a new entity. 
 
+There is also `store.remove()`, which allows you to erase an entry that exists in the store. You simply pass the entity and id:
+
+```
+store.remove(entity: string, id: string)
+```
+
 #### Calling into the Contract Storage to Get Data
 
-You can also grab data that is stored in one of contracts you have included ABIs for. Any state variable that is marked `public`, or any `view` function can be accessed. Below shows how you grab the token symbol of an ERC721 token, which is a state variable of the smart contract. You would add this inside of the event handler function.  
+You can also grab data that is stored in one of contracts you have included ABIs for. Any state variable that is marked `public`, or any `view` function can be accessed. Below shows how you grab the token 
+symbol of an ERC721 token, which is a state variable of the smart contract. You would add this inside of the event handler function.  
 
 ```typescript
   let tokenContract = ERC721.bind(event.address);
@@ -242,9 +256,9 @@ Note that we are using an ERC721 class generated from the ABI, that we are calli
 
 The class is imported from the ABI's TypeScript file generated via yarn codegen.
 
-## 4 Build and Deploy The Subgraph 
+## 2 Build and Deploy The Subgraph 
 
-### 4.1 Build and deploy the mappings to IPFS
+### 2.1 Start up IPFS
 In order to deploy the subgraph to the Graph Node, the subgraph will first need to be built and stored on IPFS (along with all linked files).
 
 To get an IPFS daemon working locally, do the following:
@@ -254,48 +268,49 @@ To get an IPFS daemon working locally, do the following:
 
 If you get stuck, you can follow the instructions from the IPFS website [here](https://ipfs.io/docs/getting-started/).
 
-Once you've started the IPFS daemon you can run `yarn deploy` in the subgraph directory (make sure to pass the right host and port to 'graph deploy' via the '--ipfs' argument). `yarn deploy` should have been set up in section 3.3 when you went through the [Graph CLI documentation](https://github.com/graphprotocol/graph-cli). This will compile the mappings, and deploy the mappings, schema and the subgraph manifest itself to IPFS.
-
 To confirm the subgraph is stored on IPFS, you can pass that subgraph ID into `ipfs cat` to view the subgraph manifest with file paths replaced by IPLD links.
 
-### 4.2 Deploying The Subgraph
-
-Deploying the subgraph means the subgraph is running, and sourcing data from Ethereum, transforming that data with the mappings, and storing it in the Graph Node. Note that a running subgraph can safely be stopped and started, and it will pick up where it has left off. 
-
-#### 4.2.1 Create the Postgres db 
+### 2.2 Create the Postgres db 
 
 Make sure you have Postgres installed. Then run the following commands:
 
-`initdb -D .postgres`
-`createdb <POSTGRES_DB_NAME>`
-
+```
+initdb -D .postgres
+pg_ctl -D .postgres start
+createdb <POSTGRES_DB_NAME>
+```
 Name the database something relevant to the project, so you always know how to access it. 
 
-#### 4.2.3 Connecting to an Etheruem Node
+### 2.3 Starting The Graph Node and Connecting to an Etheruem Node
 
-When you deploy the subgraph, you need to tell the subgraph which Ethereum network to connect to. There are three common ways you can grab data which are:
+When you start the Graph Node, you need to specify which Ethereum network it should connect to. There are three common options to connect to Ethereum:
  * Infura
  * A local Ethereum Node 
  * Ganache 
+ 
+The Ethereum Network must be passed as a flag in the command that starts the Graph Node, as laid out in the next subsections. 
 
-##### 4.2.3.1 Infura
+#### 2.3.1 Infura
 
-[Infura](https://infura.io/) is supported, and is the simplest way to source mainnet or testnet data, as you don't have to set up your own geth or parity node. However, it does sync slower than being connected to your own node. The following flags are passed to the Graph Node to indicate you want to use Infura:
+[Infura](https://infura.io/) is supported, and is the simplest way to source mainnet or testnet data, as you don't have to set up your own geth or parity node. However, it does sync slower than being connected 
+to your own node. The following flags are passed to start the Graph Node and indicate you want to use Infura:
 
 ```
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://<USERNAME><:PASSWORD>@localhost:5432/<POSTGRES_DB_NAME> \
-  --ethereum-rpc <ETHEREUM_NETWORK_NAME>:https://mainnet.infura.io`
-  --ipfs 127.0.0.1:5001 \
+  --ethereum-rpc <ETHEREUM_NETWORK_NAME>:https://mainnet.infura.io \
+  --ipfs 127.0.0.1:5001 
 ```
 
 Also Note that the Postgres database may not have a password at all. If that is the case, the Postgres connection URL can be passed as follows:
 
 `  --postgres-url postgresql://<USERNAME>@localhost:5432/adchain-subgraph \ `
 
-##### 4.2.3.2 Local Geth or Parity Node
+#### 2.3.2 Local Geth or Parity Node
 
-This is the fastest way to get mainchain or testnet data. The problem is, if you don't already have a synced [geth](https://github.com/ethereum/go-ethereum/wiki/geth) or [parity](https://github.com/paritytech/parity-ethereum) node, you will have to sync one, which will take a very long time. Also, note that geth `fast sync` works, so if you are starting from scratch this is fastest. But expect at least  12 hours of syncing on a modern laptop to sync geth. Normal mode geth or parity will take much longer. The following geth command can be used to get you started syncing:
+This is the fastest way to get mainchain or testnet data. The problem is, if you don't already have a synced [geth](https://github.com/ethereum/go-ethereum/wiki/geth) or [parity](https://github
+.com/paritytech/parity-ethereum) node, you will have to sync one, which will take a very long time. Also, note that geth `fast sync` works, so if you are starting from scratch this is fastest. But expect at 
+least  12 hours of syncing on a modern laptop to sync geth. Normal mode geth or parity will take much longer. The following geth command can be used to get you started syncing:
 
 `geth --syncmode "fast" --rpc --ws --wsorigins="*" --rpcvhosts="*" --cache 1024`
 
@@ -304,23 +319,25 @@ Once you have the local node fully synced, you can run the following command:
 ```
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://<USERNAME><:PASSWORD>@localhost:5432/<POSTGRES_DB_NAME> \
-  --ethereum-rpc <ETHEREUM_NETWORK_NAME>:127.0.0.1:8545`
-  --ipfs 127.0.0.1:5001 \
+  --ethereum-rpc <ETHEREUM_NETWORK_NAME>:127.0.0.1:8545 \
+  --ipfs 127.0.0.1:5001
 ```
 
 Note that this assumes the local node is on the default `8545` port. If you are on a different port, change it. 
 
 Note that if you switch back and forth between sourcing data from Infura, and your own local nodes, this is completely fine. 
 
-##### 4.2.3.3 Ganache 
+#### 2.3.3 Ganache 
 
 **NOTE: Ganache is not working right now, as we are unable to connect to it properly. Please follow [this upstream issue](https://github.com/trufflesuite/ganache/issues/907) to see if Ganache has been updated, and that we can connect.**
 
-[Ganache](https://github.com/trufflesuite/ganache-cli) can be used as well, and is best used for quick testing. This might be an option if you are just testing out the contracts for quick iterations. Of course, if you close Ganache, the Graph Node will not have any data to source anymore. It is likely that Ganache would be viable in short term projects (i.e. hackathons). Also, it can be useful for testing out that the schema and mappings are working properly, before working on the mainnet. 
+[Ganache](https://github.com/trufflesuite/ganache-cli) can be used as well, and is best used for quick testing. This might be an option if you are just testing out the contracts for quick iterations. Of 
+course, if you close Ganache, the Graph Node will not have any data to source anymore. It is likely that Ganache would be viable in short term projects (i.e. hackathons). Also, it can be useful for testing 
+out that the schema and mappings are working properly, before working on the mainnet. 
 
- You can connect the subgraph to Ganache the same way you connected to a local geth or parity node in the previous section. Just note that Ganache normally runs on port `9545` instead of `8545`.
+ You can connect the Graph Node to Ganache the same way you connected to a local geth or parity node in the previous section. Just note that Ganache normally runs on port `9545` instead of `8545`.
 
-##### 4.2.3.3 Local Parity Testnet (Works Similar to Ganache) 
+#### 2.3.4 Local Parity Testnet (Works Similar to Ganache) 
 
 To setup a local testnet that will allow you to rapidly test the project, download the parity software if you don’t already have it. This command will work for a one line install:
 
@@ -330,11 +347,15 @@ Next you want to make an account that you can unlock, and make transactions on f
 
 `parity account new --chain dev`
 
-Make a password you will remember. Take note of the account that gets output. Now you also have to make that password a text file, and pass it into the next command. The desktop is a good location for it. If the password is `123`, only put the numbers in the text file. Do not include any quotes. Then you can run this command:
+Make a password you will remember. Take note of the account that gets output. Now you also have to make that password a text file, and pass it into the next command. The desktop is a good location for it. If 
+the password is `123`, only put the numbers in the text file. Do not include any quotes. Then you can run this command:
 
 `parity --config dev --unsafe-expose --jsonrpc-cors="all" --unlock <ACCOUNT_ADDRESS> --password ~/Desktop/password.txt`
 
-The chain should start! This chain will be accessible by default  on `localhost:8545`. It is a chain with 0 block time and instant transactions, making testing very fast. Passing `unsafe-expose` and ` --jsonrpc-cors="all"` as flags allow MetaMask to connect. The `unlock` flag gives parity the ability to send transactions with that account. You can also import the account to MetaMask, and that will let you interact with the test chain directly in your browser. With MetaMask, you need to import the account with the private testnet Ether. The base account that the normal configuration of parity gives you is `0x00a329c0648769A73afAc7F9381E08FB43dBEA72`. The private key is:
+The chain should start! This chain will be accessible by default  on `localhost:8545`. It is a chain with 0 block time and instant transactions, making testing very fast. Passing `unsafe-expose` and ` 
+--jsonrpc-cors="all"` as flags allow MetaMask to connect. The `unlock` flag gives parity the ability to send transactions with that account. You can also import the account to MetaMask, and that will let you 
+interact with the test chain directly in your browser. With MetaMask, you need to import the account with the private testnet Ether. The base account that the normal configuration of parity gives you is 
+`0x00a329c0648769A73afAc7F9381E08FB43dBEA72`. The private key is:
 ```
 4d5db4107d237df6a3d58ee5f70ae63d73d7658d4026f2eefd2f204c81682cb7 (note this is the private key given along with the parity dev chain, so it is okay to share)
 ```
@@ -344,12 +365,20 @@ All extra information for customization of a parity dev chain is located [here](
 
 You now have an Ethereum account with a ton of Ether, and you should be able to set up the migrations on this network and use Truffle. Now, send some Ether to the previous account that got created and unlocked, this way you can run `truffle migrate` with this account.
 
-#### 4.2.4 Syncing with a Public Testnet
+#### 2.3.5 Syncing with a Public Testnet
 
 If you want to sync using a public testnet such as Kovan, Rinkeby, or Ropsten, just make sure the local node is a testnet node, or that you are hitting the correct Infura testnet endpoint. 
 
-## 5 Query the local Graph Node
-With the subgraph deployed to the locally running Graph Node, visit http://127.0.0.1:8000/ to open up a [GraphiQL](https://github.com/graphql/graphiql) interface where you can explore the deployed GraphQL API for the subgraph by issuing queries and viewing the schema. 
+### 2.4 Deploying The Subgraph
+
+When you deploy the subgraph to the Graph Node, it will start ingesting all the subgraph events from the blockchain, transforming that data with the subgraph mappings, and storing it in the Graph Node. 
+Note that running a subgraph can safely be stopped and started, and it will pick up where it has left off. 
+
+Now you can run `yarn deploy --watch` in the subgraph directory. `yarn deploy` should have been added to `package.json` in section 3.3. This can also be found in [Graph CLI documentation](https://github.com/graphprotocol/graph-cli). This will compile the mappings, and deploy the mappings, schema and the subgraph manifest to IPFS. The subgraph is now fully running!
+
+## 3 Query the local Graph Node
+With the subgraph deployed to the locally running Graph Node, visit http://127.0.0.1:8000/ to open up a [GraphiQL](https://github.com/graphql/graphiql) 
+interface where you can explore the deployed GraphQL API for the subgraph by issuing queries and viewing the schema. 
 
 We have provided a few simple examples below, but please see the [Query API](graphql-api.md#1-queries) for a complete reference on how to query the subgraph's entities.
 
@@ -387,11 +416,12 @@ You can also sort, filter or paginate query results. This query below would orga
 
 GraphQL provides a ton of functionality! Once again, check out the [Query API](graphql-api.md#1-queries) to figure out how to use all query features supported. 
 
-## 6 Changing the schema, mappings, and manifest, and launching a new Subgraph
+## 4 Changing the schema, mappings, and manifest, and launching a new Subgraph
 
-When you first start building the subgraph, it is likely you will make a few iterations to the manifest, mappings, or schema. If you update any of them, you should rerun `yarn codegen` and `yarn deploy`. This will post the new files on IPFS and deploy the new subgraph. Note that the Graph Node can track multiple subgraphs, so you can do this as many times as you like.
+When you first start building the subgraph, it is likely you will make a few iterations to the manifest, mappings, or schema. If you update any of them, you should rerun `yarn codegen` and `yarn deploy`. This 
+will post the new files on IPFS and deploy the new subgraph. Note that the Graph Node can track multiple subgraphs, so you can do this as many times as you like.
 
-## 7 Example Subgraphs
+## 5 Example Subgraphs
 
 Here is a list of current subgraphs that we have open sourced:
 * https://github.com/graphprotocol/ens-subgraph
