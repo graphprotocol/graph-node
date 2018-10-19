@@ -107,7 +107,6 @@ fn mock_subgraph() -> SubgraphManifest {
         location: String::from("/path/to/example-subgraph.yaml"),
         spec_version: String::from("0.1.0"),
         schema: Schema {
-            name: String::from("exampled name"),
             id: String::from("exampled id"),
             document: Document {
                 definitions: vec![],

@@ -16,24 +16,38 @@ pub type GraphQLServiceResponse =
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
-pub struct GraphQLService<Q> {
+pub struct GraphQLService<Q, S> {
     // Maps IDs to schemas.
     schemas: Arc<RwLock<BTreeMap<SubgraphId, Schema>>>,
     graphql_runner: Arc<Q>,
+    store: Arc<S>,
 }
 
-impl<Q> GraphQLService<Q>
+impl<Q, S> Clone for GraphQLService<Q, S> {
+    fn clone(&self) -> Self {
+        Self {
+            schemas: self.schemas.clone(),
+            graphql_runner: self.graphql_runner.clone(),
+            store: self.store.clone(),
+        }
+    }
+}
+
+impl<Q, S> GraphQLService<Q, S>
 where
     Q: GraphQlRunner + 'static,
+    S: Store + 'static,
 {
     /// Creates a new GraphQL service.
     pub fn new(
         schemas: Arc<RwLock<BTreeMap<SubgraphId, Schema>>>,
         graphql_runner: Arc<Q>,
+        store: Arc<S>,
     ) -> Self {
         GraphQLService {
             schemas,
             graphql_runner,
+            store,
         }
     }
 
@@ -57,38 +71,46 @@ where
         name_or_id: &str,
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
-        let graphql_runner = self.graphql_runner.clone();
-        let schemas = self.schemas.read().unwrap();
-
-        // If `name_or_id` is the ID for a name, use that name. Otherwise, use
-        // `name_or_id` as is. This is so that a subgraph cannot impersonate
-        // another by making its name equal to the other's id.
-        let schema = schemas.get(
-            self.names
-                .read()
-                .unwrap()
-                .get(name_or_id)
-                .map(String::as_str)
-                .unwrap_or(name_or_id),
-        );
-
-        let schema = match schema {
-            Some(schema) => schema.clone(),
-            None => return self.handle_not_found(),
-        };
+        let name_or_id = name_or_id.to_owned();
+        let service = self.clone();
 
         Box::new(
-            request
-                .into_body()
-                .concat2()
-                .map_err(|_| GraphQLServerError::from("Failed to read request body"))
-                .and_then(move |body| GraphQLRequest::new(body, schema.clone()))
-                .and_then(move |query| {
-                    // Run the query using the query runner
-                    graphql_runner
-                        .run_query(query)
-                        .map_err(GraphQLServerError::from)
-                }).then(GraphQLResponse::new),
+            future::result(self.store.read_subgraph_name(name_or_id.clone()))
+                .map_err(|e| GraphQLServerError::InternalError(e.to_string()))
+                .and_then(move |id_opt_opt| -> GraphQLServiceResponse {
+                    let service = service.clone();
+                    let schemas_rwlock = service.schemas.clone();
+                    let schemas = schemas_rwlock.read().unwrap();
+
+                    let id = match id_opt_opt {
+                        // If name_or_id matched a name with non-null ID
+                        Some(Some(id)) => id,
+
+                        // Otherwise, treat name_or_id as an ID
+                        _ => name_or_id.clone(),
+                    };
+
+                    let schema_opt = schemas.get(&id).map(|s| s.to_owned());
+
+                    match schema_opt {
+                        None => service.handle_not_found(),
+                        Some(schema) => Box::new(
+                            request
+                                .into_body()
+                                .concat2()
+                                .map_err(|_| {
+                                    GraphQLServerError::from("Failed to read request body")
+                                }).and_then(move |body| GraphQLRequest::new(body, schema.clone()))
+                                .and_then(move |query| {
+                                    // Run the query using the query runner
+                                    service
+                                        .graphql_runner
+                                        .run_query(query)
+                                        .map_err(|e| GraphQLServerError::from(e))
+                                }).then(|result| GraphQLResponse::new(result)),
+                        ),
+                    }
+                }),
         )
     }
 
@@ -115,9 +137,10 @@ where
     }
 }
 
-impl<Q> Service for GraphQLService<Q>
+impl<Q, S> Service for GraphQLService<Q, S>
 where
     Q: GraphQlRunner + 'static,
+    S: Store + 'static,
 {
     type ReqBody = Body;
     type ResBody = Body;
@@ -209,7 +232,6 @@ mod tests {
         let schema = Arc::new(RwLock::new(BTreeMap::from_iter(once((
             id.clone(),
             Schema {
-                name: id.clone(),
                 id: id.clone(),
                 document: graphql_parser::parse_schema(
                     "\
@@ -220,7 +242,7 @@ mod tests {
             },
         )))));
         let graphql_runner = Arc::new(TestGraphQlRunner);
-        let mut service = GraphQLService::new(Default::default(), schema, graphql_runner);
+        let mut service = GraphQLService::new(schema, graphql_runner, store);
 
         let request = Request::builder()
             .method(Method::POST)
@@ -256,7 +278,6 @@ mod tests {
                     let schema = Arc::new(RwLock::new(BTreeMap::from_iter(once((
                         id.clone(),
                         Schema {
-                            name: id.clone(),
                             id: id.clone(),
                             document: graphql_parser::parse_schema(
                                 "\
@@ -267,8 +288,7 @@ mod tests {
                         },
                     )))));
 
-                    let mut service =
-                        GraphQLService::new(Default::default(), schema, graphql_runner);
+                    let mut service = GraphQLService::new(schema, graphql_runner, store);
 
                     let request = Request::builder()
                         .method(Method::POST)

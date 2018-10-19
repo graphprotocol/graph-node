@@ -14,8 +14,8 @@ pub enum SubgraphProviderEvent {
 pub enum SchemaEvent {
     /// A subgraph with a new schema was added.
     SchemaAdded(Schema),
-    /// A subgraph with the given name and id was removed.
-    SchemaRemoved(String, String),
+    /// A subgraph with the given id was removed.
+    SchemaRemoved(SubgraphId),
 }
 
 /// Common trait for subgraph providers.

@@ -271,7 +271,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         eth_net_identifiers,
     ));
     let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(&logger, store.clone()));
-    let mut graphql_server = GraphQLQueryServer::new(&logger, graphql_runner.clone());
+    let mut graphql_server =
+        GraphQLQueryServer::new(&logger, graphql_runner.clone(), store.clone());
     let mut subscription_server = GraphQLSubscriptionServer::new(&logger, graphql_runner.clone());
 
     // Create Ethereum block ingestor

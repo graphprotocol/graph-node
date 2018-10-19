@@ -84,10 +84,10 @@ where
                         GuardedSchema::new(derived_schema),
                     );
                 }
-                SchemaEvent::SchemaRemoved(name, _) => {
+                SchemaEvent::SchemaRemoved(id) => {
                     // On removal, the `GuardedSchema` will be dropped and all
                     // connections to it will be terminated.
-                    subgraphs.remove_name(name);
+                    subgraphs.remove_id(id);
                 }
             }
 

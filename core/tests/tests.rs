@@ -260,7 +260,7 @@ fn subgraph_provider_events() {
     );
     assert_eq!(
         schema_events[1],
-        SchemaEvent::SchemaRemoved("subgraph".to_owned(), subgraph1_id.to_owned())
+        SchemaEvent::SchemaRemoved(subgraph1_id.to_owned())
     );
     assert_eq!(
         added_schema_name_and_id(&schema_events[2]),
@@ -268,7 +268,7 @@ fn subgraph_provider_events() {
     );
     assert_eq!(
         schema_events[3],
-        SchemaEvent::SchemaRemoved("subgraph".to_owned(), subgraph2_id.to_owned())
+        SchemaEvent::SchemaRemoved(subgraph2_id.to_owned())
     );
 }
 
