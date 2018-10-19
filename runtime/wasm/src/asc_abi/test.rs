@@ -203,6 +203,20 @@ fn abi_array() {
 }
 
 #[test]
+fn abi_subarray() {
+    let module = TestModule::new("wasm_test/abi_classes.wasm");
+
+    let vec: Vec<u8> = vec![1, 2, 3, 4];
+    let vec_obj: AscPtr<TypedArray<u8>> = module.asc_new(&*vec);
+
+    let new_vec_obj: AscPtr<TypedArray<u8>> =
+        module.takes_ptr_returns_ptr("byte_array_third_quarter", vec_obj);
+    let new_vec: Vec<u8> = module.asc_get(new_vec_obj);
+
+    assert_eq!(new_vec, vec![3])
+}
+
+#[test]
 fn abi_bytes_and_fixed_bytes() {
     let module = TestModule::new("wasm_test/abi_classes.wasm");
     let bytes1: Vec<u8> = vec![42, 45, 7, 245, 45];
