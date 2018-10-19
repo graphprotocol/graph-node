@@ -1,4 +1,5 @@
 use super::{class::EnumPayload, AscHeap, AscType};
+use std::fmt;
 use std::marker::PhantomData;
 use std::mem::{self, size_of};
 use wasmi::{FromRuntimeValue, RuntimeValue};
@@ -17,6 +18,12 @@ impl<T> Clone for AscPtr<T> {
 impl<T> Default for AscPtr<T> {
     fn default() -> Self {
         AscPtr(0, PhantomData)
+    }
+}
+
+impl<T> fmt::Debug for AscPtr<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 
