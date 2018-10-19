@@ -44,17 +44,18 @@ impl From<hyper::Error> for GraphQLServeError {
 }
 
 /// A GraphQL server based on Hyper.
-pub struct GraphQLServer<Q> {
+pub struct GraphQLServer<Q, S> {
     logger: slog::Logger,
     schema_event_sink: Sender<SchemaEvent>,
     // Maps a subgraph id to its schema.
     schemas: Arc<RwLock<BTreeMap<SubgraphId, Schema>>>,
     graphql_runner: Arc<Q>,
+    store: Arc<S>,
 }
 
-impl<Q> GraphQLServer<Q> {
+impl<Q, S> GraphQLServer<Q, S> {
     /// Creates a new GraphQL server.
-    pub fn new(logger: &slog::Logger, graphql_runner: Arc<Q>) -> Self {
+    pub fn new(logger: &slog::Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
         // Create channel for handling incoming schema events
         let (schema_event_sink, schema_event_stream) = channel(100);
 
@@ -63,7 +64,8 @@ impl<Q> GraphQLServer<Q> {
             logger: logger.new(o!("component" => "GraphQLServer")),
             schema_event_sink,
             schemas: Arc::new(RwLock::new(BTreeMap::new())),
-            graphql_runner: graphql_runner,
+            graphql_runner,
+            store,
         };
 
         // Spawn tasks to handle incoming schema events
@@ -97,7 +99,7 @@ impl<Q> GraphQLServer<Q> {
 
                     schemas.insert(new_schema.id.clone(), derived_schema);
                 }
-                SchemaEvent::SchemaRemoved(name, id) => {
+                SchemaEvent::SchemaRemoved(id) => {
                     // If the event got this far, the subgraph must be hosted.
                     schemas.remove(&id).expect("subgraph not hosted");
                 }
@@ -108,9 +110,10 @@ impl<Q> GraphQLServer<Q> {
     }
 }
 
-impl<Q> GraphQLServerTrait for GraphQLServer<Q>
+impl<Q, S> GraphQLServerTrait for GraphQLServer<Q, S>
 where
     Q: GraphQlRunner + Sized + 'static,
+    S: Store + 'static,
 {
     type ServeError = GraphQLServeError;
 
@@ -130,10 +133,11 @@ where
         // incoming queries to the query sink.
         let graphql_runner = self.graphql_runner.clone();
         let schemas = self.schemas.clone();
+        let store = self.store.clone();
         let new_service = move || {
             let service =
-                GraphQLService::new(schemas.clone(), graphql_runner.clone());
-            future::ok::<GraphQLService<Q>, hyper::Error>(service)
+                GraphQLService::new(schemas.clone(), graphql_runner.clone(), store.clone());
+            future::ok::<GraphQLService<Q, S>, hyper::Error>(service)
         };
 
         // Create a task to run the server and handle HTTP requests
@@ -151,7 +155,7 @@ mod tests {
 
     use std::time::{Duration, Instant};
 
-    use self::graph_mock::MockGraphQlRunner;
+    use self::graph_mock::{MockGraphQlRunner, MockStore};
     use graph_graphql::schema::ast;
 
     use super::*;
@@ -165,14 +169,14 @@ mod tests {
                     // Set up the server
                     let logger = Logger::root(slog::Discard, o!());
                     let graphql_runner = Arc::new(MockGraphQlRunner::new(&logger));
-                    let mut server = GraphQLServer::new(&logger, graphql_runner);
+                    let store = Arc::new(MockStore::new());
+                    let mut server = GraphQLServer::new(&logger, graphql_runner, store);
                     let schema_sink = server.schema_event_sink();
 
                     // Create an input schema event
                     let input_doc =
                         ::graphql_parser::parse_schema("type User { name: String! }").unwrap();
                     let input_schema = Schema {
-                        name: "input-schema".to_string(),
                         id: "input-schema".to_string(),
                         document: input_doc,
                     };
