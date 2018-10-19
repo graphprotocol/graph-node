@@ -42,6 +42,6 @@ services:
     volumes:
       - ./parity:/root/.local/share/io.parity.ethereum/
     command: >
-      --jsonrpc-cors chrome-extension://nkbihfbeogaeaoehlefnkodbefgpgknn
+      --jsonrpc-cors all
       --config /root/.local/share/io.parity.ethereum/config.toml
       --base-path /root/.local/share/io.parity.ethereum
