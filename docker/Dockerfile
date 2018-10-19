@@ -1,6 +1,6 @@
 FROM rust:latest
 
-ARG SOURCE_BRANCH
+ENV SOURCE_BRANCH "master"
 
 # Install clang (required for dependencies)
 RUN apt-get update \
