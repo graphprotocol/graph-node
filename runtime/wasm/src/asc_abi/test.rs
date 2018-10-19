@@ -175,6 +175,34 @@ fn abi_u256() {
 }
 
 #[test]
+fn abi_array() {
+    let module = TestModule::new("wasm_test/abi_classes.wasm");
+
+    let vec = vec![
+        "1".to_owned(),
+        "2".to_owned(),
+        "3".to_owned(),
+        "4".to_owned(),
+    ];
+    let vec_obj: AscPtr<Array<AscPtr<AscString>>> = module.asc_new(&*vec);
+
+    let new_vec_obj: AscPtr<Array<AscPtr<AscString>>> =
+        module.takes_ptr_returns_ptr("test_array", vec_obj);
+    let new_vec: Vec<String> = module.asc_get(new_vec_obj);
+
+    assert_eq!(
+        new_vec,
+        vec![
+            "1".to_owned(),
+            "2".to_owned(),
+            "3".to_owned(),
+            "4".to_owned(),
+            "5".to_owned()
+        ]
+    )
+}
+
+#[test]
 fn abi_bytes_and_fixed_bytes() {
     let module = TestModule::new("wasm_test/abi_classes.wasm");
     let bytes1: Vec<u8> = vec![42, 45, 7, 245, 45];

@@ -62,3 +62,8 @@ export function concat(bytes1: Bytes, bytes2: FixedBytes): Bytes {
 
   return new_typed_array;
 }
+
+export function test_array(strings: Array<string>): Array<string> {
+  strings.push("5")
+  return strings
+}
