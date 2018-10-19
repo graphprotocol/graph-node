@@ -1,5 +1,6 @@
 FROM rust:latest
 
+ARG SOURCE_BRANCH
 
 # Install clang (required for dependencies)
 RUN apt-get update \
@@ -8,7 +9,7 @@ RUN apt-get update \
 # Clone and build the graph-node repository
 RUN git clone https://github.com/graphprotocol/graph-node \
     && cd graph-node \
-    && git checkout ethsf \
+    && git checkout "$SOURCE_BRANCH" \
     && cargo install --path node \
     && cd .. \
     && rm -rf graph-node
