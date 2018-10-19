@@ -58,21 +58,20 @@ where
             }).for_each(move |_| {
                 // Attempt to poll
                 static_self.do_poll().then(move |result| {
-                    if let Err(e) = result {
+                    if let Err(err) = result {
                         // Some polls will fail due to transient issues
-                        match e {
-                            BlockIngestorError::BlockUnavailable(block_hash) => {
+                        match err {
+                            BlockIngestorError::BlockUnavailable(_) => {
                                 trace!(
                                     static_self.logger,
-                                    "Trying again after block polling failed: \
-                                    block data unavailable, block was likely uncled";
-                                    "block_hash" => format!("{:?}", block_hash)
+                                    "Trying again after block polling failed: {}",
+                                    err
                                 );
                             }
-                            BlockIngestorError::Unknown(e) => {
+                            BlockIngestorError::Unknown(inner_err) => {
                                 warn!(
                                     static_self.logger,
-                                    "Trying again after block polling failed: {:?}", e
+                                    "Trying again after block polling failed: {}", inner_err
                                 );
                             }
                         }
