@@ -42,7 +42,6 @@ mod test {
 
     fn test_schema() -> Schema {
         Schema {
-            name: "test-schema".to_string(),
             id: "test-schema".to_string(),
             document: Default::default(),
         }

@@ -309,7 +309,11 @@ fn rejects_name_bad_for_urls() {
         }
     }
     let logger = slog::Logger::root(slog::Discard, o!());
-    let provider = Arc::new(SubgraphProvider::new(logger, Arc::new(FakeLinkResolver)));
+    let provider = Arc::new(
+        SubgraphProvider::init(logger, Arc::new(FakeLinkResolver))
+            .wait()
+            .unwrap(),
+    );
     let bad = "/../funky%2F:9001".to_owned();
     let result = provider.deploy(bad.clone(), "".to_owned());
     match result.wait() {

@@ -173,19 +173,17 @@ fn multiple_data_sources_per_subgraph() {
         })).unwrap();
 }
 
-fn added_subgraph_name_and_id(event: &SubgraphProviderEvent) -> (&str, &str) {
+fn added_subgraph_id(event: &SubgraphProviderEvent) -> &str {
     match event {
-        SubgraphProviderEvent::SubgraphStart(_name, manifest) => {
-            (&manifest.schema.name, &manifest.id)
-        }
+        SubgraphProviderEvent::SubgraphStart(_name, manifest) => &manifest.id,
         _ => panic!("not `SubgraphStart`"),
     }
 }
 
-fn added_schema_name_and_id(event: &SchemaEvent) -> (&str, &str) {
+fn added_schema_id(event: &SchemaEvent) -> &str {
     match event {
-        SchemaEvent::SchemaStart(schema) => (&schema.name, &schema.id),
-        _ => panic!("not `SchemaStart`"),
+        SchemaEvent::SchemaAdded(schema) => &schema.id,
+        _ => panic!("not `SchemaAdded`"),
     }
 }
 
@@ -193,7 +191,11 @@ fn added_schema_name_and_id(event: &SchemaEvent) -> (&str, &str) {
 fn subgraph_provider_events() {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     let logger = Logger::root(slog::Discard, o!());
-    let mut provider = graph_core::SubgraphProvider::new(logger, Arc::new(IpfsClient::default()));
+    let mut provider = runtime
+        .block_on(graph_core::SubgraphProvider::init(
+            logger,
+            Arc::new(IpfsClient::default()),
+        )).unwrap();
     let provider_events = provider.take_event_stream().unwrap();
     let schema_events = provider.take_event_stream().unwrap();
     let provider = Arc::new(provider);
@@ -235,18 +237,12 @@ fn subgraph_provider_events() {
     // Assert that the expected events were sent.
     let provider_events = runtime.block_on(provider_events.collect()).unwrap();
     assert_eq!(provider_events.len(), 4);
-    assert_eq!(
-        added_subgraph_name_and_id(&provider_events[0]),
-        ("subgraph", subgraph1_id)
-    );
+    assert_eq!(added_subgraph_id(&provider_events[0]), subgraph1_id);
     assert_eq!(
         provider_events[1],
         SubgraphProviderEvent::SubgraphStop(subgraph1_id.to_owned())
     );
-    assert_eq!(
-        added_subgraph_name_and_id(&provider_events[2]),
-        ("subgraph", subgraph2_id)
-    );
+    assert_eq!(added_subgraph_id(&provider_events[2]), subgraph2_id);
     assert_eq!(
         provider_events[3],
         SubgraphProviderEvent::SubgraphStop(subgraph2_id.to_owned())
@@ -254,18 +250,12 @@ fn subgraph_provider_events() {
 
     let schema_events = runtime.block_on(schema_events.collect()).unwrap();
     assert_eq!(schema_events.len(), 4);
-    assert_eq!(
-        added_schema_name_and_id(&schema_events[0]),
-        ("subgraph", subgraph1_id)
-    );
+    assert_eq!(added_schema_id(&schema_events[0]), subgraph1_id);
     assert_eq!(
         schema_events[1],
         SchemaEvent::SchemaRemoved(subgraph1_id.to_owned())
     );
-    assert_eq!(
-        added_schema_name_and_id(&schema_events[2]),
-        ("subgraph", subgraph2_id)
-    );
+    assert_eq!(added_schema_id(&schema_events[2]), subgraph2_id);
     assert_eq!(
         schema_events[3],
         SchemaEvent::SchemaRemoved(subgraph2_id.to_owned())
@@ -276,10 +266,13 @@ fn subgraph_provider_events() {
 fn subgraph_list() {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     let logger = Logger::root(slog::Discard, o!());
-    let provider = Arc::new(graph_core::SubgraphProvider::new(
-        logger,
-        Arc::new(IpfsClient::default()),
-    ));
+    let provider = Arc::new(
+        runtime
+            .block_on(graph_core::SubgraphProvider::new(
+                logger,
+                Arc::new(IpfsClient::default()),
+            )).unwrap(),
+    );
 
     let (subgraph1_link, subgraph2_link) = runtime
         .block_on(future::lazy(|| {
