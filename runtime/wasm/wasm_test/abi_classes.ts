@@ -67,3 +67,7 @@ export function test_array(strings: Array<string>): Array<string> {
   strings.push("5")
   return strings
 }
+
+export function byte_array_third_quarter(bytes: Uint8Array): Uint8Array {
+  return bytes.subarray(bytes.length * 2/4, bytes.length * 3/4)
+}
