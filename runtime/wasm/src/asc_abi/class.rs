@@ -18,7 +18,7 @@ pub(crate) struct ArrayBuffer<T> {
     // elements in `content` will be aligned for any element type.
     _padding: [u8; 4],
     // In Asc this slice is layed out inline with the ArrayBuffer.
-    pub content: Box<[u8]>,
+    content: Box<[u8]>,
     ty: PhantomData<T>,
 }
 
@@ -72,7 +72,15 @@ impl<T> AscType for ArrayBuffer<T> {
         asc_layout.extend(&byte_length);
         let padding: [u8; 4] = [0, 0, 0, 0];
         asc_layout.extend(&padding);
-        asc_layout.extend(Vec::from(self.content.clone()));
+        asc_layout.extend(self.content.iter());
+
+        // Allocate extra capacity to next power of two, as required by asc.
+        let header_size = size_of_val(&byte_length) + size_of_val(&padding);
+        let total_size = self.byte_length + header_size as u32;
+        let total_capacity = total_size.next_power_of_two();
+        let extra_capacity = total_capacity - total_size;
+        asc_layout.extend(vec![0; extra_capacity as usize]);
+
         asc_layout
     }
 
