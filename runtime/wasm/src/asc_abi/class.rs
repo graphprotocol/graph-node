@@ -16,7 +16,7 @@ pub(crate) struct ArrayBuffer<T> {
     // `byte_length_size` so with 4 more bytes we align the contents at 8
     // bytes. No Asc type has alignment greater than 8, so the
     // elements in `content` will be aligned for any element type.
-    _padding: [u8; 4],
+    padding: [u8; 4],
     // In Asc this slice is layed out inline with the ArrayBuffer.
     content: Box<[u8]>,
     ty: PhantomData<T>,
@@ -41,7 +41,7 @@ impl<T: AscValue> ArrayBuffer<T> {
 
         ArrayBuffer {
             byte_length,
-            _padding: [0; 4],
+            padding: [0; 4],
             content: content.into(),
             ty: PhantomData,
         }
@@ -70,12 +70,11 @@ impl<T> AscType for ArrayBuffer<T> {
         // This is just `self.byte_length.to_bytes()` which is unstable.
         let byte_length: [u8; 4] = unsafe { mem::transmute(self.byte_length) };
         asc_layout.extend(&byte_length);
-        let padding: [u8; 4] = [0, 0, 0, 0];
-        asc_layout.extend(&padding);
+        asc_layout.extend(&self.padding);
         asc_layout.extend(self.content.iter());
 
         // Allocate extra capacity to next power of two, as required by asc.
-        let header_size = size_of_val(&byte_length) + size_of_val(&padding);
+        let header_size = size_of_val(&byte_length) + size_of_val(&self.padding);
         let total_size = self.byte_length + header_size as u32;
         let total_capacity = total_size.next_power_of_two();
         let extra_capacity = total_capacity - total_size;
@@ -90,7 +89,7 @@ impl<T> AscType for ArrayBuffer<T> {
         let content_offset = size_of::<u32>() + 4;
         ArrayBuffer {
             byte_length: u32::from_asc_bytes(&asc_obj[..size_of::<u32>()]),
-            _padding: [0; 4],
+            padding: [0; 4],
             content: asc_obj[content_offset..].to_vec().into(),
             ty: PhantomData,
         }
