@@ -40,7 +40,7 @@ where
     I: Send,
     E: Send,
 {
-    trace!(logger, "with_retry: {}", operation_name);
+    trace!(logger, "with_retry_log_after: {}", operation_name);
 
     let max_delay_ms = 30_000;
     let retry_strategy = ExponentialBackoff::from_millis(2)
@@ -81,6 +81,32 @@ where
                     e
                 }
             })
+    }).map_err(|e| match e {
+        RetryError::OperationError(e) => e,
+        RetryError::TimerError(e) => panic!("tokio timer error: {}", e),
+    })
+}
+
+/// Repeatedly invoke `try_it` until the future it returns resolves to an `Ok`,
+/// or `max_retry` consecutive invocations all returned futures that resolved to an `Err`.
+pub fn with_retry_max_retry<F, R, I, E>(
+    max_retry_count: usize,
+    try_it: F,
+) -> impl Future<Item = I, Error = DeadlineError<E>> + Send
+where
+    F: Fn() -> R + Send,
+    R: Future<Item = I, Error = E> + Send,
+    I: Send,
+    E: Send,
+{
+    let max_delay_ms = 30_000;
+    let retry_strategy = ExponentialBackoff::from_millis(2)
+        .max_delay(Duration::from_millis(max_delay_ms))
+        .map(jitter)
+        .take(max_retry_count);
+
+    Retry::spawn(retry_strategy, move || {
+        try_it().deadline(Instant::now() + Duration::from_secs(60))
     }).map_err(|e| match e {
         RetryError::OperationError(e) => e,
         RetryError::TimerError(e) => panic!("tokio timer error: {}", e),
