@@ -64,8 +64,7 @@ where
                             BlockIngestorError::BlockUnavailable(_) => {
                                 trace!(
                                     static_self.logger,
-                                    "Trying again after block polling failed: {}",
-                                    err
+                                    "Trying again after block polling failed: {}", err
                                 );
                             }
                             BlockIngestorError::Unknown(inner_err) => {
@@ -173,20 +172,8 @@ where
         let receipt_futures = block
             .transactions
             .iter()
-            .map(move |tx| {
-                self.get_transaction_receipt(tx.hash)
-                    .and_then(move |receipt| {
-                        // Check if receipt is for the right block
-                        if receipt.block_hash != block_hash {
-                            // This block is no longer on the main chain according to the Ethereum
-                            // node.  Nothing we can do from here except give up trying to ingest
-                            // this block.
-                            Err(BlockIngestorError::BlockUnavailable(block_hash))
-                        } else {
-                            Ok(receipt)
-                        }
-                    })
-            }).collect::<Vec<_>>();
+            .map(move |tx| self.get_transaction_receipt(block_hash, tx.hash))
+            .collect::<Vec<_>>();
 
         // Merge receipts with Block<Transaction> to get EthereumBlock
         stream::futures_ordered(receipt_futures)
@@ -199,46 +186,58 @@ where
 
     fn get_transaction_receipt<'a>(
         &'a self,
+        block_hash: H256,
         tx_hash: H256,
     ) -> impl Future<Item = TransactionReceipt, Error = BlockIngestorError> + 'a {
         let web3 = Web3::new(self.web3_transport.clone());
 
-        // Infura frequently fails to find transaction receipts for new blocks,
-        // so retry without logging unless there are at least 16 failed
-        // attempts.
-        with_retry_log_after(
-            self.logger.clone(),
-            format!(
-                "block ingestor eth_getTransactionReceipt({:?}) RPC call",
-                tx_hash
-            ),
-            16,
-            move || {
-                web3.eth()
-                    .transaction_receipt(tx_hash)
-                    .map_err(move |e| {
-                        format_err!(
-                            "could not get transaction receipt {} from Ethereum: {}",
-                            tx_hash,
-                            e
-                        )
-                    }).and_then(move |receipt_opt| {
-                        receipt_opt.ok_or_else(move || {
-                            format_err!(
-                                "Ethereum node could not find transaction receipt {}",
-                                tx_hash
-                            )
-                        })
+        // Retry, but eventually give up.
+        // The receipt might be missing because the block was uncled, and the transaction never
+        // made it back into the main chain.
+        with_retry_max_retry(16, move || {
+            web3.eth()
+                .transaction_receipt(tx_hash)
+                .map_err(move |e| {
+                    format_err!(
+                        "could not get transaction receipt {} from Ethereum: {}",
+                        tx_hash,
+                        e
+                    ).into()
+                }).and_then(move |receipt_opt| {
+                    receipt_opt.ok_or_else(move || {
+                        // No receipt was returned.
+                        //
+                        // This can be because the Ethereum node no longer considers
+                        // this block to be part of the main chain, and so the transaction is
+                        // no longer in the main chain.  Nothing we can do from here except
+                        // give up trying to ingest this block.
+                        //
+                        // This could also be because the receipt is simply not available yet.
+                        // For that case, we should retry until it becomes available.
+                        BlockIngestorError::BlockUnavailable(block_hash)
                     })
-            },
-        ).map_err(move |e| {
+                })
+        }).map_err(move |e| {
             e.into_inner().unwrap_or_else(move || {
+                // Timed out
                 format_err!(
                     "Ethereum node took too long to return transaction receipt {}",
                     tx_hash
-                )
+                ).into()
             })
-        }).from_err()
+        }).and_then(move |receipt| {
+            // Check if receipt is for the right block
+            if receipt.block_hash != block_hash {
+                // If the receipt came from a different block, then the Ethereum node
+                // no longer considers this block to be in the main chain.
+                // Nothing we can do from here except give up trying to ingest this
+                // block.
+                // There is no way to get the transaction receipt from this block.
+                Err(BlockIngestorError::BlockUnavailable(block_hash))
+            } else {
+                Ok(receipt)
+            }
+        })
     }
 
     /// Put some blocks into the block store (if they are not there already), and try to update the
