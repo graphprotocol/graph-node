@@ -30,7 +30,7 @@ pub trait SubgraphProvider:
 
     fn remove(
         &self,
-        name_or_id: String,
+        name: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
 
     fn list(&self) -> Vec<(String, String)>;

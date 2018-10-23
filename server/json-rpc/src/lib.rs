@@ -41,7 +41,7 @@ impl fmt::Display for SubgraphDeployParams {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SubgraphRemoveParams {
-    name_or_id: String,
+    name: String,
 }
 
 impl fmt::Display for SubgraphRemoveParams {
@@ -130,11 +130,8 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
     ) -> Box<Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
         info!(self.logger, "Received subgraph_remove request"; "params" => params.to_string());
 
-        let name_or_id = params.name_or_id;
-        // We need a name for auth so `name_or_id` being an id is not supported
-        // if we're checking auth.
         if should_check_auth()
-            && Some(&auth.bearer_token) != self.subgraph_api_keys.read().unwrap().get(&name_or_id)
+            && Some(&auth.bearer_token) != self.subgraph_api_keys.read().unwrap().get(&params.name)
         {
             return Box::new(future::err(json_rpc_error(
                 JSON_RPC_UNAUTHORIZED_ERROR,
@@ -144,7 +141,7 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
 
         Box::new(
             self.provider
-                .remove(name_or_id)
+                .remove(params.name)
                 .map_err(|e| json_rpc_error(JSON_RPC_REMOVE_ERROR, e.to_string()))
                 .map(|_| Value::Null),
         )
