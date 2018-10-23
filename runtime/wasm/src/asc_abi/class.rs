@@ -49,7 +49,7 @@ impl<T: AscValue> ArrayBuffer<T> {
 
     /// Read `length` elements of type `T` starting at `byte_offset`.
     ///
-    /// Panics if that tries to read beyond the lenght of `self.content`.
+    /// Panics if that tries to read beyond the length of `self.content`.
     fn get(&self, byte_offset: u32, length: u32) -> Vec<T> {
         let length = length as usize;
         let byte_offset = byte_offset as usize;
@@ -75,10 +75,11 @@ impl<T> AscType for ArrayBuffer<T> {
 
         // Allocate extra capacity to next power of two, as required by asc.
         let header_size = size_of_val(&byte_length) + size_of_val(&self.padding);
-        let total_size = self.byte_length + header_size as u32;
+        let total_size = self.byte_length as usize + header_size;
         let total_capacity = total_size.next_power_of_two();
         let extra_capacity = total_capacity - total_size;
-        asc_layout.extend(vec![0; extra_capacity as usize]);
+        asc_layout.extend(vec![0; extra_capacity]);
+        assert_eq!(asc_layout.len(), total_capacity);
 
         asc_layout
     }
@@ -222,6 +223,7 @@ impl<T: AscValue> Array<T> {
     pub fn new<H: AscHeap>(content: &[T], heap: &H) -> Self {
         Array {
             buffer: AscPtr::alloc_obj(&ArrayBuffer::new(content), heap),
+            // If this cast would overflow, the above line has already panicked.
             length: content.len() as u32,
         }
     }
