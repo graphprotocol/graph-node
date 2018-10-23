@@ -133,29 +133,16 @@ impl<L: LinkResolver> SubgraphProviderTrait for SubgraphProvider<L> {
         )
     }
 
+    /// Remove the subgraph and signal the removal to the graphql server and the
+    /// runtime manager. Error if the subgraph is not present.
     fn remove(
         &self,
-        name_or_id: String,
+        name: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static> {
-        let mut subgraphs = self.subgraphs.lock().unwrap();
-
-        // Either `name_or_id` is a name,
-        let name = if subgraphs.contains_key(&name_or_id) {
-            name_or_id
-        // or it's an id, so we get the corresponding name.
-        } else if let Some(name) = subgraphs.keys().find(|&name| subgraphs[name] == name_or_id) {
-            name.to_owned()
-        // Otherwise the subgraph is not hosted.
-        } else {
-            return Box::new(future::err(SubgraphProviderError::NotFound(
-                name_or_id.to_owned(),
-            )));
-        };
-
-        // Remove the subgraph and signal the removal to the graphql server and
-        // the runtime manager.
-        let id = subgraphs.remove(&name).unwrap();
-        Box::new(self.send_remove_events(name, id))
+        match self.subgraphs.lock().unwrap().remove(&name) {
+            Some(id) => Box::new(self.send_remove_events(name, id)),
+            None => Box::new(future::err(SubgraphProviderError::NotFound(name))),
+        }
     }
 
     fn list(&self) -> Vec<(String, String)> {
