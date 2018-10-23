@@ -803,8 +803,8 @@ where
     fn event_sink(&self) -> Box<Sink<SinkItem = ChainHeadUpdate, SinkError = ()> + Send> {
         let logger = self.ctx.logger.clone();
 
-        Box::new(self.chain_head_update_sink.clone().sink_map_err(move |e| {
-            error!(logger, "Component was dropped: {}", e);
+        Box::new(self.chain_head_update_sink.clone().sink_map_err(move |_| {
+            info!(logger, "terminating chain head updates");
         }))
     }
 }
