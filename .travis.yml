@@ -30,7 +30,6 @@ matrix:
   # Allow nightly to fail
   allow_failures:
     - rust: nightly
-    - rust: beta # until ipfs-api is un-regressed
   # Only check formatting when running against stable
   include:
     - env: CHECK_FORMATTING=true
