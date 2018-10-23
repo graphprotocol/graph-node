@@ -77,7 +77,7 @@ where
                             .add_subgraph_id_directives(subgraph.id.clone());
 
                         self_clone
-                            .send_add_events(subgraph, name.clone())
+                            .send_add_events(subgraph)
                             .map_err(|e| format_err!("failed to deploy saved subgraph: {}", e))
                     })
                 })
@@ -85,39 +85,34 @@ where
         )
     }
 
-    fn send_add_events(
-        &self,
-        subgraph: SubgraphManifest,
-        name: String,
-    ) -> impl Future<Item = (), Error = Error> {
-        // Push the subgraph and the schema into their streams
-        self.schema_event_sink
+    fn send_add_events(&self, subgraph: SubgraphManifest) -> impl Future<Item = (), Error = Error> {
+        let schema_addition = self
+            .schema_event_sink
             .clone()
             .send(SchemaEvent::SchemaAdded(subgraph.schema.clone()))
             .map_err(|e| panic!("failed to forward subgraph schema: {}", e))
-            .join(
-                self.event_sink
-                    .clone()
-                    .send(SubgraphProviderEvent::SubgraphStart(name, subgraph))
-                    .map_err(|e| panic!("failed to forward subgraph: {}", e)),
-            ).map(|_| ())
+            .map(|_| ());
+
+        let subgraph_start = self
+            .event_sink
+            .clone()
+            .send(SubgraphProviderEvent::SubgraphStart(subgraph))
+            .map_err(|e| panic!("failed to forward subgraph: {}", e))
+            .map(|_| ());
+
+        schema_addition.join(subgraph_start).map(|_| ())
     }
 
     fn send_remove_events(
         &self,
-        names: Vec<String>,
         id: String,
     ) -> impl Future<Item = (), Error = SubgraphProviderError> + Send + 'static {
-        let id_for_schema_removals = id.clone();
-        let schema_removals = names
-            .into_iter()
-            .map(move |name| {
-                self.schema_event_sink
-                    .clone()
-                    .send(SchemaEvent::SchemaRemoved(id_for_schema_removals.clone()))
-                    .map_err(|e| panic!("failed to forward schema removal: {}", e))
-                    .map(|_| ())
-            }).collect::<Vec<_>>();
+        let schema_removal = self
+            .schema_event_sink
+            .clone()
+            .send(SchemaEvent::SchemaRemoved(id.clone()))
+            .map_err(|e| panic!("failed to forward schema removal: {}", e))
+            .map(|_| ());
 
         let subgraph_stop = self
             .event_sink
@@ -126,9 +121,7 @@ where
             .map_err(|e| panic!("failed to forward subgraph removal: {}", e))
             .map(|_| ());
 
-        future::collect(schema_removals)
-            .join(subgraph_stop)
-            .map(|_| ())
+        schema_removal.join(subgraph_stop).map(|_| ())
     }
 
     /// Clones but forcing receivers to `None`.
@@ -160,70 +153,61 @@ where
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         {
-            return Box::new(Err(SubgraphProviderError::InvalidName(name)).into_future());
+            return Box::new(future::err(SubgraphProviderError::InvalidName(name)));
         }
 
-        let subgraph_added_name = name.clone();
+        let self_clone = self.clone();
 
-        let self_clone1 = self.clone();
-        let self_clone2 = self.clone();
-        let self_clone3 = self.clone();
+        let subgraph_resolution = SubgraphManifest::resolve(Link { link }, self.resolver.clone())
+            .map_err(SubgraphProviderError::ResolveError)
+            .and_then(
+                // Validate the subgraph schema before deploying the subgraph
+                |subgraph| match validate_schema(&subgraph.schema.document) {
+                    Err(e) => Err(SubgraphProviderError::SchemaValidationError(e)),
+                    _ => Ok(subgraph),
+                },
+            );
+
         Box::new(
-            SubgraphManifest::resolve(Link { link }, self.resolver.clone())
-                .map_err(SubgraphProviderError::ResolveError)
-                .and_then(
-                    // Validate the subgraph schema before deploying the subgraph
-                    |subgraph| match validate_schema(&subgraph.schema.document) {
-                        Err(e) => Err(SubgraphProviderError::SchemaValidationError(e)),
-                        _ => Ok(subgraph),
-                    },
-                ).and_then(move |mut subgraph| {
-                    let new_id = subgraph.id.clone();
-                    let name_clone = name.clone();
-
-                    subgraph.schema.add_subgraph_id_directives(new_id.clone());
+            // Cleanly undeploy this name if it exists (removes old mapping)
+            self.remove(name.clone())
+                .then(|result| {
+                    match result {
+                        // Name not found is fine. No old mapping to remove.
+                        Err(SubgraphProviderError::NameNotFound(_)) => Ok(()),
+                        other => other,
+                    }
+                }).join(subgraph_resolution)
+                .and_then(move |((), mut subgraph)| {
+                    subgraph
+                        .schema
+                        .add_subgraph_id_directives(subgraph.id.clone());
 
                     future::result(
-                        // Read the old ID
-                        self_clone1.store.read_subgraph_name(name.clone()),
-                    ).map_err(SubgraphProviderError::Unknown)
-                    .and_then(move |old_id_opt| {
-                        // Write the new ID
-                        self_clone1
+                        self_clone
                             .store
-                            .write_subgraph_name(name.clone(), Some(new_id.clone()))
-                            .map(move |()| old_id_opt)
-                            .map_err(SubgraphProviderError::Unknown)
-                    }).and_then(
-                        move |old_id_opt_opt| -> Box<Future<Item = _, Error = _> + Send> {
-                            // If a subgraph is being updated, remove the old subgraph.
-                            match old_id_opt_opt {
-                                Some(Some(old_id)) => {
-                                    Box::new(future::result(self_clone2.store.find_subgraph_names_by_id(old_id.clone()))
-                                        .map_err(SubgraphProviderError::Unknown)
-                                        .and_then(move |names_with_old_id| -> Box<Future<Item=_, Error=_> + Send> {
-                                            if names_with_old_id.is_empty() {
-                                                // No more subgraph names map to this ID
-                                                Box::new(
-                                                    self_clone2.send_remove_events(vec![name_clone], old_id),
-                                                )
-                                            } else {
-                                                // Other subgraph names use this ID
-                                                Box::new(future::ok(()))
-                                            }
-                                        }))
-                                }
-
-                                // Subgraph name exists but has a null ID
-                                Some(None) => Box::new(future::ok(())),
-
-                                // Subgraph name does not exist
-                                None => Box::new(future::ok(())),
+                            .find_subgraph_names_by_id(subgraph.id.clone()),
+                    ).map_err(SubgraphProviderError::Unknown)
+                    .and_then(move |existing_names| {
+                        // Add new mapping
+                        future::result(
+                            self_clone
+                                .store
+                                .write_subgraph_name(name.clone(), Some(subgraph.id.clone())),
+                        ).map_err(SubgraphProviderError::Unknown)
+                        .and_then(move |()| -> Box<Future<Item = _, Error = _> + Send> {
+                            if existing_names.is_empty() {
+                                // Start subgraph processing
+                                Box::new(
+                                    self_clone
+                                        .send_add_events(subgraph)
+                                        .map_err(SubgraphProviderError::Unknown),
+                                )
+                            } else {
+                                // Subgraph is already started
+                                Box::new(future::ok(()))
                             }
-                        },
-                    ).and_then(move |_| {
-                        self_clone3.send_add_events(subgraph, subgraph_added_name)
-                            .map_err(SubgraphProviderError::Unknown)
+                        })
                     })
                 }),
         )
@@ -235,43 +219,50 @@ where
         &self,
         name: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static> {
-        let names_and_id_opt_result = self
-            .store
-            .read_subgraph_name(name.clone())
+        let self_clone = self.clone();
+        let store = self.store.clone();
+
+        // Look up name mapping
+        Box::new(future::result(store.read_subgraph_name(name.clone()))
             .map_err(SubgraphProviderError::Unknown)
-            .and_then(move |subgraph_id_opt_from_name_opt| {
-                match subgraph_id_opt_from_name_opt {
-                    Some(subgraph_id_opt_from_name) => {
-                        // name_or_id is a valid name, so use it to determine ID
-                        let id_opt = subgraph_id_opt_from_name;
+            .and_then(|id_opt_opt: Option<Option<SubgraphId>>| {
+                id_opt_opt.ok_or_else(|| SubgraphProviderError::NameNotFound(name.clone()))
+            }).and_then(move |id_opt: Option<SubgraphId>| {
+                let store = store.clone();
 
-                        Ok((vec![name], id_opt))
-                    }
-                    None => {
-                        Err(SubgraphProviderError::NotFound(name))
-                    }
-                }
-            }).and_then(|(names, id_opt): (Vec<String>, Option<String>)| {
-                for name in names.iter() {
-                    self.store
-                        .delete_subgraph_name(name.clone())
-                        .map_err(SubgraphProviderError::Unknown)?;
-                }
+                // Delete this name->ID mapping
+                future::result(store.delete_subgraph_name(name.clone()))
+                    .map_err(SubgraphProviderError::Unknown)
+                    .and_then(move |()| -> Box<Future<Item=_, Error=_> + Send> {
+                        let store = store.clone();
 
-                Ok((names, id_opt))
-            });
-
-        match names_and_id_opt_result {
-            Err(e) => Box::new(future::err(e)),
-            Ok((names, Some(id))) => {
-                // Shut down subgraph
-                Box::new(self.send_remove_events(names, id))
-            }
-            Ok((_, None)) => {
-                // No associated subgraph, so nothing to shut down
-                Box::new(future::ok(()))
-            }
-        }
+                        // If name mapping pointed to a non-null ID
+                        if let Some(id) = id_opt {
+                            Box::new(
+                            future::result(store.find_subgraph_names_by_id(id.clone()))
+                                .map_err(SubgraphProviderError::Unknown)
+                                .and_then(move |names| -> Box<Future<Item=_, Error=_> + Send> {
+                                    // If this subgraph ID is no longer pointed to by any subgraph names
+                                    if names.is_empty() {
+                                        // Shut down subgraph processing
+                                        // Note: there's a possible race condition if two names
+                                        // pointing to the same ID are removed at the same time.
+                                        // That's fine for now and will be fixed when this is
+                                        // redone for the hosted service.
+                                        Box::new(self_clone.send_remove_events(id))
+                                    } else {
+                                        // Leave subgraph running
+                                        Box::new(future::ok(()))
+                                    }
+                                })
+                            )
+                        } else {
+                            // Nothing to shut down
+                            Box::new(future::ok(()))
+                        }
+                    })
+            })
+        )
     }
 
     fn list(&self) -> Result<Vec<(String, Option<SubgraphId>)>, Error> {
@@ -297,27 +288,34 @@ impl<L, S> EventProducer<SchemaEvent> for SubgraphProvider<L, S> {
     }
 }
 
-#[test]
-fn rejects_name_bad_for_urls() {
-    extern crate failure;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use graph_mock::MockStore;
 
-    struct FakeLinkResolver;
+    #[test]
+    fn rejects_name_bad_for_urls() {
+        extern crate failure;
 
-    impl LinkResolver for FakeLinkResolver {
-        fn cat(&self, _: &Link) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send> {
-            unimplemented!()
+        struct FakeLinkResolver;
+
+        impl LinkResolver for FakeLinkResolver {
+            fn cat(&self, _: &Link) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send> {
+                unimplemented!()
+            }
         }
-    }
-    let logger = slog::Logger::root(slog::Discard, o!());
-    let provider = Arc::new(
-        SubgraphProvider::init(logger, Arc::new(FakeLinkResolver))
-            .wait()
-            .unwrap(),
-    );
-    let bad = "/../funky%2F:9001".to_owned();
-    let result = provider.deploy(bad.clone(), "".to_owned());
-    match result.wait() {
-        Err(SubgraphProviderError::InvalidName(name)) => assert_eq!(name, bad),
-        x => panic!("unexpected test result {:?}", x),
+        let logger = slog::Logger::root(slog::Discard, o!());
+        let store = Arc::new(MockStore::new());
+        let provider = Arc::new(
+            SubgraphProvider::init(logger, Arc::new(FakeLinkResolver), store)
+                .wait()
+                .unwrap(),
+        );
+        let bad = "/../funky%2F:9001".to_owned();
+        let result = provider.deploy(bad.clone(), "".to_owned());
+        match result.wait() {
+            Err(SubgraphProviderError::InvalidName(name)) => assert_eq!(name, bad),
+            x => panic!("unexpected test result {:?}", x),
+        }
     }
 }

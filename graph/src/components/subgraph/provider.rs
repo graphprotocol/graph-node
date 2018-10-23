@@ -3,10 +3,10 @@ use prelude::*;
 /// Events emitted by [SubgraphProvider](trait.SubgraphProvider.html) implementations.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SubgraphProviderEvent {
-    /// A subgraph with the given name and manifest should start processing.
-    SubgraphStart(String, SubgraphManifest),
+    /// A subgraph with the given manifest should start processing.
+    SubgraphStart(SubgraphManifest),
     /// The subgraph with the given ID should stop processing.
-    SubgraphStop(String),
+    SubgraphStop(SubgraphId),
 }
 
 /// Schema-only events emitted by a [SubgraphProvider](trait.SubgraphProvider.html).
