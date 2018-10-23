@@ -79,15 +79,21 @@ where
         let graphql_runner = self.graphql_runner.clone();
         let schemas = self.schemas.read().unwrap();
 
-        // First try `name_or_id` as a name, if that fails try it as an id.
-        let schema = schemas
-            .get(name_or_id)
-            .or_else(|| schemas.get(self.names.read().unwrap().get(name_or_id)?));
+        // First try `name_or_id` as an id, if that fails try it as a name.
+        // This is so that a subgraph cannot impersonate another by making its
+        // name equal to the other's id.
+        let schema = schemas.get(
+            self.names
+                .read()
+                .unwrap()
+                .get(name_or_id)
+                .map(String::as_str)
+                .unwrap_or(name_or_id),
+        );
 
-        let schema = if let Some(schema) = schema {
-            schema.clone()
-        } else {
-            return self.handle_not_found();
+        let schema = match schema {
+            Some(schema) => schema.clone(),
+            None => return self.handle_not_found(),
         };
 
         Box::new(
