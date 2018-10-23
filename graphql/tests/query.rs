@@ -18,7 +18,6 @@ use graph_graphql::prelude::*;
 
 fn test_schema() -> Schema {
     let mut schema = Schema {
-        name: String::from("test-schema"),
         id: String::from("test-schema"),
         document: api_schema(
             &graphql_parser::parse_schema(
@@ -133,6 +132,34 @@ impl TestStore {
 }
 
 impl Store for TestStore {
+    fn authorize_subgraph_name(&self, _: String, _: String) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn check_subgraph_name_access_token(&self, _: String, _: String) -> Result<bool, Error> {
+        unimplemented!()
+    }
+
+    fn read_all_subgraph_names(&self) -> Result<Vec<(String, Option<SubgraphId>)>, Error> {
+        unimplemented!()
+    }
+
+    fn read_subgraph_name(&self, _: String) -> Result<Option<Option<SubgraphId>>, Error> {
+        unimplemented!()
+    }
+
+    fn write_subgraph_name(&self, _: String, id: Option<SubgraphId>) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn find_subgraph_names_by_id(&self, _: SubgraphId) -> Result<Vec<String>, Error> {
+        unimplemented!()
+    }
+
+    fn delete_subgraph_name(&self, _: String) -> Result<(), Error> {
+        unimplemented!()
+    }
+
     fn add_subgraph_if_missing(&self, _: SubgraphId, _: EthereumBlockPointer) -> Result<(), Error> {
         unimplemented!()
     }

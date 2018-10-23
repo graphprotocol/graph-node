@@ -2,12 +2,12 @@ use components::link_resolver::LinkResolver;
 use data::schema::Schema;
 use ethabi::Contract;
 use failure;
-use failure::SyncFailure;
+use failure::{Error, SyncFailure};
 use futures::stream;
 use graphql_parser;
 use parity_wasm;
 use parity_wasm::elements::Module;
-use serde::de::{Deserialize, Deserializer, Error};
+use serde::de::{Deserialize, Deserializer};
 use serde_yaml;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -19,6 +19,8 @@ fn deserialize_address<'de, D>(deserializer: D) -> Result<Address, D::Error>
 where
     D: Deserializer<'de>,
 {
+    use serde::de::Error;
+
     let s: String = Deserialize::deserialize(deserializer)?;
     let address = s.trim_left_matches("0x");
     Address::from_str(address).map_err(D::Error::custom)
@@ -37,13 +39,19 @@ pub enum SubgraphProviderError {
     )]
     InvalidName(String),
     /// Occurs when attempting to remove a subgraph that's not hosted.
-    #[fail(display = "subgraph not found: {}", _0)]
-    NotFound(String),
+    #[fail(display = "subgraph name not found: {}", _0)]
+    NameNotFound(String),
     /// Occurs when a subgraph's GraphQL schema is invalid.
     #[fail(display = "GraphQL schema error: {}", _0)]
     SchemaValidationError(failure::Error),
     #[fail(display = "subgraph provider error: {}", _0)]
     Unknown(failure::Error),
+}
+
+impl From<Error> for SubgraphProviderError {
+    fn from(e: Error) -> Self {
+        SubgraphProviderError::Unknown(e)
+    }
 }
 
 #[derive(Fail, Debug)]

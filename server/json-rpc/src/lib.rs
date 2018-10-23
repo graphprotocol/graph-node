@@ -166,10 +166,7 @@ where
         info!(logger, "Received subgraph_remove request"; "params" => params.to_string());
 
         if let Err(e) = self.check_subgraph_auth(params.name.clone(), auth.bearer_token) {
-            return Box::new(future::err(json_rpc_error(
-                JSON_RPC_UNAUTHORIZED_ERROR,
-                "API key is invalid".to_owned(),
-            )));
+            return Box::new(future::err(e));
         }
 
         Box::new(

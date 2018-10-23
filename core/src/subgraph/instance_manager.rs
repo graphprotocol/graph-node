@@ -67,10 +67,9 @@ impl SubgraphInstanceManager {
             use self::SubgraphProviderEvent::*;
 
             match event {
-                SubgraphStart(name, manifest) => {
+                SubgraphStart(manifest) => {
                     info!(
                         logger, "Starting subgraph";
-                        "subgraph_name" => &name,
                         "subgraph_id" => &manifest.id
                     );
 
@@ -80,7 +79,6 @@ impl SubgraphInstanceManager {
                         host_builder.clone(),
                         block_stream_builder.clone(),
                         store.clone(),
-                        name,
                         manifest,
                     )
                 }
@@ -100,7 +98,6 @@ impl SubgraphInstanceManager {
         host_builder: T,
         block_stream_builder: B,
         store: Arc<S>,
-        name: String,
         manifest: SubgraphManifest,
     ) where
         T: RuntimeHostBuilder,
@@ -108,7 +105,6 @@ impl SubgraphInstanceManager {
         S: Store + ChainStore + 'static,
     {
         let id = manifest.id.clone();
-        let name_for_log = name.clone();
         let id_for_log = manifest.id.clone();
         let id_for_transact = manifest.id.clone();
         let id_for_err = manifest.id.clone();

@@ -59,10 +59,8 @@ impl MockSubgraphProvider {
 
         self.event_sink
             .clone()
-            .send(SubgraphProviderEvent::SubgraphStart(
-                String::from("mock-subgraph"),
-                mock_subgraph,
-            )).wait()
+            .send(SubgraphProviderEvent::SubgraphStart(mock_subgraph))
+            .wait()
             .unwrap();
     }
 
