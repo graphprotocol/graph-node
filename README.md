@@ -57,14 +57,14 @@ cargo run -p graph-node --release -- \
   --ipfs 127.0.0.1:5001 \
 ```
 
-Try your OS username as `USERNAME` and `PASSWORD`. The password might be optional, it depends on your setup. 
+Try your OS username as `USERNAME` and `PASSWORD`. The password might be optional, it depends on your setup.
 
 This will also spin up a GraphiQL interface at `http://127.0.0.1:8000/`.
 
-6. Back in your subgraph directory, run
+6.  Back in your subgraph directory, run
 
 ```
-yarn deploy --verbosity debug`
+yarn deploy --verbosity debug
 ```
 
 in order to build and deploy your subgraph to the Graph Node. It should start indexing the subgraph immediately.
@@ -86,12 +86,12 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-        --subgraph <IPFS_HASH>       IPFS hash of the subgraph manifest
-        --ethereum-ipc <FILE>        Ethereum IPC pipe
-        --ethereum-rpc <URL>         Ethereum RPC endpoint
-        --ethereum-ws <URL>          Ethereum WebSocket endpoint
-        --ipfs <HOST:PORT>           HTTP address of an IPFS node
-        --postgres-url <URL>         Location of the Postgres database used for storing entities
+        --subgraph [<NAME>:]<IPFS_HASH>         Name (optional) and IPFS hash of the subgraph manifest
+        --ethereum-ipc <NETWORK_NAME>:<FILE>    Ethereum network name (e.g. 'mainnet') and Ethereum IPC pipe path, separated by a ':'
+        --ethereum-rpc <NETWORK_NAME>:<URL>     Ethereum network name (e.g. 'mainnet') and Ethereum RPC endpoint URL, separated by a ':'
+        --ethereum-ws <NETWORK_NAME>:<URL>      Ethereum network name (e.g. 'mainnet') and Ethereum WebSocket endpoint URL, separated by a ':'
+        --ipfs <HOST>:<PORT>                    HTTP address of an IPFS node
+        --postgres-url <URL>                    Location of the Postgres database used for storing entities
 ```
 
 ### Environment Variables
