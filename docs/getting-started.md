@@ -323,21 +323,21 @@ cargo run -p graph-node --release -- \
   --ipfs 127.0.0.1:5001
 ```
 
-Note that this assumes the local node is on the default `8545` port. If you are on a different port, change it. 
+Note that this assumes the local node is on the default `8545` port. If you are on a different port, change it.
 
-Note that if you switch back and forth between sourcing data from Infura, and your own local nodes, this is completely fine. 
+Note that if you switch back and forth between sourcing data from Infura, and your own local nodes, this is completely fine.
 
-#### 2.3.3 Ganache 
+#### 2.3.3 Ganache
 
-**NOTE: Ganache is not working right now, as we are unable to connect to it properly. Please follow [this upstream issue](https://github.com/trufflesuite/ganache/issues/907) to see if Ganache has been updated, and that we can connect.**
+**NOTE: Ganache fixed the [issue](https://github.com/trufflesuite/ganache/issues/907) that was preventing things from working properly. However, it didn't release the new version. Follow the steps in this [issue](https://github.com/graphprotocol/graph-node/issues/375) to run the fixed version locally.**
 
-[Ganache](https://github.com/trufflesuite/ganache-cli) can be used as well, and is best used for quick testing. This might be an option if you are just testing out the contracts for quick iterations. Of 
-course, if you close Ganache, the Graph Node will not have any data to source anymore. It is likely that Ganache would be viable in short term projects (i.e. hackathons). Also, it can be useful for testing 
-out that the schema and mappings are working properly, before working on the mainnet. 
+[Ganache](https://github.com/trufflesuite/ganache-cli) can be used as well, and is best used for quick testing. This might be an option if you are just testing out the contracts for quick iterations. Of
+course, if you close Ganache, the Graph Node will not have any data to source anymore. It is likely that Ganache would be viable in short term projects (i.e. hackathons). Also, it can be useful for testing
+out that the schema and mappings are working properly, before working on the mainnet.
 
- You can connect the Graph Node to Ganache the same way you connected to a local geth or parity node in the previous section. Just note that Ganache normally runs on port `9545` instead of `8545`.
+You can connect the Graph Node to Ganache the same way you connected to a local geth or parity node in the previous section. Just note that Ganache normally runs on port `9545` instead of `8545`.
 
-#### 2.3.4 Local Parity Testnet (Works Similar to Ganache) 
+#### 2.3.4 Local Parity Testnet (Works Similar to Ganache)
 
 To setup a local testnet that will allow you to rapidly test the project, download the parity software if you don’t already have it. This command will work for a one line install:
 
