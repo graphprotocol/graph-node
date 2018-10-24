@@ -373,7 +373,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 }
 
 /// Parses an Ethereum connection string and returns the network name and Ethereum node.
-fn parse_ethereum_network_and_node<'a>(s: &'a str) -> Result<(&'a str, &'a str), Error> {
+fn parse_ethereum_network_and_node(s: &str) -> Result<(&str, &str), Error> {
     // Check for common Ethereum node mistakes
     if s.starts_with("wss://") || s.starts_with("http://") || s.starts_with("https://") {
         return Err(format_err!(
