@@ -34,7 +34,7 @@ use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::{SubgraphInstanceManager, SubgraphProvider as IpfsSubgraphProvider};
-use graph_datasource_ethereum::{BlockStreamBuilder, EventLoopHandle, Transport};
+use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_json_rpc::{subgraph_deploy_request, JsonRpcServer};
@@ -61,63 +61,64 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .long("subgraph")
                 .value_name("[NAME:]IPFS_HASH")
                 .help("name and IPFS hash of the subgraph manifest"),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("postgres-url")
                 .takes_value(true)
                 .required(true)
                 .long("postgres-url")
                 .value_name("URL")
                 .help("Location of the Postgres database used for storing entities"),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("ethereum-rpc")
                 .takes_value(true)
                 .required_unless_one(&["ethereum-ws", "ethereum-ipc"])
                 .conflicts_with_all(&["ethereum-ws", "ethereum-ipc"])
                 .long("ethereum-rpc")
                 .value_name("NETWORK_NAME:URL")
-                .help("Ethereum network name (e.g. 'mainnet') and Ethereum RPC endpoint URL, separated by a ':'"),
-        )
-        .arg(
+                .help(
+                    "Ethereum network name (e.g. 'mainnet') and \
+                     Ethereum RPC URL, separated by a ':'",
+                ),
+        ).arg(
             Arg::with_name("ethereum-ws")
                 .takes_value(true)
                 .required_unless_one(&["ethereum-rpc", "ethereum-ipc"])
                 .conflicts_with_all(&["ethereum-rpc", "ethereum-ipc"])
                 .long("ethereum-ws")
                 .value_name("NETWORK_NAME:URL")
-                .help("Ethereum network name (e.g. 'mainnet') and Ethereum WebSocket endpoint URL, separated by a ':'"),
-        )
-        .arg(
+                .help(
+                    "Ethereum network name (e.g. 'mainnet') and \
+                     Ethereum WebSocket URL, separated by a ':'",
+                ),
+        ).arg(
             Arg::with_name("ethereum-ipc")
                 .takes_value(true)
                 .required_unless_one(&["ethereum-rpc", "ethereum-ws"])
                 .conflicts_with_all(&["ethereum-rpc", "ethereum-ws"])
                 .long("ethereum-ipc")
                 .value_name("NETWORK_NAME:FILE")
-                .help("Ethereum network name (e.g. 'mainnet') and Ethereum IPC pipe path, separated by a ':'"),
-        )
-        .arg(
+                .help(
+                    "Ethereum network name (e.g. 'mainnet') and \
+                     Ethereum IPC pipe, separated by a ':'",
+                ),
+        ).arg(
             Arg::with_name("ipfs")
                 .takes_value(true)
                 .required(true)
                 .long("ipfs")
                 .value_name("HOST:PORT")
                 .help("HTTP address of an IPFS node"),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("admin-port")
                 .default_value("8020")
                 .long("admin-port")
                 .value_name("PORT")
                 .help("port for the admin JSON-RPC server"),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("debug")
                 .long("debug")
                 .help("Enable debug logging"),
-        )
-        .get_matches();
+        ).get_matches();
 
     // Set up logger
     let logger = logger(matches.is_present("debug"));
@@ -212,12 +213,21 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), ipfs_client.clone());
 
+    // Parse the Ethereum URL
+    let (ethereum_network_name, ethereum_node_url) = parse_ethereum_network_and_node(
+        [ethereum_ipc, ethereum_rpc, ethereum_ws]
+            .into_iter()
+            .filter_map(|x| x.to_owned())
+            .next()
+            .expect("one of --ethereum-ipc, --ethereum-rpc or --ethereum-ws must be provided"),
+    ).expect("failed to parse Ethereum connection string");
+
     // Set up Ethereum transport
-    let (ethereum_network_name, (transport_event_loop, transport)) = ethereum_ipc
-        .map(|s| new_transport(s, &logger, Transport::new_ipc))
-        .or(ethereum_ws.map(|s| new_transport(s, &logger, Transport::new_ws)))
-        .or(ethereum_rpc.map(|s| new_transport(s, &logger, Transport::new_rpc)))
-        .expect("One of --ethereum-ipc, --ethereum-ws or --ethereum-rpc must be provided");
+    let (transport_event_loop, transport) = ethereum_ipc
+        .map(|_| Transport::new_ipc(ethereum_node_url))
+        .or(ethereum_ws.map(|_| Transport::new_ws(ethereum_node_url)))
+        .or(ethereum_rpc.map(|_| Transport::new_rpc(ethereum_node_url)))
+        .expect("One of --ethereum-ipc, --ethereum-rpc or --ethereum-ws must be provided");
 
     // If we drop the event loop the transport will stop working.
     // For now it's fine to just leak it.
@@ -232,14 +242,22 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     ));
 
     // Ask Ethereum node for network identifiers
-    info!(logger, "Connecting to Ethereum...");
+    info!(
+        logger, "Connecting to Ethereum...";
+        "network" => &ethereum_network_name,
+        "node" => &ethereum_node_url,
+    );
     let eth_net_identifiers = match ethereum.net_identifiers().wait() {
         Ok(net) => {
-            info!(logger, "Connected to Ethereum node.");
+            info!(
+                logger, "Connected to Ethereum";
+                "network" => &ethereum_network_name,
+                "node" => &ethereum_node_url,
+            );
             net
         }
         Err(e) => {
-            error!(logger, "Was a valid Ethereum node endpoint provided?");
+            error!(logger, "Was a valid Ethereum node provided?");
             panic!("Failed to connect to Ethereum node: {}", e);
         }
     };
@@ -354,34 +372,33 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     future::empty()
 }
 
-/// Parses a connection string, returns a network name and a Transport.
-fn new_transport<'a, C>(
-    s: &'a str,
-    logger: &Logger,
-    constructor: C,
-) -> (&'a str, (EventLoopHandle, Transport))
-where
-    C: FnOnce(&str) -> (EventLoopHandle, Transport),
-{
-    // Check for common mistakes
+/// Parses an Ethereum connection string and returns the network name and Ethereum node.
+fn parse_ethereum_network_and_node<'a>(s: &'a str) -> Result<(&'a str, &'a str), Error> {
+    // Check for common Ethereum node mistakes
     if s.starts_with("wss://") || s.starts_with("http://") || s.starts_with("https://") {
-        warn!(logger, "Is your Ethereum connection string missing a network name? Try 'mainnet:' + the connection URL.");
+        return Err(format_err!(
+            "Is your Ethereum node string missing a network name? \
+             Try 'mainnet:' + the Ethereum node URL."
+        ));
     }
 
-    // Parse string (format is "network_name:url_or_path")
-    let split_at = s.find(':').expect(
-        "A network name must be provided alongside the Ethereum node location. Try 'mainnet:URL'.",
-    );
+    // Parse string (format is "NETWORK_NAME:URL")
+    let split_at = s.find(':').ok_or(format_err!(
+        "A network name must be provided alongside the \
+         Ethereum node location. Try e.g. 'mainnet:URL'."
+    ))?;
     let (name, loc_with_delim) = s.split_at(split_at);
     let loc = &loc_with_delim[1..];
 
     if name.is_empty() {
-        panic!("Ethereum network name cannot be an empty string");
+        return Err(format_err!(
+            "Ethereum network name cannot be an empty string"
+        ));
     }
 
     if loc.is_empty() {
-        panic!("Ethereum connection location cannot be an empty string");
+        return Err(format_err!("Ethereum node URL cannot be an empty string"));
     }
 
-    (name, constructor(loc))
+    Ok((name, loc))
 }
