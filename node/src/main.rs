@@ -328,6 +328,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Add the CLI subgraph with a REST request to the admin server.
     if let Some(subgraph) = subgraph {
+        warn!(
+            logger,
+            "The `--subgraph` option is deprecated and will be removed. \
+             Please use the `graph deploy` command of `graph-cli` instead."
+        );
         let (name, hash) = if subgraph.contains(':') {
             let mut split = subgraph.split(':');
             (split.next().unwrap(), split.next().unwrap())
