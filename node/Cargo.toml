@@ -5,6 +5,7 @@ version = "0.1.0"
 [dependencies]
 clap = "2.31.2"
 env_logger = "0.5.10"
+failure = "0.1"
 futures = "0.1.21"
 graphql-parser = "0.2.1"
 http = "0.1"
