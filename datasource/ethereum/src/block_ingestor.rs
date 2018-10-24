@@ -64,7 +64,8 @@ where
                             BlockIngestorError::BlockUnavailable(_) => {
                                 trace!(
                                     static_self.logger,
-                                    "Trying again after block polling failed: {}", err
+                                    "Trying again after block polling failed: {}",
+                                    err
                                 );
                             }
                             BlockIngestorError::Unknown(inner_err) => {
