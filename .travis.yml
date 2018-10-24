@@ -33,7 +33,7 @@ matrix:
     # Some env var is always necessary to differentiate included builds
     # Check coding style
     - env: CHECK_FORMATTING=true
-      rust: 1.29.2
+      rust: stable
       script:
         - rustup component add rustfmt-preview
         - cargo fmt --all -- --check
