@@ -12,3 +12,4 @@ mod connection;
 mod server;
 
 pub use self::server::SubscriptionServer;
+pub use graph_graphql::GRAPHQL_WS_PORT;

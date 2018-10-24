@@ -36,9 +36,9 @@ use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::{SubgraphInstanceManager, SubgraphProvider as IpfsSubgraphProvider};
 use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
-use graph_server_http::GraphQLServer as GraphQLQueryServer;
+use graph_server_http::{GraphQLServer as GraphQLQueryServer, GRAPHQL_HTTP_PORT};
 use graph_server_json_rpc::{subgraph_deploy_request, JsonRpcServer};
-use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
+use graph_server_websocket::{SubscriptionServer as GraphQLSubscriptionServer, GRAPHQL_WS_PORT};
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
@@ -358,14 +358,14 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Serve GraphQL queries over HTTP. We will listen on port 8000.
     tokio::spawn(
         graphql_server
-            .serve(8000)
+            .serve(GRAPHQL_HTTP_PORT)
             .expect("Failed to start GraphQL query server"),
     );
 
     // Serve GraphQL subscriptions over WebSockets. We will listen on port 8001.
     tokio::spawn(
         subscription_server
-            .serve(8001)
+            .serve(GRAPHQL_WS_PORT)
             .expect("Failed to start GraphQL subscription server"),
     );
 
