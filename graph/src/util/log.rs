@@ -45,21 +45,27 @@ pub fn register_panic_hook(panic_logger: slog::Logger) {
                 .payload()
                 .downcast_ref::<&str>()
                 .map(|s| s.to_string()));
+
         let panic_location = if let Some(location) = panic_info.location() {
             format!("{}:{}", location.file(), location.line().to_string())
         } else {
             "NA".to_string()
         };
-        crit!(panic_logger, "Node error";
-            "error" => panic_payload.clone(),
-            "location" => panic_location.clone()
-           );
+
         match env::var_os("RUST_BACKTRACE") {
             Some(ref val) if val != "0" => {
-                crit!(panic_logger, "Backtrace";
-                    "trace" => format!("{:?}", Backtrace::new()));
+                crit!(
+                    panic_logger, "{}", panic_payload.unwrap();
+                    "location" => &panic_location,
+                    "backtrace" => format!("{:?}", Backtrace::new()),
+                );
             }
-            _ => (),
-        }
+            _ => {
+                crit!(
+                    panic_logger, "{}", panic_payload.unwrap();
+                    "location" => &panic_location,
+                );
+            }
+        };
     }));
 }
