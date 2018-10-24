@@ -3,9 +3,11 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate graph;
+extern crate graph_graphql;
 
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::serde_json;
+use graph_graphql::{GRAPHQL_HTTP_PORT, GRAPHQL_WS_PORT};
 use jsonrpc_http_server::{
     hyper::{header, Request, Response, StatusCode},
     jsonrpc_core::{
@@ -111,12 +113,12 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
             )));
         }
 
+        let routes = subgraph_routes(&params.name);
         Box::new(
             self.provider
                 .deploy(params.name, format!("/ipfs/{}", params.ipfs_hash))
                 .map_err(|e| json_rpc_error(JSON_RPC_DEPLOY_ERROR, e.to_string()))
-                .map(|_| Ok(Value::Null))
-                .flatten(),
+                .map(move |_| routes),
         )
     }
 
@@ -144,8 +146,7 @@ impl<T: SubgraphProvider> JsonRpcServer<T> {
             self.provider
                 .remove(name_or_id)
                 .map_err(|e| json_rpc_error(JSON_RPC_REMOVE_ERROR, e.to_string()))
-                .map(|_| Ok(Value::Null))
-                .flatten(),
+                .map(|_| Value::Null),
         )
     }
 
@@ -311,4 +312,15 @@ pub fn parse_response(response: Value) -> Result<(), jsonrpc_core::Error> {
     } else {
         Ok(())
     }
+}
+
+fn subgraph_routes(name: &str) -> Value {
+    let mut map = BTreeMap::new();
+    map.insert("playground", format!(":{}/{}", GRAPHQL_HTTP_PORT, name));
+    map.insert(
+        "queries",
+        format!(":{}/{}/graphql", GRAPHQL_HTTP_PORT, name),
+    );
+    map.insert("subscriptions", format!(":{}/{}", GRAPHQL_WS_PORT, name));
+    jsonrpc_core::to_value(map).unwrap()
 }
