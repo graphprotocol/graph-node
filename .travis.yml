@@ -27,16 +27,22 @@ before_install:
 
 matrix:
   fast_finish: true
-  # Allow nightly to fail
   allow_failures:
     - rust: nightly
-  # Only check formatting when running against stable
   include:
+    # Some env var is always necessary to differentiate included builds
+    # Check coding style
     - env: CHECK_FORMATTING=true
+      rust: 1.29.2
+      script:
+        - rustup component add rustfmt-preview
+        - cargo fmt --all -- --check
   # Build tagged commits in release mode
-  include:
     - env: RELEASE=true
       if: tag IS present
+      script:
+          - cargo build -p graph-node --release
+          - mv target/release/graph-node target/release/graph-node-$TRAVIS_OS_NAME
 
 # Cache dependencies
 cache: cargo
@@ -48,23 +54,12 @@ env:
 
 # Test pipeline
 before_script:
-  - if [ "$CHECK_FORMATTING" = "true" ]; then
-      rustup component add rustfmt-preview;
-    fi
   - psql -c "ALTER USER travis WITH PASSWORD 'travis';"
   - psql -c 'create database graph_node_test;' -U travis
 
 script:
-  # Check coding style
-  - if [ "$CHECK_FORMATTING" = "true" ]; then
-      cargo fmt --all -- --check;
-    fi
   # Run tests
   - RUST_BACKTRACE=1 cargo test --verbose --all -- --nocapture
-  - if [ "$RELEASE" = "true" ]; then
-      cargo build -p graph-node --release;
-      mv target/release/graph-node target/release/graph-node-$TRAVIS_OS_NAME;
-    fi
 
 deploy:
   provider: releases
