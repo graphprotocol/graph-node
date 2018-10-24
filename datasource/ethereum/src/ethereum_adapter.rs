@@ -279,7 +279,7 @@ where
         let web3 = self.web3.clone();
         let logger = self.logger.clone();
 
-        let block_future = with_retry(
+        let block_opt_future = with_retry(
             logger.clone(),
             "eth_getBlockByHash RPC call".to_owned(),
             move || {
@@ -295,7 +295,7 @@ where
         });
 
         let web3 = self.web3.clone();
-        Box::new(block_future.and_then(move |block_opt| {
+        Box::new(block_opt_future.and_then(move |block_opt| {
             let web3 = web3.clone();
 
             block_opt.map(move |block| {
@@ -306,15 +306,17 @@ where
                         let tx_hash = tx.hash;
                         let web3 = web3.clone();
 
-                        with_retry(
-                            logger.clone(),
-                            "eth_getTransactionReceipt RPC call".to_owned(),
+                        // Retry, but eventually give up.
+                        // The receipt might be missing because the block was uncled, and the
+                        // transaction never made it back into the main chain.
+                        with_retry_max_retry(32,
                             move || {
                                 web3.eth()
                                     .transaction_receipt(tx_hash)
                                     .map_err(SyncFailure::new)
                                     .from_err()
                                     .and_then(move |receipt_opt| {
+                                        // Might be transient, but might be permanent due to reorg
                                         receipt_opt.ok_or_else(move || {
                                             format_err!(
                                                 "Ethereum node is missing transaction receipt: {}",
@@ -322,7 +324,7 @@ where
                                             )
                                         })
                                     })
-                            },
+                            }
                         ).map_err(move |e| {
                             e.into_inner().unwrap_or_else(move || {
                                 format_err!(
@@ -330,6 +332,18 @@ where
                                     tx_hash
                                 )
                             })
+                        }).and_then(move |receipt| {
+                            // Check if receipt is for the right block
+                            if receipt.block_hash != block_hash {
+                                // If the receipt came from a different block, then the Ethereum node
+                                // no longer considers this block to be in the main chain.
+                                // Nothing we can do from here except give up trying to ingest this
+                                // block.
+                                // There is no way to get the transaction receipt from this block.
+                                Err(format_err!("could not get receipt for block {:?} because block is off the main chain", block_hash))
+                            } else {
+                                Ok(receipt)
+                            }
                         })
                     }).collect::<Vec<_>>();
 
