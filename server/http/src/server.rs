@@ -95,7 +95,7 @@ impl<Q> GraphQLServer<Q> {
                             id: new_schema.id.clone(),
                             document,
                         },
-                        Err(e) => return Ok(error!(logger, "error deriving schema {}", e)),
+                        Err(e) => return Ok(error!(logger, "Error deriving schema {}", e)),
                     };
 
                     schemas.insert(derived_schema.name.clone(), derived_schema);

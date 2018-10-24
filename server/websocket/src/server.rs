@@ -73,7 +73,7 @@ where
                             id: new_schema.id.clone(),
                             document,
                         },
-                        Err(e) => return Ok(error!(logger, "error deriving schema {}", e)),
+                        Err(e) => return Ok(error!(logger, "Error deriving schema {}", e)),
                     };
 
                     // Add the subgraph name, ID and schema to the subgraph registry
