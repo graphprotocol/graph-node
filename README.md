@@ -13,7 +13,7 @@ Graph Node is an open source Rust implementation that event-sources the Ethereum
 
 For detailed instructions and more context check out the [Getting Started Guide](docs/getting-started.md).
 
-*Note: this project is heavily WIP and until it reaches v1.0 the API is subject to change in breaking ways without notice.*
+_Note: this project is heavily WIP and until it reaches v1.0 the API is subject to change in breaking ways without notice._
 
 ## Quick Start
 
@@ -54,7 +54,7 @@ Once you have all the dependencies set up you can run the following:
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://USERNAME[:PASSWORD]@localhost:5432/graph-node \
   --ethereum-rpc mainnet:https://mainnet.infura.io/ \
-  --ipfs 127.0.0.1:5001 \
+  --ipfs 127.0.0.1:5001
 ```
 
 Try your OS username as `USERNAME` and `PASSWORD`. The password might be optional, it depends on your setup.
@@ -82,6 +82,7 @@ USAGE:
       --postgres-url <URL>
 
 FLAGS:
+        --debug      Enable debug logging
     -h, --help       Prints help information
     -V, --version    Prints version information
 
