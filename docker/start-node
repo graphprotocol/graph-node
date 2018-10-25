@@ -6,4 +6,5 @@ set -x
 graph-node \
   --postgres-url "postgresql://$postgres_user:$postgres_pass@$postgres_host/$postgres_db" \
   --ethereum-rpc "$ethereum" \
-  --ipfs "$ipfs"
+  --ipfs "$ipfs" \
+  ${debug:+--debug}
