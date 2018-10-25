@@ -216,28 +216,50 @@ where
         block_number_opt: Option<BlockNumber>,
     ) -> impl Future<Item = Bytes, Error = Error> + Send {
         let web3 = self.web3.clone();
+        let logger = self.logger.clone();
 
-        retry("eth_call RPC call", self.logger.clone())
-            .when_err()
-            .no_limit()
-            .timeout_secs(60)
+        // Outer retry used only for 0-byte responses,
+        // where we can't guarantee the problem is temporary.
+        // If we keep getting back 0-byte responses,
+        // eventually we assume it's right and return it.
+        retry("eth_call RPC call (outer)", logger.clone())
+            .when(|result: &Result<Bytes, _>| {
+                match result {
+                    // Retry only if zero-length response received
+                    Ok(bytes) => bytes.0.is_empty(),
+
+                    // Errors are retried in the inner retry
+                    Err(_) => false,
+                }
+            }).limit(16)
+            .no_logging()
+            .no_timeout()
             .run(move || {
-                let req = CallRequest {
-                    from: None,
-                    to: contract_address,
-                    gas: None,
-                    gas_price: None,
-                    value: None,
-                    data: Some(call_data.clone()),
-                };
-                web3.eth()
-                    .call(req, block_number_opt)
-                    .map_err(SyncFailure::new)
-                    .from_err()
-            }).map_err(|e| {
-                e.into_inner().unwrap_or_else(|| {
-                    format_err!("Ethereum node took too long to perform function call")
-                })
+                let web3 = web3.clone();
+                let call_data = call_data.clone();
+
+                retry("eth_call RPC call", logger.clone())
+                    .when_err()
+                    .no_limit()
+                    .timeout_secs(60)
+                    .run(move || {
+                        let req = CallRequest {
+                            from: None,
+                            to: contract_address,
+                            gas: None,
+                            gas_price: None,
+                            value: None,
+                            data: Some(call_data.clone()),
+                        };
+                        web3.eth()
+                            .call(req, block_number_opt)
+                            .map_err(SyncFailure::new)
+                            .from_err()
+                    }).map_err(|e| {
+                        e.into_inner().unwrap_or_else(|| {
+                            format_err!("Ethereum node took too long to perform function call")
+                        })
+                    })
             })
     }
 }
