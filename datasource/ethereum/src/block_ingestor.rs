@@ -195,7 +195,14 @@ where
         // Retry, but eventually give up.
         // The receipt might be missing because the block was uncled, and the transaction never
         // made it back into the main chain.
-        with_retry_max_retry(16, move || {
+        retry(
+            "block ingestor eth_getTransactionReceipt RPC call",
+            self.logger.clone(),
+        ).when_err()
+        .limit(16)
+        .no_logging()
+        .timeout_secs(60)
+        .run(move || {
             web3.eth()
                 .transaction_receipt(tx_hash)
                 .map_err(move |e| {

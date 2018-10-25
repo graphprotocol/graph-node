@@ -47,10 +47,12 @@ where
     ) -> impl Future<Item = Vec<Log>, Error = Error> {
         let eth_adapter = self.clone();
         let event_sig_count = event_signatures.len();
-        with_retry(
-            self.logger.clone(),
-            "eth_getLogs RPC call".to_owned(),
-            move || {
+
+        retry("eth_getLogs RPC call", self.logger.clone())
+            .when_err()
+            .no_limit()
+            .timeout_secs(60)
+            .run(move || {
                 // Create a log filter
                 let log_filter: Filter = FilterBuilder::default()
                     .from_block(from.into())
@@ -70,18 +72,17 @@ where
                         logs
                     }).map_err(SyncFailure::new)
                     .from_err()
-            },
-        ).map_err(move |e| {
-            e.into_inner().unwrap_or_else(move || {
-                format_err!(
-                    "Ethereum node took too long to respond to eth_getLogs \
-                     (from block {}, to block {}, {} event signatures)",
-                    from,
-                    to,
-                    event_sig_count
-                )
+            }).map_err(move |e| {
+                e.into_inner().unwrap_or_else(move || {
+                    format_err!(
+                        "Ethereum node took too long to respond to eth_getLogs \
+                         (from block {}, to block {}, {} event signatures)",
+                        from,
+                        to,
+                        event_sig_count
+                    )
+                })
             })
-        })
     }
 
     fn log_stream(
@@ -216,10 +217,11 @@ where
     ) -> impl Future<Item = Bytes, Error = Error> + Send {
         let web3 = self.web3.clone();
 
-        with_retry(
-            self.logger.clone(),
-            "eth_call RPC call".to_owned(),
-            move || {
+        retry("eth_call RPC call", self.logger.clone())
+            .when_err()
+            .no_limit()
+            .timeout_secs(60)
+            .run(move || {
                 let req = CallRequest {
                     from: None,
                     to: contract_address,
@@ -232,12 +234,11 @@ where
                     .call(req, block_number_opt)
                     .map_err(SyncFailure::new)
                     .from_err()
-            },
-        ).map_err(|e| {
-            e.into_inner().unwrap_or_else(|| {
-                format_err!("Ethereum node took too long to perform function call")
+            }).map_err(|e| {
+                e.into_inner().unwrap_or_else(|| {
+                    format_err!("Ethereum node took too long to perform function call")
+                })
             })
-        })
     }
 }
 
@@ -250,30 +251,32 @@ where
         &self,
     ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
         let web3 = self.web3.clone();
-        let net_version_future = with_retry(
-            self.logger.clone(),
-            "net_version RPC call".to_owned(),
-            move || web3.net().version().map_err(SyncFailure::new).from_err(),
-        );
+        let net_version_future = retry("net_version RPC call", self.logger.clone())
+            .when_err()
+            .no_limit()
+            .timeout_secs(20)
+            .run(move || web3.net().version().map_err(SyncFailure::new).from_err());
 
         let web3 = self.web3.clone();
-        let gen_block_hash_future = with_retry(
+        let gen_block_hash_future = retry(
+            "eth_getBlockByNumber(0, false) RPC call",
             self.logger.clone(),
-            "eth_getBlockByNumber(0, false) RPC call".to_owned(),
-            move || {
-                web3.eth()
-                    .block(BlockNumber::Earliest.into())
-                    .map_err(SyncFailure::new)
-                    .from_err()
-                    .and_then(|gen_block_opt| {
-                        future::result(
-                            gen_block_opt
-                                .ok_or(format_err!("Ethereum node could not find genesis block"))
-                                .map(|gen_block| gen_block.hash.unwrap()),
-                        )
-                    })
-            },
-        );
+        ).when_err()
+        .no_limit()
+        .timeout_secs(30)
+        .run(move || {
+            web3.eth()
+                .block(BlockNumber::Earliest.into())
+                .map_err(SyncFailure::new)
+                .from_err()
+                .and_then(|gen_block_opt| {
+                    future::result(
+                        gen_block_opt
+                            .ok_or(format_err!("Ethereum node could not find genesis block"))
+                            .map(|gen_block| gen_block.hash.unwrap()),
+                    )
+                })
+        });
 
         Box::new(
             net_version_future
@@ -298,20 +301,20 @@ where
         let web3 = self.web3.clone();
         let logger = self.logger.clone();
 
-        let block_opt_future = with_retry(
-            logger.clone(),
-            "eth_getBlockByHash RPC call".to_owned(),
-            move || {
+        let block_opt_future = retry("eth_getBlockByHash RPC call", logger.clone())
+            .when_err()
+            .no_limit()
+            .timeout_secs(60)
+            .run(move || {
                 web3.eth()
                     .block_with_txs(BlockId::Hash(block_hash))
                     .map_err(SyncFailure::new)
                     .from_err()
-            },
-        ).map_err(move |e| {
-            e.into_inner().unwrap_or_else(move || {
-                format_err!("Ethereum node took too long to return block {}", block_hash)
-            })
-        });
+            }).map_err(move |e| {
+                e.into_inner().unwrap_or_else(move || {
+                    format_err!("Ethereum node took too long to return block {}", block_hash)
+                })
+            });
 
         let web3 = self.web3.clone();
         Box::new(block_opt_future.and_then(move |block_opt| {
@@ -329,8 +332,12 @@ where
                     // Retry, but eventually give up.
                     // The receipt might be missing because the block was uncled, and the
                     // transaction never made it back into the main chain.
-                    with_retry_max_retry(32,
-                        move || {
+                    retry("eth_getTransactionReceipt RPC call", logger.clone())
+                        .when_err()
+                        .limit(32)
+                        .no_logging()
+                        .timeout_secs(60)
+                        .run(move || {
                             web3.eth()
                                 .transaction_receipt(tx_hash)
                                 .map_err(SyncFailure::new)
@@ -344,37 +351,38 @@ where
                                         )
                                     })
                                 })
-                        }
-                    ).map_err(move |e| {
-                        e.into_inner().unwrap_or_else(move || {
-                            format_err!(
-                                "Ethereum node took too long to return transaction receipt {}",
-                                tx_hash
-                            )
+                        }).map_err(move |e| {
+                            e.into_inner().unwrap_or_else(move || {
+                                format_err!(
+                                    "Ethereum node took too long to return transaction receipt {}",
+                                    tx_hash
+                                )
+                            })
+                        }).and_then(move |receipt| {
+                            // Check if receipt is for the right block
+                            if receipt.block_hash != block_hash {
+                                // If the receipt came from a different block, then the Ethereum
+                                // node no longer considers this block to be in the main chain.
+                                // Nothing we can do from here except give up trying to ingest this
+                                // block.
+                                // There is no way to get the transaction receipt from this block.
+                                Err(format_err!(
+                                    "could not get receipt for block {:?} \
+                                     because block is off the main chain",
+                                    block_hash
+                                ))
+                            } else {
+                                Ok(receipt)
+                            }
                         })
-                    }).and_then(move |receipt| {
-                        // Check if receipt is for the right block
-                        if receipt.block_hash != block_hash {
-                            // If the receipt came from a different block, then the Ethereum node
-                            // no longer considers this block to be in the main chain.
-                            // Nothing we can do from here except give up trying to ingest this
-                            // block.
-                            // There is no way to get the transaction receipt from this block.
-                            Err(format_err!("could not get receipt for block {:?} because block is off the main chain", block_hash))
-                        } else {
-                            Ok(receipt)
-                        }
-                    })
                 }).collect::<Vec<_>>();
 
-            Some(
-                stream::futures_ordered(receipt_futures).collect().map(
-                    move |transaction_receipts| EthereumBlock {
-                        block,
-                        transaction_receipts,
-                    },
-                )
-            )
+            Some(stream::futures_ordered(receipt_futures).collect().map(
+                move |transaction_receipts| EthereumBlock {
+                    block,
+                    transaction_receipts,
+                },
+            ))
         }))
     }
 
@@ -385,24 +393,24 @@ where
         let web3 = self.web3.clone();
 
         Box::new(
-            with_retry(
-                self.logger.clone(),
-                "eth_getBlockByNumber RPC call".to_owned(),
-                move || {
+            retry("eth_getBlockByNumber RPC call", self.logger.clone())
+                .when_err()
+                .no_limit()
+                .timeout_secs(60)
+                .run(move || {
                     web3.eth()
                         .block(BlockId::Number(block_number.into()))
                         .map_err(SyncFailure::new)
                         .from_err()
                         .map(|block_opt| block_opt.map(|block| block.hash.unwrap()))
-                },
-            ).map_err(move |e| {
-                e.into_inner().unwrap_or_else(move || {
-                    format_err!(
-                        "Ethereum node took too long to return data for block #{}",
-                        block_number
-                    )
-                })
-            }),
+                }).map_err(move |e| {
+                    e.into_inner().unwrap_or_else(move || {
+                        format_err!(
+                            "Ethereum node took too long to return data for block #{}",
+                            block_number
+                        )
+                    })
+                }),
         )
     }
 
