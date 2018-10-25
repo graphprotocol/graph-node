@@ -42,6 +42,7 @@ where
         &self,
         from: u64,
         to: u64,
+        addresses: Vec<H160>,
         event_signatures: Vec<H256>,
     ) -> impl Future<Item = Vec<Log>, Error = Error> {
         let eth_adapter = self.clone();
@@ -54,6 +55,7 @@ where
                 let log_filter: Filter = FilterBuilder::default()
                     .from_block(from.into())
                     .to_block(to.into())
+                    .address(addresses.clone())
                     .topics(Some(event_signatures.clone()), None, None, None)
                     .build();
 
@@ -95,14 +97,23 @@ where
             );
         }
 
-        // Find all event sigs
+        // Collect all event sigs
         let event_sigs = log_filter
             .contract_address_and_event_sig_pairs
             .iter()
-            .map(|(_addr, sig)| sig.to_owned())
+            .map(|(_addr, sig)| *sig)
             .collect::<HashSet<H256>>()
             .into_iter()
             .collect::<Vec<H256>>();
+
+        // Collect all contract addresses
+        let addresses = log_filter
+            .contract_address_and_event_sig_pairs
+            .iter()
+            .map(|(addr, _sig)| *addr)
+            .collect::<HashSet<H160>>()
+            .into_iter()
+            .collect::<Vec<H160>>();
 
         let eth_adapter = self.clone();
         stream::unfold(from, move |mut chunk_offset| {
@@ -118,8 +129,12 @@ where
                     );
                     let log_filter = log_filter.clone();
                     let chunk_future = eth_adapter
-                        .logs_with_sigs(chunk_offset, chunk_end, event_sigs.clone())
-                        .map(move |logs| {
+                        .logs_with_sigs(
+                            chunk_offset,
+                            chunk_end,
+                            addresses.clone(),
+                            event_sigs.clone(),
+                        ).map(move |logs| {
                             logs.into_iter()
                                 // Filter out false positives
                                 .filter(move |log| log_filter.matches(log))
@@ -155,8 +170,12 @@ where
                         );
                         let log_filter = log_filter.clone();
                         let chunk_future = eth_adapter
-                            .logs_with_sigs(chunk_offset, chunk_end, event_sigs.clone())
-                            .map(move |logs| {
+                            .logs_with_sigs(
+                                chunk_offset,
+                                chunk_end,
+                                addresses.clone(),
+                                event_sigs.clone(),
+                            ).map(move |logs| {
                                 logs.into_iter()
                                     // Filter out false positives
                                     .filter(move |log| log_filter.matches(log))
