@@ -262,10 +262,10 @@ impl<T: SubgraphProvider> JsonRpcServerTrait<T> for JsonRpcServer<T> {
                 AuthorizationHeader::default()
             }
         }).request_middleware(require_auth)
-            // Enable REST API:
-            // POST /<method>/<param1>/<param2>
-            .rest_api(RestApi::Secure)
-            .start_http(&addr.into())
+        // Enable REST API:
+        // POST /<method>/<param1>/<param2>
+        .rest_api(RestApi::Secure)
+        .start_http(&addr.into())
     }
 }
 

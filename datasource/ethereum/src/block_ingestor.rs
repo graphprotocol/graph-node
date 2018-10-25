@@ -277,15 +277,13 @@ where
             .map(|block_hash| {
                 let block_hash = block_hash.to_owned();
 
-                batching_web3.eth()
+                batching_web3
+                    .eth()
                     .block_with_txs(BlockId::from(block_hash))
                     .map_err(|e| format_err!("could not get block from Ethereum: {}", e).into())
                     .and_then(move |block_opt| {
                         block_opt.ok_or(BlockIngestorError::BlockUnavailable(block_hash))
-                    })
-                    .and_then(move |block| {
-                        self.load_full_block(block)
-                    })
+                    }).and_then(move |block| self.load_full_block(block))
             })
             // Collect to ensure that `block_with_txs` calls happen before `submit_batch`
             .collect::<Vec<_>>();

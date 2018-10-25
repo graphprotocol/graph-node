@@ -653,23 +653,23 @@ impl ChainStore for Store {
 
     fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error> {
         // Call attempt_head_update SQL function
-        select(attempt_chain_head_update(&self.network_name, ancestor_count as i64))
-            .load(&*self.conn.lock().unwrap())
-            .map_err(Error::from)
-
-            // We got a single return value, but it's returned generically as a set of rows
-            .map(|mut rows: Vec<_>| {
-                assert_eq!(rows.len(), 1);
-                rows.pop().unwrap()
-            })
-
-            // Parse block hashes into H256 type
-            .map(|hashes: Vec<String>| {
-                hashes.into_iter()
-                    .map(|h| h.parse())
-                    .collect::<Result<Vec<H256>, _>>()
-            })
-            .and_then(|r| r.map_err(Error::from))
+        select(attempt_chain_head_update(
+            &self.network_name,
+            ancestor_count as i64,
+        )).load(&*self.conn.lock().unwrap())
+        .map_err(Error::from)
+        // We got a single return value, but it's returned generically as a set of rows
+        .map(|mut rows: Vec<_>| {
+            assert_eq!(rows.len(), 1);
+            rows.pop().unwrap()
+        })
+        // Parse block hashes into H256 type
+        .map(|hashes: Vec<String>| {
+            hashes
+                .into_iter()
+                .map(|h| h.parse())
+                .collect::<Result<Vec<H256>, _>>()
+        }).and_then(|r| r.map_err(Error::from))
     }
 
     fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener {

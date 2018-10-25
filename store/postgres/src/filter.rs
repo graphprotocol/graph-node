@@ -203,10 +203,12 @@ fn store_filter_by_mode<'a>(
                         .sql("->> 'data')")
                         .sql("::numeric")
                         .sql(op)
-                    // Using `BigDecimal::new(query_value.0, 0)` results in a
-                    // mismatch of `bignum` versions, go through the string
-                    // representation to work around that.
-                        .bind::<Numeric, _>(BigDecimal::from_str(&query_value.to_string()).unwrap()),
+                        // Using `BigDecimal::new(query_value.0, 0)` results in a
+                        // mismatch of `bignum` versions, go through the string
+                        // representation to work around that.
+                        .bind::<Numeric, _>(
+                            BigDecimal::from_str(&query_value.to_string()).unwrap(),
+                        ),
                 ),
             }
         }
@@ -256,14 +258,16 @@ fn store_filter_by_mode<'a>(
                     query,
                     filter_mode,
                     sql("(data -> ")
-                    .bind::<Text, _>(attribute)
-                .sql("->> 'data')")
-                .sql("::numeric")
-                .sql(op)
-                // Using `BigDecimal::new(query_value.0, 0)` results in a
-                // mismatch of `bignum` versions, go through the string
-                // representation to work around that.
-                .bind::<Numeric, _>(BigDecimal::from_str(&query_value.to_string()).unwrap()),
+                        .bind::<Text, _>(attribute)
+                        .sql("->> 'data')")
+                        .sql("::numeric")
+                        .sql(op)
+                        // Using `BigDecimal::new(query_value.0, 0)` results in a
+                        // mismatch of `bignum` versions, go through the string
+                        // representation to work around that.
+                        .bind::<Numeric, _>(
+                            BigDecimal::from_str(&query_value.to_string()).unwrap(),
+                        ),
                 ),
                 Value::Null | Value::Bool(_) | Value::List(_) | Value::Bytes(_) => {
                     return Err(UnsupportedFilter {

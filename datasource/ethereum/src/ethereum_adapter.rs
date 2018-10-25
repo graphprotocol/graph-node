@@ -411,40 +411,35 @@ where
         Box::new(
             // Get a stream of all relevant logs in range
             self.log_stream(from, to, log_filter)
-
                 // Get first chunk of logs
                 .take(1)
-
                 // Collect 0 or 1 vecs of logs
                 .collect()
-
                 // Produce Vec<block ptr> or None
-                .map(|chunks| {
-                    match chunks.len() {
-                        0 => vec![],
-                        1 => {
-                            let mut block_ptrs = vec![];
-                            for log in chunks[0].iter() {
-                                let hash = log
-                                    .block_hash
-                                    .expect("log from Eth node is missing block hash");
-                                let number = log
-                                    .block_number
-                                    .expect("log from Eth node is missing block number")
-                                    .as_u64();
-                                let block_ptr = EthereumBlockPointer::from((hash, number));
+                .map(|chunks| match chunks.len() {
+                    0 => vec![],
+                    1 => {
+                        let mut block_ptrs = vec![];
+                        for log in chunks[0].iter() {
+                            let hash = log
+                                .block_hash
+                                .expect("log from Eth node is missing block hash");
+                            let number = log
+                                .block_number
+                                .expect("log from Eth node is missing block number")
+                                .as_u64();
+                            let block_ptr = EthereumBlockPointer::from((hash, number));
 
-                                if !block_ptrs.contains(&block_ptr) {
-                                    if let Some(prev) = block_ptrs.last() {
-                                        assert!(prev.number < number);
-                                    }
-                                    block_ptrs.push(block_ptr);
+                            if !block_ptrs.contains(&block_ptr) {
+                                if let Some(prev) = block_ptrs.last() {
+                                    assert!(prev.number < number);
                                 }
+                                block_ptrs.push(block_ptr);
                             }
-                            block_ptrs
-                        },
-                        _ => unreachable!(),
+                        }
+                        block_ptrs
                     }
+                    _ => unreachable!(),
                 }),
         )
     }
