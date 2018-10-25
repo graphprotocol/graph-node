@@ -6,6 +6,7 @@ rust:
   - nightly
   - 1.27.0
   - 1.28.0
+  - 1.29.0
 
 # Select pre-installed services
 addons:
