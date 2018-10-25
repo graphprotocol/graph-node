@@ -79,9 +79,9 @@ where
         let graphql_runner = self.graphql_runner.clone();
         let schemas = self.schemas.read().unwrap();
 
-        // First try `name_or_id` as an id, if that fails try it as a name.
-        // This is so that a subgraph cannot impersonate another by making its
-        // name equal to the other's id.
+        // If `name_or_id` is the ID for a name, use that name. Otherwise, use
+        // `name_or_id` as is. This is so that a subgraph cannot impersonate
+        // another by making its name equal to the other's id.
         let schema = schemas.get(
             self.names
                 .read()
