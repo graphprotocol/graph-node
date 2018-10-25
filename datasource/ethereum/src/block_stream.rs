@@ -184,24 +184,16 @@ where
 
             // Determine the next step.
             ctx.get_next_step(log_filter.clone())
-
                 // Do the next step.
                 .and_then(move |step| ctx.do_step(step))
-
                 // Check outcome.
                 // Exit loop if done or there are blocks to process.
-                .map(|outcome| {
-                    match outcome {
-                        ReconciliationStepOutcome::YieldBlocks(next_blocks) => {
-                            future::Loop::Break(Some(next_blocks))
-                        },
-                        ReconciliationStepOutcome::MoreSteps => {
-                            future::Loop::Continue(())
-                        },
-                        ReconciliationStepOutcome::Done => {
-                            future::Loop::Break(None)
-                        },
+                .map(|outcome| match outcome {
+                    ReconciliationStepOutcome::YieldBlocks(next_blocks) => {
+                        future::Loop::Break(Some(next_blocks))
                     }
+                    ReconciliationStepOutcome::MoreSteps => future::Loop::Continue(()),
+                    ReconciliationStepOutcome::Done => future::Loop::Break(None),
                 })
         }))
     }
@@ -465,14 +457,18 @@ where
                     let parent_ptr = EthereumBlockPointer::to_parent(&block);
 
                     // Revert entity changes from this block, and update subgraph ptr.
-                    future::result(ctx.subgraph_store
-                        .revert_block_operations(ctx.subgraph_id.clone(), subgraph_ptr, parent_ptr)
-                        .map_err(Error::from)
-                        .map(|()| {
-                            // At this point, the loop repeats, and we try to move the subgraph ptr another
-                            // step in the right direction.
-                            ReconciliationStepOutcome::MoreSteps
-                        })
+                    future::result(
+                        ctx.subgraph_store
+                            .revert_block_operations(
+                                ctx.subgraph_id.clone(),
+                                subgraph_ptr,
+                                parent_ptr,
+                            ).map_err(Error::from)
+                            .map(|()| {
+                                // At this point, the loop repeats, and we try to move the subgraph ptr another
+                                // step in the right direction.
+                                ReconciliationStepOutcome::MoreSteps
+                            }),
                     )
                 }))
             }

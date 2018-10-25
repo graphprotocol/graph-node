@@ -190,7 +190,8 @@ impl Store for TestStore {
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, QueryExecutionError> {
         let entity_name = Value::String(query.entity.clone());
 
-        let entities = self.entities
+        let entities = self
+            .entities
             .iter()
             .filter(|entity| entity.get("__typename") == Some(&entity_name))
             // We're only supporting the following filters here to to test
@@ -206,22 +207,19 @@ impl Store for TestStore {
                     .and_then(|filter| match filter {
                         StoreFilter::And(filters) => filters.get(0),
                         _ => None,
-                    })
-                    .map(|filter| match filter {
+                    }).map(|filter| match filter {
                         StoreFilter::Equal(k, v) => entity.get(k) == Some(&v),
                         StoreFilter::Contains(k, v) => match entity.get(k) {
                             Some(Value::List(values)) => values.contains(v),
                             _ => false,
                         },
                         StoreFilter::Or(filters) => filters.iter().any(|filter| match filter {
-                            StoreFilter::Equal(k,v) => entity.get(k) == Some(&v),
+                            StoreFilter::Equal(k, v) => entity.get(k) == Some(&v),
                             _ => unimplemented!(),
                         }),
                         _ => unimplemented!(),
-                    })
-                    .unwrap_or(true)
-            })
-            .map(|entity| entity.clone())
+                    }).unwrap_or(true)
+            }).map(|entity| entity.clone())
             .collect();
 
         Ok(entities)
