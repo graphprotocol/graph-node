@@ -26,6 +26,7 @@ use std::time::Duration;
 
 use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
+use graph::tokio_executor;
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::{
     ElasticLoggingConfig, SubgraphInstanceManager, SubgraphProvider as IpfsSubgraphProvider,
@@ -41,13 +42,25 @@ use graph_store_postgres::{Store as DieselStore, StoreConfig};
 fn main() {
     let (panic_logger, _panic_guard) = guarded_logger();
     register_panic_hook(panic_logger);
-    let mut runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-    runtime.block_on_all(future::lazy(|| async_main()));
+    let runtime = tokio::runtime::Runtime::new()
+        .expect("Failed to create runtime");
+
+    tokio_executor::with_default(
+        &mut runtime.executor(),
+        &mut tokio_executor::enter().expect("Multiple executors at once"),
+        |enter| {
+            enter
+                .block_on(future::lazy(|| async_main()))
+                .expect("Failed to run main funtion");
+        },
+    );
+
+    runtime.shutdown_on_idle()
+        .wait().unwrap();
 }
 
 fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     env_logger::init();
-
     // Setup CLI using Clap, provide general info and capture postgres url
     let matches = App::new("graph-node")
         .version("0.1.0")
@@ -236,7 +249,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         },
     ));
     sentry::integrations::panic::register_panic_handler();
-
     info!(logger, "Starting up");
 
     // Try to create an IPFS client for one of the resolved IPFS addresses
