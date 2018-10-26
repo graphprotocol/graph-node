@@ -14,6 +14,9 @@ mod host;
 mod module;
 mod to_from;
 
+/// Runtime-agnostic implementation of exports to WASM.
+mod host_exports;
+
 use self::graph::prelude::*;
 use self::graph::web3::types::{Address, Transaction};
 

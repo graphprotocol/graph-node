@@ -4,22 +4,23 @@ extern crate graphql_parser;
 extern crate ipfs_api;
 extern crate parity_wasm;
 
+use self::graph_mock::FakeStore;
 use ethabi::{LogParam, Token};
 use failure::Error;
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use graph::components::ethereum::*;
+use graph::components::store::*;
+use graph::components::subgraph::*;
+use graph::data::store::scalar;
+use graph::data::subgraph::*;
+use graph::util;
+use graph::web3::types::Address;
 use hex;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::iter::FromIterator;
+use std::str::FromStr;
 use std::sync::Mutex;
-
-use self::graph_mock::FakeStore;
-use graph::components::ethereum::*;
-use graph::components::store::*;
-use graph::components::subgraph::*;
-use graph::data::subgraph::*;
-use graph::util;
-use graph::web3::types::Address;
 
 use super::{Error as WasmiError, *};
 
@@ -142,8 +143,8 @@ impl<T, L, S, U> WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store + Send + Sync,
-    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone,
+    S: Store + Send + Sync + 'static,
+    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + 'static,
 {
     fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: RuntimeValue) -> AscPtr<P> {
         self.module
@@ -309,11 +310,8 @@ fn ipfs_cat() {
     let mut module = test_module(mock_data_source("wasm_test/ipfs_cat.wasm"));
     let ipfs = Arc::new(ipfs_api::IpfsClient::default());
 
-    let hash = module
-        .externals
-        .block_on(ipfs.add(Cursor::new("42")))
-        .unwrap()
-        .hash;
+    let mut runtime = tokio::runtime::Runtime::new().unwrap();
+    let hash = runtime.block_on(ipfs.add(Cursor::new("42"))).unwrap().hash;
     let converted: AscPtr<AscString> = module
         .module
         .invoke_export(
