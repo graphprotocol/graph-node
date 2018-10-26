@@ -21,6 +21,7 @@ extern crate slog_envlogger;
 extern crate slog_term;
 extern crate tiny_keccak;
 pub extern crate tokio;
+pub extern crate tokio_executor;
 extern crate tokio_retry;
 pub extern crate web3;
 
