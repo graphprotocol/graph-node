@@ -8,9 +8,10 @@ extern crate walkdir;
 use ipfs_api::IpfsClient;
 use walkdir::WalkDir;
 
+use std::collections::HashSet;
 use std::fs::read_to_string;
 use std::io::Cursor;
-use std::sync::Mutex;
+use std::iter::FromIterator;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -18,7 +19,7 @@ use graph::components::ethereum::*;
 use graph::ethabi::Token;
 use graph::prelude::*;
 use graph_core::SubgraphInstanceManager;
-use graph_mock::FakeStore;
+use graph_mock::{FakeStore, MockStore};
 use graph_runtime_wasm::RuntimeHostBuilder;
 
 /// Adds subgraph located in `test/subgraphs/`, replacing "link to" placeholders
@@ -175,7 +176,7 @@ fn multiple_data_sources_per_subgraph() {
 
 fn added_subgraph_id(event: &SubgraphProviderEvent) -> &str {
     match event {
-        SubgraphProviderEvent::SubgraphStart(_name, manifest) => &manifest.id,
+        SubgraphProviderEvent::SubgraphStart(manifest) => &manifest.id,
         _ => panic!("not `SubgraphStart`"),
     }
 }
@@ -195,6 +196,7 @@ fn subgraph_provider_events() {
         .block_on(graph_core::SubgraphProvider::init(
             logger,
             Arc::new(IpfsClient::default()),
+            Arc::new(MockStore::new()),
         )).unwrap();
     let provider_events = provider.take_event_stream().unwrap();
     let schema_events = provider.take_event_stream().unwrap();
@@ -268,9 +270,10 @@ fn subgraph_list() {
     let logger = Logger::root(slog::Discard, o!());
     let provider = Arc::new(
         runtime
-            .block_on(graph_core::SubgraphProvider::new(
+            .block_on(graph_core::SubgraphProvider::init(
                 logger,
                 Arc::new(IpfsClient::default()),
+                Arc::new(MockStore::new()),
             )).unwrap(),
     );
 
@@ -283,7 +286,7 @@ fn subgraph_list() {
     let subgraph1_id = subgraph1_link.trim_left_matches("/ipfs/").to_owned();
     let subgraph2_id = subgraph2_link.trim_left_matches("/ipfs/").to_owned();
 
-    assert!(provider.list().is_empty());
+    assert!(provider.list().unwrap().is_empty());
     runtime
         .block_on(provider.deploy("subgraph1".to_owned(), subgraph1_link.clone()))
         .unwrap();
@@ -291,18 +294,24 @@ fn subgraph_list() {
         .block_on(provider.deploy("subgraph2".to_owned(), subgraph2_link.clone()))
         .unwrap();
     assert_eq!(
-        provider.list(),
-        [
-            ("subgraph1".to_owned(), subgraph1_id),
-            ("subgraph2".to_owned(), subgraph2_id.clone())
-        ]
+        provider.list().unwrap().into_iter().collect::<HashSet<_>>(),
+        vec![
+            ("subgraph1".to_owned(), Some(subgraph1_id)),
+            ("subgraph2".to_owned(), Some(subgraph2_id.clone()))
+        ].into_iter()
+        .collect::<HashSet<_>>()
     );
     runtime
         .block_on(provider.remove("subgraph1".to_owned()))
         .unwrap();
-    assert_eq!(provider.list(), [("subgraph2".to_owned(), subgraph2_id)]);
+    assert_eq!(
+        provider.list().unwrap().into_iter().collect::<HashSet<_>>(),
+        vec![("subgraph2".to_owned(), Some(subgraph2_id))]
+            .into_iter()
+            .collect::<HashSet<_>>()
+    );
     runtime
         .block_on(provider.remove("subgraph2".to_owned()))
         .unwrap();
-    assert!(provider.list().is_empty());
+    assert!(provider.list().unwrap().is_empty());
 }

@@ -19,7 +19,6 @@ use module::{WasmiModule, WasmiModuleConfig};
 
 #[derive(Clone)]
 pub struct RuntimeHostConfig {
-    subgraph_name: String,
     subgraph_manifest: SubgraphManifest,
     data_source: DataSource,
 }
@@ -76,19 +75,13 @@ where
 {
     type Host = RuntimeHost;
 
-    fn build(
-        &self,
-        subgraph_name: String,
-        subgraph_manifest: SubgraphManifest,
-        data_source: DataSource,
-    ) -> Self::Host {
+    fn build(&self, subgraph_manifest: SubgraphManifest, data_source: DataSource) -> Self::Host {
         RuntimeHost::new(
             &self.logger,
             self.ethereum_adapter.clone(),
             self.link_resolver.clone(),
             self.store.clone(),
             RuntimeHostConfig {
-                subgraph_name,
                 subgraph_manifest,
                 data_source,
             },
@@ -130,7 +123,6 @@ impl RuntimeHost {
     {
         let logger = logger.new(o!(
             "component" => "RuntimeHost",
-            "subgraph_name" => config.subgraph_name.clone(),
             "subgraph_id" => config.subgraph_manifest.id.clone(),
             "data_source" => config.data_source.name.clone(),
         ));

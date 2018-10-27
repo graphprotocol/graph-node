@@ -1,4 +1,6 @@
 use failure::*;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 use graph::components::store::*;
 use graph::prelude::*;
@@ -22,6 +24,7 @@ impl EventProducer<ChainHeadUpdate> for MockChainHeadUpdateListener {
 /// A mock `Store`.
 pub struct MockStore {
     entities: Vec<Entity>,
+    subgraph_names: Mutex<HashMap<String, Option<SubgraphId>>>,
 }
 
 impl MockStore {
@@ -36,7 +39,10 @@ impl MockStore {
             entities.push(entity);
         }
 
-        MockStore { entities }
+        MockStore {
+            entities,
+            subgraph_names: Mutex::new(HashMap::new()),
+        }
     }
 }
 
@@ -71,23 +77,37 @@ impl Store for MockStore {
     }
 
     fn read_all_subgraph_names(&self) -> Result<Vec<(String, Option<SubgraphId>)>, Error> {
-        unimplemented!();
+        let subgraph_names = self.subgraph_names.lock().unwrap();
+        Ok(subgraph_names
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect())
     }
 
-    fn read_subgraph_name(&self, _: String) -> Result<Option<Option<SubgraphId>>, Error> {
-        unimplemented!();
+    fn read_subgraph_name(&self, name: String) -> Result<Option<Option<SubgraphId>>, Error> {
+        let subgraph_names = self.subgraph_names.lock().unwrap();
+        Ok(subgraph_names.get(&name).map(|opt| opt.to_owned()))
     }
 
-    fn write_subgraph_name(&self, _: String, _: Option<SubgraphId>) -> Result<(), Error> {
-        unimplemented!();
+    fn write_subgraph_name(&self, name: String, id_opt: Option<SubgraphId>) -> Result<(), Error> {
+        let mut subgraph_names = self.subgraph_names.lock().unwrap();
+        subgraph_names.insert(name, id_opt);
+        Ok(())
     }
 
-    fn find_subgraph_names_by_id(&self, _: SubgraphId) -> Result<Vec<String>, Error> {
-        unimplemented!();
+    fn find_subgraph_names_by_id(&self, subgraph_id: SubgraphId) -> Result<Vec<String>, Error> {
+        let subgraph_names = self.subgraph_names.lock().unwrap();
+        Ok(subgraph_names
+            .iter()
+            .filter(|(_, id_opt)| id_opt.as_ref() == Some(&subgraph_id))
+            .map(|(name, _)| name.to_owned())
+            .collect())
     }
 
-    fn delete_subgraph_name(&self, _: String) -> Result<(), Error> {
-        unimplemented!();
+    fn delete_subgraph_name(&self, name: String) -> Result<(), Error> {
+        let mut subgraph_names = self.subgraph_names.lock().unwrap();
+        subgraph_names.remove(&name);
+        Ok(())
     }
 
     fn add_subgraph_if_missing(&self, _: SubgraphId, _: EthereumBlockPointer) -> Result<(), Error> {
