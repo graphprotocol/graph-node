@@ -93,7 +93,6 @@ struct BlockStreamContext<S, C, E> {
     subgraph_store: Arc<S>,
     chain_store: Arc<C>,
     eth_adapter: Arc<E>,
-    subgraph_name: String,
     subgraph_id: String,
     logger: Logger,
 }
@@ -104,7 +103,6 @@ impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
             subgraph_store: self.subgraph_store.clone(),
             chain_store: self.chain_store.clone(),
             eth_adapter: self.eth_adapter.clone(),
-            subgraph_name: self.subgraph_name.clone(),
             subgraph_id: self.subgraph_id.clone(),
             logger: self.logger.clone(),
         }
@@ -130,15 +128,13 @@ where
         subgraph_store: Arc<S>,
         chain_store: Arc<C>,
         eth_adapter: Arc<E>,
-        subgraph_name: String,
         subgraph_id: String,
         log_filter: EthereumLogFilter,
         logger: Logger,
     ) -> Self {
         let logger = logger.new(o!(
             "component" => "BlockStream",
-            "subgraph_name" => subgraph_name.to_string(),
-            "subgraph_id" => subgraph_id.to_string(),
+            "subgraph_id" => subgraph_id.to_string()
         ));
 
         let (chain_head_update_sink, chain_head_update_stream) = channel(100);
@@ -153,7 +149,6 @@ where
                 subgraph_store,
                 chain_store,
                 eth_adapter,
-                subgraph_name,
                 subgraph_id,
                 logger,
             },
@@ -842,12 +837,7 @@ where
 {
     type Stream = BlockStream<S, C, E>;
 
-    fn from_subgraph(
-        &self,
-        name: String,
-        manifest: &SubgraphManifest,
-        logger: Logger,
-    ) -> Self::Stream {
+    fn from_subgraph(&self, manifest: &SubgraphManifest, logger: Logger) -> Self::Stream {
         // Add entry to subgraphs table in Store
         let genesis_block_ptr = self.chain_store.genesis_block_ptr().unwrap();
         self.subgraph_store
@@ -863,7 +853,6 @@ where
             self.subgraph_store.clone(),
             self.chain_store.clone(),
             self.eth_adapter.clone(),
-            name,
             manifest.id.clone(),
             log_filter,
             logger,

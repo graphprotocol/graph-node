@@ -191,6 +191,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use graph_mock::MockStore;
     use graphql_parser;
     use graphql_parser::query as q;
     use http::status::StatusCode;
@@ -242,6 +243,7 @@ mod tests {
             },
         )))));
         let graphql_runner = Arc::new(TestGraphQlRunner);
+        let store = Arc::new(MockStore::new());
         let mut service = GraphQLService::new(schema, graphql_runner, store);
 
         let request = Request::builder()
@@ -270,6 +272,7 @@ mod tests {
     #[test]
     fn posting_valid_queries_yields_result_response() {
         let graphql_runner = Arc::new(TestGraphQlRunner);
+        let store = Arc::new(MockStore::new());
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
             .block_on(future::lazy(|| {

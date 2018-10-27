@@ -11,10 +11,5 @@ pub trait BlockStream:
 pub trait BlockStreamBuilder: Clone + Send + Sync {
     type Stream: BlockStream + Send + 'static;
 
-    fn from_subgraph(
-        &self,
-        name: String,
-        manifest: &SubgraphManifest,
-        logger: Logger,
-    ) -> Self::Stream;
+    fn from_subgraph(&self, manifest: &SubgraphManifest, logger: Logger) -> Self::Stream;
 }

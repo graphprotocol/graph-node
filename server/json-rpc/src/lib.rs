@@ -175,7 +175,7 @@ where
                 .map_err(move |e| {
                     if let SubgraphProviderError::Unknown(e) = e {
                         error!(logger, "subgraph_remove failed: {}", e);
-                        json_rpc_error(JSON_RPC_DEPLOY_ERROR, "internal error".to_owned())
+                        json_rpc_error(JSON_RPC_REMOVE_ERROR, "internal error".to_owned())
                     } else {
                         json_rpc_error(JSON_RPC_REMOVE_ERROR, e.to_string())
                     }

@@ -1,5 +1,7 @@
 extern crate futures;
 extern crate graph;
+#[cfg(test)]
+extern crate graph_mock;
 extern crate graph_server_http;
 extern crate graphql_parser;
 extern crate http;
@@ -39,6 +41,7 @@ impl GraphQlRunner for TestGraphQlRunner {
 #[cfg(test)]
 mod test {
     use super::*;
+    use graph_mock::MockStore;
 
     fn test_schema() -> Schema {
         Schema {
@@ -55,7 +58,8 @@ mod test {
                 let logger = slog::Logger::root(slog::Discard, o!());
 
                 let query_runner = Arc::new(TestGraphQlRunner);
-                let mut server = HyperGraphQLServer::new(&logger, query_runner);
+                let store = Arc::new(MockStore::new());
+                let mut server = HyperGraphQLServer::new(&logger, query_runner, store);
                 let http_server = server.serve(8001).expect("Failed to start GraphQL server");
 
                 // Create a simple schema and send it to the server
@@ -103,7 +107,8 @@ mod test {
                 let logger = slog::Logger::root(slog::Discard, o!());
 
                 let query_runner = Arc::new(TestGraphQlRunner);
-                let mut server = HyperGraphQLServer::new(&logger, query_runner);
+                let store = Arc::new(MockStore::new());
+                let mut server = HyperGraphQLServer::new(&logger, query_runner, store);
                 let http_server = server.serve(8002).expect("Failed to start GraphQL server");
 
                 // Launch the server to handle a single request
@@ -185,7 +190,8 @@ mod test {
                 let logger = slog::Logger::root(slog::Discard, o!());
 
                 let query_runner = Arc::new(TestGraphQlRunner);
-                let mut server = HyperGraphQLServer::new(&logger, query_runner);
+                let store = Arc::new(MockStore::new());
+                let mut server = HyperGraphQLServer::new(&logger, query_runner, store);
                 let http_server = server.serve(8003).expect("Failed to start GraphQL server");
 
                 // Launch the server to handle a single request

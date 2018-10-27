@@ -1,5 +1,5 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use graph::prelude::{SubgraphProvider as SubgraphProviderTrait, *};
 use graph_graphql::prelude::validate_schema;
@@ -49,12 +49,12 @@ where
             move |subgraph_names_and_ids| {
                 let self_clone = self_clone.clone();
 
-                let subgraph_names_by_id = subgraph_names_and_ids
+                let subgraph_ids = subgraph_names_and_ids
                     .into_iter()
-                    .filter_map(|(name, id_opt)| id_opt.map(move |id| (id, name)))
-                    .collect::<HashMap<String, String>>();
+                    .filter_map(|(_name, id_opt)| id_opt)
+                    .collect::<HashSet<SubgraphId>>();
 
-                stream::iter_ok(subgraph_names_by_id.into_iter()).for_each(move |(id, name)| {
+                stream::iter_ok(subgraph_ids).for_each(move |id| {
                     let self_clone = self_clone.clone();
 
                     SubgraphManifest::resolve(
@@ -195,19 +195,21 @@ where
                                 .store
                                 .write_subgraph_name(name.clone(), Some(subgraph.id.clone())),
                         ).map_err(SubgraphProviderError::Unknown)
-                        .and_then(move |()| -> Box<Future<Item = _, Error = _> + Send> {
-                            if existing_names.is_empty() {
-                                // Start subgraph processing
-                                Box::new(
-                                    self_clone
-                                        .send_add_events(subgraph)
-                                        .map_err(SubgraphProviderError::Unknown),
-                                )
-                            } else {
-                                // Subgraph is already started
-                                Box::new(future::ok(()))
-                            }
-                        })
+                        .and_then(
+                            move |()| -> Box<Future<Item = _, Error = _> + Send> {
+                                if existing_names.is_empty() {
+                                    // Start subgraph processing
+                                    Box::new(
+                                        self_clone
+                                            .send_add_events(subgraph)
+                                            .map_err(SubgraphProviderError::Unknown),
+                                    )
+                                } else {
+                                    // Subgraph is already started
+                                    Box::new(future::ok(()))
+                                }
+                            },
+                        )
                     })
                 }),
         )
@@ -221,24 +223,27 @@ where
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static> {
         let self_clone = self.clone();
         let store = self.store.clone();
+        let name_clone = name.clone();
 
         // Look up name mapping
-        Box::new(future::result(store.read_subgraph_name(name.clone()))
-            .map_err(SubgraphProviderError::Unknown)
-            .and_then(|id_opt_opt: Option<Option<SubgraphId>>| {
-                id_opt_opt.ok_or_else(|| SubgraphProviderError::NameNotFound(name.clone()))
-            }).and_then(move |id_opt: Option<SubgraphId>| {
-                let store = store.clone();
+        Box::new(
+            future::result(store.read_subgraph_name(name.clone()))
+                .map_err(SubgraphProviderError::Unknown)
+                .and_then(move |id_opt_opt: Option<Option<SubgraphId>>| {
+                    id_opt_opt
+                        .ok_or_else(|| SubgraphProviderError::NameNotFound(name_clone.clone()))
+                }).and_then(move |id_opt: Option<SubgraphId>| {
+                    let store = store.clone();
 
-                // Delete this name->ID mapping
-                future::result(store.delete_subgraph_name(name.clone()))
-                    .map_err(SubgraphProviderError::Unknown)
-                    .and_then(move |()| -> Box<Future<Item=_, Error=_> + Send> {
-                        let store = store.clone();
+                    // Delete this name->ID mapping
+                    future::result(store.delete_subgraph_name(name.clone()))
+                        .map_err(SubgraphProviderError::Unknown)
+                        .and_then(move |()| -> Box<Future<Item = _, Error = _> + Send> {
+                            let store = store.clone();
 
-                        // If name mapping pointed to a non-null ID
-                        if let Some(id) = id_opt {
-                            Box::new(
+                            // If name mapping pointed to a non-null ID
+                            if let Some(id) = id_opt {
+                                Box::new(
                             future::result(store.find_subgraph_names_by_id(id.clone()))
                                 .map_err(SubgraphProviderError::Unknown)
                                 .and_then(move |names| -> Box<Future<Item=_, Error=_> + Send> {
@@ -256,12 +261,12 @@ where
                                     }
                                 })
                             )
-                        } else {
-                            // Nothing to shut down
-                            Box::new(future::ok(()))
-                        }
-                    })
-            })
+                            } else {
+                                // Nothing to shut down
+                                Box::new(future::ok(()))
+                            }
+                        })
+                }),
         )
     }
 

@@ -112,16 +112,12 @@ impl SubgraphInstanceManager {
         // Request a block stream for this subgraph
         let block_stream_canceler = CancelGuard::new();
         let block_stream = block_stream_builder
-            .from_subgraph(name.clone(), &manifest, logger.clone())
+            .from_subgraph(&manifest, logger.clone())
             .from_err()
             .cancelable(&block_stream_canceler, || CancelableError::Cancel);
 
         // Load the subgraph
-        let instance = Arc::new(SubgraphInstance::from_manifest(
-            name,
-            manifest,
-            host_builder,
-        ));
+        let instance = Arc::new(SubgraphInstance::from_manifest(manifest, host_builder));
 
         // Prepare loggers for different parts of the async processing
         let block_logger = logger.clone();
@@ -135,7 +131,6 @@ impl SubgraphInstanceManager {
                         block_logger, "Process events from block";
                         "block_number" => format!("{:?}", block.block.number.unwrap()),
                         "block_hash" => format!("{:?}", block.block.hash.unwrap()),
-                        "subgraph_name" => &name_for_log,
                         "subgraph_id" => &id_for_log
                     );
 
@@ -152,7 +147,6 @@ impl SubgraphInstanceManager {
                         block_logger,
                         "{} events are relevant for this subgraph",
                         logs.len();
-                        "subgraph_name" => &name_for_log,
                         "subgraph_id" => &id_for_log,
                     );
 
