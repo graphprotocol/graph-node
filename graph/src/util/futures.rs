@@ -45,61 +45,51 @@ use tokio_retry::Retry;
 ///         })
 /// }
 /// ```
-pub fn retry(operation_name: impl ToString, logger: Logger) -> RetryConfig {
+pub fn retry<I, E>(operation_name: impl ToString, logger: Logger) -> RetryConfig<I, E> {
     RetryConfig {
         operation_name: operation_name.to_string(),
         logger,
+        condition_opt: None,
+        log_after: 1,
+        limit: RetryConfigProperty::Unknown,
+        phantom_item: PhantomData,
+        phantom_error: PhantomData,
     }
 }
 
-pub struct RetryConfig {
+pub struct RetryConfig<I, E> {
     operation_name: String,
     logger: Logger,
-}
-
-impl RetryConfig {
-    /// Retry any time the future resolves to an error (or on time out).
-    ///
-    /// See `.when(...)` for fine-grained control over when to retry.
-    pub fn when_err<I, E>(self) -> RetryConfigWithPredicate<impl Fn(&Result<I, E>) -> bool, I, E> {
-        self.when(|result: &Result<I, E>| result.is_err())
-    }
-
-    /// Sets a function used to determine if a retry is needed.
-    /// Note: timeouts always trigger a retry.
-    pub fn when<P, I, E>(self, predicate: P) -> RetryConfigWithPredicate<P, I, E>
-    where
-        P: Fn(&Result<I, E>) -> bool,
-    {
-        RetryConfigWithPredicate {
-            inner: self,
-            predicate,
-            log_after: 1,
-            limit: RetryConfigProperty::Unknown,
-            phantom_item: PhantomData,
-            phantom_error: PhantomData,
-        }
-    }
-}
-
-pub struct RetryConfigWithPredicate<P, I, E>
-where
-    P: Fn(&Result<I, E>) -> bool,
-{
-    inner: RetryConfig,
-    predicate: P,
+    condition_opt: Option<RetryIf<I, E>>,
     log_after: u64,
     limit: RetryConfigProperty<usize>,
     phantom_item: PhantomData<I>,
     phantom_error: PhantomData<E>,
 }
 
-impl<P, I, E> RetryConfigWithPredicate<P, I, E>
+impl<I, E> RetryConfig<I, E>
 where
-    P: Fn(&Result<I, E>) -> bool,
     I: Send,
     E: Send,
 {
+    /// Retry any time the future resolves to an error (or on time out).
+    ///
+    /// See `.when(...)` for fine-grained control over when to retry.
+    pub fn when_err(mut self) -> Self {
+        self.condition_opt = Some(RetryIf::Error);
+        self
+    }
+
+    /// Sets a function used to determine if a retry is needed.
+    /// Note: timeouts always trigger a retry.
+    pub fn when<P>(mut self, predicate: P) -> Self
+    where
+        P: Fn(&Result<I, E>) -> bool + Send + Sync + 'static,
+    {
+        self.condition_opt = Some(RetryIf::Predicate(Box::new(predicate)));
+        self
+    }
+
     /// Only log retries after `min_attempts` failed attempts.
     pub fn log_after(mut self, min_attempts: u64) -> Self {
         self.log_after = min_attempts;
@@ -127,18 +117,18 @@ where
 
     /// Set how long (in seconds) to wait for an attempt to complete before giving up on that
     /// attempt.
-    pub fn timeout_secs(self, timeout_secs: u64) -> RetryConfigWithTimeout<P, I, E> {
+    pub fn timeout_secs(self, timeout_secs: u64) -> RetryConfigWithTimeout<I, E> {
         self.timeout(Duration::from_secs(timeout_secs))
     }
 
     /// Set how long (in milliseconds) to wait for an attempt to complete before giving up on that
     /// attempt.
-    pub fn timeout_millis(self, timeout_ms: u64) -> RetryConfigWithTimeout<P, I, E> {
+    pub fn timeout_millis(self, timeout_ms: u64) -> RetryConfigWithTimeout<I, E> {
         self.timeout(Duration::from_millis(timeout_ms))
     }
 
     /// Set how long to wait for an attempt to complete before giving up on that attempt.
-    pub fn timeout(self, timeout: Duration) -> RetryConfigWithTimeout<P, I, E> {
+    pub fn timeout(self, timeout: Duration) -> RetryConfigWithTimeout<I, E> {
         RetryConfigWithTimeout {
             inner: self,
             timeout,
@@ -146,22 +136,18 @@ where
     }
 
     /// Allow attempts to take as long as they need (or potentially hang forever).
-    pub fn no_timeout(self) -> RetryConfigNoTimeout<P, I, E> {
+    pub fn no_timeout(self) -> RetryConfigNoTimeout<I, E> {
         RetryConfigNoTimeout { inner: self }
     }
 }
 
-pub struct RetryConfigWithTimeout<P, I, E>
-where
-    P: Fn(&Result<I, E>) -> bool,
-{
-    inner: RetryConfigWithPredicate<P, I, E>,
+pub struct RetryConfigWithTimeout<I, E> {
+    inner: RetryConfig<I, E>,
     timeout: Duration,
 }
 
-impl<P, I, E> RetryConfigWithTimeout<P, I, E>
+impl<I, E> RetryConfigWithTimeout<I, E>
 where
-    P: Fn(&Result<I, E>) -> bool + Send + Sync,
     I: Debug + Send,
     E: Debug + Send,
 {
@@ -171,9 +157,12 @@ where
         F: Fn() -> R + Send,
         R: Future<Item = I, Error = E> + Send,
     {
-        let operation_name = self.inner.inner.operation_name;
-        let logger = self.inner.inner.logger.clone();
-        let predicate = self.inner.predicate;
+        let operation_name = self.inner.operation_name;
+        let logger = self.inner.logger.clone();
+        let condition = self
+            .inner
+            .condition_opt
+            .expect(&format!("{} is missing a retry condition", &operation_name));
         let log_after = self.inner.log_after;
         let limit_opt = self.inner.limit.unwrap(&operation_name, "limit");
         let timeout = self.timeout;
@@ -183,7 +172,7 @@ where
         run_retry(
             operation_name,
             logger,
-            predicate,
+            condition,
             log_after,
             limit_opt,
             move || try_it().deadline(Instant::now() + timeout),
@@ -191,17 +180,11 @@ where
     }
 }
 
-pub struct RetryConfigNoTimeout<P, I, E>
-where
-    P: Fn(&Result<I, E>) -> bool,
-{
-    inner: RetryConfigWithPredicate<P, I, E>,
+pub struct RetryConfigNoTimeout<I, E> {
+    inner: RetryConfig<I, E>,
 }
 
-impl<P, I, E> RetryConfigNoTimeout<P, I, E>
-where
-    P: Fn(&Result<I, E>) -> bool + Send + Sync,
-{
+impl<I, E> RetryConfigNoTimeout<I, E> {
     /// Rerun the provided function as many times as needed.
     pub fn run<F, R>(self, try_it: F) -> impl Future<Item = I, Error = E>
     where
@@ -210,9 +193,12 @@ where
         F: Fn() -> R + Send,
         R: Future<Item = I, Error = E> + Send,
     {
-        let operation_name = self.inner.inner.operation_name;
-        let logger = self.inner.inner.logger.clone();
-        let predicate = self.inner.predicate;
+        let operation_name = self.inner.operation_name;
+        let logger = self.inner.logger.clone();
+        let condition = self
+            .inner
+            .condition_opt
+            .expect(&format!("{} is missing a retry condition", &operation_name));
         let log_after = self.inner.log_after;
         let limit_opt = self.inner.limit.unwrap(&operation_name, "limit");
 
@@ -221,7 +207,7 @@ where
         run_retry(
             operation_name,
             logger,
-            predicate,
+            condition,
             log_after,
             limit_opt,
             move || {
@@ -237,10 +223,10 @@ where
     }
 }
 
-fn run_retry<P, I, E, F, R>(
+fn run_retry<I, E, F, R>(
     operation_name: String,
     logger: Logger,
-    predicate: P,
+    condition: RetryIf<I, E>,
     log_after: u64,
     limit_opt: Option<usize>,
     try_it_with_deadline: F,
@@ -248,17 +234,16 @@ fn run_retry<P, I, E, F, R>(
 where
     I: Debug + Send,
     E: Debug + Send,
-    P: Fn(&Result<I, E>) -> bool + Send + Sync,
     F: Fn() -> R + Send,
     R: Future<Item = I, Error = DeadlineError<E>> + Send,
 {
-    let predicate = Arc::new(predicate);
+    let condition = Arc::new(condition);
 
     let mut attempt_count = 0;
     Retry::spawn(retry_strategy(limit_opt), move || {
         let operation_name = operation_name.clone();
         let logger = logger.clone();
-        let predicate = predicate.clone();
+        let condition = condition.clone();
 
         attempt_count += 1;
 
@@ -297,7 +282,7 @@ where
                 let result = result_with_deadline.map_err(|e| e.into_inner().unwrap());
 
                 // If needs retry
-                if predicate(&result) {
+                if condition.check(&result) {
                     if attempt_count >= log_after {
                         debug!(
                             logger,
@@ -341,6 +326,20 @@ fn retry_strategy(limit_opt: Option<usize>) -> Box<Iterator<Item = Duration> + S
             Box::new(backoff.take(limit - 1))
         }
         None => Box::new(backoff),
+    }
+}
+
+enum RetryIf<I, E> {
+    Error,
+    Predicate(Box<Fn(&Result<I, E>) -> bool + Send + Sync>),
+}
+
+impl<I, E> RetryIf<I, E> {
+    fn check(&self, result: &Result<I, E>) -> bool {
+        match *self {
+            RetryIf::Error => result.is_err(),
+            RetryIf::Predicate(ref pred) => pred(result),
+        }
     }
 }
 
