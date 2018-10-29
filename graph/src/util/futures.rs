@@ -218,7 +218,7 @@ fn run_retry<I, E, F, R>(
     condition: RetryIf<I, E>,
     log_after: u64,
     limit_opt: Option<usize>,
-    try_it_with_deadline: F,
+    try_it_with_timeout: F,
 ) -> impl Future<Item = I, Error = timeout::Error<E>> + Send
 where
     I: Debug + Send,
@@ -236,13 +236,13 @@ where
 
         attempt_count += 1;
 
-        try_it_with_deadline().then(move |result_with_deadline| {
-            let is_elapsed = result_with_deadline
+        try_it_with_timeout().then(move |result_with_timeout| {
+            let is_elapsed = result_with_timeout
                 .as_ref()
                 .err()
                 .map(|e| e.is_elapsed())
                 .unwrap_or(false);
-            let is_timer_err = result_with_deadline
+            let is_timer_err = result_with_timeout
                 .as_ref()
                 .err()
                 .map(|e| e.is_timer())
@@ -259,16 +259,16 @@ where
                 }
 
                 // Wrap in Err to force retry
-                Err(result_with_deadline)
+                Err(result_with_timeout)
             } else if is_timer_err {
                 // Should never happen
-                let timer_error = result_with_deadline.unwrap_err().into_timer().unwrap();
+                let timer_error = result_with_timeout.unwrap_err().into_timer().unwrap();
                 panic!("tokio timer error: {}", timer_error)
             } else {
                 // Any error must now be an inner error.
                 // Unwrap the inner error so that the predicate doesn't need to think
                 // about timeout::Error.
-                let result = result_with_deadline.map_err(|e| e.into_inner().unwrap());
+                let result = result_with_timeout.map_err(|e| e.into_inner().unwrap());
 
                 // If needs retry
                 if condition.check(&result) {
