@@ -22,7 +22,9 @@ extern crate slog_term;
 extern crate tiny_keccak;
 pub extern crate tokio;
 pub extern crate tokio_executor;
+pub extern crate tokio_reactor;
 extern crate tokio_retry;
+pub extern crate tokio_timer;
 pub extern crate web3;
 
 /// Traits and types for all system components.
