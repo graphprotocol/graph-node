@@ -14,14 +14,14 @@ use tokio_retry::Retry;
 /// To use this helper, do the following:
 ///
 /// 1. Call this function with an operation name (used for logging) and a `Logger`.
-/// 2. Chain a call to `.when_err()` or `.when(...)`.
+/// 2. Optional: Chain a call to `.when(...)` to set a custom retry condition.
 /// 3. Optional: call `.log_after(...)` or `.no_logging()`.
 /// 4. Call either `.limit(...)` or `.no_limit()`.
 /// 5. Call one of `.timeout_secs(...)`, `.timeout_millis(...)`, `.timeout(...)`, and
 ///    `.no_timeout()`.
 /// 6. Call `.run(...)`.
 ///
-/// All steps are required, except Step 3.
+/// All steps are required, except Step 2 and Step 3.
 ///
 /// Example usage:
 /// ```
@@ -36,8 +36,8 @@ use tokio_retry::Retry;
 /// # }
 ///
 /// fn async_function(logger: Logger) -> impl Future<Item=Memes, Error=DeadlineError<()>> {
+///     // Retry on error
 ///     retry("download memes", logger.clone())
-///         .when_err() // Retry on all errors
 ///         .no_limit() // Retry forever
 ///         .timeout_secs(30) // Retry if an attempt takes > 30 seconds
 ///         .run(|| {
@@ -49,7 +49,7 @@ pub fn retry<I, E>(operation_name: impl ToString, logger: Logger) -> RetryConfig
     RetryConfig {
         operation_name: operation_name.to_string(),
         logger,
-        condition_opt: None,
+        condition: RetryIf::Error,
         log_after: 1,
         limit: RetryConfigProperty::Unknown,
         phantom_item: PhantomData,
@@ -60,7 +60,7 @@ pub fn retry<I, E>(operation_name: impl ToString, logger: Logger) -> RetryConfig
 pub struct RetryConfig<I, E> {
     operation_name: String,
     logger: Logger,
-    condition_opt: Option<RetryIf<I, E>>,
+    condition: RetryIf<I, E>,
     log_after: u64,
     limit: RetryConfigProperty<usize>,
     phantom_item: PhantomData<I>,
@@ -72,21 +72,15 @@ where
     I: Send,
     E: Send,
 {
-    /// Retry any time the future resolves to an error (or on time out).
-    ///
-    /// See `.when(...)` for fine-grained control over when to retry.
-    pub fn when_err(mut self) -> Self {
-        self.condition_opt = Some(RetryIf::Error);
-        self
-    }
-
     /// Sets a function used to determine if a retry is needed.
     /// Note: timeouts always trigger a retry.
+    ///
+    /// Overrides the default behaviour of retrying on any `Err`.
     pub fn when<P>(mut self, predicate: P) -> Self
     where
         P: Fn(&Result<I, E>) -> bool + Send + Sync + 'static,
     {
-        self.condition_opt = Some(RetryIf::Predicate(Box::new(predicate)));
+        self.condition = RetryIf::Predicate(Box::new(predicate));
         self
     }
 
@@ -159,10 +153,7 @@ where
     {
         let operation_name = self.inner.operation_name;
         let logger = self.inner.logger.clone();
-        let condition = self
-            .inner
-            .condition_opt
-            .expect(&format!("{} is missing a retry condition", &operation_name));
+        let condition = self.inner.condition;
         let log_after = self.inner.log_after;
         let limit_opt = self.inner.limit.unwrap(&operation_name, "limit");
         let timeout = self.timeout;
@@ -195,10 +186,7 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
     {
         let operation_name = self.inner.operation_name;
         let logger = self.inner.logger.clone();
-        let condition = self
-            .inner
-            .condition_opt
-            .expect(&format!("{} is missing a retry condition", &operation_name));
+        let condition = self.inner.condition;
         let log_after = self.inner.log_after;
         let limit_opt = self.inner.limit.unwrap(&operation_name, "limit");
 
@@ -401,7 +389,6 @@ mod tests {
         let result = runtime.block_on(future::lazy(|| {
             let c = Mutex::new(0);
             retry("test", logger)
-                .when_err()
                 .no_logging()
                 .no_limit()
                 .no_timeout()
@@ -427,7 +414,6 @@ mod tests {
         let result = runtime.block_on(future::lazy(|| {
             let c = Mutex::new(0);
             retry("test", logger)
-                .when_err()
                 .no_logging()
                 .limit(5)
                 .no_timeout()
@@ -453,7 +439,6 @@ mod tests {
         let result = runtime.block_on(future::lazy(|| {
             let c = Mutex::new(0);
             retry("test", logger)
-                .when_err()
                 .no_logging()
                 .limit(20)
                 .no_timeout()

@@ -49,7 +49,6 @@ where
         let event_sig_count = event_signatures.len();
 
         retry("eth_getLogs RPC call", self.logger.clone())
-            .when_err()
             .no_limit()
             .timeout_secs(60)
             .run(move || {
@@ -239,7 +238,6 @@ where
                 let call_data = call_data.clone();
 
                 retry("eth_call RPC call", logger.clone())
-                    .when_err()
                     .no_limit()
                     .timeout_secs(60)
                     .run(move || {
@@ -273,32 +271,30 @@ where
         &self,
     ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
         let web3 = self.web3.clone();
-        let net_version_future = retry("net_version RPC call", self.logger.clone())
-            .when_err()
+        let logger = self.logger.clone();
+        let net_version_future = retry("net_version RPC call", logger)
             .no_limit()
             .timeout_secs(20)
             .run(move || web3.net().version().map_err(SyncFailure::new).from_err());
 
         let web3 = self.web3.clone();
-        let gen_block_hash_future = retry(
-            "eth_getBlockByNumber(0, false) RPC call",
-            self.logger.clone(),
-        ).when_err()
-        .no_limit()
-        .timeout_secs(30)
-        .run(move || {
-            web3.eth()
-                .block(BlockNumber::Earliest.into())
-                .map_err(SyncFailure::new)
-                .from_err()
-                .and_then(|gen_block_opt| {
-                    future::result(
-                        gen_block_opt
-                            .ok_or(format_err!("Ethereum node could not find genesis block"))
-                            .map(|gen_block| gen_block.hash.unwrap()),
-                    )
-                })
-        });
+        let logger = self.logger.clone();
+        let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", logger)
+            .no_limit()
+            .timeout_secs(30)
+            .run(move || {
+                web3.eth()
+                    .block(BlockNumber::Earliest.into())
+                    .map_err(SyncFailure::new)
+                    .from_err()
+                    .and_then(|gen_block_opt| {
+                        future::result(
+                            gen_block_opt
+                                .ok_or(format_err!("Ethereum node could not find genesis block"))
+                                .map(|gen_block| gen_block.hash.unwrap()),
+                        )
+                    })
+            });
 
         Box::new(
             net_version_future
@@ -324,7 +320,6 @@ where
         let logger = self.logger.clone();
 
         let block_opt_future = retry("eth_getBlockByHash RPC call", logger.clone())
-            .when_err()
             .no_limit()
             .timeout_secs(60)
             .run(move || {
@@ -355,7 +350,6 @@ where
                     // The receipt might be missing because the block was uncled, and the
                     // transaction never made it back into the main chain.
                     retry("eth_getTransactionReceipt RPC call", logger.clone())
-                        .when_err()
                         .limit(32)
                         .no_logging()
                         .timeout_secs(60)
@@ -416,7 +410,6 @@ where
 
         Box::new(
             retry("eth_getBlockByNumber RPC call", self.logger.clone())
-                .when_err()
                 .no_limit()
                 .timeout_secs(60)
                 .run(move || {
