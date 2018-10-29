@@ -197,7 +197,7 @@ mod tests {
                         } else if Instant::now().duration_since(start_time) > max_wait {
                             panic!("Timed out, schema not received")
                         }
-                        ::std::thread::yield_now();
+                        ::std::thread::sleep(Duration::from_millis(10));
                     };
 
                     assert_eq!(output_schema.id, input_schema.id);
