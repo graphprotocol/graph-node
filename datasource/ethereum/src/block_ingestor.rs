@@ -190,62 +190,60 @@ where
         block_hash: H256,
         tx_hash: H256,
     ) -> impl Future<Item = TransactionReceipt, Error = BlockIngestorError> + 'a {
+        let logger = self.logger.clone();
         let web3 = Web3::new(self.web3_transport.clone());
 
         // Retry, but eventually give up.
         // The receipt might be missing because the block was uncled, and the transaction never
         // made it back into the main chain.
-        retry(
-            "block ingestor eth_getTransactionReceipt RPC call",
-            self.logger.clone(),
-        ).when_err()
-        .limit(16)
-        .no_logging()
-        .timeout_secs(60)
-        .run(move || {
-            web3.eth()
-                .transaction_receipt(tx_hash)
-                .map_err(move |e| {
-                    format_err!(
-                        "could not get transaction receipt {} from Ethereum: {}",
-                        tx_hash,
-                        e
-                    ).into()
-                }).and_then(move |receipt_opt| {
-                    receipt_opt.ok_or_else(move || {
-                        // No receipt was returned.
-                        //
-                        // This can be because the Ethereum node no longer considers
-                        // this block to be part of the main chain, and so the transaction is
-                        // no longer in the main chain.  Nothing we can do from here except
-                        // give up trying to ingest this block.
-                        //
-                        // This could also be because the receipt is simply not available yet.
-                        // For that case, we should retry until it becomes available.
-                        BlockIngestorError::BlockUnavailable(block_hash)
+        retry("block ingestor eth_getTransactionReceipt RPC call", logger)
+            .limit(16)
+            .no_logging()
+            .timeout_secs(60)
+            .run(move || {
+                web3.eth()
+                    .transaction_receipt(tx_hash)
+                    .map_err(move |e| {
+                        format_err!(
+                            "could not get transaction receipt {} from Ethereum: {}",
+                            tx_hash,
+                            e
+                        ).into()
+                    }).and_then(move |receipt_opt| {
+                        receipt_opt.ok_or_else(move || {
+                            // No receipt was returned.
+                            //
+                            // This can be because the Ethereum node no longer considers
+                            // this block to be part of the main chain, and so the transaction is
+                            // no longer in the main chain.  Nothing we can do from here except
+                            // give up trying to ingest this block.
+                            //
+                            // This could also be because the receipt is simply not available yet.
+                            // For that case, we should retry until it becomes available.
+                            BlockIngestorError::BlockUnavailable(block_hash)
+                        })
                     })
+            }).map_err(move |e| {
+                e.into_inner().unwrap_or_else(move || {
+                    // Timed out
+                    format_err!(
+                        "Ethereum node took too long to return transaction receipt {}",
+                        tx_hash
+                    ).into()
                 })
-        }).map_err(move |e| {
-            e.into_inner().unwrap_or_else(move || {
-                // Timed out
-                format_err!(
-                    "Ethereum node took too long to return transaction receipt {}",
-                    tx_hash
-                ).into()
+            }).and_then(move |receipt| {
+                // Check if receipt is for the right block
+                if receipt.block_hash != block_hash {
+                    // If the receipt came from a different block, then the Ethereum node
+                    // no longer considers this block to be in the main chain.
+                    // Nothing we can do from here except give up trying to ingest this
+                    // block.
+                    // There is no way to get the transaction receipt from this block.
+                    Err(BlockIngestorError::BlockUnavailable(block_hash))
+                } else {
+                    Ok(receipt)
+                }
             })
-        }).and_then(move |receipt| {
-            // Check if receipt is for the right block
-            if receipt.block_hash != block_hash {
-                // If the receipt came from a different block, then the Ethereum node
-                // no longer considers this block to be in the main chain.
-                // Nothing we can do from here except give up trying to ingest this
-                // block.
-                // There is no way to get the transaction receipt from this block.
-                Err(BlockIngestorError::BlockUnavailable(block_hash))
-            } else {
-                Ok(receipt)
-            }
-        })
     }
 
     /// Put some blocks into the block store (if they are not there already), and try to update the
