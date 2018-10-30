@@ -24,6 +24,12 @@ impl Display for BigInt {
     }
 }
 
+impl From<i32> for BigInt {
+    fn from(i: i32) -> BigInt {
+        BigInt(i.into())
+    }
+}
+
 impl FromStr for BigInt {
     type Err = <num_bigint::BigInt as FromStr>::Err;
 
