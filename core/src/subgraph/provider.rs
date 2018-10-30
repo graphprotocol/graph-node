@@ -113,17 +113,17 @@ where
                     },
                 ).and_then(
                     move |mut subgraph| -> Box<Future<Item = _, Error = _> + Send> {
-                        // Avoid starting same subgraph twice
-                        let mut subgraphs_running = self_clone.subgraphs_running.lock().unwrap();
-                        if subgraphs_running.contains(&subgraph.id) {
-                            return Box::new(future::err(
-                                format_err!(
-                                    "subgraph provider is already running a subgraph with ID {}",
-                                    subgraph.id
-                                ).into(),
-                            ));
+                        // If subgraph ID already in set
+                        if !self_clone
+                            .subgraphs_running
+                            .lock()
+                            .unwrap()
+                            .insert(subgraph.id.clone())
+                        {
+                            return Box::new(future::err(SubgraphProviderError::AlreadyRunning(
+                                subgraph.id,
+                            )));
                         }
-                        subgraphs_running.insert(subgraph.id.clone());
 
                         // Add IDs into schema
                         subgraph
@@ -131,11 +131,7 @@ where
                             .add_subgraph_id_directives(subgraph.id.clone());
 
                         // Send events to trigger subgraph processing
-                        Box::new(
-                            self_clone
-                                .send_add_events(subgraph)
-                                .map_err(SubgraphProviderError::Unknown),
-                        )
+                        Box::new(self_clone.send_add_events(subgraph).from_err())
                     },
                 ),
         )
@@ -145,17 +141,12 @@ where
         &self,
         id: SubgraphId,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static> {
-        // Make sure subgraph was actually started
-        let mut subgraphs_running = self.subgraphs_running.lock().unwrap();
-        if subgraphs_running.contains(&id) {
-            subgraphs_running.remove(&id);
-
+        // If subgraph ID was in set
+        if self.subgraphs_running.lock().unwrap().remove(&id) {
             // Shut down subgraph processing
             Box::new(self.send_remove_events(id))
         } else {
-            Box::new(future::err(
-                format_err!("cannot stop subgraph {}, it is not running", id).into(),
-            ))
+            Box::new(future::err(SubgraphProviderError::NotRunning(id)))
         }
     }
 }
