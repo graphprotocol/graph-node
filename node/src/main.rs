@@ -27,9 +27,9 @@ use std::time::Duration;
 use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::tokio_executor;
-use graph::tokio_executor::park::ParkThread;
 use graph::tokio_reactor;
 use graph::tokio_timer;
+use graph::tokio_timer::timer::Timer;
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::{
     ElasticLoggingConfig, SubgraphInstanceManager, SubgraphProvider as IpfsSubgraphProvider,
@@ -43,16 +43,20 @@ use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
+    // Register guarded panic logger which ensures logs flush on shutdown
     let (panic_logger, _panic_guard) = guarded_logger();
     register_panic_hook(panic_logger);
+
+    // Create components for tokio context: multi-threaded runtime,
+    // reactor reference, executor context on the runtime, and Timer handle.
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
     let reactor = tokio_reactor::Handle::current();
-    let mut enter =
-        tokio_executor::enter().expect("Failed to enter executor, multiple executors at once");
-
-    let timer = tokio_timer::timer::Timer::new(ParkThread::new());
+    let mut enter = tokio_executor::enter()
+        .expect("Failed to enter runtime executor, multiple executors at once");
+    let timer = Timer::default();
     let timer_handle = timer.handle();
 
+    // Setup runtime context with defaults
     tokio_reactor::with_default(&reactor, &mut enter, |enter| {
         tokio_executor::with_default(&mut runtime.executor(), enter, |enter| {
             tokio_timer::with_default(&timer_handle, enter, |enter| {
