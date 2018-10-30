@@ -389,12 +389,12 @@ impl AscType for AscLogParam {}
 
 pub(crate) type Bytes = Uint8Array;
 /// Big ints are represented in two's complement and in little-endian order.
-pub(crate) type BigInt = Uint8Array;
+pub(crate) type AscBigInt = Uint8Array;
 pub(crate) type AscAddress = Uint8Array;
 pub(crate) type AscH160 = Uint8Array;
 pub(crate) type AscH256 = Uint8Array;
-pub(crate) type AscU128 = Uint64Array;
-pub(crate) type AscU256 = Uint64Array;
+//pub(crate) type AscU128 = Uint64Array;
+//pub(crate) type AscU256 = Uint64Array;
 
 pub(crate) type AscLogParamArray = Array<AscPtr<AscLogParam>>;
 
@@ -407,12 +407,12 @@ pub(crate) struct AscEthereumBlock {
     pub state_root: AscPtr<AscH256>,
     pub transactions_root: AscPtr<AscH256>,
     pub receipts_root: AscPtr<AscH256>,
-    pub number: AscPtr<AscU128>,
-    pub gas_used: AscPtr<AscU256>,
-    pub gas_limit: AscPtr<AscU256>,
-    pub timestamp: AscPtr<AscU256>,
-    pub difficulty: AscPtr<AscU256>,
-    pub total_difficulty: AscPtr<AscU256>,
+    pub number: AscPtr<AscBigInt>,
+    pub gas_used: AscPtr<AscBigInt>,
+    pub gas_limit: AscPtr<AscBigInt>,
+    pub timestamp: AscPtr<AscBigInt>,
+    pub difficulty: AscPtr<AscBigInt>,
+    pub total_difficulty: AscPtr<AscBigInt>,
 }
 
 impl AscType for AscEthereumBlock {}
@@ -421,8 +421,8 @@ impl AscType for AscEthereumBlock {}
 pub(crate) struct AscEthereumTransaction {
     pub hash: AscPtr<AscH256>,
     pub block_hash: AscPtr<AscH256>,
-    pub block_number: AscPtr<AscU256>,
-    pub gas_used: AscPtr<AscU256>,
+    pub block_number: AscPtr<AscBigInt>,
+    pub gas_used: AscPtr<AscBigInt>,
 }
 
 impl AscType for AscEthereumTransaction {}
