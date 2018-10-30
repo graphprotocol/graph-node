@@ -69,31 +69,18 @@ const TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX: usize = 4;
 const TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX: usize = 5;
 const TYPE_CONVERSION_U64_ARRAY_TO_STRING_FUNC_INDEX: usize = 6;
 const TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX: usize = 7;
-const TYPE_CONVERSION_H256_TO_H160_FUNC_INDEX: usize = 8;
-const TYPE_CONVERSION_H160_TO_H256_FUNC_INDEX: usize = 9;
-const TYPE_CONVERSION_U256_TO_H160_FUNC_INDEX: usize = 10;
-const TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX: usize = 11;
-const TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX: usize = 12;
-const TYPE_CONVERSION_INT256_TO_BIG_INT_FUNC_INDEX: usize = 13;
-const JSON_FROM_BYTES_FUNC_INDEX: usize = 14;
-const JSON_TO_I64_FUNC_INDEX: usize = 15;
-const JSON_TO_U64_FUNC_INDEX: usize = 16;
-const JSON_TO_F64_FUNC_INDEX: usize = 17;
-const JSON_TO_BIG_INT_FUNC_INDEX: usize = 18;
-const IPFS_CAT_FUNC_INDEX: usize = 19;
-const STORE_GET_FUNC_INDEX: usize = 20;
-const TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX: usize = 21;
-const CRYPTO_KECCAK_256_INDEX: usize = 22;
-const TYPE_CONVERSION_U64_TO_U256_INDEX: usize = 23;
-const TYPE_CONVERSION_I64_TO_U256_INDEX: usize = 24;
-const TYPE_CONVERSION_U256_TO_U8_INDEX: usize = 25;
-const TYPE_CONVERSION_U256_TO_U16_INDEX: usize = 26;
-const TYPE_CONVERSION_U256_TO_U32_INDEX: usize = 27;
-const TYPE_CONVERSION_U256_TO_U64_INDEX: usize = 28;
-const TYPE_CONVERSION_U256_TO_I8_INDEX: usize = 29;
-const TYPE_CONVERSION_U256_TO_I16_INDEX: usize = 30;
-const TYPE_CONVERSION_U256_TO_I32_INDEX: usize = 31;
-const TYPE_CONVERSION_U256_TO_I64_INDEX: usize = 32;
+const TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX: usize = 8;
+const TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX: usize = 9;
+const TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX: usize = 10;
+const JSON_FROM_BYTES_FUNC_INDEX: usize = 11;
+const JSON_TO_I64_FUNC_INDEX: usize = 12;
+const JSON_TO_U64_FUNC_INDEX: usize = 13;
+const JSON_TO_F64_FUNC_INDEX: usize = 14;
+const JSON_TO_BIG_INT_FUNC_INDEX: usize = 15;
+const IPFS_CAT_FUNC_INDEX: usize = 16;
+const STORE_GET_FUNC_INDEX: usize = 17;
+const TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX: usize = 18;
+const CRYPTO_KECCAK_256_INDEX: usize = 19;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph: SubgraphManifest,
@@ -326,16 +313,19 @@ where
     }
 
     /// function typeConversion.bytesToString(bytes: Bytes): string
-    fn convert_bytes_to_string(
-        &self,
-        bytes_ptr: AscPtr<Uint8Array>,
-    ) -> Result<Option<RuntimeValue>, Trap> {
+    fn bytes_to_string(&self, bytes_ptr: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
         let string = self
             .host_exports
-            .convert_bytes_to_string(self.heap.asc_get(bytes_ptr))?;
+            .bytes_to_string(self.heap.asc_get(bytes_ptr))?;
         Ok(Some(RuntimeValue::from(self.heap.asc_new(&string))))
     }
 
+    /// Converts bytes to a hex string.
+    /// function typeConversion.bytesToHex(bytes: Bytes): string
+    fn bytes_to_hex(&self, bytes_ptr: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self.host_exports.bytes_to_hex(self.heap.asc_get(bytes_ptr));
+        Ok(Some(RuntimeValue::from(self.heap.asc_new(&result))))
+    }
     /// function typeConversion.u64ArrayToString(u64_array: U64Array): string
     fn u64_array_to_string(
         &self,
@@ -358,39 +348,6 @@ where
         Ok(Some(RuntimeValue::from(self.heap.asc_new(&*result))))
     }
 
-    /// function typeConversion.h256ToH160(h256: H256): H160
-    fn h256_to_h160(&self, h256_ptr: AscPtr<AscH256>) -> Result<Option<RuntimeValue>, Trap> {
-        let h256: H256 = self.heap.asc_get(h256_ptr);
-        let h160 = H160::from(h256);
-        let h160_obj: AscPtr<AscH160> = self.heap.asc_new(&h160);
-        Ok(Some(RuntimeValue::from(h160_obj)))
-    }
-
-    /// function typeConversion.h160ToH256(h160: H160): H256
-    fn h160_to_h256(&self, h160_ptr: AscPtr<AscH160>) -> Result<Option<RuntimeValue>, Trap> {
-        let h160: H160 = self.heap.asc_get(h160_ptr);
-        let h256 = H256::from(h160);
-        let h256_obj: AscPtr<AscH256> = self.heap.asc_new(&h256);
-        Ok(Some(RuntimeValue::from(h256_obj)))
-    }
-
-    /// function typeConversion.u256ToH160(u256: U256): H160
-    fn u256_to_h160(&self, u256_ptr: AscPtr<AscU256>) -> Result<Option<RuntimeValue>, Trap> {
-        let u256: U256 = self.heap.asc_get(u256_ptr);
-        let h256 = H256::from(u256);
-        let h160 = H160::from(h256);
-        let h160_obj: AscPtr<AscH160> = self.heap.asc_new(&h160);
-        Ok(Some(RuntimeValue::from(h160_obj)))
-    }
-
-    /// function typeConversion.u256ToH256(u256: U256): H256
-    fn u256_to_h256(&self, u256_ptr: AscPtr<AscU256>) -> Result<Option<RuntimeValue>, Trap> {
-        let u256: U256 = self.heap.asc_get(u256_ptr);
-        let h256 = H256::from(u256);
-        let h256_obj: AscPtr<AscH256> = self.heap.asc_new(&h256);
-        Ok(Some(RuntimeValue::from(h256_obj)))
-    }
-
     /// function typeConversion.stringToH160(s: String): H160
     fn string_to_h160(&self, str_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
         let s: String = self.heap.asc_get(str_ptr);
@@ -399,33 +356,18 @@ where
         Ok(Some(RuntimeValue::from(h160_obj)))
     }
 
-    /// This works for both U256 and I256.
-    /// function typeConversion.int256ToBigInt(int256: Uint64Array): BigInt
-    fn int256_to_big_int(
-        &self,
-        int256_ptr: AscPtr<Uint64Array>,
-    ) -> Result<Option<RuntimeValue>, Trap> {
-        let buffer = self
-            .host_exports
-            .int256_to_big_int(self.heap.asc_get(int256_ptr));
-        let big_int_obj: AscPtr<BigInt> = self.heap.asc_new(&buffer[..]);
-        Ok(Some(RuntimeValue::from(big_int_obj)))
+    /// function typeConversion.i32ToBigInt(i: i32): Uint64Array
+    fn i32_to_big_int(&self, i: i32) -> Result<Option<RuntimeValue>, Trap> {
+        let bytes = BigInt::from(i).to_signed_bytes_le();
+        Ok(Some(RuntimeValue::from(self.heap.asc_new(&*bytes))))
     }
 
-    /// function typeConversion.bigIntToInt256(i: BigInt): Uint64Array
-    fn big_int_to_int256(&self, big_int_ptr: AscPtr<BigInt>) -> Result<Option<RuntimeValue>, Trap> {
-        let int256 = self
-            .host_exports
-            .big_int_to_int256(self.heap.asc_get(big_int_ptr))?;
-        let int256_ptr: AscPtr<Uint64Array> = self.heap.asc_new(&int256);
-        Ok(Some(RuntimeValue::from(int256_ptr)))
-    }
-
-    /// Converts bytes to a hex string.
-    /// function typeConversion.bytesToHex(bytes: Bytes): string
-    fn bytes_to_hex(&self, bytes_ptr: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self.host_exports.bytes_to_hex(self.heap.asc_get(bytes_ptr));
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(&result))))
+    /// function typeConversion.i32ToBigInt(i: i32): Uint64Array
+    fn big_int_to_i32(&self, n_ptr: AscPtr<AscBigInt>) -> Result<Option<RuntimeValue>, Trap> {
+        let bytes: Vec<u8> = self.heap.asc_get(n_ptr);
+        let n = BigInt::from_signed_bytes_le(&*bytes);
+        let i = self.host_exports.big_int_to_i32(n)?;
+        Ok(Some(RuntimeValue::from(i)))
     }
 
     /// function json.fromBytes(bytes: Bytes): JSONValue
@@ -470,7 +412,7 @@ where
         let big_int = self
             .host_exports
             .json_to_big_int(self.heap.asc_get(json_ptr))?;
-        let big_int_ptr: AscPtr<BigInt> = self.heap.asc_new(&*big_int);
+        let big_int_ptr: AscPtr<AscBigInt> = self.heap.asc_new(&*big_int);
         Ok(Some(RuntimeValue::from(big_int_ptr)))
     }
 
@@ -484,68 +426,6 @@ where
             .crypto_keccak_256(self.heap.asc_get(input_ptr));
         let hash_ptr: AscPtr<Uint8Array> = self.heap.asc_new(input.as_ref());
         Ok(Some(RuntimeValue::from(hash_ptr)))
-    }
-
-    /// function typeConversion.u64ToU256(x: u64): U64Array
-    fn u64_to_u256(&self, x: u64) -> Result<Option<RuntimeValue>, Trap> {
-        let u256 = U256::from(x);
-        let u256_ptr: AscPtr<Uint64Array> = self.heap.asc_new(&u256);
-        Ok(Some(RuntimeValue::from(u256_ptr)))
-    }
-
-    /// function typeConversion.i64ToU256(x: i64): U64Array
-    fn i64_to_u256(&self, x: i64) -> Result<Option<RuntimeValue>, Trap> {
-        let u256 = self.host_exports.i64_to_u256(x);
-        let u256_ptr: AscPtr<Uint64Array> = self.heap.asc_new(&u256);
-        Ok(Some(RuntimeValue::from(u256_ptr)))
-    }
-
-    /// function typeConversion.u256ToU8(x: U64Array): u8
-    fn u256_to_u8(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.u256_to_u8(self.heap.asc_get(x))?;
-        Ok(Some(RuntimeValue::from(number)))
-    }
-
-    /// function typeConversion.u256ToU16(x: U64Array): u16
-    fn u256_to_u16(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.u256_to_u16(self.heap.asc_get(x))?;
-        Ok(Some(RuntimeValue::from(number)))
-    }
-
-    /// function typeConversion.u256ToU32(x: U64Array): u32
-    fn u256_to_u32(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.u256_to_u32(self.heap.asc_get(x))?;
-        Ok(Some(RuntimeValue::from(number)))
-    }
-
-    /// function typeConversion.u256ToU64(x: U64Array): u64
-    fn u256_to_u64(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.u256_to_u64(self.heap.asc_get(x))?;
-        Ok(Some(RuntimeValue::from(number)))
-    }
-
-    /// function typeConversion.u256ToI8(x: U64Array): i8
-    fn u256_to_i8(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.u256_to_i8(self.heap.asc_get(x))?;
-        Ok(Some(RuntimeValue::from(number)))
-    }
-
-    /// function typeConversion.u256ToI16(x: U64Array): i16
-    fn u256_to_i16(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.u256_to_i16(self.heap.asc_get(x))?;
-        Ok(Some(RuntimeValue::from(number)))
-    }
-
-    /// function typeConversion.u256ToI32(x: U64Array): i32
-    fn u256_to_i32(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.u256_to_i32(self.heap.asc_get(x))?;
-        Ok(Some(RuntimeValue::from(number)))
-    }
-
-    /// function typeConversion.u256ToI64(x: U64Array): i64
-    fn u256_to_i64(&self, x: AscPtr<Uint64Array>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.u256_to_i64(self.heap.asc_get(x))?;
-        Ok(Some(RuntimeValue::from(number)))
     }
 }
 
@@ -573,7 +453,7 @@ where
             }
             ETHEREUM_CALL_FUNC_INDEX => self.ethereum_call(args.nth_checked(0)?),
             TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX => {
-                self.convert_bytes_to_string(args.nth_checked(0)?)
+                self.bytes_to_string(args.nth_checked(0)?)
             }
             TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX => self.bytes_to_hex(args.nth_checked(0)?),
             TYPE_CONVERSION_U64_ARRAY_TO_STRING_FUNC_INDEX => {
@@ -582,34 +462,16 @@ where
             TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX => {
                 self.u64_array_to_hex(args.nth_checked(0)?)
             }
-            TYPE_CONVERSION_H256_TO_H160_FUNC_INDEX => self.h256_to_h160(args.nth_checked(0)?),
-            TYPE_CONVERSION_H160_TO_H256_FUNC_INDEX => self.h160_to_h256(args.nth_checked(0)?),
-            TYPE_CONVERSION_U256_TO_H160_FUNC_INDEX => self.u256_to_h160(args.nth_checked(0)?),
-            TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX => self.u256_to_h256(args.nth_checked(0)?),
             TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX => self.string_to_h160(args.nth_checked(0)?),
-            TYPE_CONVERSION_INT256_TO_BIG_INT_FUNC_INDEX => {
-                self.int256_to_big_int(args.nth_checked(0)?)
-            }
+            TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX => self.i32_to_big_int(args.nth_checked(0)?),
+            TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX => self.big_int_to_i32(args.nth_checked(0)?),
             JSON_FROM_BYTES_FUNC_INDEX => self.json_from_bytes(args.nth_checked(0)?),
             JSON_TO_I64_FUNC_INDEX => self.json_to_i64(args.nth_checked(0)?),
             JSON_TO_U64_FUNC_INDEX => self.json_to_u64(args.nth_checked(0)?),
             JSON_TO_F64_FUNC_INDEX => self.json_to_f64(args.nth_checked(0)?),
             JSON_TO_BIG_INT_FUNC_INDEX => self.json_to_big_int(args.nth_checked(0)?),
             IPFS_CAT_FUNC_INDEX => self.ipfs_cat(args.nth_checked(0)?),
-            TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX => {
-                self.big_int_to_int256(args.nth_checked(0)?)
-            }
             CRYPTO_KECCAK_256_INDEX => self.crypto_keccak_256(args.nth_checked(0)?),
-            TYPE_CONVERSION_U64_TO_U256_INDEX => self.u64_to_u256(args.nth_checked(0)?),
-            TYPE_CONVERSION_I64_TO_U256_INDEX => self.i64_to_u256(args.nth_checked(0)?),
-            TYPE_CONVERSION_U256_TO_U8_INDEX => self.u256_to_u8(args.nth_checked(0)?),
-            TYPE_CONVERSION_U256_TO_U16_INDEX => self.u256_to_u16(args.nth_checked(0)?),
-            TYPE_CONVERSION_U256_TO_U32_INDEX => self.u256_to_u32(args.nth_checked(0)?),
-            TYPE_CONVERSION_U256_TO_U64_INDEX => self.u256_to_u64(args.nth_checked(0)?),
-            TYPE_CONVERSION_U256_TO_I8_INDEX => self.u256_to_i8(args.nth_checked(0)?),
-            TYPE_CONVERSION_U256_TO_I16_INDEX => self.u256_to_i16(args.nth_checked(0)?),
-            TYPE_CONVERSION_U256_TO_I32_INDEX => self.u256_to_i32(args.nth_checked(0)?),
-            TYPE_CONVERSION_U256_TO_I64_INDEX => self.u256_to_i64(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -713,73 +575,13 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX,
             ),
-            "h256ToH160" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_H256_TO_H160_FUNC_INDEX,
-            ),
-            "h160ToH256" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_H160_TO_H256_FUNC_INDEX,
-            ),
-            "u256ToH160" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_U256_TO_H160_FUNC_INDEX,
-            ),
-            "u256ToH256" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_U256_TO_H256_FUNC_INDEX,
-            ),
             "stringToH160" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX,
             ),
-            "int256ToBigInt" => FuncInstance::alloc_host(
+            "bigIntToI32" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_INT256_TO_BIG_INT_FUNC_INDEX,
-            ),
-            "bigIntToInt256" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX,
-            ),
-            "u64ToU256" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I64][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_U64_TO_U256_INDEX,
-            ),
-            "i64ToU256" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I64][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_I64_TO_U256_INDEX,
-            ),
-            "u256ToU8" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_U256_TO_U8_INDEX,
-            ),
-            "u256ToU16" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_U256_TO_U16_INDEX,
-            ),
-            "u256ToU32" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_U256_TO_U32_INDEX,
-            ),
-            "u256ToU64" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I64)),
-                TYPE_CONVERSION_U256_TO_U64_INDEX,
-            ),
-            "u256ToI8" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_U256_TO_I8_INDEX,
-            ),
-            "u256ToI16" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_U256_TO_I16_INDEX,
-            ),
-            "u256ToI32" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_U256_TO_I32_INDEX,
-            ),
-            "u256ToI64" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I64)),
-                TYPE_CONVERSION_U256_TO_I64_INDEX,
+                TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(
