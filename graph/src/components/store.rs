@@ -283,6 +283,9 @@ pub trait Store: Send + Sync + 'static {
     fn read_all_subgraph_names(&self) -> Result<Vec<(String, Option<SubgraphId>)>, Error>;
 
     /// Get the subgraph ID currently associated with specified subgraph name.
+    ///
+    /// Returns None if the subgraph name does not exist.
+    /// Returns Some(None) if the subgraph name exists but is not associated with a subgraph ID.
     fn read_subgraph_name(&self, name: String) -> Result<Option<Option<SubgraphId>>, Error>;
 
     /// Set the subgraph ID currently associated with specified subgraph name.

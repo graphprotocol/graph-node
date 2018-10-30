@@ -24,7 +24,7 @@ pub trait SubgraphProvider:
 {
     fn start(
         &self,
-        link: String,
+        id: SubgraphId,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
 
     fn stop(
@@ -38,7 +38,7 @@ pub trait SubgraphProviderWithNames: Send + Sync + 'static {
     fn deploy(
         &self,
         name: String,
-        link: String,
+        id: SubgraphId,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
 
     fn remove(
