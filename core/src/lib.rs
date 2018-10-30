@@ -13,4 +13,4 @@ mod graphql;
 mod subgraph;
 
 pub use graphql::GraphQlRunner;
-pub use subgraph::{SubgraphInstanceManager, SubgraphProvider};
+pub use subgraph::{SubgraphInstanceManager, SubgraphProvider, SubgraphProviderWithNames};

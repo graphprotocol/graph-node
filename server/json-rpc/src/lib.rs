@@ -76,7 +76,7 @@ pub struct JsonRpcServer<P, S> {
 
 impl<P, S> JsonRpcServer<P, S>
 where
-    P: SubgraphProvider,
+    P: SubgraphProviderWithNames,
     S: Store,
 {
     fn require_master_token(auth: AuthorizationHeader) -> Result<(), jsonrpc_core::Error> {
@@ -143,7 +143,7 @@ where
         let routes = subgraph_routes(&params.name);
         Box::new(
             self.provider
-                .deploy(params.name, format!("/ipfs/{}", params.ipfs_hash))
+                .deploy(params.name, params.ipfs_hash)
                 .map_err(move |e| {
                     if let SubgraphProviderError::Unknown(e) = e {
                         error!(logger, "subgraph_deploy failed: {}", e);
@@ -233,7 +233,7 @@ where
 
 impl<P, S> JsonRpcServerTrait<P, S> for JsonRpcServer<P, S>
 where
-    P: SubgraphProvider,
+    P: SubgraphProviderWithNames,
     S: Store,
 {
     type Server = Server;
