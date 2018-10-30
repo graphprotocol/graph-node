@@ -36,7 +36,7 @@ impl<Q, S> Clone for GraphQLService<Q, S> {
 impl<Q, S> GraphQLService<Q, S>
 where
     Q: GraphQlRunner + 'static,
-    S: Store + 'static,
+    S: Store,
 {
     /// Creates a new GraphQL service.
     pub fn new(
@@ -140,7 +140,7 @@ where
 impl<Q, S> Service for GraphQLService<Q, S>
 where
     Q: GraphQlRunner + 'static,
-    S: Store + 'static,
+    S: Store,
 {
     type ReqBody = Body;
     type ResBody = Body;

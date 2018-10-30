@@ -357,7 +357,7 @@ pub trait Store: Send + Sync + 'static {
 }
 
 /// Common trait for blockchain store implementations.
-pub trait ChainStore: Send + Sync {
+pub trait ChainStore: Send + Sync + 'static {
     type ChainHeadUpdateListener: ChainHeadUpdateListener;
 
     /// Get a pointer to this blockchain's genesis block.

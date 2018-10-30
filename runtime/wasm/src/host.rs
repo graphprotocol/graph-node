@@ -71,7 +71,7 @@ impl<T, L, S> RuntimeHostBuilderTrait for RuntimeHostBuilder<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store + 'static,
+    S: Store,
 {
     type Host = RuntimeHost;
 
@@ -119,7 +119,7 @@ impl RuntimeHost {
     where
         T: EthereumAdapter,
         L: LinkResolver,
-        S: Store + 'static,
+        S: Store,
     {
         let logger = logger.new(o!(
             "component" => "RuntimeHost",

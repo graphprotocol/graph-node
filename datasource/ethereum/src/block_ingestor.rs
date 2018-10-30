@@ -12,7 +12,7 @@ use graph::web3::Transport;
 
 pub struct BlockIngestor<S, T>
 where
-    S: ChainStore + 'static,
+    S: ChainStore,
     T: BatchTransport + Send + Sync + Debug + Clone + 'static,
     <T as Transport>::Out: Send,
     <T as BatchTransport>::Batch: Send,
@@ -26,7 +26,7 @@ where
 
 impl<S, T> BlockIngestor<S, T>
 where
-    S: ChainStore + 'static,
+    S: ChainStore,
     T: BatchTransport + Send + Sync + Debug + Clone + 'static,
     <T as Transport>::Out: Send,
     <T as BatchTransport>::Batch: Send,

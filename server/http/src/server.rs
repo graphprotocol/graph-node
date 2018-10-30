@@ -113,7 +113,7 @@ impl<Q, S> GraphQLServer<Q, S> {
 impl<Q, S> GraphQLServerTrait for GraphQLServer<Q, S>
 where
     Q: GraphQlRunner + Sized + 'static,
-    S: Store + 'static,
+    S: Store,
 {
     type ServeError = GraphQLServeError;
 
