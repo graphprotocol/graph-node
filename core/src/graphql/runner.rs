@@ -11,7 +11,7 @@ pub struct GraphQlRunner<S> {
 
 impl<S> GraphQlRunner<S>
 where
-    S: Store + 'static,
+    S: Store,
 {
     /// Creates a new query runner.
     pub fn new(logger: &Logger, store: Arc<S>) -> Self {
@@ -24,7 +24,7 @@ where
 
 impl<S> GraphQlRunnerTrait for GraphQlRunner<S>
 where
-    S: Store + 'static,
+    S: Store,
 {
     fn run_query(&self, query: Query) -> QueryResultFuture {
         let result = execute_query(

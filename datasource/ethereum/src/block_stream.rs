@@ -158,8 +158,8 @@ where
 
 impl<S, C, E> BlockStreamContext<S, C, E>
 where
-    S: Store + 'static,
-    C: ChainStore + 'static,
+    S: Store,
+    C: ChainStore,
     E: EthereumAdapter,
 {
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
@@ -601,15 +601,15 @@ where
 
 impl<S, C, E> BlockStreamTrait for BlockStream<S, C, E>
 where
-    S: Store + 'static,
-    C: ChainStore + 'static,
+    S: Store,
+    C: ChainStore,
     E: EthereumAdapter,
 {}
 
 impl<S, C, E> Stream for BlockStream<S, C, E>
 where
-    S: Store + 'static,
-    C: ChainStore + 'static,
+    S: Store,
+    C: ChainStore,
     E: EthereumAdapter,
 {
     type Item = EthereumBlock;
@@ -831,8 +831,8 @@ where
 
 impl<S, C, E> BlockStreamBuilderTrait for BlockStreamBuilder<S, C, E>
 where
-    S: Store + 'static,
-    C: ChainStore + 'static,
+    S: Store,
+    C: ChainStore,
     E: EthereumAdapter,
 {
     type Stream = BlockStream<S, C, E>;

@@ -24,8 +24,8 @@ impl SubgraphInstanceManager {
         block_stream_builder: B,
     ) -> Self
     where
-        S: Store + ChainStore + 'static,
-        T: RuntimeHostBuilder + 'static,
+        S: Store + ChainStore,
+        T: RuntimeHostBuilder,
         B: BlockStreamBuilder + 'static,
     {
         let logger = logger.new(o!("component" => "SubgraphInstanceManager"));
@@ -56,8 +56,8 @@ impl SubgraphInstanceManager {
         host_builder: T,
         block_stream_builder: B,
     ) where
-        S: Store + ChainStore + 'static,
-        T: RuntimeHostBuilder + 'static,
+        S: Store + ChainStore,
+        T: RuntimeHostBuilder,
         B: BlockStreamBuilder + 'static,
     {
         // Subgraph instance shutdown senders
@@ -102,7 +102,7 @@ impl SubgraphInstanceManager {
     ) where
         T: RuntimeHostBuilder,
         B: BlockStreamBuilder,
-        S: Store + ChainStore + 'static,
+        S: Store + ChainStore,
     {
         let id = manifest.id.clone();
         let id_for_log = manifest.id.clone();
