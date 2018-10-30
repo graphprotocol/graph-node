@@ -1,13 +1,14 @@
 use ethabi;
-use graph::serde_json;
+use std::cmp;
+use std::collections::HashMap;
 
 use graph::components::ethereum::{EthereumBlockData, EthereumEventData, EthereumTransactionData};
 use graph::data::store;
+use graph::serde_json;
 use graph::web3::types as web3;
 
 use asc_abi::class::*;
 use asc_abi::{AscHeap, AscPtr, FromAscObj, ToAscObj};
-use std::collections::HashMap;
 
 use UnresolvedContractCall;
 
@@ -35,21 +36,29 @@ impl ToAscObj<Uint8Array> for web3::H256 {
     }
 }
 
-impl ToAscObj<Uint64Array> for web3::U128 {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> Uint64Array {
-        self.0.to_asc_obj(heap)
+impl ToAscObj<AscBigInt> for web3::U128 {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscBigInt {
+        let mut bytes: [u8; 16] = [0; 16];
+        self.to_little_endian(&mut bytes);
+        bytes.to_asc_obj(heap)
     }
 }
 
-impl ToAscObj<Uint64Array> for web3::U256 {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> Uint64Array {
-        self.0.to_asc_obj(heap)
+impl ToAscObj<AscBigInt> for web3::U256 {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscBigInt {
+        let mut bytes: [u8; 32] = [0; 32];
+        self.to_little_endian(&mut bytes);
+        bytes.to_asc_obj(heap)
     }
 }
 
-impl FromAscObj<Uint64Array> for web3::U256 {
-    fn from_asc_obj<H: AscHeap>(array_buffer: Uint64Array, heap: &H) -> Self {
-        web3::U256(<[u64; 4]>::from_asc_obj(array_buffer, heap))
+impl FromAscObj<AscBigInt> for web3::U256 {
+    fn from_asc_obj<H: AscHeap>(array_buffer: AscBigInt, heap: &H) -> Self {
+        let in_bytes = <Vec<u8>>::from_asc_obj(array_buffer, heap);
+        let mut bytes: [u8; 32] = [0; 32];
+        let length = cmp::min(in_bytes.len(), 32);
+        bytes[0..length].copy_from_slice(&in_bytes[0..length]);
+        web3::U256::from_little_endian(&bytes)
     }
 }
 
@@ -63,7 +72,7 @@ impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
             FixedBytes(bytes) | Bytes(bytes) => {
                 heap.asc_new::<Uint8Array, _>(&**bytes).to_payload()
             }
-            Int(uint) | Uint(uint) => heap.asc_new::<AscU256, _>(uint).to_payload(),
+            Int(uint) | Uint(uint) => heap.asc_new::<AscBigInt, _>(uint).to_payload(),
             Bool(b) => *b as u64,
             String(string) => heap.asc_new(&**string).to_payload(),
             FixedArray(tokens) | Array(tokens) => heap.asc_new(&**tokens).to_payload(),
@@ -96,11 +105,11 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
                 Token::Bytes(heap.asc_get(ptr))
             }
             EthereumValueKind::Int => {
-                let ptr: AscPtr<AscU256> = AscPtr::from(payload);
+                let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
                 Token::Int(heap.asc_get(ptr))
             }
             EthereumValueKind::Uint => {
-                let ptr: AscPtr<AscU256> = AscPtr::from(payload);
+                let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
                 Token::Uint(heap.asc_get(ptr))
             }
             EthereumValueKind::String => {
@@ -144,7 +153,7 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
                 Value::Bytes(array.as_slice().into())
             }
             StoreValueKind::BigInt => {
-                let ptr: AscPtr<BigInt> = AscPtr::from(payload);
+                let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
                 let array: Vec<u8> = heap.asc_get(ptr);
                 Value::BigInt(store::scalar::BigInt::from_signed_bytes_le(&array))
             }
@@ -243,7 +252,7 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
             state_root: heap.asc_new(&self.state_root),
             transactions_root: heap.asc_new(&self.transactions_root),
             receipts_root: heap.asc_new(&self.receipts_root),
-            number: heap.asc_new::<AscU128, _>(&self.number),
+            number: heap.asc_new::<AscBigInt, _>(&self.number),
             gas_used: heap.asc_new(&self.gas_used),
             gas_limit: heap.asc_new(&self.gas_limit),
             timestamp: heap.asc_new(&self.timestamp),
