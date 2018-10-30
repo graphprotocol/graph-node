@@ -72,7 +72,7 @@ pub mod prelude {
     };
     pub use components::subgraph::{
         RuntimeHost, RuntimeHostBuilder, SchemaEvent, SubgraphInstance, SubgraphInstanceManager,
-        SubgraphProvider, SubgraphProviderEvent, SubgraphRegistry,
+        SubgraphProvider, SubgraphProviderEvent, SubgraphProviderWithNames, SubgraphRegistry,
     };
     pub use components::{EventConsumer, EventProducer};
 

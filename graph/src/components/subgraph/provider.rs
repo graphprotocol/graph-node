@@ -22,6 +22,19 @@ pub enum SchemaEvent {
 pub trait SubgraphProvider:
     EventProducer<SubgraphProviderEvent> + EventProducer<SchemaEvent> + Send + Sync + 'static
 {
+    fn start(
+        &self,
+        link: String,
+    ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
+
+    fn stop(
+        &self,
+        id: SubgraphId,
+    ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
+}
+
+/// Common trait for named subgraph providers.
+pub trait SubgraphProviderWithNames: Send + Sync + 'static {
     fn deploy(
         &self,
         name: String,

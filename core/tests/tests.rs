@@ -192,15 +192,16 @@ fn added_schema_id(event: &SchemaEvent) -> &str {
 fn subgraph_provider_events() {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     let logger = Logger::root(slog::Discard, o!());
-    let mut provider = runtime
-        .block_on(graph_core::SubgraphProvider::init(
-            logger,
-            Arc::new(IpfsClient::default()),
-            Arc::new(MockStore::new()),
-        )).unwrap();
+    let mut provider =
+        graph_core::SubgraphProvider::new(logger.clone(), Arc::new(IpfsClient::default()));
     let provider_events = provider.take_event_stream().unwrap();
     let schema_events = provider.take_event_stream().unwrap();
-    let provider = Arc::new(provider);
+    let named_provider = runtime
+        .block_on(graph_core::SubgraphProviderWithNames::init(
+            logger.clone(),
+            Arc::new(provider),
+            Arc::new(MockStore::new()),
+        )).unwrap();
 
     let (subgraph1_link, subgraph2_link) = runtime
         .block_on(future::lazy(|| {
@@ -213,28 +214,28 @@ fn subgraph_provider_events() {
 
     // Deploy
     runtime
-        .block_on(provider.deploy("subgraph".to_owned(), subgraph1_link.clone()))
+        .block_on(named_provider.deploy("subgraph".to_owned(), subgraph1_id.to_owned()))
         .unwrap();
 
     // Update
     runtime
-        .block_on(provider.deploy("subgraph".to_owned(), subgraph2_link.clone()))
+        .block_on(named_provider.deploy("subgraph".to_owned(), subgraph2_id.to_owned()))
         .unwrap();
 
     // Remove
     runtime
-        .block_on(provider.remove("subgraph".to_owned()))
+        .block_on(named_provider.remove("subgraph".to_owned()))
         .unwrap();
 
     // Removing a subgraph that is not deployed is an error.
     assert!(
         runtime
-            .block_on(provider.remove("subgraph".to_owned()))
+            .block_on(named_provider.remove("subgraph".to_owned()))
             .is_err()
     );
 
     // Finish the event streams.
-    drop(provider);
+    drop(named_provider);
 
     // Assert that the expected events were sent.
     let provider_events = runtime.block_on(provider_events.collect()).unwrap();
@@ -268,14 +269,14 @@ fn subgraph_provider_events() {
 fn subgraph_list() {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     let logger = Logger::root(slog::Discard, o!());
-    let provider = Arc::new(
-        runtime
-            .block_on(graph_core::SubgraphProvider::init(
-                logger,
-                Arc::new(IpfsClient::default()),
-                Arc::new(MockStore::new()),
-            )).unwrap(),
-    );
+    let provider =
+        graph_core::SubgraphProvider::new(logger.clone(), Arc::new(IpfsClient::default()));
+    let named_provider = runtime
+        .block_on(graph_core::SubgraphProviderWithNames::init(
+            logger.clone(),
+            Arc::new(provider),
+            Arc::new(MockStore::new()),
+        )).unwrap();
 
     let (subgraph1_link, subgraph2_link) = runtime
         .block_on(future::lazy(|| {
@@ -286,15 +287,19 @@ fn subgraph_list() {
     let subgraph1_id = subgraph1_link.trim_left_matches("/ipfs/").to_owned();
     let subgraph2_id = subgraph2_link.trim_left_matches("/ipfs/").to_owned();
 
-    assert!(provider.list().unwrap().is_empty());
+    assert!(named_provider.list().unwrap().is_empty());
     runtime
-        .block_on(provider.deploy("subgraph1".to_owned(), subgraph1_link.clone()))
+        .block_on(named_provider.deploy("subgraph1".to_owned(), subgraph1_id.clone()))
         .unwrap();
     runtime
-        .block_on(provider.deploy("subgraph2".to_owned(), subgraph2_link.clone()))
+        .block_on(named_provider.deploy("subgraph2".to_owned(), subgraph2_id.clone()))
         .unwrap();
     assert_eq!(
-        provider.list().unwrap().into_iter().collect::<HashSet<_>>(),
+        named_provider
+            .list()
+            .unwrap()
+            .into_iter()
+            .collect::<HashSet<_>>(),
         vec![
             ("subgraph1".to_owned(), Some(subgraph1_id)),
             ("subgraph2".to_owned(), Some(subgraph2_id.clone()))
@@ -302,16 +307,20 @@ fn subgraph_list() {
         .collect::<HashSet<_>>()
     );
     runtime
-        .block_on(provider.remove("subgraph1".to_owned()))
+        .block_on(named_provider.remove("subgraph1".to_owned()))
         .unwrap();
     assert_eq!(
-        provider.list().unwrap().into_iter().collect::<HashSet<_>>(),
+        named_provider
+            .list()
+            .unwrap()
+            .into_iter()
+            .collect::<HashSet<_>>(),
         vec![("subgraph2".to_owned(), Some(subgraph2_id))]
             .into_iter()
             .collect::<HashSet<_>>()
     );
     runtime
-        .block_on(provider.remove("subgraph2".to_owned()))
+        .block_on(named_provider.remove("subgraph2".to_owned()))
         .unwrap();
-    assert!(provider.list().unwrap().is_empty());
+    assert!(named_provider.list().unwrap().is_empty());
 }

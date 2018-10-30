@@ -33,7 +33,10 @@ use url::Url;
 use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
-use graph_core::{SubgraphInstanceManager, SubgraphProvider as IpfsSubgraphProvider};
+use graph_core::{
+    SubgraphInstanceManager, SubgraphProvider as IpfsSubgraphProvider,
+    SubgraphProviderWithNames as IpfsSubgraphProviderWithNames,
+};
 use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::{GraphQLServer as GraphQLQueryServer, GRAPHQL_HTTP_PORT};
@@ -306,10 +309,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
 
     // Create IPFS-based subgraph provider
-    let mut subgraph_provider =
-        IpfsSubgraphProvider::init(logger.clone(), ipfs_client, store.clone())
-            .wait()
-            .expect("failed to initialize subgraph provider");
+    let mut subgraph_provider = IpfsSubgraphProvider::new(logger.clone(), ipfs_client);
 
     // Forward subgraph events from the subgraph provider to the subgraph instance manager
     tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());
@@ -327,10 +327,20 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             )).and_then(|_| Ok(())),
     );
 
+    // Create named subgraph provider for resolving subgraph name->ID mappings
+    let named_subgraph_provider = Arc::new(
+        IpfsSubgraphProviderWithNames::init(
+            logger.clone(),
+            Arc::new(subgraph_provider),
+            store.clone(),
+        ).wait()
+        .expect("failed to initialize subgraph provider"),
+    );
+
     // Start admin JSON-RPC server.
     let json_rpc_server = JsonRpcServer::serve(
         json_rpc_port,
-        Arc::new(subgraph_provider),
+        named_subgraph_provider,
         store.clone(),
         logger.clone(),
     ).expect("Failed to start admin server");
