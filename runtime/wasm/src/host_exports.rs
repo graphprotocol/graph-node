@@ -219,7 +219,7 @@ where
         }))
     }
 
-    pub(crate) fn convert_bytes_to_string(
+    pub(crate) fn bytes_to_string(
         &self,
         bytes: Vec<u8>,
     ) -> Result<String, HostExportError<impl ExportError>> {
@@ -228,6 +228,16 @@ where
         // buffer and padded with null characters, so trim
         // trailing nulls.
         Ok(s.trim_right_matches('\u{0000}').to_string())
+    }
+
+    /// Converts bytes to a hex string.
+    /// References:
+    /// https://godoc.org/github.com/ethereum/go-ethereum/common/hexutil#hdr-Encoding_Rules
+    /// https://github.com/ethereum/web3.js/blob/f98fe1462625a6c865125fecc9cb6b414f0a5e83/packages/web3-utils/src/utils.js#L283
+    pub(crate) fn bytes_to_hex(&self, bytes: Vec<u8>) -> String {
+        // Even an empty string must be prefixed with `0x`.
+        // Encodes each byte as a two hex digits.
+        format!("0x{}", ::hex::encode(bytes))
     }
 
     pub(crate) fn u64_array_to_string(
@@ -240,7 +250,7 @@ where
             let x_bytes: [u8; 8] = unsafe { mem::transmute(x) };
             bytes.extend(x_bytes.iter());
         }
-        self.convert_bytes_to_string(bytes)
+        self.bytes_to_string(bytes)
     }
 
     pub(crate) fn u64_array_to_hex(&self, u64_array: Vec<u64>) -> String {
@@ -265,38 +275,22 @@ where
         })
     }
 
-    /// This works for both U256 and I256.
-    pub(crate) fn int256_to_big_int(&self, int256: U256) -> [u8; 32] {
-        let mut buffer = [0; 32];
-        int256.to_little_endian(&mut buffer);
-        buffer
-    }
-
-    /// FIXME: This should be able to handle size up to 32, rather
-    /// than only exactly 32.
-    pub(crate) fn big_int_to_int256(
+    pub(crate) fn big_int_to_i32(
         &self,
-        big_int: Vec<u8>,
-    ) -> Result<U256, HostExportError<impl ExportError>> {
-        let size = big_int.len();
-        if size != 32 {
-            Err(HostExportError(format!(
-                "expected byte array of size 32, found size {}",
-                size
-            )))
+        n: BigInt,
+    ) -> Result<i32, HostExportError<impl ExportError>> {
+        if n >= i32::min_value().into() && n <= i32::max_value().into() {
+            let n_bytes = n.to_signed_bytes_le();
+            let mut i_bytes: [u8; 4] = [0, 0, 0, 0];
+            i_bytes.copy_from_slice(&n_bytes[0..4]);
+            let i: i32 = unsafe { mem::transmute(i_bytes) };
+            Ok(i)
         } else {
-            Ok(U256::from_little_endian(&big_int))
+            Err(HostExportError(format!(
+                "BigInt value does not fit into i32: {}",
+                n
+            )))
         }
-    }
-
-    /// Converts bytes to a hex string.
-    /// References:
-    /// https://godoc.org/github.com/ethereum/go-ethereum/common/hexutil#hdr-Encoding_Rules
-    /// https://github.com/ethereum/web3.js/blob/f98fe1462625a6c865125fecc9cb6b414f0a5e83/packages/web3-utils/src/utils.js#L283
-    pub(crate) fn bytes_to_hex(&self, bytes: Vec<u8>) -> String {
-        // Even an empty string must be prefixed with `0x`.
-        // Encodes each byte as a two hex digits.
-        format!("0x{}", ::hex::encode(bytes))
     }
 
     pub(crate) fn json_from_bytes(
@@ -358,68 +352,6 @@ where
         ::tiny_keccak::keccak256(&input)
     }
 
-    pub(crate) fn i64_to_u256(&self, x: i64) -> U256 {
-        // Sign extension: pad with 0s or 1s depending on sign of x.
-        let mut bytes = if x > 0 { [0; 32] } else { [255; 32] };
-
-        // This is just `x.to_bytes()` which is unstable.
-        let x_bytes: [u8; 8] = unsafe { mem::transmute(x) };
-        bytes[..8].copy_from_slice(&x_bytes);
-        U256::from_little_endian(&bytes)
-    }
-
-    pub(crate) fn u256_to_u8(&self, x: U256) -> Result<u8, HostExportError<impl ExportError>> {
-        Ok(u256_as_u64(x, u8::max_value().into(), "u8")? as u8)
-    }
-
-    pub(crate) fn u256_to_u16(&self, x: U256) -> Result<u16, HostExportError<impl ExportError>> {
-        Ok(u256_as_u64(x, u16::max_value().into(), "u16")? as u16)
-    }
-
-    pub(crate) fn u256_to_u32(&self, x: U256) -> Result<u32, HostExportError<impl ExportError>> {
-        Ok(u256_as_u64(x, u32::max_value().into(), "u32")? as u32)
-    }
-
-    pub(crate) fn u256_to_u64(&self, x: U256) -> Result<u64, HostExportError<impl ExportError>> {
-        u256_as_u64(x, u64::max_value(), "u64")
-    }
-
-    pub(crate) fn u256_to_i8(&self, x: U256) -> Result<i8, HostExportError<impl ExportError>> {
-        let bytes = u256_checked_bytes(x, i8::min_value().into(), i8::max_value().into(), "i8")?;
-
-        // This is just `i8::from_bytes` which is unstable.
-        let value: i8 = unsafe { mem::transmute(bytes[0]) };
-        Ok(value)
-    }
-
-    pub(crate) fn u256_to_i16(&self, x: U256) -> Result<i16, HostExportError<impl ExportError>> {
-        let bytes = u256_checked_bytes(x, i16::min_value().into(), i16::max_value().into(), "i16")?;
-
-        // This is just `i16::from_bytes` which is unstable.
-        let value: i16 = unsafe { mem::transmute([bytes[0], bytes[1]]) };
-        Ok(value)
-    }
-
-    pub(crate) fn u256_to_i32(&self, x: U256) -> Result<i32, HostExportError<impl ExportError>> {
-        let bytes = u256_checked_bytes(x, i32::min_value().into(), i32::max_value().into(), "i32")?;
-
-        // This is just `i32::from_bytes` which is unstable.
-        let value: i32 = unsafe { mem::transmute([bytes[0], bytes[1], bytes[2], bytes[3]]) };
-        Ok(value)
-    }
-
-    pub(crate) fn u256_to_i64(&self, x: U256) -> Result<i64, HostExportError<impl ExportError>> {
-        let bytes = u256_checked_bytes(x, i64::min_value(), i64::max_value(), "i64")?;
-
-        // This is just `i64::from_bytes` which is unstable.
-        let value: i64 = unsafe {
-            mem::transmute([
-                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-            ])
-        };
-        Ok(value)
-    }
-
     pub(crate) fn block_on<I: Send + 'static, ER: Send + 'static>(
         &self,
         future: impl Future<Item = I, Error = ER> + Send + 'static,
@@ -434,60 +366,4 @@ where
             .unwrap();
         return_receiver.wait().expect("`return_sender` dropped")
     }
-}
-
-/// Cast U256 to u64, checking that it respects `max_value`.
-fn u256_as_u64(
-    u256: U256,
-    max_value: u64,
-    n_name: &str,
-) -> Result<u64, HostExportError<impl ExportError>> {
-    // Check for overflow.
-    let max_value = U256::from(max_value);
-    if u256 > max_value {
-        return Err(HostExportError(format!(
-            "number `{}` is too large for an {}",
-            u256, n_name
-        )));
-    }
-    Ok(u64::from(u256))
-}
-
-/// Checks that `x >= min_value` and `x <= max_value`
-/// and returns the byte representation of `x`.
-pub(crate) fn u256_checked_bytes(
-    u256: U256,
-    min_value: i64,
-    max_value: i64,
-    n_name: &str,
-) -> Result<[u8; 8], HostExportError<impl ExportError>> {
-    // The number is negative if the most-significant bit is set.
-    let is_negative = u256.bit(255);
-    if !is_negative {
-        // Check for overflow.
-        let max_value = U256::from(max_value);
-        if u256 > max_value {
-            return Err(HostExportError(format!(
-                "number `{}` is too large for an {}",
-                u256, n_name
-            )));
-        }
-    } else {
-        // Check for underflow.
-        // Do two's complement to get the absolute value.
-        let u256_abs = !u256 + 1;
-
-        // The absolute value of `T::min_value` is `T::max_value + 1` for a primitive `T`,
-        // so we do a math trick to get around that, the `+ 1`s here cancel each other.
-        let min_value_abs = U256::from((min_value + 1).abs()) + 1;
-        if u256_abs > min_value_abs {
-            return Err(HostExportError(format!(
-                "number `-{}` is too small for an {}",
-                u256_abs, n_name
-            )));
-        }
-    }
-
-    // This is just `u256.low_u64().to_bytes()` which is unstable.
-    Ok(unsafe { mem::transmute(u256.low_u64()) })
 }
