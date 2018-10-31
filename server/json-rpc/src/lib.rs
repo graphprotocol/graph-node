@@ -52,7 +52,7 @@ impl fmt::Display for SubgraphRemoveParams {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SubgraphAuthorizeParams {
-    subgraph_api_keys: BTreeMap<String, String>,
+    subgraph_access_tokens: BTreeMap<String, String>,
 }
 
 impl fmt::Display for SubgraphAuthorizeParams {
@@ -122,7 +122,7 @@ where
 
         return Err(json_rpc_error(
             JSON_RPC_UNAUTHORIZED_ERROR,
-            "API key is invalid".to_owned(),
+            "invalid access token".to_owned(),
         ));
     }
 
@@ -197,7 +197,7 @@ where
         info!(self.logger, "Received subgraph_authorize request"; "params" => params.to_string());
         Self::require_master_token(auth)?;
 
-        for (subgraph_name, access_token) in params.subgraph_api_keys {
+        for (subgraph_name, access_token) in params.subgraph_access_tokens {
             let logger = self.logger.clone();
 
             self.store

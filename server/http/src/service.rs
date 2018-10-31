@@ -185,15 +185,16 @@ where
 
     /// Handles 302 redirects
     fn handle_temp_redirect(&self, destination: &str) -> GraphQLServiceResponse {
-        Box::new(future::ok(
-            Response::builder()
-                .status(StatusCode::FOUND)
-                .header(
-                    header::LOCATION,
-                    header::HeaderValue::from_str(destination)
-                        .expect("invalid redirect destination"),
-                ).body(Body::from("Redirecting..."))
-                .unwrap(),
+        Box::new(future::result(
+            header::HeaderValue::from_str(destination)
+                .map_err(|_| GraphQLServerError::from("invalid characters in redirect URL"))
+                .map(|loc_header_val| {
+                    Response::builder()
+                        .status(StatusCode::FOUND)
+                        .header(header::LOCATION, loc_header_val)
+                        .body(Body::from("Redirecting..."))
+                        .unwrap()
+                }),
         ))
     }
 

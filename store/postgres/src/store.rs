@@ -466,8 +466,8 @@ impl StoreTrait for Store {
             None => {
                 debug!(
                     self.logger,
-                    "Subgraph name {:?} has no associated access token. Access denied by default.",
-                    access_token
+                    "Subgraph name has no associated access token. Access denied by default.";
+                    "subgraph_name" => &name
                 );
 
                 Ok(false)
