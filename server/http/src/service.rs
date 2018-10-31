@@ -59,6 +59,7 @@ where
                 .map_err(|e| GraphQLServerError::InternalError(e.to_string()))
                 .and_then(
                     move |mut subgraph_name_mappings| -> GraphQLServiceResponse {
+                        // If there is only one subgraph, redirect to it
                         if subgraph_name_mappings.len() == 1 {
                             let (subgraph_name, subgraph_id_opt) =
                                 subgraph_name_mappings.pop().unwrap();
