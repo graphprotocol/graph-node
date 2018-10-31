@@ -240,26 +240,16 @@ where
         format!("0x{}", ::hex::encode(bytes))
     }
 
-    pub(crate) fn u64_array_to_string(
+    pub(crate) fn big_int_to_string(
         &self,
-        u64_array: Vec<u64>,
+        n: BigInt,
     ) -> Result<String, HostExportError<impl ExportError>> {
-        let mut bytes: Vec<u8> = Vec::new();
-        for x in u64_array {
-            // This is just `x.to_bytes()` which is unstable.
-            let x_bytes: [u8; 8] = unsafe { mem::transmute(x) };
-            bytes.extend(x_bytes.iter());
-        }
+        let bytes = n.to_signed_bytes_le();
         self.bytes_to_string(bytes)
     }
 
-    pub(crate) fn u64_array_to_hex(&self, u64_array: Vec<u64>) -> String {
-        let mut bytes: Vec<u8> = Vec::new();
-        for x in u64_array {
-            // This is just `x.to_bytes()` which is unstable.
-            let x_bytes: [u8; 8] = unsafe { mem::transmute(x) };
-            bytes.extend(x_bytes.iter());
-        }
+    pub(crate) fn big_int_to_hex(&self, n: BigInt) -> String {
+        let bytes = n.to_signed_bytes_le();
 
         // Even an empty string must be prefixed with `0x`.
         // Encodes each byte as a two hex digits.
