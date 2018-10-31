@@ -28,18 +28,20 @@ impl GuardedSchema {
 }
 
 /// A GraphQL subscription server based on Hyper / Websockets.
-pub struct SubscriptionServer<Q> {
+pub struct SubscriptionServer<Q, S> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     schema_event_sink: Sender<SchemaEvent>,
     subgraphs: SubgraphRegistry<GuardedSchema>,
+    store: Arc<S>,
 }
 
-impl<Q> SubscriptionServer<Q>
+impl<Q, S> SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner + 'static,
+    S: Store,
 {
-    pub fn new(logger: &Logger, graphql_runner: Arc<Q>) -> Self {
+    pub fn new(logger: &Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
         let logger = logger.new(o!("component" => "SubscriptionServer"));
 
         let (schema_event_sink, schema_event_stream) = channel(100);
@@ -49,6 +51,7 @@ where
             graphql_runner,
             schema_event_sink,
             subgraphs: SubgraphRegistry::new(),
+            store,
         };
 
         // Spawn task to handle incoming schema events
@@ -95,17 +98,38 @@ where
         }));
     }
 
-    fn subgraph_from_url_path(path: &Path) -> Option<String> {
-        path.iter()
-            .nth(1)
-            .and_then(|os| os.to_str())
-            .map(|s| s.into())
+    fn subgraph_id_from_url_path(store: Arc<S>, path: &Path) -> Result<String, ()> {
+        let mut parts = path.iter();
+        if parts.next() != Some("/".as_ref()) {
+            return Err(());
+        }
+
+        match parts.next().and_then(|s| s.to_str()) {
+            Some("by-id") => parts
+                .next()
+                .and_then(|id| id.to_owned().into_string().ok())
+                .ok_or(()),
+            Some("by-name") => {
+                let name = parts
+                    .next()
+                    .and_then(|name| name.to_owned().into_string().ok())
+                    .ok_or(())?;
+
+                store
+                    .read_subgraph_name(name)
+                    .expect("error reading subgraph name from store")
+                    .ok_or(())
+                    .and_then(|id_opt| id_opt.ok_or(()))
+            }
+            _ => Err(()),
+        }
     }
 }
 
-impl<Q> SubscriptionServerTrait for SubscriptionServer<Q>
+impl<Q, S> SubscriptionServerTrait for SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner + 'static,
+    S: Store,
 {
     type ServeError = ();
 
@@ -119,6 +143,7 @@ where
 
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
         let graphql_runner = self.graphql_runner.clone();
+        let store = self.store.clone();
 
         let socket = TcpListener::bind(&addr).expect("Failed to bind WebSocket port");
 
@@ -129,20 +154,22 @@ where
             }).for_each(move |stream| {
                 let logger = logger.clone();
                 let graphql_runner = graphql_runner.clone();
+                let store = store.clone();
 
                 // Clone subgraph registry to pass it on to connections
                 let subgraphs = subgraphs.clone();
 
                 // Subgraph that the request is resolved to (if any)
-                let subgraph_id_or_name = Arc::new(Mutex::new(None));
-                let accept_subgraph_id_or_name = subgraph_id_or_name.clone();
+                let subgraph_id = Arc::new(Mutex::new(None));
+                let accept_subgraph_id = subgraph_id.clone();
 
                 accept_hdr_async(stream, move |request: &Request| {
                     // Try to obtain the subgraph ID or name from the URL path.
                     // Return a 404 if the URL path contains no name/ID segment.
                     let path = &request.path;
-                    *accept_subgraph_id_or_name.lock().unwrap() = Some(
-                        Self::subgraph_from_url_path(path.as_ref()).ok_or(WsError::Http(404))?,
+                    *accept_subgraph_id.lock().unwrap() = Some(
+                        Self::subgraph_id_from_url_path(store.clone(), path.as_ref())
+                            .map_err(|()| WsError::Http(404))?,
                     );
 
                     Ok(Some(vec![(
@@ -153,27 +180,27 @@ where
                     match result {
                         Ok(ws_stream) => {
                             // Obtain the subgraph ID or name that we resolved the request to
-                            let subgraph = subgraph_id_or_name.lock().unwrap().clone().unwrap();
+                            let subgraph_id = subgraph_id.lock().unwrap().clone().unwrap();
 
                             // Spawn a GraphQL over WebSocket connection
                             let service = GraphQlConnection::new(
                                 &logger,
                                 subgraphs.clone(),
-                                subgraph.clone(),
+                                subgraph_id.clone(),
                                 ws_stream,
                                 graphql_runner.clone(),
                             );
 
                             // Setup cancelation.
                             let guard = CancelGuard::new();
-                            let cancel_subgraph = subgraph.clone();
+                            let cancel_subgraph = subgraph_id.clone();
                             let connection = service.into_future().cancelable(&guard, move || {
                                 debug!(
                                         logger,
                                         "Canceling subscriptions"; "subgraph" => &cancel_subgraph
                                     )
                             });
-                            subgraphs.mutate(&subgraph, |subgraph| {
+                            subgraphs.mutate(&subgraph_id, |subgraph| {
                                 subgraph.connection_guards.push(guard)
                             });
 
@@ -193,9 +220,10 @@ where
     }
 }
 
-impl<Q> EventConsumer<SchemaEvent> for SubscriptionServer<Q>
+impl<Q, S> EventConsumer<SchemaEvent> for SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner + 'static,
+    S: Store,
 {
     fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()> + Send> {
         let logger = self.logger.clone();

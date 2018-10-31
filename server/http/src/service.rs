@@ -1,6 +1,6 @@
+use http::header;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
-use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::sync::RwLock;
 
@@ -52,7 +52,27 @@ where
     }
 
     fn index(&self) -> GraphQLServiceResponse {
-        self.handle_not_found()
+        let service = self.clone();
+
+        Box::new(
+            future::result(self.store.read_all_subgraph_names())
+                .map_err(|e| GraphQLServerError::InternalError(e.to_string()))
+                .and_then(
+                    move |mut subgraph_name_mappings| -> GraphQLServiceResponse {
+                        if subgraph_name_mappings.len() == 1 {
+                            let (subgraph_name, subgraph_id_opt) =
+                                subgraph_name_mappings.pop().unwrap();
+
+                            if let Some(_) = subgraph_id_opt {
+                                return service
+                                    .handle_temp_redirect(&format!("/by-name/{}", subgraph_name));
+                            }
+                        }
+
+                        service.handle_not_found()
+                    },
+                ),
+        )
     }
 
     /// Serves a GraphiQL index.html.
@@ -65,53 +85,89 @@ where
         ))
     }
 
-    /// Handles GraphQL queries received via POST /.
-    fn handle_graphql_query(
-        &self,
-        name_or_id: &str,
-        request: Request<Body>,
-    ) -> GraphQLServiceResponse {
-        let name_or_id = name_or_id.to_owned();
+    fn handle_graphiql_by_name(&self, name: &str) -> GraphQLServiceResponse {
         let service = self.clone();
 
         Box::new(
-            future::result(self.store.read_subgraph_name(name_or_id.clone()))
+            future::result(self.store.read_subgraph_name(name.to_owned()))
                 .map_err(|e| GraphQLServerError::InternalError(e.to_string()))
-                .and_then(move |id_opt_opt| -> GraphQLServiceResponse {
-                    let service = service.clone();
-                    let schemas_rwlock = service.schemas.clone();
-                    let schemas = schemas_rwlock.read().unwrap();
-
-                    let id = match id_opt_opt {
-                        // If name_or_id matched a name with non-null ID
-                        Some(Some(id)) => id,
-
-                        // Otherwise, treat name_or_id as an ID
-                        _ => name_or_id.clone(),
-                    };
-
-                    let schema_opt = schemas.get(&id).map(|s| s.to_owned());
-
-                    match schema_opt {
-                        None => service.handle_not_found(),
-                        Some(schema) => Box::new(
-                            request
-                                .into_body()
-                                .concat2()
-                                .map_err(|_| {
-                                    GraphQLServerError::from("Failed to read request body")
-                                }).and_then(move |body| GraphQLRequest::new(body, schema.clone()))
-                                .and_then(move |query| {
-                                    // Run the query using the query runner
-                                    service
-                                        .graphql_runner
-                                        .run_query(query)
-                                        .map_err(|e| GraphQLServerError::from(e))
-                                }).then(|result| GraphQLResponse::new(result)),
-                        ),
-                    }
+                .and_then(move |id_opt_opt| match id_opt_opt {
+                    None | Some(None) => service.handle_not_found(),
+                    Some(Some(_)) => service.serve_file(include_str!("../assets/index.html")),
                 }),
         )
+    }
+
+    fn handle_graphiql_by_id(&self, id: SubgraphId) -> GraphQLServiceResponse {
+        if self.schemas.read().unwrap().contains_key(&id) {
+            self.serve_file(include_str!("../assets/index.html"))
+        } else {
+            self.handle_not_found()
+        }
+    }
+
+    fn handle_graphql_query_by_name(
+        &self,
+        name: &str,
+        request: Request<Body>,
+    ) -> GraphQLServiceResponse {
+        let name_clone1 = name.to_owned();
+        let name_clone2 = name.to_owned();
+        let service = self.clone();
+
+        Box::new(
+            future::result(self.store.read_subgraph_name(name.to_owned()))
+                .map_err(|e| GraphQLServerError::InternalError(e.to_string()))
+                .and_then(move |id_opt_opt| {
+                    id_opt_opt.ok_or_else(|| {
+                        GraphQLServerError::ClientError(format!(
+                            "subgraph with name {:?} not found",
+                            name_clone1.clone()
+                        ))
+                    })
+                }).and_then(move |id_opt| {
+                    id_opt.ok_or_else(|| {
+                        GraphQLServerError::ClientError(format!(
+                            "subgraph {} is not yet deployed",
+                            name_clone2.clone()
+                        ))
+                    })
+                }).and_then(move |id| service.handle_graphql_query(id, request.into_body())),
+        )
+    }
+
+    fn handle_graphql_query_by_id(
+        &self,
+        id: SubgraphId,
+        request: Request<Body>,
+    ) -> GraphQLServiceResponse {
+        self.handle_graphql_query(id, request.into_body())
+    }
+
+    fn handle_graphql_query(&self, id: SubgraphId, request_body: Body) -> GraphQLServiceResponse {
+        let service = self.clone();
+
+        let schemas_rwlock = service.schemas.clone();
+        let schemas = schemas_rwlock.read().unwrap();
+
+        let schema_opt = schemas.get(&id).map(|s| s.to_owned());
+
+        match schema_opt {
+            None => service.handle_not_found(),
+            Some(schema) => Box::new(
+                request_body
+                    .concat2()
+                    .map_err(|_| GraphQLServerError::from("Failed to read request body"))
+                    .and_then(move |body| GraphQLRequest::new(body, schema.clone()))
+                    .and_then(move |query| {
+                        // Run the query using the query runner
+                        service
+                            .graphql_runner
+                            .run_query(query)
+                            .map_err(|e| GraphQLServerError::from(e))
+                    }).then(|result| GraphQLResponse::new(result)),
+            ),
+        }
     }
 
     // Handles OPTIONS requests
@@ -122,6 +178,20 @@ where
                 .header("Access-Control-Allow-Origin", "*")
                 .header("Access-Control-Allow-Headers", "Content-Type")
                 .body(Body::from(""))
+                .unwrap(),
+        ))
+    }
+
+    /// Handles 302 redirects
+    fn handle_temp_redirect(&self, destination: &str) -> GraphQLServiceResponse {
+        Box::new(future::ok(
+            Response::builder()
+                .status(StatusCode::FOUND)
+                .header(
+                    header::LOCATION,
+                    header::HeaderValue::from_str(destination)
+                        .expect("invalid redirect destination"),
+                ).body(Body::from("Redirecting..."))
                 .unwrap(),
         ))
     }
@@ -149,42 +219,43 @@ where
 
     fn call(&mut self, req: Request<Self::ReqBody>) -> Self::Future {
         let method = req.method().clone();
-        let uri = req.uri().clone();
-        match (method, uri.path()) {
-            (Method::GET, "/") => self.index(),
 
-            (Method::GET, "/graphiql.css") => {
+        let path = req.uri().path().to_owned();
+        let path_segments = {
+            let mut segments = path.split('/');
+
+            // Remove leading '/'
+            assert_eq!(segments.next(), Some(""));
+
+            segments.collect::<Vec<_>>()
+        };
+
+        match (method, path_segments.as_slice()) {
+            (Method::GET, [""]) => self.index(),
+            (Method::GET, ["graphiql.css"]) => {
                 self.serve_file(include_str!("../assets/graphiql.css"))
             }
-            (Method::GET, "/graphiql.min.js") => {
+            (Method::GET, ["graphiql.min.js"]) => {
                 self.serve_file(include_str!("../assets/graphiql.min.js"))
             }
 
-            // Request is relative to a subgraph.
-            (method, path) => {
-                let mut path = path.split('/');
-                let _empty = path.next();
-                let name_or_id = path.next();
-                let rest = path.join("/");
-
-                match (method, name_or_id, rest.as_str()) {
-                    // GraphiQL
-                    (Method::GET, Some(_), "") => {
-                        self.serve_file(include_str!("../assets/index.html"))
-                    }
-
-                    // POST / receives GraphQL queries
-                    (Method::POST, Some(name_or_id), "graphql") => {
-                        self.handle_graphql_query(&name_or_id, req)
-                    }
-
-                    // OPTIONS / allows to check for GraphQL HTTP features
-                    (Method::OPTIONS, Some(_), "graphql") => self.handle_graphql_options(req),
-
-                    // Everything else results in a 404
-                    _ => self.handle_not_found(),
-                }
+            (Method::GET, &["by-id", subgraph_id]) => {
+                self.handle_graphiql_by_id(subgraph_id.to_owned())
             }
+            (Method::POST, &["by-id", subgraph_id, "graphql"]) => {
+                self.handle_graphql_query_by_id(subgraph_id.to_owned(), req)
+            }
+            (Method::OPTIONS, ["by-id", _, "graphql"]) => self.handle_graphql_options(req),
+
+            (Method::GET, ["by-name", subgraph_name]) => {
+                self.handle_graphiql_by_name(subgraph_name)
+            }
+            (Method::POST, ["by-name", subgraph_name, "graphql"]) => {
+                self.handle_graphql_query_by_name(subgraph_name, req)
+            }
+            (Method::OPTIONS, ["by-name", _, "graphql"]) => self.handle_graphql_options(req),
+
+            _ => self.handle_not_found(),
         }
     }
 }
@@ -248,7 +319,7 @@ mod tests {
 
         let request = Request::builder()
             .method(Method::POST)
-            .uri(format!("http://localhost:8000/{}/graphql", id))
+            .uri(format!("http://localhost:8000/by-id/{}/graphql", id))
             .body(Body::from("{}"))
             .unwrap();
 
@@ -295,7 +366,7 @@ mod tests {
 
                     let request = Request::builder()
                         .method(Method::POST)
-                        .uri(format!("http://localhost:8000/{}/graphql", id))
+                        .uri(format!("http://localhost:8000/by-id/{}/graphql", id))
                         .body(Body::from("{\"query\": \"{ name }\"}"))
                         .unwrap();
 

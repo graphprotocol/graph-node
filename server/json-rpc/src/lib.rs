@@ -375,11 +375,17 @@ pub fn parse_response(response: Value) -> Result<(), jsonrpc_core::Error> {
 
 fn subgraph_routes(name: &str) -> Value {
     let mut map = BTreeMap::new();
-    map.insert("playground", format!(":{}/{}", GRAPHQL_HTTP_PORT, name));
+    map.insert(
+        "playground",
+        format!(":{}/by-name/{}", GRAPHQL_HTTP_PORT, name),
+    );
     map.insert(
         "queries",
-        format!(":{}/{}/graphql", GRAPHQL_HTTP_PORT, name),
+        format!(":{}/by-name/{}/graphql", GRAPHQL_HTTP_PORT, name),
     );
-    map.insert("subscriptions", format!(":{}/{}", GRAPHQL_WS_PORT, name));
+    map.insert(
+        "subscriptions",
+        format!(":{}/by-name/{}", GRAPHQL_WS_PORT, name),
+    );
     jsonrpc_core::to_value(map).unwrap()
 }
