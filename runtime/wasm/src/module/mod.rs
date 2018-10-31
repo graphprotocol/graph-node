@@ -67,8 +67,8 @@ const STORE_REMOVE_FUNC_INDEX: usize = 2;
 const ETHEREUM_CALL_FUNC_INDEX: usize = 3;
 const TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX: usize = 4;
 const TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX: usize = 5;
-const TYPE_CONVERSION_U64_ARRAY_TO_STRING_FUNC_INDEX: usize = 6;
-const TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX: usize = 7;
+const TYPE_CONVERSION_BIG_INT_TO_STRING_FUNC_INDEX: usize = 6;
+const TYPE_CONVERSION_BIG_INT_TO_HEX_FUNC_INDEX: usize = 7;
 const TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX: usize = 8;
 const TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX: usize = 9;
 const TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX: usize = 10;
@@ -326,26 +326,24 @@ where
         let result = self.host_exports.bytes_to_hex(self.heap.asc_get(bytes_ptr));
         Ok(Some(RuntimeValue::from(self.heap.asc_new(&result))))
     }
-    /// function typeConversion.u64ArrayToString(u64_array: U64Array): string
-    fn u64_array_to_string(
+
+    /// function typeConversion.bigIntToString(n: Uint8Array): string
+    fn big_int_to_string(
         &self,
-        u64_array_ptr: AscPtr<Uint64Array>,
+        big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let string = self
-            .host_exports
-            .u64_array_to_string(self.heap.asc_get(u64_array_ptr))?;
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(&string))))
+        let bytes: Vec<u8> = self.heap.asc_get(big_int_ptr);
+        let n = BigInt::from_signed_bytes_le(&*bytes);
+        let result = self.host_exports.big_int_to_string(n)?;
+        Ok(Some(RuntimeValue::from(self.heap.asc_new(&result))))
     }
 
-    /// function typeConversion.u64ArrayToHex(u64_array: U64Array): string
-    fn u64_array_to_hex(
-        &self,
-        u64_array_ptr: AscPtr<Uint64Array>,
-    ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self
-            .host_exports
-            .u64_array_to_hex(self.heap.asc_get(u64_array_ptr));
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(&*result))))
+    /// function typeConversion.bigIntToHex(n: Uint8Array): string
+    fn big_int_to_hex(&self, big_int_ptr: AscPtr<AscBigInt>) -> Result<Option<RuntimeValue>, Trap> {
+        let bytes: Vec<u8> = self.heap.asc_get(big_int_ptr);
+        let n = BigInt::from_signed_bytes_le(&*bytes);
+        let result = self.host_exports.big_int_to_hex(n);
+        Ok(Some(RuntimeValue::from(self.heap.asc_new(&result))))
     }
 
     /// function typeConversion.stringToH160(s: String): H160
@@ -456,12 +454,10 @@ where
                 self.bytes_to_string(args.nth_checked(0)?)
             }
             TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX => self.bytes_to_hex(args.nth_checked(0)?),
-            TYPE_CONVERSION_U64_ARRAY_TO_STRING_FUNC_INDEX => {
-                self.u64_array_to_string(args.nth_checked(0)?)
+            TYPE_CONVERSION_BIG_INT_TO_STRING_FUNC_INDEX => {
+                self.big_int_to_string(args.nth_checked(0)?)
             }
-            TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX => {
-                self.u64_array_to_hex(args.nth_checked(0)?)
-            }
+            TYPE_CONVERSION_BIG_INT_TO_HEX_FUNC_INDEX => self.big_int_to_hex(args.nth_checked(0)?),
             TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX => self.string_to_h160(args.nth_checked(0)?),
             TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX => self.i32_to_big_int(args.nth_checked(0)?),
             TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX => self.big_int_to_i32(args.nth_checked(0)?),
@@ -567,13 +563,13 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX,
             ),
-            "u64ArrayToString" => FuncInstance::alloc_host(
+            "bigIntToString" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_U64_ARRAY_TO_STRING_FUNC_INDEX,
+                TYPE_CONVERSION_BIG_INT_TO_STRING_FUNC_INDEX,
             ),
-            "u64ArrayToHex" => FuncInstance::alloc_host(
+            "bigIntToHex" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_U64_ARRAY_TO_HEX_FUNC_INDEX,
+                TYPE_CONVERSION_BIG_INT_TO_HEX_FUNC_INDEX,
             ),
             "stringToH160" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
