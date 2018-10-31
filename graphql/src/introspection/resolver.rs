@@ -47,10 +47,7 @@ fn named_type_object(
 ) -> q::Value {
     sast::get_named_type(&schema.document, name)
         .map(|typedef| type_definition_object(schema, type_objects, typedef))
-        .expect(&format!(
-            "Failed to resolve named type in GraphQL schema: {}",
-            name
-        ))
+        .unwrap_or_else(|| panic!("Failed to resolve named type in GraphQL schema: {}", name))
 }
 
 fn list_type_object(
@@ -82,28 +79,25 @@ fn type_definition_object(
 ) -> q::Value {
     let type_name = sast::get_type_name(typedef);
 
-    type_objects
-        .get(type_name)
-        .map(|type_object| type_object.clone())
-        .unwrap_or_else(|| {
-            let type_object = match typedef {
-                s::TypeDefinition::Enum(enum_type) => enum_type_object(enum_type),
-                s::TypeDefinition::InputObject(input_object_type) => {
-                    input_object_type_object(schema, type_objects, input_object_type)
-                }
-                s::TypeDefinition::Interface(interface_type) => {
-                    interface_type_object(schema, type_objects, interface_type)
-                }
-                s::TypeDefinition::Object(object_type) => {
-                    object_type_object(schema, type_objects, object_type)
-                }
-                s::TypeDefinition::Scalar(scalar_type) => scalar_type_object(scalar_type),
-                s::TypeDefinition::Union(union_type) => union_type_object(schema, union_type),
-            };
+    type_objects.get(type_name).cloned().unwrap_or_else(|| {
+        let type_object = match typedef {
+            s::TypeDefinition::Enum(enum_type) => enum_type_object(enum_type),
+            s::TypeDefinition::InputObject(input_object_type) => {
+                input_object_type_object(schema, type_objects, input_object_type)
+            }
+            s::TypeDefinition::Interface(interface_type) => {
+                interface_type_object(schema, type_objects, interface_type)
+            }
+            s::TypeDefinition::Object(object_type) => {
+                object_type_object(schema, type_objects, object_type)
+            }
+            s::TypeDefinition::Scalar(scalar_type) => scalar_type_object(scalar_type),
+            s::TypeDefinition::Union(union_type) => union_type_object(schema, union_type),
+        };
 
-            type_objects.insert(type_name.to_owned(), type_object.clone());
-            type_object
-        })
+        type_objects.insert(type_name.to_owned(), type_object.clone());
+        type_object
+    })
 }
 
 fn enum_type_object(enum_type: &s::EnumType) -> q::Value {
@@ -190,8 +184,7 @@ fn interface_type_object(
                         object_type
                             .implements_interfaces
                             .iter()
-                            .find(|implemented_name| implemented_name == &&interface_type.name)
-                            .is_some()
+                            .any(|implemented_name| implemented_name == &interface_type.name)
                     }).map(|object_type| q::Value::String(object_type.name.to_owned()))
                     .collect(),
             ),
@@ -206,7 +199,7 @@ fn object_type_object(
 ) -> q::Value {
     type_objects
         .get(&object_type.name)
-        .map(|type_object| type_object.clone())
+        .cloned()
         .unwrap_or_else(|| {
             let type_object = object_value(vec![
                 ("kind", q::Value::Enum(String::from("OBJECT"))),
@@ -236,7 +229,7 @@ fn object_type_object(
 fn field_objects(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    fields: &Vec<s::Field>,
+    fields: &[s::Field],
 ) -> q::Value {
     q::Value::List(
         fields
@@ -313,8 +306,7 @@ fn union_type_object(schema: &Schema, union_type: &s::UnionType) -> q::Value {
                         object_type
                             .implements_interfaces
                             .iter()
-                            .find(|implemented_name| implemented_name == &&union_type.name)
-                            .is_some()
+                            .any(|implemented_name| implemented_name == &union_type.name)
                     }).map(|object_type| q::Value::String(object_type.name.to_owned()))
                     .collect(),
             ),
@@ -372,7 +364,7 @@ fn directive_locations(directive: &s::DirectiveDefinition) -> q::Value {
 fn input_values(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    input_values: &Vec<s::InputValue>,
+    input_values: &[s::InputValue],
 ) -> q::Value {
     q::Value::List(
         input_values
@@ -442,25 +434,20 @@ impl<'a> IntrospectionResolver<'a> {
                 "queryType",
                 self.type_objects
                     .get(&String::from("Query"))
-                    .map(|t| t.clone())
+                    .cloned()
                     .unwrap_or(q::Value::Null),
             ),
             (
                 "subscriptionType",
                 self.type_objects
                     .get(&String::from("Subscription"))
-                    .map(|t| t.clone())
+                    .cloned()
                     .unwrap_or(q::Value::Null),
             ),
             ("mutationType", q::Value::Null),
             (
                 "types",
-                q::Value::List(
-                    self.type_objects
-                        .values()
-                        .map(|t| t.clone())
-                        .collect::<Vec<q::Value>>(),
-                ),
+                q::Value::List(self.type_objects.values().cloned().collect::<Vec<_>>()),
             ),
             ("directives", self.directives.clone()),
         ])
@@ -493,9 +480,9 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                     .and_then(|value| match value {
                         q::Value::List(type_names) => Some(type_names.clone()),
                         _ => None,
-                    }).unwrap_or(vec![]);
+                    }).unwrap_or_else(|| vec![]);
 
-                if type_names.len() > 0 {
+                if !type_names.is_empty() {
                     Ok(q::Value::List(
                         type_names
                             .iter()
@@ -536,7 +523,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                     _ => Some(value.clone()),
                 }).unwrap_or(q::Value::Null),
             _ => object_field(parent, field.as_str())
-                .map(|value| value.clone())
+                .cloned()
                 .unwrap_or(q::Value::Null),
         };
         Ok(object)

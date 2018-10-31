@@ -44,7 +44,7 @@ use graph_store_postgres::{Store as DieselStore, StoreConfig};
 fn main() {
     let (panic_logger, _panic_guard) = guarded_logger();
     register_panic_hook(panic_logger);
-    tokio::run(future::lazy(|| async_main()))
+    tokio::run(future::lazy(async_main))
 }
 
 fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
@@ -146,7 +146,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Set up Sentry, with release tracking and panic handling;
     // fall back to an empty URL, which will result in no errors being reported
     let sentry_url = env::var_os("THEGRAPH_SENTRY_URL")
-        .or(Some("".into()))
+        .or_else(|| Some("".into()))
         .unwrap();
     let _sentry = sentry::init((
         sentry_url,
@@ -164,7 +164,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let (ipfs_client, ipfs_address) = match ipfs_address
         // Resolve the IPFS address into socket addresses
         .to_socket_addrs()
-        .expect(&format!("failed to parse IPFS address: {}", ipfs_address))
+        .unwrap_or_else(|_| panic!("failed to parse IPFS address: {}", ipfs_address))
         // Try to create an IPFS client for one of these addresses; collect
         // errors in case we can't create a client for any of them
         .fold_while(Err(vec![]), |result, address| {
@@ -225,8 +225,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Set up Ethereum transport
     let (transport_event_loop, transport) = ethereum_ipc
         .map(|_| Transport::new_ipc(ethereum_node_url))
-        .or(ethereum_ws.map(|_| Transport::new_ws(ethereum_node_url)))
-        .or(ethereum_rpc.map(|_| Transport::new_rpc(ethereum_node_url)))
+        .or_else(|| ethereum_ws.map(|_| Transport::new_ws(ethereum_node_url)))
+        .or_else(|| ethereum_rpc.map(|_| Transport::new_rpc(ethereum_node_url)))
         .expect("One of --ethereum-ipc, --ethereum-rpc or --ethereum-ws must be provided");
 
     // If we drop the event loop the transport will stop working.
@@ -383,10 +383,12 @@ fn parse_ethereum_network_and_node(s: &str) -> Result<(&str, &str), Error> {
     }
 
     // Parse string (format is "NETWORK_NAME:URL")
-    let split_at = s.find(':').ok_or(format_err!(
-        "A network name must be provided alongside the \
-         Ethereum node location. Try e.g. 'mainnet:URL'."
-    ))?;
+    let split_at = s.find(':').ok_or_else(|| {
+        format_err!(
+            "A network name must be provided alongside the \
+             Ethereum node location. Try e.g. 'mainnet:URL'."
+        )
+    })?;
     let (name, loc_with_delim) = s.split_at(split_at);
     let loc = &loc_with_delim[1..];
 

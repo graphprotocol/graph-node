@@ -29,7 +29,7 @@ pub struct SqlValue(Value);
 
 impl SqlValue {
     pub fn new_array(values: Vec<Value>) -> Vec<Self> {
-        values.into_iter().map(|value| SqlValue(value)).collect()
+        values.into_iter().map(SqlValue).collect()
     }
 }
 

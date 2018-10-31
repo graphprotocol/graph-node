@@ -23,7 +23,7 @@ impl<L: LinkResolver> SubgraphProvider<L> {
         let (event_sink, event_stream) = channel(100);
 
         // Create the subgraph provider
-        let provider = SubgraphProvider {
+        SubgraphProvider {
             _logger: logger.new(o!("component" => "SubgraphProvider")),
             event_stream: Some(event_stream),
             event_sink,
@@ -31,9 +31,7 @@ impl<L: LinkResolver> SubgraphProvider<L> {
             schema_event_sink,
             resolver,
             subgraphs: Arc::new(Mutex::new(BTreeMap::new())),
-        };
-
-        provider
+        }
     }
 
     fn send_remove_events(

@@ -149,12 +149,12 @@ where
                             .collect(),
                     )),
                     _ => None,
-                }).expect(
-                    format!(
+                }).unwrap_or_else(|| {
+                    panic!(
                         "Field \"{}\" missing in parent object",
                         field_definition.name
-                    ).as_str(),
-                );
+                    )
+                });
 
             // Add the `Or` filter to the top-level `And` filter, creating one if necessary
             let top_level_filter = query.filter.get_or_insert(StoreFilter::And(vec![]));
@@ -244,10 +244,9 @@ where
             return Ok(self
                 .store
                 .get(StoreKey {
-                    subgraph: parse_subgraph_id(object_type).expect(
-                        format!("Failed to get subgraph ID from type: {}", object_type.name)
-                            .as_str(),
-                    ),
+                    subgraph: parse_subgraph_id(object_type).unwrap_or_else(|_| {
+                        panic!("Failed to get subgraph ID from type: {}", object_type.name)
+                    }),
                     entity: object_type.name.to_owned(),
                     id: id.to_owned(),
                 })?.map_or(q::Value::Null, |entity| entity.into()));
@@ -258,10 +257,9 @@ where
                 Some(q::Value::String(id)) => Ok(self
                     .store
                     .get(StoreKey {
-                        subgraph: parse_subgraph_id(object_type).expect(
-                            format!("Failed to get subgraph ID from type: {}", object_type.name)
-                                .as_str(),
-                        ),
+                        subgraph: parse_subgraph_id(object_type).unwrap_or_else(|_| {
+                            panic!("Failed to get subgraph ID from type: {}", object_type.name)
+                        }),
                         entity: object_type.name.to_owned(),
                         id: id.to_owned(),
                     })?.map_or(q::Value::Null, |entity| entity.into())),
@@ -300,7 +298,7 @@ where
         // Fail if the field does not exist on the object type
         if sast::get_field_type(object_type, &field.name).is_none() {
             return Err(QueryExecutionError::UnknownField(
-                field.position.clone(),
+                field.position,
                 object_type.name.clone(),
                 field.name.clone(),
             ));

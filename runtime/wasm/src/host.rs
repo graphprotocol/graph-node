@@ -217,20 +217,19 @@ impl RuntimeHost {
     }
 
     fn matches_log_signature(&self, log: &Log) -> bool {
-        let signature = if log.topics.len() > 0 {
-            log.topics[0]
-        } else {
+        if log.topics.is_empty() {
             return false;
-        };
+        }
+        let signature = log.topics[0];
 
         self.config
             .data_source
             .mapping
             .event_handlers
             .iter()
-            .find(|event_handler| {
+            .any(|event_handler| {
                 signature == util::ethereum::string_to_h256(event_handler.event.as_str())
-            }).is_some()
+            })
     }
 
     fn source_contract(&self) -> Result<&MappingABI, Error> {
@@ -240,20 +239,21 @@ impl RuntimeHost {
             .abis
             .iter()
             .find(|abi| abi.name == self.config.data_source.source.abi)
-            .ok_or(format_err!(
-                "No ABI entry found for the main contract of data source \"{}\": {}",
-                self.config.data_source.name,
-                self.config.data_source.source.abi,
-            ))
+            .ok_or_else(|| {
+                format_err!(
+                    "No ABI entry found for the main contract of data source \"{}\": {}",
+                    self.config.data_source.name,
+                    self.config.data_source.source.abi,
+                )
+            })
     }
 
     fn event_handler_for_log(&self, log: &Arc<Log>) -> Result<&MappingEventHandler, Error> {
         // Get signature from the log
-        let signature = if log.topics.len() > 0 {
-            log.topics[0]
-        } else {
+        if log.topics.is_empty() {
             return Err(format_err!("Ethereum event has no topics"));
-        };
+        }
+        let signature = log.topics[0];
 
         self.config
             .data_source
@@ -261,10 +261,12 @@ impl RuntimeHost {
             .event_handlers
             .iter()
             .find(|handler| signature == util::ethereum::string_to_h256(handler.event.as_str()))
-            .ok_or(format_err!(
-                "No event handler found for event in data source \"{}\"",
-                self.config.data_source.name,
-            ))
+            .ok_or_else(|| {
+                format_err!(
+                    "No event handler found for event in data source \"{}\"",
+                    self.config.data_source.name,
+                )
+            })
     }
 }
 

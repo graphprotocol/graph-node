@@ -175,7 +175,7 @@ impl SubgraphInstanceManager {
                             let transaction = block
                                 .transaction_for_log(&log)
                                 .map(Arc::new)
-                                .ok_or(format_err!("Found no transaction for event"));
+                                .ok_or_else(|| format_err!("Found no transaction for event"));
 
                             future::result(transaction).and_then(move |transaction| {
                                 instance

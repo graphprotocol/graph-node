@@ -105,7 +105,7 @@ impl Value {
             (query::Value::Int(i), _) => Value::Int(
                 i.to_owned()
                     .as_i64()
-                    .ok_or(QueryExecutionError::NamedTypeError("Int".to_string()))?
+                    .ok_or_else(|| QueryExecutionError::NamedTypeError("Int".to_string()))?
                     as i32,
             ),
             (query::Value::Float(f), _) => Value::Float(f.to_owned() as f32),
@@ -179,12 +179,12 @@ impl<'a> From<&'a String> for Value {
 }
 
 /// An entity is represented as a map of attribute names to values.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
 impl Entity {
     /// Creates a new entity with no attributes set.
     pub fn new() -> Self {
-        Entity(HashMap::new())
+        Default::default()
     }
 
     /// Merges an entity update `update` into this entity.

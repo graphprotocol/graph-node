@@ -281,10 +281,10 @@ where
                     }
 
                     // Wrap in Err to force retry
-                    Err(result.map_err(|e| DeadlineError::inner(e)))
+                    Err(result.map_err(DeadlineError::inner))
                 } else {
                     // Wrap in Ok to prevent retry
-                    Ok(result.map_err(|e| DeadlineError::inner(e)))
+                    Ok(result.map_err(DeadlineError::inner))
                 }
             }
         })

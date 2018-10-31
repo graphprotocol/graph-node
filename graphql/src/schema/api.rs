@@ -89,7 +89,7 @@ fn add_types_for_object_types(
 /// Adds `*_orderBy` and `*_filter` enum types for the given interfaces to the schema.
 fn add_types_for_interface_types(
     schema: &mut Document,
-    interface_types: &Vec<&InterfaceType>,
+    interface_types: &[&InterfaceType],
 ) -> Result<(), APISchemaError> {
     for interface_type in interface_types {
         add_order_by_type(schema, &interface_type.name, &interface_type.fields)?;
@@ -102,7 +102,7 @@ fn add_types_for_interface_types(
 fn add_order_by_type(
     schema: &mut Document,
     type_name: &Name,
-    fields: &Vec<Field>,
+    fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let type_name = format!("{}_orderBy", type_name).to_string();
 
@@ -135,7 +135,7 @@ fn add_order_by_type(
 fn add_filter_type(
     schema: &mut Document,
     type_name: &Name,
-    fields: &Vec<Field>,
+    fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let filter_type_name = format!("{}_filter", type_name).to_string();
 
@@ -160,7 +160,7 @@ fn add_filter_type(
 /// Generates `*_filter` input values for the given set of fields.
 fn field_input_values(
     schema: &Document,
-    fields: &Vec<Field>,
+    fields: &[Field],
 ) -> Result<Vec<InputValue>, APISchemaError> {
     let mut input_values = vec![];
     for field in fields {
@@ -182,7 +182,7 @@ fn field_filter_input_values(
     match field_type {
         Type::NamedType(ref name) => {
             let named_type = ast::get_named_type(schema, name)
-                .ok_or(APISchemaError::TypeNotFound(name.clone()))?;
+                .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
             Ok(match named_type {
                 TypeDefinition::Scalar(ref t) => field_scalar_filter_input_values(schema, field, t),
                 TypeDefinition::Enum(ref t) => field_enum_filter_input_values(schema, field, t),
@@ -286,8 +286,8 @@ fn input_value(name: &Name, suffix: &'static str, value_type: Type) -> InputValu
 /// Adds a root `Query` object type to the schema.
 fn add_query_type(
     schema: &mut Document,
-    object_types: &Vec<&ObjectType>,
-    interface_types: &Vec<&InterfaceType>,
+    object_types: &[&ObjectType],
+    interface_types: &[&InterfaceType],
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Query");
 
@@ -316,8 +316,8 @@ fn add_query_type(
 /// Adds a root `Subscription` object type to the schema.
 fn add_subscription_type(
     schema: &mut Document,
-    object_types: &Vec<&ObjectType>,
-    interface_types: &Vec<&InterfaceType>,
+    object_types: &[&ObjectType],
+    interface_types: &[&InterfaceType],
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Subscription");
 

@@ -20,7 +20,7 @@ pub fn logger(show_debug: bool) -> slog::Logger {
             },
         ).parse(
             env::var_os("GRAPH_LOG")
-                .unwrap_or("".into())
+                .unwrap_or_else(|| "".into())
                 .to_str()
                 .unwrap(),
         ).build();
@@ -41,10 +41,12 @@ pub fn register_panic_hook(panic_logger: slog::Logger) {
             .payload()
             .downcast_ref::<String>()
             .cloned()
-            .or(panic_info
-                .payload()
-                .downcast_ref::<&str>()
-                .map(|s| s.to_string()));
+            .or_else(|| {
+                panic_info
+                    .payload()
+                    .downcast_ref::<&str>()
+                    .map(|s| s.to_string())
+            });
 
         let panic_location = if let Some(location) = panic_info.location() {
             format!("{}:{}", location.file(), location.line().to_string())

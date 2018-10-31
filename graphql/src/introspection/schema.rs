@@ -1,7 +1,7 @@
 use graphql_parser;
 use graphql_parser::schema as s;
 
-const INTROSPECTION_SCHEMA: &'static str = "
+const INTROSPECTION_SCHEMA: &str = "
 scalar Boolean
 scalar Float
 scalar Int

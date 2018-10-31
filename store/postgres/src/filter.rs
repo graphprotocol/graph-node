@@ -26,10 +26,10 @@ enum FilterMode {
 }
 
 /// Adds `filter` to a `SELECT data FROM entities` statement.
-pub(crate) fn store_filter<'a>(
-    query: BoxedSelectStatement<'a, Jsonb, entities::table, Pg>,
+pub(crate) fn store_filter(
+    query: BoxedSelectStatement<Jsonb, entities::table, Pg>,
     filter: StoreFilter,
-) -> Result<BoxedSelectStatement<'a, Jsonb, entities::table, Pg>, UnsupportedFilter> {
+) -> Result<BoxedSelectStatement<Jsonb, entities::table, Pg>, UnsupportedFilter> {
     store_filter_by_mode(query, filter, FilterMode::And)
 }
 
@@ -51,11 +51,11 @@ where
 }
 
 /// Adds `filter` to a `SELECT data FROM entities` statement.
-fn store_filter_by_mode<'a>(
-    query: BoxedSelectStatement<'a, Jsonb, entities::table, Pg>,
+fn store_filter_by_mode(
+    query: BoxedSelectStatement<Jsonb, entities::table, Pg>,
     filter: StoreFilter,
     filter_mode: FilterMode,
-) -> Result<BoxedSelectStatement<'a, Jsonb, entities::table, Pg>, UnsupportedFilter> {
+) -> Result<BoxedSelectStatement<Jsonb, entities::table, Pg>, UnsupportedFilter> {
     Ok(match filter {
         StoreFilter::And(filters) => filters
             .into_iter()

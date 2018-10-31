@@ -128,7 +128,7 @@ where
     R1: Resolver,
     R2: Resolver,
 {
-    let mut visited_fragments = visited_fragments.unwrap_or(HashSet::new());
+    let mut visited_fragments = visited_fragments.unwrap_or_default();
     let mut grouped_fields = IndexMap::new();
 
     // Only consider selections that are not skipped and should be included
@@ -354,7 +354,7 @@ where
             &ctx.schema.document
         },
         type_name,
-    ).ok_or(QueryExecutionError::NamedTypeError(type_name.to_string()))?;
+    ).ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
 
     match named_type {
         // Let the resolver decide how the field (with the given object type)
@@ -584,11 +584,11 @@ where
     match named_type {
         // Complete scalar values; we're assuming that the resolver has
         // already returned a valid value for the scalar type
-        Some(s::TypeDefinition::Scalar(_)) => return Ok(resolved_value),
+        Some(s::TypeDefinition::Scalar(_)) => Ok(resolved_value),
 
         // Complete enum values; we're assuming that the resolver has
         // already returned a valid value for the enum type
-        Some(s::TypeDefinition::Enum(_)) => return Ok(resolved_value),
+        Some(s::TypeDefinition::Enum(_)) => Ok(resolved_value),
 
         // Complete object types recursively
         Some(s::TypeDefinition::Object(object_type)) => execute_selection_set(
@@ -649,9 +649,11 @@ where
             },
             abstract_type,
             object_value,
-        ).ok_or(vec![QueryExecutionError::AbstractTypeError(
-            sast::get_type_name(abstract_type).to_string(),
-        )])
+        ).ok_or_else(|| {
+            vec![QueryExecutionError::AbstractTypeError(
+                sast::get_type_name(abstract_type).to_string(),
+            )]
+        })
 }
 
 /// Merges the selection sets of several fields into a single selection set.
@@ -662,7 +664,7 @@ fn merge_selection_sets(fields: Vec<&q::Field>) -> q::SelectionSet {
             (
                 // The overal span is the min/max spans of all merged selection sets
                 match span {
-                    None => Some(field.selection_set.span.clone()),
+                    None => Some(field.selection_set.span),
                     Some((start, end)) => Some((
                         cmp::min(start, field.selection_set.span.0),
                         cmp::max(end, field.selection_set.span.1),
@@ -706,7 +708,7 @@ where
                         coerced_values.insert(&argument_def.name, default_value.clone());
                     } else if let s::Type::NonNullType(_) = argument_def.value_type {
                         return Err(vec![QueryExecutionError::MissingArgumentError(
-                            field.position.clone(),
+                            field.position,
                             argument_def.name.to_owned(),
                         )]);
                     };
@@ -754,7 +756,7 @@ where
 
     coerce_value(&value, &argument.value_type, &resolver).ok_or_else(|| {
         vec![QueryExecutionError::InvalidArgumentError(
-            field.position.clone(),
+            field.position,
             argument.name.to_owned(),
             value.clone(),
         )]
@@ -773,9 +775,8 @@ where
     // Resolve __schema and __Type using the introspection schema
     if Some(object_type) == sast::get_root_query_type(&ctx.schema.document) {
         if let Some(ref object_type) = sast::get_root_query_type(ctx.introspection_schema) {
-            match sast::get_field_type(object_type, name).map(|t| (t, true)) {
-                Some(v) => return Some(v),
-                None => (),
+            if let v @ Some(_) = sast::get_field_type(object_type, name).map(|t| (t, true)) {
+                return v;
             }
         }
     }
