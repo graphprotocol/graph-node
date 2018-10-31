@@ -165,8 +165,8 @@ fn abi_u256() {
     let address = U256::zero();
 
     // As an `Uint64Array`
-    let array_buffer: AscPtr<Uint64Array> = module.asc_new(&address);
-    let new_uint_obj: AscPtr<Uint64Array> = module.takes_ptr_returns_ptr("test_uint", array_buffer);
+    let array_buffer: AscPtr<Uint8Array> = module.asc_new(&address);
+    let new_uint_obj: AscPtr<Uint8Array> = module.takes_ptr_returns_ptr("test_uint", array_buffer);
 
     // This should have 1 added to the first and last `u64`s.
     let new_uint: U256 = module.asc_get(new_uint_obj);

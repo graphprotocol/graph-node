@@ -287,7 +287,7 @@ fn json_conversions() {
 
     // test BigInt conversion
     let number = "-922337203685077092345034";
-    let big_int_obj: AscPtr<BigInt> = module
+    let big_int_obj: AscPtr<AscBigInt> = module
         .module
         .invoke_export(
             "testToBigInt",
@@ -350,18 +350,18 @@ fn token_numeric_conversion() {
     let mut module = test_module(mock_data_source("wasm_test/token_to_numeric.wasm"));
 
     // Convert numeric to token and back.
-    let num = i64::min_value();
+    let num = i32::min_value();
     let token_ptr: AscPtr<AscEnum<EthereumValueKind>> =
-        module.takes_val_returns_ptr("token_from_i64", RuntimeValue::from(num));
+        module.takes_val_returns_ptr("token_from_i32", RuntimeValue::from(num));
     let num_return = module
         .module
         .invoke_export(
-            "token_to_i64",
+            "token_to_i32",
             &[RuntimeValue::from(token_ptr)],
             &mut module.externals,
         ).expect("call failed")
         .expect("call returned nothing")
-        .try_into::<i64>()
-        .expect("call did not return i64");
+        .try_into::<i32>()
+        .expect("call did not return i32");
     assert_eq!(num, num_return);
 }

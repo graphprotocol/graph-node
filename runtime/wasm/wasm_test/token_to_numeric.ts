@@ -22,18 +22,18 @@ export class Token {
 }
 
 declare namespace typeConversion {
-    function u256ToI64(x: Uint64Array): i64
-    function i64ToU256(x: i64): Uint64Array
+    function i32ToBigInt(x: i32): Uint8Array
+    function bigIntToI32(x: Uint8Array): i32
 }
 
-export function token_from_i64(int: i64): Token {
+export function token_from_i32(int: i32): Token {
     let token: Token;
     token.kind = TokenKind.INT;
-    token.data = typeConversion.i64ToU256(int) as u64;
+    token.data = typeConversion.i32ToBigInt(int) as u64;
     return token
 }
 
-export function token_to_i64(token: Token): i64 {
+export function token_to_i32(token: Token): i32 {
     assert(token.kind == TokenKind.INT, "Token is not an int.")
-    return typeConversion.u256ToI64(changetype<Uint64Array>(token.data as u32))
+    return typeConversion.bigIntToI32(changetype<Uint8Array>(token.data as u32))
 }
