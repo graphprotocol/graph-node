@@ -77,7 +77,7 @@ mod test {
 
                 // Send an empty JSON POST request
                 let client = Client::new();
-                let request = Request::post(format!("http://localhost:8001/{}/graphql", id))
+                let request = Request::post(format!("http://localhost:8001/by-id/{}/graphql", id))
                     .body(Body::from("{}"))
                     .unwrap();
 
@@ -126,7 +126,7 @@ mod test {
 
                 // Send an broken query request
                 let client = Client::new();
-                let request = Request::post(format!("http://localhost:8002/{}/graphql", id))
+                let request = Request::post(format!("http://localhost:8002/by-id/{}/graphql", id))
                     .body(Body::from("{\"query\": \"<L<G<>M>\"}"))
                     .unwrap();
 
@@ -209,7 +209,7 @@ mod test {
 
                 // Send a valid example query
                 let client = Client::new();
-                let request = Request::post(format!("http://localhost:8003/{}/graphql", id))
+                let request = Request::post(format!("http://localhost:8003/by-id/{}/graphql", id))
                     .body(Body::from("{\"query\": \"{ name }\"}"))
                     .unwrap();
 

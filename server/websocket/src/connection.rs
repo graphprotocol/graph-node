@@ -154,7 +154,7 @@ pub struct GraphQlConnection<Q, S> {
     graphql_runner: Arc<Q>,
     stream: WebSocketStream<S>,
     subgraphs: SubgraphRegistry<GuardedSchema>,
-    subgraph: String,
+    subgraph_id: SubgraphId,
 }
 
 impl<Q, S> GraphQlConnection<Q, S>
@@ -166,7 +166,7 @@ where
     pub(crate) fn new(
         logger: &Logger,
         subgraphs: SubgraphRegistry<GuardedSchema>,
-        subgraph: String,
+        subgraph_id: SubgraphId,
         stream: WebSocketStream<S>,
         graphql_runner: Arc<Q>,
     ) -> Self {
@@ -176,7 +176,7 @@ where
             graphql_runner,
             stream,
             subgraphs,
-            subgraph,
+            subgraph_id,
         }
     }
 
@@ -186,7 +186,7 @@ where
         logger: Logger,
         connection_id: String,
         subgraphs: SubgraphRegistry<GuardedSchema>,
-        subgraph: String,
+        subgraph_id: SubgraphId,
         graphql_runner: Arc<Q>,
     ) -> impl Future<Item = (), Error = WsError> {
         let mut operations = Operations::new(msg_sink.clone());
@@ -235,14 +235,14 @@ where
 
                     // Respond with a GQL_ERROR if the subgraph name or ID is unknown
                     let schema = if let Some(schema) =
-                        subgraphs.resolve_map(&subgraph, |s| s.schema.clone())
+                        subgraphs.resolve_map(&subgraph_id, |s| s.schema.clone())
                     {
                         schema
                     } else {
                         return send_error_string(
                             &msg_sink,
                             id.clone(),
-                            format!("Unknown subgraph name or ID: {}", subgraph),
+                            format!("Unknown subgraph ID: {}", subgraph_id),
                         );
                     };
 
@@ -347,7 +347,7 @@ where
             self.logger.clone(),
             self.id.clone(),
             self.subgraphs.clone(),
-            self.subgraph.clone(),
+            self.subgraph_id.clone(),
             self.graphql_runner.clone(),
         );
 
