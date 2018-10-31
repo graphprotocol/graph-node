@@ -579,6 +579,10 @@ impl ModuleImportResolver for TypeConversionModuleResolver {
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX,
             ),
+            "i32ToBigInt" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
+                TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX,
+            ),
             "bigIntToI32" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX,
