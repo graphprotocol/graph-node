@@ -244,7 +244,7 @@ impl SubgraphManifest {
     ) -> impl Future<Item = Self, Error = SubgraphManifestResolveError> + Send {
         resolver
             .cat(&link)
-            .map_err(|e| SubgraphManifestResolveError::ResolveError(e))
+            .map_err(SubgraphManifestResolveError::ResolveError)
             .and_then(move |file_bytes| {
                 let file = String::from_utf8(file_bytes.to_vec())
                     .map_err(|_| SubgraphManifestResolveError::NonUtf8)?;
@@ -274,7 +274,7 @@ impl SubgraphManifest {
             }).and_then(move |unresolved| {
                 unresolved
                     .resolve(name, &*resolver)
-                    .map_err(|e| SubgraphManifestResolveError::ResolveError(e))
+                    .map_err(SubgraphManifestResolveError::ResolveError)
             })
     }
 }

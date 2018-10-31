@@ -50,9 +50,9 @@ where
         fields: vec![],
     };
 
-    match operation {
+    match *operation {
         // Execute top-level `subscription { ... }` expressions
-        &q::OperationDefinition::Subscription(ref subscription) => {
+        q::OperationDefinition::Subscription(ref subscription) => {
             let source_stream = create_source_event_stream(&ctx, subscription)?;
             let response_stream = map_source_to_response_stream(&ctx, subscription, source_stream)?;
             Ok(response_stream)
@@ -83,7 +83,7 @@ where
         None,
     );
 
-    if grouped_field_set.len() == 0 {
+    if grouped_field_set.is_empty() {
         return Err(SubscriptionError::from(QueryExecutionError::EmptyQuery));
     } else if grouped_field_set.len() > 1 {
         return Err(SubscriptionError::from(

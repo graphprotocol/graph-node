@@ -148,11 +148,7 @@ where
         // Shortcut 2: If there is a removal in the operations, the
         // entity will be the result of the operations after that, so we
         // don't have to hit the store for anything
-        if matching_operations
-            .iter()
-            .find(|op| op.is_remove())
-            .is_some()
-        {
+        if matching_operations.iter().any(|op| op.is_remove()) {
             return Ok(EntityOperation::apply_all(None, &matching_operations));
         }
 
@@ -181,10 +177,12 @@ where
             .abis
             .iter()
             .find(|abi| abi.name == unresolved_call.contract_name)
-            .ok_or(HostExportError(format!(
-                "Unknown contract \"{}\" called from WASM runtime",
-                unresolved_call.contract_name
-            )))?.contract
+            .ok_or_else(|| {
+                HostExportError(format!(
+                    "Unknown contract \"{}\" called from WASM runtime",
+                    unresolved_call.contract_name
+                ))
+            })?.contract
             .clone();
 
         let function = contract
@@ -197,7 +195,7 @@ where
             })?;
 
         let call = EthereumContractCall {
-            address: unresolved_call.contract_address.clone(),
+            address: unresolved_call.contract_address,
             block_ptr: self
                 .ctx
                 .as_ref()
@@ -383,7 +381,7 @@ where
     }
 
     pub(crate) fn u256_to_u64(&self, x: U256) -> Result<u64, HostExportError<impl ExportError>> {
-        u256_as_u64(x, u64::max_value().into(), "u64")
+        u256_as_u64(x, u64::max_value(), "u64")
     }
 
     pub(crate) fn u256_to_i8(&self, x: U256) -> Result<i8, HostExportError<impl ExportError>> {

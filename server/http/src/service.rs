@@ -44,7 +44,7 @@ where
 
     fn index(&self) -> GraphQLServiceResponse {
         let len = self.schemas.read().unwrap().len();
-        match self.schemas.read().unwrap().values().next().clone() {
+        match self.schemas.read().unwrap().values().next() {
             // If there's only 1 schema, redirect to it.
             Some(schema) if len == 1 => Box::new(future::ok(
                 Response::builder()
@@ -106,8 +106,8 @@ where
                     // Run the query using the query runner
                     graphql_runner
                         .run_query(query)
-                        .map_err(|e| GraphQLServerError::from(e))
-                }).then(|result| GraphQLResponse::new(result)),
+                        .map_err(GraphQLServerError::from)
+                }).then(GraphQLResponse::new),
         )
     }
 

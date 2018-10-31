@@ -20,6 +20,5 @@ pub fn contract_event_with_signature<'a>(
 ) -> Option<&'a Event> {
     contract
         .events()
-        .filter(|event| event.signature() == string_to_h256(signature))
-        .next()
+        .find(|event| event.signature() == string_to_h256(signature))
 }

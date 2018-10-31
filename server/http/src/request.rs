@@ -31,26 +31,21 @@ impl Future for GraphQLRequest {
             .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))?;
 
         // Ensure the JSON data is an object
-        let obj = json
-            .as_object()
-            .ok_or(GraphQLServerError::ClientError(String::from(
-                "Request data is not an object",
-            )))?;
+        let obj = json.as_object().ok_or_else(|| {
+            GraphQLServerError::ClientError(String::from("Request data is not an object"))
+        })?;
 
         // Ensure the JSON data has a "query" field
-        let query_value = obj
-            .get("query")
-            .ok_or(GraphQLServerError::ClientError(String::from(
+        let query_value = obj.get("query").ok_or_else(|| {
+            GraphQLServerError::ClientError(String::from(
                 "The \"query\" field missing in request data",
-            )))?;
+            ))
+        })?;
 
         // Ensure the "query" field is a string
-        let query_string =
-            query_value
-                .as_str()
-                .ok_or(GraphQLServerError::ClientError(String::from(
-                    "The\"query\" field is not a string",
-                )))?;
+        let query_string = query_value.as_str().ok_or_else(|| {
+            GraphQLServerError::ClientError(String::from("The\"query\" field is not a string"))
+        })?;
 
         // Parse the "query" field of the JSON body
         let document = graphql_parser::parse_query(query_string)
@@ -61,12 +56,12 @@ impl Future for GraphQLRequest {
             None | Some(serde_json::Value::Null) => Ok(None),
             Some(variables @ serde_json::Value::Object(_)) => {
                 serde_json::from_value(variables.clone())
-                    .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))
-                    .map(|v| Some(v))
+                    .map_err(|e| GraphQLServerError::ClientError(e.to_string()))
+                    .map(Some)
             }
-            _ => Err(GraphQLServerError::ClientError(format!(
-                "Invalid query variables provided"
-            ))),
+            _ => Err(GraphQLServerError::ClientError(
+                "Invalid query variables provided".to_string(),
+            )),
         }?;
 
         Ok(Async::Ready(Query {

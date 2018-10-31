@@ -71,7 +71,10 @@ impl<Q> MockGraphQLServer<Q> {
                         id: new_schema.id.clone(),
                         document,
                     },
-                    Err(e) => return Ok(error!(logger, "Error deriving schema {}", e)),
+                    Err(e) => {
+                        error!(logger, "Error deriving schema {}", e);
+                        return Ok(());
+                    }
                 };
                 *schema = Some(derived_schema);
             } else {

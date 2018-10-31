@@ -90,12 +90,13 @@ impl EntityChangeListener {
                     let value: serde_json::Value =
                         serde_json::from_str(notification.payload.as_str())
                             .expect("Invalid JSON entity change data received from database");
-                    let change: EntityChange = serde_json::from_value(value.clone()).expect(
-                        format!(
-                            "Invalid entity change received from the database: {:?}",
-                            value
-                        ).as_str(),
-                    );
+                    let change: EntityChange = serde_json::from_value(value.clone())
+                        .unwrap_or_else(|_| {
+                            panic!(
+                                "Invalid entity change received from the database: {:?}",
+                                value
+                            )
+                        });
 
                     // We'll assume here that if sending fails, this means that the
                     // entity change listener has already been dropped, the receiving

@@ -43,11 +43,11 @@ impl From<String> for GraphQLServerError {
 
 impl fmt::Display for GraphQLServerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &GraphQLServerError::Canceled(_) => write!(f, "Query was canceled"),
-            &GraphQLServerError::ClientError(ref s) => write!(f, "{}", s),
-            &GraphQLServerError::QueryError(ref e) => write!(f, "{}", e),
-            &GraphQLServerError::InternalError(ref s) => write!(f, "{}", s),
+        match *self {
+            GraphQLServerError::Canceled(_) => write!(f, "Query was canceled"),
+            GraphQLServerError::ClientError(ref s) => write!(f, "{}", s),
+            GraphQLServerError::QueryError(ref e) => write!(f, "{}", e),
+            GraphQLServerError::InternalError(ref s) => write!(f, "{}", s),
         }
     }
 }
@@ -58,11 +58,11 @@ impl Error for GraphQLServerError {
     }
 
     fn cause(&self) -> Option<&Error> {
-        match self {
-            &GraphQLServerError::Canceled(ref e) => Some(e),
-            &GraphQLServerError::ClientError(_) => None,
-            &GraphQLServerError::QueryError(ref e) => Some(e),
-            &GraphQLServerError::InternalError(_) => None,
+        match *self {
+            GraphQLServerError::Canceled(ref e) => Some(e),
+            GraphQLServerError::ClientError(_) => None,
+            GraphQLServerError::QueryError(ref e) => Some(e),
+            GraphQLServerError::InternalError(_) => None,
         }
     }
 }
@@ -72,7 +72,7 @@ impl Serialize for GraphQLServerError {
     where
         S: Serializer,
     {
-        if let &GraphQLServerError::QueryError(ref e) = self {
+        if let GraphQLServerError::QueryError(ref e) = *self {
             serializer.serialize_some(e)
         } else {
             let mut map = serializer.serialize_map(Some(1))?;

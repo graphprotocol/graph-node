@@ -184,9 +184,9 @@ impl Error for QueryError {
     }
 
     fn cause(&self) -> Option<&Error> {
-        match self {
-            &QueryError::EncodingError(ref e) => Some(e),
-            &QueryError::ExecutionError(ref e) => Some(e),
+        match *self {
+            QueryError::EncodingError(ref e) => Some(e),
+            QueryError::ExecutionError(ref e) => Some(e),
             _ => None,
         }
     }
@@ -194,10 +194,10 @@ impl Error for QueryError {
 
 impl fmt::Display for QueryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &QueryError::EncodingError(ref e) => write!(f, "{}", e),
-            &QueryError::ExecutionError(ref e) => write!(f, "{}", e),
-            &QueryError::ParseError(ref e) => write!(f, "{}", e),
+        match *self {
+            QueryError::EncodingError(ref e) => write!(f, "{}", e),
+            QueryError::ExecutionError(ref e) => write!(f, "{}", e),
+            QueryError::ParseError(ref e) => write!(f, "{}", e),
         }
     }
 }
@@ -218,10 +218,10 @@ impl Serialize for QueryError {
                 let mut msg = format!("{}", self);
                 let inner_msg = msg.replace("query parse error:", "");
                 let inner_msg = inner_msg.trim();
-                let parts: Vec<&str> = inner_msg.splitn(2, "\n").collect();
+                let parts: Vec<&str> = inner_msg.splitn(2, '\n').collect();
 
                 // Find the colon in the first line and split there
-                let colon_pos = parts[0].rfind(":").unwrap();
+                let colon_pos = parts[0].rfind(':').unwrap();
                 let (a, b) = parts[0].split_at(colon_pos);
 
                 // Find the line and column numbers and convert them to u32

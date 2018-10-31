@@ -45,7 +45,7 @@ fn initiate_schema(logger: &slog::Logger, conn: &PgConnection) {
     // If there was any migration output, log it now
     if !output.is_empty() {
         debug!(logger, "Postgres migration output";
-               "output" => String::from_utf8(output).unwrap_or(String::from("<unreadable>")));
+               "output" => String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>")));
     }
 }
 

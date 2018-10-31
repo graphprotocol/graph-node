@@ -36,19 +36,19 @@ pub struct EthereumBlockData {
 impl<'a, T> From<&'a Block<T>> for EthereumBlockData {
     fn from(block: &'a Block<T>) -> EthereumBlockData {
         EthereumBlockData {
-            hash: block.hash.clone().unwrap(),
-            parent_hash: block.parent_hash.clone(),
-            uncles_hash: block.uncles_hash.clone(),
-            author: block.author.clone(),
-            state_root: block.state_root.clone(),
-            transactions_root: block.transactions_root.clone(),
-            receipts_root: block.receipts_root.clone(),
-            number: block.number.clone().unwrap(),
-            gas_used: block.gas_used.clone(),
-            gas_limit: block.gas_limit.clone(),
-            timestamp: block.timestamp.clone(),
-            difficulty: block.difficulty.clone(),
-            total_difficulty: block.total_difficulty.clone(),
+            hash: block.hash.unwrap(),
+            parent_hash: block.parent_hash,
+            uncles_hash: block.uncles_hash,
+            author: block.author,
+            state_root: block.state_root,
+            transactions_root: block.transactions_root,
+            receipts_root: block.receipts_root,
+            number: block.number.unwrap(),
+            gas_used: block.gas_used,
+            gas_limit: block.gas_limit,
+            timestamp: block.timestamp,
+            difficulty: block.difficulty,
+            total_difficulty: block.total_difficulty,
         }
     }
 }
@@ -65,10 +65,10 @@ pub struct EthereumTransactionData {
 impl<'a> From<&'a Transaction> for EthereumTransactionData {
     fn from(tx: &'a Transaction) -> EthereumTransactionData {
         EthereumTransactionData {
-            hash: tx.hash.clone(),
-            block_hash: tx.block_hash.clone().unwrap(),
-            block_number: tx.block_number.clone().unwrap(),
-            gas_used: tx.gas.clone(),
+            hash: tx.hash,
+            block_hash: tx.block_hash.unwrap(),
+            block_number: tx.block_number.unwrap(),
+            gas_used: tx.gas,
         }
     }
 }
@@ -85,7 +85,7 @@ pub struct EthereumEventData {
 impl Clone for EthereumEventData {
     fn clone(&self) -> Self {
         EthereumEventData {
-            address: self.address.clone(),
+            address: self.address,
             block: self.block.clone(),
             transaction: self.transaction.clone(),
             params: self

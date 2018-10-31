@@ -17,7 +17,7 @@ pub fn get_operation<'a>(
             .find(|op| match get_operation_name(op) {
                 Some(n) => s == n,
                 None => false,
-            }).ok_or(QueryExecutionError::OperationNotFound(s.to_string())),
+            }).ok_or_else(|| QueryExecutionError::OperationNotFound(s.to_string())),
         _ => Err(QueryExecutionError::OperationNameRequired),
     }
 }
@@ -57,7 +57,7 @@ pub fn get_directive(selection: &Selection, name: Name) -> Option<&Directive> {
 }
 
 /// Looks up the value of an argument in a vector of (name, value) tuples.
-pub fn get_argument_value<'a>(arguments: &'a Vec<(Name, Value)>, name: &Name) -> Option<&'a Value> {
+pub fn get_argument_value<'a>(arguments: &'a [(Name, Value)], name: &Name) -> Option<&'a Value> {
     arguments.iter().find(|(n, _)| n == name).map(|(_, v)| v)
 }
 

@@ -137,8 +137,8 @@ where
     ) -> Self {
         let logger = logger.new(o!(
             "component" => "BlockStream",
-            "subgraph_name" => format!("{}", subgraph_name),
-            "subgraph_id" => format!("{}", subgraph_id),
+            "subgraph_name" => subgraph_name.to_string(),
+            "subgraph_id" => subgraph_id.to_string(),
         ));
 
         let (chain_head_update_sink, chain_head_update_stream) = channel(100);
@@ -674,7 +674,7 @@ where
 
                             // If too many errors without progress, give up
                             if self.consecutive_err_count >= 100 {
-                                return Err(e.into());
+                                return Err(e);
                             }
 
                             warn!(
@@ -725,7 +725,7 @@ where
 
                             // If too many errors without progress, give up
                             if self.consecutive_err_count >= 100 {
-                                return Err(e.into());
+                                return Err(e);
                             }
 
                             warn!(
@@ -759,9 +759,7 @@ where
                         // Chain head update stream ended
                         Ok(Async::Ready(None)) => {
                             // Should not happen
-                            return Err(
-                                format_err!("chain head update stream ended unexpectedly").into()
-                            );
+                            return Err(format_err!("chain head update stream ended unexpectedly"));
                         }
 
                         Ok(Async::NotReady) => {
@@ -773,7 +771,7 @@ where
                         // mpsc channel failed
                         Err(()) => {
                             // Should not happen
-                            return Err(format_err!("chain head update Receiver failed").into());
+                            return Err(format_err!("chain head update Receiver failed"));
                         }
                     }
                 }

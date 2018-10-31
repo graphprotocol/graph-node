@@ -135,12 +135,12 @@ where
         let logger = logger.new(o!("component" => "WasmiModule"));
 
         let module = Module::from_parity_wasm_module(config.data_source.mapping.runtime.clone())
-            .expect(
-                format!(
+            .unwrap_or_else(|_| {
+                panic!(
                     "Wasmi could not interpret module of data source: {}",
                     config.data_source.name
-                ).as_str(),
-            );
+                )
+            });
 
         // Build import resolver
         let mut imports = ImportsBuilder::new();
@@ -225,7 +225,7 @@ where
                     .transaction
                     .deref(),
             ),
-            address: log.address.clone(),
+            address: log.address,
             params,
         };
 

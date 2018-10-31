@@ -42,12 +42,12 @@ impl<'a> From<&'a str> for QueryVariableValue {
 }
 
 /// Variable values for a GraphQL query.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct QueryVariables(HashMap<String, QueryVariableValue>);
 
 impl QueryVariables {
     pub fn new() -> Self {
-        QueryVariables(HashMap::new())
+        Default::default()
     }
 }
 

@@ -84,12 +84,13 @@ impl ChainHeadUpdateListener {
                     let value: serde_json::Value =
                         serde_json::from_str(notification.payload.as_str())
                             .expect("Invalid JSON chain head update received from database");
-                    let update: ChainHeadUpdate = serde_json::from_value(value.clone()).expect(
-                        format!(
-                            "Invalid chain head update received from the database: {:?}",
-                            value
-                        ).as_str(),
-                    );
+                    let update: ChainHeadUpdate = serde_json::from_value(value.clone())
+                        .unwrap_or_else(|_| {
+                            panic!(
+                                "Invalid chain head update received from the database: {:?}",
+                                value
+                            )
+                        });
 
                     // Skip networks that we are not interested in
                     if update.network_name != network_name {

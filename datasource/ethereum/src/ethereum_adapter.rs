@@ -290,8 +290,9 @@ where
                     .and_then(|gen_block_opt| {
                         future::result(
                             gen_block_opt
-                                .ok_or(format_err!("Ethereum node could not find genesis block"))
-                                .map(|gen_block| gen_block.hash.unwrap()),
+                                .ok_or_else(|| {
+                                    format_err!("Ethereum node could not find genesis block")
+                                }).map(|gen_block| gen_block.hash.unwrap()),
                         )
                     })
             });
@@ -436,10 +437,9 @@ where
         Box::new(self.block_hash_by_block_number(block_ptr.number).and_then(
             move |block_hash_opt| {
                 block_hash_opt
-                    .ok_or(format_err!(
-                        "Ethereum node is missing block #{}",
-                        block_ptr.number
-                    )).map(|block_hash| block_hash == block_ptr.hash)
+                    .ok_or_else(|| {
+                        format_err!("Ethereum node is missing block #{}", block_ptr.number)
+                    }).map(|block_hash| block_hash == block_ptr.hash)
             },
         ))
     }

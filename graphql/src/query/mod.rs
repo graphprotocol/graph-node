@@ -49,14 +49,14 @@ where
         fields: vec![],
     };
 
-    let result = match operation {
+    let result = match *operation {
         // Execute top-level `query { ... }` expressions
-        &q::OperationDefinition::Query(q::Query {
+        q::OperationDefinition::Query(q::Query {
             ref selection_set, ..
         }) => execute_root_selection_set(ctx, selection_set, &None),
 
         // Execute top-level `{ ... }` expressions
-        &q::OperationDefinition::SelectionSet(ref selection_set) => {
+        q::OperationDefinition::SelectionSet(ref selection_set) => {
             execute_root_selection_set(ctx, selection_set, &None)
         }
 

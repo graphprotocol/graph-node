@@ -21,24 +21,21 @@ impl Schema {
                 arguments: vec![subgraph_id_argument],
             };
 
-            match definition {
-                schema::Definition::TypeDefinition(ref mut type_definition) => {
-                    match type_definition {
-                        schema::TypeDefinition::Object(ref mut object_type) => {
-                            object_type.directives.push(subgraph_id_directive);
-                        }
-                        schema::TypeDefinition::Interface(ref mut interface_type) => {
-                            interface_type.directives.push(subgraph_id_directive);
-                        }
-                        schema::TypeDefinition::Enum(ref mut enum_type) => {
-                            enum_type.directives.push(subgraph_id_directive);
-                        }
-                        schema::TypeDefinition::Scalar(_scalar_type) => (),
-                        schema::TypeDefinition::InputObject(_input_object_type) => (),
-                        schema::TypeDefinition::Union(_union_type) => (),
+            if let schema::Definition::TypeDefinition(ref mut type_definition) = definition {
+                match type_definition {
+                    schema::TypeDefinition::Object(ref mut object_type) => {
+                        object_type.directives.push(subgraph_id_directive);
                     }
+                    schema::TypeDefinition::Interface(ref mut interface_type) => {
+                        interface_type.directives.push(subgraph_id_directive);
+                    }
+                    schema::TypeDefinition::Enum(ref mut enum_type) => {
+                        enum_type.directives.push(subgraph_id_directive);
+                    }
+                    schema::TypeDefinition::Scalar(_scalar_type) => (),
+                    schema::TypeDefinition::InputObject(_input_object_type) => (),
+                    schema::TypeDefinition::Union(_union_type) => (),
                 }
-                _ => (),
             };
         }
     }

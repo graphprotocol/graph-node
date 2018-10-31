@@ -47,8 +47,8 @@ impl Store for MockStore {
                 .iter()
                 .find(|entity| {
                     let id = entity.get("id").unwrap();
-                    match id {
-                        &Value::String(ref s) => s == &key.id,
+                    match *id {
+                        Value::String(ref s) => s == &key.id,
                         _ => false,
                     }
                 }).map(|entity| Some(entity.clone()))

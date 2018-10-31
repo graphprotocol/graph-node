@@ -28,7 +28,7 @@ impl FromStr for BigInt {
     type Err = <num_bigint::BigInt as FromStr>::Err;
 
     fn from_str(s: &str) -> Result<BigInt, Self::Err> {
-        num_bigint::BigInt::from_str(s).map(|x| BigInt(x))
+        num_bigint::BigInt::from_str(s).map(BigInt)
     }
 }
 

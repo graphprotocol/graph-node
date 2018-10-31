@@ -1,7 +1,7 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Mutex;
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::{handshake::server::Request, Error as WsError};
@@ -73,7 +73,10 @@ where
                             id: new_schema.id.clone(),
                             document,
                         },
-                        Err(e) => return Ok(error!(logger, "Error deriving schema {}", e)),
+                        Err(e) => {
+                            error!(logger, "Error deriving schema {}", e);
+                            return Ok(());
+                        }
                     };
 
                     // Add the subgraph name, ID and schema to the subgraph registry
@@ -94,7 +97,7 @@ where
         }));
     }
 
-    fn subgraph_from_url_path(path: PathBuf) -> Option<String> {
+    fn subgraph_from_url_path(path: &Path) -> Option<String> {
         path.iter()
             .nth(1)
             .and_then(|os| os.to_str())
@@ -139,9 +142,10 @@ where
                 accept_hdr_async(stream, move |request: &Request| {
                     // Try to obtain the subgraph ID or name from the URL path.
                     // Return a 404 if the URL path contains no name/ID segment.
-                    let path = PathBuf::from(&request.path);
-                    *accept_subgraph_id_or_name.lock().unwrap() =
-                        Some(Self::subgraph_from_url_path(path).ok_or(WsError::Http(404))?);
+                    let path = &request.path;
+                    *accept_subgraph_id_or_name.lock().unwrap() = Some(
+                        Self::subgraph_from_url_path(path.as_ref()).ok_or(WsError::Http(404))?,
+                    );
 
                     Ok(Some(vec![(
                         String::from("Sec-WebSocket-Protocol"),

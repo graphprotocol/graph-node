@@ -99,9 +99,9 @@ fn build_filter_from_object(
 
                 let (field_name, op) = sast::parse_field_as_filter(key);
 
-                let field = sast::get_field_type(entity, &field_name).ok_or(
-                    QueryExecutionError::EntityFieldError(entity.name.clone(), field_name.clone()),
-                )?;
+                let field = sast::get_field_type(entity, &field_name).ok_or_else(|| {
+                    QueryExecutionError::EntityFieldError(entity.name.clone(), field_name.clone())
+                })?;
 
                 let ty = &field.field_type;
                 let store_value = Value::from_query_value(value, &ty)?;
@@ -162,9 +162,9 @@ fn build_order_by(
         .get(&"orderBy".to_string())
         .map_or(Ok(None), |value| match value {
             q::Value::Enum(name) => {
-                let field = sast::get_field_type(entity, &name).ok_or(
-                    QueryExecutionError::EntityFieldError(entity.name.clone(), name.clone()),
-                )?;
+                let field = sast::get_field_type(entity, &name).ok_or_else(|| {
+                    QueryExecutionError::EntityFieldError(entity.name.clone(), name.clone())
+                })?;
                 sast::get_field_value_type(&field.field_type)
                     .map(|value_type| Some((name.to_owned(), value_type)))
                     .map_err(|_| {
@@ -197,7 +197,7 @@ pub fn parse_subgraph_id(entity: &s::ObjectType) -> Result<String, QueryExecutio
     entity
         .directives
         .iter()
-        .find(|directive| directive.name == "subgraphId".to_string())
+        .find(|directive| directive.name == "subgraphId")
         .and_then(|directive| {
             directive
                 .arguments
@@ -206,7 +206,7 @@ pub fn parse_subgraph_id(entity: &s::ObjectType) -> Result<String, QueryExecutio
         }).and_then(|(_, value)| match value {
             s::Value::String(id) => Some(id.clone()),
             _ => None,
-        }).ok_or(QueryExecutionError::SupgraphIdError(entity_name))
+        }).ok_or_else(|| QueryExecutionError::SupgraphIdError(entity_name))
 }
 
 /// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.

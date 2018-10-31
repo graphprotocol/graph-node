@@ -138,9 +138,7 @@ where
                                         } else {
                                             // Some blocks are missing: load them, ingest them, and repeat.
                                             let missing_blocks = self.get_blocks(&missing_block_hashes);
-                                            Box::new(self.ingest_blocks(missing_blocks).map(
-                                                |missing_block_hashes| future::Loop::Continue(missing_block_hashes),
-                                            ))
+                                            Box::new(self.ingest_blocks(missing_blocks).map(future::Loop::Continue))
                                         }
                                     },
                                 )
@@ -159,7 +157,8 @@ where
             .map_err(|e| format_err!("could not get latest block from Ethereum: {}", e))
             .from_err()
             .and_then(|block_opt| {
-                block_opt.ok_or(format_err!("no latest block returned from Ethereum").into())
+                block_opt
+                    .ok_or_else(|| format_err!("no latest block returned from Ethereum").into())
             })
     }
 
@@ -287,7 +286,7 @@ where
                     .block_with_txs(BlockId::from(block_hash))
                     .map_err(|e| format_err!("could not get block from Ethereum: {}", e).into())
                     .and_then(move |block_opt| {
-                        block_opt.ok_or(BlockIngestorError::BlockUnavailable(block_hash))
+                        block_opt.ok_or_else(|| BlockIngestorError::BlockUnavailable(block_hash))
                     }).and_then(move |block| self.load_full_block(block))
             })
             // Collect to ensure that `block_with_txs` calls happen before `submit_batch`
