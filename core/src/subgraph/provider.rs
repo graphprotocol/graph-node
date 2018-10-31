@@ -70,7 +70,7 @@ where
             .event_sink
             .clone()
             .send(SubgraphProviderEvent::SubgraphStop(id))
-            .map_err(|e| panic!("failed to forward subgraph removal: {}", e))
+            .map_err(|e| panic!("failed to forward subgraph shut down event: {}", e))
             .map(|_| ());
 
         schema_removal.join(subgraph_stop).map(|_| ())
