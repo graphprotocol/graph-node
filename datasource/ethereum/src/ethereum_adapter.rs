@@ -8,6 +8,7 @@ use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::*;
 use graph::web3;
 use graph::web3::api::Web3;
+use graph::web3::transports::batch::Batch;
 use graph::web3::types::{Filter, *};
 
 #[derive(Clone)]
@@ -23,7 +24,7 @@ const LOG_STREAM_CHUNK_SIZE_IN_BLOCKS: u64 = 10000;
 
 impl<T> EthereumAdapter<T>
 where
-    T: web3::Transport + Send + Sync + 'static,
+    T: web3::BatchTransport + Send + Sync + 'static,
     T::Out: Send,
 {
     pub fn new(transport: T) -> Self {
@@ -265,7 +266,8 @@ where
 
 impl<T> EthereumAdapterTrait for EthereumAdapter<T>
 where
-    T: web3::Transport + Send + Sync + 'static,
+    T: web3::BatchTransport + Send + Sync + 'static,
+    T::Batch: Send,
     T::Out: Send,
 {
     fn net_identifiers(
@@ -343,22 +345,20 @@ where
 
             let block = block_opt?;
 
-            let receipt_futures = block
-                .transactions
-                .iter()
-                .map(move |tx| {
-                    let tx_hash = tx.hash;
-                    let web3 = web3.clone();
+            Some(retry("batch eth_getTransactionReceipt RPC call", &logger)
+                .limit(32)
+                .timeout_secs(60)
+                .run(move || {
+                    let block = block.clone();
+                    let batching_web3 = Web3::new(Batch::new(web3.transport().clone()));
 
-                    // Retry, but eventually give up.
-                    // The receipt might be missing because the block was uncled, and the
-                    // transaction never made it back into the main chain.
-                    retry("eth_getTransactionReceipt RPC call", &logger)
-                        .limit(32)
-                        .no_logging()
-                        .timeout_secs(60)
-                        .run(move || {
-                            web3.eth()
+                    let receipt_futures = block
+                        .transactions
+                        .iter()
+                        .map(|tx| {
+                            let tx_hash = tx.hash;
+
+                            batching_web3.eth()
                                 .transaction_receipt(tx_hash)
                                 .map_err(SyncFailure::new)
                                 .from_err()
@@ -370,39 +370,42 @@ where
                                             tx_hash
                                         )
                                     })
+                                }).and_then(move |receipt| {
+                                    // Check if receipt is for the right block
+                                    if receipt.block_hash != block_hash {
+                                        // If the receipt came from a different block, then the Ethereum
+                                        // node no longer considers this block to be in the main chain.
+                                        // Nothing we can do from here except give up trying to ingest this
+                                        // block.
+                                        // There is no way to get the transaction receipt from this block.
+                                        Err(format_err!(
+                                            "could not get receipt for block {:?} \
+                                             because block is off the main chain",
+                                            block_hash
+                                        ))
+                                    } else {
+                                        Ok(receipt)
+                                    }
                                 })
-                        }).map_err(move |e| {
-                            e.into_inner().unwrap_or_else(move || {
-                                format_err!(
-                                    "Ethereum node took too long to return transaction receipt {}",
-                                    tx_hash
-                                )
-                            })
-                        }).and_then(move |receipt| {
-                            // Check if receipt is for the right block
-                            if receipt.block_hash != block_hash {
-                                // If the receipt came from a different block, then the Ethereum
-                                // node no longer considers this block to be in the main chain.
-                                // Nothing we can do from here except give up trying to ingest this
-                                // block.
-                                // There is no way to get the transaction receipt from this block.
-                                Err(format_err!(
-                                    "could not get receipt for block {:?} \
-                                     because block is off the main chain",
-                                    block_hash
-                                ))
-                            } else {
-                                Ok(receipt)
-                            }
-                        })
-                }).collect::<Vec<_>>();
+                        }).collect::<Vec<_>>();
 
-            Some(stream::futures_ordered(receipt_futures).collect().map(
-                move |transaction_receipts| EthereumBlock {
-                    block,
-                    transaction_receipts,
-                },
-            ))
+                    batching_web3.transport()
+                        .submit_batch()
+                        .map_err(SyncFailure::new)
+                        .from_err()
+                        .and_then(move |_| {
+                            stream::futures_ordered(receipt_futures).collect().map(
+                                move |transaction_receipts| EthereumBlock {
+                                    block,
+                                    transaction_receipts,
+                                },
+                            )
+                        })
+                }).map_err(move |e| {
+                    e.into_inner().unwrap_or_else(move || {
+                        format_err!("Ethereum node took too long to return receipts for block {}", block_hash)
+                    })
+                }))
         }))
     }
 
