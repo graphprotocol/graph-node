@@ -14,7 +14,7 @@ use graph::components::subgraph::*;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::util;
-use graph::web3::types::Address;
+use graph::web3::types::{Address, H256, U256};
 use hex;
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -364,4 +364,95 @@ fn token_numeric_conversion() {
         .try_into::<i32>()
         .expect("call did not return i32");
     assert_eq!(num, num_return);
+}
+
+#[test]
+fn big_int_to_from_i32() {
+    let mut module = test_module(mock_data_source("wasm_test/big_int_to_from_i32.wasm"));
+
+    // Convert i32 to BigInt
+    let input: i32 = -157;
+    let output_ptr: AscPtr<AscBigInt> = module
+        .module
+        .invoke_export(
+            "i32_to_big_int",
+            &[RuntimeValue::from(input)],
+            &mut module.externals,
+        ).expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    let output: BigInt = module.heap.asc_get(output_ptr);
+    assert_eq!(output, BigInt::from(-157 as i32));
+
+    // Convert BigInt to i32
+    let input = BigInt::from(-50 as i32);
+    let input_ptr: AscPtr<AscBigInt> = module.heap.asc_new(&input);
+    let output: i32 = module
+        .module
+        .invoke_export(
+            "big_int_to_i32",
+            &[RuntimeValue::from(input_ptr)],
+            &mut module.externals,
+        ).expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    assert_eq!(output, -50 as i32);
+}
+
+#[test]
+fn big_int_to_hex() {
+    let mut module = test_module(mock_data_source("wasm_test/big_int_to_hex.wasm"));
+
+    // Convert zero to hex
+    let zero = BigInt::from_unsigned_u256(&U256::zero());
+    let zero: AscPtr<AscBigInt> = module.heap.asc_new(&zero);
+    let zero_hex_ptr: AscPtr<AscString> = module
+        .module
+        .invoke_export(
+            "big_int_to_hex",
+            &[RuntimeValue::from(zero)],
+            &mut module.externals,
+        ).expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    let zero_hex_str: String = module.heap.asc_get(zero_hex_ptr);
+    assert_eq!(zero_hex_str, "0x00");
+
+    // Convert 1 to hex
+    let one = BigInt::from_unsigned_u256(&U256::one());
+    let one: AscPtr<AscBigInt> = module.heap.asc_new(&one);
+    let one_hex_ptr: AscPtr<AscString> = module
+        .module
+        .invoke_export(
+            "big_int_to_hex",
+            &[RuntimeValue::from(one)],
+            &mut module.externals,
+        ).expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    let one_hex_str: String = module.heap.asc_get(one_hex_ptr);
+    assert_eq!(one_hex_str, "0x01");
+
+    // Convert U256::max_value() to hex
+    let u256_max = BigInt::from_unsigned_u256(&U256::max_value());
+    let u256_max: AscPtr<AscBigInt> = module.heap.asc_new(&u256_max);
+    let u256_max_hex_ptr: AscPtr<AscString> = module
+        .module
+        .invoke_export(
+            "big_int_to_hex",
+            &[RuntimeValue::from(u256_max)],
+            &mut module.externals,
+        ).expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    let u256_max_hex_str: String = module.heap.asc_get(u256_max_hex_ptr);
+    assert_eq!(
+        u256_max_hex_str,
+        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    );
 }

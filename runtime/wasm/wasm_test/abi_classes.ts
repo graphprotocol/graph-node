@@ -12,24 +12,23 @@ const array_buffer_header_size = 8;
 export function test_address(address: Address): Address {
   let new_address = address.subarray();
 
-  // Add 1 to the first and last bytes.
+  // Add 1 to the first and last byte.
   new_address[0] += 1;
   new_address[address.length - 1] += 1;
 
   return new_address
 }
 
-// Sequence of 4 `u64`s.
-type Uint = Uint64Array;
+// Sequence of 32 `u8`s.
+type Uint = Uint8Array;
 
-// Clone the Uint to a new buffer, add 1 to the first and last `u64`s and return
+// Clone the Uint to a new buffer, add 1 to the first and last `u8`s and return
 // the new Uint.
 export function test_uint(address: Uint): Uint {
   let new_address = address.subarray();
 
-  // Add 1 to the first and last bytes.
+  // Add 1 to the first byte.
   new_address[0] += 1;
-  new_address[address.length - 1] += 1;
 
   return new_address
 }

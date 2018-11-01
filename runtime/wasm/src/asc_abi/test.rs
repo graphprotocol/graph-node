@@ -7,6 +7,7 @@ use wasmi::{
     RuntimeValue, Signature,
 };
 
+use graph::prelude::BigInt;
 use graph::web3::types::{H160, U256};
 
 use super::class::*;
@@ -160,18 +161,26 @@ fn string() {
 }
 
 #[test]
-fn abi_u256() {
+fn abi_big_int() {
     let module = TestModule::new("wasm_test/abi_classes.wasm");
-    let address = U256::zero();
 
-    // As an `Uint64Array`
-    let array_buffer: AscPtr<Uint8Array> = module.asc_new(&address);
-    let new_uint_obj: AscPtr<Uint8Array> = module.takes_ptr_returns_ptr("test_uint", array_buffer);
+    // Test passing in 0 and increment it by 1
+    let old_uint = U256::zero();
+    let array_buffer: AscPtr<AscBigInt> = module.asc_new(&BigInt::from_unsigned_u256(&old_uint));
+    let new_uint_obj: AscPtr<AscBigInt> = module.takes_ptr_returns_ptr("test_uint", array_buffer);
+    let new_uint: BigInt = module.asc_get(new_uint_obj);
+    assert_eq!(new_uint, BigInt::from(1 as i32));
+    let new_uint = new_uint.to_unsigned_u256();
+    assert_eq!(new_uint, U256([1, 0, 0, 0]));
 
-    // This should have 1 added to the first and last `u64`s.
-    let new_uint: U256 = module.asc_get(new_uint_obj);
-
-    assert_eq!(new_uint, U256([1, 0, 0, 1]))
+    // Test passing in -50 and increment it by 1
+    let old_uint = BigInt::from(-50);
+    let array_buffer: AscPtr<AscBigInt> = module.asc_new(&old_uint);
+    let new_uint_obj: AscPtr<AscBigInt> = module.takes_ptr_returns_ptr("test_uint", array_buffer);
+    let new_uint: BigInt = module.asc_get(new_uint_obj);
+    assert_eq!(new_uint, BigInt::from(-49 as i32));
+    let new_uint_from_u256 = BigInt::from_signed_u256(&new_uint.to_signed_u256());
+    assert_eq!(new_uint, new_uint_from_u256);
 }
 
 #[test]
@@ -420,8 +429,6 @@ fn abi_store_value() {
         module.asc_get(module.takes_ptr_returns_ptr("value_from_bigint", bytes_ptr));
     assert_eq!(
         new_value,
-        Value::BigInt(::graph::data::store::scalar::BigInt::from_signed_bytes_le(
-            bytes
-        ))
+        Value::BigInt(::graph::data::store::scalar::BigInt::from_unsigned_bytes_le(bytes))
     );
 }
