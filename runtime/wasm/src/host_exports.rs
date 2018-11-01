@@ -29,7 +29,6 @@ impl<E: fmt::Display> fmt::Display for HostExportError<E> {
 }
 
 pub(crate) struct HostExports<E, L, S, U> {
-    logger: Logger,
     subgraph: SubgraphManifest,
     data_source: DataSource,
     ethereum_adapter: Arc<E>,
@@ -47,7 +46,6 @@ where
     U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone,
 {
     pub(crate) fn new(
-        logger: Logger,
         subgraph: SubgraphManifest,
         data_source: DataSource,
         ethereum_adapter: Arc<E>,
@@ -57,7 +55,6 @@ where
         ctx: Option<EventHandlerContext>,
     ) -> Self {
         HostExports {
-            logger,
             subgraph,
             data_source,
             ethereum_adapter,
@@ -165,7 +162,9 @@ where
         &self,
         unresolved_call: UnresolvedContractCall,
     ) -> Result<Vec<Token>, HostExportError<impl ExportError>> {
-        info!(self.logger, "Call smart contract";
+        let ctx = self.ctx.as_ref().expect("processing event without context");
+
+        debug!(ctx.logger, "Call smart contract";
               "address" => &unresolved_call.contract_address.to_string(),
               "contract" => &unresolved_call.contract_name,
               "function" => &unresolved_call.function_name);
@@ -196,21 +195,16 @@ where
 
         let call = EthereumContractCall {
             address: unresolved_call.contract_address,
-            block_ptr: self
-                .ctx
-                .as_ref()
-                .map(|ctx| ctx.block.as_ref())
-                .expect("processing event without context")
-                .deref()
-                .into(),
+            block_ptr: ctx.block.as_ref().deref().into(),
             function: function.clone(),
             args: unresolved_call.function_args.clone(),
         };
 
         // Run Ethereum call in tokio runtime
         let eth_adapter = self.ethereum_adapter.clone();
+        let logger = ctx.logger.clone();
         self.block_on(future::lazy(move || {
-            eth_adapter.contract_call(call).map_err(move |e| {
+            eth_adapter.contract_call(&logger, call).map_err(move |e| {
                 HostExportError(format!(
                     "Failed to call function \"{}\" of contract \"{}\": {}",
                     unresolved_call.function_name, unresolved_call.contract_name, e

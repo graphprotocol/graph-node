@@ -32,12 +32,14 @@ struct MockEthereumAdapter {}
 impl EthereumAdapter for MockEthereumAdapter {
     fn net_identifiers(
         &self,
+        _: &Logger,
     ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
         unimplemented!();
     }
 
     fn block_by_hash(
         &self,
+        _: &Logger,
         block_hash: H256,
     ) -> Box<Future<Item = Option<EthereumBlock>, Error = Error> + Send> {
         unimplemented!();
@@ -45,6 +47,7 @@ impl EthereumAdapter for MockEthereumAdapter {
 
     fn block_hash_by_block_number(
         &self,
+        _: &Logger,
         block_number: u64,
     ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
         unimplemented!();
@@ -52,6 +55,7 @@ impl EthereumAdapter for MockEthereumAdapter {
 
     fn is_on_main_chain(
         &self,
+        _: &Logger,
         block_ptr: EthereumBlockPointer,
     ) -> Box<Future<Item = bool, Error = Error> + Send> {
         unimplemented!();
@@ -59,6 +63,7 @@ impl EthereumAdapter for MockEthereumAdapter {
 
     fn find_first_blocks_with_logs(
         &self,
+        _: &Logger,
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
@@ -68,6 +73,7 @@ impl EthereumAdapter for MockEthereumAdapter {
 
     fn contract_call(
         &self,
+        _: &Logger,
         call: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
         unimplemented!();

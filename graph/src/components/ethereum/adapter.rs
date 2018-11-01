@@ -1,6 +1,7 @@
 use ethabi::{Bytes, Error as ABIError, Function, ParamType, Token};
 use failure::{Error, SyncFailure};
 use futures::Future;
+use slog::Logger;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use web3::error::Error as Web3Error;
@@ -141,11 +142,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// connected to.
     fn net_identifiers(
         &self,
+        logger: &Logger,
     ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send>;
 
     /// Find a block by its hash.
     fn block_by_hash(
         &self,
+        logger: &Logger,
         block_hash: H256,
     ) -> Box<Future<Item = Option<EthereumBlock>, Error = Error> + Send>;
 
@@ -160,6 +163,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// reorgs.
     fn block_hash_by_block_number(
         &self,
+        logger: &Logger,
         block_number: u64,
     ) -> Box<Future<Item = Option<H256>, Error = Error> + Send>;
 
@@ -175,6 +179,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// reorgs.
     fn is_on_main_chain(
         &self,
+        logger: &Logger,
         block_ptr: EthereumBlockPointer,
     ) -> Box<Future<Item = bool, Error = Error> + Send>;
 
@@ -192,6 +197,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// node is aware of.
     fn find_first_blocks_with_logs(
         &self,
+        logger: &Logger,
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
@@ -200,6 +206,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// Call the function of a smart contract.
     fn contract_call(
         &self,
+        logger: &Logger,
         call: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send>;
 }

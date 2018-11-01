@@ -134,7 +134,6 @@ where
     ) -> Self {
         let logger = logger.new(o!(
             "component" => "BlockStream",
-            "subgraph_id" => subgraph_id.to_string()
         ));
 
         let (chain_head_update_sink, chain_head_update_stream) = channel(100);
@@ -277,7 +276,7 @@ where
             // permanently accepted into the main chain, or does it point to a block that was
             // uncled?
             Box::new(ctx.eth_adapter
-                .is_on_main_chain(subgraph_ptr)
+                .is_on_main_chain(&ctx.logger, subgraph_ptr)
                 .and_then(move |is_on_main_chain| -> Box<Future<Item = _, Error = _> + Send> {
                     if is_on_main_chain {
                         // The subgraph ptr points to a block on the main chain.
@@ -304,7 +303,7 @@ where
                         debug!(ctx.logger, "Finding next blocks with relevant events...");
                         Box::new(
                         ctx.eth_adapter
-                            .find_first_blocks_with_logs(from, to, log_filter.clone())
+                            .find_first_blocks_with_logs(&ctx.logger, from, to, log_filter.clone())
                             .and_then(move |descendant_ptrs| -> Box<Future<Item = _, Error = _> + Send> {
                                 debug!(ctx.logger, "Done finding next blocks.");
 
@@ -318,7 +317,7 @@ where
                                     // Again, this is only safe from race conditions due to
                                     // being beyond the reorg threshold.
                                     Box::new(ctx.eth_adapter
-                                        .block_hash_by_block_number(to)
+                                        .block_hash_by_block_number(&ctx.logger, to)
                                         .and_then(move |to_block_hash_opt| {
                                             to_block_hash_opt
                                                 .ok_or_else(|| {
@@ -578,7 +577,7 @@ where
                     // Request from Ethereum node instead
                     Box::new(
                         ctx.eth_adapter
-                            .block_by_hash(block_hash)
+                            .block_by_hash(&ctx.logger, block_hash)
                             .and_then(move |block_opt| {
                                 block_opt.ok_or_else(move || {
                                     format_err!(

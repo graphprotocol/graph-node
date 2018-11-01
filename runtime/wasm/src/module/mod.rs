@@ -158,7 +158,6 @@ where
         let mut externals = HostExternals {
             heap: heap.clone(),
             host_exports: host_exports::HostExports::new(
-                logger.clone(),
                 config.subgraph,
                 config.data_source,
                 config.ethereum_adapter.clone(),

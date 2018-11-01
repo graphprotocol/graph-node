@@ -66,10 +66,10 @@ where
         let mut subgraphs = self.subgraphs.clone();
 
         tokio::spawn(stream.for_each(move |event| {
-            info!(logger, "Received schema event");
-
             match event {
                 SchemaEvent::SchemaAdded(new_schema) => {
+                    debug!(logger, "Received SchemaAdded event"; "id" => &new_schema.id);
+
                     let derived_schema = match api_schema(&new_schema.document) {
                         Ok(document) => Schema {
                             id: new_schema.id.clone(),
@@ -88,6 +88,8 @@ where
                     );
                 }
                 SchemaEvent::SchemaRemoved(id) => {
+                    debug!(logger, "Received SchemaRemoved event"; "id" => &id);
+
                     // On removal, the `GuardedSchema` will be dropped and all
                     // connections to it will be terminated.
                     subgraphs.remove_id(id);

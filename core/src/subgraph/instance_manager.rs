@@ -68,13 +68,11 @@ impl SubgraphInstanceManager {
 
             match event {
                 SubgraphStart(manifest) => {
-                    info!(
-                        logger, "Starting subgraph";
-                        "subgraph_id" => &manifest.id
-                    );
+                    let logger = logger.new(o!("subgraph_id" => manifest.id.clone()));
+                    info!(logger, "Start subgraph");
 
                     Self::start_subgraph(
-                        logger.clone(),
+                        logger,
                         instances.clone(),
                         host_builder.clone(),
                         block_stream_builder.clone(),
@@ -105,8 +103,7 @@ impl SubgraphInstanceManager {
         S: Store + ChainStore,
     {
         let id = manifest.id.clone();
-        let id_for_log = manifest.id.clone();
-        let id_for_transact = manifest.id.clone();
+        let id_for_block = manifest.id.clone();
         let id_for_err = manifest.id.clone();
 
         // Request a block stream for this subgraph
@@ -117,7 +114,11 @@ impl SubgraphInstanceManager {
             .cancelable(&block_stream_canceler, || CancelableError::Cancel);
 
         // Load the subgraph
-        let instance = Arc::new(SubgraphInstance::from_manifest(manifest, host_builder));
+        let instance = Arc::new(SubgraphInstance::from_manifest(
+            &logger,
+            manifest,
+            host_builder,
+        ));
 
         // Prepare loggers for different parts of the async processing
         let block_logger = logger.clone();
@@ -126,13 +127,16 @@ impl SubgraphInstanceManager {
         // Forward block stream events to the subgraph for processing
         tokio::spawn(
             block_stream
-                .and_then(move |block| {
-                    info!(
-                        block_logger, "Process events from block";
+                .for_each(move |block| {
+                    let id = id_for_block.clone();
+                    let instance = instance.clone();
+                    let store = store.clone();
+                    let logger = block_logger.new(o!(
                         "block_number" => format!("{:?}", block.block.number.unwrap()),
-                        "block_hash" => format!("{:?}", block.block.hash.unwrap()),
-                        "subgraph_id" => &id_for_log
-                    );
+                        "block_hash" => format!("{:?}", block.block.hash.unwrap())
+                    ));
+
+                    info!(logger, "Processing events from block");
 
                     // Extract logs relevant to the subgraph
                     let logs: Vec<_> = block
@@ -143,24 +147,25 @@ impl SubgraphInstanceManager {
                         }).cloned()
                         .collect();
 
-                    info!(
-                        block_logger,
-                        "{} events are relevant for this subgraph",
-                        logs.len();
-                        "subgraph_id" => &id_for_log,
-                    );
-
-                    // Prepare ownership for async closures
-                    let instance = instance.clone();
-                    let block = Arc::new(block);
-                    let block_forward = block.clone();
+                    if logs.len() == 0 {
+                        info!(logger, "No events found for this subgraph");
+                    } else if logs.len() == 1 {
+                        info!(logger, "1 event found for this subgraph");
+                    } else {
+                        info!(logger, "{} events found for this subgraph", logs.len());
+                    }
 
                     // Process events one after the other, passing in entity operations
                     // collected previously to every new event being processed
+                    let block_for_process = Arc::new(block);
+                    let block_for_transact = block_for_process.clone();
+                    let logger_for_process = logger;
+                    let logger_for_transact = logger_for_process.clone();
                     stream::iter_ok::<_, CancelableError<Error>>(logs)
                         .fold(vec![], move |entity_operations, log| {
+                            let logger = logger_for_process.clone();
                             let instance = instance.clone();
-                            let block_for_processing = block.clone();
+                            let block = block_for_process.clone();
 
                             let transaction = block
                                 .transaction_for_log(&log)
@@ -170,27 +175,33 @@ impl SubgraphInstanceManager {
                             future::result(transaction).and_then(move |transaction| {
                                 instance
                                     .process_log(
-                                        block_for_processing,
+                                        &logger,
+                                        block,
                                         transaction,
                                         log,
                                         entity_operations,
                                     ).map_err(|e| format_err!("Failed to process event: {}", e))
                             })
-                        }).map(move |operations| (block_forward, operations))
-                }).for_each(move |(block, entity_operations)| {
-                    let block_ptr_now = EthereumBlockPointer::to_parent(&block);
-                    let block_ptr_after = EthereumBlockPointer::from(&*block);
+                        }).and_then(move |entity_operations| {
+                            let block = block_for_transact.clone();
+                            let logger = logger_for_transact.clone();
 
-                    // Transact entity operations into the store and update the
-                    // subgraph's block stream pointer
-                    future::result(store.transact_block_operations(
-                        id_for_transact.clone(),
-                        block_ptr_now,
-                        block_ptr_after,
-                        entity_operations,
-                    )).map_err(|e| {
-                        format_err!("Error while processing block stream for a subgraph: {}", e)
-                    }).from_err()
+                            let block_ptr_now = EthereumBlockPointer::to_parent(&block);
+                            let block_ptr_after = EthereumBlockPointer::from(&*block);
+
+                            info!(logger, "Applying {} entity operation(s)", entity_operations.len());
+
+                            // Transact entity operations into the store and update the
+                            // subgraph's block stream pointer
+                            future::result(store.transact_block_operations(
+                                id.clone(),
+                                block_ptr_now,
+                                block_ptr_after,
+                                entity_operations,
+                            )).map_err(|e| {
+                                format_err!("Error while processing block stream for a subgraph: {}", e)
+                            }).from_err()
+                        })
                 }).map_err(move |e| {
                     match e {
                         CancelableError::Cancel => {

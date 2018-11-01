@@ -37,7 +37,7 @@ use tokio_retry::Retry;
 ///
 /// fn async_function(logger: Logger) -> impl Future<Item=Memes, Error=DeadlineError<()>> {
 ///     // Retry on error
-///     retry("download memes", logger.clone())
+///     retry("download memes", &logger)
 ///         .no_limit() // Retry forever
 ///         .timeout_secs(30) // Retry if an attempt takes > 30 seconds
 ///         .run(|| {
@@ -45,10 +45,10 @@ use tokio_retry::Retry;
 ///         })
 /// }
 /// ```
-pub fn retry<I, E>(operation_name: impl ToString, logger: Logger) -> RetryConfig<I, E> {
+pub fn retry<I, E>(operation_name: impl ToString, logger: &Logger) -> RetryConfig<I, E> {
     RetryConfig {
         operation_name: operation_name.to_string(),
-        logger,
+        logger: logger.to_owned(),
         condition: RetryIf::Error,
         log_after: 1,
         limit: RetryConfigProperty::Unknown,
@@ -386,9 +386,9 @@ mod tests {
         let logger = Logger::root(::slog::Discard, o!());
         let mut runtime = ::tokio::runtime::Runtime::new().unwrap();
 
-        let result = runtime.block_on(future::lazy(|| {
+        let result = runtime.block_on(future::lazy(move || {
             let c = Mutex::new(0);
-            retry("test", logger)
+            retry("test", &logger)
                 .no_logging()
                 .no_limit()
                 .no_timeout()
@@ -411,9 +411,9 @@ mod tests {
         let logger = Logger::root(::slog::Discard, o!());
         let mut runtime = ::tokio::runtime::Runtime::new().unwrap();
 
-        let result = runtime.block_on(future::lazy(|| {
+        let result = runtime.block_on(future::lazy(move || {
             let c = Mutex::new(0);
-            retry("test", logger)
+            retry("test", &logger)
                 .no_logging()
                 .limit(5)
                 .no_timeout()
@@ -436,9 +436,9 @@ mod tests {
         let logger = Logger::root(::slog::Discard, o!());
         let mut runtime = ::tokio::runtime::Runtime::new().unwrap();
 
-        let result = runtime.block_on(future::lazy(|| {
+        let result = runtime.block_on(future::lazy(move || {
             let c = Mutex::new(0);
-            retry("test", logger)
+            retry("test", &logger)
                 .no_logging()
                 .limit(20)
                 .no_timeout()
@@ -461,10 +461,10 @@ mod tests {
         let logger = Logger::root(::slog::Discard, o!());
         let mut runtime = ::tokio::runtime::Runtime::new().unwrap();
 
-        let result = runtime.block_on(future::lazy(|| {
+        let result = runtime.block_on(future::lazy(move || {
             let c = Mutex::new(0);
 
-            retry("test", logger)
+            retry("test", &logger)
                 .when(|result| result.unwrap() < 10)
                 .no_logging()
                 .limit(20)

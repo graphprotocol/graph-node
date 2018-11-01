@@ -81,11 +81,11 @@ impl<Q, S> GraphQLServer<Q, S> {
         let schemas = self.schemas.clone();
 
         tokio::spawn(stream.for_each(move |event| {
-            info!(logger, "Received schema event");
-
             let mut schemas = schemas.write().unwrap();
             match event {
                 SchemaEvent::SchemaAdded(new_schema) => {
+                    debug!(logger, "Received SchemaAdded event"; "id" => &new_schema.id);
+
                     let derived_schema = match api_schema(&new_schema.document) {
                         Ok(document) => Schema {
                             id: new_schema.id.clone(),
@@ -100,6 +100,8 @@ impl<Q, S> GraphQLServer<Q, S> {
                     schemas.insert(new_schema.id.clone(), derived_schema);
                 }
                 SchemaEvent::SchemaRemoved(id) => {
+                    debug!(logger, "Received SchemaRemoved event"; "id" => &id);
+
                     // If the event got this far, the subgraph must be hosted.
                     schemas.remove(&id).expect("subgraph not hosted");
                 }
