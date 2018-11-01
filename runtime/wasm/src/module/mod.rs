@@ -13,7 +13,7 @@ use graph::components::ethereum::*;
 use graph::data::subgraph::DataSource;
 use graph::ethabi::LogParam;
 use graph::prelude::*;
-use graph::web3::types::{Log, H160, H256, U256};
+use graph::web3::types::Log;
 use host_exports;
 use EventHandlerContext;
 
@@ -79,8 +79,7 @@ const JSON_TO_F64_FUNC_INDEX: usize = 14;
 const JSON_TO_BIG_INT_FUNC_INDEX: usize = 15;
 const IPFS_CAT_FUNC_INDEX: usize = 16;
 const STORE_GET_FUNC_INDEX: usize = 17;
-const TYPE_CONVERSION_BIG_INT_FUNC_TO_INT256_INDEX: usize = 18;
-const CRYPTO_KECCAK_256_INDEX: usize = 19;
+const CRYPTO_KECCAK_256_INDEX: usize = 18;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph: SubgraphManifest,
@@ -340,8 +339,7 @@ where
 
     /// function typeConversion.bigIntToHex(n: Uint8Array): string
     fn big_int_to_hex(&self, big_int_ptr: AscPtr<AscBigInt>) -> Result<Option<RuntimeValue>, Trap> {
-        let bytes: Vec<u8> = self.heap.asc_get(big_int_ptr);
-        let n = BigInt::from_signed_bytes_le(&*bytes);
+        let n: BigInt = self.heap.asc_get(big_int_ptr);
         let result = self.host_exports.big_int_to_hex(n);
         Ok(Some(RuntimeValue::from(self.heap.asc_new(&result))))
     }
@@ -362,8 +360,7 @@ where
 
     /// function typeConversion.i32ToBigInt(i: i32): Uint64Array
     fn big_int_to_i32(&self, n_ptr: AscPtr<AscBigInt>) -> Result<Option<RuntimeValue>, Trap> {
-        let bytes: Vec<u8> = self.heap.asc_get(n_ptr);
-        let n = BigInt::from_signed_bytes_le(&*bytes);
+        let n: BigInt = self.heap.asc_get(n_ptr);
         let i = self.host_exports.big_int_to_i32(n)?;
         Ok(Some(RuntimeValue::from(i)))
     }
