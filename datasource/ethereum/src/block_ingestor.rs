@@ -195,7 +195,7 @@ where
         // Retry, but eventually give up.
         // The receipt might be missing because the block was uncled, and the transaction never
         // made it back into the main chain.
-        retry("block ingestor eth_getTransactionReceipt RPC call", logger)
+        retry("block ingestor eth_getTransactionReceipt RPC call", &logger)
             .limit(16)
             .no_logging()
             .timeout_secs(60)

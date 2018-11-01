@@ -24,7 +24,6 @@ pub struct RuntimeHostConfig {
 }
 
 pub struct RuntimeHostBuilder<T, L, S> {
-    logger: Logger,
     ethereum_adapter: Arc<T>,
     link_resolver: Arc<L>,
     store: Arc<S>,
@@ -38,7 +37,6 @@ where
 {
     fn clone(&self) -> Self {
         RuntimeHostBuilder {
-            logger: self.logger.clone(),
             ethereum_adapter: self.ethereum_adapter.clone(),
             link_resolver: self.link_resolver.clone(),
             store: self.store.clone(),
@@ -52,14 +50,8 @@ where
     L: LinkResolver,
     S: Store,
 {
-    pub fn new(
-        logger: &Logger,
-        ethereum_adapter: Arc<T>,
-        link_resolver: Arc<L>,
-        store: Arc<S>,
-    ) -> Self {
+    pub fn new(ethereum_adapter: Arc<T>, link_resolver: Arc<L>, store: Arc<S>) -> Self {
         RuntimeHostBuilder {
-            logger: logger.new(o!("component" => "RuntimeHostBuilder")),
             ethereum_adapter,
             link_resolver,
             store,
@@ -75,9 +67,14 @@ where
 {
     type Host = RuntimeHost;
 
-    fn build(&self, subgraph_manifest: SubgraphManifest, data_source: DataSource) -> Self::Host {
+    fn build(
+        &self,
+        logger: &Logger,
+        subgraph_manifest: SubgraphManifest,
+        data_source: DataSource,
+    ) -> Self::Host {
         RuntimeHost::new(
-            &self.logger,
+            logger,
             self.ethereum_adapter.clone(),
             self.link_resolver.clone(),
             self.store.clone(),
@@ -93,6 +90,7 @@ type HandleEventResponse = Result<Vec<EntityOperation>, Error>;
 
 struct HandleEventRequest {
     handler: MappingEventHandler,
+    logger: Logger,
     block: Arc<EthereumBlock>,
     transaction: Arc<Transaction>,
     log: Arc<Log>,
@@ -103,7 +101,6 @@ struct HandleEventRequest {
 
 pub struct RuntimeHost {
     config: RuntimeHostConfig,
-    logger: Logger,
     handle_event_sender: Sender<HandleEventRequest>,
     _guard: oneshot::Sender<()>,
 }
@@ -123,7 +120,6 @@ impl RuntimeHost {
     {
         let logger = logger.new(o!(
             "component" => "RuntimeHost",
-            "subgraph_id" => config.subgraph_manifest.id.clone(),
             "data_source" => config.data_source.name.clone(),
         ));
 
@@ -145,7 +141,7 @@ impl RuntimeHost {
         let module_logger = logger.clone();
         let module_config = config.clone();
         thread::spawn(move || {
-            info!(module_logger, "Start WASM runtime");
+            debug!(module_logger, "Start WASM runtime");
 
             // Load the mapping of the data source as a WASM module
             let wasmi_config = WasmiModuleConfig {
@@ -168,6 +164,7 @@ impl RuntimeHost {
                     if let Some(request) = request {
                         let HandleEventRequest {
                             handler,
+                            logger,
                             block,
                             transaction,
                             log,
@@ -177,6 +174,7 @@ impl RuntimeHost {
                         } = request;
 
                         let ctx = EventHandlerContext {
+                            logger,
                             block,
                             transaction,
                             entity_operations,
@@ -198,7 +196,6 @@ impl RuntimeHost {
 
         RuntimeHost {
             config,
-            logger,
             handle_event_sender,
             _guard: cancel_sender,
         }
@@ -273,6 +270,7 @@ impl RuntimeHostTrait for RuntimeHost {
 
     fn process_log(
         &self,
+        logger: &Logger,
         block: Arc<EthereumBlock>,
         transaction: Arc<Transaction>,
         log: Arc<Log>,
@@ -323,13 +321,10 @@ impl RuntimeHostTrait for RuntimeHost {
         };
 
         debug!(
-            self.logger, "Process Ethereum event";
-            "block_number" => match block.block.number {
-                Some(number) => format!("{}", number),
-                None => String::from("None"),
-            },
+            logger, "Process Ethereum event";
             "signature" => &event_handler.event,
-            "handler" => &event_handler.handler);
+            "handler" => &event_handler.handler
+        );
 
         // Call the event handler and asynchronously wait for the result
         let (result_sender, result_receiver) = oneshot::channel();
@@ -342,6 +337,7 @@ impl RuntimeHostTrait for RuntimeHost {
                 .clone()
                 .send(HandleEventRequest {
                     handler: event_handler.clone(),
+                    logger: logger.clone(),
                     block: block.clone(),
                     transaction: transaction.clone(),
                     log: log.clone(),

@@ -18,7 +18,7 @@ use graph::web3::error::{Error, ErrorKind};
 use graph::web3::helpers::*;
 use graph::web3::types::*;
 use graph::web3::{RequestId, Transport};
-use graph_datasource_ethereum::{EthereumAdapter, EthereumAdapterConfig};
+use graph_datasource_ethereum::EthereumAdapter;
 
 pub type Result<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
 
@@ -128,7 +128,7 @@ fn contract_call() {
     )));
 
     let logger = slog::Logger::root(slog::Discard, o!());
-    let adapter = EthereumAdapter::new(&logger, EthereumAdapterConfig { transport });
+    let adapter = EthereumAdapter::new(transport);
     let balance_of = Function {
         name: "balanceOf".to_owned(),
         inputs: vec![Param {
@@ -150,7 +150,7 @@ fn contract_call() {
         function: function,
         args: vec![Token::Address(holder_addr)],
     };
-    let call_result = adapter.contract_call(call).wait().unwrap();
+    let call_result = adapter.contract_call(&logger, call).wait().unwrap();
 
     assert_eq!(call_result[0], Token::Uint(U256::from(100000)));
 }

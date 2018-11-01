@@ -236,10 +236,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Create Ethereum adapter
     let ethereum = Arc::new(graph_datasource_ethereum::EthereumAdapter::new(
-        &logger,
-        graph_datasource_ethereum::EthereumAdapterConfig {
-            transport: transport.clone(),
-        },
+        transport.clone(),
     ));
 
     // Ask Ethereum node for network identifiers
@@ -248,7 +245,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         "network" => &ethereum_network_name,
         "node" => &ethereum_node_url,
     );
-    let eth_net_identifiers = match ethereum.net_identifiers().wait() {
+    let eth_net_identifiers = match ethereum.net_identifiers(&logger).wait() {
         Ok(net) => {
             info!(
                 logger, "Connected to Ethereum";
@@ -296,12 +293,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         BlockStreamBuilder::new(store.clone(), store.clone(), ethereum.clone());
 
     // Prepare for hosting WASM runtimes and managing subgraph instances
-    let runtime_host_builder = WASMRuntimeHostBuilder::new(
-        &logger,
-        ethereum.clone(),
-        ipfs_client.clone(),
-        store.clone(),
-    );
+    let runtime_host_builder =
+        WASMRuntimeHostBuilder::new(ethereum.clone(), ipfs_client.clone(), store.clone());
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger,
         store.clone(),

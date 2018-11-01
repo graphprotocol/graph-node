@@ -16,6 +16,7 @@ pub trait RuntimeHost: Send + Sync {
     /// Process an Ethereum event and return a vector of entity operations.
     fn process_log(
         &self,
+        logger: &Logger,
         block: Arc<EthereumBlock>,
         transaction: Arc<Transaction>,
         log: Arc<Log>,
@@ -27,5 +28,10 @@ pub trait RuntimeHostBuilder: Clone + Send + 'static {
     type Host: RuntimeHost;
 
     /// Build a new runtime host for a subgraph data source.
-    fn build(&self, subgraph_manifest: SubgraphManifest, data_source: DataSource) -> Self::Host;
+    fn build(
+        &self,
+        logger: &Logger,
+        subgraph_manifest: SubgraphManifest,
+        data_source: DataSource,
+    ) -> Self::Host;
 }

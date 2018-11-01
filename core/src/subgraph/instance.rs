@@ -24,14 +24,14 @@ impl<T> SubgraphInstanceTrait<T> for SubgraphInstance<T>
 where
     T: RuntimeHostBuilder,
 {
-    fn from_manifest(manifest: SubgraphManifest, host_builder: T) -> Self {
+    fn from_manifest(logger: &Logger, manifest: SubgraphManifest, host_builder: T) -> Self {
         // Create a new runtime host for each data source in the subgraph manifest;
         // we use the same order here as in the subgraph manifest to make the
         // event processing behavior predictable
         let hosts = manifest
             .data_sources
             .iter()
-            .map(|d| host_builder.build(manifest.clone(), d.clone()))
+            .map(|d| host_builder.build(&logger, manifest.clone(), d.clone()))
             .map(Arc::new)
             .collect();
 
@@ -49,11 +49,14 @@ where
 
     fn process_log(
         &self,
+        logger: &Logger,
         block: Arc<EthereumBlock>,
         transaction: Arc<Transaction>,
         log: Log,
         entity_operations: Vec<EntityOperation>,
     ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send> {
+        let logger = logger.to_owned();
+
         // Identify runtime hosts that will handle this event
         let matching_hosts: Vec<_> = self
             .hosts
@@ -70,6 +73,7 @@ where
             entity_operations,
             move |entity_operations, host| {
                 host.process_log(
+                    &logger,
                     block.clone(),
                     transaction.clone(),
                     log.clone(),

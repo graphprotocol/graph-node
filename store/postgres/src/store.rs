@@ -191,8 +191,8 @@ impl Store {
         let subscriptions = self.subscriptions.clone();
 
         tokio::spawn(entity_changes.for_each(move |change| {
-            debug!(logger, "Entity change";
-                           "subgraph" => &change.subgraph,
+            trace!(logger, "Received entity change event";
+                           "subgraph_id" => &change.subgraph,
                            "entity" => &change.entity,
                            "id" => &change.id);
 

@@ -32,6 +32,7 @@ pub(crate) struct UnresolvedContractCall {
 
 #[derive(Debug)]
 pub(crate) struct EventHandlerContext {
+    logger: Logger,
     block: Arc<EthereumBlock>,
     transaction: Arc<Transaction>,
     entity_operations: Vec<EntityOperation>,

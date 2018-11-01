@@ -10,14 +10,9 @@ use graph::web3;
 use graph::web3::api::Web3;
 use graph::web3::types::{Filter, *};
 
-pub struct EthereumAdapterConfig<T: web3::Transport> {
-    pub transport: T,
-}
-
 #[derive(Clone)]
 pub struct EthereumAdapter<T: web3::Transport> {
     web3: Arc<Web3<T>>,
-    logger: Logger,
 }
 
 /// Number of chunks to request in parallel when streaming logs.
@@ -31,24 +26,25 @@ where
     T: web3::Transport + Send + Sync + 'static,
     T::Out: Send,
 {
-    pub fn new(logger: &Logger, config: EthereumAdapterConfig<T>) -> Self {
+    pub fn new(transport: T) -> Self {
         EthereumAdapter {
-            web3: Arc::new(Web3::new(config.transport)),
-            logger: logger.new(o!("component" => "EthereumAdapter")),
+            web3: Arc::new(Web3::new(transport)),
         }
     }
 
     fn logs_with_sigs(
         &self,
+        logger: &Logger,
         from: u64,
         to: u64,
         addresses: Vec<H160>,
         event_signatures: Vec<H256>,
     ) -> impl Future<Item = Vec<Log>, Error = Error> {
         let eth_adapter = self.clone();
+        let logger = logger.to_owned();
         let event_sig_count = event_signatures.len();
 
-        retry("eth_getLogs RPC call", self.logger.clone())
+        retry("eth_getLogs RPC call", &logger)
             .no_limit()
             .timeout_secs(60)
             .run(move || {
@@ -61,7 +57,7 @@ where
                     .build();
 
                 // Request logs from client
-                let logger = eth_adapter.logger.clone();
+                let logger = logger.clone();
                 eth_adapter
                     .web3
                     .eth()
@@ -86,6 +82,7 @@ where
 
     fn log_stream(
         &self,
+        logger: &Logger,
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
@@ -116,6 +113,7 @@ where
             .collect::<Vec<H160>>();
 
         let eth_adapter = self.clone();
+        let logger = logger.to_owned();
         stream::unfold(from, move |mut chunk_offset| {
             if chunk_offset <= to {
                 let mut chunk_futures = vec![];
@@ -124,12 +122,13 @@ where
                     let chunk_end = (chunk_offset + 100_000 - 1).min(to).min(4_000_000);
 
                     debug!(
-                        eth_adapter.logger,
+                        logger,
                         "Starting request for logs in block range [{},{}]", chunk_offset, chunk_end
                     );
                     let log_filter = log_filter.clone();
                     let chunk_future = eth_adapter
                         .logs_with_sigs(
+                            &logger,
                             chunk_offset,
                             chunk_end,
                             addresses.clone(),
@@ -163,7 +162,7 @@ where
                         // Note: this function filters only on event sigs,
                         // and will therefore return false positives
                         debug!(
-                            eth_adapter.logger,
+                            logger,
                             "Starting request for logs in block range [{},{}]",
                             chunk_offset,
                             chunk_end
@@ -171,6 +170,7 @@ where
                         let log_filter = log_filter.clone();
                         let chunk_future = eth_adapter
                             .logs_with_sigs(
+                                &logger,
                                 chunk_offset,
                                 chunk_end,
                                 addresses.clone(),
@@ -210,18 +210,19 @@ where
 
     fn call(
         &self,
+        logger: &Logger,
         contract_address: Address,
         call_data: Bytes,
         block_number_opt: Option<BlockNumber>,
     ) -> impl Future<Item = Bytes, Error = Error> + Send {
         let web3 = self.web3.clone();
-        let logger = self.logger.clone();
+        let logger = logger.clone();
 
         // Outer retry used only for 0-byte responses,
         // where we can't guarantee the problem is temporary.
         // If we keep getting back 0-byte responses,
         // eventually we assume it's right and return it.
-        retry("eth_call RPC call (outer)", logger.clone())
+        retry("eth_call RPC call (outer)", &logger)
             .when(|result: &Result<Bytes, _>| {
                 match result {
                     // Retry only if zero-length response received
@@ -237,7 +238,7 @@ where
                 let web3 = web3.clone();
                 let call_data = call_data.clone();
 
-                retry("eth_call RPC call", logger.clone())
+                retry("eth_call RPC call", &logger)
                     .no_limit()
                     .timeout_secs(60)
                     .run(move || {
@@ -269,17 +270,18 @@ where
 {
     fn net_identifiers(
         &self,
+        logger: &Logger,
     ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
+        let logger = logger.clone();
+
         let web3 = self.web3.clone();
-        let logger = self.logger.clone();
-        let net_version_future = retry("net_version RPC call", logger)
+        let net_version_future = retry("net_version RPC call", &logger)
             .no_limit()
             .timeout_secs(20)
             .run(move || web3.net().version().map_err(SyncFailure::new).from_err());
 
         let web3 = self.web3.clone();
-        let logger = self.logger.clone();
-        let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", logger)
+        let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
             .no_limit()
             .timeout_secs(30)
             .run(move || {
@@ -315,12 +317,13 @@ where
 
     fn block_by_hash(
         &self,
+        logger: &Logger,
         block_hash: H256,
     ) -> Box<Future<Item = Option<EthereumBlock>, Error = Error> + Send> {
         let web3 = self.web3.clone();
-        let logger = self.logger.clone();
+        let logger = logger.clone();
 
-        let block_opt_future = retry("eth_getBlockByHash RPC call", logger.clone())
+        let block_opt_future = retry("eth_getBlockByHash RPC call", &logger)
             .no_limit()
             .timeout_secs(60)
             .run(move || {
@@ -350,7 +353,7 @@ where
                     // Retry, but eventually give up.
                     // The receipt might be missing because the block was uncled, and the
                     // transaction never made it back into the main chain.
-                    retry("eth_getTransactionReceipt RPC call", logger.clone())
+                    retry("eth_getTransactionReceipt RPC call", &logger)
                         .limit(32)
                         .no_logging()
                         .timeout_secs(60)
@@ -405,12 +408,13 @@ where
 
     fn block_hash_by_block_number(
         &self,
+        logger: &Logger,
         block_number: u64,
     ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
         let web3 = self.web3.clone();
 
         Box::new(
-            retry("eth_getBlockByNumber RPC call", self.logger.clone())
+            retry("eth_getBlockByNumber RPC call", &logger)
                 .no_limit()
                 .timeout_secs(60)
                 .run(move || {
@@ -432,27 +436,30 @@ where
 
     fn is_on_main_chain(
         &self,
+        logger: &Logger,
         block_ptr: EthereumBlockPointer,
     ) -> Box<Future<Item = bool, Error = Error> + Send> {
-        Box::new(self.block_hash_by_block_number(block_ptr.number).and_then(
-            move |block_hash_opt| {
-                block_hash_opt
-                    .ok_or_else(|| {
-                        format_err!("Ethereum node is missing block #{}", block_ptr.number)
-                    }).map(|block_hash| block_hash == block_ptr.hash)
-            },
-        ))
+        Box::new(
+            self.block_hash_by_block_number(&logger, block_ptr.number)
+                .and_then(move |block_hash_opt| {
+                    block_hash_opt
+                        .ok_or_else(|| {
+                            format_err!("Ethereum node is missing block #{}", block_ptr.number)
+                        }).map(|block_hash| block_hash == block_ptr.hash)
+                }),
+        )
     }
 
     fn find_first_blocks_with_logs(
         &self,
+        logger: &Logger,
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
     ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         Box::new(
             // Get a stream of all relevant logs in range
-            self.log_stream(from, to, log_filter)
+            self.log_stream(&logger, from, to, log_filter)
                 // Get first chunk of logs
                 .take(1)
                 // Collect 0 or 1 vecs of logs
@@ -488,6 +495,7 @@ where
 
     fn contract_call(
         &self,
+        logger: &Logger,
         call: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
         // Emit custom error for type mismatches.
@@ -510,6 +518,7 @@ where
         Box::new(
             // Make the actual function call
             self.call(
+                logger,
                 call.address,
                 Bytes(call_data),
                 Some(call.block_ptr.number.into()),
