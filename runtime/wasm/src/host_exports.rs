@@ -240,12 +240,8 @@ where
         format!("0x{}", ::hex::encode(bytes))
     }
 
-    pub(crate) fn big_int_to_string(
-        &self,
-        n: BigInt,
-    ) -> Result<String, HostExportError<impl ExportError>> {
-        let bytes = n.to_bytes_le().1;
-        self.bytes_to_string(bytes)
+    pub(crate) fn big_int_to_string(&self, n: BigInt) -> String {
+        format!("{}", n)
     }
 
     pub(crate) fn big_int_to_hex(&self, n: BigInt) -> String {
