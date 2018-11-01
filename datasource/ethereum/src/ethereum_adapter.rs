@@ -345,6 +345,9 @@ where
 
             let block = block_opt?;
 
+            // Retry, but eventually give up.
+            // The receipt might be missing because the block was uncled, and the
+            // transaction never made it back into the main chain.
             Some(retry("batch eth_getTransactionReceipt RPC call", &logger)
                 .limit(32)
                 .timeout_secs(60)
