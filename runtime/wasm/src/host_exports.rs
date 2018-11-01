@@ -6,7 +6,7 @@ use graph::data::store::scalar;
 use graph::data::subgraph::DataSource;
 use graph::prelude::*;
 use graph::serde_json;
-use graph::web3::types::{H160, U256};
+use graph::web3::types::H160;
 use std::collections::HashMap;
 use std::fmt;
 use std::mem;
@@ -244,12 +244,12 @@ where
         &self,
         n: BigInt,
     ) -> Result<String, HostExportError<impl ExportError>> {
-        let bytes = n.to_signed_bytes_le();
+        let bytes = n.to_bytes_le().1;
         self.bytes_to_string(bytes)
     }
 
     pub(crate) fn big_int_to_hex(&self, n: BigInt) -> String {
-        let bytes = n.to_signed_bytes_le();
+        let bytes = n.to_bytes_le().1;
 
         // Even an empty string must be prefixed with `0x`.
         // Encodes each byte as a two hex digits.
@@ -271,8 +271,8 @@ where
     ) -> Result<i32, HostExportError<impl ExportError>> {
         if n >= i32::min_value().into() && n <= i32::max_value().into() {
             let n_bytes = n.to_signed_bytes_le();
-            let mut i_bytes: [u8; 4] = [0, 0, 0, 0];
-            i_bytes.copy_from_slice(&n_bytes[0..4]);
+            let mut i_bytes: [u8; 4] = if n < 0.into() { [255; 4] } else { [0; 4] };
+            i_bytes[..n_bytes.len()].copy_from_slice(&n_bytes);
             let i: i32 = unsafe { mem::transmute(i_bytes) };
             Ok(i)
         } else {
