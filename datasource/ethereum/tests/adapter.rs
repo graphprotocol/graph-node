@@ -17,7 +17,7 @@ use graph::serde_json;
 use graph::web3::error::{Error, ErrorKind};
 use graph::web3::helpers::*;
 use graph::web3::types::*;
-use graph::web3::{RequestId, Transport};
+use graph::web3::{BatchTransport, RequestId, Transport};
 use graph_datasource_ethereum::EthereumAdapter;
 
 pub type Result<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
@@ -74,6 +74,23 @@ impl Transport for TestTransport {
                 Box::new(failed(ErrorKind::Unreachable.into()))
             }
         }
+    }
+}
+
+impl BatchTransport for TestTransport {
+    type Batch = Result<Vec<::std::result::Result<jsonrpc_core::Value, Error>>>;
+
+    fn send_batch<T>(&self, requests: T) -> Self::Batch
+    where
+        T: IntoIterator<Item = (RequestId, jsonrpc_core::Call)>,
+    {
+        Box::new(
+            stream::futures_ordered(
+                requests
+                    .into_iter()
+                    .map(|(id, req)| self.send(id, req).map(|v| Ok(v))),
+            ).collect(),
+        )
     }
 }
 
