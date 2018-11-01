@@ -1,20 +1,71 @@
 use hex;
 use num_bigint;
 use serde::{self, Deserialize, Serialize};
+use web3::types::*;
 
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
+
+pub use num_bigint::Sign as BigIntSign;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BigInt(num_bigint::BigInt);
 
 impl BigInt {
+    pub fn from_unsigned_bytes_le(bytes: &[u8]) -> Self {
+        BigInt(num_bigint::BigInt::from_bytes_le(
+            num_bigint::Sign::Plus,
+            bytes,
+        ))
+    }
+
     pub fn from_signed_bytes_le(bytes: &[u8]) -> Self {
         BigInt(num_bigint::BigInt::from_signed_bytes_le(bytes))
     }
 
+    pub fn to_bytes_le(&self) -> (BigIntSign, Vec<u8>) {
+        self.0.to_bytes_le()
+    }
+
     pub fn to_signed_bytes_le(&self) -> Vec<u8> {
         self.0.to_signed_bytes_le()
+    }
+
+    pub fn from_unsigned_u256(n: &U256) -> Self {
+        let mut bytes: [u8; 32] = [0; 32];
+        n.to_little_endian(&mut bytes);
+        BigInt::from_unsigned_bytes_le(&bytes)
+    }
+
+    pub fn from_signed_u256(n: &U256) -> Self {
+        let mut bytes: [u8; 32] = [0; 32];
+        n.to_little_endian(&mut bytes);
+        BigInt::from_signed_bytes_le(&bytes)
+    }
+
+    pub fn to_signed_u256(&self) -> U256 {
+        let bytes = self.to_signed_bytes_le();
+        if self < &BigInt::from(0) {
+            assert!(
+                bytes.len() <= 32,
+                "BigInt value does not fit into signed U256"
+            );
+            let mut i_bytes: [u8; 32] = [255; 32];
+            i_bytes[..bytes.len()].copy_from_slice(&bytes);
+            U256::from_little_endian(&i_bytes)
+        } else {
+            U256::from_little_endian(&bytes)
+        }
+    }
+
+    pub fn to_unsigned_u256(&self) -> U256 {
+        let (sign, bytes) = self.to_bytes_le();
+        assert!(
+            sign == BigIntSign::NoSign || sign == BigIntSign::Plus,
+            "negative value encountered for U256: {}",
+            self
+        );
+        U256::from_little_endian(&bytes)
     }
 }
 
@@ -27,6 +78,14 @@ impl Display for BigInt {
 impl From<i32> for BigInt {
     fn from(i: i32) -> BigInt {
         BigInt(i.into())
+    }
+}
+
+impl From<U128> for BigInt {
+    fn from(n: U128) -> BigInt {
+        let mut bytes: [u8; 16] = [0; 16];
+        n.to_little_endian(&mut bytes);
+        BigInt::from_unsigned_bytes_le(&bytes)
     }
 }
 
