@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use graph::components::ethereum::{EthereumBlockData, EthereumEventData, EthereumTransactionData};
 use graph::data::store;
+use graph::prelude::{BigInt, BigIntSign};
 use graph::serde_json;
 use graph::web3::types as web3;
 
@@ -44,21 +45,17 @@ impl ToAscObj<AscBigInt> for web3::U128 {
     }
 }
 
-impl ToAscObj<AscBigInt> for web3::U256 {
+impl ToAscObj<AscBigInt> for BigInt {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscBigInt {
-        let mut bytes: [u8; 32] = [0; 32];
-        self.to_little_endian(&mut bytes);
+        let bytes = self.to_signed_bytes_le();
         bytes.to_asc_obj(heap)
     }
 }
 
-impl FromAscObj<AscBigInt> for web3::U256 {
+impl FromAscObj<AscBigInt> for BigInt {
     fn from_asc_obj<H: AscHeap>(array_buffer: AscBigInt, heap: &H) -> Self {
-        let in_bytes = <Vec<u8>>::from_asc_obj(array_buffer, heap);
-        let mut bytes: [u8; 32] = [0; 32];
-        let length = cmp::min(in_bytes.len(), 32);
-        bytes[0..length].copy_from_slice(&in_bytes[0..length]);
-        web3::U256::from_little_endian(&bytes)
+        let bytes = <Vec<u8>>::from_asc_obj(array_buffer, heap);
+        BigInt::from_signed_bytes_le(&bytes)
     }
 }
 
@@ -72,7 +69,14 @@ impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
             FixedBytes(bytes) | Bytes(bytes) => {
                 heap.asc_new::<Uint8Array, _>(&**bytes).to_payload()
             }
-            Int(uint) | Uint(uint) => heap.asc_new::<AscBigInt, _>(uint).to_payload(),
+            Int(uint) => {
+                let n = BigInt::from_signed_u256(&uint);
+                heap.asc_new(&n).to_payload()
+            }
+            Uint(uint) => {
+                let n = BigInt::from_unsigned_u256(&uint);
+                heap.asc_new(&n).to_payload()
+            }
             Bool(b) => *b as u64,
             String(string) => heap.asc_new(&**string).to_payload(),
             FixedArray(tokens) | Array(tokens) => heap.asc_new(&**tokens).to_payload(),
@@ -106,11 +110,13 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
             }
             EthereumValueKind::Int => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
-                Token::Int(heap.asc_get(ptr))
+                let n: BigInt = heap.asc_get(ptr);
+                Token::Int(n.to_signed_u256())
             }
             EthereumValueKind::Uint => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
-                Token::Uint(heap.asc_get(ptr))
+                let n: BigInt = heap.asc_get(ptr);
+                Token::Uint(n.to_unsigned_u256())
             }
             EthereumValueKind::String => {
                 let ptr: AscPtr<AscString> = AscPtr::from(payload);
@@ -252,12 +258,12 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
             state_root: heap.asc_new(&self.state_root),
             transactions_root: heap.asc_new(&self.transactions_root),
             receipts_root: heap.asc_new(&self.receipts_root),
-            number: heap.asc_new::<AscBigInt, _>(&self.number),
-            gas_used: heap.asc_new(&self.gas_used),
-            gas_limit: heap.asc_new(&self.gas_limit),
-            timestamp: heap.asc_new(&self.timestamp),
-            difficulty: heap.asc_new(&self.difficulty),
-            total_difficulty: heap.asc_new(&self.total_difficulty),
+            number: heap.asc_new(&BigInt::from(self.number)),
+            gas_used: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_used)),
+            gas_limit: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_limit)),
+            timestamp: heap.asc_new(&BigInt::from_unsigned_u256(&self.timestamp)),
+            difficulty: heap.asc_new(&BigInt::from_unsigned_u256(&self.difficulty)),
+            total_difficulty: heap.asc_new(&BigInt::from_unsigned_u256(&self.total_difficulty)),
         }
     }
 }
@@ -267,8 +273,8 @@ impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
         AscEthereumTransaction {
             hash: heap.asc_new(&self.hash),
             block_hash: heap.asc_new(&self.block_hash),
-            block_number: heap.asc_new(&self.block_number),
-            gas_used: heap.asc_new(&self.gas_used),
+            block_number: heap.asc_new(&BigInt::from_unsigned_u256(&self.block_number)),
+            gas_used: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_used)),
         }
     }
 }
