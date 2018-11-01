@@ -139,7 +139,6 @@ impl<T: AscValue> TypedArray<T> {
 impl<T> AscType for TypedArray<T> {}
 
 pub(crate) type Uint8Array = TypedArray<u8>;
-pub(crate) type Uint64Array = TypedArray<u64>;
 
 /// Asc std string: "Strings are encoded as UTF-16LE in AssemblyScript, and are
 /// prefixed with their length (in character codes) as a 32-bit integer". See
