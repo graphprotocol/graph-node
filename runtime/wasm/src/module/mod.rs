@@ -333,7 +333,7 @@ where
     ) -> Result<Option<RuntimeValue>, Trap> {
         let bytes: Vec<u8> = self.heap.asc_get(big_int_ptr);
         let n = BigInt::from_signed_bytes_le(&*bytes);
-        let result = self.host_exports.big_int_to_string(n)?;
+        let result = self.host_exports.big_int_to_string(n);
         Ok(Some(RuntimeValue::from(self.heap.asc_new(&result))))
     }
 
