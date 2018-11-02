@@ -425,7 +425,7 @@ fn big_int_to_hex() {
         .try_into()
         .expect("call did not return pointer");
     let zero_hex_str: String = module.heap.asc_get(zero_hex_ptr);
-    assert_eq!(zero_hex_str, "0x00");
+    assert_eq!(zero_hex_str, "0x0");
 
     // Convert 1 to hex
     let one = BigInt::from_unsigned_u256(&U256::one());
@@ -441,7 +441,7 @@ fn big_int_to_hex() {
         .try_into()
         .expect("call did not return pointer");
     let one_hex_str: String = module.heap.asc_get(one_hex_ptr);
-    assert_eq!(one_hex_str, "0x01");
+    assert_eq!(one_hex_str, "0x1");
 
     // Convert U256::max_value() to hex
     let u256_max = BigInt::from_unsigned_u256(&U256::max_value());

@@ -238,12 +238,18 @@ where
         format!("{}", n)
     }
 
+    /// Prints the module of `n` in hex.
+    /// Integers are encoded using the least amount of digits (no leading zero digits).
+    /// Their encoding may be of uneven length. The number zero encodes as "0x0".
+    ///
+    /// https://godoc.org/github.com/ethereum/go-ethereum/common/hexutil#hdr-Encoding_Rules
     pub(crate) fn big_int_to_hex(&self, n: BigInt) -> String {
-        let bytes = n.to_bytes_le().1;
+        if n == 0.into() {
+            return "0x0".to_string();
+        }
 
-        // Even an empty string must be prefixed with `0x`.
-        // Encodes each byte as a two hex digits.
-        format!("0x{}", ::hex::encode(bytes))
+        let bytes = n.to_bytes_be().1;
+        format!("0x{}", ::hex::encode(bytes).trim_left_matches('0'))
     }
 
     pub(crate) fn string_to_h160(
