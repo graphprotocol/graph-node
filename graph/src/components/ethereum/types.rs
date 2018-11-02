@@ -71,7 +71,7 @@ impl<'a> From<&'a Transaction> for EthereumTransactionData {
             hash: tx.hash,
             index: tx.transaction_index.unwrap(),
             from: tx.from,
-            to: tx.to.unwrap(),
+            to: tx.to.unwrap_or(H160::from(0)),
             value: tx.value,
             gas_used: tx.gas,
             gas_price: tx.gas_price,
@@ -90,11 +90,11 @@ pub struct EthereumLogData {
 impl<'a> From<&'a Log> for EthereumLogData {
     fn from(log: &'a Log) -> EthereumLogData {
         EthereumLogData {
-            address: log.address.clone(),
+            address: log.address,
             // Will we process any pending events? If so these unwraps won't do
-            log_index: log.log_index.clone().unwrap(),
-            transaction_log_index: log.transaction_log_index.clone().unwrap(),
-            log_type: log.log_type.clone().unwrap(),
+            log_index: log.log_index.unwrap_or(U256::zero()),
+            transaction_log_index: log.transaction_log_index.unwrap_or(U256::zero()),
+            log_type: log.log_type.clone().unwrap_or("None".to_string()),
         }
     }
 }
