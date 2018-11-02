@@ -217,6 +217,7 @@ where
                     .deref(),
             ),
             address: log.address,
+            log: EthereumLogData::from(log.deref()),
             params,
         };
 

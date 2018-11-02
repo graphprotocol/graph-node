@@ -1,7 +1,9 @@
 use ethabi;
 use std::collections::HashMap;
 
-use graph::components::ethereum::{EthereumBlockData, EthereumEventData, EthereumTransactionData};
+use graph::components::ethereum::{
+    EthereumBlockData, EthereumEventData, EthereumLogData, EthereumTransactionData,
+};
 use graph::data::store;
 use graph::prelude::BigInt;
 use graph::serde_json;
@@ -271,9 +273,24 @@ impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
     fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEthereumTransaction {
         AscEthereumTransaction {
             hash: heap.asc_new(&self.hash),
-            block_hash: heap.asc_new(&self.block_hash),
-            block_number: heap.asc_new(&BigInt::from_unsigned_u256(&self.block_number)),
+            index: heap.asc_new(&BigInt::from(self.index)),
+            from: heap.asc_new(&self.from),
+            to: heap.asc_new(&self.to),
+            value: heap.asc_new(&BigInt::from_unsigned_u256(&self.value)),
             gas_used: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_used)),
+            gas_price: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_price)),
+        }
+    }
+}
+
+impl ToAscObj<AscEthereumLog> for EthereumLogData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEthereumLog {
+        AscEthereumLog {
+            address: heap.asc_new(&self.address),
+            log_index: heap.asc_new(&BigInt::from_unsigned_u256(&self.log_index)),
+            transaction_log_index: heap
+                .asc_new(&BigInt::from_unsigned_u256(&self.transaction_log_index)),
+            log_type: heap.asc_new(&self.log_type),
         }
     }
 }
@@ -284,6 +301,7 @@ impl ToAscObj<AscEthereumEvent> for EthereumEventData {
             address: heap.asc_new(&self.address),
             block: heap.asc_new(&self.block),
             transaction: heap.asc_new(&self.transaction),
+            log: heap.asc_new(&self.log),
             params: heap.asc_new(self.params.as_slice()),
         }
     }
