@@ -40,8 +40,14 @@ BEGIN
         RETURN ARRAY[]::VARCHAR[];
     END IF;
 
-    -- Aggregate list of missing parent hashes into missing_parents,
-    -- selecting only parents of blocks within ancestor_count of new head
+    -- Aggregate a list of missing parent hashes into missing_parents,
+    -- selecting only parents of blocks within ancestor_count of new head.
+    --
+    -- In the common case during block ingestion, this will find only one or
+    -- zero missing parents, which causes the block ingestor to walk backwards
+    -- from the latest block, loading blocks one at a time.
+    -- A possible performance improvement in the block ingestor would be to
+    -- load blocks speculatively by number instead of by hash.
     SELECT array_agg(block1.parent_hash)
     INTO STRICT missing_parents
     FROM ethereum_blocks AS block1

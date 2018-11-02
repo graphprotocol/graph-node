@@ -125,9 +125,24 @@ where
                                 // missing.
                                 self.ingest_blocks(stream::once(Ok(latest_block)))
                             }).and_then(move |missing_block_hashes| {
-                                // Repeatedly fetch missing blocks, and ingest them.
-                                // ingest_blocks will continue to tell us about more missing blocks until we have
-                                // filled in all missing pieces of the blockchain (that we care about).
+                                // Repeatedly fetch missing parent blocks, and ingest them.
+                                // ingest_blocks will continue to tell us about more missing parent
+                                // blocks until we have filled in all missing pieces of the
+                                // blockchain in the block number range we care about.
+                                //
+                                // Loop will terminate because:
+                                // - The number of blocks in the ChainStore in the block number
+                                //   range [latest - ancestor_count, latest] is finite.
+                                // - The missing parents in the first iteration have at most block
+                                //   number latest-1.
+                                // - Each iteration loads parents of all blocks in the range whose
+                                //   parent blocks are not already in the ChainStore, so blocks
+                                //   with missing parents in one iteration will not have missing
+                                //   parents in the next.
+                                // - Therefore, if the missing parents in one iteration have at
+                                //   most block number N, then the missing parents in the next
+                                //   iteration will have at most block number N-1.
+                                // - Therefore, the loop will iterate at most ancestor_count times.
                                 future::loop_fn(
                                     missing_block_hashes,
                                     move |missing_block_hashes| -> Box<Future<Item = _, Error = _> + Send> {
