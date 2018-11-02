@@ -737,6 +737,11 @@ impl ChainStore for Store {
                 data.eq(json_blob),
             );
 
+            // Insert blocks.
+            // If the table already contains a block with the same hash,
+            // then overwrite that block (on conflict do update).
+            // That case is a no-op because blocks are immutable
+            // (unless the Ethereum node returned corrupt data).
             insert_into(ethereum_blocks)
                 .values(values.clone())
                 .on_conflict(hash)

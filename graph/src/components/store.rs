@@ -376,6 +376,11 @@ pub trait ChainStore: Send + Sync + 'static {
     ///
     /// Only updates pointer if there is a block with a higher block number than the current head
     /// block, and the `ancestor_count` most recent ancestors of that block are in the store.
+    /// Note that this means if the Ethereum node returns a different "latest block" with a
+    /// different hash but same number, we do not update the chain head pointer.
+    /// This situation can happen on e.g. Infura where requests are load balanced across many
+    /// Ethereum nodes, in which case it's better not to continuously revert and reapply the latest
+    /// blocks.
     ///
     /// If the pointer was updated, returns `Ok(vec![])`, and fires a HeadUpdateEvent.
     ///
