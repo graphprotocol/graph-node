@@ -27,6 +27,10 @@ impl BigInt {
         self.0.to_bytes_le()
     }
 
+    pub fn to_bytes_be(&self) -> (BigIntSign, Vec<u8>) {
+        self.0.to_bytes_be()
+    }
+
     pub fn to_signed_bytes_le(&self) -> Vec<u8> {
         self.0.to_signed_bytes_le()
     }
