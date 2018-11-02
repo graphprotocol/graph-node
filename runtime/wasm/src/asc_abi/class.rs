@@ -387,13 +387,16 @@ pub(crate) struct AscLogParam {
 impl AscType for AscLogParam {}
 
 pub(crate) type Bytes = Uint8Array;
-/// Big ints are represented in two's complement and in little-endian order.
+
+/// Big ints are represented using signed number representation. Note: This differs
+/// from how U256 and U128 are represented (they use two's complement). So whenever
+/// we convert between them, we need to make sure we handle signed and unsigned
+/// cases correctly.
 pub(crate) type AscBigInt = Uint8Array;
+
 pub(crate) type AscAddress = Uint8Array;
 pub(crate) type AscH160 = Uint8Array;
 pub(crate) type AscH256 = Uint8Array;
-//pub(crate) type AscU128 = Uint64Array;
-//pub(crate) type AscU256 = Uint64Array;
 
 pub(crate) type AscLogParamArray = Array<AscPtr<AscLogParam>>;
 
