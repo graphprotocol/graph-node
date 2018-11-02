@@ -57,18 +57,44 @@ impl<'a, T> From<&'a Block<T>> for EthereumBlockData {
 #[derive(Clone, Debug)]
 pub struct EthereumTransactionData {
     pub hash: H256,
-    pub block_hash: H256,
-    pub block_number: U256,
+    pub index: U128,
+    pub from: H160,
+    pub to: H160,
+    pub value: U256,
     pub gas_used: U256,
+    pub gas_price: U256,
 }
 
 impl<'a> From<&'a Transaction> for EthereumTransactionData {
     fn from(tx: &'a Transaction) -> EthereumTransactionData {
         EthereumTransactionData {
             hash: tx.hash,
-            block_hash: tx.block_hash.unwrap(),
-            block_number: tx.block_number.unwrap(),
+            index: tx.transaction_index.unwrap(),
+            from: tx.from,
+            to: tx.to.unwrap(),
+            value: tx.value,
             gas_used: tx.gas,
+            gas_price: tx.gas_price,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct EthereumLogData {
+    pub address: H160,
+    pub log_index: U256,
+    pub transaction_log_index: U256,
+    pub log_type: String,
+}
+
+impl<'a> From<&'a Log> for EthereumLogData {
+    fn from(log: &'a Log) -> EthereumLogData {
+        EthereumLogData {
+            address: log.address.clone(),
+            // Will we process any pending events? If so these unwraps won't do
+            log_index: log.log_index.clone().unwrap(),
+            transaction_log_index: log.transaction_log_index.clone().unwrap(),
+            log_type: log.log_type.clone().unwrap(),
         }
     }
 }
@@ -79,6 +105,7 @@ pub struct EthereumEventData {
     pub address: Address,
     pub block: EthereumBlockData,
     pub transaction: EthereumTransactionData,
+    pub log: EthereumLogData,
     pub params: Vec<LogParam>,
 }
 
@@ -88,6 +115,7 @@ impl Clone for EthereumEventData {
             address: self.address,
             block: self.block.clone(),
             transaction: self.transaction.clone(),
+            log: self.log.clone(),
             params: self
                 .params
                 .iter()
