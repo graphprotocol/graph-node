@@ -422,18 +422,32 @@ impl AscType for AscEthereumBlock {}
 #[repr(C)]
 pub(crate) struct AscEthereumTransaction {
     pub hash: AscPtr<AscH256>,
-    pub block_hash: AscPtr<AscH256>,
-    pub block_number: AscPtr<AscBigInt>,
+    pub index: AscPtr<AscBigInt>,
+    pub from: AscPtr<AscH160>,
+    pub to: AscPtr<AscH160>,
+    pub value: AscPtr<AscBigInt>,
     pub gas_used: AscPtr<AscBigInt>,
+    pub gas_price: AscPtr<AscBigInt>,
 }
 
 impl AscType for AscEthereumTransaction {}
+
+#[repr(C)]
+pub(crate) struct AscEthereumLog {
+    pub address: AscPtr<AscH160>,
+    pub log_index: AscPtr<AscBigInt>,
+    pub transaction_log_index: AscPtr<AscBigInt>,
+    pub log_type: AscPtr<AscString>,
+}
+
+impl AscType for AscEthereumLog {}
 
 #[repr(C)]
 pub(crate) struct AscEthereumEvent {
     pub address: AscPtr<AscAddress>,
     pub block: AscPtr<AscEthereumBlock>,
     pub transaction: AscPtr<AscEthereumTransaction>,
+    pub log: AscPtr<AscEthereumLog>,
     pub params: AscPtr<AscLogParamArray>,
 }
 
