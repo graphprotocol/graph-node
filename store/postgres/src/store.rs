@@ -582,7 +582,7 @@ impl StoreTrait for Store {
 
     fn get(&self, key: StoreKey) -> Result<Option<Entity>, QueryExecutionError> {
         let conn = self.conn.lock().unwrap();
-        self.get_entity(&*conn, &key.subgraph, &key.entity, &key.id)
+        self.get_entity(&*conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
     }
 
     fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, QueryExecutionError> {
@@ -664,6 +664,11 @@ impl StoreTrait for Store {
         block_ptr_to: EthereumBlockPointer,
         operations: Vec<EntityOperation>,
     ) -> Result<(), Error> {
+        // Sanity check on block numbers
+        if block_ptr_from.number != block_ptr_to.number - 1 {
+            panic!("transact_block_operations must transact a single block only");
+        }
+
         // Fold the operations of each entity into a single one
         let operations = EntityOperation::fold(&operations);
 

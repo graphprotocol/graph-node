@@ -244,11 +244,11 @@ where
             return Ok(self
                 .store
                 .get(StoreKey {
-                    subgraph: parse_subgraph_id(object_type).unwrap_or_else(|_| {
+                    subgraph_id: parse_subgraph_id(object_type).unwrap_or_else(|_| {
                         panic!("Failed to get subgraph ID from type: {}", object_type.name)
                     }),
-                    entity: object_type.name.to_owned(),
-                    id: id.to_owned(),
+                    entity_type: object_type.name.to_owned(),
+                    entity_id: id.to_owned(),
                 })?.map_or(q::Value::Null, |entity| entity.into()));
         }
 
@@ -257,11 +257,11 @@ where
                 Some(q::Value::String(id)) => Ok(self
                     .store
                     .get(StoreKey {
-                        subgraph: parse_subgraph_id(object_type).unwrap_or_else(|_| {
+                        subgraph_id: parse_subgraph_id(object_type).unwrap_or_else(|_| {
                             panic!("Failed to get subgraph ID from type: {}", object_type.name)
                         }),
-                        entity: object_type.name.to_owned(),
-                        id: id.to_owned(),
+                        entity_type: object_type.name.to_owned(),
+                        entity_id: id.to_owned(),
                     })?.map_or(q::Value::Null, |entity| entity.into())),
                 _ => Ok(q::Value::Null),
             },

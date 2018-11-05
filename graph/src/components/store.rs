@@ -1,7 +1,6 @@
 use failure::Error;
 use futures::Future;
 use futures::Stream;
-use std::fmt;
 use web3::types::H256;
 
 use data::store::*;
@@ -10,14 +9,14 @@ use prelude::*;
 /// Key by which an individual entity in the store can be accessed.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct StoreKey {
-    // ID of the subgraph.
-    pub subgraph: String,
+    /// ID of the subgraph.
+    pub subgraph_id: String,
 
     /// Name of the entity type.
-    pub entity: String,
+    pub entity_type: String,
 
     /// ID of the individual entity.
-    pub id: String,
+    pub entity_id: String,
 }
 
 /// Supported types of store filters.
@@ -113,16 +112,16 @@ pub type EntityChangeStream = Box<Stream<Item = EntityChange, Error = ()> + Send
 pub enum EntityOperation {
     /// An entity is created or updated.
     Set {
-        subgraph: String,
-        entity: String,
-        id: String,
+        subgraph_id: SubgraphId,
+        entity_type: String,
+        entity_id: String,
         data: Entity,
     },
     /// An entity is removed.
     Remove {
-        subgraph: String,
-        entity: String,
-        id: String,
+        subgraph_id: SubgraphId,
+        entity_type: String,
+        entity_id: String,
     },
 }
 
@@ -137,26 +136,26 @@ impl EntityOperation {
         }
     }
 
-    pub fn entity_info(&self) -> (&String, &String, &String) {
+    pub fn entity_info(&self) -> (&SubgraphId, &String, &String) {
         use self::EntityOperation::*;
         match self {
             Set {
-                subgraph,
-                entity,
-                id,
+                subgraph_id,
+                entity_type,
+                entity_id,
                 ..
-            } => (subgraph, entity, id),
+            } => (subgraph_id, entity_type, entity_id),
             Remove {
-                subgraph,
-                entity,
-                id,
-            } => (subgraph, entity, id),
+                subgraph_id,
+                entity_type,
+                entity_id,
+            } => (subgraph_id, entity_type, entity_id),
         }
     }
 
     /// Returns true if the operation matches a given store key.
     pub fn matches_entity(&self, key: &StoreKey) -> bool {
-        self.entity_info() == (&key.subgraph, &key.entity, &key.id)
+        self.entity_info() == (&key.subgraph_id, &key.entity_type, &key.entity_id)
     }
 
     /// Returns true if the two operations match the same entity.
@@ -194,14 +193,14 @@ impl EntityOperation {
         match other {
             Remove { .. } => other.clone(),
             Set {
-                subgraph,
-                entity,
-                id,
+                subgraph_id,
+                entity_type,
+                entity_id,
                 data,
             } => EntityOperation::Set {
-                subgraph: subgraph.clone(),
-                entity: entity.clone(),
-                id: id.clone(),
+                subgraph_id: subgraph_id.clone(),
+                entity_type: entity_type.clone(),
+                entity_id: entity_id.clone(),
                 data: {
                     let mut entity = match self {
                         Set { data, .. } => data.clone(),
@@ -244,23 +243,6 @@ impl EntityOperation {
                 out
             },
         )
-    }
-}
-
-/// The source of the events being sent to the store
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EventSource {
-    EthereumBlock(H256),
-}
-
-// Implementing the display trait also provides a ToString trait implementation
-impl fmt::Display for EventSource {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let printable_source = match *self {
-            // Use LowerHex to format hash as hex string
-            EventSource::EthereumBlock(hash) => format!("{:x}", hash),
-        };
-        write!(f, "{}", printable_source)
     }
 }
 

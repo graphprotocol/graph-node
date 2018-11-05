@@ -9,14 +9,11 @@ extern crate hex;
 use diesel::pg::PgConnection;
 use diesel::*;
 use std::fmt::Debug;
-use std::mem;
 use std::panic;
 use std::str::FromStr;
 use std::sync::Mutex;
 
-use graph::components::store::{
-    EventSource, StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange,
-};
+use graph::components::store::{StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange};
 use graph::data::store::scalar;
 use graph::prelude::*;
 use graph::web3::types::H256;
@@ -32,11 +29,46 @@ fn postgres_test_url() -> String {
 
 lazy_static! {
     static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
+    static ref TEST_SUBGRAPH_ID: SubgraphId = "test_subgraph".to_owned();
+    static ref TEST_BLOCK_0_PTR: EthereumBlockPointer = (
+        H256::from("0xbd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"),
+        0u64
+    )
+        .into();
+    static ref TEST_BLOCK_1_PTR: EthereumBlockPointer = (
+        H256::from("0x8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13"),
+        1u64
+    )
+        .into();
+    static ref TEST_BLOCK_2_PTR: EthereumBlockPointer = (
+        H256::from("0xb98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1"),
+        2u64
+    )
+        .into();
+    static ref TEST_BLOCK_3_PTR: EthereumBlockPointer = (
+        H256::from("0x977c084229c72a0fa377cae304eda9099b6a2cb5d83b25cdf0f0969b69874255"),
+        3u64
+    )
+        .into();
+    static ref TEST_BLOCK_3A_PTR: EthereumBlockPointer = (
+        H256::from("0xd163aec0592c7cb00c2700ab65dcaac93289f5d250b3b889b39198b07e1fbe4a"),
+        3u64
+    )
+        .into();
+    static ref TEST_BLOCK_4_PTR: EthereumBlockPointer = (
+        H256::from("0x007a03cdf635ebb66f5e79ae66cc90ca23d98031665649db056ff9c6aac2d74d"),
+        4u64
+    )
+        .into();
+    static ref TEST_BLOCK_4A_PTR: EthereumBlockPointer = (
+        H256::from("0x8fab27e9e9285b0a39110f4d9877f05d0f43d2effa157e55f4dcc49c3cf8cbd7"),
+        4u64
+    )
+        .into();
 }
 
 /// Test harness for running database integration tests.
-#[cfg(any())]
-fn run_test<R, F>(test: F) -> ()
+fn run_test<R, F>(test: F)
 where
     F: FnOnce(Arc<DieselStore>) -> R + Send + 'static,
     R: IntoFuture + Send + 'static,
@@ -50,77 +82,43 @@ where
         Err(err) => err.into_inner(),
     };
 
-    // Set up Store
-    let logger = Logger::root(slog::Discard, o!());
-    let url = postgres_test_url();
-    let net_identifiers = EthereumNetworkIdentifier {
-        net_version: "graph test suite".to_owned(),
-        genesis_block_hash: H256::random(),
-    };
-    let network_name = "fake_network".to_owned();
-    let store = Arc::new(DieselStore::new(
-        StoreConfig { url, network_name },
-        &logger,
-        net_identifiers,
-    ));
-
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
-
     runtime
         .block_on(future::lazy(move || {
-            insert_test_data(store.clone());
-            future::ok::<_, ()>(())
-        })).expect("Failed to insert test data");
+            // Set up Store
+            let logger = Logger::root(slog::Discard, o!());
+            let url = postgres_test_url();
+            let net_identifiers = EthereumNetworkIdentifier {
+                net_version: "graph test suite".to_owned(),
+                genesis_block_hash: TEST_BLOCK_0_PTR.hash,
+            };
+            let network_name = "fake_network".to_owned();
+            let store = Arc::new(DieselStore::new(
+                StoreConfig { url, network_name },
+                &logger,
+                net_identifiers,
+            ));
 
-    let result = panic::catch_unwind(panic::AssertUnwindSafe(move || {
-        runtime.block_on(future::lazy(move || test(store.clone())))
-    }));
-
-    mem::drop(store);
-
-    runtime
-        .block_on(future::lazy(|| {
+            // Reset state before starting
             remove_test_data();
-            future::ok::<_, ()>(())
-        })).expect("Failed to remove test data");
 
-    result.expect("Failed to run test").expect("Test failed");
-}
+            // Seed database with test data
+            insert_test_data(store.clone());
 
-/// Creates a test entity.
-fn create_test_entity(
-    id: String,
-    entity: String,
-    name: String,
-    email: String,
-    age: i32,
-    weight: f32,
-    coffee: bool,
-    block_hash: String,
-) -> (StoreKey, Entity, EventSource) {
-    let test_key = StoreKey {
-        subgraph: String::from("test_subgraph"),
-        entity: entity,
-        id: id,
-    };
-    let mut test_entity = Entity::new();
-    let hex_name = scalar::Bytes::from_str(&hex::encode(&name)).unwrap();
-    test_entity.insert(String::from("name"), Value::String(name));
-    test_entity.insert(String::from("hex_name"), Value::Bytes(hex_name));
-    test_entity.insert(String::from("email"), Value::String(email));
-    test_entity.insert(String::from("age"), Value::Int(age));
-    test_entity.insert(String::from("weight"), Value::Float(weight));
-    test_entity.insert(String::from("coffee"), Value::Bool(coffee));
-    (
-        test_key,
-        test_entity,
-        EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes())),
-    )
+            // Run test
+            test(store.clone())
+        })).expect("Failed to run Store test");
 }
 
 /// Inserts test data into the store.
-#[cfg(any())]
+///
+/// Inserts data in test blocks 1, 2, and 3, leaving test blocks 3A, 4, and 4A for the tests to
+/// use.
 fn insert_test_data(store: Arc<DieselStore>) {
+    store
+        .add_subgraph_if_missing(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_0_PTR)
+        .unwrap();
+
     let test_entity_1 = create_test_entity(
         String::from("1"),
         String::from("user"),
@@ -129,11 +127,14 @@ fn insert_test_data(store: Arc<DieselStore>) {
         67 as i32,
         184.4 as f32,
         false,
-        String::from("1cYsEjD7LKVExSj0aFA8"),
     );
     store
-        .set(test_entity_1.0, test_entity_1.1, test_entity_1.2)
-        .expect("Failed to insert test entity into the store");
+        .transact_block_operations(
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_0_PTR,
+            *TEST_BLOCK_1_PTR,
+            vec![test_entity_1],
+        ).unwrap();
 
     let test_entity_2 = create_test_entity(
         String::from("2"),
@@ -143,13 +144,16 @@ fn insert_test_data(store: Arc<DieselStore>) {
         43 as i32,
         159.1 as f32,
         true,
-        String::from("b7kJ8ghP6PSITWx4lUZB"),
     );
     store
-        .set(test_entity_2.0, test_entity_2.1, test_entity_2.2)
-        .expect("Failed to insert test entity into the store");
+        .transact_block_operations(
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_1_PTR,
+            *TEST_BLOCK_2_PTR,
+            vec![test_entity_2],
+        ).unwrap();
 
-    let test_entity_3 = create_test_entity(
+    let test_entity_3_1 = create_test_entity(
         String::from("3"),
         String::from("user"),
         String::from("Shaqueeena"),
@@ -157,11 +161,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         28 as i32,
         111.7 as f32,
         false,
-        String::from("TA7xjCbrczBiGFuZAW9Q"),
     );
-    store
-        .set(test_entity_3.0, test_entity_3.1, test_entity_3.2)
-        .expect("Failed to insert test entity into the store");
 
     let test_entity_3_2 = create_test_entity(
         String::from("3"),
@@ -171,39 +171,77 @@ fn insert_test_data(store: Arc<DieselStore>) {
         28 as i32,
         111.7 as f32,
         false,
-        String::from("znuyjijnezBiGFuZAW9Q"),
     );
-
     store
-        .set(test_entity_3_2.0, test_entity_3_2.1, test_entity_3_2.2)
-        .expect("Failed to insert test entity into the store");
+        .transact_block_operations(
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_2_PTR,
+            *TEST_BLOCK_3_PTR,
+            vec![test_entity_3_1, test_entity_3_2],
+        ).unwrap();
+}
+
+/// Creates a test entity.
+fn create_test_entity(
+    id: String,
+    entity_type: String,
+    name: String,
+    email: String,
+    age: i32,
+    weight: f32,
+    coffee: bool,
+) -> EntityOperation {
+    let mut test_entity = Entity::new();
+
+    let bin_name = scalar::Bytes::from_str(&hex::encode(&name)).unwrap();
+    test_entity.insert(String::from("name"), Value::String(name));
+    test_entity.insert(String::from("bin_name"), Value::Bytes(bin_name));
+    test_entity.insert(String::from("email"), Value::String(email));
+    test_entity.insert(String::from("age"), Value::Int(age));
+    test_entity.insert(String::from("weight"), Value::Float(weight));
+    test_entity.insert(String::from("coffee"), Value::Bool(coffee));
+
+    EntityOperation::Set {
+        subgraph_id: TEST_SUBGRAPH_ID.clone(),
+        entity_type,
+        entity_id: id,
+        data: test_entity,
+    }
 }
 
 /// Removes test data from the database behind the store.
 fn remove_test_data() {
     use db_schema::entities::dsl::*;
+    use db_schema::subgraphs::dsl::*;
+
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
     delete(entities)
         .execute(&conn)
-        .expect("Failed to remove test data");
+        .expect("Failed to remove entity test data");
+    delete(subgraphs)
+        .execute(&conn)
+        .expect("Failed to remove subgraph test data");
 }
 
 #[test]
-#[cfg(any())]
 fn delete_entity() {
     run_test(|store| -> Result<(), ()> {
         use db_schema::entities::dsl::*;
 
-        let test_key = StoreKey {
-            subgraph: String::from("test_subgraph"),
-            entity: String::from("user"),
-            id: String::from("3"),
-        };
-        let source = EventSource::EthereumBlock(H256::random());
-        store.delete(test_key, source).unwrap();
+        store
+            .transact_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_4_PTR,
+                vec![EntityOperation::Remove {
+                    subgraph_id: TEST_SUBGRAPH_ID.clone(),
+                    entity_type: "user".to_owned(),
+                    entity_id: "3".to_owned(),
+                }],
+            ).unwrap();
 
-        //Get all ids in table
+        // Get all ids in table
         let all_ids = entities
             .select(id)
             .load::<String>(&*store.conn.lock().unwrap())
@@ -217,21 +255,22 @@ fn delete_entity() {
 }
 
 #[test]
-#[cfg(any())]
 fn get_entity() {
     run_test(|store| -> Result<(), ()> {
         let key = StoreKey {
-            subgraph: String::from("test_subgraph"),
-            entity: String::from("user"),
-            id: String::from("1"),
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: String::from("user"),
+            entity_id: String::from("1"),
         };
         let result = store.get(key).unwrap();
 
         let mut expected_entity = Entity::new();
 
         let name = "Johnton".to_owned();
-        let hex_name = format!("0x{}", hex::encode(&name));
-        expected_entity.insert(String::from("hex_name"), Value::String(hex_name));
+        expected_entity.insert(
+            String::from("bin_name"),
+            Value::Bytes(name.as_bytes().into()),
+        );
         expected_entity.insert(String::from("name"), Value::String(name));
         expected_entity.insert(
             String::from("email"),
@@ -242,19 +281,18 @@ fn get_entity() {
         expected_entity.insert(String::from("coffee"), Value::Bool(false));
 
         // Check that the expected entity was returned
-        assert_eq!(result, expected_entity);
+        assert_eq!(result, Some(expected_entity));
 
         Ok(())
     })
 }
 
 #[test]
-#[cfg(any())]
 fn insert_entity() {
     run_test(|store| -> Result<(), ()> {
         use db_schema::entities::dsl::*;
 
-        let test_entity_1 = create_test_entity(
+        let test_entity = create_test_entity(
             String::from("7"),
             String::from("user"),
             String::from("Wanjon"),
@@ -262,11 +300,14 @@ fn insert_entity() {
             76 as i32,
             111.7 as f32,
             true,
-            String::from("MSjZmOE7UqBOzzYibsw9"),
         );
         store
-            .set(test_entity_1.0, test_entity_1.1, test_entity_1.2)
-            .expect("Failed to set entity in the store");
+            .transact_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_4_PTR,
+                vec![test_entity],
+            ).unwrap();
 
         // Check that new record is in the store
         let all_ids = entities
@@ -280,16 +321,15 @@ fn insert_entity() {
 }
 
 #[test]
-#[cfg(any())]
 fn update_existing() {
     run_test(|store| -> Result<(), ()> {
         let entity_key = StoreKey {
-            subgraph: String::from("test_subgraph"),
-            entity: String::from("user"),
-            id: String::from("1"),
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: String::from("user"),
+            entity_id: String::from("1"),
         };
 
-        let mut test_entity_1 = create_test_entity(
+        let op = create_test_entity(
             String::from("1"),
             String::from("user"),
             String::from("Wanjon"),
@@ -297,28 +337,31 @@ fn update_existing() {
             76 as i32,
             111.7 as f32,
             true,
-            String::from("6SFIlpqNoDy6FfJQryNM"),
         );
+        let mut new_data = match op {
+            EntityOperation::Set { ref data, .. } => data.clone(),
+            _ => unreachable!(),
+        };
 
         // Verify that the entity before updating is different from what we expect afterwards
-        assert_ne!(store.get(entity_key.clone()).unwrap(), test_entity_1.1);
+        assert_ne!(store.get(entity_key.clone()).unwrap().unwrap(), new_data);
 
         // Set test entity; as the entity already exists an update should be performed
         store
-            .set(test_entity_1.0, test_entity_1.1.clone(), test_entity_1.2)
-            .expect("Failed to update entity that already exists");
+            .transact_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_4_PTR,
+                vec![op],
+            ).unwrap();
 
         // Verify that the entity in the store has changed to what we have set.
-        // The `hex_name` will be returned as a `Value::String`.
-        let hex_name = match test_entity_1.1.get("hex_name") {
+        let bin_name = match new_data.get("bin_name") {
             Some(Value::Bytes(bytes)) => bytes.clone(),
             _ => unreachable!(),
         };
-        test_entity_1.1.insert(
-            String::from("hex_name"),
-            Value::String(hex_name.to_string()),
-        );
-        assert_eq!(store.get(entity_key).unwrap(), test_entity_1.1);
+        new_data.insert(String::from("bin_name"), Value::Bytes(bin_name));
+        assert_eq!(store.get(entity_key).unwrap(), Some(new_data));
 
         Ok(())
     })
@@ -329,9 +372,9 @@ fn update_existing() {
 fn partially_update_existing() {
     run_test(|store| -> Result<(), ()> {
         let entity_key = StoreKey {
-            subgraph: String::from("test_subgraph"),
-            entity: String::from("user"),
-            id: String::from("1"),
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: String::from("user"),
+            entity_id: String::from("1"),
         };
 
         let partial_entity = Entity::from(vec![
@@ -341,14 +384,15 @@ fn partially_update_existing() {
         ]);
 
         let original_entity = store.get(entity_key.clone()).unwrap();
-        let event_source = EventSource::EthereumBlock(H256::random());
-        // Verify that the entity before updating is different from what we expect afterwards
-        assert_ne!(original_entity, partial_entity);
 
         // Set test entity; as the entity already exists an update should be performed
         store
-            .set(entity_key.clone(), partial_entity.clone(), event_source)
-            .expect("Failed to update entity that already exists");
+            .transact_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_4_PTR,
+                vec![EntityOperation::Set {}],
+            ).unwrap();
 
         // Obtain the updated entity from the store
         let updated_entity = store.get(entity_key).unwrap();
@@ -373,7 +417,7 @@ fn partially_update_existing() {
 fn find_string_contains() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Contains(
                 String::from("name"),
@@ -399,7 +443,7 @@ fn find_string_contains() {
 fn find_string_equal() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("name"),
@@ -425,7 +469,7 @@ fn find_string_equal() {
 fn find_string_not_equal() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
                 String::from("name"),
@@ -455,7 +499,7 @@ fn find_string_not_equal() {
 fn find_string_greater_than() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
                 String::from("name"),
@@ -485,7 +529,7 @@ fn find_string_greater_than() {
 fn find_string_less_than() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("name"),
@@ -515,7 +559,7 @@ fn find_string_less_than() {
 fn find_string_less_than_order_by_asc() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("name"),
@@ -555,7 +599,7 @@ fn find_string_less_than_order_by_asc() {
 fn find_string_less_than_order_by_desc() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("name"),
@@ -595,7 +639,7 @@ fn find_string_less_than_order_by_desc() {
 fn find_string_less_than_range() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("name"),
@@ -625,7 +669,7 @@ fn find_string_less_than_range() {
 fn find_string_multiple_and() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![
                 StoreFilter::LessThan(String::from("name"), Value::String(String::from("Cz"))),
@@ -655,7 +699,7 @@ fn find_string_multiple_and() {
 fn find_string_ends_with() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::EndsWith(
                 String::from("name"),
@@ -685,7 +729,7 @@ fn find_string_ends_with() {
 fn find_string_not_ends_with() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::NotEndsWith(
                 String::from("name"),
@@ -715,7 +759,7 @@ fn find_string_not_ends_with() {
 fn find_string_in() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::In(
                 String::from("name"),
@@ -745,7 +789,7 @@ fn find_string_in() {
 fn find_string_not_in() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::NotIn(
                 String::from("name"),
@@ -776,7 +820,7 @@ fn find_string_not_in() {
 fn find_float_equal() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("weight"),
@@ -806,7 +850,7 @@ fn find_float_equal() {
 fn find_float_not_equal() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
                 String::from("weight"),
@@ -836,7 +880,7 @@ fn find_float_not_equal() {
 fn find_float_greater_than() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
                 String::from("weight"),
@@ -866,7 +910,7 @@ fn find_float_greater_than() {
 fn find_float_less_than() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("weight"),
@@ -896,7 +940,7 @@ fn find_float_less_than() {
 fn find_float_less_than_order_by_desc() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("weight"),
@@ -926,7 +970,7 @@ fn find_float_less_than_order_by_desc() {
 fn find_float_less_than_range() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("weight"),
@@ -955,7 +999,7 @@ fn find_float_less_than_range() {
 fn find_float_in() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::In(
                 String::from("weight"),
@@ -985,7 +1029,7 @@ fn find_float_in() {
 fn find_float_not_in() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::NotIn(
                 String::from("weight"),
@@ -1015,7 +1059,7 @@ fn find_float_not_in() {
 fn find_int_equal() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("age"),
@@ -1045,7 +1089,7 @@ fn find_int_equal() {
 fn find_int_not_equal() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
                 String::from("age"),
@@ -1075,7 +1119,7 @@ fn find_int_not_equal() {
 fn find_int_greater_than() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
                 String::from("age"),
@@ -1105,7 +1149,7 @@ fn find_int_greater_than() {
 fn find_int_greater_or_equal() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::GreaterOrEqual(
                 String::from("age"),
@@ -1135,7 +1179,7 @@ fn find_int_greater_or_equal() {
 fn find_int_less_than() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("age"),
@@ -1165,7 +1209,7 @@ fn find_int_less_than() {
 fn find_int_less_or_equal() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessOrEqual(
                 String::from("age"),
@@ -1195,7 +1239,7 @@ fn find_int_less_or_equal() {
 fn find_int_less_than_order_by_desc() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("age"),
@@ -1225,7 +1269,7 @@ fn find_int_less_than_order_by_desc() {
 fn find_int_less_than_range() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
                 String::from("age"),
@@ -1255,7 +1299,7 @@ fn find_int_less_than_range() {
 fn find_int_in() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::In(
                 String::from("age"),
@@ -1285,7 +1329,7 @@ fn find_int_in() {
 fn find_int_not_in() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::NotIn(
                 String::from("age"),
@@ -1315,7 +1359,7 @@ fn find_int_not_in() {
 fn find_bool_equal() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("coffee"),
@@ -1345,7 +1389,7 @@ fn find_bool_equal() {
 fn find_bool_not_equal() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Not(
                 String::from("coffee"),
@@ -1375,7 +1419,7 @@ fn find_bool_not_equal() {
 fn find_bool_in() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::In(
                 String::from("coffee"),
@@ -1405,7 +1449,7 @@ fn find_bool_in() {
 fn find_bool_not_in() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::NotIn(
                 String::from("coffee"),
@@ -1435,7 +1479,7 @@ fn find_bool_not_in() {
 fn revert_block() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("name"),
@@ -1482,7 +1526,7 @@ fn revert_block() {
 fn revert_block_with_delete() {
     run_test(|store| -> Result<(), ()> {
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("name"),
@@ -1495,7 +1539,7 @@ fn revert_block_with_delete() {
 
         // Delete an entity using a randomly created event source
         let del_key = StoreKey {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             id: String::from("2"),
         };
@@ -1549,7 +1593,7 @@ fn revert_block_with_delete() {
 fn revert_block_with_partial_update() {
     run_test(|store| -> Result<(), ()> {
         let entity_key = StoreKey {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             id: String::from("1"),
         };
@@ -1709,7 +1753,7 @@ fn find_bytes_equal() {
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
         let this_query = StoreQuery {
-            subgraph: String::from("test_subgraph"),
+            subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
                 String::from("hex_name"),
