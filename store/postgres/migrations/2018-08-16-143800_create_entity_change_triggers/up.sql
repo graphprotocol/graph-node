@@ -11,9 +11,9 @@ $$
 DECLARE
 BEGIN
     PERFORM pg_notify('entity_changes', json_build_object(
-      'subgraph', NEW.subgraph,
-      'entity', NEW.entity,
-      'id', NEW.id,
+      'subgraph_id', NEW.subgraph,
+      'entity_type', NEW.entity,
+      'entity_id', NEW.id,
       'operation', 'added'
     )::text);
     RETURN NEW;
@@ -33,9 +33,9 @@ $$
 DECLARE
 BEGIN
     PERFORM pg_notify('entity_changes', json_build_object(
-        'subgraph', NEW.subgraph,
-        'entity', NEW.entity,
-        'id', NEW.id,
+        'subgraph_id', NEW.subgraph,
+        'entity_type', NEW.entity,
+        'entity_id', NEW.id,
         'operation', 'updated'
     )::text);
     RETURN NEW;
@@ -55,9 +55,9 @@ $$
 DECLARE
 BEGIN
     PERFORM pg_notify('entity_changes', json_build_object(
-        'subgraph', OLD.subgraph,
-        'entity', OLD.entity,
-        'id', OLD.id,
+        'subgraph_id', OLD.subgraph,
+        'entity_type', OLD.entity,
+        'entity_id', OLD.id,
         'operation', 'removed'
     )::text);
     RETURN NEW;

@@ -55,7 +55,7 @@ where
     /// Returns true if the field is a derived field (i.e., if it is defined with
     /// a @derivedFrom directive).
     fn add_filter_for_derived_field(
-        query: &mut StoreQuery,
+        query: &mut EntityQuery,
         parent: &Option<q::Value>,
         field_definition: &s::Field,
         object_type: &s::ObjectType,
@@ -98,22 +98,22 @@ where
             // single value type, we either create a `Contains` or `Equal`
             // filter argument
             let filter = match derived_from_field.field_type {
-                s::Type::ListType(_) => StoreFilter::Contains(field_name, parent_id),
+                s::Type::ListType(_) => EntityFilter::Contains(field_name, parent_id),
                 s::Type::NonNullType(ref inner) => match inner.deref() {
-                    s::Type::ListType(_) => StoreFilter::Contains(field_name, parent_id),
-                    _ => StoreFilter::Equal(field_name, parent_id),
+                    s::Type::ListType(_) => EntityFilter::Contains(field_name, parent_id),
+                    _ => EntityFilter::Equal(field_name, parent_id),
                 },
-                _ => StoreFilter::Equal(field_name, parent_id),
+                _ => EntityFilter::Equal(field_name, parent_id),
             };
 
             // Add the `Contains`/`Equal` filter to the top-level `And` filter, creating one
             // if necessary
-            let top_level_filter = query.filter.get_or_insert(StoreFilter::And(vec![]));
+            let top_level_filter = query.filter.get_or_insert(EntityFilter::And(vec![]));
             *top_level_filter = match top_level_filter {
-                StoreFilter::And(ref mut filters) => {
+                EntityFilter::And(ref mut filters) => {
                     let mut filters = filters.clone();
                     filters.push(filter);
-                    StoreFilter::And(filters)
+                    EntityFilter::And(filters)
                 }
                 _ => top_level_filter.clone(),
             };
@@ -126,7 +126,7 @@ where
 
     /// Adds a filter for matching entities that are referenced by the given field.
     fn add_filter_for_reference_field(
-        query: &mut StoreQuery,
+        query: &mut EntityQuery,
         parent: &Option<q::Value>,
         field_definition: &s::Field,
         _object_type: &s::ObjectType,
@@ -138,14 +138,14 @@ where
                 .get(&field_definition.name)
                 .and_then(|value| match value {
                     q::Value::String(id) => {
-                        Some(StoreFilter::Equal(String::from("id"), Value::from(id)))
+                        Some(EntityFilter::Equal(String::from("id"), Value::from(id)))
                     }
-                    q::Value::List(ids) => Some(StoreFilter::Or(
+                    q::Value::List(ids) => Some(EntityFilter::Or(
                         ids.iter()
                             .filter_map(|id| match id {
                                 q::Value::String(s) => Some(s),
                                 _ => None,
-                            }).map(|id| StoreFilter::Equal(String::from("id"), Value::from(id)))
+                            }).map(|id| EntityFilter::Equal(String::from("id"), Value::from(id)))
                             .collect(),
                     )),
                     _ => None,
@@ -157,12 +157,12 @@ where
                 });
 
             // Add the `Or` filter to the top-level `And` filter, creating one if necessary
-            let top_level_filter = query.filter.get_or_insert(StoreFilter::And(vec![]));
+            let top_level_filter = query.filter.get_or_insert(EntityFilter::And(vec![]));
             *top_level_filter = match top_level_filter {
-                StoreFilter::And(ref mut filters) => {
+                EntityFilter::And(ref mut filters) => {
                     let mut filters = filters.clone();
                     filters.push(filter);
-                    StoreFilter::And(filters)
+                    EntityFilter::And(filters)
                 }
                 _ => top_level_filter.clone(),
             };
@@ -243,7 +243,7 @@ where
         if let Some(id) = id {
             return Ok(self
                 .store
-                .get(StoreKey {
+                .get(EntityKey {
                     subgraph_id: parse_subgraph_id(object_type).unwrap_or_else(|_| {
                         panic!("Failed to get subgraph ID from type: {}", object_type.name)
                     }),
@@ -256,7 +256,7 @@ where
             Some(q::Value::Object(parent_object)) => match parent_object.get(field) {
                 Some(q::Value::String(id)) => Ok(self
                     .store
-                    .get(StoreKey {
+                    .get(EntityKey {
                         subgraph_id: parse_subgraph_id(object_type).unwrap_or_else(|_| {
                             panic!("Failed to get subgraph ID from type: {}", object_type.name)
                         }),
@@ -276,7 +276,7 @@ where
                     object_type,
                 );
 
-                query.range = Some(StoreRange { first: 1, skip: 0 });
+                query.range = Some(EntityRange { first: 1, skip: 0 });
 
                 self.store.find(query).map(|entities| {
                     entities

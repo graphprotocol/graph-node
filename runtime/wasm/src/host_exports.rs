@@ -1,7 +1,7 @@
 use ethabi::Token;
 use futures::sync::oneshot;
 use graph::components::ethereum::*;
-use graph::components::store::StoreKey;
+use graph::components::store::EntityKey;
 use graph::data::store::scalar;
 use graph::data::subgraph::DataSource;
 use graph::prelude::*;
@@ -126,9 +126,11 @@ where
             .map(|ctx| &mut ctx.entity_operations)
             .expect("processing event without context")
             .push(EntityOperation::Set {
-                subgraph_id: self.subgraph.id.clone(),
-                entity_type,
-                entity_id,
+                key: EntityKey {
+                    subgraph_id: self.subgraph.id.clone(),
+                    entity_type,
+                    entity_id,
+                },
                 data: Entity::from(data),
             });
 
@@ -141,9 +143,11 @@ where
             .map(|ctx| &mut ctx.entity_operations)
             .expect("processing event without context")
             .push(EntityOperation::Remove {
-                subgraph_id: self.subgraph.id.clone(),
-                entity_type,
-                entity_id,
+                key: EntityKey {
+                    subgraph_id: self.subgraph.id.clone(),
+                    entity_type,
+                    entity_id,
+                },
             });
     }
 
@@ -152,7 +156,7 @@ where
         entity_type: String,
         entity_id: String,
     ) -> Result<Option<Entity>, HostExportError<impl ExportError>> {
-        let store_key = StoreKey {
+        let store_key = EntityKey {
             subgraph_id: self.subgraph.id.clone(),
             entity_type,
             entity_id,

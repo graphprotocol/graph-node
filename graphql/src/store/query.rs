@@ -4,14 +4,14 @@ use schema::ast as sast;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
 
-/// Builds a StoreQuery from GraphQL arguments.
+/// Builds a EntityQuery from GraphQL arguments.
 pub fn build_query(
     entity: &s::ObjectType,
     arguments: &HashMap<&q::Name, q::Value>,
-) -> Result<StoreQuery, QueryExecutionError> {
-    Ok(StoreQuery {
-        subgraph: parse_subgraph_id(entity)?,
-        entity: entity.name.to_owned(),
+) -> Result<EntityQuery, QueryExecutionError> {
+    Ok(EntityQuery {
+        subgraph_id: parse_subgraph_id(entity)?,
+        entity_type: entity.name.to_owned(),
         range: build_range(arguments)?,
         filter: build_filter(entity, arguments)?,
         order_by: build_order_by(entity, arguments)?,
@@ -19,10 +19,10 @@ pub fn build_query(
     })
 }
 
-/// Parses GraphQL arguments into a StoreRange, if present.
+/// Parses GraphQL arguments into a EntityRange, if present.
 fn build_range(
     arguments: &HashMap<&q::Name, q::Value>,
-) -> Result<Option<StoreRange>, QueryExecutionError> {
+) -> Result<Option<EntityRange>, QueryExecutionError> {
     let first = arguments
         .get(&"first".to_string())
         .map_or(Ok(None), |value| {
@@ -66,17 +66,17 @@ fn build_range(
 
     Ok(match (first.unwrap(), skip.unwrap()) {
         (None, None) => None,
-        (Some(first), None) => Some(StoreRange { first, skip: 0 }),
-        (Some(first), Some(skip)) => Some(StoreRange { first, skip }),
-        (None, Some(skip)) => Some(StoreRange { first: 100, skip }),
+        (Some(first), None) => Some(EntityRange { first, skip: 0 }),
+        (Some(first), Some(skip)) => Some(EntityRange { first, skip }),
+        (None, Some(skip)) => Some(EntityRange { first: 100, skip }),
     })
 }
 
-/// Parses GraphQL arguments into a StoreFilter, if present.
+/// Parses GraphQL arguments into a EntityFilter, if present.
 fn build_filter(
     entity: &s::ObjectType,
     arguments: &HashMap<&q::Name, q::Value>,
-) -> Result<Option<StoreFilter>, QueryExecutionError> {
+) -> Result<Option<EntityFilter>, QueryExecutionError> {
     match arguments.get(&"where".to_string()) {
         Some(value) => match value {
             q::Value::Object(object) => Ok(object),
@@ -86,12 +86,12 @@ fn build_filter(
     }.and_then(|object| build_filter_from_object(entity, &object))
 }
 
-/// Parses a GraphQL input object into a StoreFilter, if present.
+/// Parses a GraphQL input object into a EntityFilter, if present.
 fn build_filter_from_object(
     entity: &s::ObjectType,
     object: &BTreeMap<q::Name, q::Value>,
-) -> Result<Option<StoreFilter>, QueryExecutionError> {
-    Ok(Some(StoreFilter::And({
+) -> Result<Option<EntityFilter>, QueryExecutionError> {
+    Ok(Some(EntityFilter::And({
         object
             .iter()
             .map(|(key, value)| {
@@ -107,22 +107,22 @@ fn build_filter_from_object(
                 let store_value = Value::from_query_value(value, &ty)?;
 
                 Ok(match op {
-                    Not => StoreFilter::Not(field_name, store_value),
-                    GreaterThan => StoreFilter::GreaterThan(field_name, store_value),
-                    LessThan => StoreFilter::LessThan(field_name, store_value),
-                    GreaterOrEqual => StoreFilter::GreaterOrEqual(field_name, store_value),
-                    LessOrEqual => StoreFilter::LessOrEqual(field_name, store_value),
-                    In => StoreFilter::In(field_name, list_values(store_value, "_in")?),
-                    NotIn => StoreFilter::NotIn(field_name, list_values(store_value, "_not_in")?),
-                    Contains => StoreFilter::Contains(field_name, store_value),
-                    NotContains => StoreFilter::NotContains(field_name, store_value),
-                    StartsWith => StoreFilter::StartsWith(field_name, store_value),
-                    NotStartsWith => StoreFilter::NotStartsWith(field_name, store_value),
-                    EndsWith => StoreFilter::EndsWith(field_name, store_value),
-                    NotEndsWith => StoreFilter::NotEndsWith(field_name, store_value),
-                    Equal => StoreFilter::Equal(field_name, store_value),
+                    Not => EntityFilter::Not(field_name, store_value),
+                    GreaterThan => EntityFilter::GreaterThan(field_name, store_value),
+                    LessThan => EntityFilter::LessThan(field_name, store_value),
+                    GreaterOrEqual => EntityFilter::GreaterOrEqual(field_name, store_value),
+                    LessOrEqual => EntityFilter::LessOrEqual(field_name, store_value),
+                    In => EntityFilter::In(field_name, list_values(store_value, "_in")?),
+                    NotIn => EntityFilter::NotIn(field_name, list_values(store_value, "_not_in")?),
+                    Contains => EntityFilter::Contains(field_name, store_value),
+                    NotContains => EntityFilter::NotContains(field_name, store_value),
+                    StartsWith => EntityFilter::StartsWith(field_name, store_value),
+                    NotStartsWith => EntityFilter::NotStartsWith(field_name, store_value),
+                    EndsWith => EntityFilter::EndsWith(field_name, store_value),
+                    NotEndsWith => EntityFilter::NotEndsWith(field_name, store_value),
+                    Equal => EntityFilter::Equal(field_name, store_value),
                 })
-            }).collect::<Result<Vec<StoreFilter>, QueryExecutionError>>()?
+            }).collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()?
     })))
 }
 
@@ -178,15 +178,15 @@ fn build_order_by(
         })
 }
 
-/// Parses GraphQL arguments into a StoreOrder, if present.
+/// Parses GraphQL arguments into a EntityOrder, if present.
 fn build_order_direction(
     arguments: &HashMap<&q::Name, q::Value>,
-) -> Result<Option<StoreOrder>, QueryExecutionError> {
+) -> Result<Option<EntityOrder>, QueryExecutionError> {
     Ok(arguments
         .get(&"orderDirection".to_string())
         .and_then(|value| match value {
-            q::Value::Enum(name) if name == "asc" => Some(StoreOrder::Ascending),
-            q::Value::Enum(name) if name == "desc" => Some(StoreOrder::Descending),
+            q::Value::Enum(name) if name == "asc" => Some(EntityOrder::Ascending),
+            q::Value::Enum(name) if name == "desc" => Some(EntityOrder::Descending),
             _ => None,
         }))
 }
@@ -342,13 +342,13 @@ mod tests {
         assert_eq!(
             build_query(&object("Entity1"), &HashMap::new())
                 .unwrap()
-                .entity,
+                .entity_type,
             "Entity1".to_string()
         );
         assert_eq!(
             build_query(&object("Entity2"), &HashMap::new())
                 .unwrap()
-                .entity,
+                .entity_type,
             "Entity2".to_string()
         );
     }
@@ -441,7 +441,7 @@ mod tests {
                 )
             ).unwrap()
             .order_direction,
-            Some(StoreOrder::Ascending)
+            Some(EntityOrder::Ascending)
         );
         assert_eq!(
             build_query(
@@ -454,7 +454,7 @@ mod tests {
                 )
             ).unwrap()
             .order_direction,
-            Some(StoreOrder::Descending)
+            Some(EntityOrder::Descending)
         );
         assert_eq!(
             build_query(
@@ -521,7 +521,7 @@ mod tests {
                 )
             ).unwrap()
             .range,
-            Some(StoreRange {
+            Some(EntityRange {
                 first: 100,
                 skip: 50,
             }),
@@ -538,7 +538,7 @@ mod tests {
                 )
             ).unwrap()
             .range,
-            Some(StoreRange { first: 70, skip: 0 }),
+            Some(EntityRange { first: 70, skip: 0 }),
         );
     }
 
@@ -561,7 +561,7 @@ mod tests {
                 )
             ).unwrap()
             .filter,
-            Some(StoreFilter::And(vec![StoreFilter::EndsWith(
+            Some(EntityFilter::And(vec![EntityFilter::EndsWith(
                 "name".to_string(),
                 Value::String("ello".to_string()),
             )]))
