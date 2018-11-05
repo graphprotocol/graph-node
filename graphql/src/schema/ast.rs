@@ -103,9 +103,33 @@ pub fn get_interface_type_definitions<'a>(schema: &'a Document) -> Vec<&'a Inter
         }).collect()
 }
 
+/// Returns all interface definitions in the schema.
+pub fn get_interface_type_definitions_mut<'a>(
+    schema: &'a mut Document,
+) -> Vec<&'a mut InterfaceType> {
+    schema
+        .definitions
+        .iter_mut()
+        .filter_map(|d| match d {
+            Definition::TypeDefinition(TypeDefinition::Interface(t)) => Some(t),
+            _ => None,
+        }).collect()
+}
+
 /// Returns the type of a field of an object type.
 pub fn get_field_type<'a>(object_type: &'a ObjectType, name: &Name) -> Option<&'a Field> {
     object_type.fields.iter().find(|field| &field.name == name)
+}
+
+/// Returns the type of a field of an interface type.
+pub fn get_interface_field_type<'a>(
+    interface_type: &'a InterfaceType,
+    name: &Name,
+) -> Option<&'a Field> {
+    interface_type
+        .fields
+        .iter()
+        .find(|field| &field.name == name)
 }
 
 /// Returns the value type for a GraphQL field type.
