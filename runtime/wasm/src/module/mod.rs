@@ -13,7 +13,7 @@ use graph::components::ethereum::*;
 use graph::data::subgraph::DataSource;
 use graph::ethabi::LogParam;
 use graph::prelude::*;
-use graph::web3::types::Log;
+use graph::web3::types::{Log, U256};
 use host_exports;
 use EventHandlerContext;
 
@@ -217,7 +217,9 @@ where
                     .deref(),
             ),
             address: log.address,
-            log: EthereumLogData::from(log.deref()),
+            log_index: log.log_index.unwrap_or(U256::zero()),
+            transaction_log_index: log.transaction_log_index.unwrap_or(U256::zero()),
+            log_type: log.log_type.clone().unwrap_or("None".to_string()),
             params,
         };
 

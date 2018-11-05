@@ -79,33 +79,15 @@ impl<'a> From<&'a Transaction> for EthereumTransactionData {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct EthereumLogData {
-    pub address: H160,
-    pub log_index: U256,
-    pub transaction_log_index: U256,
-    pub log_type: String,
-}
-
-impl<'a> From<&'a Log> for EthereumLogData {
-    fn from(log: &'a Log) -> EthereumLogData {
-        EthereumLogData {
-            address: log.address,
-            // Will we process any pending events? If so these unwraps won't do
-            log_index: log.log_index.unwrap_or(U256::zero()),
-            transaction_log_index: log.transaction_log_index.unwrap_or(U256::zero()),
-            log_type: log.log_type.clone().unwrap_or("None".to_string()),
-        }
-    }
-}
-
 /// An Ethereum event logged from a specific contract address and block.
 #[derive(Debug)]
 pub struct EthereumEventData {
     pub address: Address,
+    pub log_index: U256,
+    pub transaction_log_index: U256,
+    pub log_type: String,
     pub block: EthereumBlockData,
     pub transaction: EthereumTransactionData,
-    pub log: EthereumLogData,
     pub params: Vec<LogParam>,
 }
 
@@ -113,9 +95,11 @@ impl Clone for EthereumEventData {
     fn clone(&self) -> Self {
         EthereumEventData {
             address: self.address,
+            log_index: self.log_index,
+            transaction_log_index: self.transaction_log_index,
+            log_type: self.log_type.clone(),
             block: self.block.clone(),
             transaction: self.transaction.clone(),
-            log: self.log.clone(),
             params: self
                 .params
                 .iter()

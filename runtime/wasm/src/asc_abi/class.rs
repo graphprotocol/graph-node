@@ -433,21 +433,13 @@ pub(crate) struct AscEthereumTransaction {
 impl AscType for AscEthereumTransaction {}
 
 #[repr(C)]
-pub(crate) struct AscEthereumLog {
-    pub address: AscPtr<AscH160>,
+pub(crate) struct AscEthereumEvent {
+    pub address: AscPtr<AscAddress>,
     pub log_index: AscPtr<AscBigInt>,
     pub transaction_log_index: AscPtr<AscBigInt>,
     pub log_type: AscPtr<AscString>,
-}
-
-impl AscType for AscEthereumLog {}
-
-#[repr(C)]
-pub(crate) struct AscEthereumEvent {
-    pub address: AscPtr<AscAddress>,
     pub block: AscPtr<AscEthereumBlock>,
     pub transaction: AscPtr<AscEthereumTransaction>,
-    pub log: AscPtr<AscEthereumLog>,
     pub params: AscPtr<AscLogParamArray>,
 }
 
