@@ -10,7 +10,7 @@ use diesel::query_builder::{BoxedSelectStatement, QueryFragment};
 use diesel::sql_types::{Array, Bool, Float, Integer, Jsonb, Numeric, Text};
 use diesel::AppearsOnTable;
 
-use graph::components::store::StoreFilter;
+use graph::components::store::EntityFilter;
 use graph::data::store::*;
 use graph::serde_json;
 use models::SqlValue;
@@ -28,7 +28,7 @@ enum FilterMode {
 /// Adds `filter` to a `SELECT data FROM entities` statement.
 pub(crate) fn store_filter(
     query: BoxedSelectStatement<Jsonb, entities::table, Pg>,
-    filter: StoreFilter,
+    filter: EntityFilter,
 ) -> Result<BoxedSelectStatement<Jsonb, entities::table, Pg>, UnsupportedFilter> {
     store_filter_by_mode(query, filter, FilterMode::And)
 }
@@ -53,20 +53,20 @@ where
 /// Adds `filter` to a `SELECT data FROM entities` statement.
 fn store_filter_by_mode(
     query: BoxedSelectStatement<Jsonb, entities::table, Pg>,
-    filter: StoreFilter,
+    filter: EntityFilter,
     filter_mode: FilterMode,
 ) -> Result<BoxedSelectStatement<Jsonb, entities::table, Pg>, UnsupportedFilter> {
     Ok(match filter {
-        StoreFilter::And(filters) => filters
+        EntityFilter::And(filters) => filters
             .into_iter()
             .try_fold(query, |q, f| store_filter_by_mode(q, f, FilterMode::And))?,
-        StoreFilter::Or(filters) => filters
+        EntityFilter::Or(filters) => filters
             .into_iter()
             .try_fold(query, |q, f| store_filter_by_mode(q, f, FilterMode::Or))?,
-        StoreFilter::Contains(..) | StoreFilter::NotContains(..) => {
+        EntityFilter::Contains(..) | EntityFilter::NotContains(..) => {
             let (attribute, not, value) = match filter {
-                StoreFilter::Contains(attribute, value) => (attribute, false, value),
-                StoreFilter::NotContains(attribute, value) => (attribute, true, value),
+                EntityFilter::Contains(attribute, value) => (attribute, false, value),
+                EntityFilter::NotContains(attribute, value) => (attribute, true, value),
                 _ => unreachable!(),
             };
             let op = if not { " NOT LIKE " } else { " LIKE " };
@@ -115,10 +115,10 @@ fn store_filter_by_mode(
                 }
             }
         }
-        StoreFilter::Equal(..) | StoreFilter::Not(..) => {
+        EntityFilter::Equal(..) | EntityFilter::Not(..) => {
             let (attribute, op, value) = match filter {
-                StoreFilter::Equal(attribute, value) => (attribute, " = ", value),
-                StoreFilter::Not(attribute, value) => (attribute, " != ", value),
+                EntityFilter::Equal(attribute, value) => (attribute, " = ", value),
+                EntityFilter::Not(attribute, value) => (attribute, " != ", value),
                 _ => unreachable!(),
             };
 
@@ -212,15 +212,15 @@ fn store_filter_by_mode(
                 ),
             }
         }
-        StoreFilter::GreaterThan(..)
-        | StoreFilter::LessThan(..)
-        | StoreFilter::GreaterOrEqual(..)
-        | StoreFilter::LessOrEqual(..) => {
+        EntityFilter::GreaterThan(..)
+        | EntityFilter::LessThan(..)
+        | EntityFilter::GreaterOrEqual(..)
+        | EntityFilter::LessOrEqual(..) => {
             let (attribute, op, value) = match filter {
-                StoreFilter::GreaterThan(attribute, value) => (attribute, " > ", value),
-                StoreFilter::LessThan(attribute, value) => (attribute, " < ", value),
-                StoreFilter::GreaterOrEqual(attribute, value) => (attribute, " >= ", value),
-                StoreFilter::LessOrEqual(attribute, value) => (attribute, " <= ", value),
+                EntityFilter::GreaterThan(attribute, value) => (attribute, " > ", value),
+                EntityFilter::LessThan(attribute, value) => (attribute, " < ", value),
+                EntityFilter::GreaterOrEqual(attribute, value) => (attribute, " >= ", value),
+                EntityFilter::LessOrEqual(attribute, value) => (attribute, " <= ", value),
                 _ => unreachable!(),
             };
             match value {
@@ -278,7 +278,7 @@ fn store_filter_by_mode(
             }
         }
         // Is `attribute` equal to some `v` in `query_values`?
-        StoreFilter::In(attribute, query_values) => {
+        EntityFilter::In(attribute, query_values) => {
             let op = " = ANY (";
             if query_values.is_empty() {
                 return Ok(add_filter(query, filter_mode, sql("false")));
@@ -352,18 +352,18 @@ fn store_filter_by_mode(
             }
         }
         // Is `attribute` different from all `query_values`?
-        StoreFilter::NotIn(attribute, query_values) => {
+        EntityFilter::NotIn(attribute, query_values) => {
             if query_values.is_empty() {
                 return Ok(add_filter(query, filter_mode, sql("true")));
             }
             query_values.into_iter().try_fold(query, |q, v| {
-                store_filter_by_mode(q, StoreFilter::Not(attribute.clone(), v), FilterMode::And)
+                store_filter_by_mode(q, EntityFilter::Not(attribute.clone(), v), FilterMode::And)
             })?
         }
-        StoreFilter::StartsWith(..) | StoreFilter::NotStartsWith(..) => {
+        EntityFilter::StartsWith(..) | EntityFilter::NotStartsWith(..) => {
             let (attribute, op, value) = match filter {
-                StoreFilter::StartsWith(attribute, value) => (attribute, " LIKE ", value),
-                StoreFilter::NotStartsWith(attribute, value) => (attribute, " NOT LIKE ", value),
+                EntityFilter::StartsWith(attribute, value) => (attribute, " LIKE ", value),
+                EntityFilter::NotStartsWith(attribute, value) => (attribute, " NOT LIKE ", value),
                 _ => unreachable!(),
             };
             match value {
@@ -395,10 +395,10 @@ fn store_filter_by_mode(
             }
         }
 
-        StoreFilter::EndsWith(..) | StoreFilter::NotEndsWith(..) => {
+        EntityFilter::EndsWith(..) | EntityFilter::NotEndsWith(..) => {
             let (attribute, op, value) = match filter {
-                StoreFilter::EndsWith(attribute, value) => (attribute, " LIKE ", value),
-                StoreFilter::NotEndsWith(attribute, value) => (attribute, " NOT LIKE ", value),
+                EntityFilter::EndsWith(attribute, value) => (attribute, " LIKE ", value),
+                EntityFilter::NotEndsWith(attribute, value) => (attribute, " NOT LIKE ", value),
                 _ => unreachable!(),
             };
             match value {

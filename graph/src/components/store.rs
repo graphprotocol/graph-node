@@ -8,7 +8,7 @@ use prelude::*;
 
 /// Key by which an individual entity in the store can be accessed.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct StoreKey {
+pub struct EntityKey {
     /// ID of the subgraph.
     pub subgraph_id: String,
 
@@ -21,9 +21,9 @@ pub struct StoreKey {
 
 /// Supported types of store filters.
 #[derive(Clone, Debug, PartialEq)]
-pub enum StoreFilter {
-    And(Vec<StoreFilter>),
-    Or(Vec<StoreFilter>),
+pub enum EntityFilter {
+    And(Vec<EntityFilter>),
+    Or(Vec<EntityFilter>),
     Equal(Attribute, Value),
     Not(Attribute, Value),
     GreaterThan(Attribute, Value),
@@ -42,14 +42,14 @@ pub enum StoreFilter {
 
 /// The order in which entities should be restored from a store.
 #[derive(Clone, Debug, PartialEq)]
-pub enum StoreOrder {
+pub enum EntityOrder {
     Ascending,
     Descending,
 }
 
 /// How many entities to return, how many to skip etc.
 #[derive(Clone, Debug, PartialEq)]
-pub struct StoreRange {
+pub struct EntityRange {
     /// How many entities to return.
     pub first: usize,
 
@@ -59,24 +59,24 @@ pub struct StoreRange {
 
 /// A query for entities in a store.
 #[derive(Clone, Debug, PartialEq)]
-pub struct StoreQuery {
-    // ID of the subgraph.
-    pub subgraph: String,
+pub struct EntityQuery {
+    /// ID of the subgraph.
+    pub subgraph_id: SubgraphId,
 
     /// The name of the entity type.
-    pub entity: String,
+    pub entity_type: String,
 
     /// Filter to filter entities by.
-    pub filter: Option<StoreFilter>,
+    pub filter: Option<EntityFilter>,
 
     /// An optional attribute to order the entities by.
     pub order_by: Option<(String, ValueType)>,
 
     /// The direction to order entities in.
-    pub order_direction: Option<StoreOrder>,
+    pub order_direction: Option<EntityOrder>,
 
     /// An optional range to limit the size of the result.
-    pub range: Option<StoreRange>,
+    pub range: Option<EntityRange>,
 }
 
 /// Operation types that lead to entity changes.
@@ -95,11 +95,11 @@ pub enum EntityChangeOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EntityChange {
     /// ID of the subgraph the changed entity belongs to.
-    pub subgraph: String,
+    pub subgraph_id: String,
     /// Entity type name of the changed entity.
-    pub entity: String,
+    pub entity_type: String,
     /// ID of the changed entity.
-    pub id: String,
+    pub entity_id: String,
     /// Operation that caused the change.
     pub operation: EntityChangeOperation,
 }
@@ -111,18 +111,9 @@ pub type EntityChangeStream = Box<Stream<Item = EntityChange, Error = ()> + Send
 #[derive(Clone, Debug)]
 pub enum EntityOperation {
     /// An entity is created or updated.
-    Set {
-        subgraph_id: SubgraphId,
-        entity_type: String,
-        entity_id: String,
-        data: Entity,
-    },
+    Set { key: EntityKey, data: Entity },
     /// An entity is removed.
-    Remove {
-        subgraph_id: SubgraphId,
-        entity_type: String,
-        entity_id: String,
-    },
+    Remove { key: EntityKey },
 }
 
 impl EntityOperation {
@@ -136,31 +127,23 @@ impl EntityOperation {
         }
     }
 
-    pub fn entity_info(&self) -> (&SubgraphId, &String, &String) {
+    pub fn entity_key(&self) -> &EntityKey {
         use self::EntityOperation::*;
+
         match self {
-            Set {
-                subgraph_id,
-                entity_type,
-                entity_id,
-                ..
-            } => (subgraph_id, entity_type, entity_id),
-            Remove {
-                subgraph_id,
-                entity_type,
-                entity_id,
-            } => (subgraph_id, entity_type, entity_id),
+            Set { ref key, .. } => key,
+            Remove { ref key } => key,
         }
     }
 
     /// Returns true if the operation matches a given store key.
-    pub fn matches_entity(&self, key: &StoreKey) -> bool {
-        self.entity_info() == (&key.subgraph_id, &key.entity_type, &key.entity_id)
+    pub fn matches_entity(&self, key: &EntityKey) -> bool {
+        self.entity_key() == key
     }
 
     /// Returns true if the two operations match the same entity.
     pub fn matches_same_entity(&self, other: &EntityOperation) -> bool {
-        self.entity_info() == other.entity_info()
+        self.entity_key() == other.entity_key()
     }
 
     /// Applies the operation to an existing entity (may be None).
@@ -169,6 +152,7 @@ impl EntityOperation {
     /// Returns `None` if the operation is a `Remove`.
     pub fn apply(&self, entity: Option<Entity>) -> Option<Entity> {
         use self::EntityOperation::*;
+
         match self {
             Set { data, .. } => Some(
                 entity
@@ -188,19 +172,12 @@ impl EntityOperation {
     pub fn merge(&self, other: &EntityOperation) -> Self {
         use self::EntityOperation::*;
 
-        assert_eq!(self.entity_info(), other.entity_info());
+        assert_eq!(self.entity_key(), other.entity_key());
 
         match other {
             Remove { .. } => other.clone(),
-            Set {
-                subgraph_id,
-                entity_type,
-                entity_id,
-                data,
-            } => EntityOperation::Set {
-                subgraph_id: subgraph_id.clone(),
-                entity_type: entity_type.clone(),
-                entity_id: entity_id.clone(),
+            Set { key, data } => Set {
+                key: key.clone(),
                 data: {
                     let mut entity = match self {
                         Set { data, .. } => data.clone(),
@@ -293,11 +270,11 @@ pub trait Store: Send + Sync + 'static {
 
     /// Looks up an entity using the given store key.
     // TODO need to validate block ptr
-    fn get(&self, key: StoreKey) -> Result<Option<Entity>, QueryExecutionError>;
+    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
 
     /// Queries the store for entities that match the store query.
     // TODO need to validate block ptr
-    fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, QueryExecutionError>;
+    fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError>;
 
     /// Updates the block pointer.  Careful: this is only safe to use if it is known that no store
     /// changes are needed to go from `block_ptr_from` to `block_ptr_to`.
