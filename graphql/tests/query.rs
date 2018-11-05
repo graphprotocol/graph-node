@@ -11,7 +11,6 @@ extern crate graph_graphql;
 use graphql_parser::query as q;
 use std::sync::Mutex;
 
-use graph::components::store::EventSource;
 use graph::prelude::*;
 use graph::web3::types::{Block, Transaction, H256};
 use graph_graphql::prelude::*;
@@ -148,7 +147,7 @@ impl Store for TestStore {
         unimplemented!()
     }
 
-    fn write_subgraph_name(&self, _: String, id: Option<SubgraphId>) -> Result<(), Error> {
+    fn write_subgraph_name(&self, _: String, _: Option<SubgraphId>) -> Result<(), Error> {
         unimplemented!()
     }
 
@@ -204,8 +203,8 @@ impl Store for TestStore {
         self.entities
             .iter()
             .find(|entity| {
-                entity.get("id") == Some(&Value::String(key.id.clone()))
-                    && entity.get("__typename") == Some(&Value::String(key.entity.clone()))
+                entity.get("id") == Some(&Value::String(key.entity_id.clone()))
+                    && entity.get("__typename") == Some(&Value::String(key.entity_type.clone()))
             }).map_or(
                 Err(QueryExecutionError::ResolveEntitiesError(String::from(
                     "Mock get query error",

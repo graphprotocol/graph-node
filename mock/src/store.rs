@@ -48,13 +48,13 @@ impl MockStore {
 
 impl Store for MockStore {
     fn get(&self, key: StoreKey) -> Result<Option<Entity>, QueryExecutionError> {
-        if key.entity == "User" {
+        if key.entity_type == "User" {
             self.entities
                 .iter()
                 .find(|entity| {
                     let id = entity.get("id").unwrap();
                     match *id {
-                        Value::String(ref s) => s == &key.id,
+                        Value::String(ref s) => s == &key.entity_id,
                         _ => false,
                     }
                 }).map(|entity| Some(entity.clone()))
