@@ -238,7 +238,6 @@ fn call_event_handler_and_receive_store_event() {
             Entity::from(HashMap::from_iter(
                 vec![(String::from("exampleAttribute"), Value::from("some data"))].into_iter()
             )),
-            EventSource::EthereumBlock(util::ethereum::string_to_h256("example block hash",)),
         )
     );
 }

@@ -67,15 +67,15 @@ where
 
     pub(crate) fn store_set(
         &mut self,
-        entity: String,
-        id: String,
+        entity_type: String,
+        entity_id: String,
         mut data: HashMap<String, Value>,
     ) -> Result<(), HostExportError<impl ExportError>> {
-        match data.insert("id".to_string(), Value::String(id.clone())) {
-            Some(ref v) if v != &Value::String(id.clone()) => {
+        match data.insert("id".to_string(), Value::String(entity_id.clone())) {
+            Some(ref v) if v != &Value::String(entity_id.clone()) => {
                 return Err(HostExportError(format!(
                     "Conflicting 'id' value set by mapping for {} entity: {} != {}",
-                    entity, v, id,
+                    entity_type, v, entity_id,
                 )))
             }
             _ => (),
@@ -86,36 +86,36 @@ where
             .map(|ctx| &mut ctx.entity_operations)
             .expect("processing event without context")
             .push(EntityOperation::Set {
-                subgraph: self.subgraph.id.clone(),
-                entity,
-                id,
+                subgraph_id: self.subgraph.id.clone(),
+                entity_type,
+                entity_id,
                 data: Entity::from(data),
             });
 
         Ok(())
     }
 
-    pub(crate) fn store_remove(&mut self, entity: String, id: String) {
+    pub(crate) fn store_remove(&mut self, entity_type: String, entity_id: String) {
         self.ctx
             .as_mut()
             .map(|ctx| &mut ctx.entity_operations)
             .expect("processing event without context")
             .push(EntityOperation::Remove {
-                subgraph: self.subgraph.id.clone(),
-                entity,
-                id,
+                subgraph_id: self.subgraph.id.clone(),
+                entity_type,
+                entity_id,
             });
     }
 
     pub(crate) fn store_get(
         &self,
-        entity: String,
-        id: String,
+        entity_type: String,
+        entity_id: String,
     ) -> Result<Option<Entity>, HostExportError<impl ExportError>> {
         let store_key = StoreKey {
-            subgraph: self.subgraph.id.clone(),
-            entity,
-            id,
+            subgraph_id: self.subgraph.id.clone(),
+            entity_type,
+            entity_id,
         };
 
         // Get all operations for this entity
