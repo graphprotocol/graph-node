@@ -192,9 +192,9 @@ impl Store {
 
         tokio::spawn(entity_changes.for_each(move |change| {
             trace!(logger, "Received entity change event";
-                           "subgraph_id" => &change.subgraph,
-                           "entity" => &change.entity,
-                           "id" => &change.id);
+                           "subgraph_id" => &change.subgraph_id,
+                           "entity_type" => &change.entity_type,
+                           "entity_id" => &change.entity_id);
 
             // Obtain IDs and senders of subscriptions matching the entity change
             let matches = subscriptions
@@ -204,7 +204,7 @@ impl Store {
                 .filter(|(_, subscription)| {
                     subscription
                         .entities
-                        .contains(&(change.subgraph.clone(), change.entity.clone()))
+                        .contains(&(change.subgraph_id.clone(), change.entity_type.clone()))
                 }).map(|(id, subscription)| (id.clone(), subscription.sender.clone()))
                 .collect::<Vec<_>>();
 
@@ -303,10 +303,15 @@ impl Store {
     ) -> Result<usize, Error> {
         use db_schema::entities::dsl::*;
 
-        let (op_subgraph, op_entity, op_id) = operation.entity_info();
+        let EntityKey {
+            subgraph_id: op_subgraph_id,
+            entity_type: op_entity_type,
+            entity_id: op_entity_id,
+        } = operation.entity_key();
 
         // Load the entity if exists
-        let existing_entity = self.get_entity(conn, op_subgraph, op_entity, op_id)?;
+        let existing_entity =
+            self.get_entity(conn, op_subgraph_id, op_entity_type, op_entity_id)?;
 
         // Apply the operation
         let updated_entity = operation.apply(existing_entity);
@@ -314,9 +319,9 @@ impl Store {
             serde_json::to_value(&updated_entity).map_err(|e| {
                 format_err!(
                     "Failed to set entity ({}, {}, {}) as setting it would break it: {}",
-                    op_subgraph,
-                    op_entity,
-                    op_id,
+                    op_subgraph_id,
+                    op_entity_type,
+                    op_entity_id,
                     e
                 )
             })?;
@@ -324,26 +329,26 @@ impl Store {
         // Either add or update the entity in Postgres
         insert_into(entities)
             .values((
-                id.eq(op_id),
-                entity.eq(op_entity),
-                subgraph.eq(op_subgraph),
+                id.eq(op_entity_id),
+                entity.eq(op_entity_type),
+                subgraph.eq(op_subgraph_id),
                 data.eq(&updated_json),
                 event_source.eq(block_ptr_to.hash_hex()),
             )).on_conflict((id, entity, subgraph))
             .do_update()
             .set((
-                id.eq(op_id),
-                entity.eq(op_entity),
-                subgraph.eq(op_subgraph),
+                id.eq(op_entity_id),
+                entity.eq(op_entity_type),
+                subgraph.eq(op_subgraph_id),
                 data.eq(&updated_json),
                 event_source.eq(block_ptr_to.hash_hex()),
             )).execute(conn)
             .map_err(|e| {
                 format_err!(
                     "Failed to set entity ({}, {}, {}): {}",
-                    op_subgraph,
-                    op_entity,
-                    op_id,
+                    op_subgraph_id,
+                    op_entity_type,
+                    op_entity_id,
                     e
                 )
             })
@@ -358,7 +363,11 @@ impl Store {
     ) -> Result<usize, Error> {
         use db_schema::entities::dsl::*;
 
-        let (op_subgraph, op_entity, op_id) = operation.entity_info();
+        let EntityKey {
+            subgraph_id: op_subgraph_id,
+            entity_type: op_entity_type,
+            entity_id: op_entity_id,
+        } = operation.entity_key();
 
         select(set_config(
             "vars.current_event_source",
@@ -370,16 +379,16 @@ impl Store {
 
         delete(
             entities
-                .filter(subgraph.eq(op_subgraph))
-                .filter(entity.eq(op_entity))
-                .filter(id.eq(op_id)),
+                .filter(subgraph.eq(op_subgraph_id))
+                .filter(entity.eq(op_entity_type))
+                .filter(id.eq(op_entity_id)),
         ).execute(conn)
         .map_err(|e| {
             format_err!(
                 "Failed to remove entity ({}, {}, {}): {}",
-                op_subgraph,
-                op_entity,
-                op_id,
+                op_subgraph_id,
+                op_entity_type,
+                op_entity_id,
                 e
             )
         })
@@ -580,19 +589,19 @@ impl StoreTrait for Store {
             }).map_err(Error::from)
     }
 
-    fn get(&self, key: StoreKey) -> Result<Option<Entity>, QueryExecutionError> {
+    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
         let conn = self.conn.lock().unwrap();
         self.get_entity(&*conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
     }
 
-    fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, QueryExecutionError> {
+    fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
         use db_schema::entities::dsl::*;
 
         // Create base boxed query; this will be added to based on the
         // query parameters provided
         let mut diesel_query = entities
-            .filter(entity.eq(query.entity))
-            .filter(subgraph.eq(query.subgraph))
+            .filter(entity.eq(query.entity_type))
+            .filter(subgraph.eq(query.subgraph_id))
             .select(data)
             .into_boxed::<Pg>();
 
@@ -608,8 +617,8 @@ impl StoreTrait for Store {
             let direction = query
                 .order_direction
                 .map(|direction| match direction {
-                    StoreOrder::Ascending => "ASC",
-                    StoreOrder::Descending => "DESC",
+                    EntityOrder::Ascending => "ASC",
+                    EntityOrder::Descending => "DESC",
                 }).unwrap_or("ASC");
             let cast_type = match value_type {
                 ValueType::BigInt => "::numeric",

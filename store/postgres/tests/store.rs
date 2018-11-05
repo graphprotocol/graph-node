@@ -13,7 +13,7 @@ use std::panic;
 use std::str::FromStr;
 use std::sync::Mutex;
 
-use graph::components::store::{StoreFilter, StoreKey, StoreOrder, StoreQuery, StoreRange};
+use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityRange};
 use graph::data::store::scalar;
 use graph::prelude::*;
 use graph::web3::types::H256;
@@ -63,6 +63,11 @@ lazy_static! {
     static ref TEST_BLOCK_4A_PTR: EthereumBlockPointer = (
         H256::from("0x8fab27e9e9285b0a39110f4d9877f05d0f43d2effa157e55f4dcc49c3cf8cbd7"),
         4u64
+    )
+        .into();
+    static ref TEST_BLOCK_5_PTR: EthereumBlockPointer = (
+        H256::from("0xe8b3b02b936c4a4a331ac691ac9a86e197fb7731f14e3108602c87d4dac55160"),
+        5u64
     )
         .into();
 }
@@ -202,9 +207,11 @@ fn create_test_entity(
     test_entity.insert(String::from("coffee"), Value::Bool(coffee));
 
     EntityOperation::Set {
-        subgraph_id: TEST_SUBGRAPH_ID.clone(),
-        entity_type,
-        entity_id: id,
+        key: EntityKey {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type,
+            entity_id: id,
+        },
         data: test_entity,
     }
 }
@@ -235,9 +242,11 @@ fn delete_entity() {
                 *TEST_BLOCK_3_PTR,
                 *TEST_BLOCK_4_PTR,
                 vec![EntityOperation::Remove {
-                    subgraph_id: TEST_SUBGRAPH_ID.clone(),
-                    entity_type: "user".to_owned(),
-                    entity_id: "3".to_owned(),
+                    key: EntityKey {
+                        subgraph_id: TEST_SUBGRAPH_ID.clone(),
+                        entity_type: "user".to_owned(),
+                        entity_id: "3".to_owned(),
+                    },
                 }],
             ).unwrap();
 
@@ -257,7 +266,7 @@ fn delete_entity() {
 #[test]
 fn get_entity() {
     run_test(|store| -> Result<(), ()> {
-        let key = StoreKey {
+        let key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: String::from("user"),
             entity_id: String::from("1"),
@@ -323,7 +332,7 @@ fn insert_entity() {
 #[test]
 fn update_existing() {
     run_test(|store| -> Result<(), ()> {
-        let entity_key = StoreKey {
+        let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: String::from("user"),
             entity_id: String::from("1"),
@@ -368,10 +377,9 @@ fn update_existing() {
 }
 
 #[test]
-#[cfg(any())]
 fn partially_update_existing() {
     run_test(|store| -> Result<(), ()> {
-        let entity_key = StoreKey {
+        let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: String::from("user"),
             entity_id: String::from("1"),
@@ -383,7 +391,10 @@ fn partially_update_existing() {
             ("email", Value::Null),
         ]);
 
-        let original_entity = store.get(entity_key.clone()).unwrap();
+        let original_entity = store
+            .get(entity_key.clone())
+            .unwrap()
+            .expect("entity not found");
 
         // Set test entity; as the entity already exists an update should be performed
         store
@@ -391,11 +402,14 @@ fn partially_update_existing() {
                 TEST_SUBGRAPH_ID.clone(),
                 *TEST_BLOCK_3_PTR,
                 *TEST_BLOCK_4_PTR,
-                vec![EntityOperation::Set {}],
+                vec![EntityOperation::Set {
+                    key: entity_key.clone(),
+                    data: partial_entity.clone(),
+                }],
             ).unwrap();
 
         // Obtain the updated entity from the store
-        let updated_entity = store.get(entity_key).unwrap();
+        let updated_entity = store.get(entity_key).unwrap().expect("entity not found");
 
         // Verify that the values of all attributes we have set were either unset
         // (in the case of Value::Null) or updated to the new values
@@ -416,10 +430,10 @@ fn partially_update_existing() {
 #[cfg(any())]
 fn find_string_contains() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::Contains(
+            filter: Some(EntityFilter::And(vec![EntityFilter::Contains(
                 String::from("name"),
                 Value::String(String::from("%ind%")),
             )])),
@@ -442,10 +456,10 @@ fn find_string_contains() {
 #[cfg(any())]
 fn find_string_equal() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
+            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 String::from("name"),
                 Value::String(String::from("Cindini")),
             )])),
@@ -468,10 +482,10 @@ fn find_string_equal() {
 #[cfg(any())]
 fn find_string_not_equal() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::Not(
+            filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 String::from("name"),
                 Value::String(String::from("Cindini")),
             )])),
@@ -498,10 +512,10 @@ fn find_string_not_equal() {
 #[cfg(any())]
 fn find_string_greater_than() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
                 String::from("name"),
                 Value::String(String::from("Kundi")),
             )])),
@@ -528,10 +542,10 @@ fn find_string_greater_than() {
 #[cfg(any())]
 fn find_string_less_than() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 String::from("name"),
                 Value::String(String::from("Kundi")),
             )])),
@@ -558,15 +572,15 @@ fn find_string_less_than() {
 #[cfg(any())]
 fn find_string_less_than_order_by_asc() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 String::from("name"),
                 Value::String(String::from("Kundi")),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Ascending),
+            order_direction: Some(EntityOrder::Ascending),
             range: None,
         };
         let result = store
@@ -598,15 +612,15 @@ fn find_string_less_than_order_by_asc() {
 #[cfg(any())]
 fn find_string_less_than_order_by_desc() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 String::from("name"),
                 Value::String(String::from("Kundi")),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let result = store
@@ -638,16 +652,16 @@ fn find_string_less_than_order_by_desc() {
 #[cfg(any())]
 fn find_string_less_than_range() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 String::from("name"),
                 Value::String(String::from("ZZZ")),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
-            range: Some(StoreRange { first: 1, skip: 1 }),
+            order_direction: Some(EntityOrder::Descending),
+            range: Some(EntityRange { first: 1, skip: 1 }),
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
 
@@ -668,15 +682,15 @@ fn find_string_less_than_range() {
 #[cfg(any())]
 fn find_string_multiple_and() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![
-                StoreFilter::LessThan(String::from("name"), Value::String(String::from("Cz"))),
-                StoreFilter::Equal(String::from("name"), Value::String(String::from("Cindini"))),
+            filter: Some(EntityFilter::And(vec![
+                EntityFilter::LessThan(String::from("name"), Value::String(String::from("Cz"))),
+                EntityFilter::Equal(String::from("name"), Value::String(String::from("Cindini"))),
             ])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -698,15 +712,15 @@ fn find_string_multiple_and() {
 #[cfg(any())]
 fn find_string_ends_with() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::EndsWith(
+            filter: Some(EntityFilter::And(vec![EntityFilter::EndsWith(
                 String::from("name"),
                 Value::String(String::from("ini")),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -728,15 +742,15 @@ fn find_string_ends_with() {
 #[cfg(any())]
 fn find_string_not_ends_with() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::NotEndsWith(
+            filter: Some(EntityFilter::And(vec![EntityFilter::NotEndsWith(
                 String::from("name"),
                 Value::String(String::from("ini")),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -758,15 +772,15 @@ fn find_string_not_ends_with() {
 #[cfg(any())]
 fn find_string_in() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::In(
+            filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 String::from("name"),
                 vec![Value::String(String::from("Johnton"))],
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -788,15 +802,15 @@ fn find_string_in() {
 #[cfg(any())]
 fn find_string_not_in() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::NotIn(
+            filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 String::from("name"),
                 vec![Value::String(String::from("Shaqueeena"))],
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -819,10 +833,10 @@ fn find_string_not_in() {
 #[cfg(any())]
 fn find_float_equal() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
+            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 String::from("weight"),
                 Value::Float(184.4 as f32),
             )])),
@@ -849,15 +863,15 @@ fn find_float_equal() {
 #[cfg(any())]
 fn find_float_not_equal() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::Not(
+            filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 String::from("weight"),
                 Value::Float(184.4 as f32),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -879,10 +893,10 @@ fn find_float_not_equal() {
 #[cfg(any())]
 fn find_float_greater_than() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
                 String::from("weight"),
                 Value::Float(160 as f32),
             )])),
@@ -909,15 +923,15 @@ fn find_float_greater_than() {
 #[cfg(any())]
 fn find_float_less_than() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 String::from("weight"),
                 Value::Float(160 as f32),
             )])),
             order_by: Some((String::From("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Ascending),
+            order_direction: Some(EntityOrder::Ascending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -939,15 +953,15 @@ fn find_float_less_than() {
 #[cfg(any())]
 fn find_float_less_than_order_by_desc() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 String::from("weight"),
                 Value::Float(160 as f32),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -969,16 +983,16 @@ fn find_float_less_than_order_by_desc() {
 #[cfg(any())]
 fn find_float_less_than_range() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 String::from("weight"),
                 Value::Float(161 as f32),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
-            range: Some(StoreRange { first: 1, skip: 1 }),
+            order_direction: Some(EntityOrder::Descending),
+            range: Some(EntityRange { first: 1, skip: 1 }),
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
         // Check if the first user in the result vector is "Cindini"
@@ -998,16 +1012,16 @@ fn find_float_less_than_range() {
 #[cfg(any())]
 fn find_float_in() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::In(
+            filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 String::from("weight"),
                 vec![Value::Float(184.4 as f32), Value::Float(111.7 as f32)],
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
-            range: Some(StoreRange { first: 5, skip: 0 }),
+            order_direction: Some(EntityOrder::Descending),
+            range: Some(EntityRange { first: 5, skip: 0 }),
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
 
@@ -1028,16 +1042,16 @@ fn find_float_in() {
 #[cfg(any())]
 fn find_float_not_in() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::NotIn(
+            filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 String::from("weight"),
                 vec![Value::Float(184.4 as f32), Value::Float(111.7 as f32)],
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
-            range: Some(StoreRange { first: 5, skip: 0 }),
+            order_direction: Some(EntityOrder::Descending),
+            range: Some(EntityRange { first: 5, skip: 0 }),
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
 
@@ -1058,15 +1072,15 @@ fn find_float_not_in() {
 #[cfg(any())]
 fn find_int_equal() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
+            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 String::from("age"),
                 Value::Int(67 as i32),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -1088,15 +1102,15 @@ fn find_int_equal() {
 #[cfg(any())]
 fn find_int_not_equal() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::Not(
+            filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 String::from("age"),
                 Value::Int(67 as i32),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -1118,10 +1132,10 @@ fn find_int_not_equal() {
 #[cfg(any())]
 fn find_int_greater_than() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::GreaterThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
                 String::from("age"),
                 Value::Int(43 as i32),
             )])),
@@ -1148,15 +1162,15 @@ fn find_int_greater_than() {
 #[cfg(any())]
 fn find_int_greater_or_equal() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::GreaterOrEqual(
+            filter: Some(EntityFilter::And(vec![EntityFilter::GreaterOrEqual(
                 String::from("age"),
                 Value::Int(43 as i32),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Ascending),
+            order_direction: Some(EntityOrder::Ascending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -1178,15 +1192,15 @@ fn find_int_greater_or_equal() {
 #[cfg(any())]
 fn find_int_less_than() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 String::from("age"),
                 Value::Int(50 as i32),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Ascending),
+            order_direction: Some(EntityOrder::Ascending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -1208,15 +1222,15 @@ fn find_int_less_than() {
 #[cfg(any())]
 fn find_int_less_or_equal() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::LessOrEqual(
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessOrEqual(
                 String::from("age"),
                 Value::Int(43 as i32),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Ascending),
+            order_direction: Some(EntityOrder::Ascending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -1238,15 +1252,15 @@ fn find_int_less_or_equal() {
 #[cfg(any())]
 fn find_int_less_than_order_by_desc() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 String::from("age"),
                 Value::Int(50 as i32),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -1268,16 +1282,16 @@ fn find_int_less_than_order_by_desc() {
 #[cfg(any())]
 fn find_int_less_than_range() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::LessThan(
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 String::from("age"),
                 Value::Int(67 as i32),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
-            range: Some(StoreRange { first: 1, skip: 1 }),
+            order_direction: Some(EntityOrder::Descending),
+            range: Some(EntityRange { first: 1, skip: 1 }),
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
 
@@ -1298,16 +1312,16 @@ fn find_int_less_than_range() {
 #[cfg(any())]
 fn find_int_in() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::In(
+            filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 String::from("age"),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
-            range: Some(StoreRange { first: 5, skip: 0 }),
+            order_direction: Some(EntityOrder::Descending),
+            range: Some(EntityRange { first: 5, skip: 0 }),
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
 
@@ -1328,16 +1342,16 @@ fn find_int_in() {
 #[cfg(any())]
 fn find_int_not_in() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::NotIn(
+            filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 String::from("age"),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
-            range: Some(StoreRange { first: 5, skip: 0 }),
+            order_direction: Some(EntityOrder::Descending),
+            range: Some(EntityRange { first: 5, skip: 0 }),
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
 
@@ -1358,15 +1372,15 @@ fn find_int_not_in() {
 #[cfg(any())]
 fn find_bool_equal() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
+            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 String::from("coffee"),
                 Value::Bool(true),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
@@ -1388,15 +1402,15 @@ fn find_bool_equal() {
 #[cfg(any())]
 fn find_bool_not_equal() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::Not(
+            filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 String::from("coffee"),
                 Value::Bool(true),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Ascending),
+            order_direction: Some(EntityOrder::Ascending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find query failed");
@@ -1418,16 +1432,16 @@ fn find_bool_not_equal() {
 #[cfg(any())]
 fn find_bool_in() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::In(
+            filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 String::from("coffee"),
                 vec![Value::Bool(true)],
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
-            range: Some(StoreRange { first: 5, skip: 0 }),
+            order_direction: Some(EntityOrder::Descending),
+            range: Some(EntityRange { first: 5, skip: 0 }),
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
 
@@ -1448,16 +1462,16 @@ fn find_bool_in() {
 #[cfg(any())]
 fn find_bool_not_in() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::NotIn(
+            filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 String::from("coffee"),
                 vec![Value::Bool(true)],
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
-            range: Some(StoreRange { first: 5, skip: 0 }),
+            order_direction: Some(EntityOrder::Descending),
+            range: Some(EntityRange { first: 5, skip: 0 }),
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");
 
@@ -1478,15 +1492,15 @@ fn find_bool_not_in() {
 #[cfg(any())]
 fn revert_block() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
+            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 String::from("name"),
                 Value::String(String::from("Shaqueeena")),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
 
@@ -1525,20 +1539,20 @@ fn revert_block() {
 #[cfg(any())]
 fn revert_block_with_delete() {
     run_test(|store| -> Result<(), ()> {
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
+            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 String::from("name"),
                 Value::String(String::from("Cindini")),
             )])),
             order_by: Some((String::from("name"), ValueType::String)),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
 
         // Delete an entity using a randomly created event source
-        let del_key = StoreKey {
+        let del_key = EntityKey {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             id: String::from("2"),
@@ -1592,7 +1606,7 @@ fn revert_block_with_delete() {
 #[cfg(any())]
 fn revert_block_with_partial_update() {
     run_test(|store| -> Result<(), ()> {
-        let entity_key = StoreKey {
+        let entity_key = EntityKey {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
             id: String::from("1"),
@@ -1636,69 +1650,81 @@ fn revert_block_with_partial_update() {
 }
 
 #[test]
-#[cfg(any())]
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store| {
+        let subgraph_id: SubgraphId = "entity-change-test-subgraph".to_owned();
+        store
+            .add_subgraph_if_missing(subgraph_id.clone(), *TEST_BLOCK_0_PTR)
+            .unwrap();
+
         // Create a store subscription
-        let subscription =
-            store.subscribe(vec![(String::from("subgraph-id"), String::from("User"))]);
+        let subscription = store.subscribe(vec![(subgraph_id.clone(), "User".to_owned())]);
 
         // Add two entities to the store
         let added_entities = vec![
             (
-                String::from("1"),
+                "1".to_owned(),
                 Entity::from(vec![
                     ("id", Value::from("1")),
                     ("name", Value::from("Johnny Boy")),
                 ]),
             ),
             (
-                String::from("2"),
+                "2".to_owned(),
                 Entity::from(vec![
                     ("id", Value::from("2")),
                     ("name", Value::from("Tessa")),
                 ]),
             ),
         ];
-        for (id, entity) in added_entities.iter() {
-            store
-                .set(
-                    StoreKey {
-                        subgraph: String::from("subgraph-id"),
-                        entity: String::from("User"),
-                        id: id.clone(),
-                    },
-                    entity.clone(),
-                    EventSource::EthereumBlock(H256::random()),
-                ).expect("failed to add entity to the store");
-        }
+        store
+            .transact_block_operations(
+                subgraph_id.clone(),
+                *TEST_BLOCK_0_PTR,
+                *TEST_BLOCK_1_PTR,
+                added_entities
+                    .iter()
+                    .map(|(id, data)| EntityOperation::Set {
+                        key: EntityKey {
+                            subgraph_id: subgraph_id.clone(),
+                            entity_type: "user".to_owned(),
+                            entity_id: id.to_owned(),
+                        },
+                        data: data.to_owned(),
+                    }).collect(),
+            ).unwrap();
 
         // Update an entity in the store
         let updated_entity = Entity::from(vec![
             ("id", Value::from("1")),
             ("name", Value::from("Johnny")),
         ]);
-        store
-            .set(
-                StoreKey {
-                    subgraph: String::from("subgraph-id"),
-                    entity: String::from("User"),
-                    id: String::from("1"),
-                },
-                updated_entity.clone(),
-                EventSource::EthereumBlock(H256::random()),
-            ).expect("failed to update entity in the store");
+        let update_op = EntityOperation::Set {
+            key: EntityKey {
+                subgraph_id: subgraph_id.clone(),
+                entity_type: "User".to_owned(),
+                entity_id: "1".to_owned(),
+            },
+            data: updated_entity.clone(),
+        };
 
         // Delete an entity in the store
+        let delete_op = EntityOperation::Remove {
+            key: EntityKey {
+                subgraph_id: subgraph_id.clone(),
+                entity_type: "User".to_owned(),
+                entity_id: "2".to_owned(),
+            },
+        };
+
+        // Commit update & delete ops
         store
-            .delete(
-                StoreKey {
-                    subgraph: String::from("subgraph-id"),
-                    entity: String::from("User"),
-                    id: String::from("2"),
-                },
-                EventSource::EthereumBlock(H256::random()),
-            ).expect("failed to delete entity from the store");
+            .transact_block_operations(
+                subgraph_id.clone(),
+                *TEST_BLOCK_1_PTR,
+                *TEST_BLOCK_2_PTR,
+                vec![update_op, delete_op],
+            ).unwrap();
 
         // We're expecting four events to be written to the subscription stream
         subscription
@@ -1714,27 +1740,27 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                     changes,
                     vec![
                         EntityChange {
-                            subgraph: String::from("subgraph-id"),
-                            entity: String::from("User"),
-                            id: added_entities[0].clone().0,
+                            subgraph_id: subgraph_id.clone(),
+                            entity_type: String::from("User"),
+                            entity_id: added_entities[0].clone().0,
                             operation: EntityChangeOperation::Added,
                         },
                         EntityChange {
-                            subgraph: String::from("subgraph-id"),
-                            entity: String::from("User"),
-                            id: added_entities[1].clone().0,
+                            subgraph_id: subgraph_id.clone(),
+                            entity_type: String::from("User"),
+                            entity_id: added_entities[1].clone().0,
                             operation: EntityChangeOperation::Added,
                         },
                         EntityChange {
-                            subgraph: String::from("subgraph-id"),
-                            entity: String::from("User"),
-                            id: String::from("1"),
+                            subgraph_id: subgraph_id.clone(),
+                            entity_type: String::from("User"),
+                            entity_id: String::from("1"),
                             operation: EntityChangeOperation::Updated,
                         },
                         EntityChange {
-                            subgraph: String::from("subgraph-id"),
-                            entity: String::from("User"),
-                            id: added_entities[1].clone().0,
+                            subgraph_id: subgraph_id.clone(),
+                            entity_type: String::from("User"),
+                            entity_id: added_entities[1].clone().0,
                             operation: EntityChangeOperation::Removed,
                         },
                     ]
@@ -1752,15 +1778,15 @@ fn find_bytes_equal() {
         let logger = Logger::root(slog::Discard, o!());
         let url = postgres_test_url();
         let store = DieselStore::new(StoreConfig { url }, &logger);
-        let this_query = StoreQuery {
+        let this_query = EntityQuery {
             subgraph: TEST_SUBGRAPH_ID.clone(),
             entity: String::from("user"),
-            filter: Some(StoreFilter::And(vec![StoreFilter::Equal(
+            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 String::from("hex_name"),
                 Value::Bytes(scalar::Bytes::from_str(&hex::encode("Johnton")).unwrap()),
             )])),
             order_by: Some(String::from("name")),
-            order_direction: Some(StoreOrder::Descending),
+            order_direction: Some(EntityOrder::Descending),
             range: None,
         };
         let returned_entities = store.find(this_query).expect("store.find operation failed");

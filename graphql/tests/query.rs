@@ -199,7 +199,7 @@ impl Store for TestStore {
         unimplemented!()
     }
 
-    fn get(&self, key: StoreKey) -> Result<Option<Entity>, QueryExecutionError> {
+    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
         self.entities
             .iter()
             .find(|entity| {
@@ -213,8 +213,8 @@ impl Store for TestStore {
             )
     }
 
-    fn find(&self, query: StoreQuery) -> Result<Vec<Entity>, QueryExecutionError> {
-        let entity_name = Value::String(query.entity.clone());
+    fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
+        let entity_name = Value::String(query.entity_type.clone());
 
         let entities = self
             .entities
@@ -231,16 +231,16 @@ impl Store for TestStore {
                     .filter
                     .as_ref()
                     .and_then(|filter| match filter {
-                        StoreFilter::And(filters) => filters.get(0),
+                        EntityFilter::And(filters) => filters.get(0),
                         _ => None,
                     }).map(|filter| match filter {
-                        StoreFilter::Equal(k, v) => entity.get(k) == Some(&v),
-                        StoreFilter::Contains(k, v) => match entity.get(k) {
+                        EntityFilter::Equal(k, v) => entity.get(k) == Some(&v),
+                        EntityFilter::Contains(k, v) => match entity.get(k) {
                             Some(Value::List(values)) => values.contains(v),
                             _ => false,
                         },
-                        StoreFilter::Or(filters) => filters.iter().any(|filter| match filter {
-                            StoreFilter::Equal(k, v) => entity.get(k) == Some(&v),
+                        EntityFilter::Or(filters) => filters.iter().any(|filter| match filter {
+                            EntityFilter::Equal(k, v) => entity.get(k) == Some(&v),
                             _ => unimplemented!(),
                         }),
                         _ => unimplemented!(),
