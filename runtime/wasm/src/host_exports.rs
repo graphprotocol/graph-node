@@ -99,11 +99,23 @@ where
         id: String,
         mut data: HashMap<String, Value>,
     ) -> Result<(), HostExportError<impl ExportError>> {
+        // Automatically add an "id" value
         match data.insert("id".to_string(), Value::String(id.clone())) {
             Some(ref v) if v != &Value::String(id.clone()) => {
                 return Err(HostExportError(format!(
                     "Conflicting 'id' value set by mapping for {} entity: {} != {}",
                     entity, v, id,
+                )))
+            }
+            _ => (),
+        }
+
+        // Automatically add a "__typename" value
+        match data.insert("__typename".to_string(), Value::String(entity.clone())) {
+            Some(ref v) if v != &Value::String(entity.clone()) => {
+                return Err(HostExportError(format!(
+                    "Conflicting '__typename' value set by mapping for {} entity: {} != {}",
+                    entity, v, entity
                 )))
             }
             _ => (),
