@@ -204,8 +204,8 @@ mod tests {
 
                     // The output schema must include the input schema types
                     assert_eq!(
-                        ast::get_named_type(&input_schema.document, &"User".to_string()),
-                        ast::get_named_type(&output_schema.document, &"User".to_string())
+                        ast::get_named_type(&input_schema.document, &"User".to_string()).is_some(),
+                        ast::get_named_type(&output_schema.document, &"User".to_string()).is_some(),
                     );
 
                     // The output schema must include a Query type
