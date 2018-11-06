@@ -257,6 +257,38 @@ where
     S: Store + Send + Sync + 'static,
     U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + 'static,
 {
+    /// function abort(message?: string | null, fileName?: string | null, lineNumber?: u32, columnNumber?: u32): void
+    /// Always returns a trap.
+    fn abort(
+        &self,
+        message_ptr: AscPtr<AscString>,
+        file_name_ptr: AscPtr<AscString>,
+        line_number: u32,
+        column_number: u32,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let message = match message_ptr.is_null() {
+            false => Some(self.heap.asc_get(message_ptr)),
+            true => None,
+        };
+        let file_name = match file_name_ptr.is_null() {
+            false => Some(self.heap.asc_get(file_name_ptr)),
+            true => None,
+        };
+        let line_number = match line_number {
+            0 => None,
+            _ => Some(line_number),
+        };
+        let column_number = match column_number {
+            0 => None,
+            _ => Some(column_number),
+        };
+        Err(self
+            .host_exports
+            .abort(message, file_name, line_number, column_number)
+            .unwrap_err()
+            .into())
+    }
+
     /// function store.set(entity: string, id: string, data: Entity): void
     fn store_set(
         &mut self,
@@ -436,6 +468,12 @@ where
         args: RuntimeArgs,
     ) -> Result<Option<RuntimeValue>, Trap> {
         match index {
+            ABORT_FUNC_INDEX => self.abort(
+                args.nth_checked(0)?,
+                args.nth_checked(1)?,
+                args.nth_checked(2)?,
+                args.nth_checked(3)?,
+            ),
             STORE_SET_FUNC_INDEX => self.store_set(
                 args.nth_checked(0)?,
                 args.nth_checked(1)?,

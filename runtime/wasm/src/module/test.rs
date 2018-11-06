@@ -462,3 +462,13 @@ fn big_int_to_hex() {
         "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     );
 }
+
+#[test]
+fn abort() {
+    let mut module = test_module(mock_data_source("wasm_test/abort.wasm"));
+    let err = module
+        .module
+        .invoke_export("abort", &[], &mut module.externals)
+        .unwrap_err();
+    assert_eq!(err.to_string(), "Trap: Trap { kind: Host(HostExportError(\"Mapping aborted at abort.ts, line 1, column 1, with message: `aborted`\")) }");
+}
