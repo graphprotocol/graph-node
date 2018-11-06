@@ -92,6 +92,17 @@ pub fn get_object_type_definitions<'a>(schema: &'a Document) -> Vec<&'a ObjectTy
         }).collect()
 }
 
+/// Returns all object type definitions in the schema.
+pub fn get_object_type_definitions_mut<'a>(schema: &'a mut Document) -> Vec<&'a mut ObjectType> {
+    schema
+        .definitions
+        .iter_mut()
+        .filter_map(|d| match d {
+            Definition::TypeDefinition(TypeDefinition::Object(t)) => Some(t),
+            _ => None,
+        }).collect()
+}
+
 /// Returns all interface definitions in the schema.
 pub fn get_interface_type_definitions<'a>(schema: &'a Document) -> Vec<&'a InterfaceType> {
     schema
