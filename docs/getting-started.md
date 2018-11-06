@@ -52,28 +52,32 @@ There are three repos relevant to building on The Graph:
 Below we outline the required steps to build a subgraph from scratch, that will be serving up queries from a GraphQL endpoint. There are three major steps:
 
 1. Define The Subgraph
+    1. [Create a subgraph project and manifest](#1-defining-the-subgraph)
 
-    1. [Create a subgraph project and manifest](#3-defining-the-subgraph)
-    
-    2. [Define data sources](#31-define-the-data-sources-and-create-a-manifest)
-    
-    3. [Define a GraphQL schema](#32-create-the-graphql-schema-for-the-data-source)
-    
-    4. [Generate types for use in the subgraph mappings](#33-graph-cli)
-    5. [Write mappings](#34-writing-mappings)
+    2. [Define data sources](#11-define-the-data-sources-and-create-a-manifest)
+
+    3. [Define a GraphQL schema](#12-create-the-graphql-schema-for-the-data-source)
+
+    4. [Generate types for use in the subgraph mappings](#13-setup-graph-cli-project-and-generate-types)
+
+    5. [Write mappings](#14-writing-mappings)
 2. Build and Deploy The Subgraph
-    1. [Build and deploy mappings to IPFS](#41-build-and-deploy-the-mappings-to-ipfs)
-    
-    1. [Deploy the subgraph to the local Graph Node](#42-deploying-the-subgraph)
+    1. [Start up an IPFS node](#21-start-up-ipfs)
+
+    2. [Install Postgres and setup a database](#22-create-the-postgres-db)
+
+    3. [Starting The Graph Node](#23-starting-the-graph-node-and-connecting-to-an-etheruem-node)
+
+    4. [Build and Deploy the subgraph to the local Graph Node](#24-deploying-the-subgraph)
 3. Query The Subgraph
-    1. [Query the newly deployed GraphQL API](#5-query-the-local-graph-node)
+    1. [Query the newly deployed GraphQL API](#3-query-the-local-graph-node)
 
 Now let's dig in!
 
 ## 1 Defining The Subgraph 
 When we refer to a subgraph we are referring to the whole project. Once deployed to the decentralized network, it will form a part of a global graph of blockchain data.
 
-You can now create an empty repository to start the project. We will add the first file in section 3.1. 
+You can now create an empty repository to start the project. We will add the first file in section 1.1.
 
 ### 1.1 Define The Data Sources and Create a Manifest
 
@@ -154,12 +158,11 @@ schema:
 ```
 
 
-### 1.3 Graph CLI
+### 1.3 Setup Graph CLI Project and Generate Types
 Once you have the `subgraph.yaml` manifest and the `./schema.graphql` file, you are ready to use the Graph CLI to set up the subgraph directory. The Graph CLI is a command line tool that contains helpful commands for deploying the subgraphs. Before continuing with this guide, please go to the [Graph CLI README](https://github.com/graphprotocol/graph-cli/) and follow the instructions up to Step 7 for setting up the subgraph directory.
 
-Once you run `yarn codegen` as outlined in the Graph CLI README, you are ready to create mappings! What this command does is it looks at the contract ABIs defined in the subgraph manifest, and generates TypeScript types for all of the ABIs (actually AssemblyScript types, but more on that later) for the smart contracts the mappings script will interface with, including the types of public methods and events.
-
-This is incredibly useful for writing correct mappings, as well as improving developer productivity using the TypeScript language support in your favorite editor or IDE.
+Once you run `yarn codegen` as outlined in the Graph CLI README, you are ready to create mappings! What this command does is it looks at the contract ABIs defined in the subgraph manifest, and generates TypeScript classes (actually AssemblyScript classes, but more on that later) for the smart contracts the mappings script will interface with, including the types of public methods and events.
+Classes are also generated based on the types defined in the the GraphQL schema. The classes generated are incredibly useful for writing correct mappings, as well as improving developer productivity using the TypeScript language support in your favorite editor or IDE.
 
 ### 1.4 Writing Mappings
 
@@ -175,7 +178,8 @@ export function handleTransfer(event: Transfer): void {
 }
 ```
 
-As mentioned, AssemblyScript does not have untyped maps or plain old Javascript objects, so to represent a collection of key value tuples with heterogeneous types, an `Entity` type is included in the mapping 
+As mentioned, AssemblyScript does not have untyped maps or plain old Javascript objects, so classes are generated to represent the types defined in the GraphQL schema.
+so to represent a collection of key value tuples with heterogeneous types, an `Entity` type is included in the mapping
 types. This `Entity` type can be imported from the [Graph Typescript Library](https://github.com/graphprotocol/graph-ts), which is a typescript/assemblyscript library. The `Entity` type has different setter 
 methods for different types, satisfying AssemblyScript's requirement of strictly typed functions (and no union or `any` types).
 
@@ -372,9 +376,9 @@ If you want to sync using a public testnet such as Kovan, Rinkeby, or Ropsten, j
 ### 2.4 Deploying The Subgraph
 
 When you deploy the subgraph to the Graph Node, it will start ingesting all the subgraph events from the blockchain, transforming that data with the subgraph mappings, and storing it in the Graph Node. 
-Note that running a subgraph can safely be stopped and started, and it will pick up where it has left off. 
+Note that a running subgraph can safely be stopped and started; it will pick up where it has left off.
 
-Now you can run `yarn deploy --watch` in the subgraph directory. `yarn deploy` should have been added to `package.json` in section 3.3. This can also be found in [Graph CLI documentation](https://github.com/graphprotocol/graph-cli). This will compile the mappings, and deploy the mappings, schema and the subgraph manifest to IPFS. The subgraph is now fully running!
+Now that the infrastructure is setup you can run `yarn deploy --watch` in the subgraph directory. `yarn deploy` should have been added to `package.json` in section 1.3 when we took a moment to go through the setup for [Graph CLI documentation](https://github.com/graphprotocol/graph-cli). This will compile the mappings, and deploy the mappings, schema and subgraph manifest to IPFS. The subgraph is now fully running!
 
 ## 3 Query the local Graph Node
 With the subgraph deployed to the locally running Graph Node, visit http://127.0.0.1:8000/ to open up a [GraphiQL](https://github.com/graphql/graphiql) 
