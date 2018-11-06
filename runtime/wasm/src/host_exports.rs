@@ -73,7 +73,7 @@ where
         column_number: Option<u32>,
     ) -> Result<(), HostExportError<impl ExportError>> {
         let message = message
-            .map(|message| format!("message: `{}`", message))
+            .map(|message| format!("message: {}", message))
             .unwrap_or_else(|| "no message".into());
         let location = match (file_name, line_number, column_number) {
             (None, None, None) => "an unknown location".into(),
