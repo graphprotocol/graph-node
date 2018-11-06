@@ -650,8 +650,7 @@ impl StoreTrait for Store {
                 values
                     .into_iter()
                     .map(|value| {
-                        serde_json::from_value::<Entity>(value)
-                            .expect("Error to deserialize entity")
+                        serde_json::from_value::<Entity>(value).expect("Error parsing entity JSON")
                     }).collect()
             }).map_err(|e| QueryExecutionError::ResolveEntitiesError(e.to_string()))
     }
