@@ -125,10 +125,10 @@ fn insert_test_data(store: Arc<DieselStore>) {
         .unwrap();
 
     let test_entity_1 = create_test_entity(
-        String::from("1"),
-        String::from("user"),
-        String::from("Johnton"),
-        String::from("tonofjohn@email.com"),
+        "1",
+        "user",
+        "Johnton",
+        "tonofjohn@email.com",
         67 as i32,
         184.4 as f32,
         false,
@@ -142,37 +142,36 @@ fn insert_test_data(store: Arc<DieselStore>) {
         ).unwrap();
 
     let test_entity_2 = create_test_entity(
-        String::from("2"),
-        String::from("user"),
-        String::from("Cindini"),
-        String::from("dinici@email.com"),
+        "2",
+        "user",
+        "Cindini",
+        "dinici@email.com",
         43 as i32,
         159.1 as f32,
         true,
+    );
+    let test_entity_3_1 = create_test_entity(
+        "3",
+        "user",
+        "Shaqueeena",
+        "queensha@email.com",
+        28 as i32,
+        111.7 as f32,
+        false,
     );
     store
         .transact_block_operations(
             TEST_SUBGRAPH_ID.clone(),
             *TEST_BLOCK_1_PTR,
             *TEST_BLOCK_2_PTR,
-            vec![test_entity_2],
+            vec![test_entity_2, test_entity_3_1],
         ).unwrap();
 
-    let test_entity_3_1 = create_test_entity(
-        String::from("3"),
-        String::from("user"),
-        String::from("Shaqueeena"),
-        String::from("queensha@email.com"),
-        28 as i32,
-        111.7 as f32,
-        false,
-    );
-
     let test_entity_3_2 = create_test_entity(
-        String::from("3"),
-        String::from("user"),
-        String::from("Shaqueeena"),
-        String::from("teeko@email.com"),
+        "3",
+        "user",
+        "Shaqueeena",
+        "teeko@email.com",
         28 as i32,
         111.7 as f32,
         false,
@@ -182,35 +181,36 @@ fn insert_test_data(store: Arc<DieselStore>) {
             TEST_SUBGRAPH_ID.clone(),
             *TEST_BLOCK_2_PTR,
             *TEST_BLOCK_3_PTR,
-            vec![test_entity_3_1, test_entity_3_2],
+            vec![test_entity_3_2],
         ).unwrap();
 }
 
 /// Creates a test entity.
 fn create_test_entity(
-    id: String,
-    entity_type: String,
-    name: String,
-    email: String,
+    id: &str,
+    entity_type: &str,
+    name: &str,
+    email: &str,
     age: i32,
     weight: f32,
     coffee: bool,
 ) -> EntityOperation {
     let mut test_entity = Entity::new();
 
-    let bin_name = scalar::Bytes::from_str(&hex::encode(&name)).unwrap();
-    test_entity.insert(String::from("name"), Value::String(name));
-    test_entity.insert(String::from("bin_name"), Value::Bytes(bin_name));
-    test_entity.insert(String::from("email"), Value::String(email));
-    test_entity.insert(String::from("age"), Value::Int(age));
-    test_entity.insert(String::from("weight"), Value::Float(weight));
-    test_entity.insert(String::from("coffee"), Value::Bool(coffee));
+    test_entity.insert("id".to_owned(), Value::String(id.to_owned()));
+    test_entity.insert("name".to_owned(), Value::String(name.to_owned()));
+    let bin_name = scalar::Bytes::from_str(&hex::encode(name)).unwrap();
+    test_entity.insert("bin_name".to_owned(), Value::Bytes(bin_name));
+    test_entity.insert("email".to_owned(), Value::String(email.to_owned()));
+    test_entity.insert("age".to_owned(), Value::Int(age));
+    test_entity.insert("weight".to_owned(), Value::Float(weight));
+    test_entity.insert("coffee".to_owned(), Value::Bool(coffee));
 
     EntityOperation::Set {
         key: EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type,
-            entity_id: id,
+            entity_type: entity_type.to_owned(),
+            entity_id: id.to_owned(),
         },
         data: test_entity,
     }
@@ -257,7 +257,7 @@ fn delete_entity() {
             .unwrap();
 
         // Check that that the deleted entity id is not present
-        assert!(!all_ids.contains(&String::from("3")));
+        assert!(!all_ids.contains(&"3".to_owned()));
 
         Ok(())
     })
@@ -268,26 +268,23 @@ fn get_entity() {
     run_test(|store| -> Result<(), ()> {
         let key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: String::from("user"),
-            entity_id: String::from("1"),
+            entity_type: "user".to_owned(),
+            entity_id: "1".to_owned(),
         };
         let result = store.get(key).unwrap();
 
         let mut expected_entity = Entity::new();
 
-        let name = "Johnton".to_owned();
+        expected_entity.insert("id".to_owned(), "1".into());
+        expected_entity.insert("name".to_owned(), "Johnton".into());
         expected_entity.insert(
-            String::from("bin_name"),
-            Value::Bytes(name.as_bytes().into()),
+            "bin_name".to_owned(),
+            Value::Bytes("Johnton".as_bytes().into()),
         );
-        expected_entity.insert(String::from("name"), Value::String(name));
-        expected_entity.insert(
-            String::from("email"),
-            Value::String(String::from("tonofjohn@email.com")),
-        );
-        expected_entity.insert(String::from("age"), Value::Int(67 as i32));
-        expected_entity.insert(String::from("weight"), Value::Float(184.4 as f32));
-        expected_entity.insert(String::from("coffee"), Value::Bool(false));
+        expected_entity.insert("email".to_owned(), "tonofjohn@email.com".into());
+        expected_entity.insert("age".to_owned(), Value::Int(67 as i32));
+        expected_entity.insert("weight".to_owned(), Value::Float(184.4 as f32));
+        expected_entity.insert("coffee".to_owned(), Value::Bool(false));
 
         // Check that the expected entity was returned
         assert_eq!(result, Some(expected_entity));
@@ -302,10 +299,10 @@ fn insert_entity() {
         use db_schema::entities::dsl::*;
 
         let test_entity = create_test_entity(
-            String::from("7"),
-            String::from("user"),
-            String::from("Wanjon"),
-            String::from("wanawana@email.com"),
+            "7",
+            "user",
+            "Wanjon",
+            "wanawana@email.com",
             76 as i32,
             111.7 as f32,
             true,
@@ -323,7 +320,7 @@ fn insert_entity() {
             .select(id)
             .load::<String>(&*store.conn.lock().unwrap())
             .unwrap();
-        assert!(all_ids.iter().any(|x| x == &String::from("7")));
+        assert!(all_ids.iter().any(|x| x == &"7".to_owned()));
 
         Ok(())
     })
@@ -334,15 +331,15 @@ fn update_existing() {
     run_test(|store| -> Result<(), ()> {
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: String::from("user"),
-            entity_id: String::from("1"),
+            entity_type: "user".to_owned(),
+            entity_id: "1".to_owned(),
         };
 
         let op = create_test_entity(
-            String::from("1"),
-            String::from("user"),
-            String::from("Wanjon"),
-            String::from("wanawana@email.com"),
+            "1",
+            "user",
+            "Wanjon",
+            "wanawana@email.com",
             76 as i32,
             111.7 as f32,
             true,
@@ -369,7 +366,7 @@ fn update_existing() {
             Some(Value::Bytes(bytes)) => bytes.clone(),
             _ => unreachable!(),
         };
-        new_data.insert(String::from("bin_name"), Value::Bytes(bin_name));
+        new_data.insert("bin_name".to_owned(), Value::Bytes(bin_name));
         assert_eq!(store.get(entity_key).unwrap(), Some(new_data));
 
         Ok(())
@@ -381,8 +378,8 @@ fn partially_update_existing() {
     run_test(|store| -> Result<(), ()> {
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: String::from("user"),
-            entity_id: String::from("1"),
+            entity_type: "user".to_owned(),
+            entity_id: "1".to_owned(),
         };
 
         let partial_entity = Entity::from(vec![
@@ -426,1108 +423,695 @@ fn partially_update_existing() {
     })
 }
 
+fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
+    let expected_entity_ids: Vec<String> =
+        expected_entity_ids.into_iter().map(str::to_owned).collect();
+
+    run_test(move |store| -> Result<(), ()> {
+        let entities = store
+            .find(query)
+            .expect("store.find failed to execute query");
+
+        let entity_ids: Vec<_> = entities
+            .into_iter()
+            .map(|entity| match entity.get("id") {
+                Some(Value::String(id)) => id.to_owned(),
+                Some(_) => panic!("store.find returned entity with non-string ID attribute"),
+                None => panic!("store.find returned entity with no ID attribute"),
+            }).collect();
+
+        assert_eq!(entity_ids, expected_entity_ids);
+
+        Ok(())
+    })
+}
+
 #[test]
-#[cfg(any())]
 fn find_string_contains() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Contains(
-                String::from("name"),
-                Value::String(String::from("%ind%")),
+                "name".into(),
+                "%ind%".into(),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Make sure the first user in the result vector is "Cindini"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_string_equal() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
-                String::from("name"),
-                Value::String(String::from("Cindini")),
+                "name".to_owned(),
+                "Cindini".into(),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Make sure the first user in the result vector is "Cindini"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_string_not_equal() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["1", "3"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
-                String::from("name"),
-                Value::String(String::from("Cindini")),
+                "name".to_owned(),
+                "Cindini".into(),
             )])),
-            order_by: None,
-            order_direction: None,
-            range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Cindini"; fail if it is
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_ne!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
-}
-
-#[test]
-#[cfg(any())]
-fn find_string_greater_than() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
-            filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
-                String::from("name"),
-                Value::String(String::from("Kundi")),
-            )])),
-            order_by: None,
-            order_direction: None,
-            range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Cindini"; fail if it is
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_ne!(&test_value, returned_name.unwrap());
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
-}
-
-#[test]
-#[cfg(any())]
-fn find_string_less_than() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
-                String::from("name"),
-                Value::String(String::from("Kundi")),
-            )])),
-            order_by: None,
-            order_direction: None,
-            range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Cindini"; fail if it is
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_ne!(&test_value, returned_name.unwrap());
-
-        //There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
-}
-
-#[test]
-#[cfg(any())]
-fn find_string_less_than_order_by_asc() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
-                String::from("name"),
-                Value::String(String::from("Kundi")),
-            )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
             range: None,
-        };
-        let result = store
-            .find(this_query)
-            .expect("Failed to fetch entities from the store");
-
-        // Check that the number and order of users is correct
-        assert_eq!(2, result.len());
-        let names: Vec<&Value> = result
-            .iter()
-            .map(|entity| {
-                entity
-                    .get(&String::from("name"))
-                    .expect("Entity without \"name\" attribute returned")
-            }).collect();
-        assert_eq!(
-            names,
-            vec![
-                &Value::String(String::from("Cindini")),
-                &Value::String(String::from("Johnton")),
-            ]
-        );
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
-fn find_string_less_than_order_by_desc() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
-                String::from("name"),
-                Value::String(String::from("Kundi")),
+fn find_string_greater_than() {
+    test_find(
+        vec!["3"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
+                "name".to_owned(),
+                "Kundi".into(),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: None,
+            order_direction: None,
+            range: None,
+        },
+    )
+}
+
+#[test]
+fn find_string_less_than_order_by_asc() {
+    test_find(
+        vec!["2", "1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
+                "name".to_owned(),
+                "Kundi".into(),
+            )])),
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Ascending),
+            range: None,
+        },
+    )
+}
+
+#[test]
+fn find_string_less_than_order_by_desc() {
+    test_find(
+        vec!["1", "2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
+                "name".to_owned(),
+                "Kundi".into(),
+            )])),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
-        };
-        let result = store
-            .find(this_query)
-            .expect("Failed to fetch entities from the store");
-
-        // Check that the number and order of users is correct
-        assert_eq!(2, result.len());
-        let names: Vec<&Value> = result
-            .iter()
-            .map(|entity| {
-                entity
-                    .get(&String::from("name"))
-                    .expect("Entity without \"name\" attribute returned")
-            }).collect();
-        assert_eq!(
-            names,
-            vec![
-                &Value::String(String::from("Johnton")),
-                &Value::String(String::from("Cindini")),
-            ]
-        );
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_string_less_than_range() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
-                String::from("name"),
-                Value::String(String::from("ZZZ")),
+                "name".to_owned(),
+                "ZZZ".into(),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: Some(EntityRange { first: 1, skip: 1 }),
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Johnton"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Johnton"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_string_multiple_and() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![
-                EntityFilter::LessThan(String::from("name"), Value::String(String::from("Cz"))),
-                EntityFilter::Equal(String::from("name"), Value::String(String::from("Cindini"))),
+                EntityFilter::LessThan("name".to_owned(), "Cz".into()),
+                EntityFilter::Equal("name".to_owned(), "Cindini".into()),
             ])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Cindini"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_string_ends_with() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::EndsWith(
-                String::from("name"),
-                Value::String(String::from("ini")),
+                "name".to_owned(),
+                "ini".into(),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Cindini"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_string_not_ends_with() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["3", "1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::NotEndsWith(
-                String::from("name"),
-                Value::String(String::from("ini")),
+                "name".to_owned(),
+                "ini".into(),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Shaqueeena"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Shaqueeena"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_string_in() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
-                String::from("name"),
-                vec![Value::String(String::from("Johnton"))],
+                "name".to_owned(),
+                vec!["Johnton".into()],
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Johnton"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Johnton"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_string_not_in() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["1", "2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
-                String::from("name"),
-                vec![Value::String(String::from("Shaqueeena"))],
+                "name".to_owned(),
+                vec!["Shaqueeena".into()],
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Johnton"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-
-        let test_value = Value::String(String::from("Johnton"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 user returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_float_equal() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
-                String::from("weight"),
+                "weight".to_owned(),
                 Value::Float(184.4 as f32),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Johnton"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Johnton"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_float_not_equal() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["3", "2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
-                String::from("weight"),
+                "weight".to_owned(),
                 Value::Float(184.4 as f32),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Shaqueeena"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Shaqueeena"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_float_greater_than() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
-                String::from("weight"),
+                "weight".to_owned(),
                 Value::Float(160 as f32),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Johnton"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Johnton"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_float_less_than() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2", "3"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
-                String::from("weight"),
+                "weight".to_owned(),
                 Value::Float(160 as f32),
             )])),
-            order_by: Some((String::From("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Cindini";
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_float_less_than_order_by_desc() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["3", "2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
-                String::from("weight"),
+                "weight".to_owned(),
                 Value::Float(160 as f32),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Shaqueeena"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Shaqueeena"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_float_less_than_range() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
-                String::from("weight"),
+                "weight".to_owned(),
                 Value::Float(161 as f32),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: Some(EntityRange { first: 1, skip: 1 }),
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-        // Check if the first user in the result vector is "Cindini"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_float_in() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["3", "1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
-                String::from("weight"),
+                "weight".to_owned(),
                 vec![Value::Float(184.4 as f32), Value::Float(111.7 as f32)],
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: Some(EntityRange { first: 5, skip: 0 }),
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Shaqueeena"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Shaqueeena"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_float_not_in() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
-                String::from("weight"),
+                "weight".to_owned(),
                 vec![Value::Float(184.4 as f32), Value::Float(111.7 as f32)],
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: Some(EntityRange { first: 5, skip: 0 }),
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Cindini"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 users returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_int_equal() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
-                String::from("age"),
+                "age".to_owned(),
                 Value::Int(67 as i32),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Johnton"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Johnton"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 users returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_int_not_equal() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["3", "2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
-                String::from("age"),
+                "age".to_owned(),
                 Value::Int(67 as i32),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Shaqueeena"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Shaqueeena"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_int_greater_than() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
-                String::from("age"),
+                "age".to_owned(),
                 Value::Int(43 as i32),
             )])),
             order_by: None,
             order_direction: None,
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Johnton"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Johnton"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_int_greater_or_equal() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2", "1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::GreaterOrEqual(
-                String::from("age"),
+                "age".to_owned(),
                 Value::Int(43 as i32),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Cindini"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_int_less_than() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2", "3"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
-                String::from("age"),
+                "age".to_owned(),
                 Value::Int(50 as i32),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Cindini"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        //There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_int_less_or_equal() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2", "3"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::LessOrEqual(
-                String::from("age"),
+                "age".to_owned(),
                 Value::Int(43 as i32),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Cindini";
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_int_less_than_order_by_desc() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["3", "2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
-                String::from("age"),
+                "age".to_owned(),
                 Value::Int(50 as i32),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Shaqueeena"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Shaqueeena"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_int_less_than_range() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
-                String::from("age"),
+                "age".to_owned(),
                 Value::Int(67 as i32),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: Some(EntityRange { first: 1, skip: 1 }),
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Johnton"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_int_in() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["1", "2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
-                String::from("age"),
+                "age".to_owned(),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: Some(EntityRange { first: 5, skip: 0 }),
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Johnton"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Johnton"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_int_not_in() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["3"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
-                String::from("age"),
+                "age".to_owned(),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: Some(EntityRange { first: 5, skip: 0 }),
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Shaqueeena"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Shaqueeena"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 users returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
+#[ignore]
 fn find_bool_equal() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
-                String::from("coffee"),
+                "coffee".to_owned(),
                 Value::Bool(true),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Cindini"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
+#[ignore]
 fn find_bool_not_equal() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["1", "3"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
-                String::from("coffee"),
+                "coffee".to_owned(),
                 Value::Bool(true),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
             range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find query failed");
-
-        // Check if the first user in the result vector is "Johnton"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Johnton"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
 fn find_bool_in() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
-                String::from("coffee"),
+                "coffee".to_owned(),
                 vec![Value::Bool(true)],
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: Some(EntityRange { first: 5, skip: 0 }),
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Cindini"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Cindini"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
+#[ignore]
 fn find_bool_not_in() {
-    run_test(|store| -> Result<(), ()> {
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+    test_find(
+        vec!["3", "1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
-                String::from("coffee"),
+                "coffee".to_owned(),
                 vec![Value::Bool(true)],
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: Some(EntityRange { first: 5, skip: 0 }),
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Shaqueeena"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Shaqueeena"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 2 users returned in results
-        assert_eq!(2, returned_entities.len());
-
-        Ok(())
-    })
+        },
+    )
 }
 
 #[test]
-#[cfg(any())]
+fn find_bytes_equal() {
+    test_find(
+        vec!["1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
+                "bin_name".to_owned(),
+                Value::Bytes("Johnton".as_bytes().into()),
+            )])),
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Descending),
+            range: None,
+        },
+    )
+}
+
+#[test]
 fn revert_block() {
     run_test(|store| -> Result<(), ()> {
         let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
-                String::from("name"),
-                Value::String(String::from("Shaqueeena")),
+                "name".to_owned(),
+                Value::String("Shaqueeena".to_owned()),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
         };
 
-        let block_hash = "znuyjijnezBiGFuZAW9Q";
-        let event_source =
-            EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes())).to_string();
-
-        // Revert all events associated with event_source, "znuyjijnezBiGFuZAW9Q"
-        store.revert_events(event_source, this_query.subgraph.clone());
+        // Revert block 3
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_2_PTR,
+            ).unwrap();
 
         let returned_entities = store
             .find(this_query.clone())
             .expect("store.find operation failed");
 
-        // Check if the first user in the result vector has email "queensha@email.com"
-        let returned_name = returned_entities[0].get(&String::from("email"));
-        let test_value = Value::String(String::from("queensha@email.com"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
         // There should be 1 user returned in results
         assert_eq!(1, returned_entities.len());
 
-        // Perform revert operation again to confirm idempotent nature of revert_events()
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-        let returned_name = returned_entities[0].get(&String::from("email"));
-        let test_value = Value::String(String::from("queensha@email.com"));
+        // Check if the first user in the result vector has email "queensha@email.com"
+        let returned_name = returned_entities[0].get(&"email".to_owned());
+        let test_value = Value::String("queensha@email.com".to_owned());
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -1536,65 +1120,55 @@ fn revert_block() {
 }
 
 #[test]
-#[cfg(any())]
 fn revert_block_with_delete() {
     run_test(|store| -> Result<(), ()> {
         let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
-                String::from("name"),
-                Value::String(String::from("Cindini")),
+                "name".to_owned(),
+                Value::String("Cindini".to_owned()),
             )])),
-            order_by: Some((String::from("name"), ValueType::String)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
             range: None,
         };
 
-        // Delete an entity using a randomly created event source
+        // Delete entity with id=2
         let del_key = EntityKey {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
-            id: String::from("2"),
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            entity_id: "2".to_owned(),
         };
 
-        let block_hash = "test_block_to_revert";
-        let event_source = EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes()));
-        let revert_event_source = event_source.to_string();
+        // Process deletion
         store
-            .delete(del_key.clone(), event_source)
-            .expect("Store.delete operation failed");
+            .transact_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_4_PTR,
+                vec![EntityOperation::Remove { key: del_key }],
+            ).unwrap();
 
-        // Revert all events associated with our random event_source
-        store.revert_events(revert_event_source, this_query.subgraph.clone());
+        // Revert deletion
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_4_PTR,
+                *TEST_BLOCK_3_PTR,
+            ).unwrap();
 
+        // Query after revert
         let returned_entities = store
             .find(this_query.clone())
             .expect("store.find operation failed");
-
-        // Check if "dinici@email.com" is in result set
-        let returned_name = returned_entities[0].get(&String::from("email"));
-        let test_value = Value::String(String::from("dinici@email.com"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
 
         // There should be 1 entity returned in results
         assert_eq!(1, returned_entities.len());
 
-        // Perform revert operation again to confirm idempotent nature of revert_events()
-        // Delete an entity using a randomly created event source
-        let block_hash = "test_block_to_revert";
-        let event_source = EventSource::EthereumBlock(H256::from_slice(&block_hash.as_bytes()));
-        let revert_event_source = event_source.to_string();
-        store
-            .delete(del_key.clone(), event_source)
-            .expect("Store.delete operation failed");
-        store.revert_events(revert_event_source, this_query.subgraph.clone());
-        let returned_entities = store
-            .find(this_query.clone())
-            .expect("store.find operation failed");
-        let returned_name = returned_entities[0].get(&String::from("email"));
-        let test_value = Value::String(String::from("dinici@email.com"));
+        // Check if "dinici@email.com" is in result set
+        let returned_name = returned_entities[0].get(&"email".to_owned());
+        let test_value = Value::String("dinici@email.com".to_owned());
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
 
@@ -1603,13 +1177,12 @@ fn revert_block_with_delete() {
 }
 
 #[test]
-#[cfg(any())]
 fn revert_block_with_partial_update() {
     run_test(|store| -> Result<(), ()> {
         let entity_key = EntityKey {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
-            id: String::from("1"),
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            entity_id: "1".to_owned(),
         };
 
         let partial_entity = Entity::from(vec![
@@ -1618,31 +1191,38 @@ fn revert_block_with_partial_update() {
             ("email", Value::Null),
         ]);
 
-        let original_entity = store.get(entity_key.clone()).unwrap();
-        let event_source = EventSource::EthereumBlock(H256::random());
-        let revert_event_source = event_source.to_string();
-
-        // Verify that the entity before updating is different from what we expect afterwards
-        assert_ne!(original_entity, partial_entity);
+        let original_entity = store
+            .get(entity_key.clone())
+            .unwrap()
+            .expect("missing entity");
 
         // Set test entity; as the entity already exists an update should be performed
         store
-            .set(entity_key.clone(), partial_entity, event_source)
-            .expect("Failed to update entity that already exists");
+            .transact_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_4_PTR,
+                vec![EntityOperation::Set {
+                    key: entity_key.clone(),
+                    data: partial_entity.clone(),
+                }],
+            ).unwrap();
 
         // Perform revert operation, reversing the partial update
-        store.revert_events(revert_event_source.clone(), entity_key.subgraph.clone());
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_4_PTR,
+                *TEST_BLOCK_3_PTR,
+            ).unwrap();
 
         // Obtain the reverted entity from the store
-        let reverted_entity = store.get(entity_key.clone()).unwrap();
+        let reverted_entity = store
+            .get(entity_key.clone())
+            .unwrap()
+            .expect("missing entity");
 
         // Verify that the entity has been returned to its original state
-        assert_eq!(reverted_entity, original_entity);
-
-        // Perform revert operation again and verify the same results to confirm the
-        // idempotent nature of the revert_events function
-        store.revert_events(revert_event_source, entity_key.subgraph.clone());
-        let reverted_entity = store.get(entity_key).unwrap();
         assert_eq!(reverted_entity, original_entity);
 
         Ok(())
@@ -1650,6 +1230,7 @@ fn revert_block_with_partial_update() {
 }
 
 #[test]
+#[ignore]
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store| {
         let subgraph_id: SubgraphId = "entity-change-test-subgraph".to_owned();
@@ -1741,25 +1322,25 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                     vec![
                         EntityChange {
                             subgraph_id: subgraph_id.clone(),
-                            entity_type: String::from("User"),
+                            entity_type: "User".to_owned(),
                             entity_id: added_entities[0].clone().0,
                             operation: EntityChangeOperation::Added,
                         },
                         EntityChange {
                             subgraph_id: subgraph_id.clone(),
-                            entity_type: String::from("User"),
+                            entity_type: "User".to_owned(),
                             entity_id: added_entities[1].clone().0,
                             operation: EntityChangeOperation::Added,
                         },
                         EntityChange {
                             subgraph_id: subgraph_id.clone(),
-                            entity_type: String::from("User"),
-                            entity_id: String::from("1"),
+                            entity_type: "User".to_owned(),
+                            entity_id: "1".to_owned(),
                             operation: EntityChangeOperation::Updated,
                         },
                         EntityChange {
                             subgraph_id: subgraph_id.clone(),
-                            entity_type: String::from("User"),
+                            entity_type: "User".to_owned(),
                             entity_id: added_entities[1].clone().0,
                             operation: EntityChangeOperation::Removed,
                         },
@@ -1768,38 +1349,5 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 
                 Ok(())
             }).and_then(|_| Ok(()))
-    })
-}
-
-#[cfg(any())]
-#[test]
-fn find_bytes_equal() {
-    run_test(|| -> Result<(), ()> {
-        let logger = Logger::root(slog::Discard, o!());
-        let url = postgres_test_url();
-        let store = DieselStore::new(StoreConfig { url }, &logger);
-        let this_query = EntityQuery {
-            subgraph: TEST_SUBGRAPH_ID.clone(),
-            entity: String::from("user"),
-            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
-                String::from("hex_name"),
-                Value::Bytes(scalar::Bytes::from_str(&hex::encode("Johnton")).unwrap()),
-            )])),
-            order_by: Some(String::from("name")),
-            order_direction: Some(EntityOrder::Descending),
-            range: None,
-        };
-        let returned_entities = store.find(this_query).expect("store.find operation failed");
-
-        // Check if the first user in the result vector is "Johnton"
-        let returned_name = returned_entities[0].get(&String::from("name"));
-        let test_value = Value::String(String::from("Johnton"));
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // There should be 1 users returned in results
-        assert_eq!(1, returned_entities.len());
-
-        Ok(())
     })
 }

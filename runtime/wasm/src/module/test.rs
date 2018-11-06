@@ -161,8 +161,8 @@ where
     }
 }
 
-#[cfg(any())]
 #[test]
+#[cfg(any())]
 fn call_invalid_event_handler_and_dont_crash() {
     // This test passing means the module doesn't crash when an invalid
     // event handler is called or when the event handler execution fails.
@@ -189,8 +189,8 @@ fn call_invalid_event_handler_and_dont_crash() {
     );
 }
 
-#[cfg(any())]
 #[test]
+#[cfg(any())]
 fn call_event_handler_and_receive_store_event() {
     // Load the example_event_handler.wasm test module. All this module does
     // is implement an `handleExampleEvent` function that calls `store.set()`
