@@ -65,6 +65,34 @@ where
         }
     }
 
+    pub(crate) fn abort(
+        &self,
+        message: Option<String>,
+        file_name: Option<String>,
+        line_number: Option<u32>,
+        column_number: Option<u32>,
+    ) -> Result<(), HostExportError<impl ExportError>> {
+        let message = message
+            .map(|message| format!("message: `{}`", message))
+            .unwrap_or_else(|| "no message".into());
+        let location = match (file_name, line_number, column_number) {
+            (None, None, None) => "an unknown location".into(),
+            (Some(file_name), None, None) => file_name,
+            (Some(file_name), Some(line_number), None) => {
+                format!("{}, line {}", file_name, line_number)
+            }
+            (Some(file_name), Some(line_number), Some(column_number)) => format!(
+                "{}, line {}, column {}",
+                file_name, line_number, column_number
+            ),
+            _ => unreachable!(),
+        };
+        Err(HostExportError(format!(
+            "Mapping aborted at {}, with {}",
+            location, message
+        )))
+    }
+
     pub(crate) fn store_set(
         &mut self,
         entity: String,

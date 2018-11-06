@@ -53,6 +53,11 @@ impl<C: AscType> AscPtr<C> {
     pub(crate) fn to_payload(&self) -> u64 {
         self.0 as u64
     }
+
+    /// We typically assume `AscPtr` is never null, but for types such as `string | null` it can be.
+    pub(crate) fn is_null(&self) -> bool {
+        self.0 == 0
+    }
 }
 
 impl<C> From<AscPtr<C>> for RuntimeValue {
