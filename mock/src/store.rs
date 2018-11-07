@@ -137,6 +137,14 @@ impl Store for MockStore {
         unimplemented!();
     }
 
+    fn apply_set_operation(
+        &self,
+        operation: EntityOperation,
+        op_event_source: String,
+    ) -> Result<(), Error> {
+        unimplemented!()
+    }
+
     fn revert_block_operations(
         &self,
         _: SubgraphId,
@@ -255,6 +263,14 @@ impl Store for FakeStore {
         _: Vec<EntityOperation>,
     ) -> Result<(), Error> {
         unimplemented!();
+    }
+
+    fn apply_set_operation(
+        &self,
+        operation: EntityOperation,
+        op_event_source: String,
+    ) -> Result<(), Error> {
+        unimplemented!()
     }
 
     fn revert_block_operations(
