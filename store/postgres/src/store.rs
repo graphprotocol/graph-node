@@ -328,7 +328,7 @@ impl Store {
                 entity.eq(op_entity),
                 subgraph.eq(op_subgraph),
                 data.eq(&updated_json),
-                event_source.eq(block_ptr_to.hash.to_string()),
+                event_source.eq(block_ptr_to.hash_hex()),
             )).on_conflict((id, entity, subgraph))
             .do_update()
             .set((
@@ -336,7 +336,7 @@ impl Store {
                 entity.eq(op_entity),
                 subgraph.eq(op_subgraph),
                 data.eq(&updated_json),
-                event_source.eq(block_ptr_to.hash.to_string()),
+                event_source.eq(block_ptr_to.hash_hex()),
             )).execute(conn)
             .map_err(|e| {
                 format_err!(
