@@ -7,6 +7,8 @@ use graph::components::subgraph::SubgraphProviderEvent;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 
 use super::SubgraphInstance;
+use elastic_logger;
+use ElasticDrainConfig;
 
 type InstanceShutdownMap = Arc<RwLock<HashMap<SubgraphId, CancelGuard>>>;
 
@@ -68,7 +70,18 @@ impl SubgraphInstanceManager {
 
             match event {
                 SubgraphStart(manifest) => {
-                    let logger = logger.new(o!("subgraph_id" => manifest.id.clone()));
+                    // let logger = logger.new(o!("subgraph_id" => manifest.id.clone()));
+                    let logger = elastic_logger(ElasticDrainConfig {
+                        endpoint: String::from(
+                            "https://d7d9391f130d40719020a7a81303ba0b.us-west-1.aws.found.io:9243",
+                        ),
+                        username: String::from("elastic"),
+                        password: Some(String::from("ezrcmTtocVTGZu2BogsQIY2E")),
+                        index: String::from("subgraph-logs"),
+                        document_type: String::from("log"),
+                        subgraph_id: String::from(manifest.id.clone()),
+                    });
+
                     info!(logger, "Start subgraph");
 
                     Self::start_subgraph(
