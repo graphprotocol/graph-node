@@ -206,7 +206,8 @@ where
             .find(|abi| abi.name == unresolved_call.contract_name)
             .ok_or_else(|| {
                 HostExportError(format!(
-                    "Could not find ABI for contract \"{}\", try adding it to the 'abis' section of the subgraph manifest",
+                    "Could not find ABI for contract \"{}\", try adding it to the 'abis' section \
+                     of the subgraph manifest",
                     unresolved_call.contract_name
                 ))
             })?.contract
