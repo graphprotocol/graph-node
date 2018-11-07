@@ -173,6 +173,14 @@ impl Store for TestStore {
         unimplemented!()
     }
 
+    fn apply_set_operation(
+        &self,
+        operation: EntityOperation,
+        op_event_source: String,
+    ) -> Result<(), Error> {
+        unimplemented!()
+    }
+
     fn transact_block_operations(
         &self,
         _: SubgraphId,

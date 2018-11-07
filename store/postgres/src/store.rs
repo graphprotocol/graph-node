@@ -294,14 +294,26 @@ impl Store {
         }
     }
 
-    /// Applies a set operation in Postgres.
-    fn apply_set_operation(
+    /// Applies a set operation with the given block as the event source.
+    fn apply_set_operation_with_block(
         &self,
         conn: &PgConnection,
         operation: EntityOperation,
         block_ptr_to: EthereumBlockPointer,
-    ) -> Result<usize, Error> {
+    ) -> Result<(), Error> {
+        self.apply_set_operation_with_conn(conn, operation, &block_ptr_to.hash_hex())
+    }
+
+    /// Applies a set operation in Postgres.
+    fn apply_set_operation_with_conn(
+        &self,
+        conn: &PgConnection,
+        operation: EntityOperation,
+        op_event_source: &str,
+    ) -> Result<(), Error> {
         use db_schema::entities::dsl::*;
+
+        assert!(operation.is_set());
 
         let EntityKey {
             subgraph_id: op_subgraph_id,
@@ -333,7 +345,7 @@ impl Store {
                 entity.eq(op_entity_type),
                 subgraph.eq(op_subgraph_id),
                 data.eq(&updated_json),
-                event_source.eq(block_ptr_to.hash_hex()),
+                event_source.eq(op_event_source),
             )).on_conflict((id, entity, subgraph))
             .do_update()
             .set((
@@ -341,8 +353,9 @@ impl Store {
                 entity.eq(op_entity_type),
                 subgraph.eq(op_subgraph_id),
                 data.eq(&updated_json),
-                event_source.eq(block_ptr_to.hash_hex()),
+                event_source.eq(op_event_source),
             )).execute(conn)
+            .map(|_| ())
             .map_err(|e| {
                 format_err!(
                     "Failed to set entity ({}, {}, {}): {}",
@@ -360,7 +373,7 @@ impl Store {
         conn: &PgConnection,
         operation: EntityOperation,
         block_ptr_to: EthereumBlockPointer,
-    ) -> Result<usize, Error> {
+    ) -> Result<(), Error> {
         use db_schema::entities::dsl::*;
 
         let EntityKey {
@@ -383,6 +396,7 @@ impl Store {
                 .filter(entity.eq(op_entity_type))
                 .filter(id.eq(op_entity_id)),
         ).execute(conn)
+        .map(|_| ())
         .map_err(|e| {
             format_err!(
                 "Failed to remove entity ({}, {}, {}): {}",
@@ -400,9 +414,11 @@ impl Store {
         conn: &PgConnection,
         operation: EntityOperation,
         block_ptr_to: EthereumBlockPointer,
-    ) -> Result<usize, Error> {
+    ) -> Result<(), Error> {
         match operation {
-            EntityOperation::Set { .. } => self.apply_set_operation(conn, operation, block_ptr_to),
+            EntityOperation::Set { .. } => {
+                self.apply_set_operation_with_block(conn, operation, block_ptr_to)
+            }
             EntityOperation::Remove { .. } => {
                 self.apply_remove_operation(conn, operation, block_ptr_to)
             }
@@ -686,6 +702,16 @@ impl StoreTrait for Store {
             self.apply_entity_operations(&*conn, operations, block_ptr_to)?;
             self.update_subgraph_block_pointer(&*conn, subgraph_id, block_ptr_from, block_ptr_to)
         })
+    }
+
+    /// Sets an entity.
+    fn apply_set_operation(
+        &self,
+        operation: EntityOperation,
+        op_event_source: String,
+    ) -> Result<(), Error> {
+        let conn = self.conn.lock().unwrap();
+        self.apply_set_operation_with_conn(&conn, operation, &op_event_source)
     }
 
     fn revert_block_operations(

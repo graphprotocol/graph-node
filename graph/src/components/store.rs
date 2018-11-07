@@ -117,6 +117,14 @@ pub enum EntityOperation {
 }
 
 impl EntityOperation {
+    /// Returns true if the operation is of variant `Set`.
+    pub fn is_set(&self) -> bool {
+        match self {
+            EntityOperation::Set { .. } => true,
+            _ => false,
+        }
+    }
+
     /// Returns true if the operation is an entity removal.
     pub fn is_remove(&self) -> bool {
         use self::EntityOperation::*;
@@ -298,6 +306,13 @@ pub trait Store: Send + Sync + 'static {
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
         operations: Vec<EntityOperation>,
+    ) -> Result<(), Error>;
+
+    /// For operations that are not tied to a block.
+    fn apply_set_operation(
+        &self,
+        operation: EntityOperation,
+        op_event_source: String,
     ) -> Result<(), Error>;
 
     /// Revert the entity changes from a single block atomically in the store, and update the
