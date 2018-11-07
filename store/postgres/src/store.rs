@@ -20,7 +20,7 @@ use graph::{tokio, tokio::timer::Interval};
 
 use chain_head_listener::ChainHeadUpdateListener;
 use entity_changes::EntityChangeListener;
-use functions::{attempt_chain_head_update, lookup_ancestor_block, revert_block};
+use functions::{attempt_chain_head_update, lookup_ancestor_block, revert_block, set_config};
 
 embed_migrations!("./migrations");
 
@@ -359,6 +359,7 @@ impl Store {
         &self,
         conn: &PgConnection,
         operation: EntityOperation,
+        block_ptr_to: EthereumBlockPointer,
     ) -> Result<usize, Error> {
         use db_schema::entities::dsl::*;
 
@@ -367,6 +368,14 @@ impl Store {
             entity_type: op_entity_type,
             entity_id: op_entity_id,
         } = operation.entity_key();
+
+        select(set_config(
+            "vars.current_event_source",
+            block_ptr_to.hash_hex(),
+            true,
+        )).execute(conn)
+        .map_err(|e| format_err!("Error reverting block: {}", e))
+        .map(|_| ())?;
 
         delete(
             entities
@@ -394,7 +403,9 @@ impl Store {
     ) -> Result<usize, Error> {
         match operation {
             EntityOperation::Set { .. } => self.apply_set_operation(conn, operation, block_ptr_to),
-            EntityOperation::Remove { .. } => self.apply_remove_operation(conn, operation),
+            EntityOperation::Remove { .. } => {
+                self.apply_remove_operation(conn, operation, block_ptr_to)
+            }
         }
     }
 
