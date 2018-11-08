@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate failure;
 extern crate futures;
 extern crate graphql_parser;
@@ -9,10 +8,8 @@ extern crate graph_core;
 extern crate graph_graphql;
 
 use graphql_parser::query as q;
-use std::sync::Mutex;
 
 use graph::prelude::*;
-use graph::web3::types::{Block, Transaction, H256};
 use graph_graphql::prelude::*;
 
 fn test_schema() -> Schema {
@@ -252,47 +249,6 @@ impl Store for TestStore {
     }
 }
 
-#[cfg(any())]
-impl ChainStore for TestStore {
-    type ChainHeadUpdateListener = graph::store::ChainHeadUpdateListener;
-
-    fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error> {
-        unimplemented!()
-    }
-
-    fn upsert_blocks<'a, B: Stream<Item = EthereumBlock, Error = Error> + Send + 'a>(
-        &self,
-        _: B,
-    ) -> Box<Future<Item = (), Error = Error> + Send + 'a> {
-        unimplemented!()
-    }
-
-    fn attempt_chain_head_update(&self, _: u64) -> Result<Vec<H256>, Error> {
-        unimplemented!()
-    }
-
-    fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener {
-        unimplemented!()
-    }
-
-    fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
-        unimplemented!()
-    }
-
-    fn block(&self, _: H256) -> Result<Option<EthereumBlock>, Error> {
-        unimplemented!()
-    }
-
-    fn ancestor_block(
-        &self,
-        _: EthereumBlockPointer,
-        _: u64,
-    ) -> Result<Option<EthereumBlock>, Error> {
-        unimplemented!()
-    }
-}
-
-#[cfg(any())]
 fn execute_query_document(query: q::Document) -> QueryResult {
     let query = Query {
         schema: test_schema(),
@@ -301,7 +257,7 @@ fn execute_query_document(query: q::Document) -> QueryResult {
     };
 
     let logger = Logger::root(slog::Discard, o!());
-    let store = Arc::new(Mutex::new(TestStore::new()));
+    let store = Arc::new(TestStore::new());
     let store_resolver = StoreResolver::new(&logger, store);
 
     let options = QueryExecutionOptions {
@@ -313,7 +269,6 @@ fn execute_query_document(query: q::Document) -> QueryResult {
 }
 
 #[test]
-#[cfg(any())]
 fn can_query_one_to_one_relationship() {
     let result = execute_query_document(
         graphql_parser::parse_query(
@@ -380,7 +335,6 @@ fn can_query_one_to_one_relationship() {
 }
 
 #[test]
-#[cfg(any())]
 fn can_query_one_to_many_relationships_in_both_directions() {
     let result = execute_query_document(
         graphql_parser::parse_query(
@@ -475,7 +429,6 @@ fn can_query_one_to_many_relationships_in_both_directions() {
 }
 
 #[test]
-#[cfg(any())]
 fn can_query_many_to_many_relationship() {
     let result = execute_query_document(
         graphql_parser::parse_query(

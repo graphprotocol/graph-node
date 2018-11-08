@@ -108,7 +108,7 @@ pub struct EntityChange {
 pub type EntityChangeStream = Box<Stream<Item = EntityChange, Error = ()> + Send>;
 
 /// An entity operation that can be transacted into the store.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum EntityOperation {
     /// An entity is created or updated.
     Set { key: EntityKey, data: Entity },

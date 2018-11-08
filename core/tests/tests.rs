@@ -11,15 +11,15 @@ use walkdir::WalkDir;
 use std::collections::HashSet;
 use std::fs::read_to_string;
 use std::io::Cursor;
-use std::iter::FromIterator;
 use std::time::Duration;
 use std::time::Instant;
 
 use graph::components::ethereum::*;
 use graph::ethabi::Token;
 use graph::prelude::*;
+use graph::web3::types::*;
 use graph_core::SubgraphInstanceManager;
-use graph_mock::{FakeStore, MockStore};
+use graph_mock::{FakeStore, MockBlockStreamBuilder, MockStore};
 use graph_runtime_wasm::RuntimeHostBuilder;
 
 /// Adds subgraph located in `test/subgraphs/`, replacing "link to" placeholders
@@ -63,55 +63,59 @@ fn add_subgraph_to_ipfs(
     ipfs_upload.and_then(move |subgraph_string| add(&add_client, subgraph_string))
 }
 
-#[cfg(any())]
 #[test]
+#[cfg(any())]
 fn multiple_data_sources_per_subgraph() {
-    struct MockEthereumAdapter {
-        received_subscriptions: Vec<String>,
-    }
+    struct MockEthereumAdapter;
 
     impl EthereumAdapter for MockEthereumAdapter {
         fn net_identifiers(
             &self,
+            _: &Logger,
         ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
-            unimplemented!()
+            unimplemented!();
         }
 
         fn block_by_hash(
             &self,
+            _: &Logger,
             _: H256,
         ) -> Box<Future<Item = Option<EthereumBlock>, Error = Error> + Send> {
-            unimplemented!()
+            unimplemented!();
         }
 
         fn block_hash_by_block_number(
             &self,
+            _: &Logger,
             _: u64,
         ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
-            unimplemented!()
+            unimplemented!();
         }
 
         fn is_on_main_chain(
             &self,
+            _: &Logger,
             _: EthereumBlockPointer,
         ) -> Box<Future<Item = bool, Error = Error> + Send> {
-            unimplemented!()
+            unimplemented!();
         }
 
         fn find_first_blocks_with_logs(
             &self,
+            _: &Logger,
             _: u64,
             _: u64,
             _: EthereumLogFilter,
         ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
-            unimplemented!()
+            unimplemented!();
         }
 
         fn contract_call(
             &self,
+            _: &Logger,
             _: EthereumContractCall,
-        ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError>> {
-            unimplemented!()
+        ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
+            unimplemented!();
         }
     }
 
@@ -126,17 +130,13 @@ fn multiple_data_sources_per_subgraph() {
         .block_on(future::lazy(|| {
             let resolver = Arc::new(IpfsClient::default());
             let logger = Logger::root(slog::Discard, o!());
-            let eth_adapter = Arc::new(Mutex::new(MockEthereumAdapter {
-                received_subscriptions: vec![],
-            }));
-            let fake_store = Arc::new(Mutex::new(FakeStore));
-            let host_builder = RuntimeHostBuilder::new(
-                &logger,
-                eth_adapter.clone(),
-                resolver.clone(),
-                fake_store.clone(),
-            );
-            let manager = RuntimeManager::new(&logger, fake_store, host_builder);
+            let eth_adapter = Arc::new(MockEthereumAdapter);
+            let store = Arc::new(FakeStore);
+            let host_builder =
+                RuntimeHostBuilder::new(eth_adapter.clone(), resolver.clone(), store.clone());
+            let block_stream_builder = MockBlockStreamBuilder::new();
+            let manager =
+                SubgraphInstanceManager::new(&logger, store, host_builder, block_stream_builder);
 
             // Load a subgraph with two data sets, one listening for `ExampleEvent`
             // and the other for `ExampleEvent2`.

@@ -7,22 +7,21 @@ extern crate parity_wasm;
 use self::graph_mock::FakeStore;
 use ethabi::{LogParam, Token};
 use failure::Error;
-use futures::sync::mpsc::{channel, Receiver, Sender};
+use futures::sync::mpsc::{channel, Sender};
 use graph::components::ethereum::*;
 use graph::components::store::*;
 use graph::components::subgraph::*;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::util;
-use graph::web3::types::{Address, H256, U256};
+use graph::web3::types::{Bytes, *};
 use hex;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::iter::FromIterator;
 use std::str::FromStr;
-use std::sync::Mutex;
 
-use super::{Error as WasmiError, *};
+use super::*;
 
 use self::graphql_parser::schema::Document;
 
@@ -40,7 +39,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn block_by_hash(
         &self,
         _: &Logger,
-        block_hash: H256,
+        _: H256,
     ) -> Box<Future<Item = Option<EthereumBlock>, Error = Error> + Send> {
         unimplemented!();
     }
@@ -48,7 +47,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn block_hash_by_block_number(
         &self,
         _: &Logger,
-        block_number: u64,
+        _: u64,
     ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
         unimplemented!();
     }
@@ -56,7 +55,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn is_on_main_chain(
         &self,
         _: &Logger,
-        block_ptr: EthereumBlockPointer,
+        _: EthereumBlockPointer,
     ) -> Box<Future<Item = bool, Error = Error> + Send> {
         unimplemented!();
     }
@@ -64,9 +63,9 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn find_first_blocks_with_logs(
         &self,
         _: &Logger,
-        from: u64,
-        to: u64,
-        log_filter: EthereumLogFilter,
+        _: u64,
+        _: u64,
+        _: EthereumLogFilter,
     ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         unimplemented!();
     }
@@ -74,7 +73,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn contract_call(
         &self,
         _: &Logger,
-        call: EthereumContractCall,
+        _: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
         unimplemented!();
     }
@@ -162,35 +161,87 @@ where
 }
 
 #[test]
-#[cfg(any())]
 fn call_invalid_event_handler_and_dont_crash() {
     // This test passing means the module doesn't crash when an invalid
     // event handler is called or when the event handler execution fails.
 
-    let (mut module, _) = test_module(mock_data_source("wasm_test/example_event_handler.wasm"));
+    let mut module = test_module(mock_data_source("wasm_test/example_event_handler.wasm"));
 
-    // Create a mock Ethereum event
-    let ethereum_event = EthereumEvent {
+    // Create mock Ethereum data
+    let block_hash = H256::random();
+    let transaction = Transaction {
+        hash: H256::random(),
+        nonce: U256::zero(),
+        block_hash: Some(block_hash),
+        block_number: Some(5.into()),
+        transaction_index: Some(0.into()),
+        from: H160::random(),
+        to: None,
+        value: 0.into(),
+        gas_price: 0.into(),
+        gas: 0.into(),
+        input: Bytes::default(),
+    };
+    let log = Log {
         address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
-        event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
-        block_hash: util::ethereum::string_to_h256("example block hash"),
-        params: vec![LogParam {
-            name: String::from("exampleParam"),
-            value: Token::String(String::from("some data")),
-        }],
-        removed: false,
+        topics: vec![util::ethereum::string_to_h256("ExampleEvent(string)")],
+        data: Bytes::default(),
+        block_hash: Some(block_hash),
+        block_number: Some(5.into()),
+        transaction_hash: Some(transaction.hash),
+        transaction_index: Some(0.into()),
+        log_index: Some(0.into()),
+        transaction_log_index: Some(0.into()),
+        log_type: None,
+        removed: None,
+    };
+    let block = EthereumBlock {
+        block: Block {
+            hash: Some(block_hash),
+            parent_hash: H256::random(),
+            uncles_hash: H256::zero(),
+            author: H160::random(),
+            state_root: H256::random(),
+            transactions_root: H256::random(),
+            receipts_root: H256::random(),
+            number: Some(5.into()),
+            gas_used: 0.into(),
+            gas_limit: 0.into(),
+            extra_data: Bytes::default(),
+            logs_bloom: H2048::random(),
+            timestamp: 42.into(),
+            difficulty: 0.into(),
+            total_difficulty: 0.into(),
+            seal_fields: vec![],
+            uncles: vec![],
+            transactions: vec![],
+            size: None,
+        },
+        transaction_receipts: vec![],
     };
 
-    // Call a non-existent event handler in the test module; if the test hasn't
-    // crashed until now, it means it survives Ethereum event handler errors
-    assert_eq!(
-        module.handle_ethereum_event("handleNonExistentExampleEvent", ethereum_event),
-        ()
+    let ctx = EventHandlerContext {
+        logger: Logger::root(slog::Discard, o!()),
+        block: Arc::new(block),
+        transaction: Arc::new(transaction),
+        entity_operations: vec![],
+    };
+
+    // Call a non-existent event handler in the test module
+    let _result = module.handle_ethereum_event(
+        ctx,
+        "handleNonExistentExampleEvent",
+        Arc::new(log),
+        vec![LogParam {
+            name: "exampleParam".to_owned(),
+            value: Token::String("some data".to_owned()),
+        }],
     );
+
+    // If the test hasn't crashed, it means it survives Ethereum event handler errors
 }
 
 #[test]
-#[cfg(any())]
 fn call_event_handler_and_receive_store_event() {
     // Load the example_event_handler.wasm test module. All this module does
     // is implement an `handleExampleEvent` function that calls `store.set()`
@@ -199,46 +250,94 @@ fn call_event_handler_and_receive_store_event() {
     // This test verifies that the event is delivered and the example data
     // is returned to the RuntimeHostEvent stream.
 
-    let (mut module, receiver) =
-        test_module(mock_data_source("wasm_test/example_event_handler.wasm"));
+    let mut module = test_module(mock_data_source("wasm_test/example_event_handler.wasm"));
 
-    // Create a mock Ethereum event
-    let ethereum_event = EthereumEvent {
+    // Create mock Ethereum data
+    let block_hash = H256::random();
+    let transaction = Transaction {
+        hash: H256::random(),
+        nonce: U256::zero(),
+        block_hash: Some(block_hash),
+        block_number: Some(5.into()),
+        transaction_index: Some(0.into()),
+        from: H160::random(),
+        to: None,
+        value: 0.into(),
+        gas_price: 0.into(),
+        gas: 0.into(),
+        input: Bytes::default(),
+    };
+    let log = Log {
         address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
-        event_signature: util::ethereum::string_to_h256("ExampleEvent(string)"),
-        block_hash: util::ethereum::string_to_h256("example block hash"),
-        params: vec![LogParam {
-            name: String::from("exampleParam"),
-            value: Token::String(String::from("some data")),
-        }],
-        removed: false,
+        topics: vec![util::ethereum::string_to_h256("ExampleEvent(string)")],
+        data: Bytes::default(),
+        block_hash: Some(block_hash),
+        block_number: Some(5.into()),
+        transaction_hash: Some(transaction.hash),
+        transaction_index: Some(0.into()),
+        log_index: Some(0.into()),
+        transaction_log_index: Some(0.into()),
+        log_type: None,
+        removed: None,
+    };
+    let block = EthereumBlock {
+        block: Block {
+            hash: Some(block_hash),
+            parent_hash: H256::random(),
+            uncles_hash: H256::zero(),
+            author: H160::random(),
+            state_root: H256::random(),
+            transactions_root: H256::random(),
+            receipts_root: H256::random(),
+            number: Some(5.into()),
+            gas_used: 0.into(),
+            gas_limit: 0.into(),
+            extra_data: Bytes::default(),
+            logs_bloom: H2048::random(),
+            timestamp: 42.into(),
+            difficulty: 0.into(),
+            total_difficulty: 0.into(),
+            seal_fields: vec![],
+            uncles: vec![],
+            transactions: vec![],
+            size: None,
+        },
+        transaction_receipts: vec![],
+    };
+
+    let ctx = EventHandlerContext {
+        logger: Logger::root(slog::Discard, o!()),
+        block: Arc::new(block),
+        transaction: Arc::new(transaction),
+        entity_operations: vec![],
     };
 
     // Call the event handler in the test module and pass the event to it
-    module.handle_ethereum_event("handleExampleEvent", ethereum_event);
+    let result = module.handle_ethereum_event(
+        ctx,
+        "handleExampleEvent",
+        Arc::new(log),
+        vec![LogParam {
+            name: "exampleParam".to_owned(),
+            value: Token::String("some data".to_owned()),
+        }],
+    );
 
-    // Expect a store set call to be made by the handler and a
-    // RuntimeHostEvent::EntitySet event to be written to the event stream
-    let work = receiver.take(1).into_future();
-    let store_event = work
-        .wait()
-        .expect("No store event received from runtime")
-        .0
-        .expect("Store event must not be None");
-
-    // Verify that this event matches what the test module is sending
     assert_eq!(
-        store_event,
-        RuntimeHostEvent::EntitySet(
-            StoreKey {
-                subgraph: String::from("example subgraph"),
-                entity: String::from("ExampleEntity"),
-                id: String::from("example id"),
+        result.unwrap(),
+        vec![EntityOperation::Set {
+            key: EntityKey {
+                subgraph_id: "example subgraph".to_owned(),
+                entity_type: "ExampleEntity".to_owned(),
+                entity_id: "example id".to_owned(),
             },
-            Entity::from(HashMap::from_iter(
-                vec![(String::from("exampleAttribute"), Value::from("some data"))].into_iter()
+            data: Entity::from(HashMap::from_iter(
+                vec![
+                    ("id".to_owned(), "example id".into()),
+                    ("exampleAttribute".to_owned(), "some data".into()),
+                ].into_iter()
             )),
-        )
+        }]
     );
 }
 
