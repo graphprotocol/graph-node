@@ -15,7 +15,7 @@ pub struct ElasticLoggingConfig {
     /// The Elasticsearch service to log to.
     pub endpoint: String,
     /// The Elasticsearch username.
-    pub username: String,
+    pub username: Option<String>,
     /// The Elasticsearch password (optional).
     pub password: Option<String>,
 }
@@ -192,7 +192,7 @@ impl Drain for ElasticDrain {
         let response = client
             .put(document_url)
             .basic_auth(
-                self.config.general.username.clone(),
+                self.config.general.username.clone().unwrap_or("".into()),
                 self.config.general.password.clone(),
             ).json(&log)
             .send()?;
