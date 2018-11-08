@@ -22,5 +22,6 @@ pub use graphql::GraphQlRunner;
 pub use log::elastic::{
     elastic_logger, ElasticDrainConfig, ElasticLoggerMode, ElasticLoggingConfig,
 };
+pub use log::error::WithErrorDrain;
 pub use log::split::split_logger;
 pub use subgraph::{SubgraphInstanceManager, SubgraphProvider, SubgraphProviderWithNames};
