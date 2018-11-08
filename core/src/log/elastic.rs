@@ -100,6 +100,27 @@ pub struct ElasticDrainConfig {
 }
 
 /// An slog `Drain` for logging to Elasticsearch.
+///
+/// Writes logs to Elasticsearch using the following format:
+/// ```
+/// {
+///   "_index": "subgraph-logs"
+///   "_type": "log",
+///   "_id": "Qmb31zcpzqga7ERaUTp83gVdYcuBasz4rXUHFufikFTJGU-2018-11-08T00:54:52.589258000Z",
+///   "_source": {
+///     "level": "debug",
+///     "timestamp": "2018-11-08T00:54:52.589258000Z",
+///     "subgraphId": "Qmb31zcpzqga7ERaUTp83gVdYcuBasz4rXUHFufikFTJGU",
+///     "meta": {
+///       "module": "graph_datasource_ethereum::block_stream",
+///       "line": 220,
+///       "column": 9
+///     },
+///     "text": "Chain head pointer, number: 6661038, hash: 0xf089c457700a57798ced06bd3f18eef53bb8b46510bcefaf13615a8a26e4424a, component: BlockStream",
+///     "id": "Qmb31zcpzqga7ERaUTp83gVdYcuBasz4rXUHFufikFTJGU-2018-11-08T00:54:52.589258000Z"
+///   }
+/// }
+/// ```
 pub struct ElasticDrain {
     config: ElasticDrainConfig,
 }
