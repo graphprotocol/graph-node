@@ -10,6 +10,7 @@ use super::SubgraphInstance;
 use elastic_logger;
 use split_logger;
 use ElasticDrainConfig;
+use ElasticLoggerMode;
 use ElasticLoggingConfig;
 
 type InstanceShutdownMap = Arc<RwLock<HashMap<SubgraphId, CancelGuard>>>;
@@ -82,12 +83,15 @@ impl SubgraphInstanceManager {
                         .map(|elastic_config| {
                             split_logger(
                                 term_logger.clone(),
-                                elastic_logger(ElasticDrainConfig {
-                                    general: elastic_config,
-                                    index: String::from("subgraph-logs"),
-                                    document_type: String::from("log"),
-                                    subgraph_id: String::from(manifest.id.clone()),
-                                }),
+                                elastic_logger(
+                                    ElasticDrainConfig {
+                                        general: elastic_config,
+                                        index: String::from("subgraph-logs"),
+                                        document_type: String::from("log"),
+                                        subgraph_id: String::from(manifest.id.clone()),
+                                    },
+                                    ElasticLoggerMode::IgnoreResults,
+                                ),
                             )
                         }).unwrap_or(term_logger);
 
