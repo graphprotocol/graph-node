@@ -9,9 +9,6 @@ pub struct SubgraphInstance<T>
 where
     T: RuntimeHostBuilder,
 {
-    /// The manifest of the subgraph instance.
-    _manifest: SubgraphManifest,
-
     /// Runtime hosts, one for each data source mapping.
     ///
     /// The runtime hosts are created and added in the same order the
@@ -24,22 +21,41 @@ impl<T> SubgraphInstanceTrait<T> for SubgraphInstance<T>
 where
     T: RuntimeHostBuilder,
 {
-    fn from_manifest(logger: &Logger, manifest: SubgraphManifest, host_builder: T) -> Self {
+    fn from_manifest(
+        logger: &Logger,
+        manifest: SubgraphManifest,
+        host_builder: T,
+    ) -> Result<Self, Error> {
         // Create a new runtime host for each data source in the subgraph manifest;
         // we use the same order here as in the subgraph manifest to make the
         // event processing behavior predictable
-        let hosts = manifest
+        let manifest_id = manifest.id;
+        let (hosts, errors): (_, Vec<_>) = manifest
             .data_sources
-            .iter()
-            .map(|d| host_builder.build(&logger, manifest.clone(), d.clone()))
-            .map(Arc::new)
-            .collect();
+            .into_iter()
+            .map(|d| host_builder.build(&logger, manifest_id.clone(), d))
+            .partition(|res| res.is_ok());
 
-        // Remember manifest and managed hosts
-        SubgraphInstance {
-            _manifest: manifest,
-            hosts: hosts,
+        if !errors.is_empty() {
+            let joined_errors = errors
+                .into_iter()
+                .map(Result::unwrap_err)
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(format_err!(
+                "errors starting data sources: {}",
+                joined_errors
+            ));
         }
+
+        Ok(SubgraphInstance {
+            hosts: hosts
+                .into_iter()
+                .map(Result::unwrap)
+                .map(Arc::new)
+                .collect(),
+        })
     }
 
     /// Returns true if the subgraph has a handler for an Ethereum event.

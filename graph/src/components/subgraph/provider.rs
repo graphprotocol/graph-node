@@ -1,7 +1,7 @@
 use prelude::*;
 
 /// Events emitted by [SubgraphProvider](trait.SubgraphProvider.html) implementations.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub enum SubgraphProviderEvent {
     /// A subgraph with the given manifest should start processing.
     SubgraphStart(SubgraphManifest),

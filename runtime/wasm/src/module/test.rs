@@ -96,7 +96,7 @@ fn test_module(
     WasmiModule::new(
         &logger,
         WasmiModuleConfig {
-            subgraph: mock_subgraph(),
+            subgraph_id: "test_subgraph".to_owned(),
             data_source,
             ethereum_adapter: mock_ethereum_adapter,
             link_resolver: Arc::new(ipfs_api::IpfsClient::default()),
@@ -104,21 +104,6 @@ fn test_module(
         },
         task_sender,
     )
-}
-
-fn mock_subgraph() -> SubgraphManifest {
-    SubgraphManifest {
-        id: String::from("example subgraph"),
-        location: String::from("/path/to/example-subgraph.yaml"),
-        spec_version: String::from("0.1.0"),
-        schema: Schema {
-            id: String::from("exampled id"),
-            document: Document {
-                definitions: vec![],
-            },
-        },
-        data_sources: vec![],
-    }
 }
 
 fn mock_data_source(path: &str) -> DataSource {
@@ -138,6 +123,9 @@ fn mock_data_source(path: &str) -> DataSource {
             entities: vec![],
             abis: vec![],
             event_handlers: vec![],
+            link: Link {
+                link: "link".to_owned(),
+            },
             runtime,
         },
     }

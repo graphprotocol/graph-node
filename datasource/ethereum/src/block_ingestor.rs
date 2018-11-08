@@ -1,5 +1,4 @@
 use failure::Error;
-use std::fmt::Debug;
 use std::time::Duration;
 use std::time::Instant;
 

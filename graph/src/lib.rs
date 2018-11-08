@@ -53,6 +53,7 @@ pub mod prelude {
     pub use tokio;
     pub use tokio::prelude::*;
 
+    pub use std::fmt::Debug;
     pub use std::sync::Arc;
 
     pub use components::ethereum::{
