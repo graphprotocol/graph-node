@@ -82,7 +82,7 @@ impl SubgraphInstanceManager {
                             split_logger(
                                 term_logger.clone(),
                                 elastic_logger(ElasticDrainConfig {
-                                    general: elastic_config.clone(),
+                                    general: elastic_config,
                                     index: String::from("subgraph-logs"),
                                     document_type: String::from("log"),
                                     subgraph_id: String::from(manifest.id.clone()),
