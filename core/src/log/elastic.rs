@@ -182,7 +182,7 @@ impl Drain for ElasticDrain {
             .expect("invalid Elasticsearch URL");
         document_url
             .path_segments_mut()
-            .expect("failed to set the Elasticsearch documenet path")
+            .expect("failed to set the Elasticsearch document path")
             .push(self.config.index.as_str())
             .push(self.config.document_type.as_str())
             .push(id.as_str());
