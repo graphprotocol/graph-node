@@ -132,7 +132,7 @@ impl ElasticDrain {
 }
 
 impl Drain for ElasticDrain {
-    type Ok = ();
+    type Ok = reqwest::Response;
     type Err = reqwest::Error;
 
     fn log(&self, record: &Record, values: &OwnedKVList) -> StdResult<Self::Ok, Self::Err> {
@@ -198,7 +198,7 @@ impl Drain for ElasticDrain {
             .send()?;
 
         // Return an error if the server returned an error response
-        response.error_for_status().map(|_| ())
+        response.error_for_status()
     }
 }
 
