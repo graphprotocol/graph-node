@@ -1,10 +1,9 @@
 use ethabi;
-use std::cmp;
 use std::collections::HashMap;
 
 use graph::components::ethereum::{EthereumBlockData, EthereumEventData, EthereumTransactionData};
 use graph::data::store;
-use graph::prelude::{BigInt, BigIntSign};
+use graph::prelude::BigInt;
 use graph::serde_json;
 use graph::web3::types as web3;
 
