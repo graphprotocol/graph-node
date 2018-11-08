@@ -317,7 +317,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             .value_of("elasticsearch-endpoint")
             .map(|endpoint| ElasticLoggingConfig {
                 endpoint: endpoint.into(),
-                username: matches.value_of("elasticsearch-user").unwrap_or("").into(),
+                username: matches.value_of("elasticsearch-user").map(|s| s.into()),
                 password: matches.value_of("elasticsearch-password").map(|s| s.into()),
             });
 
