@@ -71,7 +71,7 @@ pub fn get_root_subscription_type(schema: &Document) -> Option<&ObjectType> {
 }
 
 /// Returns all type definitions in the schema.
-pub fn get_type_definitions<'a>(schema: &'a Document) -> Vec<&'a TypeDefinition> {
+pub fn get_type_definitions(schema: &Document) -> Vec<&TypeDefinition> {
     schema
         .definitions
         .iter()
@@ -82,7 +82,7 @@ pub fn get_type_definitions<'a>(schema: &'a Document) -> Vec<&'a TypeDefinition>
 }
 
 /// Returns all object type definitions in the schema.
-pub fn get_object_type_definitions<'a>(schema: &'a Document) -> Vec<&'a ObjectType> {
+pub fn get_object_type_definitions(schema: &Document) -> Vec<&ObjectType> {
     schema
         .definitions
         .iter()
@@ -93,7 +93,7 @@ pub fn get_object_type_definitions<'a>(schema: &'a Document) -> Vec<&'a ObjectTy
 }
 
 /// Returns all object type definitions in the schema.
-pub fn get_object_type_definitions_mut<'a>(schema: &'a mut Document) -> Vec<&'a mut ObjectType> {
+pub fn get_object_type_definitions_mut(schema: &mut Document) -> Vec<&mut ObjectType> {
     schema
         .definitions
         .iter_mut()
@@ -104,7 +104,7 @@ pub fn get_object_type_definitions_mut<'a>(schema: &'a mut Document) -> Vec<&'a 
 }
 
 /// Returns all interface definitions in the schema.
-pub fn get_interface_type_definitions<'a>(schema: &'a Document) -> Vec<&'a InterfaceType> {
+pub fn get_interface_type_definitions(schema: &Document) -> Vec<&InterfaceType> {
     schema
         .definitions
         .iter()
@@ -115,9 +115,7 @@ pub fn get_interface_type_definitions<'a>(schema: &'a Document) -> Vec<&'a Inter
 }
 
 /// Returns all interface definitions in the schema.
-pub fn get_interface_type_definitions_mut<'a>(
-    schema: &'a mut Document,
-) -> Vec<&'a mut InterfaceType> {
+pub fn get_interface_type_definitions_mut(schema: &mut Document) -> Vec<&mut InterfaceType> {
     schema
         .definitions
         .iter_mut()
