@@ -3,11 +3,13 @@ use itertools;
 use reqwest;
 use serde::ser::Serializer as SerdeSerializer;
 use std::fmt;
-use std::fmt::Write;
+use std::fmt::{Debug, Write};
 use std::result::Result as StdResult;
 
 use graph::slog::*;
 use graph::slog_async;
+
+use WithErrorDrain;
 
 /// General configuration parameters for Elasticsearch logging.
 #[derive(Clone, Debug)]
@@ -126,8 +128,17 @@ pub struct ElasticDrain {
 }
 
 impl ElasticDrain {
+    /// Creates a new `ElasticDrain`.
     pub fn new(config: ElasticDrainConfig) -> Self {
         ElasticDrain { config }
+    }
+
+    /// Wraps the `ElasticDrain` to catch and log Elasticsearch errors via `drain`.
+    pub fn with_error_drain<D>(self, drain: D) -> WithErrorDrain<Self, D>
+    where
+        D: Drain,
+    {
+        WithErrorDrain::new("Elasticsearch", self, drain)
     }
 }
 
@@ -201,22 +212,18 @@ impl Drain for ElasticDrain {
     }
 }
 
-pub enum ElasticLoggerMode {
-    Fused,
-    IgnoreResults,
-}
-
-pub fn elastic_logger(config: ElasticDrainConfig, mode: ElasticLoggerMode) -> Logger {
-    let elastic_drain = ElasticDrain::new(config);
-    let async_mode_drain = match mode {
-        ElasticLoggerMode::Fused => {
-            let fused_drain = elastic_drain.fuse();
-            slog_async::Async::new(fused_drain).build().fuse()
-        }
-        ElasticLoggerMode::IgnoreResults => {
-            let res_ignoring_drain = elastic_drain.ignore_res();
-            slog_async::Async::new(res_ignoring_drain).build().fuse()
-        }
-    };
-    Logger::root(async_mode_drain, o!())
+/// Creates a new asynchronous Elasticsearch logger.
+///
+/// Uses `error_drain` to log any failed Elasticsearch log requests, so
+/// these errors don't go unnoticed.
+pub fn elastic_logger<D>(config: ElasticDrainConfig, error_drain: D) -> Logger
+where
+    D: Drain + Send + 'static,
+    D::Err: Debug,
+{
+    let elastic_drain = ElasticDrain::new(config)
+        .with_error_drain(error_drain)
+        .fuse();
+    let async_drain = slog_async::Async::new(elastic_drain).build().fuse();
+    Logger::root(async_drain, o!())
 }
