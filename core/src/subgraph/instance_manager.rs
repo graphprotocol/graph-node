@@ -99,13 +99,14 @@ impl SubgraphInstanceManager {
                     info!(logger, "Start subgraph");
 
                     Self::start_subgraph(
-                        logger,
+                        logger.clone(),
                         instances.clone(),
                         host_builder.clone(),
                         block_stream_builder.clone(),
                         store.clone(),
                         manifest,
-                    )
+                    ).map_err(|err| error!(logger, "failed to start subgraph: {}", err))
+                    .ok();
                 }
                 SubgraphStop(id) => {
                     info!(logger, "Stopping subgraph"; "subgraph_id" => &id);
@@ -124,7 +125,8 @@ impl SubgraphInstanceManager {
         block_stream_builder: B,
         store: Arc<S>,
         manifest: SubgraphManifest,
-    ) where
+    ) -> Result<(), Error>
+    where
         T: RuntimeHostBuilder,
         B: BlockStreamBuilder,
         S: Store + ChainStore,
@@ -145,7 +147,7 @@ impl SubgraphInstanceManager {
             &logger,
             manifest,
             host_builder,
-        ));
+        )?);
 
         // Prepare loggers for different parts of the async processing
         let block_logger = logger.clone();
@@ -243,6 +245,7 @@ impl SubgraphInstanceManager {
 
         // Keep the cancel guard for shutting down the subgraph instance later
         instances.write().unwrap().insert(id, block_stream_canceler);
+        Ok(())
     }
 
     fn stop_subgraph(instances: InstanceShutdownMap, id: SubgraphId) {

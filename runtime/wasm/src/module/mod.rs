@@ -87,23 +87,11 @@ const BIG_INT_DIVIDED_BY: usize = 22;
 const BIG_INT_MOD: usize = 23;
 
 pub struct WasmiModuleConfig<T, L, S> {
-    pub subgraph: SubgraphManifest,
+    pub subgraph_id: SubgraphId,
     pub data_source: DataSource,
     pub ethereum_adapter: Arc<T>,
     pub link_resolver: Arc<L>,
     pub store: Arc<S>,
-}
-
-impl<T, L, S> Clone for WasmiModuleConfig<T, L, S> {
-    fn clone(&self) -> Self {
-        WasmiModuleConfig {
-            subgraph: self.subgraph.clone(),
-            data_source: self.data_source.clone(),
-            ethereum_adapter: self.ethereum_adapter.clone(),
-            link_resolver: self.link_resolver.clone(),
-            store: self.store.clone(),
-        }
-    }
 }
 
 /// A WASM module based on wasmi that powers a subgraph runtime.
@@ -164,7 +152,7 @@ where
         let mut externals = HostExternals {
             heap: heap.clone(),
             host_exports: host_exports::HostExports::new(
-                config.subgraph,
+                config.subgraph_id,
                 config.data_source,
                 config.ethereum_adapter.clone(),
                 config.link_resolver.clone(),

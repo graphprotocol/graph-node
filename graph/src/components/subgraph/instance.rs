@@ -6,12 +6,16 @@ use prelude::*;
 use web3::types::{Log, Transaction};
 
 /// Represents a loaded instance of a subgraph.
-pub trait SubgraphInstance<T>
+pub trait SubgraphInstance<T>: Sized
 where
     T: RuntimeHostBuilder,
 {
     /// Creates a subgraph instance from a manifest.
-    fn from_manifest(logger: &Logger, manifest: SubgraphManifest, host_builder: T) -> Self;
+    fn from_manifest(
+        logger: &Logger,
+        manifest: SubgraphManifest,
+        host_builder: T,
+    ) -> Result<Self, Error>;
 
     /// Returns true if the subgraph has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool;

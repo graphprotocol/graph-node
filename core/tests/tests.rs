@@ -256,15 +256,15 @@ fn subgraph_provider_events() {
     let provider_events = runtime.block_on(provider_events.collect()).unwrap();
     assert_eq!(provider_events.len(), 4);
     assert_eq!(added_subgraph_id(&provider_events[0]), subgraph1_id);
-    assert_eq!(
-        provider_events[1],
-        SubgraphProviderEvent::SubgraphStop(subgraph1_id.to_owned())
-    );
+    match &provider_events[1] {
+        SubgraphProviderEvent::SubgraphStop(id) => assert_eq!(id, subgraph1_id),
+        _ => panic!("wrong event sent"),
+    }
     assert_eq!(added_subgraph_id(&provider_events[2]), subgraph2_id);
-    assert_eq!(
-        provider_events[3],
-        SubgraphProviderEvent::SubgraphStop(subgraph2_id.to_owned())
-    );
+    match &provider_events[3] {
+        SubgraphProviderEvent::SubgraphStop(id) => assert_eq!(id, subgraph2_id),
+        _ => panic!("wrong event sent"),
+    }
 
     let schema_events = runtime.block_on(schema_events.collect()).unwrap();
     assert_eq!(schema_events.len(), 4);

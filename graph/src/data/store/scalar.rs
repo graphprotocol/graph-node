@@ -196,6 +196,12 @@ impl<'a> From<&'a [u8]> for Bytes {
     }
 }
 
+impl From<Address> for Bytes {
+    fn from(address: Address) -> Bytes {
+        Bytes::from(address.as_ref())
+    }
+}
+
 impl Serialize for Bytes {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.to_string().serialize(serializer)

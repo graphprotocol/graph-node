@@ -29,7 +29,7 @@ impl<E: fmt::Display> fmt::Display for HostExportError<E> {
 }
 
 pub(crate) struct HostExports<E, L, S, U> {
-    subgraph: SubgraphManifest,
+    subgraph_id: SubgraphId,
     data_source: DataSource,
     ethereum_adapter: Arc<E>,
     link_resolver: Arc<L>,
@@ -46,7 +46,7 @@ where
     U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone,
 {
     pub(crate) fn new(
-        subgraph: SubgraphManifest,
+        subgraph_id: SubgraphId,
         data_source: DataSource,
         ethereum_adapter: Arc<E>,
         link_resolver: Arc<L>,
@@ -55,7 +55,7 @@ where
         ctx: Option<EventHandlerContext>,
     ) -> Self {
         HostExports {
-            subgraph,
+            subgraph_id,
             data_source,
             ethereum_adapter,
             link_resolver,
@@ -127,7 +127,7 @@ where
             .expect("processing event without context")
             .push(EntityOperation::Set {
                 key: EntityKey {
-                    subgraph_id: self.subgraph.id.clone(),
+                    subgraph_id: self.subgraph_id.clone(),
                     entity_type,
                     entity_id,
                 },
@@ -144,7 +144,7 @@ where
             .expect("processing event without context")
             .push(EntityOperation::Remove {
                 key: EntityKey {
-                    subgraph_id: self.subgraph.id.clone(),
+                    subgraph_id: self.subgraph_id.clone(),
                     entity_type,
                     entity_id,
                 },
@@ -157,7 +157,7 @@ where
         entity_id: String,
     ) -> Result<Option<Entity>, HostExportError<impl ExportError>> {
         let store_key = EntityKey {
-            subgraph_id: self.subgraph.id.clone(),
+            subgraph_id: self.subgraph_id.clone(),
             entity_type,
             entity_id,
         };

@@ -9,6 +9,8 @@ extern crate hex;
 use diesel::pg::PgConnection;
 use diesel::*;
 use std::fmt::Debug;
+use std::mem;
+use std::panic;
 use std::str::FromStr;
 use std::sync::Mutex;
 

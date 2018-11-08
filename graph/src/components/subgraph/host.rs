@@ -6,10 +6,7 @@ use prelude::*;
 use web3::types::{Log, Transaction};
 
 /// Common trait for runtime host implementations.
-pub trait RuntimeHost: Send + Sync {
-    /// The subgraph definition the runtime is for.
-    fn subgraph_manifest(&self) -> &SubgraphManifest;
-
+pub trait RuntimeHost: Send + Sync + Debug {
     /// Returns true if the RuntimeHost has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool;
 
@@ -31,7 +28,7 @@ pub trait RuntimeHostBuilder: Clone + Send + 'static {
     fn build(
         &self,
         logger: &Logger,
-        subgraph_manifest: SubgraphManifest,
+        subgraph_manifest: SubgraphId,
         data_source: DataSource,
-    ) -> Self::Host;
+    ) -> Result<Self::Host, Error>;
 }

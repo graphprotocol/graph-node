@@ -14,6 +14,9 @@ use std::sync::Arc;
 use tokio::prelude::*;
 use web3::types::Address;
 
+/// Rust representation of the GraphQL schema for a `SubgraphManifest`.
+mod schema;
+
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Address, D::Error>
 where
@@ -111,25 +114,29 @@ pub struct Source {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct BaseMappingABI<C> {
+pub struct UnresolvedMappingABI {
     pub name: String,
-    #[serde(rename = "file")]
-    pub contract: C,
+    pub file: Link,
 }
 
-pub type UnresolvedMappingABI = BaseMappingABI<Link>;
-pub type MappingABI = BaseMappingABI<Contract>;
+#[derive(Clone, Debug)]
+pub struct MappingABI {
+    pub name: String,
+    pub contract: Contract,
+    pub link: Link,
+}
 
 impl UnresolvedMappingABI {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
     ) -> impl Future<Item = MappingABI, Error = failure::Error> + Send {
-        resolver.cat(&self.contract).and_then(|contract_bytes| {
+        resolver.cat(&self.file).and_then(|contract_bytes| {
             let contract = Contract::load(&*contract_bytes).map_err(SyncFailure::new)?;
             Ok(MappingABI {
                 name: self.name,
                 contract,
+                link: self.file,
             })
         })
     }
@@ -142,21 +149,29 @@ pub struct MappingEventHandler {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct BaseMapping<C, W> {
+#[serde(rename_all = "camelCase")]
+pub struct UnresolvedMapping {
     pub kind: String,
-    #[serde(rename = "apiVersion")]
     pub api_version: String,
     pub language: String,
     pub entities: Vec<String>,
-    pub abis: Vec<BaseMappingABI<C>>,
-    #[serde(rename = "eventHandlers")]
+    pub abis: Vec<UnresolvedMappingABI>,
     pub event_handlers: Vec<MappingEventHandler>,
-    #[serde(rename = "file")]
-    pub runtime: W,
+    pub file: Link,
 }
 
-pub type UnresolvedMapping = BaseMapping<Link, Link>;
-pub type Mapping = BaseMapping<Contract, Module>;
+// Avoid deriving `Clone` because cloning a `Module` is expensive.
+#[derive(Debug)]
+pub struct Mapping {
+    pub kind: String,
+    pub api_version: String,
+    pub language: String,
+    pub entities: Vec<String>,
+    pub abis: Vec<MappingABI>,
+    pub event_handlers: Vec<MappingEventHandler>,
+    pub runtime: Module,
+    pub link: Link,
+}
 
 impl UnresolvedMapping {
     pub fn resolve(
@@ -170,7 +185,7 @@ impl UnresolvedMapping {
             entities,
             abis,
             event_handlers,
-            runtime,
+            file: link,
         } = self;
 
         // resolve each abi
@@ -180,7 +195,7 @@ impl UnresolvedMapping {
         ).collect()
         .join(
             resolver
-                .cat(&runtime)
+                .cat(&link)
                 .and_then(|module_bytes| Ok(parity_wasm::deserialize_buffer(&module_bytes)?)),
         ).map(|(abis, runtime)| Mapping {
             kind,
@@ -190,20 +205,21 @@ impl UnresolvedMapping {
             abis,
             event_handlers,
             runtime,
+            link,
         })
     }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct BaseDataSource<C, W> {
+pub struct BaseDataSource<M> {
     pub kind: String,
     pub name: String,
     pub source: Source,
-    pub mapping: BaseMapping<C, W>,
+    pub mapping: M,
 }
 
-pub type UnresolvedDataSource = BaseDataSource<Link, Link>;
-pub type DataSource = BaseDataSource<Contract, Module>;
+pub type UnresolvedDataSource = BaseDataSource<UnresolvedMapping>;
+pub type DataSource = BaseDataSource<Mapping>;
 
 impl UnresolvedDataSource {
     pub fn resolve(
@@ -226,13 +242,12 @@ impl UnresolvedDataSource {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BaseSubgraphManifest<S, D> {
     pub id: SubgraphId,
     pub location: String,
-    #[serde(rename = "specVersion")]
     pub spec_version: String,
     pub schema: S,
-    #[serde(rename = "dataSources")]
     pub data_sources: Vec<D>,
 }
 

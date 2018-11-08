@@ -5,7 +5,7 @@ use std::thread;
 
 use graph::components::ethereum::*;
 use graph::components::store::Store;
-use graph::data::subgraph::DataSource;
+use graph::data::subgraph::{DataSource, Source};
 use graph::ethabi::LogParam;
 use graph::ethabi::RawLog;
 use graph::prelude::{
@@ -17,9 +17,8 @@ use graph::web3::types::{Log, Transaction};
 use super::EventHandlerContext;
 use module::{WasmiModule, WasmiModuleConfig};
 
-#[derive(Clone)]
 pub struct RuntimeHostConfig {
-    subgraph_manifest: SubgraphManifest,
+    subgraph_id: SubgraphId,
     data_source: DataSource,
 }
 
@@ -70,16 +69,16 @@ where
     fn build(
         &self,
         logger: &Logger,
-        subgraph_manifest: SubgraphManifest,
+        subgraph_id: SubgraphId,
         data_source: DataSource,
-    ) -> Self::Host {
+    ) -> Result<Self::Host, Error> {
         RuntimeHost::new(
             logger,
             self.ethereum_adapter.clone(),
             self.link_resolver.clone(),
             self.store.clone(),
             RuntimeHostConfig {
-                subgraph_manifest,
+                subgraph_id,
                 data_source,
             },
         )
@@ -88,6 +87,7 @@ where
 
 type HandleEventResponse = Result<Vec<EntityOperation>, Error>;
 
+#[derive(Debug)]
 struct HandleEventRequest {
     handler: MappingEventHandler,
     logger: Logger,
@@ -99,8 +99,12 @@ struct HandleEventRequest {
     result_sender: oneshot::Sender<HandleEventResponse>,
 }
 
+#[derive(Debug)]
 pub struct RuntimeHost {
-    config: RuntimeHostConfig,
+    data_source_name: String,
+    data_source_contract: Source,
+    data_source_contract_abi: MappingABI,
+    data_source_event_handlers: Vec<MappingEventHandler>,
     handle_event_sender: Sender<HandleEventRequest>,
     _guard: oneshot::Sender<()>,
 }
@@ -112,7 +116,7 @@ impl RuntimeHost {
         link_resolver: Arc<L>,
         store: Arc<S>,
         config: RuntimeHostConfig,
-    ) -> Self
+    ) -> Result<Self, Error>
     where
         T: EthereumAdapter,
         L: LinkResolver,
@@ -139,14 +143,30 @@ impl RuntimeHost {
 
         // Start the WASMI module runtime
         let module_logger = logger.clone();
-        let module_config = config.clone();
+        let data_source_name = config.data_source.name.clone();
+        let data_source_contract = config.data_source.source.clone();
+        let data_source_event_handlers = config.data_source.mapping.event_handlers.clone();
+        let data_source_contract_abi = config
+            .data_source
+            .mapping
+            .abis
+            .iter()
+            .find(|abi| abi.name == config.data_source.source.abi)
+            .ok_or_else(|| {
+                format_err!(
+                    "No ABI entry found for the main contract of data source \"{}\": {}",
+                    data_source_name,
+                    config.data_source.source.abi,
+                )
+            })?.clone();
+
         thread::spawn(move || {
             debug!(module_logger, "Start WASM runtime");
 
             // Load the mapping of the data source as a WASM module
             let wasmi_config = WasmiModuleConfig {
-                subgraph: module_config.subgraph_manifest.clone(),
-                data_source: module_config.data_source.clone(),
+                subgraph_id: config.subgraph_id,
+                data_source: config.data_source,
                 ethereum_adapter: ethereum_adapter.clone(),
                 link_resolver: link_resolver.clone(),
                 store: store.clone(),
@@ -194,15 +214,18 @@ impl RuntimeHost {
                 .ok();
         });
 
-        RuntimeHost {
-            config,
+        Ok(RuntimeHost {
+            data_source_name,
+            data_source_contract,
+            data_source_contract_abi,
+            data_source_event_handlers,
             handle_event_sender,
             _guard: cancel_sender,
-        }
+        })
     }
 
     fn matches_log_address(&self, log: &Log) -> bool {
-        self.config.data_source.source.address == log.address
+        self.data_source_contract.address == log.address
     }
 
     fn matches_log_signature(&self, log: &Log) -> bool {
@@ -211,30 +234,9 @@ impl RuntimeHost {
         }
         let signature = log.topics[0];
 
-        self.config
-            .data_source
-            .mapping
-            .event_handlers
-            .iter()
-            .any(|event_handler| {
-                signature == util::ethereum::string_to_h256(event_handler.event.as_str())
-            })
-    }
-
-    fn source_contract(&self) -> Result<&MappingABI, Error> {
-        self.config
-            .data_source
-            .mapping
-            .abis
-            .iter()
-            .find(|abi| abi.name == self.config.data_source.source.abi)
-            .ok_or_else(|| {
-                format_err!(
-                    "No ABI entry found for the main contract of data source \"{}\": {}",
-                    self.config.data_source.name,
-                    self.config.data_source.source.abi,
-                )
-            })
+        self.data_source_event_handlers.iter().any(|event_handler| {
+            signature == util::ethereum::string_to_h256(event_handler.event.as_str())
+        })
     }
 
     fn event_handler_for_log(&self, log: &Arc<Log>) -> Result<&MappingEventHandler, Error> {
@@ -244,26 +246,19 @@ impl RuntimeHost {
         }
         let signature = log.topics[0];
 
-        self.config
-            .data_source
-            .mapping
-            .event_handlers
+        self.data_source_event_handlers
             .iter()
             .find(|handler| signature == util::ethereum::string_to_h256(handler.event.as_str()))
             .ok_or_else(|| {
                 format_err!(
                     "No event handler found for event in data source \"{}\"",
-                    self.config.data_source.name,
+                    self.data_source_name,
                 )
             })
     }
 }
 
 impl RuntimeHostTrait for RuntimeHost {
-    fn subgraph_manifest(&self) -> &SubgraphManifest {
-        &self.config.subgraph_manifest
-    }
-
     fn matches_log(&self, log: &Log) -> bool {
         self.matches_log_address(log) && self.matches_log_signature(log)
     }
@@ -276,12 +271,6 @@ impl RuntimeHostTrait for RuntimeHost {
         log: Arc<Log>,
         entity_operations: Vec<EntityOperation>,
     ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send> {
-        // Identify the contract that the log belongs to
-        let abi = match self.source_contract() {
-            Ok(abi) => abi,
-            Err(e) => return Box::new(future::err(e)),
-        };
-
         // Identify event handler for this log
         let event_handler = match self.event_handler_for_log(&log) {
             Ok(handler) => handler,
@@ -290,7 +279,7 @@ impl RuntimeHostTrait for RuntimeHost {
 
         // Identify the event ABI in the contract
         let event_abi = match util::ethereum::contract_event_with_signature(
-            &abi.contract,
+            &self.data_source_contract_abi.contract,
             event_handler.event.as_str(),
         ) {
             Some(event_abi) => event_abi,
@@ -299,8 +288,8 @@ impl RuntimeHostTrait for RuntimeHost {
                     "Event with the signature \"{}\" not found in \
                      contract \"{}\" of data source \"{}\"",
                     event_handler.event,
-                    abi.name,
-                    self.config.data_source.name
+                    self.data_source_contract_abi.name,
+                    self.data_source_name
                 )))
             }
         };
