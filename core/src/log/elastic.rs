@@ -104,7 +104,7 @@ pub struct ElasticDrainConfig {
 /// An slog `Drain` for logging to Elasticsearch.
 ///
 /// Writes logs to Elasticsearch using the following format:
-/// ```
+/// ```ignore
 /// {
 ///   "_index": "subgraph-logs"
 ///   "_type": "log",
