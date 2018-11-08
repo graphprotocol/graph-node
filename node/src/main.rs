@@ -34,7 +34,7 @@ use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::{
-    SubgraphInstanceManager, SubgraphProvider as IpfsSubgraphProvider,
+    ElasticLoggingConfig, SubgraphInstanceManager, SubgraphProvider as IpfsSubgraphProvider,
     SubgraphProviderWithNames as IpfsSubgraphProviderWithNames,
 };
 use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
@@ -121,6 +121,25 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             Arg::with_name("debug")
                 .long("debug")
                 .help("Enable debug logging"),
+        ).arg(
+            Arg::with_name("elasticsearch-endpoint")
+                .long("elasticsearch-endpoint")
+                .value_name("URL")
+                .env("ELASTICSEARCH_ENDPOINT")
+                .help("Elasticsearch endpoint to write subgraph logs to"),
+        ).arg(
+            Arg::with_name("elasticsearch-user")
+                .long("elasticsearch-user")
+                .value_name("USER")
+                .env("ELASTICSEARCH_USER")
+                .help("User to use for Elasticsearch logging"),
+        ).arg(
+            Arg::with_name("elasticsearch-password")
+                .long("elasticsearch-password")
+                .value_name("PASSWORD")
+                .env("ELASTICSEARCH_PASSWORD")
+                .hide_env_values(true)
+                .help("Password to use for Elasticsearch logging"),
         ).get_matches();
 
     // Set up logger
@@ -292,6 +311,16 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let block_stream_builder =
         BlockStreamBuilder::new(store.clone(), store.clone(), ethereum.clone());
 
+    // Optionally, identify the Elasticsearch logging configuration
+    let elastic_config =
+        matches
+            .value_of("elasticsearch-endpoint")
+            .map(|endpoint| ElasticLoggingConfig {
+                endpoint: endpoint.into(),
+                username: matches.value_of("elasticsearch-user").unwrap_or("").into(),
+                password: matches.value_of("elasticsearch-password").map(|s| s.into()),
+            });
+
     // Prepare for hosting WASM runtimes and managing subgraph instances
     let runtime_host_builder =
         WASMRuntimeHostBuilder::new(ethereum.clone(), ipfs_client.clone(), store.clone());
@@ -300,6 +329,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         store.clone(),
         runtime_host_builder,
         block_stream_builder,
+        elastic_config,
     );
 
     // Create IPFS-based subgraph provider
