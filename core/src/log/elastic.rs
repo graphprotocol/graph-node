@@ -201,8 +201,22 @@ impl Drain for ElasticDrain {
     }
 }
 
-pub fn elastic_logger(config: ElasticDrainConfig) -> Logger {
-    let elastic_drain = ElasticDrain::new(config).fuse();
-    let async_drain = slog_async::Async::new(elastic_drain).build().fuse();
-    Logger::root(async_drain, o!())
+pub enum ElasticLoggerMode {
+    Fused,
+    IgnoreResults,
+}
+
+pub fn elastic_logger(config: ElasticDrainConfig, mode: ElasticLoggerMode) -> Logger {
+    let elastic_drain = ElasticDrain::new(config);
+    let async_mode_drain = match mode {
+        ElasticLoggerMode::Fused => {
+            let fused_drain = elastic_drain.fuse();
+            slog_async::Async::new(fused_drain).build().fuse()
+        }
+        ElasticLoggerMode::IgnoreResults => {
+            let res_ignoring_drain = elastic_drain.ignore_res();
+            slog_async::Async::new(res_ignoring_drain).build().fuse()
+        }
+    };
+    Logger::root(async_mode_drain, o!())
 }
