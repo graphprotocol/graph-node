@@ -21,8 +21,8 @@ where
     D1: Drain,
     D2: Drain,
 {
-    drain1: Box<D1>,
-    drain2: Box<D2>,
+    drain1: D1,
+    drain2: D2,
 }
 
 impl<D1, D2> SplitDrain<D1, D2>
@@ -33,8 +33,8 @@ where
     /// Creates a new split drain that forwards to the two provided drains.
     fn new(drain1: D1, drain2: D2) -> Self {
         SplitDrain {
-            drain1: Box::new(drain1),
-            drain2: Box::new(drain2),
+            drain1: drain1,
+            drain2: drain2,
         }
     }
 }
