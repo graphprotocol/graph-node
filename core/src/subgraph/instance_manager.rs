@@ -8,7 +8,9 @@ use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 
 use super::SubgraphInstance;
 use elastic_logger;
+use split_logger;
 use ElasticDrainConfig;
+use ElasticLoggingConfig;
 
 type InstanceShutdownMap = Arc<RwLock<HashMap<SubgraphId, CancelGuard>>>;
 
@@ -24,6 +26,7 @@ impl SubgraphInstanceManager {
         store: Arc<S>,
         host_builder: T,
         block_stream_builder: B,
+        elastic_config: Option<ElasticLoggingConfig>,
     ) -> Self
     where
         S: Store + ChainStore,
@@ -42,6 +45,7 @@ impl SubgraphInstanceManager {
             store,
             host_builder,
             block_stream_builder,
+            elastic_config,
         );
 
         SubgraphInstanceManager {
@@ -57,6 +61,7 @@ impl SubgraphInstanceManager {
         store: Arc<S>,
         host_builder: T,
         block_stream_builder: B,
+        elastic_config: Option<ElasticLoggingConfig>,
     ) where
         S: Store + ChainStore,
         T: RuntimeHostBuilder,
@@ -70,17 +75,20 @@ impl SubgraphInstanceManager {
 
             match event {
                 SubgraphStart(manifest) => {
-                    // let logger = logger.new(o!("subgraph_id" => manifest.id.clone()));
-                    let logger = elastic_logger(ElasticDrainConfig {
-                        endpoint: String::from(
-                            "https://d7d9391f130d40719020a7a81303ba0b.us-west-1.aws.found.io:9243",
-                        ),
-                        username: String::from("elastic"),
-                        password: Some(String::from("ezrcmTtocVTGZu2BogsQIY2E")),
-                        index: String::from("subgraph-logs"),
-                        document_type: String::from("log"),
-                        subgraph_id: String::from(manifest.id.clone()),
-                    });
+                    let term_logger = logger.new(o!("subgraph_id" => manifest.id.clone()));
+                    let logger = elastic_config
+                        .clone()
+                        .map(|elastic_config| {
+                            split_logger(
+                                term_logger.clone(),
+                                elastic_logger(ElasticDrainConfig {
+                                    general: elastic_config.clone(),
+                                    index: String::from("subgraph-logs"),
+                                    document_type: String::from("log"),
+                                    subgraph_id: String::from(manifest.id.clone()),
+                                }),
+                            )
+                        }).unwrap_or(term_logger);
 
                     info!(logger, "Start subgraph");
 
