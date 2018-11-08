@@ -162,19 +162,18 @@ impl Drain for ElasticDrain {
             write!(text, ", {}", value_kvs);
         }
 
-        let meta = ElasticLogMeta {
-            module: record.module().into(),
-            line: record.line() as i64,
-            column: record.column() as i64,
-        };
-
+        // Prepare log document
         let log = ElasticLog {
             id: id.clone(),
             subgraph_id: self.config.subgraph_id.clone(),
             timestamp,
             text,
             level: record.level(),
-            meta,
+            meta: ElasticLogMeta {
+                module: record.module().into(),
+                line: record.line() as i64,
+                column: record.column() as i64,
+            },
         };
 
         // Build the document URL
