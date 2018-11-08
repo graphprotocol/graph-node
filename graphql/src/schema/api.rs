@@ -722,4 +722,34 @@ mod tests {
                 .collect::<Vec<String>>()
         );
     }
+
+    #[test]
+    fn api_schema_contains_typename_fields_on_object_and_interface_types() {
+        let input_schema = parse_schema(
+            "
+            interface Node { id: ID!, name: String! }
+            type User implements Node { id: ID!, name: String!, email: String }
+            ",
+        ).expect("Failed to parse input schema");
+        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+
+        let is_typename_field = |field: &Field| {
+            field.name == String::from("__typename")
+                && field.field_type
+                    == Type::NonNullType(Box::new(Type::NamedType(String::from("String"))))
+        };
+
+        ast::get_object_type_definitions(&schema)
+            .iter()
+            .filter(|object_type| {
+                object_type.name != String::from("Query")
+                    && object_type.name != String::from("Subscription")
+            }).for_each(|object_type| assert!(object_type.fields.iter().any(is_typename_field)));
+
+        ast::get_interface_type_definitions(&schema)
+            .iter()
+            .for_each(|interface_type| {
+                assert!(interface_type.fields.iter().any(is_typename_field))
+            });
+    }
 }
