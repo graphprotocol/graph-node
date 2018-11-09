@@ -1079,7 +1079,6 @@ fn find_bytes_equal() {
 }
 
 #[test]
-#[ignore]
 fn revert_block() {
     run_test(|store| -> Result<(), ()> {
         let this_query = EntityQuery {
@@ -1120,7 +1119,6 @@ fn revert_block() {
 }
 
 #[test]
-#[ignore]
 fn revert_block_with_delete() {
     run_test(|store| -> Result<(), ()> {
         let this_query = EntityQuery {
@@ -1178,7 +1176,6 @@ fn revert_block_with_delete() {
 }
 
 #[test]
-#[ignore]
 fn revert_block_with_partial_update() {
     run_test(|store| -> Result<(), ()> {
         let entity_key = EntityKey {
