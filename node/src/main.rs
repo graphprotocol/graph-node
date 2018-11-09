@@ -140,6 +140,13 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .env("ELASTICSEARCH_PASSWORD")
                 .hide_env_values(true)
                 .help("Password to use for Elasticsearch logging"),
+        ).arg(
+            Arg::with_name("block-polling-interval")
+                .long("block-polling-interval")
+                .value_name("MILLISECONDS")
+                .default_value("500")
+                .env("BLOCK_POLLING_INTERVAL")
+                .help("How often to poll the Ethereum node for new blocks"),
         ).get_matches();
 
     // Set up logger
@@ -155,6 +162,14 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let ethereum_rpc = matches.value_of("ethereum-rpc");
     let ethereum_ipc = matches.value_of("ethereum-ipc");
     let ethereum_ws = matches.value_of("ethereum-ws");
+
+    let block_polling_interval = Duration::from_millis(
+        matches
+            .value_of("block-polling-interval")
+            .unwrap()
+            .parse()
+            .expect("Block polling interval must be a nonnegative integer"),
+    );
 
     // Parse rpc port
     let json_rpc_port = matches
@@ -301,7 +316,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         transport.clone(),
         50, // ancestor count, which we could make configuable
         logger.clone(),
-        Duration::from_millis(500), // polling interval, which we could make configurable
+        block_polling_interval,
     ).expect("failed to create Ethereum block ingestor");
 
     // Run the Ethereum block ingestor in the background
