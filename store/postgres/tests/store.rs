@@ -985,6 +985,7 @@ fn find_int_not_in() {
     )
 }
 
+// Disabled due to issue #565
 #[test]
 #[ignore]
 fn find_bool_equal() {
@@ -1004,6 +1005,7 @@ fn find_bool_equal() {
     )
 }
 
+// Disabled due to issue #565
 #[test]
 #[ignore]
 fn find_bool_not_equal() {
@@ -1041,6 +1043,7 @@ fn find_bool_in() {
     )
 }
 
+// Disabled due to issue #565
 #[test]
 #[ignore]
 fn find_bool_not_in() {
@@ -1228,6 +1231,7 @@ fn revert_block_with_partial_update() {
     })
 }
 
+// Disabled due to issue #332
 #[test]
 #[ignore]
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
