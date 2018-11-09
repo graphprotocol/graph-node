@@ -371,13 +371,6 @@ mod tests {
 
     #[test]
     fn build_query_parses_order_by_from_enum_values_correctly() {
-        let order_test = build_query(
-            &default_object(),
-            &HashMap::from_iter(
-                vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
-            ),
-        ).unwrap()
-        .order_by;
         assert_eq!(
             build_query(
                 &default_object(),

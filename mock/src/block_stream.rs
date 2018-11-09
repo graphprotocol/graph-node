@@ -4,7 +4,7 @@ use graph::prelude::*;
 
 pub struct MockBlockStream {
     chain_head_update_sink: Sender<ChainHeadUpdate>,
-    chain_head_update_stream: Receiver<ChainHeadUpdate>,
+    _chain_head_update_stream: Receiver<ChainHeadUpdate>,
 }
 
 impl MockBlockStream {
@@ -13,7 +13,7 @@ impl MockBlockStream {
 
         Self {
             chain_head_update_sink,
-            chain_head_update_stream,
+            _chain_head_update_stream: chain_head_update_stream,
         }
     }
 }
@@ -47,7 +47,7 @@ impl MockBlockStreamBuilder {
 impl BlockStreamBuilder for MockBlockStreamBuilder {
     type Stream = MockBlockStream;
 
-    fn from_subgraph(&self, manifest: &SubgraphManifest, logger: Logger) -> Self::Stream {
-        unimplemented!()
+    fn from_subgraph(&self, _manifest: &SubgraphManifest, _logger: Logger) -> Self::Stream {
+        MockBlockStream::new()
     }
 }
