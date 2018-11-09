@@ -2,6 +2,7 @@ use failure::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
 use std::sync::RwLock;
+use std::time::Duration;
 
 use graph::components::subgraph::SubgraphProviderEvent;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
@@ -88,6 +89,7 @@ impl SubgraphInstanceManager {
                                         index: String::from("subgraph-logs"),
                                         document_type: String::from("log"),
                                         subgraph_id: String::from(manifest.id.clone()),
+                                        flush_interval: Duration::from_secs(5),
                                     },
                                     term_logger.clone(),
                                 ),
