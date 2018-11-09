@@ -985,9 +985,7 @@ fn find_int_not_in() {
     )
 }
 
-// Disabled due to issue #565
 #[test]
-#[ignore]
 fn find_bool_equal() {
     test_find(
         vec!["2"],
@@ -1005,9 +1003,7 @@ fn find_bool_equal() {
     )
 }
 
-// Disabled due to issue #565
 #[test]
-#[ignore]
 fn find_bool_not_equal() {
     test_find(
         vec!["1", "3"],
@@ -1043,9 +1039,7 @@ fn find_bool_in() {
     )
 }
 
-// Disabled due to issue #565
 #[test]
-#[ignore]
 fn find_bool_not_in() {
     test_find(
         vec!["3", "1"],

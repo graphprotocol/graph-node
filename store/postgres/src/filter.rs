@@ -159,7 +159,7 @@ fn store_filter_by_mode(
                     filter_mode,
                     sql("(data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql("-> 'data')")
+                        .sql("->> 'data')")
                         .sql("::boolean")
                         .sql(op)
                         .bind::<Bool, _>(query_value),
