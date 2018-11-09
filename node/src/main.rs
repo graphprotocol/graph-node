@@ -141,11 +141,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .hide_env_values(true)
                 .help("Password to use for Elasticsearch logging"),
         ).arg(
-            Arg::with_name("block-polling-interval")
-                .long("block-polling-interval")
+            Arg::with_name("ethereum-polling-interval")
+                .long("ethereum-polling-interval")
                 .value_name("MILLISECONDS")
                 .default_value("500")
-                .env("BLOCK_POLLING_INTERVAL")
+                .env("ETHEREUM_POLLING_INTERVAL")
                 .help("How often to poll the Ethereum node for new blocks"),
         ).get_matches();
 
@@ -165,10 +165,10 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     let block_polling_interval = Duration::from_millis(
         matches
-            .value_of("block-polling-interval")
+            .value_of("ethereum-polling-interval")
             .unwrap()
             .parse()
-            .expect("Block polling interval must be a nonnegative integer"),
+            .expect("Ethereum polling interval must be a nonnegative integer"),
     );
 
     // Parse rpc port
