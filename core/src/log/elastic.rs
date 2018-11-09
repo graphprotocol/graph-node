@@ -162,7 +162,7 @@ impl ElasticDrain {
                         return Ok(());
                     }
 
-                    debug!(
+                    trace!(
                         flush_logger,
                         "Flushing {} logs to Elasticsearch",
                         logs.len()
