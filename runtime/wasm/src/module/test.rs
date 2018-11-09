@@ -160,14 +160,8 @@ where
     }
 }
 
-#[test]
-fn call_invalid_event_handler_and_dont_crash() {
-    // This test passing means the module doesn't crash when an invalid
-    // event handler is called or when the event handler execution fails.
-
-    let mut module = test_module(mock_data_source("wasm_test/example_event_handler.wasm"));
-
-    // Create mock Ethereum data
+/// Create mock Ethereum data
+fn generate_fake_block() -> (EthereumBlock, Transaction, Log) {
     let block_hash = H256::random();
     let transaction = Transaction {
         hash: H256::random(),
@@ -214,11 +208,23 @@ fn call_invalid_event_handler_and_dont_crash() {
             total_difficulty: 0.into(),
             seal_fields: vec![],
             uncles: vec![],
-            transactions: vec![],
+            transactions: vec![transaction.clone()],
             size: None,
         },
         transaction_receipts: vec![],
     };
+
+    (block, transaction, log)
+}
+
+#[test]
+fn call_invalid_event_handler_and_dont_crash() {
+    // This test passing means the module doesn't crash when an invalid
+    // event handler is called or when the event handler execution fails.
+
+    let mut module = test_module(mock_data_source("wasm_test/example_event_handler.wasm"));
+
+    let (block, transaction, log) = generate_fake_block();
 
     let ctx = EventHandlerContext {
         logger: Logger::root(slog::Discard, o!()),
@@ -252,58 +258,7 @@ fn call_event_handler_and_receive_store_event() {
 
     let mut module = test_module(mock_data_source("wasm_test/example_event_handler.wasm"));
 
-    // Create mock Ethereum data
-    let block_hash = H256::random();
-    let transaction = Transaction {
-        hash: H256::random(),
-        nonce: U256::zero(),
-        block_hash: Some(block_hash),
-        block_number: Some(5.into()),
-        transaction_index: Some(0.into()),
-        from: H160::random(),
-        to: None,
-        value: 0.into(),
-        gas_price: 0.into(),
-        gas: 0.into(),
-        input: Bytes::default(),
-    };
-    let log = Log {
-        address: Address::from("22843e74c59580b3eaf6c233fa67d8b7c561a835"),
-        topics: vec![util::ethereum::string_to_h256("ExampleEvent(string)")],
-        data: Bytes::default(),
-        block_hash: Some(block_hash),
-        block_number: Some(5.into()),
-        transaction_hash: Some(transaction.hash),
-        transaction_index: Some(0.into()),
-        log_index: Some(0.into()),
-        transaction_log_index: Some(0.into()),
-        log_type: None,
-        removed: None,
-    };
-    let block = EthereumBlock {
-        block: Block {
-            hash: Some(block_hash),
-            parent_hash: H256::random(),
-            uncles_hash: H256::zero(),
-            author: H160::random(),
-            state_root: H256::random(),
-            transactions_root: H256::random(),
-            receipts_root: H256::random(),
-            number: Some(5.into()),
-            gas_used: 0.into(),
-            gas_limit: 0.into(),
-            extra_data: Bytes::default(),
-            logs_bloom: H2048::random(),
-            timestamp: 42.into(),
-            difficulty: 0.into(),
-            total_difficulty: 0.into(),
-            seal_fields: vec![],
-            uncles: vec![],
-            transactions: vec![],
-            size: None,
-        },
-        transaction_receipts: vec![],
-    };
+    let (block, transaction, log) = generate_fake_block();
 
     let ctx = EventHandlerContext {
         logger: Logger::root(slog::Discard, o!()),
