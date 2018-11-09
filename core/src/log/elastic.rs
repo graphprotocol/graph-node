@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use graph::prelude::tokio::timer::Interval;
 use graph::prelude::*;
-use graph::serde_json::{json, json_internal};
+use graph::serde_json;
 use graph::slog_async;
 
 use std::result::Result;
