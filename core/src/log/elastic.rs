@@ -4,7 +4,7 @@ use reqwest;
 use serde::ser::Serializer as SerdeSerializer;
 use std::fmt;
 use std::fmt::Write;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use graph::prelude::tokio::timer::Interval;
@@ -131,7 +131,7 @@ pub struct ElasticDrainConfig {
 pub struct ElasticDrain {
     config: ElasticDrainConfig,
     error_logger: Logger,
-    logs: Arc<RwLock<Vec<ElasticLog>>>,
+    logs: Arc<Mutex<Vec<ElasticLog>>>,
 }
 
 impl ElasticDrain {
@@ -140,7 +140,7 @@ impl ElasticDrain {
         let drain = ElasticDrain {
             config,
             error_logger,
-            logs: Arc::new(RwLock::new(vec![])),
+            logs: Arc::new(Mutex::new(vec![])),
         };
         drain.periodically_flush_logs();
         drain
@@ -155,7 +155,7 @@ impl ElasticDrain {
         tokio::spawn(
             Interval::new_interval(self.config.flush_interval)
                 .for_each(move |_| {
-                    let mut logs = logs.write().unwrap();
+                    let mut logs = logs.lock().unwrap();
 
                     // Do nothing if there are no logs to flush
                     if logs.is_empty() {
@@ -288,7 +288,7 @@ impl Drain for ElasticDrain {
         };
 
         // Push the log into the queue
-        let mut logs = self.logs.write().unwrap();
+        let mut logs = self.logs.lock().unwrap();
         logs.push(log);
 
         Ok(())
@@ -297,8 +297,8 @@ impl Drain for ElasticDrain {
 
 /// Creates a new asynchronous Elasticsearch logger.
 ///
-/// Uses `error_drain` to log any failed Elasticsearch log requests, so
-/// these errors don't go unnoticed.
+/// Uses `error_logger` to print any Elasticsearch logging errors,
+/// so they don't go unnoticed.
 pub fn elastic_logger(config: ElasticDrainConfig, error_logger: Logger) -> Logger {
     let elastic_drain = ElasticDrain::new(config, error_logger).fuse();
     let async_drain = slog_async::Async::new(elastic_drain)
