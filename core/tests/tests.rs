@@ -11,16 +11,15 @@ use walkdir::WalkDir;
 use std::collections::HashSet;
 use std::fs::read_to_string;
 use std::io::Cursor;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
 use graph::components::ethereum::*;
-use graph::ethabi::Token;
 use graph::prelude::*;
 use graph::web3::types::*;
 use graph_core::SubgraphInstanceManager;
 use graph_mock::{FakeStore, MockBlockStreamBuilder, MockStore};
-use graph_runtime_wasm::RuntimeHostBuilder;
 
 /// Adds subgraph located in `test/subgraphs/`, replacing "link to" placeholders
 /// in the subgraph manifest with links to files just added into a local IPFS
@@ -64,58 +63,63 @@ fn add_subgraph_to_ipfs(
 }
 
 #[test]
-#[cfg(any())]
 fn multiple_data_sources_per_subgraph() {
-    struct MockEthereumAdapter;
+    struct MockRuntimeHost {
+        manifest: SubgraphManifest,
+    }
 
-    impl EthereumAdapter for MockEthereumAdapter {
-        fn net_identifiers(
-            &self,
-            _: &Logger,
-        ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
-            unimplemented!();
+    impl RuntimeHost for MockRuntimeHost {
+        fn subgraph_manifest(&self) -> &SubgraphManifest {
+            &self.manifest
         }
 
-        fn block_by_hash(
-            &self,
-            _: &Logger,
-            _: H256,
-        ) -> Box<Future<Item = Option<EthereumBlock>, Error = Error> + Send> {
-            unimplemented!();
+        fn matches_log(&self, _: &Log) -> bool {
+            true
         }
 
-        fn block_hash_by_block_number(
+        fn process_log(
             &self,
             _: &Logger,
-            _: u64,
-        ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
+            _: Arc<EthereumBlock>,
+            _: Arc<Transaction>,
+            _: Arc<Log>,
+            _: Vec<EntityOperation>,
+        ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send> {
             unimplemented!();
         }
+    }
 
-        fn is_on_main_chain(
-            &self,
-            _: &Logger,
-            _: EthereumBlockPointer,
-        ) -> Box<Future<Item = bool, Error = Error> + Send> {
-            unimplemented!();
+    #[derive(Default)]
+    struct MockRuntimeHostBuilder {
+        data_sources_received: Arc<Mutex<Vec<DataSource>>>,
+    }
+
+    impl MockRuntimeHostBuilder {
+        fn new() -> Self {
+            Self::default()
         }
+    }
 
-        fn find_first_blocks_with_logs(
-            &self,
-            _: &Logger,
-            _: u64,
-            _: u64,
-            _: EthereumLogFilter,
-        ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
-            unimplemented!();
+    impl Clone for MockRuntimeHostBuilder {
+        fn clone(&self) -> Self {
+            Self {
+                data_sources_received: self.data_sources_received.clone(),
+            }
         }
+    }
 
-        fn contract_call(
+    impl RuntimeHostBuilder for MockRuntimeHostBuilder {
+        type Host = MockRuntimeHost;
+
+        fn build(
             &self,
             _: &Logger,
-            _: EthereumContractCall,
-        ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
-            unimplemented!();
+            manifest: SubgraphManifest,
+            data_source: DataSource,
+        ) -> Self::Host {
+            self.data_sources_received.lock().unwrap().push(data_source);
+
+            MockRuntimeHost { manifest }
         }
     }
 
@@ -130,18 +134,19 @@ fn multiple_data_sources_per_subgraph() {
         .block_on(future::lazy(|| {
             let resolver = Arc::new(IpfsClient::default());
             let logger = Logger::root(slog::Discard, o!());
-            let eth_adapter = Arc::new(MockEthereumAdapter);
             let store = Arc::new(FakeStore);
-            let host_builder =
-                RuntimeHostBuilder::new(eth_adapter.clone(), resolver.clone(), store.clone());
+            let host_builder = MockRuntimeHostBuilder::new();
             let block_stream_builder = MockBlockStreamBuilder::new();
-            let manager =
-                SubgraphInstanceManager::new(&logger, store, host_builder, block_stream_builder);
+            let manager = SubgraphInstanceManager::new(
+                &logger,
+                store,
+                host_builder.clone(),
+                block_stream_builder,
+                None,
+            );
 
-            // Load a subgraph with two data sets, one listening for `ExampleEvent`
-            // and the other for `ExampleEvent2`.
+            // Load a subgraph with two data sources
             SubgraphManifest::resolve(
-                "example_subgraph".to_owned(),
                 Link {
                     link: subgraph_link,
                 },
@@ -153,19 +158,29 @@ fn multiple_data_sources_per_subgraph() {
                     .event_sink()
                     .send(SubgraphProviderEvent::SubgraphStart(subgraph))
             }).and_then(move |_| {
-                // If we subscribed to both events, then we're handling multiple data sets.
+                // If we created a RuntimeHost for each data source,
+                // then we're handling multiple data sets.
                 // Wait for thirty seconds for that to happen, otherwise fail the test.
                 let start_time = Instant::now();
                 let max_wait = Duration::from_secs(30);
                 loop {
-                    let subscriptions = &eth_adapter.lock().unwrap().received_subscriptions;
-                    if subscriptions.contains(&"ExampleEvent".to_owned())
-                        && subscriptions.contains(&"ExampleEvent2".to_owned())
-                    {
+                    let data_sources_received = host_builder.data_sources_received.lock().unwrap();
+                    let data_source_names = data_sources_received
+                        .iter()
+                        .map(|data_source| data_source.name.as_str())
+                        .collect::<HashSet<&str>>();
+                    use std::iter::FromIterator;
+                    let expected_data_source_names =
+                        HashSet::from_iter(vec!["ExampleDataSource", "ExampleDataSource2"]);
+
+                    if data_source_names == expected_data_source_names {
                         break;
                     }
                     if Instant::now().duration_since(start_time) > max_wait {
-                        panic!("Test failed, events subscribed to: {:?}", subscriptions)
+                        panic!(
+                            "Test failed, runtime hosts created for data sources: {:?}",
+                            data_source_names
+                        )
                     }
                     ::std::thread::yield_now();
                 }
