@@ -270,7 +270,7 @@ fn call_event_handler_and_receive_store_event() {
         result.unwrap(),
         vec![EntityOperation::Set {
             key: EntityKey {
-                subgraph_id: "example subgraph".to_owned(),
+                subgraph_id: "test_subgraph".to_owned(),
                 entity_type: "ExampleEntity".to_owned(),
                 entity_id: "example id".to_owned(),
             },

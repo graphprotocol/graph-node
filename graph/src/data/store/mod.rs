@@ -1,3 +1,4 @@
+use ethabi::Address;
 use failure::Error;
 use graphql_parser::query;
 use graphql_parser::schema;
@@ -175,6 +176,30 @@ impl From<String> for Value {
 impl<'a> From<&'a String> for Value {
     fn from(value: &'a String) -> Value {
         Value::String(value.clone())
+    }
+}
+
+impl From<i32> for Value {
+    fn from(value: i32) -> Value {
+        Value::Int(value)
+    }
+}
+
+impl From<u64> for Value {
+    fn from(value: u64) -> Value {
+        Value::BigInt(value.into())
+    }
+}
+
+impl From<Vec<Value>> for Value {
+    fn from(list: Vec<Value>) -> Value {
+        Value::List(list)
+    }
+}
+
+impl From<Address> for Value {
+    fn from(address: Address) -> Value {
+        Value::Bytes(scalar::Bytes::from(address.as_ref()))
     }
 }
 

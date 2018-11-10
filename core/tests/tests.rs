@@ -64,15 +64,10 @@ fn add_subgraph_to_ipfs(
 
 #[test]
 fn multiple_data_sources_per_subgraph() {
-    struct MockRuntimeHost {
-        manifest: SubgraphManifest,
-    }
+    #[derive(Debug)]
+    struct MockRuntimeHost {}
 
     impl RuntimeHost for MockRuntimeHost {
-        fn subgraph_manifest(&self) -> &SubgraphManifest {
-            &self.manifest
-        }
-
         fn matches_log(&self, _: &Log) -> bool {
             true
         }
@@ -89,7 +84,7 @@ fn multiple_data_sources_per_subgraph() {
         }
     }
 
-    #[derive(Default)]
+    #[derive(Debug, Default)]
     struct MockRuntimeHostBuilder {
         data_sources_received: Arc<Mutex<Vec<DataSource>>>,
     }
@@ -114,12 +109,12 @@ fn multiple_data_sources_per_subgraph() {
         fn build(
             &self,
             _: &Logger,
-            manifest: SubgraphManifest,
+            _: SubgraphId,
             data_source: DataSource,
-        ) -> Self::Host {
+        ) -> Result<Self::Host, Error> {
             self.data_sources_received.lock().unwrap().push(data_source);
 
-            MockRuntimeHost { manifest }
+            Ok(MockRuntimeHost {})
         }
     }
 
