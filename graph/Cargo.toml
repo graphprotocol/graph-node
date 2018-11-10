@@ -24,3 +24,4 @@ tiny-keccak = "1.0"
 tokio = "0.1.11"
 tokio-retry = "0.2"
 web3 = "0.4.0"
+uuid = { version = "0.7", features = ["v4"] }

@@ -28,7 +28,7 @@ pub trait RuntimeHostBuilder: Clone + Send + 'static {
     fn build(
         &self,
         logger: &Logger,
-        subgraph_manifest: SubgraphId,
+        subgraph_id: SubgraphId,
         data_source: DataSource,
     ) -> Result<Self::Host, Error>;
 }

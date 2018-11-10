@@ -86,6 +86,12 @@ impl From<i32> for BigInt {
     }
 }
 
+impl From<u64> for BigInt {
+    fn from(i: u64) -> BigInt {
+        BigInt(i.into())
+    }
+}
+
 impl From<U128> for BigInt {
     /// This implementation assumes that U128 represents an unsigned U128,
     /// and not a signed U128 (aka int128 in Solidity). Right now, this is

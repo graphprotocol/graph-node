@@ -1,34 +1,59 @@
 //! See `path/to/blebers.schema` for corresponding graphql schema.
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+use components::store::{EntityKey, EntityOperation, Store};
+use data::store::Value;
+use failure::Error;
+use std::collections::HashMap;
+use uuid::Uuid;
+
+/// ID of the subgraph of subgraphs.
+const SUBGRAPHS_ID: &str = "subgraphs";
+const EVENT_SOURCE: &str = "SubgraphAdded";
+
+#[derive(Debug)]
 struct SubgraphSchema {
     id: String,
     manifest: SubgraphManifest,
     entity_count: i32,
     created_at: u64,
-    updated_at: u64,
 }
 
 impl SubgraphSchema {
-    fn new(
-        source_manifest: super::SubgraphManifest,
-        entity_count: i32,
-        created_at: u64,
-        updated_at: u64,
-    ) -> Self {
+    fn new(source_manifest: super::SubgraphManifest, entity_count: i32, created_at: u64) -> Self {
         Self {
             id: source_manifest.id.clone(),
-            manifest: source_manifest.into(),
+            manifest: SubgraphManifest::from(&source_manifest),
             entity_count,
             created_at,
-            updated_at,
         }
+    }
+
+    fn write_to_store(self, store: &impl Store) -> Result<(), Error> {
+        let mut entity = HashMap::new();
+        entity.insert("id".to_owned(), self.id.clone().into());
+        entity.insert(
+            "manifest".to_owned(),
+            self.manifest.write_to_store(store)?.into(),
+        );
+        entity.insert("entityCount".to_owned(), self.entity_count.into());
+        entity.insert("createdAt".to_owned(), self.created_at.into());
+
+        store.apply_set_operation(
+            EntityOperation::Set {
+                key: EntityKey {
+                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    entity_type: "SubgraphSchema".to_owned(),
+                    entity_id: self.id,
+                },
+                data: entity.into(),
+            },
+            EVENT_SOURCE.to_owned(),
+        )?;
+        Ok(())
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 struct SubgraphManifest {
     spec_version: String,
     description: String,
@@ -37,19 +62,49 @@ struct SubgraphManifest {
     repository: String,
 }
 
-impl From<super::SubgraphManifest> for SubgraphManifest {
-    fn from(manifest: super::SubgraphManifest) -> Self {
+impl SubgraphManifest {
+    // Returns the id in the store.
+    fn write_to_store(self, store: &impl Store) -> Result<String, Error> {
+        let id = Uuid::new_v4().to_string();
+        let mut entity = HashMap::new();
+        entity.insert("id".to_owned(), id.clone().into());
+        entity.insert("description".to_owned(), self.description.into());
+        entity.insert("schema".to_owned(), self.schema.into());
+
+        let mut data_sources: Vec<Value> = Vec::new();
+        for data_source in self.data_sources {
+            data_sources.push(data_source.write_to_store(store)?.into())
+        }
+        entity.insert("dataSources".to_owned(), data_sources.into());
+
+        store.apply_set_operation(
+            EntityOperation::Set {
+                key: EntityKey {
+                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    entity_type: "SubgraphManifest".to_owned(),
+                    entity_id: id.clone(),
+                },
+                data: entity.into(),
+            },
+            EVENT_SOURCE.to_owned(),
+        )?;
+        Ok(id)
+    }
+}
+
+impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifest {
+    fn from(manifest: &'a super::SubgraphManifest) -> Self {
         Self {
-            spec_version: manifest.spec_version,
+            spec_version: manifest.spec_version.clone(),
             description: String::new(),
-            schema: manifest.schema.document.to_string(),
-            data_sources: manifest.data_sources.into_iter().map(Into::into).collect(),
+            schema: manifest.schema.document.clone().to_string(),
+            data_sources: manifest.data_sources.iter().map(Into::into).collect(),
             repository: String::new(),
         }
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize)]
+#[derive(Debug)]
 struct EthereumContractDataSource {
     kind: String,
     name: String,
@@ -57,21 +112,76 @@ struct EthereumContractDataSource {
     mapping: EthereumContractMapping,
 }
 
-impl From<super::DataSource> for EthereumContractDataSource {
-    fn from(data_source: super::DataSource) -> Self {
+impl EthereumContractDataSource {
+    // Returns the id in the store.
+    fn write_to_store(self, store: &impl Store) -> Result<String, Error> {
+        let id = Uuid::new_v4().to_string();
+        let mut entity = HashMap::new();
+        entity.insert("id".to_owned(), id.clone().into());
+        entity.insert("kind".to_owned(), self.kind.into());
+        entity.insert(
+            "source".to_owned(),
+            self.source.write_to_store(store)?.into(),
+        );
+        entity.insert(
+            "mapping".to_owned(),
+            self.mapping.write_to_store(store)?.into(),
+        );
+
+        store.apply_set_operation(
+            EntityOperation::Set {
+                key: EntityKey {
+                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    entity_type: "EthereumContractDataSource".to_owned(),
+                    entity_id: id.clone(),
+                },
+                data: entity.into(),
+            },
+            EVENT_SOURCE.to_owned(),
+        )?;
+        Ok(id)
+    }
+}
+
+impl<'a> From<&'a super::DataSource> for EthereumContractDataSource {
+    fn from(data_source: &'a super::DataSource) -> Self {
         Self {
-            kind: data_source.kind,
-            name: data_source.name,
-            source: data_source.source.into(),
-            mapping: data_source.mapping.into(),
+            kind: data_source.kind.clone(),
+            name: data_source.name.clone(),
+            source: data_source.source.clone().into(),
+            mapping: EthereumContractMapping::from(&data_source.mapping),
         }
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
 struct EthereumContractSource {
     address: super::Address,
     abi: String,
+}
+
+impl EthereumContractSource {
+    // Returns the id in the store.
+    fn write_to_store(self, store: &impl Store) -> Result<String, Error> {
+        let id = Uuid::new_v4().to_string();
+        let mut entity = HashMap::new();
+        entity.insert("id".to_owned(), id.clone().into());
+        entity.insert("address".to_owned(), self.address.into());
+        entity.insert("abi".to_owned(), self.abi.into());
+
+        store.apply_set_operation(
+            EntityOperation::Set {
+                key: EntityKey {
+                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    entity_type: "EthereumContractSource".to_owned(),
+                    entity_id: id.clone(),
+                },
+                data: entity.into(),
+            },
+            EVENT_SOURCE.to_owned(),
+        )?;
+        Ok(id)
+    }
 }
 
 impl From<super::Source> for EthereumContractSource {
@@ -83,53 +193,144 @@ impl From<super::Source> for EthereumContractSource {
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 struct EthereumContractMapping {
     kind: String,
     api_version: String,
     language: String,
-    #[serde(rename = "/")]
     file: String,
     entities: Vec<String>,
     abis: Vec<EthereumContractAbi>,
     event_handlers: Vec<EthereumContractEventHandler>,
 }
 
-impl From<super::Mapping> for EthereumContractMapping {
-    fn from(mapping: super::Mapping) -> Self {
+impl EthereumContractMapping {
+    // Returns the id in the store.
+    fn write_to_store(self, store: &impl Store) -> Result<String, Error> {
+        let id = Uuid::new_v4().to_string();
+        let mut entity = HashMap::new();
+        entity.insert("id".to_owned(), id.clone().into());
+        entity.insert("kind".to_owned(), self.kind.into());
+        entity.insert("apiVersion".to_owned(), self.api_version.into());
+
+        // Use '/' for the link, IPLD stlye.
+        entity.insert("/".to_owned(), self.file.into());
+
+        let mut abis: Vec<Value> = Vec::new();
+        for abi in self.abis {
+            abis.push(abi.write_to_store(store)?.into())
+        }
+        entity.insert("abis".to_owned(), abis.into());
+
+        let mut event_handlers: Vec<Value> = Vec::new();
+        for event_handler in self.event_handlers {
+            event_handlers.push(event_handler.write_to_store(store)?.into())
+        }
+        entity.insert("eventHandlers".to_owned(), event_handlers.into());
+
+        store.apply_set_operation(
+            EntityOperation::Set {
+                key: EntityKey {
+                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    entity_type: "EthereumContractSource".to_owned(),
+                    entity_id: id.clone(),
+                },
+                data: entity.into(),
+            },
+            EVENT_SOURCE.to_owned(),
+        )?;
+        Ok(id)
+    }
+}
+
+impl<'a> From<&'a super::Mapping> for EthereumContractMapping {
+    fn from(mapping: &'a super::Mapping) -> Self {
         Self {
-            kind: mapping.kind,
-            api_version: mapping.api_version,
-            language: mapping.language,
-            file: mapping.link.link,
-            entities: mapping.entities,
-            abis: mapping.abis.into_iter().map(Into::into).collect(),
-            event_handlers: mapping.event_handlers.into_iter().map(Into::into).collect(),
+            kind: mapping.kind.clone(),
+            api_version: mapping.api_version.clone(),
+            language: mapping.language.clone(),
+            file: mapping.link.link.clone(),
+            entities: mapping.entities.clone(),
+            abis: mapping.abis.iter().map(Into::into).collect(),
+            event_handlers: mapping
+                .event_handlers
+                .clone()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         }
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize)]
+#[derive(Debug)]
 struct EthereumContractAbi {
     name: String,
-    #[serde(rename = "/")]
     file: String,
 }
 
-impl From<super::MappingABI> for EthereumContractAbi {
-    fn from(abi: super::MappingABI) -> Self {
+impl EthereumContractAbi {
+    // Returns the id in the store.
+    fn write_to_store(self, store: &impl Store) -> Result<String, Error> {
+        let id = Uuid::new_v4().to_string();
+        let mut entity = HashMap::new();
+        entity.insert("id".to_owned(), id.clone().into());
+        entity.insert("name".to_owned(), self.name.into());
+
+        // Use '/' for the link, IPLD stlye.
+        entity.insert("/".to_owned(), self.file.into());
+
+        store.apply_set_operation(
+            EntityOperation::Set {
+                key: EntityKey {
+                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    entity_type: "EthereumContractAbi".to_owned(),
+                    entity_id: id.clone(),
+                },
+                data: entity.into(),
+            },
+            EVENT_SOURCE.to_owned(),
+        )?;
+        Ok(id)
+    }
+}
+
+impl<'a> From<&'a super::MappingABI> for EthereumContractAbi {
+    fn from(abi: &'a super::MappingABI) -> Self {
         Self {
-            name: abi.name,
-            file: abi.link.link,
+            name: abi.name.clone(),
+            file: abi.link.link.clone(),
         }
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize)]
+#[derive(Debug)]
 struct EthereumContractEventHandler {
     event: String,
     handler: String,
+}
+
+impl EthereumContractEventHandler {
+    // Returns the id in the store.
+    fn write_to_store(self, store: &impl Store) -> Result<String, Error> {
+        let id = Uuid::new_v4().to_string();
+        let mut entity = HashMap::new();
+        entity.insert("id".to_owned(), id.clone().into());
+        entity.insert("event".to_owned(), self.event.into());
+        entity.insert("handler".to_owned(), self.handler.into());
+
+        store.apply_set_operation(
+            EntityOperation::Set {
+                key: EntityKey {
+                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    entity_type: "EthereumContractEventHandler".to_owned(),
+                    entity_id: id.clone(),
+                },
+                data: entity.into(),
+            },
+            EVENT_SOURCE.to_owned(),
+        )?;
+        Ok(id)
+    }
 }
 
 impl From<super::MappingEventHandler> for EthereumContractEventHandler {
