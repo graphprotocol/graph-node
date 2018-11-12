@@ -28,6 +28,11 @@ impl<T> fmt::Debug for AscPtr<T> {
 }
 
 impl<C: AscType> AscPtr<C> {
+    /// Create a pointer that is equivalent to AssemblyScript's `null`.
+    pub(crate) fn null() -> Self {
+        AscPtr(0, PhantomData)
+    }
+
     /// Read from `self` into the Rust struct `C`.
     pub(super) fn read_ptr<H: AscHeap>(self, heap: &H) -> C {
         C::from_asc_bytes(&heap.get(self.0, C::asc_size(self, heap)).unwrap())
