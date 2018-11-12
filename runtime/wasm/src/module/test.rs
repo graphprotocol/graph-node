@@ -23,8 +23,6 @@ use std::str::FromStr;
 
 use super::*;
 
-use self::graphql_parser::schema::Document;
-
 #[derive(Default)]
 struct MockEthereumAdapter {}
 

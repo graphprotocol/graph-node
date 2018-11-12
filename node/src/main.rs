@@ -10,7 +10,6 @@ extern crate sentry;
 extern crate graph;
 extern crate graph_core;
 extern crate graph_datasource_ethereum;
-extern crate graph_mock;
 extern crate graph_runtime_wasm;
 extern crate graph_server_http;
 extern crate graph_server_json_rpc;

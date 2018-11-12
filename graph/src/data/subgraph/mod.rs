@@ -15,7 +15,7 @@ use tokio::prelude::*;
 use web3::types::Address;
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
-mod schema;
+pub mod schema;
 
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Address, D::Error>
