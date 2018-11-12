@@ -263,6 +263,10 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
             timestamp: heap.asc_new(&BigInt::from_unsigned_u256(&self.timestamp)),
             difficulty: heap.asc_new(&BigInt::from_unsigned_u256(&self.difficulty)),
             total_difficulty: heap.asc_new(&BigInt::from_unsigned_u256(&self.total_difficulty)),
+            size: self
+                .size
+                .map(|size| heap.asc_new(&BigInt::from_unsigned_u256(&size)))
+                .unwrap_or_else(|| AscPtr::null()),
         }
     }
 }

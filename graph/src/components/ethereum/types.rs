@@ -31,6 +31,7 @@ pub struct EthereumBlockData {
     pub timestamp: U256,
     pub difficulty: U256,
     pub total_difficulty: U256,
+    pub size: Option<U256>,
 }
 
 impl<'a, T> From<&'a Block<T>> for EthereumBlockData {
@@ -49,6 +50,7 @@ impl<'a, T> From<&'a Block<T>> for EthereumBlockData {
             timestamp: block.timestamp,
             difficulty: block.difficulty,
             total_difficulty: block.total_difficulty,
+            size: block.size,
         }
     }
 }
