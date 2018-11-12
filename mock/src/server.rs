@@ -91,10 +91,6 @@ where
 {
     type ServeError = MockServeError;
 
-    fn schema_event_sink(&mut self) -> Sender<SchemaEvent> {
-        self.schema_event_sink.clone()
-    }
-
     fn serve(
         &mut self,
         _port: u16,
@@ -122,5 +118,16 @@ where
                 Ok(())
             })
         })))
+    }
+}
+
+impl<Q> EventConsumer<SchemaEvent> for MockGraphQLServer<Q> {
+    fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()> + Send> {
+        Box::new(self.schema_event_sink.clone().sink_map_err(move |e| {
+            panic!(
+                "Failed to send schema event, receiving component was dropped: {}",
+                e
+            );
+        }))
     }
 }

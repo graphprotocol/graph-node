@@ -1,0 +1,53 @@
+type Subgraph @entity {
+    id: ID!
+    manifest: SubgraphManifest!
+#   numberEntities: Int!    Need to figure out how to keep track of this.
+    createdAt: BigInt!
+}
+
+type SubgraphManifest @entity {
+    id: ID!
+    specVersion: String!
+    description: String!
+    schema: String!
+    dataSources: [EthereumContractDataSource!]!
+    repository: String
+}
+
+
+type EthereumContractDataSource @entity {
+    id: ID!
+    kind: String!
+    name: String!
+    source: EthereumContractSource!
+    mapping: EthereumContractMapping!
+}
+
+type EthereumContractSource @entity {
+    id: ID!
+    address: String!
+    abi: String!
+}
+
+type EthereumContractMapping @entity {
+    id: ID!
+    kind: String!
+    apiVersion: String!
+    language: String!
+    file: Link!
+    entities: [String!]!
+    abis: [EthereumContractAbi!]!
+    eventHandlers: [EthereumContractEventHandler!]!
+}
+
+type EthereumContractAbi @entity {
+    id: ID!
+    name: String!
+    file: Link!
+}
+
+type EthereumContractEventHandler @entity {
+    id: ID!
+    event: String!
+    handler: String!
+}
