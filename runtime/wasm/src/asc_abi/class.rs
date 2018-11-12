@@ -415,6 +415,7 @@ pub(crate) struct AscEthereumBlock {
     pub timestamp: AscPtr<AscBigInt>,
     pub difficulty: AscPtr<AscBigInt>,
     pub total_difficulty: AscPtr<AscBigInt>,
+    pub size: AscPtr<AscBigInt>,
 }
 
 impl AscType for AscEthereumBlock {}
