@@ -273,7 +273,10 @@ impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
             hash: heap.asc_new(&self.hash),
             index: heap.asc_new(&BigInt::from(self.index)),
             from: heap.asc_new(&self.from),
-            to: heap.asc_new(&self.to),
+            to: self
+                .to
+                .map(|to| heap.asc_new(&to))
+                .unwrap_or_else(|| AscPtr::null()),
             value: heap.asc_new(&BigInt::from_unsigned_u256(&self.value)),
             gas_used: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_used)),
             gas_price: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_price)),
