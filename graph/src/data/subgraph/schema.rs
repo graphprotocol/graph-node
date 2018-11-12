@@ -1,5 +1,6 @@
 //! See `path/to/blebers.schema` for corresponding graphql schema.
 
+use super::SubgraphId;
 use components::store::{EntityKey, EntityOperation, Store};
 use data::store::Value;
 use failure::Error;
@@ -11,38 +12,35 @@ const SUBGRAPHS_ID: &str = "subgraphs";
 const EVENT_SOURCE: &str = "SubgraphAdded";
 
 #[derive(Debug)]
-struct SubgraphSchema {
-    id: String,
+pub struct SubgraphEntity {
+    id: SubgraphId,
     manifest: SubgraphManifest,
-    entity_count: i32,
     created_at: u64,
 }
 
-impl SubgraphSchema {
-    fn new(source_manifest: super::SubgraphManifest, entity_count: i32, created_at: u64) -> Self {
+impl SubgraphEntity {
+    pub fn new(source_manifest: &super::SubgraphManifest, created_at: u64) -> Self {
         Self {
             id: source_manifest.id.clone(),
-            manifest: SubgraphManifest::from(&source_manifest),
-            entity_count,
+            manifest: SubgraphManifest::from(source_manifest),
             created_at,
         }
     }
 
-    fn write_to_store(self, store: &impl Store) -> Result<(), Error> {
+    pub fn write_to_store(self, store: &impl Store) -> Result<(), Error> {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), self.id.clone().into());
         entity.insert(
             "manifest".to_owned(),
             self.manifest.write_to_store(store)?.into(),
         );
-        entity.insert("entityCount".to_owned(), self.entity_count.into());
         entity.insert("createdAt".to_owned(), self.created_at.into());
 
         store.apply_set_operation(
             EntityOperation::Set {
                 key: EntityKey {
                     subgraph_id: SUBGRAPHS_ID.to_owned(),
-                    entity_type: "SubgraphSchema".to_owned(),
+                    entity_type: "Subgraph".to_owned(),
                     entity_id: self.id,
                 },
                 data: entity.into(),
