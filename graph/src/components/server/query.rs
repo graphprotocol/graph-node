@@ -1,12 +1,11 @@
+use components::subgraph::SchemaEvent;
+use components::EventConsumer;
+use data::query::QueryError;
 use futures::prelude::*;
-use futures::sync::mpsc::Sender;
 use futures::sync::oneshot::Canceled;
 use serde::ser::*;
 use std::error::Error;
 use std::fmt;
-
-use components::subgraph::SchemaEvent;
-use data::query::QueryError;
 
 /// Errors that can occur while processing incoming requests.
 #[derive(Debug)]
@@ -84,12 +83,8 @@ impl Serialize for GraphQLServerError {
 }
 
 /// Common trait for GraphQL server implementations.
-pub trait GraphQLServer {
+pub trait GraphQLServer: EventConsumer<SchemaEvent> {
     type ServeError;
-
-    /// Sender to which others should write whenever the schemas that the server
-    /// runs against change.
-    fn schema_event_sink(&mut self) -> Sender<SchemaEvent>;
 
     /// Creates a new Tokio task that, when spawned, brings up the GraphQL server.
     fn serve(

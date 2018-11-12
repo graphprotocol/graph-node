@@ -67,7 +67,7 @@ mod test {
                 let id = schema.id.clone();
 
                 server
-                    .schema_event_sink()
+                    .event_sink()
                     .send(SchemaEvent::SchemaAdded(schema))
                     .wait()
                     .expect("Failed to send schema to server");
@@ -119,7 +119,7 @@ mod test {
                 let id = schema.id.clone();
 
                 server
-                    .schema_event_sink()
+                    .event_sink()
                     .send(SchemaEvent::SchemaAdded(schema))
                     .wait()
                     .expect("Failed to send schema to server");
@@ -202,7 +202,7 @@ mod test {
                 let id = schema.id.clone();
 
                 server
-                    .schema_event_sink()
+                    .event_sink()
                     .send(SchemaEvent::SchemaAdded(schema))
                     .wait()
                     .expect("Failed to send schema to server");

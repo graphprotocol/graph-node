@@ -29,7 +29,7 @@ use std::net::ToSocketAddrs;
 use std::time::Duration;
 use url::Url;
 
-use graph::components::forward;
+use graph::components::{forward, forward2};
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::{
@@ -352,17 +352,13 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Forward subgraph events from the subgraph provider to the subgraph instance manager
     tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());
 
-    // Forward schema events from the subgraph provider to the GraphQL server.
-    let graphql_server_logger = logger.clone();
+    // Forward schema events from the subgraph provider to the GraphQL servers.
     tokio::spawn(
-        subgraph_provider
-            .take_event_stream()
-            .unwrap()
-            .forward(subscription_server.event_sink().fanout(
-                graphql_server.schema_event_sink().sink_map_err(move |e| {
-                    error!(graphql_server_logger, "Error forwarding schema event {}", e);
-                }),
-            )).and_then(|_| Ok(())),
+        forward2(
+            &mut subgraph_provider,
+            &subscription_server,
+            &graphql_server,
+        ).unwrap(),
     );
 
     // Create named subgraph provider for resolving subgraph name->ID mappings

@@ -114,14 +114,10 @@ impl<Q, S> GraphQLServer<Q, S> {
 
 impl<Q, S> GraphQLServerTrait for GraphQLServer<Q, S>
 where
-    Q: GraphQlRunner + Sized + 'static,
+    Q: GraphQlRunner + 'static,
     S: Store,
 {
     type ServeError = GraphQLServeError;
-
-    fn schema_event_sink(&mut self) -> Sender<SchemaEvent> {
-        self.schema_event_sink.clone()
-    }
 
     fn serve(
         &mut self,
@@ -151,6 +147,18 @@ where
     }
 }
 
+impl<Q, S> EventConsumer<SchemaEvent> for GraphQLServer<Q, S> {
+    fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()> + Send> {
+        let logger = self.logger.clone();
+        Box::new(self.schema_event_sink.clone().sink_map_err(move |e| {
+            error!(
+                logger,
+                "Failed to send schema event, receiving component was dropped: {}", e
+            );
+        }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate graph_mock;
@@ -173,7 +181,7 @@ mod tests {
                     let graphql_runner = Arc::new(MockGraphQlRunner::new(&logger));
                     let store = Arc::new(MockStore::new());
                     let mut server = GraphQLServer::new(&logger, graphql_runner, store);
-                    let schema_sink = server.schema_event_sink();
+                    let schema_sink = server.event_sink();
 
                     // Create an input schema event
                     let input_doc =
