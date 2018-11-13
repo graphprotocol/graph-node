@@ -1,11 +1,11 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use graph::data::subgraph::schema::SubgraphEntity;
+use graph::prelude::{SubgraphProvider as SubgraphProviderTrait, *};
 use std::collections::HashSet;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use graph::prelude::{SubgraphProvider as SubgraphProviderTrait, *};
-use graph_graphql::prelude::validate_schema;
-
-pub struct SubgraphProvider<L> {
+pub struct SubgraphProvider<L, S> {
     logger: slog::Logger,
     event_stream: Option<Receiver<SubgraphProviderEvent>>,
     event_sink: Sender<SubgraphProviderEvent>,
@@ -13,13 +13,14 @@ pub struct SubgraphProvider<L> {
     schema_event_sink: Sender<SchemaEvent>,
     resolver: Arc<L>,
     subgraphs_running: Arc<Mutex<HashSet<SubgraphId>>>,
+    store: Arc<S>,
 }
 
-impl<L> SubgraphProvider<L>
+impl<L, S> SubgraphProvider<L, S>
 where
     L: LinkResolver,
 {
-    pub fn new(logger: slog::Logger, resolver: Arc<L>) -> Self {
+    pub fn new(logger: slog::Logger, resolver: Arc<L>, store: Arc<S>) -> Self {
         let (schema_event_sink, schema_event_stream) = channel(100);
         let (event_sink, event_stream) = channel(100);
 
@@ -32,6 +33,7 @@ where
             schema_event_sink,
             resolver,
             subgraphs_running: Arc::new(Mutex::new(HashSet::new())),
+            store,
         };
 
         provider
@@ -86,13 +88,15 @@ where
             schema_event_sink: self.schema_event_sink.clone(),
             resolver: self.resolver.clone(),
             subgraphs_running: self.subgraphs_running.clone(),
+            store: self.store.clone(),
         }
     }
 }
 
-impl<L> SubgraphProviderTrait for SubgraphProvider<L>
+impl<L, S> SubgraphProviderTrait for SubgraphProvider<L, S>
 where
     L: LinkResolver,
+    S: Store,
 {
     fn start(
         &self,
@@ -106,12 +110,6 @@ where
             SubgraphManifest::resolve(Link { link }, self.resolver.clone())
                 .map_err(SubgraphProviderError::ResolveError)
                 .and_then(
-                    // Validate the subgraph schema before deploying the subgraph
-                    |subgraph| match validate_schema(&subgraph.schema.document) {
-                        Err(e) => Err(SubgraphProviderError::SchemaValidationError(e)),
-                        _ => Ok(subgraph),
-                    },
-                ).and_then(
                     move |mut subgraph| -> Box<Future<Item = _, Error = _> + Send> {
                         // If subgraph ID already in set
                         if !self_clone
@@ -130,6 +128,19 @@ where
                             .schema
                             .add_subgraph_id_directives(subgraph.id.clone());
 
+                        SubgraphEntity::new(
+                            &subgraph,
+                            SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs(),
+                        ).write_to_store(&*self_clone.store)
+                        .map_err(|err| {
+                            error!(
+                                self_clone.logger,
+                                "failed to write subgraph entity to store: {}", err
+                            )
+                        }).ok();
                         // Send events to trigger subgraph processing
                         Box::new(self_clone.send_add_events(subgraph).from_err())
                     },
@@ -151,7 +162,7 @@ where
     }
 }
 
-impl<L> EventProducer<SubgraphProviderEvent> for SubgraphProvider<L> {
+impl<L, S> EventProducer<SubgraphProviderEvent> for SubgraphProvider<L, S> {
     fn take_event_stream(
         &mut self,
     ) -> Option<Box<Stream<Item = SubgraphProviderEvent, Error = ()> + Send>> {
@@ -161,7 +172,7 @@ impl<L> EventProducer<SubgraphProviderEvent> for SubgraphProvider<L> {
     }
 }
 
-impl<L> EventProducer<SchemaEvent> for SubgraphProvider<L> {
+impl<L, S> EventProducer<SchemaEvent> for SubgraphProvider<L, S> {
     fn take_event_stream(&mut self) -> Option<Box<Stream<Item = SchemaEvent, Error = ()> + Send>> {
         self.schema_event_stream
             .take()

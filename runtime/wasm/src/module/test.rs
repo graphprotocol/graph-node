@@ -1,6 +1,5 @@
 extern crate failure;
 extern crate graph_mock;
-extern crate graphql_parser;
 extern crate ipfs_api;
 extern crate parity_wasm;
 

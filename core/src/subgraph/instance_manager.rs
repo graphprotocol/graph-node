@@ -1,11 +1,10 @@
 use failure::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use graph::components::subgraph::SubgraphProviderEvent;
-use graph::data::subgraph::schema::SubgraphEntity;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use std::collections::HashMap;
 use std::sync::RwLock;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use super::SubgraphInstance;
 use elastic_logger;
@@ -98,14 +97,7 @@ impl SubgraphInstanceManager {
 
                     info!(logger, "Start subgraph");
 
-                    let schema = SubgraphEntity::new(
-                        &manifest,
-                        SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                    );
-                    let subgraph_started = Self::start_subgraph(
+                    Self::start_subgraph(
                         logger.clone(),
                         instances.clone(),
                         host_builder.clone(),
@@ -113,14 +105,7 @@ impl SubgraphInstanceManager {
                         store.clone(),
                         manifest,
                     ).map_err(|err| error!(logger, "failed to start subgraph: {}", err))
-                    .is_ok();
-                    if subgraph_started {
-                        schema
-                            .write_to_store(&*store)
-                            .map_err(|err| {
-                                error!(logger, "failed to write subgraph entity to store: {}", err)
-                            }).ok();
-                    }
+                    .ok();
                 }
                 SubgraphStop(id) => {
                     info!(logger, "Stopping subgraph"; "subgraph_id" => &id);

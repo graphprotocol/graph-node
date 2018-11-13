@@ -5,8 +5,6 @@ extern crate indexmap;
 extern crate inflector;
 extern crate serde;
 #[macro_use]
-extern crate serde_derive;
-#[macro_use]
 extern crate failure;
 
 pub const GRAPHQL_HTTP_PORT: u16 = 8000;
@@ -38,7 +36,7 @@ pub mod prelude {
     pub use super::execution::{ExecutionContext, Resolver};
     pub use super::introspection::{introspection_schema, IntrospectionResolver};
     pub use super::query::{execute_query, QueryExecutionOptions};
-    pub use super::schema::{api_schema, validate_schema, APISchemaError, SchemaValidationError};
+    pub use super::schema::{api_schema, APISchemaError};
     pub use super::store::{build_query, StoreResolver};
     pub use super::subscription::{execute_subscription, SubscriptionExecutionOptions};
     pub use super::values::{object_value, MaybeCoercible};

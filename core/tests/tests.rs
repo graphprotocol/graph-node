@@ -202,8 +202,11 @@ fn added_schema_id(event: &SchemaEvent) -> &str {
 fn subgraph_provider_events() {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     let logger = Logger::root(slog::Discard, o!());
-    let mut provider =
-        graph_core::SubgraphProvider::new(logger.clone(), Arc::new(IpfsClient::default()));
+    let mut provider = graph_core::SubgraphProvider::new(
+        logger.clone(),
+        Arc::new(IpfsClient::default()),
+        Arc::new(MockStore::new()),
+    );
     let provider_events = provider.take_event_stream().unwrap();
     let schema_events = provider.take_event_stream().unwrap();
     let named_provider = runtime
@@ -279,8 +282,11 @@ fn subgraph_provider_events() {
 fn subgraph_list() {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     let logger = Logger::root(slog::Discard, o!());
-    let provider =
-        graph_core::SubgraphProvider::new(logger.clone(), Arc::new(IpfsClient::default()));
+    let provider = graph_core::SubgraphProvider::new(
+        logger.clone(),
+        Arc::new(IpfsClient::default()),
+        Arc::new(MockStore::new()),
+    );
     let named_provider = runtime
         .block_on(graph_core::SubgraphProviderWithNames::init(
             logger.clone(),

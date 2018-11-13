@@ -1,10 +1,10 @@
 use components::link_resolver::LinkResolver;
+use data::graphql::validation::parse_and_validate_schema;
 use data::schema::Schema;
 use ethabi::Contract;
 use failure;
 use failure::{Error, SyncFailure};
 use futures::stream;
-use graphql_parser;
 use parity_wasm;
 use parity_wasm::elements::Module;
 use serde::de::{Deserialize, Deserializer};
@@ -98,10 +98,9 @@ impl SchemaData {
         resolver: &impl LinkResolver,
     ) -> impl Future<Item = Schema, Error = failure::Error> + Send {
         resolver.cat(&self.file).and_then(|schema_bytes| {
-            Ok(
-                graphql_parser::parse_schema(&String::from_utf8(schema_bytes)?)
-                    .map(|document| Schema { id, document })?,
-            )
+            parse_and_validate_schema(&String::from_utf8(schema_bytes)?)
+                .map(|document| Schema { id, document })
+                .map_err(Into::into)
         })
     }
 }
