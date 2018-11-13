@@ -87,7 +87,7 @@ pub struct EthereumEventData {
     pub address: Address,
     pub log_index: U256,
     pub transaction_log_index: U256,
-    pub log_type: String,
+    pub log_type: Option<String>,
     pub block: EthereumBlockData,
     pub transaction: EthereumTransactionData,
     pub params: Vec<LogParam>,

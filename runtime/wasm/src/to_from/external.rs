@@ -295,7 +295,11 @@ impl ToAscObj<AscEthereumEvent> for EthereumEventData {
             log_index: heap.asc_new(&BigInt::from_unsigned_u256(&self.log_index)),
             transaction_log_index: heap
                 .asc_new(&BigInt::from_unsigned_u256(&self.transaction_log_index)),
-            log_type: heap.asc_new(&self.log_type),
+            log_type: self
+                .log_type
+                .clone()
+                .map(|log_type| heap.asc_new(&log_type))
+                .unwrap_or_else(|| AscPtr::null()),
             block: heap.asc_new(&self.block),
             transaction: heap.asc_new(&self.transaction),
             params: heap.asc_new(self.params.as_slice()),

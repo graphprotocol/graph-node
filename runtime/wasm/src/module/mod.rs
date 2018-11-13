@@ -219,7 +219,7 @@ where
             address: log.address,
             log_index: log.log_index.unwrap_or(U256::zero()),
             transaction_log_index: log.transaction_log_index.unwrap_or(U256::zero()),
-            log_type: log.log_type.clone().unwrap_or("None".to_string()),
+            log_type: log.log_type.clone(),
             params,
         };
 
