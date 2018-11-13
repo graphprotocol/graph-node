@@ -17,12 +17,16 @@ extern crate ipfs_api;
 extern crate url;
 
 use clap::{App, Arg};
+use futures::sync::oneshot;
 use ipfs_api::IpfsClient;
 use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
 use std::env;
 use std::net::ToSocketAddrs;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::{env, process, thread};
+use url::Url;
 
 use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
@@ -43,22 +47,37 @@ use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
+    let (shutdown_sender, shutdown_receiver) = oneshot::channel();
     // Register guarded panic logger which ensures logs flush on shutdown
     let (panic_logger, _panic_guard) = guarded_logger();
-    register_panic_hook(panic_logger);
+    register_panic_hook(panic_logger, Mutex::new(Some(shutdown_sender)));
 
-    // Create components for tokio context: multi-threaded runtime,
-    // reactor reference, executor context on the runtime, and Timer handle.
+    // Create components for tokio context: multi-threaded runtime, reactor reference,
+    // executor context on the runtime, and Timer handle.
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
     let reactor = tokio_reactor::Handle::current();
+    let mut executor = runtime.executor();
     let mut enter = tokio_executor::enter()
         .expect("Failed to enter runtime executor, multiple executors at once");
     let timer = Timer::default();
     let timer_handle = timer.handle();
 
-    // Setup runtime context with defaults
+    std::thread::spawn(|| {
+        shutdown_receiver
+            .wait()
+            .map(|_| {
+                let _ = runtime
+                    .shutdown_now()
+                    .wait()
+                    .expect("Failed to shutdown Tokio Runtime");
+                thread::sleep(Duration::from_millis(3000));
+                process::exit(1)
+            }).expect("Runtime shutdown process did not finish");
+    });
+
+    // Setup runtime context with defaults and run the main application
     tokio_reactor::with_default(&reactor, &mut enter, |enter| {
-        tokio_executor::with_default(&mut runtime.executor(), enter, |enter| {
+        tokio_executor::with_default(&mut executor, enter, |enter| {
             tokio_timer::with_default(&timer_handle, enter, |enter| {
                 enter
                     .block_on(future::lazy(|| async_main()))
@@ -66,8 +85,6 @@ fn main() {
             })
         })
     });
-
-    runtime.shutdown_on_idle().wait().unwrap();
 }
 
 fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
