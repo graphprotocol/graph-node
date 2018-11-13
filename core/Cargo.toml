@@ -17,7 +17,6 @@ serde_json = "1.0"
 serde_yaml = "0.7"
 
 [dev-dependencies]
-graphql-parser = "0.2.0"
 ipfs-api = "0.5.0-alpha2"
 graph-mock = { path = "../mock" }
 walkdir = "2.2.5"

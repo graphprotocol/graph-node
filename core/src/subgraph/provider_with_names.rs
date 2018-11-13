@@ -195,7 +195,8 @@ mod tests {
         }
         let logger = slog::Logger::root(slog::Discard, o!());
         let store = Arc::new(MockStore::new());
-        let provider = SubgraphProvider::new(logger.clone(), Arc::new(FakeLinkResolver));
+        let provider =
+            SubgraphProvider::new(logger.clone(), Arc::new(FakeLinkResolver), store.clone());
         let name_provider = Arc::new(
             SubgraphProviderWithNames::init(logger, Arc::new(provider), store)
                 .wait()

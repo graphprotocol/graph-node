@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 /// ID of the subgraph of subgraphs.
-const SUBGRAPHS_ID: &str = "subgraphs";
+const SUBGRAPHS_ID: &str = "__subgraphs";
 const EVENT_SOURCE: &str = "SubgraphAdded";
 
 #[derive(Debug)]

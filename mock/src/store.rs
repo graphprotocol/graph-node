@@ -139,10 +139,10 @@ impl Store for MockStore {
 
     fn apply_set_operation(
         &self,
-        operation: EntityOperation,
-        op_event_source: String,
+        _: EntityOperation,
+        _: String,
     ) -> Result<(), Error> {
-        unimplemented!()
+        Ok(())
     }
 
     fn revert_block_operations(
