@@ -175,11 +175,11 @@ impl SubgraphInstanceManager {
                         .collect();
 
                     if logs.len() == 0 {
-                        info!(logger, "No events found for this subgraph");
+                        info!(logger, "No events found in this block for this subgraph");
                     } else if logs.len() == 1 {
-                        info!(logger, "1 event found for this subgraph");
+                        info!(logger, "1 event found in this block for this subgraph");
                     } else {
-                        info!(logger, "{} events found for this subgraph", logs.len());
+                        info!(logger, "{} events found in this block for this subgraph", logs.len());
                     }
 
                     // Process events one after the other, passing in entity operations
