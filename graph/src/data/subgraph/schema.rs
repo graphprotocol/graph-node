@@ -1,4 +1,4 @@
-//! See `path/to/blebers.schema` for corresponding graphql schema.
+//! See `core/src/subgraph/subgraph.graphql` for corresponding graphql schema.
 
 use super::SubgraphId;
 use components::store::{EntityKey, EntityOperation, Store};
@@ -220,6 +220,9 @@ impl EthereumContractMapping {
             abis.push(abi.write_to_store(store)?.into())
         }
         entity.insert("abis".to_owned(), abis.into());
+
+        let entities: Vec<Value> = self.entities.into_iter().map(Value::from).collect();
+        entity.insert("entities".to_owned(), entities.into());
 
         let mut event_handlers: Vec<Value> = Vec::new();
         for event_handler in self.event_handlers {

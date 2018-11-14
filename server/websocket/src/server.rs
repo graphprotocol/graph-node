@@ -1,14 +1,14 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use graph::data::subgraph::schema::SUBGRAPHS_ID;
+use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
+use graph::tokio::net::TcpListener;
+use graph_graphql::prelude::api_schema;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::Path;
 use std::sync::Mutex;
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::{handshake::server::Request, Error as WsError};
-
-use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
-use graph::tokio::net::TcpListener;
-use graph_graphql::prelude::api_schema;
 
 use connection::GraphQlConnection;
 
@@ -107,6 +107,7 @@ where
         }
 
         match parts.next().and_then(|s| s.to_str()) {
+            Some("subgraphs") => Ok(SUBGRAPHS_ID.to_owned()),
             Some("by-id") => parts
                 .next()
                 .and_then(|id| id.to_owned().into_string().ok())
