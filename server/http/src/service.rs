@@ -1,11 +1,11 @@
+use graph::components::server::query::GraphQLServerError;
+use graph::data::subgraph::schema::SUBGRAPHS_ID;
+use graph::prelude::*;
 use http::header;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use std::collections::BTreeMap;
 use std::sync::RwLock;
-
-use graph::components::server::query::GraphQLServerError;
-use graph::prelude::*;
 
 use request::GraphQLRequest;
 use response::GraphQLResponse;
@@ -256,6 +256,13 @@ where
                 self.handle_graphql_query_by_name(subgraph_name, req)
             }
             (Method::OPTIONS, ["by-name", _, "graphql"]) => self.handle_graphql_options(req),
+
+            // `/subgraphs` acts as an alias to `/by-id/__subgraphs`
+            (Method::GET, &["subgraphs"]) => self.handle_graphiql_by_id(SUBGRAPHS_ID.to_owned()),
+            (Method::POST, &["subgraphs", "graphql"]) => {
+                self.handle_graphql_query_by_id(SUBGRAPHS_ID.to_owned(), req)
+            }
+            (Method::OPTIONS, ["subgraphs"]) => self.handle_graphql_options(req),
 
             _ => self.handle_not_found(),
         }
