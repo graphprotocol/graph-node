@@ -1,5 +1,4 @@
 use components::link_resolver::LinkResolver;
-use data::graphql::validation::parse_and_validate_schema;
 use data::schema::Schema;
 use ethabi::Contract;
 use failure;
@@ -97,11 +96,9 @@ impl SchemaData {
         id: SubgraphId,
         resolver: &impl LinkResolver,
     ) -> impl Future<Item = Schema, Error = failure::Error> + Send {
-        resolver.cat(&self.file).and_then(|schema_bytes| {
-            parse_and_validate_schema(&String::from_utf8(schema_bytes)?)
-                .map(|document| Schema { id, document })
-                .map_err(Into::into)
-        })
+        resolver
+            .cat(&self.file)
+            .and_then(|schema_bytes| Schema::parse(&String::from_utf8(schema_bytes)?, id))
     }
 }
 

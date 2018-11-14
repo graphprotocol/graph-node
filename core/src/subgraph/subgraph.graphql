@@ -34,7 +34,7 @@ type EthereumContractMapping @entity {
     kind: String!
     apiVersion: String!
     language: String!
-    file: Link!
+    file: String!
     entities: [String!]!
     abis: [EthereumContractAbi!]!
     eventHandlers: [EthereumContractEventHandler!]!
@@ -43,7 +43,7 @@ type EthereumContractMapping @entity {
 type EthereumContractAbi @entity {
     id: ID!
     name: String!
-    file: Link!
+    file: String!
 }
 
 type EthereumContractEventHandler @entity {

@@ -13,12 +13,9 @@ use graph::prelude::*;
 use graph_graphql::prelude::*;
 
 fn test_schema() -> Schema {
-    let mut schema = Schema {
-        id: String::from("test-schema"),
-        document: api_schema(
-            &graphql_parser::parse_schema(
-                "
-            type Musician {
+    let schema = Schema::parse(
+        "
+            type Musician @entity {
                 id: ID!
                 name: String!
                 mainBand: Band
@@ -26,23 +23,27 @@ fn test_schema() -> Schema {
                 writtenSongs: [Song]! @derivedFrom(field: \"writtenBy\")
             }
 
-            type Band {
+            type Band @entity {
                 id: ID!
                 name: String!
                 members: [Musician!]! @derivedFrom(field: \"bands\")
             }
 
-            type Song {
+            type Song @entity {
                 id: ID!
                 title: String!
                 writtenBy: Musician!
             }
             ",
-            ).expect("Test schema invalid"),
-        ).expect("Failed to derive API schema from test schema"),
-    };
-    schema.add_subgraph_id_directives(String::from("test_subgraph"));
-    schema
+        String::from("test-schema"),
+    ).expect("Test schema invalid");
+
+    let api_document =
+        api_schema(&schema.document).expect("Failed to derive API schema from test schema");
+    Schema {
+        id: schema.id,
+        document: api_document,
+    }
 }
 
 #[derive(Clone)]
@@ -173,11 +174,7 @@ impl Store for TestStore {
         unimplemented!()
     }
 
-    fn apply_set_operation(
-        &self,
-        operation: EntityOperation,
-        op_event_source: String,
-    ) -> Result<(), Error> {
+    fn apply_set_operation(&self, _: EntityOperation, _: String) -> Result<(), Error> {
         unimplemented!()
     }
 

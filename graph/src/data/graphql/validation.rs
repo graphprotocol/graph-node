@@ -1,5 +1,3 @@
-use failure::Error;
-use graphql_parser;
 use graphql_parser::schema::*;
 use std::fmt;
 
@@ -20,21 +18,11 @@ pub enum SchemaValidationError {
         _0
     )]
     EntityDirectivesMissing(Strings),
-    #[fail(display = "failed to parse schema: {}", _0)]
-    SchemaParseError(ParseError),
-}
-
-impl From<ParseError> for SchemaValidationError {
-    fn from(err: ParseError) -> SchemaValidationError {
-        SchemaValidationError::SchemaParseError(err)
-    }
 }
 
 /// Validates whether a GraphQL schema is compatible with The Graph.
-pub(crate) fn parse_and_validate_schema(schema: &str) -> Result<Document, Error> {
-    let document = graphql_parser::parse_schema(schema)?;
-    validate_schema_types(&document)?;
-    Ok(document)
+pub(crate) fn validate_schema(schema: &Document) -> Result<(), SchemaValidationError> {
+    validate_schema_types(&schema)
 }
 
 /// Validates whether all object types in the schema are declared with an @entity directive.
