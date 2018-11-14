@@ -80,6 +80,11 @@ const JSON_TO_BIG_INT_FUNC_INDEX: usize = 15;
 const IPFS_CAT_FUNC_INDEX: usize = 16;
 const STORE_GET_FUNC_INDEX: usize = 17;
 const CRYPTO_KECCAK_256_INDEX: usize = 18;
+const BIG_INT_PLUS: usize = 19;
+const BIG_INT_MINUS: usize = 20;
+const BIG_INT_TIMES: usize = 21;
+const BIG_INT_DIVIDED_BY: usize = 22;
+const BIG_INT_MOD: usize = 23;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph: SubgraphManifest,
@@ -137,6 +142,7 @@ where
         imports.push_resolver("json", &JsonModuleResolver);
         imports.push_resolver("ipfs", &IpfsModuleResolver);
         imports.push_resolver("crypto", &CryptoModuleResolver);
+        imports.push_resolver("bigInt", &BigIntModuleResolver);
 
         // Instantiate the runtime module using hosted functions and import resolver
         let module =
@@ -453,6 +459,71 @@ where
         let hash_ptr: AscPtr<Uint8Array> = self.heap.asc_new(input.as_ref());
         Ok(Some(RuntimeValue::from(hash_ptr)))
     }
+
+    /// function bigInt.plus(x: BigInt, y: BigInt): BigInt
+    fn big_int_plus(
+        &self,
+        x_ptr: AscPtr<AscBigInt>,
+        y_ptr: AscPtr<AscBigInt>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self
+            .host_exports
+            .big_int_plus(self.heap.asc_get(x_ptr), self.heap.asc_get(y_ptr));
+        let result_ptr: AscPtr<AscBigInt> = self.heap.asc_new(&result);
+        Ok(Some(RuntimeValue::from(result_ptr)))
+    }
+
+    /// function bigInt.minus(x: BigInt, y: BigInt): BigInt
+    fn big_int_minus(
+        &self,
+        x_ptr: AscPtr<AscBigInt>,
+        y_ptr: AscPtr<AscBigInt>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self
+            .host_exports
+            .big_int_minus(self.heap.asc_get(x_ptr), self.heap.asc_get(y_ptr));
+        let result_ptr: AscPtr<AscBigInt> = self.heap.asc_new(&result);
+        Ok(Some(RuntimeValue::from(result_ptr)))
+    }
+
+    /// function bigInt.times(x: BigInt, y: BigInt): BigInt
+    fn big_int_times(
+        &self,
+        x_ptr: AscPtr<AscBigInt>,
+        y_ptr: AscPtr<AscBigInt>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self
+            .host_exports
+            .big_int_times(self.heap.asc_get(x_ptr), self.heap.asc_get(y_ptr));
+        let result_ptr: AscPtr<AscBigInt> = self.heap.asc_new(&result);
+        Ok(Some(RuntimeValue::from(result_ptr)))
+    }
+
+    /// function bigInt.dividedBy(x: BigInt, y: BigInt): BigInt
+    fn big_int_divided_by(
+        &self,
+        x_ptr: AscPtr<AscBigInt>,
+        y_ptr: AscPtr<AscBigInt>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self
+            .host_exports
+            .big_int_divided_by(self.heap.asc_get(x_ptr), self.heap.asc_get(y_ptr));
+        let result_ptr: AscPtr<AscBigInt> = self.heap.asc_new(&result);
+        Ok(Some(RuntimeValue::from(result_ptr)))
+    }
+
+    /// function bigInt.mod(x: BigInt, y: BigInt): BigInt
+    fn big_int_mod(
+        &self,
+        x_ptr: AscPtr<AscBigInt>,
+        y_ptr: AscPtr<AscBigInt>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self
+            .host_exports
+            .big_int_mod(self.heap.asc_get(x_ptr), self.heap.asc_get(y_ptr));
+        let result_ptr: AscPtr<AscBigInt> = self.heap.asc_new(&result);
+        Ok(Some(RuntimeValue::from(result_ptr)))
+    }
 }
 
 impl<T, L, S, U> Externals for HostExternals<T, L, S, U>
@@ -502,6 +573,13 @@ where
             JSON_TO_BIG_INT_FUNC_INDEX => self.json_to_big_int(args.nth_checked(0)?),
             IPFS_CAT_FUNC_INDEX => self.ipfs_cat(args.nth_checked(0)?),
             CRYPTO_KECCAK_256_INDEX => self.crypto_keccak_256(args.nth_checked(0)?),
+            BIG_INT_PLUS => self.big_int_plus(args.nth_checked(0)?, args.nth_checked(1)?),
+            BIG_INT_MINUS => self.big_int_minus(args.nth_checked(0)?, args.nth_checked(1)?),
+            BIG_INT_TIMES => self.big_int_times(args.nth_checked(0)?, args.nth_checked(1)?),
+            BIG_INT_DIVIDED_BY => {
+                self.big_int_divided_by(args.nth_checked(0)?, args.nth_checked(1)?)
+            }
+            BIG_INT_MOD => self.big_int_mod(args.nth_checked(0)?, args.nth_checked(1)?),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -689,6 +767,41 @@ impl ModuleImportResolver for CryptoModuleResolver {
             "keccak256" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
                 CRYPTO_KECCAK_256_INDEX,
+            ),
+            _ => {
+                return Err(Error::Instantiation(format!(
+                    "Export '{}' not found",
+                    field_name
+                )))
+            }
+        })
+    }
+}
+
+struct BigIntModuleResolver;
+
+impl ModuleImportResolver for BigIntModuleResolver {
+    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
+        Ok(match field_name {
+            "plus" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
+                BIG_INT_PLUS,
+            ),
+            "minus" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
+                BIG_INT_MINUS,
+            ),
+            "times" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
+                BIG_INT_TIMES,
+            ),
+            "dividedBy" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
+                BIG_INT_DIVIDED_BY,
+            ),
+            "mod" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
+                BIG_INT_MOD,
             ),
             _ => {
                 return Err(Error::Instantiation(format!(

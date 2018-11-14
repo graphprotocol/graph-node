@@ -383,6 +383,26 @@ where
         ::tiny_keccak::keccak256(&input)
     }
 
+    pub(crate) fn big_int_plus(&self, x: BigInt, y: BigInt) -> BigInt {
+        x + y
+    }
+
+    pub(crate) fn big_int_minus(&self, x: BigInt, y: BigInt) -> BigInt {
+        x - y
+    }
+
+    pub(crate) fn big_int_times(&self, x: BigInt, y: BigInt) -> BigInt {
+        x * y
+    }
+
+    pub(crate) fn big_int_divided_by(&self, x: BigInt, y: BigInt) -> BigInt {
+        x / y
+    }
+
+    pub(crate) fn big_int_mod(&self, x: BigInt, y: BigInt) -> BigInt {
+        x % y
+    }
+
     pub(crate) fn block_on<I: Send + 'static, ER: Send + 'static>(
         &self,
         future: impl Future<Item = I, Error = ER> + Send + 'static,
