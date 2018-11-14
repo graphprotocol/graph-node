@@ -17,7 +17,6 @@ use jsonrpc_http_server::{
 };
 
 use std::collections::BTreeMap;
-use std::iter::FromIterator;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::{env, fmt, io};
 
@@ -210,25 +209,6 @@ where
 
         Ok(Value::Null)
     }
-
-    /// Handler for the `subgraph_list` endpoint.
-    ///
-    /// Returns the names and ids of deployed subgraphs.
-    fn list_handler(&self) -> Result<Value, jsonrpc_core::Error> {
-        let logger = self.logger.clone();
-
-        info!(logger, "Received subgraph_list request");
-        let list = self
-            .provider
-            .list()
-            .map_err(move |e| {
-                error!(logger, "Failed to list subgraphs: {}", e);
-                json_rpc_error(JSON_RPC_INTERNAL_ERROR, "database error".to_owned())
-            })?.into_iter()
-            .map(|(name, id_opt)| (name, id_opt.map(Value::String).unwrap_or(Value::Null)));
-
-        Ok(Value::from(serde_json::Map::from_iter(list)))
-    }
 }
 
 impl<P, S> JsonRpcServerTrait<P, S> for JsonRpcServer<P, S>
@@ -282,10 +262,6 @@ where
                 .into_future()
                 .and_then(move |params| me.authorize_handler(params, auth))
         });
-
-        // `subgraph_list` handler.
-        let me = arc_self.clone();
-        handler.add_method_with_meta("subgraph_list", move |_, _| me.list_handler());
 
         /// Get the `Authorization: Bearer` header if present.
         fn auth_extractor(request: &Request) -> Option<AuthorizationHeader> {

@@ -170,10 +170,6 @@ where
                 }),
         )
     }
-
-    fn list(&self) -> Result<Vec<(String, Option<SubgraphId>)>, Error> {
-        self.store.read_all_subgraph_names()
-    }
 }
 
 #[cfg(test)]
