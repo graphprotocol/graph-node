@@ -518,6 +518,101 @@ fn big_int_to_hex() {
 }
 
 #[test]
+fn big_int_arithmetic() {
+    let mut module = test_module(mock_data_source("wasm_test/big_int_arithmetic.wasm"));
+
+    // 0 + 1 = 1
+    let zero = BigInt::from(0);
+    let zero: AscPtr<AscBigInt> = module.heap.asc_new(&zero);
+    let one = BigInt::from(1);
+    let one: AscPtr<AscBigInt> = module.heap.asc_new(&one);
+    let result_ptr: AscPtr<AscBigInt> = module
+        .module
+        .invoke_export(
+            "plus",
+            &[RuntimeValue::from(zero), RuntimeValue::from(one)],
+            &mut module.externals,
+        ).expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    let result: BigInt = module.heap.asc_get(result_ptr);
+    assert_eq!(result, BigInt::from(1));
+
+    // 5 - 10 = -5
+    let five = BigInt::from(5);
+    let five: AscPtr<AscBigInt> = module.heap.asc_new(&five);
+    let ten = BigInt::from(10);
+    let ten: AscPtr<AscBigInt> = module.heap.asc_new(&ten);
+    let result_ptr: AscPtr<AscBigInt> = module
+        .module
+        .invoke_export(
+            "minus",
+            &[RuntimeValue::from(five), RuntimeValue::from(ten)],
+            &mut module.externals,
+        ).expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    let result: BigInt = module.heap.asc_get(result_ptr);
+    assert_eq!(result, BigInt::from(-5));
+
+    // -20 * 5 = -100
+    let minus_twenty = BigInt::from(-20);
+    let minus_twenty: AscPtr<AscBigInt> = module.heap.asc_new(&minus_twenty);
+    let five = BigInt::from(5);
+    let five: AscPtr<AscBigInt> = module.heap.asc_new(&five);
+    let result_ptr: AscPtr<AscBigInt> = module
+        .module
+        .invoke_export(
+            "times",
+            &[RuntimeValue::from(minus_twenty), RuntimeValue::from(five)],
+            &mut module.externals,
+        ).expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    let result: BigInt = module.heap.asc_get(result_ptr);
+    assert_eq!(result, BigInt::from(-100));
+
+    // 5 / 2 = 2
+    let five = BigInt::from(5);
+    let five: AscPtr<AscBigInt> = module.heap.asc_new(&five);
+    let two = BigInt::from(2);
+    let two: AscPtr<AscBigInt> = module.heap.asc_new(&two);
+    let result_ptr: AscPtr<AscBigInt> = module
+        .module
+        .invoke_export(
+            "dividedBy",
+            &[RuntimeValue::from(five), RuntimeValue::from(two)],
+            &mut module.externals,
+        ).expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    let result: BigInt = module.heap.asc_get(result_ptr);
+    assert_eq!(result, BigInt::from(2));
+
+    // 5 % 2 = 1
+    let five = BigInt::from(5);
+    let five: AscPtr<AscBigInt> = module.heap.asc_new(&five);
+    let two = BigInt::from(2);
+    let two: AscPtr<AscBigInt> = module.heap.asc_new(&two);
+    let result_ptr: AscPtr<AscBigInt> = module
+        .module
+        .invoke_export(
+            "mod",
+            &[RuntimeValue::from(five), RuntimeValue::from(two)],
+            &mut module.externals,
+        ).expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    let result: BigInt = module.heap.asc_get(result_ptr);
+    assert_eq!(result, BigInt::from(1));
+}
+
+#[test]
 fn abort() {
     let mut module = test_module(mock_data_source("wasm_test/abort.wasm"));
     let err = module
