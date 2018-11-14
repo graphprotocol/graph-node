@@ -45,6 +45,4 @@ pub trait SubgraphProviderWithNames: Send + Sync + 'static {
         &self,
         name: String,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
-
-    fn list(&self) -> Result<Vec<(String, Option<SubgraphId>)>, Error>;
 }
