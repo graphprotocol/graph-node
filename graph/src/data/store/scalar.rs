@@ -4,6 +4,7 @@ use serde::{self, Deserialize, Serialize};
 use web3::types::*;
 
 use std::fmt::{self, Display, Formatter};
+use std::ops::{Add, Div, Mul, Rem, Sub};
 use std::str::FromStr;
 
 pub use num_bigint::Sign as BigIntSign;
@@ -118,6 +119,50 @@ impl<'de> Deserialize<'de> for BigInt {
 
         let decimal_string = <String>::deserialize(deserializer)?;
         BigInt::from_str(&decimal_string).map_err(D::Error::custom)
+    }
+}
+
+impl Add for BigInt {
+    type Output = BigInt;
+
+    fn add(self, other: BigInt) -> BigInt {
+        BigInt(self.0.add(other.0))
+    }
+}
+
+impl Sub for BigInt {
+    type Output = BigInt;
+
+    fn sub(self, other: BigInt) -> BigInt {
+        BigInt(self.0.sub(other.0))
+    }
+}
+
+impl Mul for BigInt {
+    type Output = BigInt;
+
+    fn mul(self, other: BigInt) -> BigInt {
+        BigInt(self.0.mul(other.0))
+    }
+}
+
+impl Div for BigInt {
+    type Output = BigInt;
+
+    fn div(self, other: BigInt) -> BigInt {
+        if other == BigInt::from(0) {
+            panic!("Cannot divide by zero-valued `BigInt`!")
+        }
+
+        BigInt(self.0.div(other.0))
+    }
+}
+
+impl Rem for BigInt {
+    type Output = BigInt;
+
+    fn rem(self, other: BigInt) -> BigInt {
+        BigInt(self.0.rem(other.0))
     }
 }
 
