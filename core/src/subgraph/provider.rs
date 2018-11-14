@@ -1,5 +1,5 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use graph::data::subgraph::schema::SubgraphEntity;
+use graph::data::subgraph::schema::{SubgraphEntity, SUBGRAPHS_ID};
 use graph::prelude::{SubgraphProvider as SubgraphProviderTrait, *};
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -36,7 +36,21 @@ where
             store,
         };
 
+        provider.send_builtin_schema(&include_str!("subgraph.graphql"), SUBGRAPHS_ID.to_owned());
+
         provider
+    }
+
+    fn send_builtin_schema(&self, raw: &str, id: SubgraphId) {
+        let schema = Schema::parse(&raw, id).unwrap();
+
+        self.schema_event_sink
+            .clone()
+            .send(SchemaEvent::SchemaAdded(schema))
+            .map_err(|e| panic!("failed to forward subgraph schema: {}", e))
+            .map(|_| ())
+            .wait()
+            .expect("failed to forward builtin schema")
     }
 
     fn send_add_events(&self, subgraph: SubgraphManifest) -> impl Future<Item = (), Error = Error> {
@@ -109,42 +123,36 @@ where
         Box::new(
             SubgraphManifest::resolve(Link { link }, self.resolver.clone())
                 .map_err(SubgraphProviderError::ResolveError)
-                .and_then(
-                    move |mut subgraph| -> Box<Future<Item = _, Error = _> + Send> {
-                        // If subgraph ID already in set
-                        if !self_clone
-                            .subgraphs_running
-                            .lock()
+                .and_then(move |subgraph| -> Box<Future<Item = _, Error = _> + Send> {
+                    // If subgraph ID already in set
+                    if !self_clone
+                        .subgraphs_running
+                        .lock()
+                        .unwrap()
+                        .insert(subgraph.id.clone())
+                    {
+                        return Box::new(future::err(SubgraphProviderError::AlreadyRunning(
+                            subgraph.id,
+                        )));
+                    }
+
+                    SubgraphEntity::new(
+                        &subgraph,
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
                             .unwrap()
-                            .insert(subgraph.id.clone())
-                        {
-                            return Box::new(future::err(SubgraphProviderError::AlreadyRunning(
-                                subgraph.id,
-                            )));
-                        }
+                            .as_secs(),
+                    ).write_to_store(&*self_clone.store)
+                    .map_err(|err| {
+                        error!(
+                            self_clone.logger,
+                            "failed to write subgraph entity to store: {}", err
+                        )
+                    }).ok();
 
-                        // Add IDs into schema
-                        subgraph
-                            .schema
-                            .add_subgraph_id_directives(subgraph.id.clone());
-
-                        SubgraphEntity::new(
-                            &subgraph,
-                            SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs(),
-                        ).write_to_store(&*self_clone.store)
-                        .map_err(|err| {
-                            error!(
-                                self_clone.logger,
-                                "failed to write subgraph entity to store: {}", err
-                            )
-                        }).ok();
-                        // Send events to trigger subgraph processing
-                        Box::new(self_clone.send_add_events(subgraph).from_err())
-                    },
-                ),
+                    // Send events to trigger subgraph processing
+                    Box::new(self_clone.send_add_events(subgraph).from_err())
+                }),
         )
     }
 

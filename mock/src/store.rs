@@ -137,11 +137,7 @@ impl Store for MockStore {
         unimplemented!();
     }
 
-    fn apply_set_operation(
-        &self,
-        _: EntityOperation,
-        _: String,
-    ) -> Result<(), Error> {
+    fn apply_set_operation(&self, _: EntityOperation, _: String) -> Result<(), Error> {
         Ok(())
     }
 
@@ -265,11 +261,7 @@ impl Store for FakeStore {
         unimplemented!();
     }
 
-    fn apply_set_operation(
-        &self,
-        operation: EntityOperation,
-        op_event_source: String,
-    ) -> Result<(), Error> {
+    fn apply_set_operation(&self, _: EntityOperation, _: String) -> Result<(), Error> {
         unimplemented!()
     }
 

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 /// ID of the subgraph of subgraphs.
-const SUBGRAPHS_ID: &str = "__subgraphs";
+pub const SUBGRAPHS_ID: &str = "__subgraphs";
 const EVENT_SOURCE: &str = "SubgraphAdded";
 
 #[derive(Debug)]
@@ -66,6 +66,7 @@ impl SubgraphManifest {
         let id = Uuid::new_v4().to_string();
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
+        entity.insert("specVersion".to_owned(), self.spec_version.into());
         entity.insert("description".to_owned(), self.description.into());
         entity.insert("schema".to_owned(), self.schema.into());
 
@@ -117,6 +118,7 @@ impl EthereumContractDataSource {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("kind".to_owned(), self.kind.into());
+        entity.insert("name".to_owned(), self.name.into());
         entity.insert(
             "source".to_owned(),
             self.source.write_to_store(store)?.into(),
@@ -210,9 +212,8 @@ impl EthereumContractMapping {
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("kind".to_owned(), self.kind.into());
         entity.insert("apiVersion".to_owned(), self.api_version.into());
-
-        // Use '/' for the link, IPLD stlye.
-        entity.insert("/".to_owned(), self.file.into());
+        entity.insert("language".to_owned(), self.language.into());
+        entity.insert("file".to_owned(), self.file.into());
 
         let mut abis: Vec<Value> = Vec::new();
         for abi in self.abis {
@@ -230,7 +231,7 @@ impl EthereumContractMapping {
             EntityOperation::Set {
                 key: EntityKey {
                     subgraph_id: SUBGRAPHS_ID.to_owned(),
-                    entity_type: "EthereumContractSource".to_owned(),
+                    entity_type: "EthereumContractMapping".to_owned(),
                     entity_id: id.clone(),
                 },
                 data: entity.into(),
@@ -273,9 +274,7 @@ impl EthereumContractAbi {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("name".to_owned(), self.name.into());
-
-        // Use '/' for the link, IPLD stlye.
-        entity.insert("/".to_owned(), self.file.into());
+        entity.insert("file".to_owned(), self.file.into());
 
         store.apply_set_operation(
             EntityOperation::Set {

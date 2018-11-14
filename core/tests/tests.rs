@@ -265,6 +265,8 @@ fn subgraph_provider_events() {
     }
 
     let schema_events = runtime.block_on(schema_events.collect()).unwrap();
+    // Skip the built-in subgraphs schema.
+    let schema_events = &schema_events[1..];
     assert_eq!(schema_events.len(), 4);
     assert_eq!(added_schema_id(&schema_events[0]), subgraph1_id);
     assert_eq!(
