@@ -1,4 +1,4 @@
-//! See `core/src/subgraph/subgraph.graphql` for corresponding graphql schema.
+//! See `core/src/subgraph/subgraphs.graphql` for corresponding graphql schema.
 
 use super::SubgraphId;
 use components::store::{EntityKey, EntityOperation, Store};
@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 /// ID of the subgraph of subgraphs.
-pub const SUBGRAPHS_ID: &str = "__subgraphs";
-const EVENT_SOURCE: &str = "SubgraphAdded";
+pub const SUBGRAPHS_ID: &str = "subgraphs";
+const EVENT_SOURCE: &str = "subgraph-added";
 
 #[derive(Debug)]
 pub struct SubgraphEntity {

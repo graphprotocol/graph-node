@@ -44,7 +44,7 @@ where
                 .collect::<Vec<_>>()
                 .join(", ");
             return Err(format_err!(
-                "errors starting data sources: {}",
+                "Errors loading data sources: {}",
                 joined_errors
             ));
         }

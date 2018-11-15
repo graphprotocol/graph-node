@@ -104,7 +104,7 @@ impl SubgraphInstanceManager {
                         block_stream_builder.clone(),
                         store.clone(),
                         manifest,
-                    ).map_err(|err| error!(logger, "failed to start subgraph: {}", err))
+                    ).map_err(|err| error!(logger, "Failed to start subgraph: {}", err))
                     .ok();
                 }
                 SubgraphStop(id) => {

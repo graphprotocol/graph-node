@@ -257,7 +257,7 @@ where
             }
             (Method::OPTIONS, ["by-name", _, "graphql"]) => self.handle_graphql_options(req),
 
-            // `/subgraphs` acts as an alias to `/by-id/__subgraphs`
+            // `/subgraphs` acts as an alias to `/by-id/SUBGRAPHS_ID`
             (Method::GET, &["subgraphs"]) => self.handle_graphiql_by_id(SUBGRAPHS_ID.to_owned()),
             (Method::POST, &["subgraphs", "graphql"]) => {
                 self.handle_graphql_query_by_id(SUBGRAPHS_ID.to_owned(), req)
