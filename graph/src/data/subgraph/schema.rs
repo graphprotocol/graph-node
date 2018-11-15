@@ -5,7 +5,6 @@ use components::store::{EntityKey, EntityOperation, Store};
 use data::store::Value;
 use failure::Error;
 use std::collections::HashMap;
-use uuid::Uuid;
 
 /// ID of the subgraph of subgraphs.
 pub const SUBGRAPHS_ID: &str = "subgraphs";
@@ -30,9 +29,10 @@ impl SubgraphEntity {
     pub fn write_to_store(self, store: &impl Store) -> Result<(), Error> {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), self.id.clone().into());
+        let manifest_id = format!("{}-manifest", self.id);
         entity.insert(
             "manifest".to_owned(),
-            self.manifest.write_to_store(store)?.into(),
+            self.manifest.write_to_store(store, manifest_id)?.into(),
         );
         entity.insert("createdAt".to_owned(), self.created_at.into());
 
@@ -62,8 +62,7 @@ struct SubgraphManifest {
 
 impl SubgraphManifest {
     // Returns the id in the store.
-    fn write_to_store(self, store: &impl Store) -> Result<String, Error> {
-        let id = Uuid::new_v4().to_string();
+    fn write_to_store(self, store: &impl Store, id: String) -> Result<String, Error> {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("specVersion".to_owned(), self.spec_version.into());
@@ -71,8 +70,9 @@ impl SubgraphManifest {
         entity.insert("schema".to_owned(), self.schema.into());
 
         let mut data_sources: Vec<Value> = Vec::new();
-        for data_source in self.data_sources {
-            data_sources.push(data_source.write_to_store(store)?.into())
+        for (i, data_source) in self.data_sources.into_iter().enumerate() {
+            let data_source_id = format!("{}-data-source-{}", id, i);
+            data_sources.push(data_source.write_to_store(store, data_source_id)?.into())
         }
         entity.insert("dataSources".to_owned(), data_sources.into());
 
@@ -113,19 +113,22 @@ struct EthereumContractDataSource {
 
 impl EthereumContractDataSource {
     // Returns the id in the store.
-    fn write_to_store(self, store: &impl Store) -> Result<String, Error> {
-        let id = Uuid::new_v4().to_string();
+    fn write_to_store(self, store: &impl Store, id: String) -> Result<String, Error> {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("kind".to_owned(), self.kind.into());
         entity.insert("name".to_owned(), self.name.into());
         entity.insert(
             "source".to_owned(),
-            self.source.write_to_store(store)?.into(),
+            self.source
+                .write_to_store(store, format!("{}-source", id))?
+                .into(),
         );
         entity.insert(
             "mapping".to_owned(),
-            self.mapping.write_to_store(store)?.into(),
+            self.mapping
+                .write_to_store(store, format!("{}-mapping", id))?
+                .into(),
         );
 
         store.apply_set_operation(
@@ -162,8 +165,7 @@ struct EthereumContractSource {
 
 impl EthereumContractSource {
     // Returns the id in the store.
-    fn write_to_store(self, store: &impl Store) -> Result<String, Error> {
-        let id = Uuid::new_v4().to_string();
+    fn write_to_store(self, store: &impl Store, id: String) -> Result<String, Error> {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("address".to_owned(), self.address.into());
@@ -206,8 +208,7 @@ struct EthereumContractMapping {
 
 impl EthereumContractMapping {
     // Returns the id in the store.
-    fn write_to_store(self, store: &impl Store) -> Result<String, Error> {
-        let id = Uuid::new_v4().to_string();
+    fn write_to_store(self, store: &impl Store, id: String) -> Result<String, Error> {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("kind".to_owned(), self.kind.into());
@@ -216,8 +217,9 @@ impl EthereumContractMapping {
         entity.insert("file".to_owned(), self.file.into());
 
         let mut abis: Vec<Value> = Vec::new();
-        for abi in self.abis {
-            abis.push(abi.write_to_store(store)?.into())
+        for (i, abi) in self.abis.into_iter().enumerate() {
+            let abi_id = format!("{}-abi-{}", id, i);
+            abis.push(abi.write_to_store(store, abi_id)?.into())
         }
         entity.insert("abis".to_owned(), abis.into());
 
@@ -225,8 +227,9 @@ impl EthereumContractMapping {
         entity.insert("entities".to_owned(), entities.into());
 
         let mut event_handlers: Vec<Value> = Vec::new();
-        for event_handler in self.event_handlers {
-            event_handlers.push(event_handler.write_to_store(store)?.into())
+        for (i, event_handler) in self.event_handlers.into_iter().enumerate() {
+            let handler_id = format!("{}-event-handler-{}", id, i);
+            event_handlers.push(event_handler.write_to_store(store, handler_id)?.into())
         }
         entity.insert("eventHandlers".to_owned(), event_handlers.into());
 
@@ -272,8 +275,7 @@ struct EthereumContractAbi {
 
 impl EthereumContractAbi {
     // Returns the id in the store.
-    fn write_to_store(self, store: &impl Store) -> Result<String, Error> {
-        let id = Uuid::new_v4().to_string();
+    fn write_to_store(self, store: &impl Store, id: String) -> Result<String, Error> {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("name".to_owned(), self.name.into());
@@ -311,8 +313,7 @@ struct EthereumContractEventHandler {
 
 impl EthereumContractEventHandler {
     // Returns the id in the store.
-    fn write_to_store(self, store: &impl Store) -> Result<String, Error> {
-        let id = Uuid::new_v4().to_string();
+    fn write_to_store(self, store: &impl Store, id: String) -> Result<String, Error> {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("event".to_owned(), self.event.into());
