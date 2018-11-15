@@ -646,9 +646,13 @@ impl StoreTrait for Store {
                 ValueType::String => "",
             };
             diesel_query = diesel_query.order(
-                sql::<Text>("(data ->>")
+                sql::<Text>("(data ->")
                     .bind::<Text, _>(order_attribute)
-                    .sql(&format!("){} {} NULLS LAST", cast_type, direction)),
+                    .sql("->> 'data')")
+                    .sql(cast_type)
+                    .sql(" ")
+                    .sql(direction)
+                    .sql(" NULLS LAST"),
             );
         }
 
