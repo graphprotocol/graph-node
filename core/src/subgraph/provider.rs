@@ -36,7 +36,7 @@ where
             store,
         };
 
-        provider.send_builtin_schema(&include_str!("subgraph.graphql"), SUBGRAPHS_ID.to_owned());
+        provider.send_builtin_schema(&include_str!("subgraphs.graphql"), SUBGRAPHS_ID.to_owned());
 
         provider
     }
@@ -146,7 +146,7 @@ where
                     .map_err(|err| {
                         error!(
                             self_clone.logger,
-                            "failed to write subgraph entity to store: {}", err
+                            "Failed to write subgraph to store: {}", err
                         )
                     }).ok();
 
