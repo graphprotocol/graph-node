@@ -1077,6 +1077,110 @@ fn find_bytes_equal() {
 }
 
 #[test]
+fn find_order_by_float() {
+    test_find(
+        vec!["3", "2", "1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: None,
+            order_by: Some(("weight".to_owned(), ValueType::Float)),
+            order_direction: Some(EntityOrder::Ascending),
+            range: None,
+        },
+    );
+    test_find(
+        vec!["1", "2", "3"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: None,
+            order_by: Some(("weight".to_owned(), ValueType::Float)),
+            order_direction: Some(EntityOrder::Descending),
+            range: None,
+        },
+    );
+}
+
+#[test]
+fn find_order_by_id() {
+    test_find(
+        vec!["1", "2", "3"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: None,
+            order_by: Some(("id".to_owned(), ValueType::ID)),
+            order_direction: Some(EntityOrder::Ascending),
+            range: None,
+        },
+    );
+    test_find(
+        vec!["3", "2", "1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: None,
+            order_by: Some(("id".to_owned(), ValueType::ID)),
+            order_direction: Some(EntityOrder::Descending),
+            range: None,
+        },
+    );
+}
+
+#[test]
+fn find_order_by_int() {
+    test_find(
+        vec!["3", "2", "1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: None,
+            order_by: Some(("age".to_owned(), ValueType::Int)),
+            order_direction: Some(EntityOrder::Ascending),
+            range: None,
+        },
+    );
+    test_find(
+        vec!["1", "2", "3"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: None,
+            order_by: Some(("age".to_owned(), ValueType::Int)),
+            order_direction: Some(EntityOrder::Descending),
+            range: None,
+        },
+    );
+}
+
+#[test]
+fn find_order_by_string() {
+    test_find(
+        vec!["2", "1", "3"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: None,
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Ascending),
+            range: None,
+        },
+    );
+    test_find(
+        vec!["3", "1", "2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: None,
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Descending),
+            range: None,
+        },
+    );
+}
+
+#[test]
 fn revert_block() {
     run_test(|store| -> Result<(), ()> {
         let this_query = EntityQuery {
