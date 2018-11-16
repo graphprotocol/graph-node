@@ -76,7 +76,7 @@ impl SubgraphInstanceManager {
             match event {
                 SubgraphStart(manifest) => {
                     // Write subgraph logs to the terminal and, if enabled, Elasticsearch
-                    let term_logger = logger.new(o!("subgraph_id" => manifest.id.clone()));
+                    let term_logger = logger.new(o!("subgraph_id" => manifest.id.to_string()));
                     let logger = elastic_config
                         .clone()
                         .map(|elastic_config| {
@@ -87,7 +87,7 @@ impl SubgraphInstanceManager {
                                         general: elastic_config,
                                         index: String::from("subgraph-logs"),
                                         document_type: String::from("log"),
-                                        subgraph_id: String::from(manifest.id.clone()),
+                                        subgraph_id: manifest.id.clone(),
                                         flush_interval: Duration::from_secs(5),
                                     },
                                     term_logger.clone(),
@@ -108,7 +108,7 @@ impl SubgraphInstanceManager {
                     .ok();
                 }
                 SubgraphStop(id) => {
-                    info!(logger, "Stopping subgraph"; "subgraph_id" => &id);
+                    info!(logger, "Stopping subgraph"; "subgraph_id" => id.to_string());
                     Self::stop_subgraph(instances.clone(), id);
                 }
             };
@@ -180,7 +180,11 @@ impl SubgraphInstanceManager {
                     } else if logs.len() == 1 {
                         info!(logger, "1 event found in this block for this subgraph");
                     } else {
-                        info!(logger, "{} events found in this block for this subgraph", logs.len());
+                        info!(
+                            logger,
+                            "{} events found in this block for this subgraph",
+                            logs.len()
+                        );
                     }
 
                     // Process events one after the other, passing in entity operations
@@ -217,7 +221,11 @@ impl SubgraphInstanceManager {
                             let block_ptr_now = EthereumBlockPointer::to_parent(&block);
                             let block_ptr_after = EthereumBlockPointer::from(&*block);
 
-                            info!(logger, "Applying {} entity operation(s)", entity_operations.len());
+                            info!(
+                                logger,
+                                "Applying {} entity operation(s)",
+                                entity_operations.len()
+                            );
 
                             // Transact entity operations into the store and update the
                             // subgraph's block stream pointer
@@ -227,17 +235,26 @@ impl SubgraphInstanceManager {
                                 block_ptr_after,
                                 entity_operations,
                             )).map_err(|e| {
-                                format_err!("Error while processing block stream for a subgraph: {}", e)
+                                format_err!(
+                                    "Error while processing block stream for a subgraph: {}",
+                                    e
+                                )
                             }).from_err()
                         })
-                }).map_err(move |e| {
-                    match e {
-                        CancelableError::Cancel => {
-                            info!(error_logger, "Subgraph block stream shut down cleanly"; "id" => id_for_err);
-                        }
-                        CancelableError::Error(e) => {
-                            error!(error_logger, "Subgraph instance failed to run: {}", e; "id" => id_for_err);
-                        }
+                }).map_err(move |e| match e {
+                    CancelableError::Cancel => {
+                        info!(
+                                error_logger,
+                                "Subgraph block stream shut down cleanly";
+                                "id" => id_for_err.to_string()
+                            );
+                    }
+                    CancelableError::Error(e) => {
+                        error!(
+                                error_logger,
+                                "Subgraph instance failed to run: {}", e;
+                                "id" => id_for_err.to_string()
+                            );
                     }
                 }),
         );

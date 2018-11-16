@@ -2,9 +2,10 @@ use std::io;
 use std::sync::Arc;
 
 use prelude::Logger;
+use prelude::NodeId;
 
 /// Common trait for JSON-RPC admin server implementations.
-pub trait JsonRpcServer<P, S> {
+pub trait JsonRpcServer<P> {
     type Server;
 
     fn serve(
@@ -12,7 +13,7 @@ pub trait JsonRpcServer<P, S> {
         http_port: u16,
         ws_port: u16,
         provider: Arc<P>,
-        store: Arc<S>,
+        node_id: NodeId,
         logger: Logger,
     ) -> Result<Self::Server, io::Error>;
 }

@@ -51,11 +51,17 @@ pub struct GraphQLServer<Q, S> {
     schemas: Arc<RwLock<BTreeMap<SubgraphId, Schema>>>,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
+    node_id: NodeId,
 }
 
 impl<Q, S> GraphQLServer<Q, S> {
     /// Creates a new GraphQL server.
-    pub fn new(logger: &slog::Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
+    pub fn new(
+        logger: &slog::Logger,
+        graphql_runner: Arc<Q>,
+        store: Arc<S>,
+        node_id: NodeId,
+    ) -> Self {
         // Create channel for handling incoming schema events
         let (schema_event_sink, schema_event_stream) = channel(100);
 
@@ -66,6 +72,7 @@ impl<Q, S> GraphQLServer<Q, S> {
             schemas: Arc::new(RwLock::new(BTreeMap::new())),
             graphql_runner,
             store,
+            node_id,
         };
 
         // Spawn tasks to handle incoming schema events
@@ -84,7 +91,7 @@ impl<Q, S> GraphQLServer<Q, S> {
             let mut schemas = schemas.write().unwrap();
             match event {
                 SchemaEvent::SchemaAdded(new_schema) => {
-                    debug!(logger, "Received SchemaAdded event"; "id" => &new_schema.id);
+                    debug!(logger, "Received SchemaAdded event"; "id" => new_schema.id.to_string());
 
                     let derived_schema = match api_schema(&new_schema.document) {
                         Ok(document) => Schema {
@@ -100,7 +107,7 @@ impl<Q, S> GraphQLServer<Q, S> {
                     schemas.insert(new_schema.id.clone(), derived_schema);
                 }
                 SchemaEvent::SchemaRemoved(id) => {
-                    debug!(logger, "Received SchemaRemoved event"; "id" => &id);
+                    debug!(logger, "Received SchemaRemoved event"; "id" => id.to_string());
 
                     // If the event got this far, the subgraph must be hosted.
                     schemas.remove(&id).expect("subgraph not hosted");
@@ -115,7 +122,7 @@ impl<Q, S> GraphQLServer<Q, S> {
 impl<Q, S> GraphQLServerTrait for GraphQLServer<Q, S>
 where
     Q: GraphQlRunner + 'static,
-    S: Store,
+    S: SubgraphDeploymentStore,
 {
     type ServeError = GraphQLServeError;
 
@@ -138,12 +145,14 @@ where
         let graphql_runner = self.graphql_runner.clone();
         let schemas = self.schemas.clone();
         let store = self.store.clone();
+        let node_id = self.node_id.clone();
         let new_service = move || {
             let service = GraphQLService::new(
                 schemas.clone(),
                 graphql_runner.clone(),
                 store.clone(),
                 ws_port,
+                node_id.clone(),
             );
             future::ok::<GraphQLService<Q, S>, hyper::Error>(service)
         };
@@ -190,14 +199,16 @@ mod tests {
                     let logger = Logger::root(slog::Discard, o!());
                     let graphql_runner = Arc::new(MockGraphQlRunner::new(&logger));
                     let store = Arc::new(MockStore::new());
-                    let mut server = GraphQLServer::new(&logger, graphql_runner, store);
+                    let node_id = NodeId::new("test").unwrap();
+                    let mut server = GraphQLServer::new(&logger, graphql_runner, store, node_id);
                     let schema_sink = server.event_sink();
 
                     // Create an input schema event
                     let input_doc =
                         ::graphql_parser::parse_schema("type User { name: String! }").unwrap();
+                    let input_schema_id = SubgraphId::new("inputschema").unwrap();
                     let input_schema = Schema {
-                        id: "input-schema".to_string(),
+                        id: input_schema_id.clone(),
                         document: input_doc,
                     };
                     let input_event = SchemaEvent::SchemaAdded(input_schema.clone());
@@ -210,7 +221,7 @@ mod tests {
                     let start_time = Instant::now();
                     let max_wait = Duration::from_secs(30);
                     let output_schema = loop {
-                        if let Some(schema) = server.schemas.read().unwrap().get("input-schema") {
+                        if let Some(schema) = server.schemas.read().unwrap().get(&input_schema_id) {
                             break schema.clone();
                         } else if Instant::now().duration_since(start_time) > max_wait {
                             panic!("Timed out, schema not received")

@@ -18,6 +18,7 @@ mod entity_changes;
 mod filter;
 pub mod functions;
 pub mod models;
+mod notification_listener;
 pub mod store;
 
 pub use self::chain_head_listener::ChainHeadUpdateListener;

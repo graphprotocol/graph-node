@@ -21,6 +21,7 @@ use graph::{tokio, tokio::timer::Interval};
 use chain_head_listener::ChainHeadUpdateListener;
 use entity_changes::EntityChangeListener;
 use functions::{attempt_chain_head_update, lookup_ancestor_block, revert_block, set_config};
+use notification_listener::{NotificationListener, SafeChannelName};
 
 embed_migrations!("./migrations");
 
@@ -51,7 +52,7 @@ fn initiate_schema(logger: &slog::Logger, conn: &PgConnection) {
 
 /// Configuration for the Diesel/Postgres store.
 pub struct StoreConfig {
-    pub url: String,
+    pub postgres_url: String,
     pub network_name: String,
 }
 
@@ -60,7 +61,7 @@ pub struct Store {
     logger: slog::Logger,
     subscriptions: Arc<RwLock<HashMap<String, Subscription>>>,
     change_listener: EntityChangeListener,
-    url: String,
+    postgres_url: String,
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
     pub conn: Arc<Mutex<PgConnection>>,
@@ -76,16 +77,16 @@ impl Store {
         let logger = logger.new(o!("component" => "Store"));
 
         // Connect to Postgres
-        let conn =
-            PgConnection::establish(config.url.as_str()).expect("failed to connect to Postgres");
+        let conn = PgConnection::establish(config.postgres_url.as_str())
+            .expect("failed to connect to Postgres");
 
-        info!(logger, "Connected to Postgres"; "url" => &config.url);
+        info!(logger, "Connected to Postgres"; "url" => &config.postgres_url);
 
         // Create the entities table (if necessary)
         initiate_schema(&logger, &conn);
 
         // Listen to entity changes in Postgres
-        let mut change_listener = EntityChangeListener::new(config.url.clone());
+        let mut change_listener = EntityChangeListener::new(config.postgres_url.clone());
         let entity_changes = change_listener
             .take_event_stream()
             .expect("Failed to listen to entity change events in Postgres");
@@ -95,7 +96,7 @@ impl Store {
             logger: logger.clone(),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             change_listener,
-            url: config.url.clone(),
+            postgres_url: config.postgres_url.clone(),
             network_name: config.network_name.clone(),
             genesis_block_ptr: (net_identifiers.genesis_block_hash, 0u64).into(),
             conn: Arc::new(Mutex::new(conn)),
@@ -192,7 +193,7 @@ impl Store {
 
         tokio::spawn(entity_changes.for_each(move |change| {
             trace!(logger, "Received entity change event";
-                           "subgraph_id" => &change.subgraph_id,
+                           "subgraph_id" => change.subgraph_id.to_string(),
                            "entity_type" => &change.entity_type,
                            "entity_id" => &change.entity_id);
 
@@ -261,14 +262,14 @@ impl Store {
     fn get_entity(
         &self,
         conn: &PgConnection,
-        op_subgraph: &String,
+        op_subgraph: &SubgraphId,
         op_entity: &String,
         op_id: &String,
     ) -> Result<Option<Entity>, QueryExecutionError> {
         use db_schema::entities::dsl::*;
 
         match entities
-            .find((op_id, op_subgraph, op_entity))
+            .find((op_id, op_subgraph.to_string(), op_entity))
             .select(data)
             .first::<serde_json::Value>(conn)
             .optional()
@@ -343,7 +344,7 @@ impl Store {
             .values((
                 id.eq(op_entity_id),
                 entity.eq(op_entity_type),
-                subgraph.eq(op_subgraph_id),
+                subgraph.eq(op_subgraph_id.to_string()),
                 data.eq(&updated_json),
                 event_source.eq(op_event_source),
             )).on_conflict((id, entity, subgraph))
@@ -351,7 +352,7 @@ impl Store {
             .set((
                 id.eq(op_entity_id),
                 entity.eq(op_entity_type),
-                subgraph.eq(op_subgraph_id),
+                subgraph.eq(op_subgraph_id.to_string()),
                 data.eq(&updated_json),
                 event_source.eq(op_event_source),
             )).execute(conn)
@@ -392,7 +393,7 @@ impl Store {
 
         delete(
             entities
-                .filter(subgraph.eq(op_subgraph_id))
+                .filter(subgraph.eq(op_subgraph_id.to_string()))
                 .filter(entity.eq(op_entity_type))
                 .filter(id.eq(op_entity_id)),
         ).execute(conn)
@@ -452,7 +453,7 @@ impl Store {
             .set((
                 latest_block_hash.eq(to.hash_hex()),
                 latest_block_number.eq(to.number as i64),
-            )).filter(id.eq(&subgraph_id))
+            )).filter(id.eq(subgraph_id.to_string()))
             .filter(latest_block_hash.eq(from.hash_hex()))
             .filter(latest_block_number.eq(from.number as i64))
             .execute(conn)
@@ -470,104 +471,6 @@ impl Store {
 }
 
 impl StoreTrait for Store {
-    fn authorize_subgraph_name(&self, name: String, new_access_token: String) -> Result<(), Error> {
-        use db_schema::subgraph_names::dsl::*;
-
-        insert_into(subgraph_names)
-            .values((
-                subgraph_name.eq(&name),
-                subgraph_id.eq::<Option<SubgraphId>>(None),
-                access_token.eq(&new_access_token),
-            )).on_conflict(subgraph_name)
-            .do_update()
-            .set(access_token.eq(&new_access_token))
-            .execute(&*self.conn.lock().unwrap())
-            .map(|_| ())
-            .map_err(Error::from)
-    }
-
-    fn check_subgraph_name_access_token(
-        &self,
-        name: String,
-        untrusted_access_token: String,
-    ) -> Result<bool, Error> {
-        use db_schema::subgraph_names::dsl::*;
-
-        let real_access_token_opt = subgraph_names
-            .select(access_token)
-            .filter(subgraph_name.eq(&name))
-            .first::<Option<String>>(&*self.conn.lock().unwrap())?;
-
-        match real_access_token_opt {
-            None => {
-                debug!(
-                    self.logger,
-                    "Subgraph name has no associated access token. Access denied by default.";
-                    "subgraph_name" => &name
-                );
-
-                Ok(false)
-            }
-            Some(real_access_token) => {
-                // Issue #451: make this constant-time
-                Ok(real_access_token == untrusted_access_token)
-            }
-        }
-    }
-
-    fn read_all_subgraph_names(&self) -> Result<Vec<(String, Option<SubgraphId>)>, Error> {
-        use db_schema::subgraph_names::dsl::*;
-
-        subgraph_names
-            .select((subgraph_name, subgraph_id))
-            .load::<(String, Option<String>)>(&*self.conn.lock().unwrap())
-            .map_err(Error::from)
-    }
-
-    fn read_subgraph_name(&self, name: String) -> Result<Option<Option<SubgraphId>>, Error> {
-        use db_schema::subgraph_names::dsl::*;
-
-        subgraph_names
-            .select(subgraph_id)
-            .filter(subgraph_name.eq(name))
-            .first::<Option<String>>(&*self.conn.lock().unwrap())
-            .optional()
-            .map_err(Error::from)
-    }
-
-    fn write_subgraph_name(&self, name: String, id_opt: Option<SubgraphId>) -> Result<(), Error> {
-        use db_schema::subgraph_names::dsl::*;
-
-        insert_into(subgraph_names)
-            .values((subgraph_id.eq(&id_opt), subgraph_name.eq(&name)))
-            .on_conflict(subgraph_name)
-            .do_update()
-            .set(subgraph_id.eq(&id_opt))
-            .execute(&*self.conn.lock().unwrap())
-            .map_err(Error::from)
-            .map(|_| ())
-    }
-
-    fn find_subgraph_names_by_id(&self, id: SubgraphId) -> Result<Vec<String>, Error> {
-        use db_schema::subgraph_names::dsl::*;
-
-        subgraph_names
-            .select(subgraph_name)
-            .filter(subgraph_id.eq(&id))
-            .load::<String>(&*self.conn.lock().unwrap())
-            .map_err(Error::from)
-    }
-
-    fn delete_subgraph_name(&self, name: String) -> Result<(), Error> {
-        use db_schema::subgraph_names::dsl::*;
-
-        delete(subgraph_names)
-            .filter(subgraph_name.eq(&name))
-            .execute(&*self.conn.lock().unwrap())
-            .map(|_| ())
-            .map_err(Error::from)
-    }
-
     fn add_subgraph_if_missing(
         &self,
         subgraph_id: SubgraphId,
@@ -577,7 +480,7 @@ impl StoreTrait for Store {
 
         insert_into(subgraphs)
             .values((
-                id.eq(&subgraph_id),
+                id.eq(subgraph_id.to_string()),
                 network_name.eq(&self.network_name),
                 latest_block_hash.eq(block_ptr.hash_hex()),
                 latest_block_number.eq(block_ptr.number as i64),
@@ -593,7 +496,7 @@ impl StoreTrait for Store {
 
         subgraphs
             .select((latest_block_hash, latest_block_number))
-            .filter(id.eq(&subgraph_id))
+            .filter(id.eq(subgraph_id.to_string()))
             .first::<(String, i64)>(&*self.conn.lock().unwrap())
             .map(|(hash, number)| {
                 (
@@ -617,7 +520,7 @@ impl StoreTrait for Store {
         // query parameters provided
         let mut diesel_query = entities
             .filter(entity.eq(query.entity_type))
-            .filter(subgraph.eq(query.subgraph_id))
+            .filter(subgraph.eq(query.subgraph_id.to_string()))
             .select(data)
             .into_boxed::<Pg>();
 
@@ -733,7 +636,7 @@ impl StoreTrait for Store {
             &block_ptr_from.hash_hex(),
             block_ptr_from.number as i64,
             &block_ptr_to.hash_hex(),
-            subgraph_id,
+            subgraph_id.to_string(),
         )).execute(&*self.conn.lock().unwrap())
         .map_err(|e| format_err!("Error reverting block: {}", e))
         .map(|_| ())
@@ -768,10 +671,132 @@ impl StoreTrait for Store {
         use db_schema::entities::dsl::*;
 
         let count: i64 = entities
-            .filter(subgraph.eq(subgraph_id))
+            .filter(subgraph.eq(subgraph_id.to_string()))
             .count()
             .get_result(&*self.conn.lock().unwrap())?;
         Ok(count as u64)
+    }
+}
+
+impl SubgraphDeploymentStore for Store {
+    fn read_by_node_id(
+        &self,
+        node_id: NodeId,
+    ) -> Result<Vec<(SubgraphDeploymentName, SubgraphId)>, Error> {
+        use db_schema::subgraph_deployments;
+
+        subgraph_deployments::table
+            .select((
+                subgraph_deployments::deployment_name,
+                subgraph_deployments::subgraph_id,
+            )).filter(subgraph_deployments::node_id.eq(node_id.to_string()))
+            .load::<(String, String)>(&*self.conn.lock().unwrap())
+            .map_err(Error::from)
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|(name, subgraph_id)| {
+                        let name = SubgraphDeploymentName::new(name)
+                            .expect("invalid subgraph name found in database");
+                        let subgraph_id = SubgraphId::new(subgraph_id)
+                            .expect("invalid subgraph ID found in database");
+                        (name, subgraph_id)
+                    }).collect()
+            })
+    }
+
+    fn write(
+        &self,
+        name: SubgraphDeploymentName,
+        subgraph_id: SubgraphId,
+        node_id: NodeId,
+    ) -> Result<(), Error> {
+        use db_schema::subgraph_deployments;
+
+        insert_into(subgraph_deployments::table)
+            .values((
+                subgraph_deployments::deployment_name.eq(name.to_string()),
+                subgraph_deployments::subgraph_id.eq(subgraph_id.to_string()),
+                subgraph_deployments::node_id.eq(node_id.to_string()),
+            )).on_conflict(subgraph_deployments::deployment_name)
+            .do_update()
+            .set((
+                subgraph_deployments::subgraph_id.eq(subgraph_id.to_string()),
+                subgraph_deployments::node_id.eq(node_id.to_string()),
+            )).execute(&*self.conn.lock().unwrap())
+            .map_err(Error::from)
+            .map(|_| ())
+    }
+
+    fn read(&self, name: SubgraphDeploymentName) -> Result<Option<(SubgraphId, NodeId)>, Error> {
+        use db_schema::subgraph_deployments;
+
+        subgraph_deployments::table
+            .select((
+                subgraph_deployments::subgraph_id,
+                subgraph_deployments::node_id,
+            )).filter(subgraph_deployments::deployment_name.eq(name.to_string()))
+            .first::<(String, String)>(&*self.conn.lock().unwrap())
+            .optional()
+            .map_err(Error::from)
+            .map(|row_opt| {
+                row_opt.map(|(subgraph_id, node_id)| {
+                    let subgraph_id = SubgraphId::new(subgraph_id)
+                        .expect("invalid subgraph ID found in database");
+                    let node_id = NodeId::new(node_id).expect("invalid node ID found in database");
+                    (subgraph_id, node_id)
+                })
+            })
+    }
+
+    fn remove(&self, name: SubgraphDeploymentName) -> Result<bool, Error> {
+        use db_schema::subgraph_deployments;
+
+        delete(subgraph_deployments::table)
+            .filter(subgraph_deployments::deployment_name.eq(name.to_string()))
+            .execute(&*self.conn.lock().unwrap())
+            .map(|row_count| match row_count {
+                0 => false,
+                1 => true,
+                _ => unreachable!(),
+            }).map_err(Error::from)
+    }
+
+    fn deployment_events(
+        &self,
+        node_id: NodeId,
+    ) -> Box<Stream<Item = DeploymentEvent, Error = Error> + Send> {
+        // Create postgres listener
+        let channel_name =
+            SafeChannelName::i_promise_this_is_safe(format!("subgraph_deployment_{}", node_id));
+        let mut listener = NotificationListener::new(self.postgres_url.clone(), channel_name);
+
+        // Start receiving notifications
+        listener.start();
+
+        Box::new(
+            listener
+                .take_event_stream()
+                .unwrap()
+                .map(move |notification| {
+                    // Move listener into closure so that listener lives as long as stream does
+                    let _ = listener;
+
+                    // Parse notification as JSON
+                    let value: serde_json::Value = serde_json::from_str(&notification.payload)
+                        .expect("invalid JSON deployment event received from database");
+
+                    // Create DeploymentEvent from JSON
+                    let update: DeploymentEvent = serde_json::from_value(value.clone())
+                        .unwrap_or_else(|_| {
+                            panic!(
+                                "invalid deployment event received from database: {:?}",
+                                value
+                            )
+                        });
+
+                    update
+                }).map_err(|()| format_err!("deployment event notification listener failed")),
+        )
     }
 }
 
@@ -840,7 +865,7 @@ impl ChainStore for Store {
     }
 
     fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener {
-        Self::ChainHeadUpdateListener::new(self.url.clone(), self.network_name.clone())
+        Self::ChainHeadUpdateListener::new(self.postgres_url.clone(), self.network_name.clone())
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {

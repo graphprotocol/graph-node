@@ -23,11 +23,9 @@ use clap::{App, Arg};
 use ipfs_api::IpfsClient;
 use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
-use reqwest::Client;
 use std::env;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
-use url::Url;
 
 use graph::components::{forward, forward2};
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
@@ -39,7 +37,7 @@ use graph_core::{
 use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
-use graph_server_json_rpc::{subgraph_deploy_request, JsonRpcServer};
+use graph_server_json_rpc::JsonRpcServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
@@ -129,6 +127,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .value_name("PORT")
                 .help("Port for the JSON-RPC admin server"),
         ).arg(
+            Arg::with_name("node-id")
+                .default_value("default")
+                .long("node-id")
+                .value_name("NODE_ID")
+                .help("an identifier for this Graph node"),
+        ).arg(
             Arg::with_name("debug")
                 .long("debug")
                 .help("Enable debug logging"),
@@ -166,8 +170,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Safe to unwrap because a value is required by CLI
     let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
 
+    let node_id = NodeId::new(matches.value_of("node-id").unwrap())
+        .expect("node ID contains invalid characters");
+
     // Obtain subgraph related command-line arguments
-    let subgraph = matches.value_of("subgraph");
+    let subgraph = matches.value_of("subgraph").map(|s| s.to_owned());
 
     // Obtain the Ethereum parameters
     let ethereum_rpc = matches.value_of("ethereum-rpc");
@@ -321,15 +328,19 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     info!(logger, "Connecting to Postgres"; "url" => &postgres_url);
     let store = Arc::new(DieselStore::new(
         StoreConfig {
-            url: postgres_url,
+            postgres_url,
             network_name: ethereum_network_name.to_owned(),
         },
         &logger,
         eth_net_identifiers,
     ));
     let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(&logger, store.clone()));
-    let mut graphql_server =
-        GraphQLQueryServer::new(&logger, graphql_runner.clone(), store.clone());
+    let mut graphql_server = GraphQLQueryServer::new(
+        &logger,
+        graphql_runner.clone(),
+        store.clone(),
+        node_id.clone(),
+    );
     let mut subscription_server =
         GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), store.clone());
 
@@ -387,79 +398,73 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
 
     // Create named subgraph provider for resolving subgraph name->ID mappings
-    let named_subgraph_provider = Arc::new(IpfsSubgraphProviderWithNames::new(
+    IpfsSubgraphProviderWithNames::init(
         logger.clone(),
         Arc::new(subgraph_provider),
         store.clone(),
-    ));
+        node_id.clone(),
+    ).then(
+        move |named_subgraph_provider_result| -> Box<Future<Item = _, Error = _> + Send> {
+            let named_subgraph_provider = Arc::new(
+                named_subgraph_provider_result.expect("failed to initialize subgraph provider"),
+            );
 
-    let err_logger = logger.clone();
-    tokio::spawn(
-        named_subgraph_provider
-            .deploy_saved_subgraphs()
-            .map_err(move |e| {
-                error!(err_logger, "error deploying saved subgraphs";
-                                       "error" => format!("{}", e))
-            }),
-    );
+            // Start admin JSON-RPC server.
+            let json_rpc_server = JsonRpcServer::serve(
+                json_rpc_port,
+                http_port,
+                ws_port,
+                named_subgraph_provider.clone(),
+                node_id.clone(),
+                logger.clone(),
+            ).expect("failed to start JSON-RPC admin server");
 
-    // Start admin JSON-RPC server.
-    let json_rpc_server = JsonRpcServer::serve(
-        json_rpc_port,
-        http_port,
-        ws_port,
-        named_subgraph_provider,
-        store.clone(),
-        logger.clone(),
-    ).expect("failed to start JSON-RPC admin server");
+            // Let the server run forever.
+            std::mem::forget(json_rpc_server);
 
-    // Let the server run forever.
-    std::mem::forget(json_rpc_server);
+            // Add the CLI subgraph with a REST request to the admin server.
+            if let Some(subgraph) = subgraph {
+                let (name, hash) = if subgraph.contains(':') {
+                    let mut split = subgraph.split(':');
+                    (split.next().unwrap(), split.next().unwrap().to_owned())
+                } else {
+                    ("cli", subgraph)
+                };
 
-    // Add the CLI subgraph with a REST request to the admin server.
-    if let Some(subgraph) = subgraph {
-        let (name, hash) = if subgraph.contains(':') {
-            let mut split = subgraph.split(':');
-            (split.next().unwrap(), split.next().unwrap())
-        } else {
-            ("cli", subgraph)
-        };
+                let name = SubgraphDeploymentName::new(name)
+                    .expect("Subgraph name command line arg contains invalid characters");
+                let subgraph_id = SubgraphId::new(hash)
+                    .expect("Subgraph hash command line arg contains invalid characters");
 
-        let mut url = Url::parse("http://localhost").unwrap();
-        url.set_port(Some(json_rpc_port))
-            .expect("invalid admin port");
-        let raw_response = Client::new()
-            .post(url.clone())
-            .json(&subgraph_deploy_request(
-                name.to_owned(),
-                hash.to_owned(),
-                "1".to_owned(),
-            )).send()
-            .expect("failed to make `subgraph_deploy` request");
+                Box::new(
+                    named_subgraph_provider
+                        .deploy(name, subgraph_id, node_id.clone())
+                        .then(|deploy_result| {
+                            Ok(deploy_result
+                                .expect("Failed to deploy subgraph from `--subgraph` flag"))
+                        }),
+                )
+            } else {
+                Box::new(future::ok(()))
+            }
+        },
+    ).and_then(move |()| {
+        // Serve GraphQL queries over HTTP. We will listen on port 8000.
+        tokio::spawn(
+            graphql_server
+                .serve(http_port, ws_port)
+                .expect("Failed to start GraphQL query server"),
+        );
 
-        graph_server_json_rpc::parse_response(
-            raw_response
-                .error_for_status()
-                .and_then(|mut res| res.json())
-                .expect("`subgraph_deploy` request error"),
-        ).expect("`subgraph_deploy` server error");
-    }
+        // Serve GraphQL subscriptions over WebSockets. We will listen on port 8001.
+        tokio::spawn(
+            subscription_server
+                .serve(ws_port)
+                .expect("Failed to start GraphQL subscription server"),
+        );
 
-    // Serve GraphQL queries over HTTP. We will listen on port 8000.
-    tokio::spawn(
-        graphql_server
-            .serve(http_port, ws_port)
-            .expect("Failed to start GraphQL query server"),
-    );
-
-    // Serve GraphQL subscriptions over WebSockets. We will listen on port 8001.
-    tokio::spawn(
-        subscription_server
-            .serve(ws_port)
-            .expect("Failed to start GraphQL subscription server"),
-    );
-
-    future::empty()
+        Ok(())
+    })
 }
 
 /// Parses an Ethereum connection string and returns the network name and Ethereum node.

@@ -1,5 +1,7 @@
-use failure;
+use data::subgraph::*;
 use graphql_parser::{query as q, Pos};
+
+use failure;
 use hex::FromHexError;
 use num_bigint;
 use serde::ser::*;
@@ -22,14 +24,14 @@ pub enum QueryExecutionError {
     AbstractTypeError(String),
     InvalidArgumentError(Pos, String, q::Value),
     MissingArgumentError(Pos, String),
-    ResolveEntityError(String, String, String, String),
+    ResolveEntityError(SubgraphId, String, String, String),
     ResolveEntitiesError(String),
     OrderByNotSupportedError(String, String),
     FilterNotSupportedError(String, String),
     UnknownField(Pos, String, String),
     EmptyQuery,
     MultipleSubscriptionFields,
-    SupgraphIdError(String),
+    SubgraphIdError(String),
     RangeArgumentsError(Vec<String>),
     InvalidFilterError,
     EntityFieldError(String, String),
@@ -103,7 +105,7 @@ impl fmt::Display for QueryExecutionError {
                 f,
                 "Only a single top-level field is allowed in subscriptions"
             ),
-            QueryExecutionError::SupgraphIdError(s) => {
+            QueryExecutionError::SubgraphIdError(s) => {
                 write!(f, "Failed to get subgraph ID from type: {}", s)
             }
             QueryExecutionError::RangeArgumentsError(s) => {

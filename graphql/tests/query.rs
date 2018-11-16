@@ -35,7 +35,7 @@ fn test_schema() -> Schema {
                 writtenBy: Musician!
             }
             ",
-        String::from("test-schema"),
+        SubgraphId::new("testschema").unwrap(),
     ).expect("Test schema invalid");
 
     let api_document =
@@ -129,34 +129,6 @@ impl TestStore {
 }
 
 impl Store for TestStore {
-    fn authorize_subgraph_name(&self, _: String, _: String) -> Result<(), Error> {
-        unimplemented!()
-    }
-
-    fn check_subgraph_name_access_token(&self, _: String, _: String) -> Result<bool, Error> {
-        unimplemented!()
-    }
-
-    fn read_all_subgraph_names(&self) -> Result<Vec<(String, Option<SubgraphId>)>, Error> {
-        unimplemented!()
-    }
-
-    fn read_subgraph_name(&self, _: String) -> Result<Option<Option<SubgraphId>>, Error> {
-        unimplemented!()
-    }
-
-    fn write_subgraph_name(&self, _: String, _: Option<SubgraphId>) -> Result<(), Error> {
-        unimplemented!()
-    }
-
-    fn find_subgraph_names_by_id(&self, _: SubgraphId) -> Result<Vec<String>, Error> {
-        unimplemented!()
-    }
-
-    fn delete_subgraph_name(&self, _: String) -> Result<(), Error> {
-        unimplemented!()
-    }
-
     fn add_subgraph_if_missing(&self, _: SubgraphId, _: EthereumBlockPointer) -> Result<(), Error> {
         unimplemented!()
     }

@@ -1,16 +1,151 @@
 use ethabi::Address;
 use failure::Error;
-use graphql_parser::query;
-use graphql_parser::schema;
-use prelude::QueryExecutionError;
+use serde::de;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
+use data::subgraph::SubgraphId;
+use graphql_parser::query;
+use graphql_parser::schema;
+use prelude::QueryExecutionError;
+
 /// Custom scalars in GraphQL.
 pub mod scalar;
+
+/// A pair of subgraph ID and entity type name.
+pub type SubgraphEntityPair = (SubgraphId, String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SubgraphDeploymentName(String);
+
+impl SubgraphDeploymentName {
+    pub fn new(s: impl Into<String>) -> Result<Self, ()> {
+        let s = s.into();
+
+        // Enforce length limit
+        if s.len() > 255 {
+            return Err(());
+        }
+
+        // Check that the name contains only allowed characters.
+        if !s
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(());
+        }
+
+        Ok(SubgraphDeploymentName(s))
+    }
+}
+
+impl fmt::Display for SubgraphDeploymentName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<'de> de::Deserialize<'de> for SubgraphDeploymentName {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct SubgraphDeploymentNameVisitor;
+
+        impl<'de> de::Visitor<'de> for SubgraphDeploymentNameVisitor {
+            type Value = SubgraphDeploymentName;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a string containing a subgraph name")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<SubgraphDeploymentName, E>
+            where
+                E: de::Error,
+            {
+                SubgraphDeploymentName::new(v.to_owned())
+                    .map_err(|()| E::invalid_value(de::Unexpected::Str(v), &"valid subgraph name"))
+            }
+        }
+
+        deserializer.deserialize_str(SubgraphDeploymentNameVisitor)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NodeId(String);
+
+impl NodeId {
+    pub fn new(s: impl Into<String>) -> Result<Self, ()> {
+        let s = s.into();
+
+        // Enforce length limit
+        if s.len() > 31 {
+            return Err(());
+        }
+
+        // Check that the ID contains only allowed characters.
+        if !s
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(());
+        }
+
+        Ok(NodeId(s))
+    }
+}
+
+impl fmt::Display for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<'de> de::Deserialize<'de> for NodeId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct NodeIdVisitor;
+
+        impl<'de> de::Visitor<'de> for NodeIdVisitor {
+            type Value = NodeId;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a string containing a node ID")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<NodeId, E>
+            where
+                E: de::Error,
+            {
+                NodeId::new(v.to_owned())
+                    .map_err(|()| E::invalid_value(de::Unexpected::Str(v), &"valid node ID"))
+            }
+        }
+
+        deserializer.deserialize_str(NodeIdVisitor)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type")]
+pub enum DeploymentEvent {
+    Add {
+        deployment_name: SubgraphDeploymentName,
+        subgraph_id: SubgraphId,
+        node_id: NodeId,
+    },
+    Remove {
+        deployment_name: SubgraphDeploymentName,
+        subgraph_id: SubgraphId,
+        node_id: NodeId,
+    },
+}
 
 /// An entity attribute name is represented as a string.
 pub type Attribute = String;

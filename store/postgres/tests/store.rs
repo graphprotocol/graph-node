@@ -8,8 +8,9 @@ extern crate hex;
 
 use diesel::pg::PgConnection;
 use diesel::*;
+use std::collections::HashSet;
 use std::fmt::Debug;
-use std::panic;
+use std::iter::FromIterator;
 use std::str::FromStr;
 use std::sync::Mutex;
 
@@ -29,7 +30,7 @@ fn postgres_test_url() -> String {
 
 lazy_static! {
     static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
-    static ref TEST_SUBGRAPH_ID: SubgraphId = "test_subgraph".to_owned();
+    static ref TEST_SUBGRAPH_ID: SubgraphId = SubgraphId::new("testsubgraph").unwrap();
     static ref TEST_BLOCK_0_PTR: EthereumBlockPointer = (
         H256::from("0xbd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"),
         0u64
@@ -92,14 +93,17 @@ where
         .block_on(future::lazy(move || {
             // Set up Store
             let logger = Logger::root(slog::Discard, o!());
-            let url = postgres_test_url();
+            let postgres_url = postgres_test_url();
             let net_identifiers = EthereumNetworkIdentifier {
                 net_version: "graph test suite".to_owned(),
                 genesis_block_hash: TEST_BLOCK_0_PTR.hash,
             };
             let network_name = "fake_network".to_owned();
             let store = Arc::new(DieselStore::new(
-                StoreConfig { url, network_name },
+                StoreConfig {
+                    postgres_url,
+                    network_name,
+                },
                 &logger,
                 net_identifiers,
             ));
@@ -218,15 +222,19 @@ fn create_test_entity(
 
 /// Removes test data from the database behind the store.
 fn remove_test_data() {
-    use db_schema::entities::dsl::*;
-    use db_schema::subgraphs::dsl::*;
+    use db_schema::entities;
+    use db_schema::subgraph_deployments;
+    use db_schema::subgraphs;
 
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
-    delete(entities)
+    delete(entities::table)
         .execute(&conn)
         .expect("Failed to remove entity test data");
-    delete(subgraphs)
+    delete(subgraphs::table)
+        .execute(&conn)
+        .expect("Failed to remove subgraph test data");
+    delete(subgraph_deployments::table)
         .execute(&conn)
         .expect("Failed to remove subgraph test data");
 }
@@ -1353,7 +1361,7 @@ fn revert_block_with_partial_update() {
 #[ignore]
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store| {
-        let subgraph_id: SubgraphId = "entity-change-test-subgraph".to_owned();
+        let subgraph_id = SubgraphId::new("EntityChangeTestSubgraph").unwrap();
         store
             .add_subgraph_if_missing(subgraph_id.clone(), *TEST_BLOCK_0_PTR)
             .unwrap();
@@ -1469,5 +1477,145 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 
                 Ok(())
             }).and_then(|_| Ok(()))
+    })
+}
+
+#[test]
+fn write_and_read_deployments() {
+    run_test(|store| -> Result<(), ()> {
+        let name1 = SubgraphDeploymentName::new("name1").unwrap();
+        let name2 = SubgraphDeploymentName::new("name2").unwrap();
+        let subgraph_id1 = SubgraphId::new("mysubgraph").unwrap();
+        let subgraph_id2 = SubgraphId::new("mysubgraph2").unwrap();
+        let subgraph_id3 = SubgraphId::new("mysubgraph3").unwrap();
+        let node_id = NodeId::new("thisnode").unwrap();
+
+        store
+            .write(name1.clone(), subgraph_id1.clone(), node_id.clone())
+            .unwrap();
+        store
+            .write(name2.clone(), subgraph_id2.clone(), node_id.clone())
+            .unwrap();
+        assert_eq!(
+            store.read(name1.clone()).unwrap(),
+            Some((subgraph_id1.clone(), node_id.clone()))
+        );
+        assert_eq!(
+            HashSet::from_iter(store.read_by_node_id(node_id.clone()).unwrap()),
+            vec![
+                (name1.clone(), subgraph_id1.clone()),
+                (name2.clone(), subgraph_id2.clone()),
+            ].into_iter()
+            .collect::<HashSet<_>>()
+        );
+        assert_eq!(
+            store.read(name2.clone()).unwrap(),
+            Some((subgraph_id2.clone(), node_id.clone()))
+        );
+        store
+            .write(name1.clone(), subgraph_id3.clone(), node_id.clone())
+            .unwrap();
+        assert_eq!(
+            store.read(name1.clone()).unwrap(),
+            Some((subgraph_id3.clone(), node_id.clone()))
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn write_and_delete_deployments() {
+    run_test(|store| -> Result<(), ()> {
+        let name1 = SubgraphDeploymentName::new("name1").unwrap();
+        let name2 = SubgraphDeploymentName::new("name2").unwrap();
+        let subgraph_id1 = SubgraphId::new("mysubgraph").unwrap();
+        let node_id = NodeId::new("thisnode").unwrap();
+
+        assert_eq!(store.read(name1.clone()).unwrap(), None);
+
+        store
+            .write(name1.clone(), subgraph_id1.clone(), node_id.clone())
+            .unwrap();
+
+        assert_eq!(
+            store.read(name1.clone()).unwrap(),
+            Some((subgraph_id1.clone(), node_id.clone()))
+        );
+
+        store.remove(name1.clone()).unwrap();
+
+        assert_eq!(
+            HashSet::from_iter(store.read_by_node_id(node_id.clone()).unwrap()),
+            vec![].into_iter().collect::<HashSet<_>>()
+        );
+        assert_eq!(store.read(name1.clone()).unwrap(), None);
+        assert_eq!(store.read(name2.clone()).unwrap(), None);
+
+        Ok(())
+    })
+}
+
+#[test]
+fn receive_deployment_events() {
+    run_test(|store| {
+        let name1 = SubgraphDeploymentName::new("name1").unwrap();
+        let subgraph_id1 = SubgraphId::new("mysubgraph").unwrap();
+        let node_id1 = NodeId::new("thisnode").unwrap();
+        let node_id2 = NodeId::new("othernode").unwrap();
+
+        let event_stream_node1 = store.deployment_events(node_id1.clone());
+        let event_stream_node2 = store.deployment_events(node_id2.clone());
+
+        store
+            .write(name1.clone(), subgraph_id1.clone(), node_id1.clone())
+            .unwrap();
+        store
+            .write(name1.clone(), subgraph_id1.clone(), node_id2.clone())
+            .unwrap();
+        store.remove(name1.clone()).unwrap();
+
+        event_stream_node1
+            .take(2)
+            .collect()
+            .and_then(move |events| {
+                assert_eq!(
+                    events,
+                    vec![
+                        DeploymentEvent::Add {
+                            deployment_name: name1.clone(),
+                            subgraph_id: subgraph_id1.clone(),
+                            node_id: node_id1.clone(),
+                        },
+                        DeploymentEvent::Remove {
+                            deployment_name: name1.clone(),
+                            subgraph_id: subgraph_id1.clone(),
+                            node_id: node_id1.clone(),
+                        },
+                    ]
+                );
+
+                event_stream_node2
+                    .take(2)
+                    .collect()
+                    .and_then(move |events| {
+                        assert_eq!(
+                            events,
+                            vec![
+                                DeploymentEvent::Add {
+                                    deployment_name: name1.clone(),
+                                    subgraph_id: subgraph_id1.clone(),
+                                    node_id: node_id2.clone(),
+                                },
+                                DeploymentEvent::Remove {
+                                    deployment_name: name1.clone(),
+                                    subgraph_id: subgraph_id1.clone(),
+                                    node_id: node_id2.clone(),
+                                },
+                            ]
+                        );
+
+                        Ok(())
+                    })
+            })
     })
 }
