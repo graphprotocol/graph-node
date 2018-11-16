@@ -45,7 +45,7 @@ mod test {
 
     fn test_schema() -> Schema {
         Schema {
-            id: "test-schema".to_string(),
+            id: SubgraphId::new("testschema").unwrap(),
             document: Default::default(),
         }
     }
@@ -59,7 +59,8 @@ mod test {
 
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = Arc::new(MockStore::new());
-                let mut server = HyperGraphQLServer::new(&logger, query_runner, store);
+                let node_id = NodeId::new("test").unwrap();
+                let mut server = HyperGraphQLServer::new(&logger, query_runner, store, node_id);
                 let http_server = server
                     .serve(8001, 8002)
                     .expect("Failed to start GraphQL server");
@@ -111,7 +112,8 @@ mod test {
 
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = Arc::new(MockStore::new());
-                let mut server = HyperGraphQLServer::new(&logger, query_runner, store);
+                let node_id = NodeId::new("test").unwrap();
+                let mut server = HyperGraphQLServer::new(&logger, query_runner, store, node_id);
                 let http_server = server
                     .serve(8002, 8003)
                     .expect("Failed to start GraphQL server");
@@ -197,7 +199,8 @@ mod test {
 
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = Arc::new(MockStore::new());
-                let mut server = HyperGraphQLServer::new(&logger, query_runner, store);
+                let node_id = NodeId::new("test").unwrap();
+                let mut server = HyperGraphQLServer::new(&logger, query_runner, store, node_id);
                 let http_server = server
                     .serve(8003, 8004)
                     .expect("Failed to start GraphQL server");

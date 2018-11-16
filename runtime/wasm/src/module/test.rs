@@ -93,7 +93,7 @@ fn test_module(
     WasmiModule::new(
         &logger,
         WasmiModuleConfig {
-            subgraph_id: "test_subgraph".to_owned(),
+            subgraph_id: SubgraphId::new("testsubgraph").unwrap(),
             data_source,
             ethereum_adapter: mock_ethereum_adapter,
             link_resolver: Arc::new(ipfs_api::IpfsClient::default()),
@@ -268,7 +268,7 @@ fn call_event_handler_and_receive_store_event() {
         result.unwrap(),
         vec![EntityOperation::Set {
             key: EntityKey {
-                subgraph_id: "test_subgraph".to_owned(),
+                subgraph_id: SubgraphId::new("testsubgraph").unwrap(),
                 entity_type: "ExampleEntity".to_owned(),
                 entity_id: "example id".to_owned(),
             },

@@ -32,7 +32,7 @@ impl SubgraphEntity {
 
     pub fn write_to_store(self, store: &impl Store) -> Result<(), Error> {
         let mut entity = HashMap::new();
-        entity.insert("id".to_owned(), self.id.clone().into());
+        entity.insert("id".to_owned(), self.id.to_string().into());
         let manifest_id = format!("{}-manifest", self.id);
         entity.insert(
             "manifest".to_owned(),
@@ -43,9 +43,9 @@ impl SubgraphEntity {
         store.apply_set_operation(
             EntityOperation::Set {
                 key: EntityKey {
-                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    subgraph_id: SubgraphId::new(SUBGRAPHS_ID).unwrap(),
                     entity_type: SUBGRAPH_ENTITY_TYPENAME.to_owned(),
-                    entity_id: self.id,
+                    entity_id: self.id.to_string(),
                 },
                 data: entity.into(),
             },
@@ -84,7 +84,7 @@ impl SubgraphManifest {
         store.apply_set_operation(
             EntityOperation::Set {
                 key: EntityKey {
-                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    subgraph_id: SubgraphId::new(SUBGRAPHS_ID).unwrap(),
                     entity_type: "SubgraphManifest".to_owned(),
                     entity_id: id.clone(),
                 },
@@ -141,7 +141,7 @@ impl EthereumContractDataSource {
         store.apply_set_operation(
             EntityOperation::Set {
                 key: EntityKey {
-                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    subgraph_id: SubgraphId::new(SUBGRAPHS_ID).unwrap(),
                     entity_type: "EthereumContractDataSource".to_owned(),
                     entity_id: id.clone(),
                 },
@@ -182,7 +182,7 @@ impl EthereumContractSource {
         store.apply_set_operation(
             EntityOperation::Set {
                 key: EntityKey {
-                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    subgraph_id: SubgraphId::new(SUBGRAPHS_ID).unwrap(),
                     entity_type: "EthereumContractSource".to_owned(),
                     entity_id: id.clone(),
                 },
@@ -244,7 +244,7 @@ impl EthereumContractMapping {
         store.apply_set_operation(
             EntityOperation::Set {
                 key: EntityKey {
-                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    subgraph_id: SubgraphId::new(SUBGRAPHS_ID).unwrap(),
                     entity_type: "EthereumContractMapping".to_owned(),
                     entity_id: id.clone(),
                 },
@@ -292,7 +292,7 @@ impl EthereumContractAbi {
         store.apply_set_operation(
             EntityOperation::Set {
                 key: EntityKey {
-                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    subgraph_id: SubgraphId::new(SUBGRAPHS_ID).unwrap(),
                     entity_type: "EthereumContractAbi".to_owned(),
                     entity_id: id.clone(),
                 },
@@ -330,7 +330,7 @@ impl EthereumContractEventHandler {
         store.apply_set_operation(
             EntityOperation::Set {
                 key: EntityKey {
-                    subgraph_id: SUBGRAPHS_ID.to_owned(),
+                    subgraph_id: SubgraphId::new(SUBGRAPHS_ID).unwrap(),
                     entity_type: "EthereumContractEventHandler".to_owned(),
                     entity_id: id.clone(),
                 },

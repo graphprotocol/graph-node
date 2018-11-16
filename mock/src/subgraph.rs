@@ -21,7 +21,7 @@ impl MockSubgraphProvider {
 
         let (schema_event_sink, schema_event_stream) = channel(100);
 
-        let id = "176dbd4fdeb8407b899be5d456ababc0".to_string();
+        let id = SubgraphId::new("176dbd4fdeb8407b899be5d456ababc0").unwrap();
         MockSubgraphProvider {
             logger: logger.new(o!("component" => "MockSubgraphProvider")),
             event_sink,
@@ -45,13 +45,13 @@ impl MockSubgraphProvider {
         info!(self.logger, "Generate mock events");
 
         let mock_subgraph = SubgraphManifest {
-            id: String::from("mock subgraph"),
+            id: SubgraphId::new("mocksubgraph").unwrap(),
             location: String::from("/tmp/example-data-source.yaml"),
             spec_version: String::from("0.1"),
             description: None,
             repository: None,
             schema: Schema {
-                id: String::from("exampled id"),
+                id: SubgraphId::new("exampleid").unwrap(),
                 document: Document {
                     definitions: vec![],
                 },

@@ -36,7 +36,10 @@ where
             store,
         };
 
-        provider.send_builtin_schema(&include_str!("subgraphs.graphql"), SUBGRAPHS_ID.to_owned());
+        provider.send_builtin_schema(
+            &include_str!("subgraphs.graphql"),
+            SubgraphId::new(SUBGRAPHS_ID).unwrap(),
+        );
 
         provider
     }
@@ -73,7 +76,7 @@ where
 
     fn send_remove_events(
         &self,
-        id: String,
+        id: SubgraphId,
     ) -> impl Future<Item = (), Error = SubgraphProviderError> + Send + 'static {
         let schema_removal = self
             .schema_event_sink
@@ -136,6 +139,7 @@ where
                         )));
                     }
 
+                    // Place subgraph info into store
                     SubgraphEntity::new(
                         &subgraph,
                         SystemTime::now()

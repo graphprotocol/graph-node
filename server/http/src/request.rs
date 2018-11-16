@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn rejects_invalid_json() {
         let schema = Schema {
-            id: "test".to_string(),
+            id: SubgraphId::new("test").unwrap(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(hyper::Chunk::from("!@#)%"), schema);
@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn rejects_json_without_query_field() {
         let schema = Schema {
-            id: "test".to_string(),
+            id: SubgraphId::new("test").unwrap(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(hyper::Chunk::from("{}"), schema);
@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn rejects_json_with_non_string_query_field() {
         let schema = Schema {
-            id: "test".to_string(),
+            id: SubgraphId::new("test").unwrap(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": 5}"), schema);
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn rejects_broken_queries() {
         let schema = Schema {
-            id: "test".to_string(),
+            id: SubgraphId::new("test").unwrap(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": \"foo\"}"), schema);
@@ -130,7 +130,7 @@ mod tests {
     #[test]
     fn accepts_valid_queries() {
         let schema = Schema {
-            id: "test".to_string(),
+            id: SubgraphId::new("test").unwrap(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn accepts_null_variables() {
         let schema = Schema {
-            id: "test".to_string(),
+            id: SubgraphId::new("test").unwrap(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn rejects_non_map_variables() {
         let schema = Schema {
-            id: "test".to_string(),
+            id: SubgraphId::new("test").unwrap(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(
@@ -189,7 +189,7 @@ mod tests {
     #[test]
     fn parses_variables() {
         let schema = Schema {
-            id: "test".to_string(),
+            id: SubgraphId::new("test").unwrap(),
             document: graphql_parser::parse_schema(EXAMPLE_SCHEMA).unwrap(),
         };
         let request = GraphQLRequest::new(

@@ -1,7 +1,7 @@
 use prelude::*;
 
 /// Events emitted by [SubgraphProvider](trait.SubgraphProvider.html) implementations.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SubgraphProviderEvent {
     /// A subgraph with the given manifest should start processing.
     SubgraphStart(SubgraphManifest),
@@ -37,12 +37,15 @@ pub trait SubgraphProvider:
 pub trait SubgraphProviderWithNames: Send + Sync + 'static {
     fn deploy(
         &self,
-        name: String,
+        name: SubgraphDeploymentName,
         id: SubgraphId,
+        node_id: NodeId,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
 
     fn remove(
         &self,
-        name: String,
+        name: SubgraphDeploymentName,
     ) -> Box<Future<Item = (), Error = SubgraphProviderError> + Send + 'static>;
+
+    fn list(&self) -> Result<Vec<(SubgraphDeploymentName, SubgraphId)>, Error>;
 }

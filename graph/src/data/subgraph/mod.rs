@@ -6,8 +6,10 @@ use failure::{Error, SyncFailure};
 use futures::stream;
 use parity_wasm;
 use parity_wasm::elements::Module;
-use serde::de::{Deserialize, Deserializer};
+use serde::de;
+use serde::ser;
 use serde_yaml;
+use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::prelude::*;
@@ -19,27 +21,82 @@ pub mod schema;
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Address, D::Error>
 where
-    D: Deserializer<'de>,
+    D: de::Deserializer<'de>,
 {
     use serde::de::Error;
 
-    let s: String = Deserialize::deserialize(deserializer)?;
+    let s: String = de::Deserialize::deserialize(deserializer)?;
     let address = s.trim_left_matches("0x");
     Address::from_str(address).map_err(D::Error::custom)
 }
 
-/// The ID of a subgraph.
-pub type SubgraphId = String;
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SubgraphId(String);
+
+impl SubgraphId {
+    pub fn new(s: impl Into<String>) -> Result<Self, ()> {
+        let s = s.into();
+
+        // Enforce length limit
+        if s.len() > 46 {
+            return Err(());
+        }
+
+        // Check that the ID contains only allowed characters.
+        if !s.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(());
+        }
+
+        Ok(SubgraphId(s))
+    }
+}
+
+impl fmt::Display for SubgraphId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl ser::Serialize for SubgraphId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> de::Deserialize<'de> for SubgraphId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct SubgraphIdVisitor;
+
+        impl<'de> de::Visitor<'de> for SubgraphIdVisitor {
+            type Value = SubgraphId;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a string containing a subgraph ID")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<SubgraphId, E>
+            where
+                E: de::Error,
+            {
+                SubgraphId::new(v.to_owned())
+                    .map_err(|()| E::invalid_value(de::Unexpected::Str(v), &"valid subgraph name"))
+            }
+        }
+
+        deserializer.deserialize_str(SubgraphIdVisitor)
+    }
+}
 
 #[derive(Fail, Debug)]
 pub enum SubgraphProviderError {
     #[fail(display = "subgraph resolve error: {}", _0)]
     ResolveError(SubgraphManifestResolveError),
-    #[fail(
-        display = "name {} is invalid, only ASCII alphanumerics, `-` and `_` are allowed",
-        _0
-    )]
-    InvalidName(String),
     /// Occurs when attempting to remove a subgraph that's not hosted.
     #[fail(display = "subgraph name not found: {}", _0)]
     NameNotFound(String),

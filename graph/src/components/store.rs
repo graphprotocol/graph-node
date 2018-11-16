@@ -10,7 +10,7 @@ use prelude::*;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EntityKey {
     /// ID of the subgraph.
-    pub subgraph_id: String,
+    pub subgraph_id: SubgraphId,
 
     /// Name of the entity type.
     pub entity_type: String,
@@ -92,10 +92,10 @@ pub enum EntityChangeOperation {
 }
 
 /// Entity change events emitted by [Store](trait.Store.html) implementations.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct EntityChange {
     /// ID of the subgraph the changed entity belongs to.
-    pub subgraph_id: String,
+    pub subgraph_id: SubgraphId,
     /// Entity type name of the changed entity.
     pub entity_type: String,
     /// ID of the changed entity.
@@ -231,39 +231,8 @@ impl EntityOperation {
     }
 }
 
-/// A pair of subgraph ID and entity type name.
-pub type SubgraphEntityPair = (SubgraphId, String);
-
 /// Common trait for store implementations.
 pub trait Store: Send + Sync + 'static {
-    /// Set access token for the specified subgraph name.
-    fn authorize_subgraph_name(&self, name: String, new_access_token: String) -> Result<(), Error>;
-
-    /// Check access token against the token in the Store for the specified subgraph name.
-    fn check_subgraph_name_access_token(
-        &self,
-        name: String,
-        untrusted_access_token: String,
-    ) -> Result<bool, Error>;
-
-    /// List all subgraph names and their associated subgraph IDs.
-    fn read_all_subgraph_names(&self) -> Result<Vec<(String, Option<SubgraphId>)>, Error>;
-
-    /// Get the subgraph ID currently associated with specified subgraph name.
-    ///
-    /// Returns None if the subgraph name does not exist.
-    /// Returns Some(None) if the subgraph name exists but is not associated with a subgraph ID.
-    fn read_subgraph_name(&self, name: String) -> Result<Option<Option<SubgraphId>>, Error>;
-
-    /// Set the subgraph ID currently associated with specified subgraph name.
-    fn write_subgraph_name(&self, name: String, id: Option<SubgraphId>) -> Result<(), Error>;
-
-    /// Find subgraph names associated with the specified subgraph ID
-    fn find_subgraph_names_by_id(&self, id: SubgraphId) -> Result<Vec<String>, Error>;
-
-    /// Set the subgraph ID currently associated with specified subgraph name.
-    fn delete_subgraph_name(&self, name: String) -> Result<(), Error>;
-
     /// Register a new subgraph ID in the store, and initialize the subgraph's block pointer to the
     /// specified value.
     /// Each subgraph has its own entities and separate block processing state.
@@ -277,11 +246,9 @@ pub trait Store: Send + Sync + 'static {
     fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error>;
 
     /// Looks up an entity using the given store key.
-    // TODO need to validate block ptr
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
 
     /// Queries the store for entities that match the store query.
-    // TODO need to validate block ptr
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError>;
 
     /// Updates the block pointer.  Careful: this is only safe to use if it is known that no store
@@ -334,6 +301,30 @@ pub trait Store: Send + Sync + 'static {
 
     /// Counts the total number of entities in a subgraph.
     fn count_entities(&self, subgraph: SubgraphId) -> Result<u64, Error>;
+}
+
+pub trait SubgraphDeploymentStore: Send + Sync + 'static {
+    /// List all deployment names and their associated subgraph IDs for the specified node ID.
+    fn read_by_node_id(
+        &self,
+        node_id: NodeId,
+    ) -> Result<Vec<(SubgraphDeploymentName, SubgraphId)>, Error>;
+
+    fn write(
+        &self,
+        name: SubgraphDeploymentName,
+        subgraph_id: SubgraphId,
+        node_id: NodeId,
+    ) -> Result<(), Error>;
+
+    fn read(&self, name: SubgraphDeploymentName) -> Result<Option<(SubgraphId, NodeId)>, Error>;
+
+    fn remove(&self, name: SubgraphDeploymentName) -> Result<bool, Error>;
+
+    fn deployment_events(
+        &self,
+        node_id: NodeId,
+    ) -> Box<Stream<Item = DeploymentEvent, Error = Error> + Send>;
 }
 
 /// Common trait for blockchain store implementations.

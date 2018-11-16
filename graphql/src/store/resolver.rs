@@ -190,11 +190,11 @@ where
         mut entity: Entity,
         object_type: &s::ObjectType,
     ) -> Result<Entity, QueryExecutionError> {
-        if parse_subgraph_id(object_type)? == SUBGRAPHS_ID
+        if parse_subgraph_id(object_type)? == SubgraphId::new(SUBGRAPHS_ID).unwrap()
             && object_type.name == SUBGRAPH_ENTITY_TYPENAME
         {
             let id = match entity["id"].clone() {
-                Value::String(id) => id,
+                Value::String(id) => SubgraphId::new(id).expect("invalid subgraph ID in database"),
                 _ => panic!("no id field"),
             };
             entity.insert(

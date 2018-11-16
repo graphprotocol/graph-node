@@ -43,7 +43,7 @@ impl Resolver for MockResolver {
 /// enums, interfaces, input objects, object types and field arguments.
 fn mock_schema() -> Schema {
     Schema {
-        id: "mock-schema".to_string(),
+        id: SubgraphId::new("mockschema").unwrap(),
         document: graphql_parser::parse_schema(
             "
              scalar String
@@ -1041,7 +1041,7 @@ type Parameter {
     let api_document = api_schema(&document).unwrap();
 
     let schema = Schema {
-        id: String::from("complex-schema"),
+        id: SubgraphId::new("complexschema").unwrap(),
         document: api_document,
     };
 
