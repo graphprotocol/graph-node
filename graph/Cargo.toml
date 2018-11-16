@@ -4,7 +4,7 @@ version = "0.4.1"
 
 [dependencies]
 backtrace = "0.3.9"
-ethabi = "6.0"
+ethabi = { git = "https://github.com/graphprotocol/ethabi", "branch" = "jannis/fix-decoder" }
 hex = "0.3.2"
 futures = "0.1.21"
 graphql-parser = "0.2.1"

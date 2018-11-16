@@ -508,6 +508,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ethabi"
+version = "6.1.0"
+source = "git+https://github.com/graphprotocol/ethabi?branch=jannis/fix-decoder#5787afb329e15ebd99dcf87f57ed678f67a21b51"
+dependencies = [
+ "error-chain 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ethereum-types 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rustc-hex 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_json 1.0.24 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tiny-keccak 1.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "ethbloom"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -667,7 +681,7 @@ name = "graph"
 version = "0.4.1"
 dependencies = [
  "backtrace 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
- "ethabi 6.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ethabi 6.1.0 (git+https://github.com/graphprotocol/ethabi?branch=jannis/fix-decoder)",
  "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.23 (registry+https://github.com/rust-lang/crates.io-index)",
  "graphql-parser 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -778,7 +792,7 @@ dependencies = [
 name = "graph-runtime-wasm"
 version = "0.4.1"
 dependencies = [
- "ethabi 6.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ethabi 6.1.0 (git+https://github.com/graphprotocol/ethabi?branch=jannis/fix-decoder)",
  "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.23 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.4.1",
@@ -3126,6 +3140,7 @@ dependencies = [
 "checksum environment 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "1f4b14e20978669064c33b4c1e0fb4083412e40fe56cbea2eae80fd7591503ee"
 "checksum error-chain 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)" = "07e791d3be96241c77c43846b665ef1384606da2cd2a48730abe606a12906e02"
 "checksum ethabi 6.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "36c7bf66bd7ff02c3bc512a276a0f95300e3abb87060704fddf588ae11b86d99"
+"checksum ethabi 6.1.0 (git+https://github.com/graphprotocol/ethabi?branch=jannis/fix-decoder)" = "<none>"
 "checksum ethbloom 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1a93a43ce2e9f09071449da36bfa7a1b20b950ee344b6904ff23de493b03b386"
 "checksum ethereum-types 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "35b3c5a18bc5e73a32a110ac743ec04b02bbbcd3b71d3118d40a6113d509378a"
 "checksum ethereum-types-serialize 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "4ac59a21a9ce98e188f3dace9eb67a6c4a3c67ec7fbc7218cb827852679dc002"
