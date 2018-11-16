@@ -1181,6 +1181,24 @@ fn find_order_by_string() {
 }
 
 #[test]
+fn find_where_nested_and_or() {
+    test_find(
+        vec!["1", "2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: Some(EntityFilter::And(vec![EntityFilter::Or(vec![
+                EntityFilter::Equal("id".to_owned(), Value::from("1")),
+                EntityFilter::Equal("id".to_owned(), Value::from("2")),
+            ])])),
+            order_by: Some(("id".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Ascending),
+            range: None,
+        },
+    )
+}
+
+#[test]
 fn revert_block() {
     run_test(|store| -> Result<(), ()> {
         let this_query = EntityQuery {
