@@ -101,30 +101,24 @@ where
     }
 
     fn subgraph_id_from_url_path(store: Arc<S>, path: &Path) -> Result<String, ()> {
-        let mut parts = path.iter();
-        if parts.next() != Some("/".as_ref()) {
-            return Err(());
-        }
+        let path_segments = {
+            let mut segments = path.iter();
 
-        match parts.next().and_then(|s| s.to_str()) {
-            Some("subgraphs") => Ok(SUBGRAPHS_ID.to_owned()),
-            Some("id") => parts
-                .next()
-                .and_then(|id| id.to_owned().into_string().ok())
-                .ok_or(()),
-            Some("name") => {
-                let name = parts
-                    .next()
-                    .and_then(|name| name.to_owned().into_string().ok())
-                    .ok_or(())?;
+            // Remove leading '/'
+            assert_eq!(segments.next().and_then(|s| s.to_str()), Some("/"));
 
-                store
-                    .read_subgraph_name(name)
-                    .expect("error reading subgraph name from store")
-                    .ok_or(())
-                    .and_then(|id_opt| id_opt.ok_or(()))
-            }
-            _ => Err(()),
+            segments.map(|s| s.to_str().unwrap()).collect::<Vec<_>>()
+        };
+
+        match path_segments.as_slice() {
+            &["subgraphs"] => Ok(SUBGRAPHS_ID.to_owned()),
+            &["subgraphs", "id", subgraph_id] => Ok(subgraph_id.to_string()),
+            &["subgraphs", "name", subgraph_name] => store
+                .read_subgraph_name(subgraph_name.to_string())
+                .expect("error reading subgraph name from store")
+                .ok_or(())
+                .and_then(|id_opt| id_opt.ok_or(())),
+            _ => return Err(()),
         }
     }
 }

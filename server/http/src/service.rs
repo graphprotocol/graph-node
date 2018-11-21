@@ -65,8 +65,10 @@ where
                                 subgraph_name_mappings.pop().unwrap();
 
                             if let Some(_) = subgraph_id_opt {
-                                return service
-                                    .handle_temp_redirect(&format!("/name/{}", subgraph_name));
+                                return service.handle_temp_redirect(&format!(
+                                    "/subgraphs/name/{}",
+                                    subgraph_name
+                                ));
                             }
                         }
 
@@ -241,21 +243,27 @@ where
                 self.serve_file(include_str!("../assets/graphiql.min.js"))
             }
 
-            (Method::GET, &["id", subgraph_id]) => {
+            (Method::GET, &["subgraphs", "id", subgraph_id]) => {
                 self.handle_graphiql_by_id(subgraph_id.to_owned())
             }
-            (Method::POST, &["id", subgraph_id, "graphql"]) => {
+            (Method::POST, &["subgraphs", "id", subgraph_id, "graphql"]) => {
                 self.handle_graphql_query_by_id(subgraph_id.to_owned(), req)
             }
-            (Method::OPTIONS, ["id", _, "graphql"]) => self.handle_graphql_options(req),
+            (Method::OPTIONS, ["subgraphs", "id", _, "graphql"]) => {
+                self.handle_graphql_options(req)
+            }
 
-            (Method::GET, ["name", subgraph_name]) => self.handle_graphiql_by_name(subgraph_name),
-            (Method::POST, ["name", subgraph_name, "graphql"]) => {
+            (Method::GET, ["subgraphs", "name", subgraph_name]) => {
+                self.handle_graphiql_by_name(subgraph_name)
+            }
+            (Method::POST, ["subgraphs", "name", subgraph_name, "graphql"]) => {
                 self.handle_graphql_query_by_name(subgraph_name, req)
             }
-            (Method::OPTIONS, ["name", _, "graphql"]) => self.handle_graphql_options(req),
+            (Method::OPTIONS, ["subgraphs", "name", _, "graphql"]) => {
+                self.handle_graphql_options(req)
+            }
 
-            // `/subgraphs` acts as an alias to `/id/SUBGRAPHS_ID`
+            // `/subgraphs` acts as an alias to `/subgraphs/id/SUBGRAPHS_ID`
             (Method::GET, &["subgraphs"]) => self.handle_graphiql_by_id(SUBGRAPHS_ID.to_owned()),
             (Method::POST, &["subgraphs", "graphql"]) => {
                 self.handle_graphql_query_by_id(SUBGRAPHS_ID.to_owned(), req)
@@ -326,7 +334,7 @@ mod tests {
 
         let request = Request::builder()
             .method(Method::POST)
-            .uri(format!("http://localhost:8000/id/{}/graphql", id))
+            .uri(format!("http://localhost:8000/subgraphs/id/{}/graphql", id))
             .body(Body::from("{}"))
             .unwrap();
 
@@ -373,7 +381,7 @@ mod tests {
 
                     let request = Request::builder()
                         .method(Method::POST)
-                        .uri(format!("http://localhost:8000/id/{}/graphql", id))
+                        .uri(format!("http://localhost:8000/subgraphs/id/{}/graphql", id))
                         .body(Body::from("{\"query\": \"{ name }\"}"))
                         .unwrap();
 

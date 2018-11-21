@@ -77,9 +77,10 @@ mod test {
 
                 // Send an empty JSON POST request
                 let client = Client::new();
-                let request = Request::post(format!("http://localhost:8001/id/{}/graphql", id))
-                    .body(Body::from("{}"))
-                    .unwrap();
+                let request =
+                    Request::post(format!("http://localhost:8001/subgraphs/id/{}/graphql", id))
+                        .body(Body::from("{}"))
+                        .unwrap();
 
                 // The response must be a query error
                 client.request(request).and_then(|response| {
@@ -126,9 +127,10 @@ mod test {
 
                 // Send an broken query request
                 let client = Client::new();
-                let request = Request::post(format!("http://localhost:8002/id/{}/graphql", id))
-                    .body(Body::from("{\"query\": \"<L<G<>M>\"}"))
-                    .unwrap();
+                let request =
+                    Request::post(format!("http://localhost:8002/subgraphs/id/{}/graphql", id))
+                        .body(Body::from("{\"query\": \"<L<G<>M>\"}"))
+                        .unwrap();
 
                 // The response must be a query error
                 client.request(request).and_then(|response| {
@@ -209,9 +211,10 @@ mod test {
 
                 // Send a valid example query
                 let client = Client::new();
-                let request = Request::post(format!("http://localhost:8003/id/{}/graphql", id))
-                    .body(Body::from("{\"query\": \"{ name }\"}"))
-                    .unwrap();
+                let request =
+                    Request::post(format!("http://localhost:8003/subgraphs/id/{}/graphql", id))
+                        .body(Body::from("{\"query\": \"{ name }\"}"))
+                        .unwrap();
 
                 // The response must be a 200
                 client.request(request).and_then(|response| {
