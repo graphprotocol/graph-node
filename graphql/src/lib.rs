@@ -7,9 +7,6 @@ extern crate serde;
 #[macro_use]
 extern crate failure;
 
-pub const GRAPHQL_HTTP_PORT: u16 = 8000;
-pub const GRAPHQL_WS_PORT: u16 = 8001;
-
 /// Utilities for working with GraphQL schemas.
 pub mod schema;
 

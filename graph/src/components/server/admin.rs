@@ -9,6 +9,8 @@ pub trait JsonRpcServer<P, S> {
 
     fn serve(
         port: u16,
+        http_port: u16,
+        ws_port: u16,
         provider: Arc<P>,
         store: Arc<S>,
         logger: Logger,

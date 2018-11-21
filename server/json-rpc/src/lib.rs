@@ -3,11 +3,9 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate graph;
-extern crate graph_graphql;
 
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::serde_json;
-use graph_graphql::{GRAPHQL_HTTP_PORT, GRAPHQL_WS_PORT};
 use jsonrpc_http_server::{
     hyper::{header, Request, Response, StatusCode},
     jsonrpc_core::{
@@ -128,6 +126,8 @@ where
     /// Handler for the `subgraph_deploy` endpoint.
     fn deploy_handler(
         &self,
+        http_port: u16,
+        ws_port: u16,
         params: SubgraphDeployParams,
         auth: AuthorizationHeader,
     ) -> Box<Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
@@ -139,7 +139,7 @@ where
             return Box::new(future::err(e));
         }
 
-        let routes = subgraph_routes(&params.name);
+        let routes = subgraph_routes(&params.name, http_port, ws_port);
         Box::new(
             self.provider
                 .deploy(params.name, params.ipfs_hash)
@@ -220,10 +220,19 @@ where
 
     fn serve(
         port: u16,
+        http_port: u16,
+        ws_port: u16,
         provider: Arc<P>,
         store: Arc<S>,
         logger: Logger,
     ) -> Result<Self::Server, io::Error> {
+        let logger = logger.new(o!("component" => "JsonRpcServer"));
+
+        info!(
+            logger,
+            "Starting JSON-RPC admin server at: http://localhost:{}", port
+        );
+
         let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
 
         let mut handler = MetaIoHandler::with_compatibility(Compatibility::Both);
@@ -231,7 +240,7 @@ where
         let arc_self = Arc::new(JsonRpcServer {
             provider,
             store,
-            logger: logger.new(o!("component" => "JsonRpcServer")),
+            logger,
         });
         // `subgraph_deploy` handler.
         let me = arc_self.clone();
@@ -240,7 +249,7 @@ where
             params
                 .parse()
                 .into_future()
-                .and_then(move |params| me.deploy_handler(params, auth))
+                .and_then(move |params| me.deploy_handler(http_port, ws_port, params, auth))
         });
 
         // `subgraph_remove` handler.
@@ -349,19 +358,13 @@ pub fn parse_response(response: Value) -> Result<(), jsonrpc_core::Error> {
     }
 }
 
-fn subgraph_routes(name: &str) -> Value {
+fn subgraph_routes(name: &str, http_port: u16, ws_port: u16) -> Value {
     let mut map = BTreeMap::new();
-    map.insert(
-        "playground",
-        format!(":{}/by-name/{}", GRAPHQL_HTTP_PORT, name),
-    );
+    map.insert("playground", format!(":{}/by-name/{}", http_port, name));
     map.insert(
         "queries",
-        format!(":{}/by-name/{}/graphql", GRAPHQL_HTTP_PORT, name),
+        format!(":{}/by-name/{}/graphql", http_port, name),
     );
-    map.insert(
-        "subscriptions",
-        format!(":{}/by-name/{}", GRAPHQL_WS_PORT, name),
-    );
+    map.insert("subscriptions", format!(":{}/by-name/{}", ws_port, name));
     jsonrpc_core::to_value(map).unwrap()
 }

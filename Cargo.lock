@@ -813,7 +813,6 @@ name = "graph-server-json-rpc"
 version = "0.4.1"
 dependencies = [
  "graph 0.4.1",
- "graph-graphql 0.4.1",
  "jsonrpc-http-server 8.0.1 (git+https://github.com/paritytech/jsonrpc)",
  "serde 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.70 (registry+https://github.com/rust-lang/crates.io-index)",
