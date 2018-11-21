@@ -144,6 +144,11 @@ where
         let error_logger = self.logger.clone();
         let subgraphs = self.subgraphs.clone();
 
+        info!(
+            logger,
+            "Starting GraphQL WebSocket server at: ws://localhost:{}", port
+        );
+
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
         let graphql_runner = self.graphql_runner.clone();
         let store = self.store.clone();
