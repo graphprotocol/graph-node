@@ -125,6 +125,11 @@ where
     ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
         let logger = self.logger.clone();
 
+        info!(
+            logger,
+            "Starting GraphQL HTTP server at: http://localhost:{}", port
+        );
+
         let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
 
         // On every incoming request, launch a new GraphQL service that writes
