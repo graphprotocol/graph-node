@@ -108,11 +108,11 @@ where
 
         match parts.next().and_then(|s| s.to_str()) {
             Some("subgraphs") => Ok(SUBGRAPHS_ID.to_owned()),
-            Some("by-id") => parts
+            Some("id") => parts
                 .next()
                 .and_then(|id| id.to_owned().into_string().ok())
                 .ok_or(()),
-            Some("by-name") => {
+            Some("name") => {
                 let name = parts
                     .next()
                     .and_then(|name| name.to_owned().into_string().ok())

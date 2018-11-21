@@ -360,11 +360,8 @@ pub fn parse_response(response: Value) -> Result<(), jsonrpc_core::Error> {
 
 fn subgraph_routes(name: &str, http_port: u16, ws_port: u16) -> Value {
     let mut map = BTreeMap::new();
-    map.insert("playground", format!(":{}/by-name/{}", http_port, name));
-    map.insert(
-        "queries",
-        format!(":{}/by-name/{}/graphql", http_port, name),
-    );
-    map.insert("subscriptions", format!(":{}/by-name/{}", ws_port, name));
+    map.insert("playground", format!(":{}/name/{}", http_port, name));
+    map.insert("queries", format!(":{}/name/{}/graphql", http_port, name));
+    map.insert("subscriptions", format!(":{}/name/{}", ws_port, name));
     jsonrpc_core::to_value(map).unwrap()
 }
