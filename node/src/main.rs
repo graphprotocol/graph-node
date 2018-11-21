@@ -38,9 +38,9 @@ use graph_core::{
 };
 use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
-use graph_server_http::{GraphQLServer as GraphQLQueryServer, GRAPHQL_HTTP_PORT};
+use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_json_rpc::{subgraph_deploy_request, JsonRpcServer};
-use graph_server_websocket::{SubscriptionServer as GraphQLSubscriptionServer, GRAPHQL_WS_PORT};
+use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 fn main() {
@@ -111,11 +111,23 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .value_name("HOST:PORT")
                 .help("HTTP address of an IPFS node"),
         ).arg(
+            Arg::with_name("http-port")
+                .default_value("8000")
+                .long("http-port")
+                .value_name("PORT")
+                .help("Port for the GraphQL HTTP server"),
+        ).arg(
+            Arg::with_name("ws-port")
+                .default_value("8001")
+                .long("ws-port")
+                .value_name("PORT")
+                .help("Port for the GraphQL WebSocket server"),
+        ).arg(
             Arg::with_name("admin-port")
                 .default_value("8020")
                 .long("admin-port")
                 .value_name("PORT")
-                .help("port for the admin JSON-RPC server"),
+                .help("Port for the JSON-RPC admin server"),
         ).arg(
             Arg::with_name("debug")
                 .long("debug")
@@ -170,7 +182,19 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             .expect("Ethereum polling interval must be a nonnegative integer"),
     );
 
-    // Parse rpc port
+    // Obtain ports to use for the GraphQL server(s)
+    let http_port = matches
+        .value_of("http-port")
+        .unwrap()
+        .parse()
+        .expect("invalid GraphQL HTTP server port");
+    let ws_port = matches
+        .value_of("ws-port")
+        .unwrap()
+        .parse()
+        .expect("invalid GraphQL WebSocket server port");
+
+    // Obtain JSON-RPC server port
     let json_rpc_port = matches
         .value_of("admin-port")
         .unwrap()
@@ -375,10 +399,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Start admin JSON-RPC server.
     let json_rpc_server = JsonRpcServer::serve(
         json_rpc_port,
+        http_port,
+        ws_port,
         named_subgraph_provider,
         store.clone(),
         logger.clone(),
-    ).expect("Failed to start admin server");
+    ).expect("failed to start JSON-RPC admin server");
 
     // Let the server run forever.
     std::mem::forget(json_rpc_server);
@@ -415,14 +441,14 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Serve GraphQL queries over HTTP. We will listen on port 8000.
     tokio::spawn(
         graphql_server
-            .serve(GRAPHQL_HTTP_PORT)
+            .serve(http_port)
             .expect("Failed to start GraphQL query server"),
     );
 
     // Serve GraphQL subscriptions over WebSockets. We will listen on port 8001.
     tokio::spawn(
         subscription_server
-            .serve(GRAPHQL_WS_PORT)
+            .serve(ws_port)
             .expect("Failed to start GraphQL subscription server"),
     );
 
