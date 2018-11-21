@@ -121,11 +121,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .long("debug")
                 .help("Enable debug logging"),
         ).arg(
-            Arg::with_name("elasticsearch-endpoint")
-                .long("elasticsearch-endpoint")
+            Arg::with_name("elasticsearch-url")
+                .long("elasticsearch-url")
                 .value_name("URL")
-                .env("ELASTICSEARCH_ENDPOINT")
-                .help("Elasticsearch endpoint to write subgraph logs to"),
+                .env("ELASTICSEARCH_URL")
+                .help("Elasticsearch service to write subgraph logs to"),
         ).arg(
             Arg::with_name("elasticsearch-user")
                 .long("elasticsearch-user")
@@ -328,7 +328,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Optionally, identify the Elasticsearch logging configuration
     let elastic_config =
         matches
-            .value_of("elasticsearch-endpoint")
+            .value_of("elasticsearch-url")
             .map(|endpoint| ElasticLoggingConfig {
                 endpoint: endpoint.into(),
                 username: matches.value_of("elasticsearch-user").map(|s| s.into()),
