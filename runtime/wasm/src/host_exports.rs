@@ -103,7 +103,8 @@ where
         match data.insert("id".to_string(), Value::String(entity_id.clone())) {
             Some(ref v) if v != &Value::String(entity_id.clone()) => {
                 return Err(HostExportError(format!(
-                    "Conflicting 'id' value set by mapping for {} entity: {} != {}",
+                    "Value of {} attribute 'id' conflicts with ID passed to `store.set()`: \
+                     {} != {}",
                     entity_type, v, entity_id,
                 )))
             }
