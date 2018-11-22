@@ -60,7 +60,9 @@ mod test {
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = Arc::new(MockStore::new());
                 let mut server = HyperGraphQLServer::new(&logger, query_runner, store);
-                let http_server = server.serve(8001).expect("Failed to start GraphQL server");
+                let http_server = server
+                    .serve(8001, 8002)
+                    .expect("Failed to start GraphQL server");
 
                 // Create a simple schema and send it to the server
                 let schema = test_schema();
@@ -110,7 +112,9 @@ mod test {
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = Arc::new(MockStore::new());
                 let mut server = HyperGraphQLServer::new(&logger, query_runner, store);
-                let http_server = server.serve(8002).expect("Failed to start GraphQL server");
+                let http_server = server
+                    .serve(8002, 8003)
+                    .expect("Failed to start GraphQL server");
 
                 // Launch the server to handle a single request
                 tokio::spawn(http_server.fuse());
@@ -194,7 +198,9 @@ mod test {
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = Arc::new(MockStore::new());
                 let mut server = HyperGraphQLServer::new(&logger, query_runner, store);
-                let http_server = server.serve(8003).expect("Failed to start GraphQL server");
+                let http_server = server
+                    .serve(8003, 8004)
+                    .expect("Failed to start GraphQL server");
 
                 // Launch the server to handle a single request
                 tokio::spawn(http_server.fuse());
