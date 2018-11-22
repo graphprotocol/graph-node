@@ -48,6 +48,8 @@ impl MockSubgraphProvider {
             id: String::from("mock subgraph"),
             location: String::from("/tmp/example-data-source.yaml"),
             spec_version: String::from("0.1"),
+            description: None,
+            repository: None,
             schema: Schema {
                 id: String::from("exampled id"),
                 document: Document {

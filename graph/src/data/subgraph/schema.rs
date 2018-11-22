@@ -54,10 +54,10 @@ impl SubgraphEntity {
 #[derive(Debug)]
 struct SubgraphManifest {
     spec_version: String,
-    description: String,
+    description: Option<String>,
+    repository: Option<String>,
     schema: String,
     data_sources: Vec<EthereumContractDataSource>,
-    repository: String,
 }
 
 impl SubgraphManifest {
@@ -66,7 +66,10 @@ impl SubgraphManifest {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("specVersion".to_owned(), self.spec_version.into());
-        entity.insert("description".to_owned(), self.description.into());
+        let description = self.description.unwrap_or_default();
+        entity.insert("description".to_owned(), description.into());
+        let repository = self.repository.unwrap_or_default();
+        entity.insert("repository".to_owned(), repository.into());
         entity.insert("schema".to_owned(), self.schema.into());
 
         let mut data_sources: Vec<Value> = Vec::new();
@@ -95,10 +98,10 @@ impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifest {
     fn from(manifest: &'a super::SubgraphManifest) -> Self {
         Self {
             spec_version: manifest.spec_version.clone(),
-            description: String::new(),
+            description: manifest.description.clone(),
+            repository: manifest.repository.clone(),
             schema: manifest.schema.document.clone().to_string(),
             data_sources: manifest.data_sources.iter().map(Into::into).collect(),
-            repository: String::new(),
         }
     }
 }
@@ -106,6 +109,7 @@ impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifest {
 #[derive(Debug)]
 struct EthereumContractDataSource {
     kind: String,
+    network: Option<String>,
     name: String,
     source: EthereumContractSource,
     mapping: EthereumContractMapping,
@@ -117,6 +121,8 @@ impl EthereumContractDataSource {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("kind".to_owned(), self.kind.into());
+        let network = self.network.unwrap_or_default();
+        entity.insert("network".to_owned(), network.into());
         entity.insert("name".to_owned(), self.name.into());
         entity.insert(
             "source".to_owned(),
@@ -151,6 +157,7 @@ impl<'a> From<&'a super::DataSource> for EthereumContractDataSource {
         Self {
             kind: data_source.kind.clone(),
             name: data_source.name.clone(),
+            network: data_source.network.clone(),
             source: data_source.source.clone().into(),
             mapping: EthereumContractMapping::from(&data_source.mapping),
         }

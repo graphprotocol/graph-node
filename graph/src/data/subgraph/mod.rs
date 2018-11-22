@@ -209,6 +209,7 @@ impl UnresolvedMapping {
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct BaseDataSource<M> {
     pub kind: String,
+    pub network: Option<String>,
     pub name: String,
     pub source: Source,
     pub mapping: M,
@@ -224,12 +225,14 @@ impl UnresolvedDataSource {
     ) -> impl Future<Item = DataSource, Error = failure::Error> {
         let UnresolvedDataSource {
             kind,
+            network,
             name,
             source,
             mapping,
         } = self;
         mapping.resolve(resolver).map(|mapping| DataSource {
             kind,
+            network,
             name,
             source,
             mapping,
@@ -243,6 +246,8 @@ pub struct BaseSubgraphManifest<S, D> {
     pub id: SubgraphId,
     pub location: String,
     pub spec_version: String,
+    pub description: Option<String>,
+    pub repository: Option<String>,
     pub schema: S,
     pub data_sources: Vec<D>,
 }
@@ -311,6 +316,8 @@ impl UnresolvedSubgraphManifest {
             id,
             location,
             spec_version,
+            description,
+            repository,
             schema,
             data_sources,
         } = self;
@@ -326,6 +333,8 @@ impl UnresolvedSubgraphManifest {
             id,
             location,
             spec_version,
+            description,
+            repository,
             schema,
             data_sources,
         })

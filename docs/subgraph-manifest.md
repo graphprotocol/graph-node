@@ -15,6 +15,8 @@ Any data format which has a well-defined 1:1 mapping with [IPLD Canonical Format
 | --- | --- | --- |
 | **specVersion** | *String*   | A semver version indicating which version of this API is being used.|
 | **schema**   | [*Schema*](#14-schema) | The GraphQL schema of this subgraph|
+| **description**   | *String* | An optional description of the subgraph's purpose. |
+| **repository**   | *String* | An optional link to where the subgraph lives. |
 | **dataSources**| [*Data Source Spec*](#15-data-source)| Each Data Source spec defines data which will be ingested, and transformation logic to derive the state of the subgraph's entities based on the source data.|
 
 ## 1.4 Schema
@@ -29,6 +31,7 @@ Any data format which has a well-defined 1:1 mapping with [IPLD Canonical Format
 | --- | --- | --- |
 | **kind** | *String | The type of data source. Possible values: *ethereum/contract*|
 | **name** | *String* | The name of the source data. Will be used to generate APIs in mapping, and also for self-documentation purposes |
+| **network** | *String* | For blockhains this describes which network the subgraph targets. For Ethereum this could be, for example, "mainnet" or "rinkeby". |
 | **source** | [*EthereumContractSource*](#151-ethereumcontractsource) | The source data on a blockchain such as Ethereum |
 | **mapping** | [*Mapping*](#152-mapping) | The transformation logic applied to the data prior to being indexed |
 
