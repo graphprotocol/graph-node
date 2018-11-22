@@ -122,6 +122,7 @@ where
     fn serve(
         &mut self,
         port: u16,
+        ws_port: u16,
     ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
         let logger = self.logger.clone();
 
@@ -138,8 +139,12 @@ where
         let schemas = self.schemas.clone();
         let store = self.store.clone();
         let new_service = move || {
-            let service =
-                GraphQLService::new(schemas.clone(), graphql_runner.clone(), store.clone());
+            let service = GraphQLService::new(
+                schemas.clone(),
+                graphql_runner.clone(),
+                store.clone(),
+                ws_port,
+            );
             future::ok::<GraphQLService<Q, S>, hyper::Error>(service)
         };
 

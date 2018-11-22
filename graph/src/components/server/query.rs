@@ -90,5 +90,6 @@ pub trait GraphQLServer: EventConsumer<SchemaEvent> {
     fn serve(
         &mut self,
         port: u16,
+        ws_port: u16,
     ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError>;
 }
