@@ -448,7 +448,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Serve GraphQL queries over HTTP. We will listen on port 8000.
     tokio::spawn(
         graphql_server
-            .serve(http_port)
+            .serve(http_port, ws_port)
             .expect("Failed to start GraphQL query server"),
     );
 

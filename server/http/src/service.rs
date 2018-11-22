@@ -21,11 +21,13 @@ pub struct GraphQLService<Q, S> {
     schemas: Arc<RwLock<BTreeMap<SubgraphId, Schema>>>,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
+    ws_port: u16,
 }
 
 impl<Q, S> Clone for GraphQLService<Q, S> {
     fn clone(&self) -> Self {
         Self {
+            ws_port: self.ws_port,
             schemas: self.schemas.clone(),
             graphql_runner: self.graphql_runner.clone(),
             store: self.store.clone(),
@@ -43,8 +45,10 @@ where
         schemas: Arc<RwLock<BTreeMap<SubgraphId, Schema>>>,
         graphql_runner: Arc<Q>,
         store: Arc<S>,
+        ws_port: u16,
     ) -> Self {
         GraphQLService {
+            ws_port,
             schemas,
             graphql_runner,
             store,

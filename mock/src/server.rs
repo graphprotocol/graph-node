@@ -94,6 +94,7 @@ where
     fn serve(
         &mut self,
         _port: u16,
+        _ws_port: u16,
     ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
         let schema = self.schema.clone();
         let query_runner = self.query_runner.clone();
