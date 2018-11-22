@@ -351,7 +351,7 @@ mod tests {
         )))));
         let graphql_runner = Arc::new(TestGraphQlRunner);
         let store = Arc::new(MockStore::new());
-        let mut service = GraphQLService::new(schema, graphql_runner, store);
+        let mut service = GraphQLService::new(schema, graphql_runner, store, 8001);
 
         let request = Request::builder()
             .method(Method::POST)
@@ -398,7 +398,7 @@ mod tests {
                         },
                     )))));
 
-                    let mut service = GraphQLService::new(schema, graphql_runner, store);
+                    let mut service = GraphQLService::new(schema, graphql_runner, store, 8001);
 
                     let request = Request::builder()
                         .method(Method::POST)
