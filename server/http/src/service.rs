@@ -55,6 +55,11 @@ where
         }
     }
 
+    fn graphiql_html(&self) -> String {
+        include_str!("../assets/index.html")
+            .replace("__WS_PORT__", format!("{}", self.ws_port).as_str())
+    }
+
     fn index(&self) -> GraphQLServiceResponse {
         let service = self.clone();
 
@@ -82,8 +87,18 @@ where
         )
     }
 
-    /// Serves a GraphiQL index.html.
+    /// Serves a static file.
     fn serve_file(&self, contents: &'static str) -> GraphQLServiceResponse {
+        Box::new(future::ok(
+            Response::builder()
+                .status(200)
+                .body(Body::from(contents))
+                .unwrap(),
+        ))
+    }
+
+    /// Serves a dynamically created file.
+    fn serve_dynamic_file(&self, contents: String) -> GraphQLServiceResponse {
         Box::new(future::ok(
             Response::builder()
                 .status(200)
@@ -95,19 +110,21 @@ where
     fn handle_graphiql_by_name(&self, name: &str) -> GraphQLServiceResponse {
         let service = self.clone();
 
+        let graphiql_html = self.graphiql_html();
+
         Box::new(
             future::result(self.store.read_subgraph_name(name.to_owned()))
                 .map_err(|e| GraphQLServerError::InternalError(e.to_string()))
                 .and_then(move |id_opt_opt| match id_opt_opt {
                     None | Some(None) => service.handle_not_found(),
-                    Some(Some(_)) => service.serve_file(include_str!("../assets/index.html")),
+                    Some(Some(_)) => service.serve_dynamic_file(graphiql_html),
                 }),
         )
     }
 
     fn handle_graphiql_by_id(&self, id: SubgraphId) -> GraphQLServiceResponse {
         if self.schemas.read().unwrap().contains_key(&id) {
-            self.serve_file(include_str!("../assets/index.html"))
+            self.serve_dynamic_file(self.graphiql_html())
         } else {
             self.handle_not_found()
         }
