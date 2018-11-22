@@ -135,9 +135,8 @@
 
          let wsUrl = 'ws://'
                    + window.location.hostname
-                   + ':8001'
-                   + window.location.pathname
-                   + "/subscriptions";
+                   + ':__WS_PORT__'
+                   + window.location.pathname;
          var subscriptionsClient = new window.SubscriptionsTransportWs.SubscriptionClient(
              wsUrl, { reconnect: true }
          );
