@@ -66,10 +66,8 @@ impl SubgraphManifest {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("specVersion".to_owned(), self.spec_version.into());
-        let description = self.description.unwrap_or_default();
-        entity.insert("description".to_owned(), description.into());
-        let repository = self.repository.unwrap_or_default();
-        entity.insert("repository".to_owned(), repository.into());
+        entity.insert("description".to_owned(), self.description.into());
+        entity.insert("repository".to_owned(), self.repository.into());
         entity.insert("schema".to_owned(), self.schema.into());
 
         let mut data_sources: Vec<Value> = Vec::new();
@@ -121,8 +119,7 @@ impl EthereumContractDataSource {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), id.clone().into());
         entity.insert("kind".to_owned(), self.kind.into());
-        let network = self.network.unwrap_or_default();
-        entity.insert("network".to_owned(), network.into());
+        entity.insert("network".to_owned(), self.network.into());
         entity.insert("name".to_owned(), self.name.into());
         entity.insert(
             "source".to_owned(),
