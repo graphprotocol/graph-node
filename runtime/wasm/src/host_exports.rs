@@ -298,15 +298,6 @@ where
         format!("0x{}", ::hex::encode(bytes).trim_left_matches('0'))
     }
 
-    pub(crate) fn string_to_h160(
-        &self,
-        string: &str,
-    ) -> Result<H160, HostExportError<impl ExportError>> {
-        H160::from_str(string).map_err(|e| {
-            HostExportError(format!("Failed to convert string to Address/H160: {}", e))
-        })
-    }
-
     pub(crate) fn big_int_to_i32(
         &self,
         n: BigInt,
@@ -418,4 +409,19 @@ where
             .unwrap();
         return_receiver.wait().expect("`return_sender` dropped")
     }
+}
+
+pub(crate) fn string_to_h160(string: &str) -> Result<H160, HostExportError<impl ExportError>> {
+    // `H160::from_str` takes a hex string with no leading `0x`.
+    let string = string.trim_left_matches("0x");
+    H160::from_str(string)
+        .map_err(|e| HostExportError(format!("Failed to convert string to Address/H160: {}", e)))
+}
+
+#[test]
+fn test_string_to_h160_with_0x() {
+    assert_eq!(
+        H160::from_str("A16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap(),
+        string_to_h160("0xA16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap()
+    )
 }
