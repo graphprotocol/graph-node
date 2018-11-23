@@ -31,7 +31,7 @@ Any data format which has a well-defined 1:1 mapping with [IPLD Canonical Format
 | --- | --- | --- |
 | **kind** | *String | The type of data source. Possible values: *ethereum/contract*|
 | **name** | *String* | The name of the source data. Will be used to generate APIs in mapping, and also for self-documentation purposes |
-| **network** | *String* | For blockhains this describes which network the subgraph targets. For Ethereum this could be, for example, "mainnet" or "rinkeby". |
+| **network** | *String* | For blockchains this describes which network the subgraph targets. For Ethereum this could be, for example, "mainnet" or "rinkeby". |
 | **source** | [*EthereumContractSource*](#151-ethereumcontractsource) | The source data on a blockchain such as Ethereum |
 | **mapping** | [*Mapping*](#152-mapping) | The transformation logic applied to the data prior to being indexed |
 

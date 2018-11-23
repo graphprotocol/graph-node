@@ -203,6 +203,18 @@ impl From<Address> for Value {
     }
 }
 
+impl<T> From<Option<T>> for Value
+where
+    Value: From<T>,
+{
+    fn from(x: Option<T>) -> Value {
+        match x {
+            Some(x) => x.into(),
+            None => Value::Null,
+        }
+    }
+}
+
 /// An entity is represented as a map of attribute names to values.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
