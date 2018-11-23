@@ -375,7 +375,7 @@ where
     /// function typeConversion.stringToH160(s: String): H160
     fn string_to_h160(&self, str_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
         let s: String = self.heap.asc_get(str_ptr);
-        let h160 = self.host_exports.string_to_h160(&s)?;
+        let h160 = host_exports::string_to_h160(&s)?;
         let h160_obj: AscPtr<AscH160> = self.heap.asc_new(&h160);
         Ok(Some(RuntimeValue::from(h160_obj)))
     }
