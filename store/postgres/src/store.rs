@@ -763,6 +763,16 @@ impl StoreTrait for Store {
         // Return the subscription ID and entity change stream
         Box::new(receiver)
     }
+
+    fn count_entities(&self, subgraph_id: SubgraphId) -> Result<u64, Error> {
+        use db_schema::entities::dsl::*;
+
+        let count: i64 = entities
+            .filter(subgraph.eq(subgraph_id))
+            .count()
+            .get_result(&*self.conn.lock().unwrap())?;
+        Ok(count as u64)
+    }
 }
 
 impl ChainStore for Store {

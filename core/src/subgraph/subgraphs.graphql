@@ -1,7 +1,7 @@
 type Subgraph @entity {
     id: ID!
     manifest: SubgraphManifest!
-#   numberEntities: Int!    Need to figure out how to keep track of this.
+    entityCount: BigInt! # Computed field, not stored.
     createdAt: BigInt!
 }
 

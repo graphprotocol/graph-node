@@ -153,6 +153,10 @@ impl Store for MockStore {
     fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> EntityChangeStream {
         unimplemented!();
     }
+
+    fn count_entities(&self, _: SubgraphId) -> Result<u64, Error> {
+        unimplemented!();
+    }
 }
 
 impl ChainStore for MockStore {
@@ -275,6 +279,10 @@ impl Store for FakeStore {
     }
 
     fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+        unimplemented!();
+    }
+
+    fn count_entities(&self, _: SubgraphId) -> Result<u64, Error> {
         unimplemented!();
     }
 }
