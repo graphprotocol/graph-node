@@ -201,6 +201,10 @@ impl Store for TestStore {
         unimplemented!()
     }
 
+    fn count_entities(&self, _: SubgraphId) -> Result<u64, Error> {
+        Ok(1)
+    }
+
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
         self.entities
             .iter()

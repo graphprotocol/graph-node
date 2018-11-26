@@ -5,6 +5,7 @@ use std::result;
 use std::sync::Arc;
 
 use graph::components::store::*;
+use graph::data::subgraph::schema::{SUBGRAPHS_ID, SUBGRAPH_ENTITY_TYPENAME};
 use graph::prelude::*;
 
 use prelude::*;
@@ -182,6 +183,30 @@ where
                 _ => true,
             }).unwrap_or(true)
     }
+
+    /// Compute special fields that are not stored such as as `entityCount`.
+    fn add_computed_fields(
+        &self,
+        mut entity: Entity,
+        object_type: &s::ObjectType,
+    ) -> Result<Entity, QueryExecutionError> {
+        if parse_subgraph_id(object_type)? == SUBGRAPHS_ID
+            && object_type.name == SUBGRAPH_ENTITY_TYPENAME
+        {
+            let id = match entity["id"].clone() {
+                Value::String(id) => id,
+                _ => panic!("no id field"),
+            };
+            entity.insert(
+                "entityCount".to_owned(),
+                self.store
+                    .count_entities(id)
+                    .map_err(QueryExecutionError::StoreError)?
+                    .into(),
+            );
+        }
+        Ok(entity)
+    }
 }
 
 impl<S> Resolver for StoreResolver<S>
@@ -217,14 +242,11 @@ where
             Self::add_filter_for_reference_field(&mut query, parent, field_definition, object_type);
         }
 
-        self.store.find(query).map(|entities| {
-            q::Value::List(
-                entities
-                    .into_iter()
-                    .map(|e| e.into())
-                    .collect::<Vec<q::Value>>(),
-            )
-        })
+        let mut entity_values = Vec::new();
+        for entity in self.store.find(query)? {
+            entity_values.push(self.add_computed_fields(entity, object_type)?.into())
+        }
+        Ok(q::Value::List(entity_values))
     }
 
     fn resolve_object(
@@ -240,53 +262,46 @@ where
             _ => None,
         });
 
-        if let Some(id) = id {
-            return Ok(self
-                .store
-                .get(EntityKey {
-                    subgraph_id: parse_subgraph_id(object_type).unwrap_or_else(|_| {
-                        panic!("Failed to get subgraph ID from type: {}", object_type.name)
-                    }),
-                    entity_type: object_type.name.to_owned(),
-                    entity_id: id.to_owned(),
-                })?.map_or(q::Value::Null, |entity| entity.into()));
-        }
-
-        match parent {
-            Some(q::Value::Object(parent_object)) => match parent_object.get(field) {
-                Some(q::Value::String(id)) => Ok(self
-                    .store
-                    .get(EntityKey {
-                        subgraph_id: parse_subgraph_id(object_type).unwrap_or_else(|_| {
-                            panic!("Failed to get subgraph ID from type: {}", object_type.name)
-                        }),
+        let entity = if let Some(id) = id {
+            self.store.get(EntityKey {
+                subgraph_id: parse_subgraph_id(object_type).unwrap_or_else(|_| {
+                    panic!("Failed to get subgraph ID from type: {}", object_type.name)
+                }),
+                entity_type: object_type.name.to_owned(),
+                entity_id: id.to_owned(),
+            })?
+        } else {
+            match parent {
+                Some(q::Value::Object(parent_object)) => match parent_object.get(field) {
+                    Some(q::Value::String(id)) => self.store.get(EntityKey {
+                        subgraph_id: parse_subgraph_id(object_type)?,
                         entity_type: object_type.name.to_owned(),
                         entity_id: id.to_owned(),
-                    })?.map_or(q::Value::Null, |entity| entity.into())),
-                _ => Ok(q::Value::Null),
-            },
-            _ => {
-                let mut query = build_query(&object_type, arguments)?;
+                    })?,
+                    _ => None,
+                },
+                _ => {
+                    let mut query = build_query(&object_type, arguments)?;
 
-                // Add matching filter for derived fields
-                Self::add_filter_for_derived_field(
-                    &mut query,
-                    parent,
-                    field_definition,
-                    object_type,
-                );
+                    // Add matching filter for derived fields
+                    Self::add_filter_for_derived_field(
+                        &mut query,
+                        parent,
+                        field_definition,
+                        object_type,
+                    );
 
-                query.range = Some(EntityRange { first: 1, skip: 0 });
+                    query.range = Some(EntityRange { first: 1, skip: 0 });
 
-                self.store.find(query).map(|entities| {
-                    entities
-                        .into_iter()
-                        .next()
-                        .map(|entity| entity.into())
-                        .unwrap_or(q::Value::Null)
-                })
+                    self.store.find(query)?.into_iter().next()
+                }
             }
-        }
+        };
+
+        Ok(match entity {
+            Some(entity) => self.add_computed_fields(entity, object_type)?.into(),
+            None => q::Value::Null,
+        })
     }
 
     fn resolve_field_stream<'a, 'b>(

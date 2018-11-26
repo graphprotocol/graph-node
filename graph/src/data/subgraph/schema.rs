@@ -8,6 +8,10 @@ use std::collections::HashMap;
 
 /// ID of the subgraph of subgraphs.
 pub const SUBGRAPHS_ID: &str = "subgraphs";
+
+/// Type name of the root entity in the subgraph of subgraphs.
+pub const SUBGRAPH_ENTITY_TYPENAME: &str = "Subgraph";
+
 const EVENT_SOURCE: &str = "subgraph-added";
 
 #[derive(Debug)]
@@ -40,7 +44,7 @@ impl SubgraphEntity {
             EntityOperation::Set {
                 key: EntityKey {
                     subgraph_id: SUBGRAPHS_ID.to_owned(),
-                    entity_type: "Subgraph".to_owned(),
+                    entity_type: SUBGRAPH_ENTITY_TYPENAME.to_owned(),
                     entity_id: self.id,
                 },
                 data: entity.into(),

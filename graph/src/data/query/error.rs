@@ -1,3 +1,4 @@
+use failure;
 use graphql_parser::{query as q, Pos};
 use hex::FromHexError;
 use num_bigint;
@@ -37,6 +38,7 @@ pub enum QueryExecutionError {
     ValueParseError(String, String),
     AttributeTypeError(String, String),
     EntityParseError(String),
+    StoreError(failure::Error),
 }
 
 impl Error for QueryExecutionError {
@@ -129,6 +131,9 @@ impl fmt::Display for QueryExecutionError {
             }
             QueryExecutionError::EntityParseError(s) => {
                 write!(f, "Broken entity found in store: {}", s)
+            }
+            QueryExecutionError::StoreError(e) => {
+                write!(f, "Store error: {}", e)
             }
         }
     }

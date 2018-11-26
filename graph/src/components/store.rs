@@ -331,6 +331,9 @@ pub trait Store: Send + Sync + 'static {
     ///
     /// Returns a stream of entity changes that match the input arguments.
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
+
+    /// Counts the total number of entities in a subgraph.
+    fn count_entities(&self, subgraph: SubgraphId) -> Result<u64, Error>;
 }
 
 /// Common trait for blockchain store implementations.
