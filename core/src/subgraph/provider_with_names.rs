@@ -26,23 +26,15 @@ where
     P: SubgraphProviderTrait,
     S: Store,
 {
-    pub fn init(
-        logger: slog::Logger,
-        provider: Arc<P>,
-        store: Arc<S>,
-    ) -> impl Future<Item = Self, Error = Error> {
-        // Create the named subgraph provider
-        let provider = SubgraphProviderWithNames {
+    pub fn new(logger: slog::Logger, provider: Arc<P>, store: Arc<S>) -> Self {
+        SubgraphProviderWithNames {
             logger: logger.new(o!("component" => "SubgraphProviderWithNames")),
             provider,
             store,
-        };
-
-        // Deploy named subgraph found in store
-        provider.deploy_saved_subgraphs().map(move |()| provider)
+        }
     }
 
-    fn deploy_saved_subgraphs(&self) -> impl Future<Item = (), Error = Error> {
+    pub fn deploy_saved_subgraphs(&self) -> impl Future<Item = (), Error = Error> {
         let self_clone = self.clone();
 
         future::result(self.store.read_all_subgraph_names()).and_then(
@@ -193,11 +185,11 @@ mod tests {
         let store = Arc::new(MockStore::new());
         let provider =
             SubgraphProvider::new(logger.clone(), Arc::new(FakeLinkResolver), store.clone());
-        let name_provider = Arc::new(
-            SubgraphProviderWithNames::init(logger, Arc::new(provider), store)
-                .wait()
-                .unwrap(),
-        );
+        let name_provider = Arc::new(SubgraphProviderWithNames::new(
+            logger,
+            Arc::new(provider),
+            store,
+        ));
         let bad = "/../funky%2F:9001".to_owned();
         let result = name_provider.deploy(bad.clone(), "".to_owned());
         match result.wait() {
