@@ -209,12 +209,11 @@ fn subgraph_provider_events() {
     );
     let provider_events = provider.take_event_stream().unwrap();
     let schema_events = provider.take_event_stream().unwrap();
-    let named_provider = runtime
-        .block_on(graph_core::SubgraphProviderWithNames::init(
-            logger.clone(),
-            Arc::new(provider),
-            Arc::new(MockStore::new()),
-        )).unwrap();
+    let named_provider = graph_core::SubgraphProviderWithNames::new(
+        logger.clone(),
+        Arc::new(provider),
+        Arc::new(MockStore::new()),
+    );
 
     let (subgraph1_link, subgraph2_link) = runtime
         .block_on(future::lazy(|| {

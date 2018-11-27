@@ -387,13 +387,20 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
 
     // Create named subgraph provider for resolving subgraph name->ID mappings
-    let named_subgraph_provider = Arc::new(
-        IpfsSubgraphProviderWithNames::init(
-            logger.clone(),
-            Arc::new(subgraph_provider),
-            store.clone(),
-        ).wait()
-        .expect("failed to initialize subgraph provider"),
+    let named_subgraph_provider = Arc::new(IpfsSubgraphProviderWithNames::new(
+        logger.clone(),
+        Arc::new(subgraph_provider),
+        store.clone(),
+    ));
+
+    let err_logger = logger.clone();
+    tokio::spawn(
+        named_subgraph_provider
+            .deploy_saved_subgraphs()
+            .map_err(move |e| {
+                error!(err_logger, "error deploying saved subgraphs";
+                                       "error" => format!("{}", e))
+            }),
     );
 
     // Start admin JSON-RPC server.
