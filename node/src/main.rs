@@ -404,68 +404,62 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         store.clone(),
         node_id.clone(),
     ));
-    named_subgraph_provider
-        .start()
-        .then(
-            move |start_result| -> Box<Future<Item = _, Error = _> + Send> {
-                start_result.expect("failed to initialize subgraph provider");
+    tokio::spawn(
+        named_subgraph_provider
+            .start()
+            .then(|start_result| Ok(start_result.expect("failed to initialize subgraph provider"))),
+    );
 
-                // Start admin JSON-RPC server.
-                let json_rpc_server = JsonRpcServer::serve(
-                    json_rpc_port,
-                    http_port,
-                    ws_port,
-                    named_subgraph_provider.clone(),
-                    node_id.clone(),
-                    logger.clone(),
-                ).expect("failed to start JSON-RPC admin server");
+    // Start admin JSON-RPC server.
+    let json_rpc_server = JsonRpcServer::serve(
+        json_rpc_port,
+        http_port,
+        ws_port,
+        named_subgraph_provider.clone(),
+        node_id.clone(),
+        logger.clone(),
+    ).expect("failed to start JSON-RPC admin server");
 
-                // Let the server run forever.
-                std::mem::forget(json_rpc_server);
+    // Let the server run forever.
+    std::mem::forget(json_rpc_server);
 
-                // Add the CLI subgraph with a REST request to the admin server.
-                if let Some(subgraph) = subgraph {
-                    let (name, hash) = if subgraph.contains(':') {
-                        let mut split = subgraph.split(':');
-                        (split.next().unwrap(), split.next().unwrap().to_owned())
-                    } else {
-                        ("cli", subgraph)
-                    };
+    // Add the CLI subgraph with a REST request to the admin server.
+    if let Some(subgraph) = subgraph {
+        let (name, hash) = if subgraph.contains(':') {
+            let mut split = subgraph.split(':');
+            (split.next().unwrap(), split.next().unwrap().to_owned())
+        } else {
+            ("cli", subgraph)
+        };
 
-                    let name = SubgraphDeploymentName::new(name)
-                        .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
-                    let subgraph_id =
-                        SubgraphId::new(hash).expect("Subgraph hash must be a valid IPFS hash");
+        let name = SubgraphDeploymentName::new(name)
+            .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
+        let subgraph_id = SubgraphId::new(hash).expect("Subgraph hash must be a valid IPFS hash");
 
-                    Box::new(
-                        named_subgraph_provider
-                            .deploy(name, subgraph_id, node_id.clone())
-                            .then(|deploy_result| {
-                                Ok(deploy_result
-                                    .expect("Failed to deploy subgraph from `--subgraph` flag"))
-                            }),
-                    )
-                } else {
-                    Box::new(future::ok(()))
-                }
-            },
-        ).and_then(move |()| {
-            // Serve GraphQL queries over HTTP
-            tokio::spawn(
-                graphql_server
-                    .serve(http_port, ws_port)
-                    .expect("Failed to start GraphQL query server"),
-            );
+        tokio::spawn(
+            named_subgraph_provider
+                .deploy(name, subgraph_id, node_id.clone())
+                .then(|deploy_result| {
+                    Ok(deploy_result.expect("Failed to deploy subgraph from `--subgraph` flag"))
+                }),
+        );
+    }
 
-            // Serve GraphQL subscriptions over WebSockets
-            tokio::spawn(
-                subscription_server
-                    .serve(ws_port)
-                    .expect("Failed to start GraphQL subscription server"),
-            );
+    // Serve GraphQL queries over HTTP
+    tokio::spawn(
+        graphql_server
+            .serve(http_port, ws_port)
+            .expect("Failed to start GraphQL query server"),
+    );
 
-            Ok(())
-        })
+    // Serve GraphQL subscriptions over WebSockets
+    tokio::spawn(
+        subscription_server
+            .serve(ws_port)
+            .expect("Failed to start GraphQL subscription server"),
+    );
+
+    future::ok(())
 }
 
 /// Parses an Ethereum connection string and returns the network name and Ethereum node.
