@@ -244,17 +244,17 @@ impl SubgraphInstanceManager {
                 }).map_err(move |e| match e {
                     CancelableError::Cancel => {
                         info!(
-                                error_logger,
-                                "Subgraph block stream shut down cleanly";
-                                "id" => id_for_err.to_string()
-                            );
+                            error_logger,
+                            "Subgraph block stream shut down cleanly";
+                            "id" => id_for_err.to_string()
+                        );
                     }
                     CancelableError::Error(e) => {
                         error!(
-                                error_logger,
-                                "Subgraph instance failed to run: {}", e;
-                                "id" => id_for_err.to_string()
-                            );
+                            error_logger,
+                            "Subgraph instance failed to run: {}", e;
+                            "id" => id_for_err.to_string()
+                        );
                     }
                 }),
         );
