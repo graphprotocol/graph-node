@@ -417,7 +417,8 @@ mod tests {
                         },
                     )))));
                     let node_id = NodeId::new("test").unwrap();
-                    let mut service = GraphQLService::new(schema, graphql_runner, store, 8001, node_id);
+                    let mut service =
+                        GraphQLService::new(schema, graphql_runner, store, 8001, node_id);
 
                     let request = Request::builder()
                         .method(Method::POST)
