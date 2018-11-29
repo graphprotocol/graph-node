@@ -751,8 +751,7 @@ impl SubgraphDeploymentStore for Store {
     fn remove(&self, name: SubgraphDeploymentName) -> Result<bool, Error> {
         use db_schema::subgraph_deployments;
 
-        delete(subgraph_deployments::table)
-            .filter(subgraph_deployments::deployment_name.eq(name.to_string()))
+        delete(subgraph_deployments::table.find(name.to_string()))
             .execute(&*self.conn.lock().unwrap())
             .map(|row_count| match row_count {
                 0 => false,
