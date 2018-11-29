@@ -214,103 +214,110 @@ fn subgraph_provider_events() {
             let schema_events = provider.take_event_stream().unwrap();
             let node_id = NodeId::new("test").unwrap();
 
-            graph_core::SubgraphProviderWithNames::init(
+            let named_provider = graph_core::SubgraphProviderWithNames::new(
                 logger.clone(),
                 Arc::new(provider),
                 store,
                 node_id.clone(),
-            ).and_then(move |named_provider| {
-                add_subgraph_to_ipfs(resolver.clone(), "two-datasources")
-                    .join(add_subgraph_to_ipfs(resolver, "dummy"))
-                    .map(|links| (named_provider, links))
-            }).and_then(move |(named_provider, (subgraph1_link, subgraph2_link))| {
-                let named_provider = Arc::new(named_provider);
-                let subgraph1_id =
-                    SubgraphId::new(subgraph1_link.trim_left_matches("/ipfs/")).unwrap();
-                let subgraph2_id =
-                    SubgraphId::new(subgraph2_link.trim_left_matches("/ipfs/")).unwrap();
-                let subgraph_name = SubgraphDeploymentName::new("subgraph").unwrap();
+            );
+            named_provider
+                .start()
+                .and_then(move |()| {
+                    add_subgraph_to_ipfs(resolver.clone(), "two-datasources")
+                        .join(add_subgraph_to_ipfs(resolver, "dummy"))
+                }).and_then(move |(subgraph1_link, subgraph2_link)| {
+                    let named_provider = Arc::new(named_provider);
+                    let subgraph1_id =
+                        SubgraphId::new(subgraph1_link.trim_left_matches("/ipfs/")).unwrap();
+                    let subgraph2_id =
+                        SubgraphId::new(subgraph2_link.trim_left_matches("/ipfs/")).unwrap();
+                    let subgraph_name = SubgraphDeploymentName::new("subgraph").unwrap();
 
-                // Prepare the clones
-                let named_provider_clone1 = named_provider;
-                let named_provider_clone2 = named_provider_clone1.clone();
-                let named_provider_clone3 = named_provider_clone1.clone();
-                let named_provider_clone4 = named_provider_clone1.clone();
-                let subgraph2_id_clone1 = subgraph2_id;
-                let subgraph2_id_clone2 = subgraph2_id_clone1.clone();
-                let subgraph_name_clone1 = subgraph_name;
-                let subgraph_name_clone2 = subgraph_name_clone1.clone();
-                let subgraph_name_clone3 = subgraph_name_clone1.clone();
+                    // Prepare the clones
+                    let named_provider_clone1 = named_provider;
+                    let named_provider_clone2 = named_provider_clone1.clone();
+                    let named_provider_clone3 = named_provider_clone1.clone();
+                    let named_provider_clone4 = named_provider_clone1.clone();
+                    let subgraph2_id_clone1 = subgraph2_id;
+                    let subgraph2_id_clone2 = subgraph2_id_clone1.clone();
+                    let subgraph_name_clone1 = subgraph_name;
+                    let subgraph_name_clone2 = subgraph_name_clone1.clone();
+                    let subgraph_name_clone3 = subgraph_name_clone1.clone();
 
-                // Deploy
-                named_provider_clone1
-                    .deploy(
-                        subgraph_name_clone1.clone(),
-                        subgraph1_id.clone(),
-                        node_id.clone(),
-                    ).and_then(move |()| {
-                        // Update
-                        named_provider_clone1.deploy(
-                            subgraph_name_clone1,
-                            subgraph2_id_clone1,
-                            node_id,
+                    // Deploy
+                    named_provider_clone1
+                        .deploy(
+                            subgraph_name_clone1.clone(),
+                            subgraph1_id.clone(),
+                            node_id.clone(),
+                        ).and_then(move |()| {
+                            // Update
+                            named_provider_clone1.deploy(
+                                subgraph_name_clone1,
+                                subgraph2_id_clone1,
+                                node_id,
+                            )
+                        }).and_then(move |()| {
+                            // Remove
+                            named_provider_clone2.remove(subgraph_name_clone2)
+                        }).and_then(move |()| {
+                            // Removing a subgraph that is not deployed is an error.
+                            named_provider_clone3.remove(subgraph_name_clone3)
+                        }).then(move |result| {
+                            assert!(result.is_err());
+
+                            provider_events
+                                .take(4)
+                                .collect()
+                                .then(|result| Ok(result.unwrap()))
+                        }).and_then(move |provider_events| {
+                            schema_events
+                                .skip(1) // skip meta subgraphs schema
+                                .take(4)
+                                .collect()
+                                .then(|result| Ok(result.unwrap()))
+                                .map(move |schema_events| (provider_events, schema_events))
+                        }).and_then(
+                            move |(provider_events, schema_events)| -> Result<(), Error> {
+                                // Keep named provider alive until after events have been collected
+                                let _ = named_provider_clone4;
+
+                                // Assert that the expected events were sent.
+                                assert_eq!(provider_events.len(), 4);
+                                assert_eq!(added_subgraph_id(&provider_events[0]), &subgraph1_id);
+                                assert_eq!(
+                                    provider_events[1],
+                                    SubgraphProviderEvent::SubgraphStop(subgraph1_id.clone())
+                                );
+                                assert_eq!(
+                                    added_subgraph_id(&provider_events[2]),
+                                    &subgraph2_id_clone2
+                                );
+                                assert_eq!(
+                                    provider_events[3],
+                                    SubgraphProviderEvent::SubgraphStop(
+                                        subgraph2_id_clone2.clone()
+                                    )
+                                );
+
+                                assert_eq!(schema_events.len(), 4);
+                                assert_eq!(added_schema_id(&schema_events[0]), &subgraph1_id);
+                                assert_eq!(
+                                    schema_events[1],
+                                    SchemaEvent::SchemaRemoved(subgraph1_id.clone())
+                                );
+                                assert_eq!(
+                                    added_schema_id(&schema_events[2]),
+                                    &subgraph2_id_clone2
+                                );
+                                assert_eq!(
+                                    schema_events[3],
+                                    SchemaEvent::SchemaRemoved(subgraph2_id_clone2.clone())
+                                );
+                                Ok(())
+                            },
                         )
-                    }).and_then(move |()| {
-                        // Remove
-                        named_provider_clone2.remove(subgraph_name_clone2)
-                    }).and_then(move |()| {
-                        // Removing a subgraph that is not deployed is an error.
-                        named_provider_clone3.remove(subgraph_name_clone3)
-                    }).then(move |result| {
-                        assert!(result.is_err());
-
-                        provider_events
-                            .take(4)
-                            .collect()
-                            .then(|result| Ok(result.unwrap()))
-                    }).and_then(move |provider_events| {
-                        schema_events
-                            .skip(1) // skip meta subgraphs schema
-                            .take(4)
-                            .collect()
-                            .then(|result| Ok(result.unwrap()))
-                            .map(move |schema_events| (provider_events, schema_events))
-                    }).and_then(
-                        move |(provider_events, schema_events)| -> Result<(), Error> {
-                            // Keep named provider alive until after events have been collected
-                            let _ = named_provider_clone4;
-
-                            // Assert that the expected events were sent.
-                            assert_eq!(provider_events.len(), 4);
-                            assert_eq!(added_subgraph_id(&provider_events[0]), &subgraph1_id);
-                            assert_eq!(
-                                provider_events[1],
-                                SubgraphProviderEvent::SubgraphStop(subgraph1_id.clone())
-                            );
-                            assert_eq!(
-                                added_subgraph_id(&provider_events[2]),
-                                &subgraph2_id_clone2
-                            );
-                            assert_eq!(
-                                provider_events[3],
-                                SubgraphProviderEvent::SubgraphStop(subgraph2_id_clone2.clone())
-                            );
-
-                            assert_eq!(schema_events.len(), 4);
-                            assert_eq!(added_schema_id(&schema_events[0]), &subgraph1_id);
-                            assert_eq!(
-                                schema_events[1],
-                                SchemaEvent::SchemaRemoved(subgraph1_id.clone())
-                            );
-                            assert_eq!(added_schema_id(&schema_events[2]), &subgraph2_id_clone2);
-                            assert_eq!(
-                                schema_events[3],
-                                SchemaEvent::SchemaRemoved(subgraph2_id_clone2.clone())
-                            );
-                            Ok(())
-                        },
-                    )
-            }).then(|result| -> Result<(), ()> { Ok(result.unwrap()) })
+                }).then(|result| -> Result<(), ()> { Ok(result.unwrap()) })
         })).unwrap();
 }
 
@@ -326,80 +333,82 @@ fn subgraph_list() {
                 graph_core::SubgraphProvider::new(logger.clone(), resolver, store.clone());
             let node_id = NodeId::new("testnode").unwrap();
 
-            graph_core::SubgraphProviderWithNames::init(
+            let named_provider = graph_core::SubgraphProviderWithNames::new(
                 logger.clone(),
                 Arc::new(provider),
                 store,
                 node_id.clone(),
-            ).and_then(|named_provider| {
-                let resolver = Arc::new(IpfsClient::default());
-                add_subgraph_to_ipfs(resolver.clone(), "two-datasources")
-                    .join(add_subgraph_to_ipfs(resolver, "dummy"))
-                    .map(move |links| (named_provider, links))
-            }).from_err()
-            .and_then(move |(named_provider, (subgraph1_link, subgraph2_link))| {
-                let named_provider = Arc::new(named_provider);
-                let subgraph1_id =
-                    SubgraphId::new(subgraph1_link.trim_left_matches("/ipfs/")).unwrap();
-                let subgraph2_id =
-                    SubgraphId::new(subgraph2_link.trim_left_matches("/ipfs/")).unwrap();
-                let subgraph1_name = SubgraphDeploymentName::new("subgraph1").unwrap();
-                let subgraph2_name = SubgraphDeploymentName::new("subgraph2").unwrap();
+            );
+            named_provider
+                .start()
+                .and_then(move |()| {
+                    let resolver = Arc::new(IpfsClient::default());
+                    add_subgraph_to_ipfs(resolver.clone(), "two-datasources")
+                        .join(add_subgraph_to_ipfs(resolver, "dummy"))
+                }).from_err()
+                .and_then(move |(subgraph1_link, subgraph2_link)| {
+                    let named_provider = Arc::new(named_provider);
+                    let subgraph1_id =
+                        SubgraphId::new(subgraph1_link.trim_left_matches("/ipfs/")).unwrap();
+                    let subgraph2_id =
+                        SubgraphId::new(subgraph2_link.trim_left_matches("/ipfs/")).unwrap();
+                    let subgraph1_name = SubgraphDeploymentName::new("subgraph1").unwrap();
+                    let subgraph2_name = SubgraphDeploymentName::new("subgraph2").unwrap();
 
-                let named_provider_clone1 = named_provider;
-                let named_provider_clone2 = named_provider_clone1.clone();
-                let named_provider_clone3 = named_provider_clone1.clone();
-                let named_provider_clone4 = named_provider_clone1.clone();
-                let subgraph2_id_clone1 = subgraph2_id;
-                let subgraph2_id_clone2 = subgraph2_id_clone1.clone();
-                let subgraph2_id_clone3 = subgraph2_id_clone1.clone();
-                let subgraph2_name_clone1 = subgraph2_name;
-                let subgraph2_name_clone2 = subgraph2_name_clone1.clone();
-                let subgraph2_name_clone3 = subgraph2_name_clone1.clone();
+                    let named_provider_clone1 = named_provider;
+                    let named_provider_clone2 = named_provider_clone1.clone();
+                    let named_provider_clone3 = named_provider_clone1.clone();
+                    let named_provider_clone4 = named_provider_clone1.clone();
+                    let subgraph2_id_clone1 = subgraph2_id;
+                    let subgraph2_id_clone2 = subgraph2_id_clone1.clone();
+                    let subgraph2_id_clone3 = subgraph2_id_clone1.clone();
+                    let subgraph2_name_clone1 = subgraph2_name;
+                    let subgraph2_name_clone2 = subgraph2_name_clone1.clone();
+                    let subgraph2_name_clone3 = subgraph2_name_clone1.clone();
 
-                assert!(named_provider_clone1.list().unwrap().is_empty());
-                named_provider_clone1
-                    .deploy(
-                        subgraph1_name.clone(),
-                        subgraph1_id.clone(),
-                        node_id.clone(),
-                    ).and_then(move |()| {
-                        named_provider_clone1.deploy(
-                            subgraph2_name_clone1,
-                            subgraph2_id_clone1,
-                            node_id,
-                        )
-                    }).and_then(move |()| {
-                        assert_eq!(
-                            named_provider_clone2
-                                .list()
-                                .unwrap()
-                                .into_iter()
-                                .collect::<HashSet<_>>(),
-                            vec![
-                                (subgraph1_name.clone(), subgraph1_id),
-                                (subgraph2_name_clone2, subgraph2_id_clone2)
-                            ].into_iter()
-                            .collect::<HashSet<_>>()
-                        );
-
-                        named_provider_clone2.remove(subgraph1_name)
-                    }).and_then(move |()| {
-                        assert_eq!(
-                            named_provider_clone3
-                                .list()
-                                .unwrap()
-                                .into_iter()
-                                .collect::<HashSet<_>>(),
-                            vec![(subgraph2_name_clone3.clone(), subgraph2_id_clone3)]
-                                .into_iter()
+                    assert!(named_provider_clone1.list().unwrap().is_empty());
+                    named_provider_clone1
+                        .deploy(
+                            subgraph1_name.clone(),
+                            subgraph1_id.clone(),
+                            node_id.clone(),
+                        ).and_then(move |()| {
+                            named_provider_clone1.deploy(
+                                subgraph2_name_clone1,
+                                subgraph2_id_clone1,
+                                node_id,
+                            )
+                        }).and_then(move |()| {
+                            assert_eq!(
+                                named_provider_clone2
+                                    .list()
+                                    .unwrap()
+                                    .into_iter()
+                                    .collect::<HashSet<_>>(),
+                                vec![
+                                    (subgraph1_name.clone(), subgraph1_id),
+                                    (subgraph2_name_clone2, subgraph2_id_clone2)
+                                ].into_iter()
                                 .collect::<HashSet<_>>()
-                        );
+                            );
 
-                        named_provider_clone3.remove(subgraph2_name_clone3)
-                    }).map(move |()| {
-                        assert!(named_provider_clone4.list().unwrap().is_empty());
-                    })
-            }).then(|result| -> Result<(), ()> { Ok(result.unwrap()) })
+                            named_provider_clone2.remove(subgraph1_name)
+                        }).and_then(move |()| {
+                            assert_eq!(
+                                named_provider_clone3
+                                    .list()
+                                    .unwrap()
+                                    .into_iter()
+                                    .collect::<HashSet<_>>(),
+                                vec![(subgraph2_name_clone3.clone(), subgraph2_id_clone3)]
+                                    .into_iter()
+                                    .collect::<HashSet<_>>()
+                            );
+
+                            named_provider_clone3.remove(subgraph2_name_clone3)
+                        }).map(move |()| {
+                            assert!(named_provider_clone4.list().unwrap().is_empty());
+                        })
+                }).then(|result| -> Result<(), ()> { Ok(result.unwrap()) })
         })).unwrap();
 }

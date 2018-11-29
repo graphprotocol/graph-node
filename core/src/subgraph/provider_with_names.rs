@@ -10,7 +10,7 @@ pub struct SubgraphProviderWithNames<P, S> {
     provider: Arc<P>,
     store: Arc<S>,
     node_id: NodeId,
-    _deployment_event_stream_cancel_guard: CancelGuard, // cancels on drop
+    deployment_event_stream_cancel_guard: CancelGuard, // cancels on drop
 }
 
 impl<P, S> SubgraphProviderWithNames<P, S>
@@ -18,26 +18,25 @@ where
     P: SubgraphProviderTrait,
     S: SubgraphDeploymentStore,
 {
-    pub fn init(
-        logger: slog::Logger,
-        provider: Arc<P>,
-        store: Arc<S>,
-        node_id: NodeId,
-    ) -> impl Future<Item = Self, Error = Error> {
+    pub fn new(logger: slog::Logger, provider: Arc<P>, store: Arc<S>, node_id: NodeId) -> Self {
         let logger = logger.new(o!("component" => "SubgraphProviderWithNames"));
-        let logger_clone1 = logger.clone();
-        let logger_clone2 = logger.clone();
 
-        // Create the named subgraph provider
-        let deployment_event_stream_cancel_guard = CancelGuard::new();
-        let deployment_event_stream_cancel_handle = deployment_event_stream_cancel_guard.handle();
-        let named_provider = SubgraphProviderWithNames {
+        SubgraphProviderWithNames {
             logger,
             provider,
             store,
             node_id,
-            _deployment_event_stream_cancel_guard: deployment_event_stream_cancel_guard,
-        };
+            deployment_event_stream_cancel_guard: CancelGuard::new(),
+        }
+    }
+
+    pub fn start(&self) -> impl Future<Item = (), Error = Error> {
+        let logger_clone1 = self.logger.clone();
+        let logger_clone2 = self.logger.clone();
+        let provider = self.provider.clone();
+        let node_id = self.node_id.clone();
+        let deployment_event_stream_cancel_handle =
+            self.deployment_event_stream_cancel_guard.handle();
 
         // The order of the following three steps is important:
         // - Start deployment event stream
@@ -62,41 +61,31 @@ where
         // operations idempotent.
 
         // Start event stream
-        let deployment_event_stream = named_provider
-            .store
-            .deployment_events(named_provider.node_id.clone());
+        let deployment_event_stream = self.store.deployment_events(node_id.clone());
 
         // Deploy named subgraphs found in store
-        named_provider
-            .start_deployed_subgraphs()
-            .and_then(move |()| {
-                // Spawn a task to handle deployment events
-                let provider = named_provider.provider.clone();
-                let node_id = named_provider.node_id.clone();
-                tokio::spawn(future::lazy(move || {
-                    deployment_event_stream
-                        .map_err(SubgraphProviderError::Unknown)
-                        .map_err(CancelableError::Error)
-                        .cancelable(&deployment_event_stream_cancel_handle, || {
-                            CancelableError::Cancel
-                        }).for_each(move |deployment_event| {
-                            assert_eq!(deployment_event.node_id(), &node_id);
-                            handle_deployment_event(
-                                deployment_event,
-                                provider.clone(),
-                                &logger_clone1,
-                            )
-                        }).map_err(move |e| match e {
-                            CancelableError::Cancel => {}
-                            CancelableError::Error(e) => {
-                                error!(logger_clone2, "deployment event stream failed: {}", e);
-                                panic!("deployment event stream error: {}", e);
-                            }
-                        })
-                }));
+        self.start_deployed_subgraphs().and_then(move |()| {
+            // Spawn a task to handle deployment events
+            tokio::spawn(future::lazy(move || {
+                deployment_event_stream
+                    .map_err(SubgraphProviderError::Unknown)
+                    .map_err(CancelableError::Error)
+                    .cancelable(&deployment_event_stream_cancel_handle, || {
+                        CancelableError::Cancel
+                    }).for_each(move |deployment_event| {
+                        assert_eq!(deployment_event.node_id(), &node_id);
+                        handle_deployment_event(deployment_event, provider.clone(), &logger_clone1)
+                    }).map_err(move |e| match e {
+                        CancelableError::Cancel => {}
+                        CancelableError::Error(e) => {
+                            error!(logger_clone2, "deployment event stream failed: {}", e);
+                            panic!("deployment event stream error: {}", e);
+                        }
+                    })
+            }));
 
-                Ok(named_provider)
-            })
+            Ok(())
+        })
     }
 
     fn start_deployed_subgraphs(&self) -> impl Future<Item = (), Error = Error> {
