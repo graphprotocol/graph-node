@@ -767,7 +767,7 @@ impl SubgraphDeploymentStore for Store {
     ) -> Box<Stream<Item = DeploymentEvent, Error = Error> + Send> {
         // Create postgres listener
         let channel_name =
-            SafeChannelName::i_promise_this_is_safe(format!("subgraph_deployment_{}", node_id));
+            SafeChannelName::i_promise_this_is_safe(format!("subgraph_deployments_{}", node_id));
         let mut listener = NotificationListener::new(self.postgres_url.clone(), channel_name);
 
         // Start receiving notifications
