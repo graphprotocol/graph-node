@@ -131,7 +131,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .default_value("default")
                 .long("node-id")
                 .value_name("NODE_ID")
-                .help("an identifier for this Graph node"),
+                .help("a unique identifier for this node"),
         ).arg(
             Arg::with_name("debug")
                 .long("debug")
