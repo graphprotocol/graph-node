@@ -72,10 +72,8 @@ impl NodeId {
         }
 
         // Check that the ID contains only allowed characters.
-        if !s
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
+        // Note: these restrictions are relied upon to prevent SQL injection
+        if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
             return Err(());
         }
 

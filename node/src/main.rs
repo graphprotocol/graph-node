@@ -171,7 +171,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
 
     let node_id = NodeId::new(matches.value_of("node-id").unwrap())
-        .expect("node ID contains invalid characters");
+        .expect("Node ID must contain only a-z, A-Z, 0-9, and '_'");
 
     // Obtain subgraph related command-line arguments
     let subgraph = matches.value_of("subgraph").map(|s| s.to_owned());
@@ -432,9 +432,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 };
 
                 let name = SubgraphDeploymentName::new(name)
-                    .expect("Subgraph name command line arg contains invalid characters");
-                let subgraph_id = SubgraphId::new(hash)
-                    .expect("Subgraph hash command line arg contains invalid characters");
+                    .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
+                let subgraph_id =
+                    SubgraphId::new(hash).expect("Subgraph hash must be a valid IPFS hash");
 
                 Box::new(
                     named_subgraph_provider
