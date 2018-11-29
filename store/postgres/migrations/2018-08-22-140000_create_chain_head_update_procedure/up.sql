@@ -75,7 +75,7 @@ BEGIN
     WHERE name = net_name;
 
     -- Fire chain head block update event
-    PERFORM pg_notify('chain_head_update', json_build_object(
+    PERFORM pg_notify('chain_head_updates', json_build_object(
         'network_name', net_name,
         'head_block_hash', new_head_hash,
         'head_block_number', new_head_number

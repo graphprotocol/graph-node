@@ -12,7 +12,7 @@ impl ChainHeadUpdateListener {
         ChainHeadUpdateListener {
             notification_listener: NotificationListener::new(
                 postgres_url,
-                SafeChannelName::i_promise_this_is_safe("chain_head_update"),
+                SafeChannelName::i_promise_this_is_safe("chain_head_updates"),
             ),
             network_name,
         }

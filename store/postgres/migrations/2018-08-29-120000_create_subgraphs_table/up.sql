@@ -20,7 +20,7 @@ CREATE OR REPLACE FUNCTION deployment_insert()
     RETURNS trigger AS
 $$
 BEGIN
-    PERFORM pg_notify(CONCAT('subgraph_deployment_', NEW.node_id), json_build_object(
+    PERFORM pg_notify(CONCAT('subgraph_deployments_', NEW.node_id), json_build_object(
         'type', 'Add',
         'deployment_name', NEW.deployment_name,
         'subgraph_id', NEW.subgraph_id,
@@ -34,13 +34,13 @@ CREATE OR REPLACE FUNCTION deployment_update()
     RETURNS trigger AS
 $$
 BEGIN
-    PERFORM pg_notify(CONCAT('subgraph_deployment_', OLD.node_id), json_build_object(
+    PERFORM pg_notify(CONCAT('subgraph_deployments_', OLD.node_id), json_build_object(
         'type', 'Remove',
         'deployment_name', OLD.deployment_name,
         'subgraph_id', OLD.subgraph_id,
         'node_id', OLD.node_id
     )::text);
-    PERFORM pg_notify(CONCAT('subgraph_deployment_', NEW.node_id), json_build_object(
+    PERFORM pg_notify(CONCAT('subgraph_deployments_', NEW.node_id), json_build_object(
         'type', 'Add',
         'deployment_name', NEW.deployment_name,
         'subgraph_id', NEW.subgraph_id,
@@ -54,7 +54,7 @@ CREATE OR REPLACE FUNCTION deployment_delete()
     RETURNS trigger AS
 $$
 BEGIN
-    PERFORM pg_notify(CONCAT('subgraph_deployment_', OLD.node_id), json_build_object(
+    PERFORM pg_notify(CONCAT('subgraph_deployments_', OLD.node_id), json_build_object(
         'type', 'Remove',
         'deployment_name', OLD.deployment_name,
         'subgraph_id', OLD.subgraph_id,
