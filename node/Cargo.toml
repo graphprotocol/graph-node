@@ -11,7 +11,6 @@ graphql-parser = "0.2.1"
 http = "0.1"
 ipfs-api = "0.5.0-alpha2"
 itertools = "0.7"
-reqwest = "0.8.7"
 sentry = "0.3.1"
 url = "1.7.1"
 graph = { path = "../graph" }
