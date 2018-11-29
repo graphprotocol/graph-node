@@ -4,7 +4,6 @@ extern crate env_logger;
 extern crate failure;
 extern crate futures;
 extern crate itertools;
-extern crate reqwest;
 #[macro_use]
 extern crate sentry;
 extern crate graph;
