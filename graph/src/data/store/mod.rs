@@ -53,25 +53,9 @@ impl<'de> de::Deserialize<'de> for SubgraphDeploymentName {
     where
         D: de::Deserializer<'de>,
     {
-        struct SubgraphDeploymentNameVisitor;
-
-        impl<'de> de::Visitor<'de> for SubgraphDeploymentNameVisitor {
-            type Value = SubgraphDeploymentName;
-
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str("a string containing a subgraph name")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<SubgraphDeploymentName, E>
-            where
-                E: de::Error,
-            {
-                SubgraphDeploymentName::new(v.to_owned())
-                    .map_err(|()| E::invalid_value(de::Unexpected::Str(v), &"valid subgraph name"))
-            }
-        }
-
-        deserializer.deserialize_str(SubgraphDeploymentNameVisitor)
+        let s: String = de::Deserialize::deserialize(deserializer)?;
+        SubgraphDeploymentName::new(s.clone())
+            .map_err(|()| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid subgraph name"))
     }
 }
 
@@ -110,25 +94,9 @@ impl<'de> de::Deserialize<'de> for NodeId {
     where
         D: de::Deserializer<'de>,
     {
-        struct NodeIdVisitor;
-
-        impl<'de> de::Visitor<'de> for NodeIdVisitor {
-            type Value = NodeId;
-
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str("a string containing a node ID")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<NodeId, E>
-            where
-                E: de::Error,
-            {
-                NodeId::new(v.to_owned())
-                    .map_err(|()| E::invalid_value(de::Unexpected::Str(v), &"valid node ID"))
-            }
-        }
-
-        deserializer.deserialize_str(NodeIdVisitor)
+        let s: String = de::Deserialize::deserialize(deserializer)?;
+        NodeId::new(s.clone())
+            .map_err(|()| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid node ID"))
     }
 }
 
