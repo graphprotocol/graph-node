@@ -766,8 +766,11 @@ impl SubgraphDeploymentStore for Store {
         node_id: NodeId,
     ) -> Box<Stream<Item = DeploymentEvent, Error = Error> + Send> {
         // Create postgres listener
-        let channel_name =
-            SafeChannelName::i_promise_this_is_safe(format!("subgraph_deployments_{}", node_id));
+        // This way of choosing a channel name is only safe because NodeId is restricted to
+        // alphanumeric and underscores, and because we forcibly prefix the node ID (which prevents
+        // the channel name from being a keyword).
+        let raw_channel_name = format!("subgraph_deployments_{}", node_id);
+        let channel_name = SafeChannelName::i_promise_this_is_safe(raw_channel_name);
         let mut listener = NotificationListener::new(self.postgres_url.clone(), channel_name);
 
         // Start receiving notifications
