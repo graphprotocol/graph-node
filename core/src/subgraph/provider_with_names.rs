@@ -80,10 +80,10 @@ where
                         .cancelable(&deployment_event_stream_cancel_handle, || {
                             CancelableError::Cancel
                         }).for_each(move |deployment_event| {
+                            assert_eq!(deployment_event.node_id(), &node_id);
                             handle_deployment_event(
                                 deployment_event,
                                 provider.clone(),
-                                node_id.clone(),
                                 &logger_clone1,
                             )
                         }).map_err(move |e| match e {
@@ -169,7 +169,6 @@ where
 fn handle_deployment_event<P>(
     event: DeploymentEvent,
     provider: Arc<P>,
-    node_id: NodeId,
     logger: &Logger,
 ) -> Box<Future<Item = (), Error = CancelableError<SubgraphProviderError>> + Send>
 where
@@ -183,10 +182,8 @@ where
         DeploymentEvent::Add {
             deployment_name: _,
             subgraph_id,
-            node_id: event_node_id,
+            node_id: _,
         } => {
-            assert_eq!(event_node_id, node_id);
-
             Box::new(
                 provider
                     .start(subgraph_id.clone())
@@ -212,19 +209,15 @@ where
         DeploymentEvent::Remove {
             deployment_name: _,
             subgraph_id,
-            node_id: event_node_id,
-        } => {
-            assert_eq!(event_node_id, node_id);
-
-            Box::new(
-                provider
-                    .stop(subgraph_id)
-                    .then(|result| match result {
-                        Ok(()) => Ok(()),
-                        Err(SubgraphProviderError::NotRunning(_)) => Ok(()),
-                        Err(e) => Err(e),
-                    }).map_err(CancelableError::Error),
-            )
-        }
+            node_id: _,
+        } => Box::new(
+            provider
+                .stop(subgraph_id)
+                .then(|result| match result {
+                    Ok(()) => Ok(()),
+                    Err(SubgraphProviderError::NotRunning(_)) => Ok(()),
+                    Err(e) => Err(e),
+                }).map_err(CancelableError::Error),
+        ),
     }
 }

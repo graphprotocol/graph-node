@@ -115,6 +115,15 @@ pub enum DeploymentEvent {
     },
 }
 
+impl DeploymentEvent {
+    pub fn node_id(&self) -> &NodeId {
+        match self {
+            DeploymentEvent::Add { node_id, .. } => node_id,
+            DeploymentEvent::Remove { node_id, .. } => node_id,
+        }
+    }
+}
+
 /// An entity attribute name is represented as a string.
 pub type Attribute = String;
 
