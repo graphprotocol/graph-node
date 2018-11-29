@@ -71,25 +71,9 @@ impl<'de> de::Deserialize<'de> for SubgraphId {
     where
         D: de::Deserializer<'de>,
     {
-        struct SubgraphIdVisitor;
-
-        impl<'de> de::Visitor<'de> for SubgraphIdVisitor {
-            type Value = SubgraphId;
-
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str("a string containing a subgraph ID")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<SubgraphId, E>
-            where
-                E: de::Error,
-            {
-                SubgraphId::new(v.to_owned())
-                    .map_err(|()| E::invalid_value(de::Unexpected::Str(v), &"valid subgraph name"))
-            }
-        }
-
-        deserializer.deserialize_str(SubgraphIdVisitor)
+        let s: String = de::Deserialize::deserialize(deserializer)?;
+        SubgraphId::new(s.clone())
+            .map_err(|()| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid subgraph name"))
     }
 }
 
