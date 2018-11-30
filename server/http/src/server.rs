@@ -217,16 +217,16 @@ mod tests {
                     schema_sink.send(input_event).wait().unwrap();
 
                     // Wait for the schema to be received and extract it.
-                    // Wait for thirty seconds for that to happen, otherwise fail the test.
+                    // Wait a minute for that to happen, otherwise fail the test.
                     let start_time = Instant::now();
-                    let max_wait = Duration::from_secs(30);
+                    let max_wait = Duration::from_secs(60);
                     let output_schema = loop {
                         if let Some(schema) = server.schemas.read().unwrap().get(&input_schema_id) {
                             break schema.clone();
                         } else if Instant::now().duration_since(start_time) > max_wait {
                             panic!("Timed out, schema not received")
                         }
-                        ::std::thread::yield_now();
+                        ::std::thread::sleep(Duration::from_millis(100));
                     };
 
                     assert_eq!(output_schema.id, input_schema.id);
