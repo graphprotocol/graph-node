@@ -245,8 +245,9 @@ where
                     ).into()
                 })
             }).and_then(move |receipt| {
+                let receipt_block_hash = receipt.block_hash.expect("transaction not in a block");
                 // Check if receipt is for the right block
-                if receipt.block_hash != block_hash {
+                if receipt_block_hash != block_hash {
                     // If the receipt came from a different block, then the Ethereum node
                     // no longer considers this block to be in the main chain.
                     // Nothing we can do from here except give up trying to ingest this
