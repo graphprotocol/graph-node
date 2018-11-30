@@ -1,7 +1,6 @@
 extern crate bigdecimal;
 #[macro_use]
 extern crate diesel;
-extern crate diesel_dynamic_schema;
 #[macro_use]
 extern crate diesel_migrations;
 extern crate failure;

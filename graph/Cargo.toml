@@ -14,7 +14,14 @@ failure = "0.1.2"
 num-bigint = { version = "0.2.0", features = ["serde"] }
 serde = "1.0"
 serde_derive = "1.0"
-serde_json = { version = "1.0", features = ["arbitrary_precision"] }
+
+# Pin to serde_json 1.0.25. Newer releases use ryu instead of dtoa for floating
+# point (de)serialization, which caused test failures. What may be happening
+# here is that we write entities to the store with f32 values and then what
+# comes back when deserializing is not f32 and so serde_json cannot match float
+# values to our Value::Float(f32) variant. Would have to investigate further how
+# we can fix this.
+serde_json = { version = "=1.0.25", features = ["arbitrary_precision"] }
 serde_yaml = "0.7"
 slog = { version = "2.2.3", features = ["release_max_level_debug"] }
 slog-async = "2.3.0"
