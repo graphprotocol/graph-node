@@ -10,6 +10,9 @@ pub fn string_to_h256(s: &str) -> H256 {
     sponge.update(&data);
     sponge.finalize(&mut result);
 
+    // This was deprecated but the replacement seems to not be availible in the
+    // version web3 uses.
+    #[allow(deprecated)]
     H256::from_slice(&result)
 }
 
