@@ -10,18 +10,18 @@ extern crate walkdir;
 use ipfs_api::IpfsClient;
 use walkdir::WalkDir;
 
+use graph::components::ethereum::*;
+use graph::prelude::*;
+use graph::web3::types::*;
+use graph_core::SubgraphInstanceManager;
+use graph_mock::{FakeStore, MockBlockStreamBuilder, MockStore};
 use std::collections::HashSet;
 use std::fs::read_to_string;
 use std::io::Cursor;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
-
-use graph::components::ethereum::*;
-use graph::prelude::*;
-use graph::web3::types::*;
-use graph_core::SubgraphInstanceManager;
-use graph_mock::{FakeStore, MockBlockStreamBuilder, MockStore};
+use tokio::timer::Delay;
 
 /// Adds subgraph located in `test/subgraphs/`, replacing "link to" placeholders
 /// in the subgraph manifest with links to files just added into a local IPFS
@@ -186,17 +186,17 @@ fn multiple_data_sources_per_subgraph() {
         })).unwrap();
 }
 
-fn added_subgraph_id(event: &SubgraphProviderEvent) -> &SubgraphId {
+fn added_subgraph_id_eq(event: &SubgraphProviderEvent, id: &SubgraphId) -> bool {
     match event {
-        SubgraphProviderEvent::SubgraphStart(manifest) => &manifest.id,
-        _ => panic!("not `SubgraphStart`"),
+        SubgraphProviderEvent::SubgraphStart(manifest) => &manifest.id == id,
+        _ => false,
     }
 }
 
-fn added_schema_id(event: &SchemaEvent) -> &SubgraphId {
+fn added_schema_id_eq(event: &SchemaEvent, id: &SubgraphId) -> bool {
     match event {
-        SchemaEvent::SchemaAdded(schema) => &schema.id,
-        _ => panic!("not `SchemaAdded`"),
+        SchemaEvent::SchemaAdded(schema) => &schema.id == id,
+        _ => false,
     }
 }
 
@@ -251,6 +251,10 @@ fn subgraph_provider_events() {
                             subgraph1_id.clone(),
                             node_id.clone(),
                         ).and_then(move |()| {
+                            // Give some time for event to be picked up.
+                            Delay::new(Instant::now() + Duration::from_secs(2))
+                                .map_err(|_| panic!("time error"))
+                        }).and_then(move |()| {
                             // Update
                             named_provider_clone1.deploy(
                                 subgraph_name_clone1,
@@ -258,8 +262,16 @@ fn subgraph_provider_events() {
                                 node_id,
                             )
                         }).and_then(move |()| {
+                            // Give some time for event to be picked up.
+                            Delay::new(Instant::now() + Duration::from_secs(2))
+                                .map_err(|_| panic!("time error"))
+                        }).and_then(move |()| {
                             // Remove
                             named_provider_clone2.remove(subgraph_name_clone2)
+                        }).and_then(move |()| {
+                            // Give some time for event to be picked up.
+                            Delay::new(Instant::now() + Duration::from_secs(2))
+                                .map_err(|_| panic!("time error"))
                         }).and_then(move |()| {
                             // Removing a subgraph that is not deployed is an error.
                             named_provider_clone3.remove(subgraph_name_clone3)
@@ -284,36 +296,40 @@ fn subgraph_provider_events() {
 
                                 // Assert that the expected events were sent.
                                 assert_eq!(provider_events.len(), 4);
-                                assert_eq!(added_subgraph_id(&provider_events[0]), &subgraph1_id);
-                                assert_eq!(
-                                    provider_events[1],
-                                    SubgraphProviderEvent::SubgraphStop(subgraph1_id.clone())
+                                assert!(
+                                    provider_events
+                                        .iter()
+                                        .any(|event| added_subgraph_id_eq(event, &subgraph1_id))
                                 );
-                                assert_eq!(
-                                    added_subgraph_id(&provider_events[2]),
+                                assert!(provider_events.iter().any(|event| added_subgraph_id_eq(
+                                    event,
                                     &subgraph2_id_clone2
-                                );
-                                assert_eq!(
-                                    provider_events[3],
-                                    SubgraphProviderEvent::SubgraphStop(
-                                        subgraph2_id_clone2.clone()
-                                    )
+                                )));
+                                assert!(provider_events.iter().any(|event| event
+                                    == &SubgraphProviderEvent::SubgraphStop(subgraph1_id.clone())));
+                                assert!(
+                                    provider_events.iter().any(|event| event
+                                        == &SubgraphProviderEvent::SubgraphStop(
+                                            subgraph2_id_clone2.clone()
+                                        ))
                                 );
 
                                 assert_eq!(schema_events.len(), 4);
-                                assert_eq!(added_schema_id(&schema_events[0]), &subgraph1_id);
-                                assert_eq!(
-                                    schema_events[1],
-                                    SchemaEvent::SchemaRemoved(subgraph1_id.clone())
+                                assert!(
+                                    schema_events
+                                        .iter()
+                                        .any(|event| added_schema_id_eq(event, &subgraph1_id))
                                 );
-                                assert_eq!(
-                                    added_schema_id(&schema_events[2]),
-                                    &subgraph2_id_clone2
+                                assert!(
+                                    schema_events.iter().any(|event| added_schema_id_eq(
+                                        event,
+                                        &subgraph2_id_clone2
+                                    ))
                                 );
-                                assert_eq!(
-                                    schema_events[3],
-                                    SchemaEvent::SchemaRemoved(subgraph2_id_clone2.clone())
-                                );
+                                assert!(schema_events.iter().any(|event| event
+                                    == &SchemaEvent::SchemaRemoved(subgraph1_id.clone())));
+                                assert!(schema_events.iter().any(|event| event
+                                    == &SchemaEvent::SchemaRemoved(subgraph2_id_clone2.clone())));
                                 Ok(())
                             },
                         )
@@ -373,11 +389,19 @@ fn subgraph_list() {
                             subgraph1_id.clone(),
                             node_id.clone(),
                         ).and_then(move |()| {
+                            // Give some time for event to be picked up.
+                            Delay::new(Instant::now() + Duration::from_secs(2))
+                                .map_err(|_| panic!("time error"))
+                        }).and_then(move |()| {
                             named_provider_clone1.deploy(
                                 subgraph2_name_clone1,
                                 subgraph2_id_clone1,
                                 node_id,
                             )
+                        }).and_then(move |()| {
+                            // Give some time for event to be picked up.
+                            Delay::new(Instant::now() + Duration::from_secs(2))
+                                .map_err(|_| panic!("time error"))
                         }).and_then(move |()| {
                             assert_eq!(
                                 named_provider_clone2
@@ -394,6 +418,10 @@ fn subgraph_list() {
 
                             named_provider_clone2.remove(subgraph1_name)
                         }).and_then(move |()| {
+                            // Give some time for event to be picked up.
+                            Delay::new(Instant::now() + Duration::from_secs(2))
+                                .map_err(|_| panic!("time error"))
+                        }).and_then(move |()| {
                             assert_eq!(
                                 named_provider_clone3
                                     .list()
@@ -406,6 +434,10 @@ fn subgraph_list() {
                             );
 
                             named_provider_clone3.remove(subgraph2_name_clone3)
+                        }).and_then(move |()| {
+                            // Give some time for event to be picked up.
+                            Delay::new(Instant::now() + Duration::from_secs(2))
+                                .map_err(|_| panic!("time error"))
                         }).map(move |()| {
                             assert!(named_provider_clone4.list().unwrap().is_empty());
                         })
