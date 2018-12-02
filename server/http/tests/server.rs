@@ -12,11 +12,14 @@ use http::StatusCode;
 use hyper::{Body, Client, Request};
 use std::collections::BTreeMap;
 use std::iter::FromIterator;
+use std::time::{Duration, Instant};
 
 use graph::prelude::*;
 
 use graph_server_http::test_utils;
 use graph_server_http::GraphQLServer as HyperGraphQLServer;
+
+use tokio::timer::Delay;
 
 /// A simple stupid query runner for testing.
 pub struct TestGraphQlRunner;
@@ -77,29 +80,34 @@ mod test {
 
                 // Launch the server to handle a single request
                 tokio::spawn(http_server.fuse());
-
-                // Send an empty JSON POST request
-                let client = Client::new();
-                let request =
-                    Request::post(format!("http://localhost:8001/subgraphs/id/{}/graphql", id))
-                        .body(Body::from("{}"))
+                // Give some time for the server to start.
+                Delay::new(Instant::now() + Duration::from_secs(2))
+                    .map_err(|e| panic!("failed to start server: {:?}", e))
+                    .and_then(move |()| {
+                        // Send an empty JSON POST request
+                        let client = Client::new();
+                        let request = Request::post(format!(
+                            "http://localhost:8001/subgraphs/id/{}/graphql",
+                            id
+                        )).body(Body::from("{}"))
                         .unwrap();
 
-                // The response must be a query error
-                client.request(request).and_then(|response| {
-                    let errors =
-                        test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
+                        // The response must be a query error
+                        client.request(request)
+                    }).and_then(|response| {
+                        let errors =
+                            test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
 
-                    let message = errors[0]
-                        .as_object()
-                        .expect("Query error is not an object")
-                        .get("message")
-                        .expect("Error contains no message")
-                        .as_str()
-                        .expect("Error message is not a string");
-                    assert_eq!(message, "The \"query\" field missing in request data");
-                    Ok(())
-                })
+                        let message = errors[0]
+                            .as_object()
+                            .expect("Query error is not an object")
+                            .get("message")
+                            .expect("Error contains no message")
+                            .as_str()
+                            .expect("Error message is not a string");
+                        assert_eq!(message, "The \"query\" field missing in request data");
+                        Ok(())
+                    })
             })).unwrap()
     }
 
@@ -120,73 +128,78 @@ mod test {
 
                 // Launch the server to handle a single request
                 tokio::spawn(http_server.fuse());
+                // Give some time for the server to start.
+                Delay::new(Instant::now() + Duration::from_secs(2))
+                    .map_err(|e| panic!("failed to start server: {:?}", e))
+                    .and_then(move |()| {
+                        // Create a simple schema and send it to the server
+                        let schema = test_schema();
+                        let id = schema.id.clone();
 
-                // Create a simple schema and send it to the server
-                let schema = test_schema();
-                let id = schema.id.clone();
+                        server
+                            .event_sink()
+                            .send(SchemaEvent::SchemaAdded(schema))
+                            .wait()
+                            .expect("Failed to send schema to server");
 
-                server
-                    .event_sink()
-                    .send(SchemaEvent::SchemaAdded(schema))
-                    .wait()
-                    .expect("Failed to send schema to server");
-
-                // Send an broken query request
-                let client = Client::new();
-                let request =
-                    Request::post(format!("http://localhost:8002/subgraphs/id/{}/graphql", id))
-                        .body(Body::from("{\"query\": \"<L<G<>M>\"}"))
+                        // Send an broken query request
+                        let client = Client::new();
+                        let request = Request::post(format!(
+                            "http://localhost:8002/subgraphs/id/{}/graphql",
+                            id
+                        )).body(Body::from("{\"query\": \"<L<G<>M>\"}"))
                         .unwrap();
 
-                // The response must be a query error
-                client.request(request).and_then(|response| {
-                    let errors =
-                        test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
+                        // The response must be a query error
+                        client.request(request)
+                    }).and_then(|response| {
+                        let errors =
+                            test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
 
-                    let message = errors[0]
-                        .as_object()
-                        .expect("Query error is not an object")
-                        .get("message")
-                        .expect("Error contains no message")
-                        .as_str()
-                        .expect("Error message is not a string");
+                        let message = errors[0]
+                            .as_object()
+                            .expect("Query error is not an object")
+                            .get("message")
+                            .expect("Error contains no message")
+                            .as_str()
+                            .expect("Error message is not a string");
 
-                    assert_eq!(
-                        message,
-                        "Unexpected `unexpected character \
-                         \'<\'`\nExpected `{`, `query`, `mutation`, \
-                         `subscription` or `fragment`"
-                    );
+                        assert_eq!(
+                            message,
+                            "Unexpected `unexpected character \
+                             \'<\'`\nExpected `{`, `query`, `mutation`, \
+                             `subscription` or `fragment`"
+                        );
 
-                    let locations = errors[0]
-                        .as_object()
-                        .expect("Query error is not an object")
-                        .get("locations")
-                        .expect("Query error contains not locations")
-                        .as_array()
-                        .expect("Query error \"locations\" field is not an array");
+                        let locations = errors[0]
+                            .as_object()
+                            .expect("Query error is not an object")
+                            .get("locations")
+                            .expect("Query error contains not locations")
+                            .as_array()
+                            .expect("Query error \"locations\" field is not an array");
 
-                    let location = locations[0]
-                        .as_object()
-                        .expect("Query error location is not an object");
+                        let location = locations[0]
+                            .as_object()
+                            .expect("Query error location is not an object");
 
-                    let line = location
-                        .get("line")
-                        .expect("Query error location is missing a \"line\" field")
-                        .as_u64()
-                        .expect("Query error location \"line\" field is not a u64");
+                        let line = location
+                            .get("line")
+                            .expect("Query error location is missing a \"line\" field")
+                            .as_u64()
+                            .expect("Query error location \"line\" field is not a u64");
 
-                    assert_eq!(line, 1);
+                        assert_eq!(line, 1);
 
-                    let column = location
-                        .get("column")
-                        .expect("Query error location is missing a \"column\" field")
-                        .as_u64()
-                        .expect("Query error location \"column\" field is not a u64");
+                        let column = location
+                            .get("column")
+                            .expect("Query error location is missing a \"column\" field")
+                            .as_u64()
+                            .expect("Query error location \"column\" field is not a u64");
 
-                    assert_eq!(column, 1);
-                    Ok(())
-                })
+                        assert_eq!(column, 1);
+                        Ok(())
+                    })
             })).unwrap()
     }
 
@@ -207,38 +220,43 @@ mod test {
 
                 // Launch the server to handle a single request
                 tokio::spawn(http_server.fuse());
+                // Give some time for the server to start.
+                Delay::new(Instant::now() + Duration::from_secs(2))
+                    .map_err(|e| panic!("failed to start server: {:?}", e))
+                    .and_then(move |()| {
+                        // Create a simple schema and send it to the server
+                        let schema = test_schema();
+                        let id = schema.id.clone();
 
-                // Create a simple schema and send it to the server
-                let schema = test_schema();
-                let id = schema.id.clone();
+                        server
+                            .event_sink()
+                            .send(SchemaEvent::SchemaAdded(schema))
+                            .wait()
+                            .expect("Failed to send schema to server");
 
-                server
-                    .event_sink()
-                    .send(SchemaEvent::SchemaAdded(schema))
-                    .wait()
-                    .expect("Failed to send schema to server");
-
-                // Send a valid example query
-                let client = Client::new();
-                let request =
-                    Request::post(format!("http://localhost:8003/subgraphs/id/{}/graphql", id))
-                        .body(Body::from("{\"query\": \"{ name }\"}"))
+                        // Send a valid example query
+                        let client = Client::new();
+                        let request = Request::post(format!(
+                            "http://localhost:8003/subgraphs/id/{}/graphql",
+                            id
+                        )).body(Body::from("{\"query\": \"{ name }\"}"))
                         .unwrap();
 
-                // The response must be a 200
-                client.request(request).and_then(|response| {
-                    let data = test_utils::assert_successful_response(response);
+                        // The response must be a 200
+                        client.request(request)
+                    }).and_then(|response| {
+                        let data = test_utils::assert_successful_response(response);
 
-                    // The JSON response should match the simulated query result
-                    let name = data
-                        .get("name")
-                        .expect("Query result data has no \"name\" field")
-                        .as_str()
-                        .expect("Query result field \"name\" is not a string");
-                    assert_eq!(name, "Jordi".to_string());
+                        // The JSON response should match the simulated query result
+                        let name = data
+                            .get("name")
+                            .expect("Query result data has no \"name\" field")
+                            .as_str()
+                            .expect("Query result field \"name\" is not a string");
+                        assert_eq!(name, "Jordi".to_string());
 
-                    Ok(())
-                })
+                        Ok(())
+                    })
             })).unwrap()
     }
 }
