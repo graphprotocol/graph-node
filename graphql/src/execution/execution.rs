@@ -18,7 +18,7 @@ where
     R2: Resolver,
 {
     /// The logger to use.
-    pub logger: slog::Logger,
+    pub logger: Logger,
     /// The schema to execute the query against.
     pub schema: &'a Schema,
     /// Introspection data that corresponds to the schema.

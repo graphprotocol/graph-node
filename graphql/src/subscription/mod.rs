@@ -16,7 +16,7 @@ where
     R: Resolver,
 {
     /// The logger to use during subscription execution.
-    pub logger: slog::Logger,
+    pub logger: Logger,
     /// The resolver to use.
     pub resolver: R,
 }
@@ -141,7 +141,7 @@ where
 }
 
 fn execute_subscription_event<R1>(
-    logger: slog::Logger,
+    logger: Logger,
     resolver: Arc<R1>,
     schema: Schema,
     document: q::Document,

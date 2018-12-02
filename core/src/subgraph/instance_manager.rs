@@ -1,4 +1,3 @@
-use failure::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use graph::components::subgraph::SubgraphProviderEvent;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};

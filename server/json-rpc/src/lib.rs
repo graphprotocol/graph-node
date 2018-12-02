@@ -1,8 +1,6 @@
+extern crate graph;
 extern crate jsonrpc_http_server;
 extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate graph;
 
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::serde_json;

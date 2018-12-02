@@ -6,7 +6,7 @@ use graph::prelude::{
 };
 
 pub struct SubgraphProviderWithNames<P, S> {
-    logger: slog::Logger,
+    logger: Logger,
     provider: Arc<P>,
     store: Arc<S>,
     node_id: NodeId,
@@ -18,7 +18,7 @@ where
     P: SubgraphProviderTrait,
     S: SubgraphDeploymentStore,
 {
-    pub fn new(logger: slog::Logger, provider: Arc<P>, store: Arc<S>, node_id: NodeId) -> Self {
+    pub fn new(logger: Logger, provider: Arc<P>, store: Arc<S>, node_id: NodeId) -> Self {
         let logger = logger.new(o!("component" => "SubgraphProviderWithNames"));
 
         SubgraphProviderWithNames {

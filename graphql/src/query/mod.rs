@@ -15,7 +15,7 @@ where
     R: Resolver,
 {
     /// The logger to use during query execution.
-    pub logger: slog::Logger,
+    pub logger: Logger,
     /// The resolver to use.
     pub resolver: R,
 }

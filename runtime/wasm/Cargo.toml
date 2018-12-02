@@ -4,7 +4,6 @@ version = "0.4.1"
 
 [dependencies]
 ethabi = "6.0"
-failure = "0.1.2"
 futures = "0.1.21"
 hex = "0.3.2"
 nan-preserving-float = "0.1.0"

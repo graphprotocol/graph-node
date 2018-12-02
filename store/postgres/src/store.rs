@@ -4,11 +4,10 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::sql_types::Text;
 use diesel::{delete, insert_into, select, update};
-use failure::*;
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
@@ -34,7 +33,7 @@ struct Subscription {
 /// Run all initial schema migrations.
 ///
 /// Creates the "entities" table if it doesn't already exist.
-fn initiate_schema(logger: &slog::Logger, conn: &PgConnection) {
+fn initiate_schema(logger: &Logger, conn: &PgConnection) {
     // Collect migration logging output
     let mut output = vec![];
 
@@ -58,7 +57,7 @@ pub struct StoreConfig {
 
 /// A Store based on Diesel and Postgres.
 pub struct Store {
-    logger: slog::Logger,
+    logger: Logger,
     subscriptions: Arc<RwLock<HashMap<String, Subscription>>>,
     change_listener: EntityChangeListener,
     postgres_url: String,
@@ -70,7 +69,7 @@ pub struct Store {
 impl Store {
     pub fn new(
         config: StoreConfig,
-        logger: &slog::Logger,
+        logger: &Logger,
         net_identifiers: EthereumNetworkIdentifier,
     ) -> Self {
         // Create a store-specific logger
