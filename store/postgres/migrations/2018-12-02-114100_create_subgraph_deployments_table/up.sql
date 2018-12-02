@@ -1,6 +1,3 @@
--- Delete old subgraphs table
-DROP TABLE IF EXISTS subgraphs;
-
 -- Maps names to immutable subgraph versions (IDs) and node IDs.
 CREATE TABLE IF NOT EXISTS subgraph_deployments (
     deployment_name VARCHAR PRIMARY KEY,
