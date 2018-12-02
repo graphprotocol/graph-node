@@ -1,5 +1,3 @@
-#[macro_use]
-extern crate failure;
 extern crate graph;
 extern crate graph_core;
 extern crate graph_mock;

@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct SubgraphProvider<L, S> {
-    logger: slog::Logger,
+    logger: Logger,
     event_stream: Option<Receiver<SubgraphProviderEvent>>,
     event_sink: Sender<SubgraphProviderEvent>,
     schema_event_stream: Option<Receiver<SchemaEvent>>,
@@ -20,7 +20,7 @@ impl<L, S> SubgraphProvider<L, S>
 where
     L: LinkResolver,
 {
-    pub fn new(logger: slog::Logger, resolver: Arc<L>, store: Arc<S>) -> Self {
+    pub fn new(logger: Logger, resolver: Arc<L>, store: Arc<S>) -> Self {
         let (schema_event_sink, schema_event_stream) = channel(100);
         let (event_sink, event_stream) = channel(100);
 

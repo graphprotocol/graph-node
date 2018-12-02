@@ -55,7 +55,7 @@ mod test {
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
             .block_on(futures::lazy(|| {
-                let logger = slog::Logger::root(slog::Discard, o!());
+                let logger = Logger::root(slog::Discard, o!());
 
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = Arc::new(MockStore::new());
@@ -108,7 +108,7 @@ mod test {
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
             .block_on(futures::lazy(|| {
-                let logger = slog::Logger::root(slog::Discard, o!());
+                let logger = Logger::root(slog::Discard, o!());
 
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = Arc::new(MockStore::new());
@@ -195,7 +195,7 @@ mod test {
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
             .block_on(futures::lazy(|| {
-                let logger = slog::Logger::root(slog::Discard, o!());
+                let logger = Logger::root(slog::Discard, o!());
 
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = Arc::new(MockStore::new());

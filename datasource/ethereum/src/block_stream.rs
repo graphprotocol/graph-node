@@ -1,10 +1,8 @@
-use failure::Error;
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std;
 use std::env;
 use std::mem;
-use std::sync::Arc;
 use std::sync::Mutex;
 
 use graph::components::forward;

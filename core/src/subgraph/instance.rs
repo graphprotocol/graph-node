@@ -1,7 +1,3 @@
-use failure::Error;
-use futures::prelude::*;
-use std::sync::Arc;
-
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::web3::types::{Log, Transaction};
 

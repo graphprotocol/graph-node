@@ -8,10 +8,9 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_yaml;
-#[macro_use]
 pub extern crate slog;
 #[macro_use]
-extern crate failure;
+pub extern crate failure;
 extern crate ipfs_api;
 extern crate parity_wasm;
 pub extern crate serde_json;
@@ -43,18 +42,13 @@ pub mod ext;
 /// use graph::prelude::*;
 /// ```
 pub mod prelude {
-    // Glob import from `slog` to re-export the macros, but prevent
-    // `slog::Result` from shadowing `Result`. Rust 2018 will have proper macro
-    // imports then we can remove `slog::*` in favor of something fine-grained.
-    pub use failure::{Error, SyncFailure};
-    pub use slog;
-    pub use slog::*;
-    pub use std::result::Result;
-    pub use tokio;
-    pub use tokio::prelude::*;
-
+    pub use failure::{self, bail, format_err, Error, Fail, SyncFailure};
+    pub use serde_derive::{Deserialize, Serialize};
+    pub use slog::{self, crit, debug, error, info, o, trace, warn, Logger};
     pub use std::fmt::Debug;
     pub use std::sync::Arc;
+    pub use tokio;
+    pub use tokio::prelude::*;
 
     pub use components::ethereum::{
         BlockStream, BlockStreamBuilder, ChainHeadUpdate, ChainHeadUpdateListener, EthereumAdapter,

@@ -1,4 +1,3 @@
-use failure::*;
 use futures::sync::mpsc::{channel, Sender};
 use std::sync::Mutex;
 

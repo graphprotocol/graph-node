@@ -45,7 +45,7 @@ impl From<hyper::Error> for GraphQLServeError {
 
 /// A GraphQL server based on Hyper.
 pub struct GraphQLServer<Q, S> {
-    logger: slog::Logger,
+    logger: Logger,
     schema_event_sink: Sender<SchemaEvent>,
     // Maps a subgraph id to its schema.
     schemas: Arc<RwLock<BTreeMap<SubgraphId, Schema>>>,
@@ -56,12 +56,7 @@ pub struct GraphQLServer<Q, S> {
 
 impl<Q, S> GraphQLServer<Q, S> {
     /// Creates a new GraphQL server.
-    pub fn new(
-        logger: &slog::Logger,
-        graphql_runner: Arc<Q>,
-        store: Arc<S>,
-        node_id: NodeId,
-    ) -> Self {
+    pub fn new(logger: &Logger, graphql_runner: Arc<Q>, store: Arc<S>, node_id: NodeId) -> Self {
         // Create channel for handling incoming schema events
         let (schema_event_sink, schema_event_stream) = channel(100);
 

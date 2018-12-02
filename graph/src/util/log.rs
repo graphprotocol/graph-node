@@ -1,13 +1,11 @@
 use backtrace::Backtrace;
-use slog;
+use slog::{crit, o, Drain, FilterLevel, Logger};
 use slog_async;
 use slog_envlogger;
 use slog_term;
 use std::{env, panic};
 
-use slog::{Drain, FilterLevel};
-
-pub fn logger(show_debug: bool) -> slog::Logger {
+pub fn logger(show_debug: bool) -> Logger {
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::CompactFormat::new(decorator).build().fuse();
     let drain = slog_envlogger::LogBuilder::new(drain)
@@ -25,17 +23,17 @@ pub fn logger(show_debug: bool) -> slog::Logger {
                 .unwrap(),
         ).build();
     let drain = slog_async::Async::new(drain).build().fuse();
-    slog::Logger::root(drain, o!())
+    Logger::root(drain, o!())
 }
 
-pub fn guarded_logger() -> (slog::Logger, slog_async::AsyncGuard) {
+pub fn guarded_logger() -> (Logger, slog_async::AsyncGuard) {
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::CompactFormat::new(decorator).build().fuse();
     let (drain, guard) = slog_async::Async::new(drain).build_with_guard();
-    (slog::Logger::root(drain.fuse(), o!()), guard)
+    (Logger::root(drain.fuse(), o!()), guard)
 }
 
-pub fn register_panic_hook(panic_logger: slog::Logger) {
+pub fn register_panic_hook(panic_logger: Logger) {
     panic::set_hook(Box::new(move |panic_info| {
         let panic_payload = panic_info
             .payload()

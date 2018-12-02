@@ -7,12 +7,12 @@ use graph::prelude::*;
 
 /// A mock `GraphQlRunner`.
 pub struct MockGraphQlRunner {
-    logger: slog::Logger,
+    logger: Logger,
 }
 
 impl MockGraphQlRunner {
     /// Creates a new mock `GraphQlRunner`.
-    pub fn new(logger: &slog::Logger) -> Self {
+    pub fn new(logger: &Logger) -> Self {
         MockGraphQlRunner {
             logger: logger.new(o!("component" => "MockGraphQlRunner")),
         }

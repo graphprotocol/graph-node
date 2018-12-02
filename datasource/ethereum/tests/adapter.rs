@@ -144,7 +144,7 @@ fn contract_call() {
         H256::from(100000)
     )));
 
-    let logger = slog::Logger::root(slog::Discard, o!());
+    let logger = Logger::root(slog::Discard, o!());
     let adapter = EthereumAdapter::new(transport);
     let balance_of = Function {
         name: "balanceOf".to_owned(),

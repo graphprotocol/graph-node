@@ -404,14 +404,14 @@ fn input_value(
 
 #[derive(Clone)]
 pub struct IntrospectionResolver<'a> {
-    logger: slog::Logger,
+    logger: Logger,
     schema: &'a Schema,
     type_objects: TypeObjectsMap,
     directives: q::Value,
 }
 
 impl<'a> IntrospectionResolver<'a> {
-    pub fn new(logger: &slog::Logger, schema: &'a Schema) -> Self {
+    pub fn new(logger: &Logger, schema: &'a Schema) -> Self {
         let logger = logger.new(o!("component" => "IntrospectionResolver"));
 
         // Generate queryable objects for all types in the schema

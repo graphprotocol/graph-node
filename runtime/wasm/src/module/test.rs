@@ -1,4 +1,3 @@
-extern crate failure;
 extern crate graph_mock;
 extern crate ipfs_api;
 extern crate parity_wasm;
@@ -84,7 +83,7 @@ fn test_module(
     FakeStore,
     Sender<Box<Future<Item = (), Error = ()> + Send>>,
 >) {
-    let logger = slog::Logger::root(slog::Discard, o!());
+    let logger = Logger::root(slog::Discard, o!());
     let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
     let (task_sender, task_receiver) = channel(100);
     let mut runtime = tokio::runtime::Runtime::new().unwrap();

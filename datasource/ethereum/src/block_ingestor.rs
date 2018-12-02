@@ -1,4 +1,3 @@
-use failure::Error;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -19,7 +18,7 @@ where
     chain_store: Arc<S>,
     web3_transport: T,
     ancestor_count: u64,
-    logger: slog::Logger,
+    logger: Logger,
     polling_interval: Duration,
 }
 
@@ -34,7 +33,7 @@ where
         chain_store: Arc<S>,
         web3_transport: T,
         ancestor_count: u64,
-        logger: slog::Logger,
+        logger: Logger,
         polling_interval: Duration,
     ) -> Result<BlockIngestor<S, T>, Error> {
         Ok(BlockIngestor {

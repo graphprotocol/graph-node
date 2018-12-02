@@ -1,4 +1,4 @@
-use slog::Logger;
+use slog::{debug, trace, Logger};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -379,6 +379,7 @@ where
 mod tests {
     use super::*;
 
+    use slog::o;
     use std::sync::Mutex;
 
     #[test]

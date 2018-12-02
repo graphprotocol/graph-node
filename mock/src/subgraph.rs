@@ -6,7 +6,7 @@ use graphql_parser::schema::Document;
 
 /// A mock `SubgraphProvider`.
 pub struct MockSubgraphProvider {
-    logger: slog::Logger,
+    logger: Logger,
     event_sink: Sender<SubgraphProviderEvent>,
     schema_event_sink: Sender<SchemaEvent>,
     event_stream: Option<Receiver<SubgraphProviderEvent>>,
@@ -16,7 +16,7 @@ pub struct MockSubgraphProvider {
 
 impl MockSubgraphProvider {
     /// Creates a new mock `SubgraphProvider`.
-    pub fn new(logger: &slog::Logger) -> Self {
+    pub fn new(logger: &Logger) -> Self {
         let (event_sink, event_stream) = channel(100);
 
         let (schema_event_sink, schema_event_stream) = channel(100);
