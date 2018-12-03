@@ -251,7 +251,7 @@ where
                 let receipt_block_hash = receipt.block_hash.expect("transaction not in a block");
                 // Check if receipt is for the right block
                 if receipt_block_hash != block_hash {
-                    debug!(self.logger, "receipt block mismatch";
+                    trace!(self.logger, "receipt block mismatch";
                                         "receipt_block_hash" => receipt_block_hash.to_string(),
                                         "block_hash" => block_hash.to_string());
 
