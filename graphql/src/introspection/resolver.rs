@@ -234,6 +234,7 @@ fn field_objects(
     q::Value::List(
         fields
             .into_iter()
+            .filter(|field| field.name != String::from("__typename"))
             .map(|field| field_object(schema, type_objects, field))
             .collect(),
     )
