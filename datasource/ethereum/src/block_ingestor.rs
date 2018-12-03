@@ -181,6 +181,10 @@ where
     ) -> impl Future<Item = EthereumBlock, Error = BlockIngestorError> + 'a {
         let block_hash = block.hash.unwrap();
 
+        trace!(self.logger, "BlockIngestor::load_full_block";
+                            "block_hash" => block_hash.to_string(),
+                            "block_number" => format!("{:?}", block.number));
+
         // Load transaction receipts
         let receipt_futures = block
             .transactions
@@ -247,6 +251,10 @@ where
                 let receipt_block_hash = receipt.block_hash.expect("transaction not in a block");
                 // Check if receipt is for the right block
                 if receipt_block_hash != block_hash {
+                    debug!(self.logger, "receipt block mismatch";
+                                        "receipt_block_hash" => receipt_block_hash.to_string(),
+                                        "block_hash" => block_hash.to_string());
+
                     // If the receipt came from a different block, then the Ethereum node
                     // no longer considers this block to be in the main chain.
                     // Nothing we can do from here except give up trying to ingest this
@@ -272,7 +280,10 @@ where
         self.chain_store.upsert_blocks(blocks).and_then(move |()| {
             self.chain_store
                 .attempt_chain_head_update(self.ancestor_count)
-                .map_err(BlockIngestorError::from)
+                .map_err(|e| {
+                    error!(self.logger, "failed to update chain head");
+                    BlockIngestorError::Unknown(e)
+                })
         })
     }
 
