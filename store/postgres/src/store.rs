@@ -157,9 +157,7 @@ impl Store {
                     );
                 }
 
-                if last_genesis_block_hash.trim_left_matches("0x").parse().ok()
-                    != Some(new_genesis_block_hash)
-                {
+                if last_genesis_block_hash.parse().ok() != Some(new_genesis_block_hash) {
                     panic!(
                         "Ethereum node provided genesis block hash {}, \
                          but we expected {}. Did you change networks \
@@ -501,8 +499,7 @@ impl StoreTrait for Store {
             .first::<(String, i64)>(&*self.conn.lock().unwrap())
             .map(|(hash, number)| {
                 (
-                    hash.trim_left_matches("0x")
-                        .parse()
+                    hash.parse()
                         .expect("subgraph block ptr hash in database should be a valid H256"),
                     number,
                 )
@@ -823,9 +820,9 @@ impl ChainStore for Store {
         Box::new(blocks.for_each(move |block| {
             let json_blob = serde_json::to_value(&block).expect("Failed to serialize block");
             let values = (
-                hash.eq(format!("{:#x}", block.block.hash.unwrap())),
+                hash.eq(format!("{:x}", block.block.hash.unwrap())),
                 number.eq(block.block.number.unwrap().as_u64() as i64),
-                parent_hash.eq(format!("{:#x}", block.block.parent_hash)),
+                parent_hash.eq(format!("{:x}", block.block.parent_hash)),
                 network_name.eq(&net_name),
                 data.eq(json_blob),
             );
@@ -863,7 +860,7 @@ impl ChainStore for Store {
         .map(|hashes: Vec<String>| {
             hashes
                 .into_iter()
-                .map(|h| h.trim_left_matches("0x").parse())
+                .map(|h| h.parse())
                 .collect::<Result<Vec<H256>, _>>()
         }).and_then(|r| r.map_err(Error::from))
     }
@@ -882,9 +879,7 @@ impl ChainStore for Store {
             .map(|rows| {
                 rows.first()
                     .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
-                        (Some(hash), Some(number)) => {
-                            Some((hash.trim_left_matches("0x").parse().unwrap(), *number).into())
-                        }
+                        (Some(hash), Some(number)) => Some((hash.parse().unwrap(), *number).into()),
                         (None, None) => None,
                         _ => unreachable!(),
                     }).and_then(|opt| opt)
