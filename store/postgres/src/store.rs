@@ -157,7 +157,9 @@ impl Store {
                     );
                 }
 
-                if last_genesis_block_hash.parse().ok() != Some(new_genesis_block_hash) {
+                if last_genesis_block_hash.trim_left_matches("0x").parse().ok()
+                    != Some(new_genesis_block_hash)
+                {
                     panic!(
                         "Ethereum node provided genesis block hash {}, \
                          but we expected {}. Did you change networks \
@@ -499,7 +501,8 @@ impl StoreTrait for Store {
             .first::<(String, i64)>(&*self.conn.lock().unwrap())
             .map(|(hash, number)| {
                 (
-                    hash.parse()
+                    hash.trim_left_matches("0x")
+                        .parse()
                         .expect("subgraph block ptr hash in database should be a valid H256"),
                     number,
                 )
@@ -860,7 +863,7 @@ impl ChainStore for Store {
         .map(|hashes: Vec<String>| {
             hashes
                 .into_iter()
-                .map(|h| h.parse())
+                .map(|h| h.trim_left_matches("0x").parse())
                 .collect::<Result<Vec<H256>, _>>()
         }).and_then(|r| r.map_err(Error::from))
     }
@@ -879,7 +882,9 @@ impl ChainStore for Store {
             .map(|rows| {
                 rows.first()
                     .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
-                        (Some(hash), Some(number)) => Some((hash.parse().unwrap(), *number).into()),
+                        (Some(hash), Some(number)) => {
+                            Some((hash.trim_left_matches("0x").parse().unwrap(), *number).into())
+                        }
                         (None, None) => None,
                         _ => unreachable!(),
                     }).and_then(|opt| opt)
