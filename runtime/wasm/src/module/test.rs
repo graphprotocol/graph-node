@@ -274,7 +274,6 @@ fn call_event_handler_and_receive_store_event() {
             data: Entity::from(HashMap::from_iter(
                 vec![
                     ("id".to_owned(), "example id".into()),
-                    ("__typename".to_owned(), "ExampleEntity".into()),
                     ("exampleAttribute".to_owned(), "some data".into()),
                 ].into_iter()
             )),

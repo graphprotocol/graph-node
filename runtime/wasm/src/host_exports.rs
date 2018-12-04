@@ -111,17 +111,6 @@ where
             _ => (),
         }
 
-        // Automatically add a "__typename" value
-        match data.insert("__typename".to_string(), Value::String(entity_type.clone())) {
-            Some(ref v) if v != &Value::String(entity_type.clone()) => {
-                return Err(HostExportError(format!(
-                    "Conflicting '__typename' value set by mapping for {} entity: {} != {}",
-                    entity_type, v, entity_type
-                )))
-            }
-            _ => (),
-        }
-
         self.ctx
             .as_mut()
             .map(|ctx| &mut ctx.entity_operations)

@@ -11,8 +11,6 @@ pub enum APISchemaError {
     TypeExists(String),
     #[fail(display = "Type {} not found", _0)]
     TypeNotFound(String),
-    #[fail(display = "Type {} must not have a __typename field", _0)]
-    TypenameFieldExists(String),
 }
 
 /// Derives a full-fledged GraphQL API schema from an input schema.
@@ -32,7 +30,6 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_query_type(&mut schema, &object_types, &interface_types)?;
     add_subscription_type(&mut schema, &object_types, &interface_types)?;
-    add_typename_fields(&mut schema)?;
 
     Ok(schema)
 }
@@ -398,62 +395,6 @@ fn query_fields_for_type(_schema: &Document, type_name: &Name) -> Vec<Field> {
     ]
 }
 
-fn add_typename_fields(schema: &mut Document) -> Result<(), APISchemaError> {
-    for object_type in ast::get_object_type_definitions_mut(schema) {
-        add_typename_field_to_object_type(object_type)?;
-    }
-
-    for interface_type in ast::get_interface_type_definitions_mut(schema) {
-        add_typename_field_to_interface_type(interface_type)?;
-    }
-
-    Ok(())
-}
-
-fn add_typename_field_to_object_type(object_type: &mut ObjectType) -> Result<(), APISchemaError> {
-    // Fail if this type already has a __typename field
-    if ast::get_field_type(object_type, &String::from("__typename")).is_some() {
-        return Err(APISchemaError::TypenameFieldExists(
-            object_type.name.to_string(),
-        ));
-    }
-
-    // Add the __typename: String! field
-    object_type.fields.push(Field {
-        position: Pos::default(),
-        description: None,
-        name: String::from("__typename"),
-        arguments: vec![],
-        field_type: Type::NonNullType(Box::new(Type::NamedType(String::from("String")))),
-        directives: vec![],
-    });
-
-    Ok(())
-}
-
-fn add_typename_field_to_interface_type(
-    interface_type: &mut InterfaceType,
-) -> Result<(), APISchemaError> {
-    // Fail if this type already has a __typename field
-    if ast::get_interface_field_type(interface_type, &String::from("__typename")).is_some() {
-        return Err(APISchemaError::TypenameFieldExists(
-            interface_type.name.to_string(),
-        ));
-    }
-
-    // Add the __typename: String! field
-    interface_type.fields.push(Field {
-        position: Pos::default(),
-        description: None,
-        name: String::from("__typename"),
-        arguments: vec![],
-        field_type: Type::NonNullType(Box::new(Type::NamedType(String::from("String")))),
-        directives: vec![],
-    });
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use graphql_parser::schema::*;
@@ -721,35 +662,5 @@ mod tests {
                 .map(|name| name.to_string())
                 .collect::<Vec<String>>()
         );
-    }
-
-    #[test]
-    fn api_schema_contains_typename_fields_on_object_and_interface_types() {
-        let input_schema = parse_schema(
-            "
-            interface Node { id: ID!, name: String! }
-            type User implements Node { id: ID!, name: String!, email: String }
-            ",
-        ).expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
-
-        let is_typename_field = |field: &Field| {
-            field.name == String::from("__typename")
-                && field.field_type
-                    == Type::NonNullType(Box::new(Type::NamedType(String::from("String"))))
-        };
-
-        ast::get_object_type_definitions(&schema)
-            .iter()
-            .filter(|object_type| {
-                object_type.name != String::from("Query")
-                    && object_type.name != String::from("Subscription")
-            }).for_each(|object_type| assert!(object_type.fields.iter().any(is_typename_field)));
-
-        ast::get_interface_type_definitions(&schema)
-            .iter()
-            .for_each(|interface_type| {
-                assert!(interface_type.fields.iter().any(is_typename_field))
-            });
     }
 }
