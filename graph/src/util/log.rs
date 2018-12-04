@@ -5,7 +5,8 @@ use slog_async;
 use slog_envlogger;
 use slog_term;
 use std::sync::Mutex;
-use std::{env, panic};
+use std::time::{Duration, Instant};
+use std::{env, panic, process, thread};
 
 pub fn logger(show_debug: bool) -> Logger {
     let decorator = slog_term::TermDecorator::new().build();
@@ -75,14 +76,19 @@ pub fn register_panic_hook(
             }
         };
 
-        if let Ok(ref mut mutex) = shutdown_sender.lock() {
-            if let Some(sender) = mutex.take() {
-                sender
-                    .send(())
-                    .map(|_| ())
-                    .map_err(|_| ())
-                    .expect("Failed to signal shutdown")
-            }
-        };
+        // Send a shutdown signal to main which will attempt to cleanly shutdown the runtime
+        // After sending shutdown, the thread sleeps for 3 seconds then forces the process to
+        // exit because the shutdown is not always able to cleanly exit all workers
+        shutdown_sender
+            .lock()
+            .unwrap()
+            .take()
+            .expect("Shutdown signal already sent")
+            .send(())
+            .map(|_| ())
+            .map_err(|_| ())
+            .expect("Failed to signal shutdown");
+        thread::sleep(Duration::from_millis(3000));
+        process::exit(1);
     }));
 }
