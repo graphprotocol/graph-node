@@ -6,11 +6,10 @@ version = "0.4.1"
 ethabi = "6.0"
 futures = "0.1.21"
 hex = "0.3.2"
-nan-preserving-float = "0.1.0"
 graph = { path = "../../graph" }
 uuid = { version = "0.6", features = ["v4"] }
 tiny-keccak = "1.4.2"
-wasmi = "0.3"
+wasmi = "0.4"
 
 [dev-dependencies]
 graphql-parser = "0.2.0"
