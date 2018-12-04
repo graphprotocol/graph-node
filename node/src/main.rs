@@ -25,8 +25,6 @@ use std::env;
 use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::{env, process, thread};
-use url::Url;
 
 use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
@@ -62,6 +60,7 @@ fn main() {
     let timer = Timer::default();
     let timer_handle = timer.handle();
 
+    // Shutdown the runtime after a panic
     std::thread::spawn(|| {
         shutdown_receiver
             .wait()
@@ -70,8 +69,6 @@ fn main() {
                     .shutdown_now()
                     .wait()
                     .expect("Failed to shutdown Tokio Runtime");
-                thread::sleep(Duration::from_millis(3000));
-                process::exit(1)
             }).expect("Runtime shutdown process did not finish");
     });
 
@@ -508,7 +505,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             .expect("Failed to start GraphQL subscription server"),
     );
 
-    future::ok(())
+    future::empty()
 }
 
 /// Parses an Ethereum connection string and returns the network name and Ethereum node.
