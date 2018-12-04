@@ -1,10 +1,9 @@
 extern crate parity_wasm;
 
 use ethabi::Token;
-use nan_preserving_float::F32;
 use wasmi::{
-    self, ImportsBuilder, MemoryRef, ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals,
-    RuntimeValue, Signature,
+    self, nan_preserving_float::F32, ImportsBuilder, MemoryRef, ModuleImportResolver,
+    ModuleInstance, ModuleRef, NopExternals, RuntimeValue, Signature,
 };
 
 use graph::prelude::BigInt;

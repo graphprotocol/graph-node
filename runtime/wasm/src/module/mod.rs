@@ -1,12 +1,11 @@
 use failure::Error as FailureError;
-use nan_preserving_float::F64;
 use std::fmt;
 use std::ops::Deref;
 
 use wasmi::{
-    Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder, MemoryRef, Module,
-    ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs, RuntimeValue,
-    Signature, Trap, ValueType,
+    nan_preserving_float::F64, Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder,
+    MemoryRef, Module, ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs,
+    RuntimeValue, Signature, Trap, ValueType,
 };
 
 use graph::components::ethereum::*;
