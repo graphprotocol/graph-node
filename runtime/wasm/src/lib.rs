@@ -3,7 +3,6 @@ extern crate futures;
 extern crate graph;
 extern crate hex;
 extern crate tiny_keccak;
-extern crate uuid;
 extern crate wasmi;
 
 mod asc_abi;
