@@ -117,6 +117,25 @@ where
 
         let parsed_module = config.data_source.mapping.runtime.clone();
 
+        // Hack: AS currently puts all user imports in one module, in addition
+        // to the built-in "env" module. The name of that module is not fixed,
+        // to able able to infer the name we allow only one module with imports,
+        // with "env" being optional.
+        let mut user_modules: Vec<_> = parsed_module
+            .import_section()
+            .ok_or_else(|| err_msg("no import section"))?
+            .entries()
+            .into_iter()
+            .map(|import| import.module().to_owned())
+            .filter(|module| module != "env")
+            .collect();
+        user_modules.dedup();
+        let user_module = if user_modules.len() != 1 {
+            return Err(err_msg("WASM module has wrong number of import sections"));
+        } else {
+            user_modules.into_iter().next().unwrap()
+        };
+
         let module = Module::from_parity_wasm_module(parsed_module).map_err(|e| {
             format_err!(
                 "Wasmi could not interpret module of data source `{}`: {}",
@@ -128,7 +147,7 @@ where
         // Build import resolver
         let mut imports = ImportsBuilder::new();
         imports.push_resolver("env", &EnvModuleResolver);
-        imports.push_resolver("index", &ModuleResolver);
+        imports.push_resolver(user_module, &ModuleResolver);
 
         // Instantiate the runtime module using hosted functions and import resolver
         let module = ModuleInstance::new(&module, &imports)
@@ -578,18 +597,10 @@ where
 pub struct EnvModuleResolver;
 
 impl ModuleImportResolver for EnvModuleResolver {
-    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
+    fn resolve_func(&self, field_name: &str, signature: &Signature) -> Result<FuncRef, Error> {
         Ok(match field_name {
             "abort" => FuncInstance::alloc_host(
-                Signature::new(
-                    &[
-                        ValueType::I32,
-                        ValueType::I32,
-                        ValueType::I32,
-                        ValueType::I32,
-                    ][..],
-                    None,
-                ),
+                signature.clone(),
                 ABORT_FUNC_INDEX,
             ),
             _ => {
@@ -642,7 +653,7 @@ impl ModuleImportResolver for ModuleResolver {
             // json
             "json.fromBytes" => FuncInstance::alloc_host(signature, JSON_FROM_BYTES_FUNC_INDEX),
             "json.toI64" => FuncInstance::alloc_host(signature, JSON_TO_I64_FUNC_INDEX),
-            "json,toU64" => FuncInstance::alloc_host(signature, JSON_TO_U64_FUNC_INDEX),
+            "json.toU64" => FuncInstance::alloc_host(signature, JSON_TO_U64_FUNC_INDEX),
             "json.toF64" => FuncInstance::alloc_host(signature, JSON_TO_F64_FUNC_INDEX),
             "json.toBigInt" => FuncInstance::alloc_host(signature, JSON_TO_BIG_INT_FUNC_INDEX),
 
