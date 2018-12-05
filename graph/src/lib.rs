@@ -42,7 +42,7 @@ pub mod ext;
 /// use graph::prelude::*;
 /// ```
 pub mod prelude {
-    pub use failure::{self, bail, format_err, Error, Fail, SyncFailure};
+    pub use failure::{self, bail, err_msg, format_err, Error, Fail, SyncFailure};
     pub use serde_derive::{Deserialize, Serialize};
     pub use slog::{self, crit, debug, error, info, o, trace, warn, Logger};
     pub use std::fmt::Debug;
