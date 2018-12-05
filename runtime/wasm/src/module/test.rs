@@ -3,20 +3,16 @@ extern crate ipfs_api;
 extern crate parity_wasm;
 
 use self::graph_mock::FakeStore;
-use ethabi::{LogParam, Token};
+use ethabi::Token;
 use failure::Error;
 use futures::sync::mpsc::{channel, Sender};
 use graph::components::ethereum::*;
 use graph::components::store::*;
-use graph::components::subgraph::*;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
-use graph::util;
-use graph::web3::types::{Bytes, *};
+use graph::web3::types::*;
 use hex;
-use std::collections::HashMap;
 use std::io::Cursor;
-use std::iter::FromIterator;
 use std::str::FromStr;
 
 use super::*;
