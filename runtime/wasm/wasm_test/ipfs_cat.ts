@@ -1,6 +1,6 @@
 import "allocator/arena";
 
-export { allocate_memory };
+export { memory };
 
 declare namespace typeConversion {
     function bytesToString(bytes: Uint8Array): string

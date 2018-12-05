@@ -41,7 +41,7 @@ impl AscHeap for WasmiAscHeap {
         let address = self
             .module
             .invoke_export(
-                "allocate_memory",
+                "memory.allocate",
                 &[RuntimeValue::I32(bytes.len() as i32)],
                 &mut NopExternals,
             ).expect("Failed to invoke memory allocation function")
@@ -123,13 +123,7 @@ where
         // Build import resolver
         let mut imports = ImportsBuilder::new();
         imports.push_resolver("env", &EnvModuleResolver);
-        imports.push_resolver("store", &StoreModuleResolver);
-        imports.push_resolver("ethereum", &EthereumModuleResolver);
-        imports.push_resolver("typeConversion", &TypeConversionModuleResolver);
-        imports.push_resolver("json", &JsonModuleResolver);
-        imports.push_resolver("ipfs", &IpfsModuleResolver);
-        imports.push_resolver("crypto", &CryptoModuleResolver);
-        imports.push_resolver("bigInt", &BigIntModuleResolver);
+        imports.push_resolver("index", &ModuleResolver);
 
         // Instantiate the runtime module using hosted functions and import resolver
         let module =
@@ -603,196 +597,62 @@ impl ModuleImportResolver for EnvModuleResolver {
     }
 }
 
-/// Store module resolver
-pub struct StoreModuleResolver;
+pub struct ModuleResolver;
 
-impl ModuleImportResolver for StoreModuleResolver {
-    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
+impl ModuleImportResolver for ModuleResolver {
+    fn resolve_func(&self, field_name: &str, signature: &Signature) -> Result<FuncRef, Error> {
+        let signature = signature.clone();
         Ok(match field_name {
-            "set" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32, ValueType::I32][..], None),
-                STORE_SET_FUNC_INDEX,
-            ),
-            "remove" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32][..], None),
-                STORE_REMOVE_FUNC_INDEX,
-            ),
-            "get" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
-                STORE_GET_FUNC_INDEX,
-            ),
-            _ => {
-                return Err(Error::Instantiation(format!(
-                    "Export '{}' not found",
-                    field_name
-                )))
+            // store
+            "store.set" => FuncInstance::alloc_host(signature, STORE_SET_FUNC_INDEX),
+            "store.remove" => FuncInstance::alloc_host(signature, STORE_REMOVE_FUNC_INDEX),
+            "store.get" => FuncInstance::alloc_host(signature, STORE_GET_FUNC_INDEX),
+
+            // ethereum
+            "ethereum.call" => FuncInstance::alloc_host(signature, ETHEREUM_CALL_FUNC_INDEX),
+
+            // typeConversion
+            "typeConversion.bytesToString" => {
+                FuncInstance::alloc_host(signature, TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX)
             }
-        })
-    }
-}
-
-/// Ethereum module resolver
-pub struct EthereumModuleResolver;
-
-impl ModuleImportResolver for EthereumModuleResolver {
-    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
-        Ok(match field_name {
-            "call" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                ETHEREUM_CALL_FUNC_INDEX,
-            ),
-            _ => {
-                return Err(Error::Instantiation(format!(
-                    "Export '{}' not found",
-                    field_name
-                )))
+            "typeConversion.bytesToHex" => {
+                FuncInstance::alloc_host(signature, TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX)
             }
-        })
-    }
-}
-
-/// Types conversion module resolver
-pub struct TypeConversionModuleResolver;
-
-impl ModuleImportResolver for TypeConversionModuleResolver {
-    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
-        Ok(match field_name {
-            "bytesToString" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX,
-            ),
-            "bytesToHex" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX,
-            ),
-            "bigIntToString" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_BIG_INT_TO_STRING_FUNC_INDEX,
-            ),
-            "bigIntToHex" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_BIG_INT_TO_HEX_FUNC_INDEX,
-            ),
-            "stringToH160" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX,
-            ),
-            "i32ToBigInt" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX,
-            ),
-            "bigIntToI32" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX,
-            ),
-            _ => {
-                return Err(Error::Instantiation(format!(
-                    "Export '{}' not found",
-                    field_name
-                )))
+            "typeConversion.bigIntToString" => {
+                FuncInstance::alloc_host(signature, TYPE_CONVERSION_BIG_INT_TO_STRING_FUNC_INDEX)
             }
-        })
-    }
-}
-
-struct JsonModuleResolver;
-
-impl ModuleImportResolver for JsonModuleResolver {
-    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
-        Ok(match field_name {
-            "fromBytes" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                JSON_FROM_BYTES_FUNC_INDEX,
-            ),
-            "toI64" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I64)),
-                JSON_TO_I64_FUNC_INDEX,
-            ),
-            "toU64" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I64)),
-                JSON_TO_U64_FUNC_INDEX,
-            ),
-            "toF64" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::F64)),
-                JSON_TO_F64_FUNC_INDEX,
-            ),
-            "toBigInt" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                JSON_TO_BIG_INT_FUNC_INDEX,
-            ),
-            _ => {
-                return Err(Error::Instantiation(format!(
-                    "Export '{}' not found",
-                    field_name
-                )))
+            "typeConversion.bigIntToHex" => {
+                FuncInstance::alloc_host(signature, TYPE_CONVERSION_BIG_INT_TO_HEX_FUNC_INDEX)
             }
-        })
-    }
-}
-
-struct IpfsModuleResolver;
-
-impl ModuleImportResolver for IpfsModuleResolver {
-    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
-        Ok(match field_name {
-            "cat" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                IPFS_CAT_FUNC_INDEX,
-            ),
-            _ => {
-                return Err(Error::Instantiation(format!(
-                    "Export '{}' not found",
-                    field_name
-                )))
+            "typeConversion.stringToH160" => {
+                FuncInstance::alloc_host(signature, TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX)
             }
-        })
-    }
-}
-
-struct CryptoModuleResolver;
-
-impl ModuleImportResolver for CryptoModuleResolver {
-    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
-        Ok(match field_name {
-            "keccak256" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32][..], Some(ValueType::I32)),
-                CRYPTO_KECCAK_256_INDEX,
-            ),
-            _ => {
-                return Err(Error::Instantiation(format!(
-                    "Export '{}' not found",
-                    field_name
-                )))
+            "typeConversion.i32ToBigInt" => {
+                FuncInstance::alloc_host(signature, TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX)
             }
-        })
-    }
-}
+            "typeConversion.bigIntToI32" => {
+                FuncInstance::alloc_host(signature, TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX)
+            }
 
-struct BigIntModuleResolver;
+            // json
+            "json.fromBytes" => FuncInstance::alloc_host(signature, JSON_FROM_BYTES_FUNC_INDEX),
+            "json.toI64" => FuncInstance::alloc_host(signature, JSON_TO_I64_FUNC_INDEX),
+            "json,toU64" => FuncInstance::alloc_host(signature, JSON_TO_U64_FUNC_INDEX),
+            "json.toF64" => FuncInstance::alloc_host(signature, JSON_TO_F64_FUNC_INDEX),
+            "json.toBigInt" => FuncInstance::alloc_host(signature, JSON_TO_BIG_INT_FUNC_INDEX),
 
-impl ModuleImportResolver for BigIntModuleResolver {
-    fn resolve_func(&self, field_name: &str, _signature: &Signature) -> Result<FuncRef, Error> {
-        Ok(match field_name {
-            "plus" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
-                BIG_INT_PLUS,
-            ),
-            "minus" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
-                BIG_INT_MINUS,
-            ),
-            "times" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
-                BIG_INT_TIMES,
-            ),
-            "dividedBy" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
-                BIG_INT_DIVIDED_BY,
-            ),
-            "mod" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32, ValueType::I32][..], Some(ValueType::I32)),
-                BIG_INT_MOD,
-            ),
+            // ipfs
+            "ipfs.cat" => FuncInstance::alloc_host(signature, IPFS_CAT_FUNC_INDEX),
+
+            // crypto
+            "crypto.keccak256" => FuncInstance::alloc_host(signature, CRYPTO_KECCAK_256_INDEX),
+
+            // bigInt
+            "bigInt.plus" => FuncInstance::alloc_host(signature, BIG_INT_PLUS),
+            "bigInt.minus" => FuncInstance::alloc_host(signature, BIG_INT_MINUS),
+            "bigInt.times" => FuncInstance::alloc_host(signature, BIG_INT_TIMES),
+            "bigInt.dividedBy" => FuncInstance::alloc_host(signature, BIG_INT_DIVIDED_BY),
+            "bigInt.mod" => FuncInstance::alloc_host(signature, BIG_INT_MOD),
             _ => {
                 return Err(Error::Instantiation(format!(
                     "Export '{}' not found",

@@ -1,17 +1,17 @@
 import "allocator/arena";
 
-export { allocate_memory };
+export { memory };
 
 enum TokenKind {
-    ADDRESS,
-    FIXED_BYTES,
-    BYTES,
-    INT,
-    UINT,
-    BOOL,
-    STRING,
-    FIXED_ARRAY,
-    ARRAY
+    ADDRESS = 0,
+    FIXED_BYTES = 1,
+    BYTES = 2,
+    INT = 3,
+    UINT = 4,
+    BOOL = 5,
+    STRING = 6,
+    FIXED_ARRAY = 7,
+    ARRAY = 8
 }
 
 type Payload = u64
