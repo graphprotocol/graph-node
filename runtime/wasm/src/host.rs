@@ -172,7 +172,8 @@ impl RuntimeHost {
             };
 
             // Start the mapping as a WASM module
-            let mut module = WasmiModule::new(&module_logger, wasmi_config, task_sender);
+            let mut module = WasmiModule::new(&module_logger, wasmi_config, task_sender)
+                .expect("Failed to load module");
 
             // Pass incoming events to the WASM module and send entity changes back;
             // stop when cancelled from the outside
