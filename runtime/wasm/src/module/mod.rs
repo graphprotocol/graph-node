@@ -4,7 +4,7 @@ use std::ops::Deref;
 use wasmi::{
     nan_preserving_float::F64, Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder,
     MemoryRef, Module, ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs,
-    RuntimeValue, Signature, Trap, ValueType,
+    RuntimeValue, Signature, Trap,
 };
 
 use graph::components::ethereum::*;
@@ -599,10 +599,7 @@ pub struct EnvModuleResolver;
 impl ModuleImportResolver for EnvModuleResolver {
     fn resolve_func(&self, field_name: &str, signature: &Signature) -> Result<FuncRef, Error> {
         Ok(match field_name {
-            "abort" => FuncInstance::alloc_host(
-                signature.clone(),
-                ABORT_FUNC_INDEX,
-            ),
+            "abort" => FuncInstance::alloc_host(signature.clone(), ABORT_FUNC_INDEX),
             _ => {
                 return Err(Error::Instantiation(format!(
                     "Export '{}' not found",

@@ -113,9 +113,7 @@ pub(crate) struct TypedArray<T> {
     pub buffer: AscPtr<ArrayBuffer<T>>,
     /// Byte position in `buffer` of the array start.
     byte_offset: u32,
-    /// Byte position in `buffer` of the array end, which is 1 byte past the
-    /// last byte of the payload. Called `byteLength` in Asc.
-    end_byte: u32,
+    byte_length: u32,
 }
 
 impl<T: AscValue> TypedArray<T> {
@@ -124,15 +122,14 @@ impl<T: AscValue> TypedArray<T> {
         TypedArray {
             buffer: AscPtr::alloc_obj(&buffer, heap),
             byte_offset: 0,
-            end_byte: buffer.byte_length,
+            byte_length: buffer.byte_length,
         }
     }
 
     pub(crate) fn to_vec<H: AscHeap>(&self, heap: &H) -> Vec<T> {
-        self.buffer.read_ptr(heap).get(
-            self.byte_offset,
-            (self.end_byte - self.byte_offset) / size_of::<T>() as u32,
-        )
+        self.buffer
+            .read_ptr(heap)
+            .get(self.byte_offset, self.byte_length / size_of::<T>() as u32)
     }
 }
 
