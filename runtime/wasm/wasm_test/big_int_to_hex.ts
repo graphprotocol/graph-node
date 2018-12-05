@@ -1,6 +1,6 @@
 import "allocator/arena";
 
-export { allocate_memory };
+export { memory };
 
 declare namespace typeConversion {
     function bigIntToHex(n: Uint8Array): String

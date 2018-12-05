@@ -1,6 +1,6 @@
 import "allocator/arena";
 
-export { allocate_memory };
+export { memory };
 
 declare namespace crypto {
     function keccak256(input: Uint8Array): Uint8Array

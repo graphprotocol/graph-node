@@ -1,6 +1,6 @@
 import "allocator/arena";
 
-export { allocate_memory };
+export { memory };
 
 type BigInt = Uint8Array;
 

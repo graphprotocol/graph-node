@@ -1,16 +1,16 @@
 import "allocator/arena";
 
-export { allocate_memory, free_memory };
+export { memory };
 
 enum ValueKind {
-    STRING,
-    INT,
-    FLOAT,
-    BOOL,
-    ARRAY,
-    NULL,
-    BYTES,
-    BIG_INT,
+    STRING = 0,
+    INT = 1,
+    FLOAT = 2,
+    BOOL = 3,
+    ARRAY = 4,
+    NULL = 5,
+    BYTES = 6,
+    BIG_INT = 7,
 }
 
 // Big enough to fit any pointer or native `this.data`.

@@ -113,7 +113,7 @@ impl AscHeap for TestModule {
         let addr = self
             .module
             .invoke_export(
-                "allocate_memory",
+                "memory.allocate",
                 &[RuntimeValue::I32(bytes.len() as i32)],
                 &mut NopExternals,
             ).expect("call failed")

@@ -1,6 +1,6 @@
 import "allocator/arena";
 
-export { allocate_memory };
+export { memory };
 
 // Sequence of 20 `u8`s.
 type Address = Uint8Array;
@@ -13,15 +13,15 @@ type Int = Uint64Array;
 type Uint = Uint64Array;
 
 enum TokenKind {
-    ADDRESS,
-    FIXED_BYTES,
-    BYTES,
-    INT,
-    UINT,
-    BOOL,
-    STRING,
-    FIXED_ARRAY,
-    ARRAY
+    ADDRESS = 0,
+    FIXED_BYTES = 1,
+    BYTES = 2,
+    INT = 3,
+    UINT = 4,
+    BOOL = 5,
+    STRING = 6,
+    FIXED_ARRAY = 7,
+    ARRAY = 8
 }
 
 // Big enough to fit any pointer or native this.data.

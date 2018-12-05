@@ -1,6 +1,6 @@
 import "allocator/arena";
 
-export { allocate_memory };
+export { memory };
 
 // Sequence of 20 `u8`s.
 type Address = Uint8Array;
