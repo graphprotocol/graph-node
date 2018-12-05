@@ -99,7 +99,7 @@ fn test_module(
             store: Arc::new(FakeStore),
         },
         task_sender,
-    )
+    ).unwrap()
 }
 
 fn mock_data_source(path: &str) -> DataSource {

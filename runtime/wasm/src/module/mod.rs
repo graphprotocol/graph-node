@@ -1,4 +1,3 @@
-use failure::Error as FailureError;
 use std::fmt;
 use std::ops::Deref;
 
@@ -11,7 +10,7 @@ use wasmi::{
 use graph::components::ethereum::*;
 use graph::data::subgraph::DataSource;
 use graph::ethabi::LogParam;
-use graph::prelude::*;
+use graph::prelude::{Error as FailureError, *};
 use graph::web3::types::{Log, U256};
 use host_exports;
 use EventHandlerContext;
@@ -109,16 +108,22 @@ where
     U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + 'static,
 {
     /// Creates a new wasmi module
-    pub fn new(logger: &Logger, config: WasmiModuleConfig<T, L, S>, task_sink: U) -> Self {
+    pub fn new(
+        logger: &Logger,
+        config: WasmiModuleConfig<T, L, S>,
+        task_sink: U,
+    ) -> Result<Self, FailureError> {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
-        let module = Module::from_parity_wasm_module(config.data_source.mapping.runtime.clone())
-            .unwrap_or_else(|_| {
-                panic!(
-                    "Wasmi could not interpret module of data source: {}",
-                    config.data_source.name
-                )
-            });
+        let parsed_module = config.data_source.mapping.runtime.clone();
+
+        let module = Module::from_parity_wasm_module(parsed_module).map_err(|e| {
+            format_err!(
+                "Wasmi could not interpret module of data source `{}`: {}",
+                config.data_source.name,
+                e
+            )
+        })?;
 
         // Build import resolver
         let mut imports = ImportsBuilder::new();
@@ -126,16 +131,16 @@ where
         imports.push_resolver("index", &ModuleResolver);
 
         // Instantiate the runtime module using hosted functions and import resolver
-        let module =
-            ModuleInstance::new(&module, &imports).expect("Failed to instantiate WASM module");
+        let module = ModuleInstance::new(&module, &imports)
+            .map_err(|e| format_err!("Failed to instantiate WASM module: {}", e))?;
 
         // Provide access to the WASM runtime linear memory
         let not_started_module = module.not_started_instance().clone();
         let memory = not_started_module
             .export_by_name("memory")
-            .expect("Failed to find memory export in the WASM module")
+            .ok_or_else(|| format_err!("Failed to find memory export in the WASM module"))?
             .as_memory()
-            .expect("Export \"memory\" has an invalid type")
+            .ok_or_else(|| format_err!("Export \"memory\" has an invalid type"))?
             .clone();
 
         // Create a AssemblyScript-compatible WASM memory heap
@@ -157,14 +162,14 @@ where
 
         let module = module
             .run_start(&mut externals)
-            .expect("Failed to start WASM module instance");
+            .map_err(|e| format_err!("Failed to start WASM module instance: {}", e))?;
 
-        WasmiModule {
+        Ok(WasmiModule {
             logger,
             module,
             externals,
             heap,
-        }
+        })
     }
 
     pub(crate) fn handle_ethereum_event(
