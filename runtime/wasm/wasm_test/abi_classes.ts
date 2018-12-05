@@ -50,11 +50,11 @@ export function concat(bytes1: Bytes, bytes2: FixedBytes): Bytes {
   let bytes2_start = load<usize>(changetype<usize>(bytes2)) + array_buffer_header_size;
 
   // Move bytes1.
-  move_memory(concated_offset, bytes1_start, bytes1.byteLength);
+  memory.copy(concated_offset, bytes1_start, bytes1.byteLength);
   concated_offset += bytes1.byteLength
 
   // Move bytes2.
-  move_memory(concated_offset, bytes2_start, bytes2.byteLength);
+  memory.copy(concated_offset, bytes2_start, bytes2.byteLength);
 
   let new_typed_array = new Uint8Array(concated.byteLength);
   store<usize>(changetype<usize>(new_typed_array), changetype<usize>(concated));
