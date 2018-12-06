@@ -455,3 +455,13 @@ fn big_int_arithmetic() {
     let result: BigInt = module.heap.asc_get(result_ptr);
     assert_eq!(result, BigInt::from(1));
 }
+
+#[test]
+fn abort() {
+    let mut module = test_module(mock_data_source("wasm_test/abort.wasm"));
+    let err = module
+        .module
+        .invoke_export("abort", &[], &mut module.externals)
+        .unwrap_err();
+    assert_eq!(err.to_string(), "Trap: Trap { kind: Host(HostExportError(\"Mapping aborted at abort.ts, line 7, column 2, with message: not true\")) }");
+}
