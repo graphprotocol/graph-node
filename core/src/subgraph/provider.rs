@@ -1,9 +1,10 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use graph::data::subgraph::schema::{SubgraphEntity, SUBGRAPHS_ID};
-use graph::prelude::{SubgraphProvider as SubgraphProviderTrait, *};
 use std::collections::HashSet;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use graph::data::subgraph::schema::{SubgraphEntity, SUBGRAPHS_ID};
+use graph::prelude::{SubgraphProvider as SubgraphProviderTrait, *};
 
 pub struct SubgraphProvider<L, S> {
     logger: Logger,
@@ -19,6 +20,7 @@ pub struct SubgraphProvider<L, S> {
 impl<L, S> SubgraphProvider<L, S>
 where
     L: LinkResolver,
+    S: Store,
 {
     pub fn new(logger: Logger, resolver: Arc<L>, store: Arc<S>) -> Self {
         let (schema_event_sink, schema_event_stream) = channel(100);
@@ -36,10 +38,7 @@ where
             store,
         };
 
-        provider.send_builtin_schema(
-            &include_str!("subgraphs.graphql"),
-            SubgraphId::new(SUBGRAPHS_ID).unwrap(),
-        );
+        provider.send_builtin_schema(&include_str!("subgraphs.graphql"), SUBGRAPHS_ID.clone());
 
         provider
     }
@@ -140,21 +139,21 @@ where
                     }
 
                     // Place subgraph info into store
-                    SubgraphEntity::new(
-                        &subgraph,
-                        SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                    )
-                    .write_to_store(&*self_clone.store)
-                    .map_err(|err| {
-                        error!(
-                            self_clone.logger,
-                            "Failed to write subgraph to store: {}", err
-                        )
-                    })
-                    .ok();
+                    let created_at = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    let entity_ops = SubgraphEntity::new(&subgraph, created_at).write_operations();
+                    self_clone
+                        .store
+                        .apply_entity_operations(entity_ops, EventSource::None)
+                        .map_err(|err| {
+                            error!(
+                                self_clone.logger,
+                                "Failed to write subgraph to store: {}", err
+                            )
+                        })
+                        .ok();
 
                     // Send events to trigger subgraph processing
                     Box::new(self_clone.send_add_events(subgraph).from_err())

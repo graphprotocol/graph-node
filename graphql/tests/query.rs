@@ -147,7 +147,11 @@ impl Store for TestStore {
         unimplemented!()
     }
 
-    fn apply_set_operation(&self, _: EntityOperation, _: String) -> Result<(), Error> {
+    fn apply_entity_operations(
+        &self,
+        _: Vec<EntityOperation>,
+        _: EventSource,
+    ) -> Result<(), Error> {
         unimplemented!()
     }
 

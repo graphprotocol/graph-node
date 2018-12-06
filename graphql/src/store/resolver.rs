@@ -198,7 +198,7 @@ where
         mut entity: Entity,
         object_type: &s::ObjectType,
     ) -> Result<Entity, QueryExecutionError> {
-        if parse_subgraph_id(object_type)? == SubgraphId::new(SUBGRAPHS_ID).unwrap()
+        if parse_subgraph_id(object_type)? == *SUBGRAPHS_ID
             && object_type.name == SUBGRAPH_ENTITY_TYPENAME
         {
             let id = match entity["id"].clone() {

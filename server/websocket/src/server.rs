@@ -111,7 +111,7 @@ where
         };
 
         match path_segments.as_slice() {
-            &["subgraphs"] => Ok(SubgraphId::new(SUBGRAPHS_ID).unwrap()),
+            &["subgraphs"] => Ok(SUBGRAPHS_ID.clone()),
             &["subgraphs", "id", subgraph_id] => SubgraphId::new(subgraph_id),
             &["subgraphs", "name", subgraph_name] => SubgraphDeploymentName::new(subgraph_name)
                 .map(|subgraph_name| {
