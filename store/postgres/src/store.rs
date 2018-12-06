@@ -300,26 +300,16 @@ impl Store {
         }
     }
 
-    /// Applies a set operation with the given block as the event source.
-    fn apply_set_operation_with_block(
-        &self,
-        conn: &PgConnection,
-        operation: EntityOperation,
-        block_ptr_to: EthereumBlockPointer,
-    ) -> Result<(), Error> {
-        self.apply_set_operation_with_conn(conn, operation, &block_ptr_to.hash_hex())
-    }
-
     /// Applies a set operation in Postgres.
-    fn apply_set_operation_with_conn(
+    fn apply_set_operation(
         &self,
         conn: &PgConnection,
         operation: EntityOperation,
-        op_event_source: &str,
+        op_event_source: EventSource,
     ) -> Result<(), Error> {
-        use db_schema::entities::dsl::*;
-
         assert!(operation.is_set());
+
+        use db_schema::entities::dsl::*;
 
         let EntityKey {
             subgraph_id: op_subgraph_id,
@@ -351,7 +341,7 @@ impl Store {
                 entity.eq(op_entity_type),
                 subgraph.eq(op_subgraph_id.to_string()),
                 data.eq(&updated_json),
-                event_source.eq(op_event_source),
+                event_source.eq(op_event_source.to_string()),
             ))
             .on_conflict((id, entity, subgraph))
             .do_update()
@@ -360,7 +350,7 @@ impl Store {
                 entity.eq(op_entity_type),
                 subgraph.eq(op_subgraph_id.to_string()),
                 data.eq(&updated_json),
-                event_source.eq(op_event_source),
+                event_source.eq(op_event_source.to_string()),
             ))
             .execute(conn)
             .map(|_| ())
@@ -380,7 +370,7 @@ impl Store {
         &self,
         conn: &PgConnection,
         operation: EntityOperation,
-        block_ptr_to: EthereumBlockPointer,
+        op_event_source: EventSource,
     ) -> Result<(), Error> {
         use db_schema::entities::dsl::*;
 
@@ -392,7 +382,7 @@ impl Store {
 
         select(set_config(
             "vars.current_event_source",
-            block_ptr_to.hash_hex(),
+            op_event_source.to_string(),
             true,
         ))
         .execute(conn)
@@ -423,27 +413,25 @@ impl Store {
         &self,
         conn: &PgConnection,
         operation: EntityOperation,
-        block_ptr_to: EthereumBlockPointer,
+        event_source: EventSource,
     ) -> Result<(), Error> {
         match operation {
-            EntityOperation::Set { .. } => {
-                self.apply_set_operation_with_block(conn, operation, block_ptr_to)
-            }
+            EntityOperation::Set { .. } => self.apply_set_operation(conn, operation, event_source),
             EntityOperation::Remove { .. } => {
-                self.apply_remove_operation(conn, operation, block_ptr_to)
+                self.apply_remove_operation(conn, operation, event_source)
             }
         }
     }
 
     /// Apply a series of entity operations in Postgres.
-    fn apply_entity_operations(
+    fn apply_entity_operations_with_conn(
         &self,
         conn: &PgConnection,
         operations: Vec<EntityOperation>,
-        block_ptr_to: EthereumBlockPointer,
+        event_source: EventSource,
     ) -> Result<(), Error> {
         for operation in operations.into_iter() {
-            self.apply_entity_operation(conn, operation, block_ptr_to)?;
+            self.apply_entity_operation(conn, operation, event_source)?;
         }
         Ok(())
     }
@@ -615,25 +603,32 @@ impl StoreTrait for Store {
             panic!("transact_block_operations must transact a single block only");
         }
 
+        // All operations should apply only to entities in this subgraph
+        for op in &operations {
+            if op.entity_key().subgraph_id != subgraph_id {
+                panic!("transact_block_operations must affect only entities in the subgraph");
+            }
+        }
+
         // Fold the operations of each entity into a single one
         let operations = EntityOperation::fold(&operations);
 
         let conn = self.conn.lock().unwrap();
 
-        conn.transaction::<(), _, _>(|| {
-            self.apply_entity_operations(&*conn, operations, block_ptr_to)?;
+        conn.transaction(|| {
+            let event_source = EventSource::EthereumBlock(block_ptr_to);
+            self.apply_entity_operations_with_conn(&*conn, operations, event_source)?;
             self.update_subgraph_block_pointer(&*conn, subgraph_id, block_ptr_from, block_ptr_to)
         })
     }
 
-    /// Sets an entity.
-    fn apply_set_operation(
+    fn apply_entity_operations(
         &self,
-        operation: EntityOperation,
-        op_event_source: String,
+        operations: Vec<EntityOperation>,
+        event_source: EventSource,
     ) -> Result<(), Error> {
         let conn = self.conn.lock().unwrap();
-        self.apply_set_operation_with_conn(&conn, operation, &op_event_source)
+        conn.transaction(|| self.apply_entity_operations_with_conn(&conn, operations, event_source))
     }
 
     fn revert_block_operations(

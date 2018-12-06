@@ -3,6 +3,8 @@ pub extern crate ethabi;
 extern crate futures;
 extern crate graphql_parser;
 extern crate hex;
+#[macro_use]
+extern crate lazy_static;
 extern crate num_bigint;
 extern crate serde;
 #[macro_use]
@@ -62,7 +64,7 @@ pub mod prelude {
     pub use components::server::subscription::SubscriptionServer;
     pub use components::store::{
         ChainStore, EntityChange, EntityChangeOperation, EntityChangeStream, EntityFilter,
-        EntityKey, EntityOperation, EntityOrder, EntityQuery, EntityRange, Store,
+        EntityKey, EntityOperation, EntityOrder, EntityQuery, EntityRange, EventSource, Store,
         SubgraphDeploymentStore,
     };
     pub use components::subgraph::{

@@ -1,6 +1,7 @@
 use failure::Error;
 use futures::Future;
 use futures::Stream;
+use std::fmt;
 use web3::types::H256;
 
 use data::store::*;
@@ -232,6 +233,21 @@ impl EntityOperation {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum EventSource {
+    None,
+    EthereumBlock(EthereumBlockPointer),
+}
+
+impl fmt::Display for EventSource {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            EventSource::None => f.write_str("none"),
+            EventSource::EthereumBlock(block_ptr) => f.write_str(&block_ptr.hash_hex()),
+        }
+    }
+}
+
 /// Common trait for store implementations.
 pub trait Store: Send + Sync + 'static {
     /// Register a new subgraph ID in the store, and initialize the subgraph's block pointer to the
@@ -276,11 +292,11 @@ pub trait Store: Send + Sync + 'static {
         operations: Vec<EntityOperation>,
     ) -> Result<(), Error>;
 
-    /// For operations that are not tied to a block.
-    fn apply_set_operation(
+    /// Apply the specified entity operations
+    fn apply_entity_operations(
         &self,
-        operation: EntityOperation,
-        op_event_source: String,
+        operations: Vec<EntityOperation>,
+        event_source: EventSource,
     ) -> Result<(), Error>;
 
     /// Revert the entity changes from a single block atomically in the store, and update the
