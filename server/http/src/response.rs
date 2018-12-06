@@ -65,6 +65,7 @@ impl Future for GraphQLResponse {
             .status(status_code)
             .header("Access-Control-Allow-Origin", "*")
             .header("Access-Control-Allow-Headers", "Content-Type")
+            .header("Access-Control-Allow-Methods", "GET, OPTIONS, POST")
             .body(Body::from(json))
             .unwrap();
         Ok(Async::Ready(response))
