@@ -133,10 +133,10 @@
              });
          }
 
-         let wsProtocl = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-         let wsHostname = window.lcoation.hostname
+         let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+         let wsHostname = window.location.hostname
          let wsPath = window.location.pathname.replace(/^\//, '')
-         let wsUrl = `${wsProtocol}//${wsHostname}:__WS__PORT__/${wsPath}`
+         let wsUrl = `${wsProtocol}//${wsHostname}:__WS_PORT__/${wsPath}`
          var subscriptionsClient = new window.SubscriptionsTransportWs.SubscriptionClient(
              wsUrl, { reconnect: true }
          );
