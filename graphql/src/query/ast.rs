@@ -17,7 +17,8 @@ pub fn get_operation<'a>(
             .find(|op| match get_operation_name(op) {
                 Some(n) => s == n,
                 None => false,
-            }).ok_or_else(|| QueryExecutionError::OperationNotFound(s.to_string())),
+            })
+            .ok_or_else(|| QueryExecutionError::OperationNotFound(s.to_string())),
         _ => Err(QueryExecutionError::OperationNameRequired),
     }
 }
@@ -30,7 +31,8 @@ pub fn get_operations(document: &Document) -> Vec<&OperationDefinition> {
         .map(|d| match d {
             Definition::Operation(op) => Some(op),
             _ => None,
-        }).filter(|op| op.is_some())
+        })
+        .filter(|op| op.is_some())
         .map(|op| op.unwrap())
         .collect()
 }
@@ -102,5 +104,6 @@ pub fn get_fragment<'a>(document: &'a Document, name: &Name) -> Option<&'a Fragm
         .filter_map(|d| match d {
             Definition::Fragment(fd) => Some(fd),
             _ => None,
-        }).find(|fd| &fd.name == name)
+        })
+        .find(|fd| &fd.name == name)
 }

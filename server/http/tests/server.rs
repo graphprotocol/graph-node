@@ -31,7 +31,8 @@ impl GraphQlRunner for TestGraphQlRunner {
                 vec![(
                     String::from("name"),
                     q::Value::String(String::from("Jordi")),
-                )].into_iter(),
+                )]
+                .into_iter(),
             ),
         )))))
     }
@@ -89,12 +90,14 @@ mod test {
                         let request = Request::post(format!(
                             "http://localhost:8001/subgraphs/id/{}/graphql",
                             id
-                        )).body(Body::from("{}"))
+                        ))
+                        .body(Body::from("{}"))
                         .unwrap();
 
                         // The response must be a query error
                         client.request(request)
-                    }).and_then(|response| {
+                    })
+                    .and_then(|response| {
                         let errors =
                             test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
 
@@ -108,7 +111,8 @@ mod test {
                         assert_eq!(message, "The \"query\" field missing in request data");
                         Ok(())
                     })
-            })).unwrap()
+            }))
+            .unwrap()
     }
 
     #[test]
@@ -147,12 +151,14 @@ mod test {
                         let request = Request::post(format!(
                             "http://localhost:8002/subgraphs/id/{}/graphql",
                             id
-                        )).body(Body::from("{\"query\": \"<L<G<>M>\"}"))
+                        ))
+                        .body(Body::from("{\"query\": \"<L<G<>M>\"}"))
                         .unwrap();
 
                         // The response must be a query error
                         client.request(request)
-                    }).and_then(|response| {
+                    })
+                    .and_then(|response| {
                         let errors =
                             test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
 
@@ -200,7 +206,8 @@ mod test {
                         assert_eq!(column, 1);
                         Ok(())
                     })
-            })).unwrap()
+            }))
+            .unwrap()
     }
 
     #[test]
@@ -239,12 +246,14 @@ mod test {
                         let request = Request::post(format!(
                             "http://localhost:8003/subgraphs/id/{}/graphql",
                             id
-                        )).body(Body::from("{\"query\": \"{ name }\"}"))
+                        ))
+                        .body(Body::from("{\"query\": \"{ name }\"}"))
                         .unwrap();
 
                         // The response must be a 200
                         client.request(request)
-                    }).and_then(|response| {
+                    })
+                    .and_then(|response| {
                         let data = test_utils::assert_successful_response(response);
 
                         // The JSON response should match the simulated query result
@@ -257,6 +266,7 @@ mod test {
 
                         Ok(())
                     })
-            })).unwrap()
+            }))
+            .unwrap()
     }
 }

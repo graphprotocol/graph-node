@@ -455,7 +455,8 @@ where
                                 ctx.subgraph_id.clone(),
                                 subgraph_ptr,
                                 parent_ptr,
-                            ).map_err(Error::from)
+                            )
+                            .map_err(Error::from)
                             .map(|()| {
                                 // At this point, the loop repeats, and we try to move the subgraph ptr another
                                 // step in the right direction.
@@ -476,7 +477,8 @@ where
                         ctx.subgraph_id.clone(),
                         from,
                         to,
-                    )).map(|()| ReconciliationStepOutcome::MoreSteps),
+                    ))
+                    .map(|()| ReconciliationStepOutcome::MoreSteps),
                 )
             }
             ReconciliationStep::ProcessDescendantBlocks {
@@ -510,7 +512,8 @@ where
                                     ctx.subgraph_id.clone(),
                                     subgraph_ptr,
                                     descendant_parent_ptr,
-                                ).unwrap();
+                                )
+                                .unwrap();
                         }
 
                         // Update our copy of the subgraph ptr to reflect the
@@ -556,7 +559,8 @@ where
                     .map(|block_hash| ctx.load_block(block_hash));
 
                 stream::futures_ordered(block_futures)
-            }).flatten()
+            })
+            .flatten()
     }
 
     fn load_block(
@@ -583,7 +587,8 @@ where
                                         block_hash
                                     )
                                 })
-                            }).and_then(move |block| {
+                            })
+                            .and_then(move |block| {
                                 // Cache in store for later
                                 ctx.chain_store
                                     .upsert_blocks(stream::once(Ok(block.clone())))
@@ -601,7 +606,8 @@ where
     S: Store,
     C: ChainStore,
     E: EthereumAdapter,
-{}
+{
+}
 
 impl<S, C, E> Stream for BlockStream<S, C, E>
 where
@@ -883,5 +889,6 @@ fn create_log_filter_from_subgraph(manifest: &SubgraphManifest) -> EthereumLogFi
                     let event_sig = string_to_h256(&event_handler.event);
                     (contract_addr, event_sig)
                 })
-        }).collect::<EthereumLogFilter>()
+        })
+        .collect::<EthereumLogFilter>()
 }

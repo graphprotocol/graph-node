@@ -75,7 +75,8 @@ impl Store for MockStore {
                         Value::String(ref s) => s == &key.entity_id,
                         _ => false,
                     }
-                }).map(|entity| Some(entity.clone()))
+                })
+                .map(|entity| Some(entity.clone()))
                 .ok_or_else(|| unimplemented!())
         } else {
             unimplemented!()
@@ -151,7 +152,8 @@ impl SubgraphDeploymentStore for MockStore {
                 } else {
                     None
                 }
-            }).collect())
+            })
+            .collect())
     }
 
     fn write(
@@ -249,7 +251,8 @@ impl SubgraphDeploymentStore for MockStore {
                 .filter(move |event| match event {
                     DeploymentEvent::Add { node_id, .. } => *node_id == by_node_id,
                     DeploymentEvent::Remove { node_id, .. } => *node_id == by_node_id,
-                }).map_err(|()| format_err!("receiver error")),
+                })
+                .map_err(|()| format_err!("receiver error")),
         )
     }
 }

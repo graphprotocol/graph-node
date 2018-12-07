@@ -116,7 +116,8 @@ where
 
             // Run test
             test(store.clone())
-        })).expect("Failed to run Store test");
+        }))
+        .expect("Failed to run Store test");
 }
 
 /// Inserts test data into the store.
@@ -143,7 +144,8 @@ fn insert_test_data(store: Arc<DieselStore>) {
             *TEST_BLOCK_0_PTR,
             *TEST_BLOCK_1_PTR,
             vec![test_entity_1],
-        ).unwrap();
+        )
+        .unwrap();
 
     let test_entity_2 = create_test_entity(
         "2",
@@ -169,7 +171,8 @@ fn insert_test_data(store: Arc<DieselStore>) {
             *TEST_BLOCK_1_PTR,
             *TEST_BLOCK_2_PTR,
             vec![test_entity_2, test_entity_3_1],
-        ).unwrap();
+        )
+        .unwrap();
 
     let test_entity_3_2 = create_test_entity(
         "3",
@@ -186,7 +189,8 @@ fn insert_test_data(store: Arc<DieselStore>) {
             *TEST_BLOCK_2_PTR,
             *TEST_BLOCK_3_PTR,
             vec![test_entity_3_2],
-        ).unwrap();
+        )
+        .unwrap();
 }
 
 /// Creates a test entity.
@@ -256,7 +260,8 @@ fn delete_entity() {
                         entity_id: "3".to_owned(),
                     },
                 }],
-            ).unwrap();
+            )
+            .unwrap();
 
         // Get all ids in table
         let all_ids = entities
@@ -321,7 +326,8 @@ fn insert_entity() {
                 *TEST_BLOCK_3_PTR,
                 *TEST_BLOCK_4_PTR,
                 vec![test_entity],
-            ).unwrap();
+            )
+            .unwrap();
 
         // Check that new record is in the store
         let all_ids = entities
@@ -367,7 +373,8 @@ fn update_existing() {
                 *TEST_BLOCK_3_PTR,
                 *TEST_BLOCK_4_PTR,
                 vec![op],
-            ).unwrap();
+            )
+            .unwrap();
 
         // Verify that the entity in the store has changed to what we have set.
         let bin_name = match new_data.get("bin_name") {
@@ -411,7 +418,8 @@ fn partially_update_existing() {
                     key: entity_key.clone(),
                     data: partial_entity.clone(),
                 }],
-            ).unwrap();
+            )
+            .unwrap();
 
         // Obtain the updated entity from the store
         let updated_entity = store.get(entity_key).unwrap().expect("entity not found");
@@ -446,7 +454,8 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
                 Some(Value::String(id)) => id.to_owned(),
                 Some(_) => panic!("store.find returned entity with non-string ID attribute"),
                 None => panic!("store.find returned entity with no ID attribute"),
-            }).collect();
+            })
+            .collect();
 
         assert_eq!(entity_ids, expected_entity_ids);
 
@@ -1227,7 +1236,8 @@ fn revert_block() {
                 TEST_SUBGRAPH_ID.clone(),
                 *TEST_BLOCK_3_PTR,
                 *TEST_BLOCK_2_PTR,
-            ).unwrap();
+            )
+            .unwrap();
 
         let returned_entities = store
             .find(this_query.clone())
@@ -1275,7 +1285,8 @@ fn revert_block_with_delete() {
                 *TEST_BLOCK_3_PTR,
                 *TEST_BLOCK_4_PTR,
                 vec![EntityOperation::Remove { key: del_key }],
-            ).unwrap();
+            )
+            .unwrap();
 
         // Revert deletion
         store
@@ -1283,7 +1294,8 @@ fn revert_block_with_delete() {
                 TEST_SUBGRAPH_ID.clone(),
                 *TEST_BLOCK_4_PTR,
                 *TEST_BLOCK_3_PTR,
-            ).unwrap();
+            )
+            .unwrap();
 
         // Query after revert
         let returned_entities = store
@@ -1333,7 +1345,8 @@ fn revert_block_with_partial_update() {
                     key: entity_key.clone(),
                     data: partial_entity.clone(),
                 }],
-            ).unwrap();
+            )
+            .unwrap();
 
         // Perform revert operation, reversing the partial update
         store
@@ -1341,7 +1354,8 @@ fn revert_block_with_partial_update() {
                 TEST_SUBGRAPH_ID.clone(),
                 *TEST_BLOCK_4_PTR,
                 *TEST_BLOCK_3_PTR,
-            ).unwrap();
+            )
+            .unwrap();
 
         // Obtain the reverted entity from the store
         let reverted_entity = store
@@ -1400,8 +1414,10 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                             entity_id: id.to_owned(),
                         },
                         data: data.to_owned(),
-                    }).collect(),
-            ).unwrap();
+                    })
+                    .collect(),
+            )
+            .unwrap();
 
         // Update an entity in the store
         let updated_entity = Entity::from(vec![
@@ -1433,7 +1449,8 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 *TEST_BLOCK_1_PTR,
                 *TEST_BLOCK_2_PTR,
                 vec![update_op, delete_op],
-            ).unwrap();
+            )
+            .unwrap();
 
         // We're expecting four events to be written to the subscription stream
         subscription
@@ -1476,7 +1493,8 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 );
 
                 Ok(())
-            }).and_then(|_| Ok(()))
+            })
+            .and_then(|_| Ok(()))
     })
 }
 
@@ -1505,7 +1523,8 @@ fn write_and_read_deployments() {
             vec![
                 (name1.clone(), subgraph_id1.clone()),
                 (name2.clone(), subgraph_id2.clone()),
-            ].into_iter()
+            ]
+            .into_iter()
             .collect::<HashSet<_>>()
         );
         assert_eq!(

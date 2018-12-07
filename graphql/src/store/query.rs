@@ -34,7 +34,8 @@ fn build_range(
             } else {
                 Err("first".to_string())
             }
-        }).map(|n| match n {
+        })
+        .map(|n| match n {
             Some(n) if n >= 0 => Some(n as usize),
             _ => None,
         });
@@ -50,7 +51,8 @@ fn build_range(
             } else {
                 Err("skip".to_string())
             }
-        }).map(|n| match n {
+        })
+        .map(|n| match n {
             Some(n) if n >= 0 => Some(n as usize),
             _ => None,
         });
@@ -83,7 +85,8 @@ fn build_filter(
             _ => return Err(QueryExecutionError::InvalidFilterError),
         },
         None => return Ok(None),
-    }.and_then(|object| build_filter_from_object(entity, &object))
+    }
+    .and_then(|object| build_filter_from_object(entity, &object))
 }
 
 /// Parses a GraphQL input object into a EntityFilter, if present.
@@ -122,7 +125,8 @@ fn build_filter_from_object(
                     NotEndsWith => EntityFilter::NotEndsWith(field_name, store_value),
                     Equal => EntityFilter::Equal(field_name, store_value),
                 })
-            }).collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()?
+            })
+            .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()?
     })))
 }
 
@@ -144,7 +148,8 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
                             vec![values[0].to_string(), value.to_string()],
                         ))
                     }
-                }).collect::<Result<Vec<_>, _>>()
+                })
+                .collect::<Result<Vec<_>, _>>()
         }
         Value::List(ref values) if values.is_empty() => Ok(vec![]),
         _ => Err(QueryExecutionError::ListFilterError(
@@ -203,10 +208,12 @@ pub fn parse_subgraph_id(entity: &s::ObjectType) -> Result<SubgraphId, QueryExec
                 .arguments
                 .iter()
                 .find(|(name, _)| name == &"id".to_string())
-        }).and_then(|(_, value)| match value {
+        })
+        .and_then(|(_, value)| match value {
             s::Value::String(id) => Some(id.clone()),
             _ => None,
-        }).ok_or(())
+        })
+        .ok_or(())
         .and_then(|id| SubgraphId::new(id))
         .map_err(|()| QueryExecutionError::SubgraphIdError(entity_name))
 }
@@ -379,7 +386,8 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
                 )
-            ).unwrap()
+            )
+            .unwrap()
             .order_by,
             Some(("name".to_string(), ValueType::String))
         );
@@ -389,7 +397,8 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("email".to_string()))].into_iter()
                 )
-            ).unwrap()
+            )
+            .unwrap()
             .order_by,
             Some(("email".to_string(), ValueType::String))
         );
@@ -404,7 +413,8 @@ mod tests {
                     vec![(&"orderBy".to_string(), q::Value::String("name".to_string()))]
                         .into_iter()
                 ),
-            ).unwrap()
+            )
+            .unwrap()
             .order_by,
             None,
         );
@@ -415,9 +425,11 @@ mod tests {
                     vec![(
                         &"orderBy".to_string(),
                         q::Value::String("email".to_string()),
-                    )].into_iter(),
+                    )]
+                    .into_iter(),
                 )
-            ).unwrap()
+            )
+            .unwrap()
             .order_by,
             None,
         );
@@ -432,9 +444,11 @@ mod tests {
                     vec![(
                         &"orderDirection".to_string(),
                         q::Value::Enum("asc".to_string()),
-                    )].into_iter(),
+                    )]
+                    .into_iter(),
                 )
-            ).unwrap()
+            )
+            .unwrap()
             .order_direction,
             Some(EntityOrder::Ascending)
         );
@@ -445,9 +459,11 @@ mod tests {
                     vec![(
                         &"orderDirection".to_string(),
                         q::Value::Enum("desc".to_string()),
-                    )].into_iter()
+                    )]
+                    .into_iter()
                 )
-            ).unwrap()
+            )
+            .unwrap()
             .order_direction,
             Some(EntityOrder::Descending)
         );
@@ -458,9 +474,11 @@ mod tests {
                     vec![(
                         &"orderDirection".to_string(),
                         q::Value::Enum("ascending...".to_string()),
-                    )].into_iter()
+                    )]
+                    .into_iter()
                 )
-            ).unwrap()
+            )
+            .unwrap()
             .order_direction,
             None,
         );
@@ -475,9 +493,11 @@ mod tests {
                     vec![(
                         &"orderDirection".to_string(),
                         q::Value::String("asc".to_string()),
-                    )].into_iter()
+                    )]
+                    .into_iter()
                 ),
-            ).unwrap()
+            )
+            .unwrap()
             .order_direction,
             None,
         );
@@ -488,9 +508,11 @@ mod tests {
                     vec![(
                         &"orderDirection".to_string(),
                         q::Value::String("desc".to_string()),
-                    )].into_iter(),
+                    )]
+                    .into_iter(),
                 )
-            ).unwrap()
+            )
+            .unwrap()
             .order_direction,
             None,
         );
@@ -514,7 +536,8 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(&"skip".to_string(), q::Value::Int(q::Number::from(50)))].into_iter()
                 )
-            ).unwrap()
+            )
+            .unwrap()
             .range,
             Some(EntityRange {
                 first: 100,
@@ -531,7 +554,8 @@ mod tests {
                 &HashMap::from_iter(
                     vec![(&"first".to_string(), q::Value::Int(q::Number::from(70)))].into_iter()
                 )
-            ).unwrap()
+            )
+            .unwrap()
             .range,
             Some(EntityRange { first: 70, skip: 0 }),
         );
@@ -552,9 +576,11 @@ mod tests {
                             "name_ends_with".to_string(),
                             q::Value::String("ello".to_string()),
                         )])),
-                    )].into_iter(),
+                    )]
+                    .into_iter(),
                 )
-            ).unwrap()
+            )
+            .unwrap()
             .filter,
             Some(EntityFilter::And(vec![EntityFilter::EndsWith(
                 "name".to_string(),

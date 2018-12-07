@@ -204,7 +204,8 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
                     DeadlineError::inner(e)
                 })
             },
-        ).map_err(|e| {
+        )
+        .map_err(|e| {
             // No timeout, so all errors are inner errors
             e.into_inner().unwrap()
         })
@@ -288,7 +289,8 @@ where
                 }
             }
         })
-    }).then(|retry_result| {
+    })
+    .then(|retry_result| {
         // Unwrap the inner result.
         // The outer Ok/Err is only used for retry control flow.
         match retry_result {

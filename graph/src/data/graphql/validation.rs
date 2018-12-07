@@ -13,10 +13,7 @@ impl fmt::Display for Strings {
 
 #[derive(Debug, Fail)]
 pub enum SchemaValidationError {
-    #[fail(
-        display = "@entity directive missing on the following types: {}",
-        _0
-    )]
+    #[fail(display = "@entity directive missing on the following types: {}", _0)]
     EntityDirectivesMissing(Strings),
 }
 
@@ -52,7 +49,8 @@ pub fn get_object_type_definitions(schema: &Document) -> Vec<&ObjectType> {
         .filter_map(|d| match d {
             Definition::TypeDefinition(TypeDefinition::Object(t)) => Some(t),
             _ => None,
-        }).collect()
+        })
+        .collect()
 }
 
 /// Looks up a directive in a object type, if it is provided.

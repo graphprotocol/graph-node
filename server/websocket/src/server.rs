@@ -118,7 +118,8 @@ where
                     store
                         .read(subgraph_name)
                         .expect("error reading subgraph name from store")
-                }).and_then(|deployment_opt| deployment_opt.ok_or(()))
+                })
+                .and_then(|deployment_opt| deployment_opt.ok_or(()))
                 .map(|(subgraph_id, _node_id)| subgraph_id),
             _ => return Err(()),
         }
@@ -155,7 +156,8 @@ where
             .incoming()
             .map_err(move |e| {
                 trace!(error_logger, "Connection error: {}", e);
-            }).for_each(move |stream| {
+            })
+            .for_each(move |stream| {
                 let logger = logger.clone();
                 let graphql_runner = graphql_runner.clone();
                 let store = store.clone();
@@ -180,7 +182,8 @@ where
                         String::from("Sec-WebSocket-Protocol"),
                         String::from("graphql-ws"),
                     )]))
-                }).then(move |result| {
+                })
+                .then(move |result| {
                     match result {
                         Ok(ws_stream) => {
                             // Obtain the subgraph ID or name that we resolved the request to

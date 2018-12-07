@@ -48,11 +48,7 @@ pub enum EthereumContractCallError {
     #[fail(display = "ABI error: {}", _0)]
     ABIError(SyncFailure<ABIError>),
     /// `Token` is not of expected `ParamType`
-    #[fail(
-        display = "type mismatch, token {:?} is not of kind {:?}",
-        _0,
-        _1
-    )]
+    #[fail(display = "type mismatch, token {:?} is not of kind {:?}", _0, _1)]
     TypeError(Token, ParamType),
     #[fail(display = "call error: {}", _0)]
     Error(Error),

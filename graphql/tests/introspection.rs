@@ -83,7 +83,8 @@ fn mock_schema() -> Schema {
                User: User
              }
              ",
-        ).unwrap(),
+        )
+        .unwrap(),
     }
 }
 

@@ -35,7 +35,8 @@ impl MockSubgraphProvider {
                            id: ID!
                            name: String!
                          }",
-                ).unwrap(),
+                )
+                .unwrap(),
             }],
         }
     }

@@ -191,7 +191,8 @@ impl ElasticDrain {
                                         "_type": config.document_type,
                                         "_id": log.id,
                                     }
-                                }).to_string();
+                                })
+                                .to_string();
 
                                 // Combine the two lines with newlines, make sure there is
                                 // a newline at the end as well
@@ -221,19 +222,22 @@ impl ElasticDrain {
                         .basic_auth(
                             config.general.username.clone().unwrap_or("".into()),
                             config.general.password.clone(),
-                        ).body(batch_body)
+                        )
+                        .body(batch_body)
                         .send()
                         .and_then(|response| response.error_for_status())
                         .map_err(|e| {
                             // Log if there was a problem sending the logs
                             error!(flush_logger, "Failed to send logs to Elasticsearch: {}", e);
-                        }).ok();
+                        })
+                        .ok();
 
                     // Clear the logs, so the next batch can be recorded
                     logs.clear();
 
                     Ok(())
-                }).map_err(move |e| {
+                })
+                .map_err(move |e| {
                     error!(
                         interval_error_logger,
                         "Error in Elasticsearch logger flush interval: {}", e

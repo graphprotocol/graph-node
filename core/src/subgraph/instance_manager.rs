@@ -92,7 +92,8 @@ impl SubgraphInstanceManager {
                                     term_logger.clone(),
                                 ),
                             )
-                        }).unwrap_or(term_logger);
+                        })
+                        .unwrap_or(term_logger);
 
                     info!(logger, "Start subgraph");
 
@@ -103,7 +104,8 @@ impl SubgraphInstanceManager {
                         block_stream_builder.clone(),
                         store.clone(),
                         manifest,
-                    ).map_err(|err| error!(logger, "Failed to start subgraph: {}", err))
+                    )
+                    .map_err(|err| error!(logger, "Failed to start subgraph: {}", err))
                     .ok();
                 }
                 SubgraphStop(id) => {
@@ -171,7 +173,8 @@ impl SubgraphInstanceManager {
                         .iter()
                         .flat_map(|receipt| {
                             receipt.logs.iter().filter(|log| instance.matches_log(&log))
-                        }).cloned()
+                        })
+                        .cloned()
                         .collect();
 
                     if logs.len() == 0 {
@@ -211,9 +214,11 @@ impl SubgraphInstanceManager {
                                         transaction,
                                         log,
                                         entity_operations,
-                                    ).map_err(|e| format_err!("Failed to process event: {}", e))
+                                    )
+                                    .map_err(|e| format_err!("Failed to process event: {}", e))
                             })
-                        }).and_then(move |entity_operations| {
+                        })
+                        .and_then(move |entity_operations| {
                             let block = block_for_transact.clone();
                             let logger = logger_for_transact.clone();
 
@@ -233,14 +238,17 @@ impl SubgraphInstanceManager {
                                 block_ptr_now,
                                 block_ptr_after,
                                 entity_operations,
-                            )).map_err(|e| {
+                            ))
+                            .map_err(|e| {
                                 format_err!(
                                     "Error while processing block stream for a subgraph: {}",
                                     e
                                 )
-                            }).from_err()
+                            })
+                            .from_err()
                         })
-                }).map_err(move |e| match e {
+                })
+                .map_err(move |e| match e {
                     CancelableError::Cancel => {
                         info!(
                             error_logger,

@@ -187,7 +187,8 @@ where
                                 } else {
                                     None
                                 }
-                            }).map(|fragment| {
+                            })
+                            .map(|fragment| {
                                 // We have a fragment that applies to the current object type,
                                 // collect its fields into response key groups
                                 collect_fields(
@@ -293,7 +294,8 @@ where
                 &field_definition.field_type,
                 &argument_values,
             )
-        }).and_then(|value| complete_value(ctx, field, &field_definition.field_type, fields, value))
+        })
+        .and_then(|value| complete_value(ctx, field, &field_definition.field_type, fields, value))
 }
 
 /// Resolves the value of a field.
@@ -363,52 +365,59 @@ where
             &ctx.schema.document
         },
         type_name,
-    ).ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
+    )
+    .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
 
     match named_type {
         // Let the resolver decide how the field (with the given object type)
         // is resolved into an entity based on the (potential) parent object
-        s::TypeDefinition::Object(t) => if ctx.introspecting {
-            ctx.introspection_resolver.resolve_object(
-                object_value,
-                &field.name,
-                field_definition,
-                t,
-                argument_values,
-            )
-        } else {
-            ctx.resolver.resolve_object(
-                object_value,
-                &field.name,
-                field_definition,
-                t,
-                argument_values,
-            )
-        },
+        s::TypeDefinition::Object(t) => {
+            if ctx.introspecting {
+                ctx.introspection_resolver.resolve_object(
+                    object_value,
+                    &field.name,
+                    field_definition,
+                    t,
+                    argument_values,
+                )
+            } else {
+                ctx.resolver.resolve_object(
+                    object_value,
+                    &field.name,
+                    field_definition,
+                    t,
+                    argument_values,
+                )
+            }
+        }
 
         // Let the resolver decide how values in the resolved object value
         // map to values of GraphQL enums
         s::TypeDefinition::Enum(t) => match object_value {
-            Some(q::Value::Object(o)) => if ctx.introspecting {
-                Ok(ctx
-                    .introspection_resolver
-                    .resolve_enum_value(t, o.get(&field.name)))
-            } else {
-                Ok(ctx.resolver.resolve_enum_value(t, o.get(&field.name)))
-            },
+            Some(q::Value::Object(o)) => {
+                if ctx.introspecting {
+                    Ok(ctx
+                        .introspection_resolver
+                        .resolve_enum_value(t, o.get(&field.name)))
+                } else {
+                    Ok(ctx.resolver.resolve_enum_value(t, o.get(&field.name)))
+                }
+            }
             _ => Ok(q::Value::Null),
         },
 
         // Let the resolver decide how values in the resolved object value
         // map to values of GraphQL scalars
         s::TypeDefinition::Scalar(t) => match object_value {
-            Some(q::Value::Object(o)) => if ctx.introspecting {
-                Ok(ctx
-                    .introspection_resolver
-                    .resolve_scalar_value(t, o.get(&field.name)))
-            } else {
-                Ok(ctx.resolver.resolve_scalar_value(t, o.get(&field.name)))
-            },
+            Some(q::Value::Object(o)) => {
+                if ctx.introspecting {
+                    Ok(ctx
+                        .introspection_resolver
+                        .resolve_scalar_value(t, o.get(&field.name)))
+                } else {
+                    Ok(ctx.resolver.resolve_scalar_value(t, o.get(&field.name)))
+                }
+            }
             _ => Ok(q::Value::Null),
         },
 
@@ -417,7 +426,8 @@ where
         s::TypeDefinition::Union(_) => unimplemented!(),
 
         _ => unimplemented!(),
-    }.map_err(|e| {
+    }
+    .map_err(|e| {
         vec![
             e,
             QueryExecutionError::NamedTypeError(type_name.to_string()),
@@ -458,7 +468,8 @@ where
                     &ctx.schema.document
                 },
                 type_name,
-            ).expect("Failed to resolve named type inside list type");
+            )
+            .expect("Failed to resolve named type inside list type");
 
             match named_type {
                 // Let the resolver decide how the list field (with the given item object type)
@@ -479,31 +490,36 @@ where
                         &t,
                         argument_values,
                     )
-                }.map_err(|e| vec![e]),
+                }
+                .map_err(|e| vec![e]),
 
                 // Let the resolver decide how values in the resolved object value
                 // map to values of GraphQL enums
                 s::TypeDefinition::Enum(t) => match object_value {
-                    Some(q::Value::Object(o)) => if ctx.introspecting {
-                        Ok(ctx
-                            .introspection_resolver
-                            .resolve_enum_values(&t, o.get(&field.name)))
-                    } else {
-                        Ok(ctx.resolver.resolve_enum_values(&t, o.get(&field.name)))
-                    },
+                    Some(q::Value::Object(o)) => {
+                        if ctx.introspecting {
+                            Ok(ctx
+                                .introspection_resolver
+                                .resolve_enum_values(&t, o.get(&field.name)))
+                        } else {
+                            Ok(ctx.resolver.resolve_enum_values(&t, o.get(&field.name)))
+                        }
+                    }
                     _ => Ok(q::Value::Null),
                 },
 
                 // Let the resolver decide how values in the resolved object value
                 // map to values of GraphQL scalars
                 s::TypeDefinition::Scalar(t) => match object_value {
-                    Some(q::Value::Object(o)) => if ctx.introspecting {
-                        Ok(ctx
-                            .introspection_resolver
-                            .resolve_scalar_values(&t, o.get(&field.name)))
-                    } else {
-                        Ok(ctx.resolver.resolve_scalar_values(&t, o.get(&field.name)))
-                    },
+                    Some(q::Value::Object(o)) => {
+                        if ctx.introspecting {
+                            Ok(ctx
+                                .introspection_resolver
+                                .resolve_scalar_values(&t, o.get(&field.name)))
+                        } else {
+                            Ok(ctx.resolver.resolve_scalar_values(&t, o.get(&field.name)))
+                        }
+                    }
                     _ => Ok(q::Value::Null),
                 },
 
@@ -584,7 +600,8 @@ where
                     &ctx.schema.document
                 },
                 name,
-            ).unwrap(),
+            )
+            .unwrap(),
         )
     } else {
         None
@@ -658,7 +675,8 @@ where
             },
             abstract_type,
             object_value,
-        ).ok_or_else(|| {
+        )
+        .ok_or_else(|| {
             vec![QueryExecutionError::AbstractTypeError(
                 sast::get_type_name(abstract_type).to_string(),
             )]

@@ -297,7 +297,8 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                             "starts_with"
                         } else {
                             "not_starts_with"
-                        }.to_owned(),
+                        }
+                        .to_owned(),
                         value,
                     })
                 }
@@ -325,7 +326,8 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                             "ends_with"
                         } else {
                             "not_ends_with"
-                        }.to_owned(),
+                        }
+                        .to_owned(),
                         value,
                     })
                 }

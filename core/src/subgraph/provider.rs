@@ -146,13 +146,15 @@ where
                             .duration_since(UNIX_EPOCH)
                             .unwrap()
                             .as_secs(),
-                    ).write_to_store(&*self_clone.store)
+                    )
+                    .write_to_store(&*self_clone.store)
                     .map_err(|err| {
                         error!(
                             self_clone.logger,
                             "Failed to write subgraph to store: {}", err
                         )
-                    }).ok();
+                    })
+                    .ok();
 
                     // Send events to trigger subgraph processing
                     Box::new(self_clone.send_add_events(subgraph).from_err())
