@@ -68,7 +68,8 @@ fn add_order_direction_enum(schema: &mut Document) {
                 description: None,
                 name: name.to_string(),
                 directives: vec![],
-            }).collect(),
+            })
+            .collect(),
     });
     let def = Definition::TypeDefinition(typedef);
     schema.definitions.push(def);
@@ -121,7 +122,8 @@ fn add_order_by_type(
                         description: None,
                         name: name.to_owned(),
                         directives: vec![],
-                    }).collect(),
+                    })
+                    .collect(),
             });
             let def = Definition::TypeDefinition(typedef);
             schema.definitions.push(def);
@@ -225,7 +227,8 @@ fn field_scalar_filter_input_values(
             "not_ends_with",
         ],
         _ => vec!["", "not"],
-    }.into_iter()
+    }
+    .into_iter()
     .map(|filter_type| {
         let field_type = Type::NamedType(field_type.name.to_owned());
         let value_type = match filter_type {
@@ -233,7 +236,8 @@ fn field_scalar_filter_input_values(
             _ => field_type,
         };
         input_value(&field.name, filter_type, value_type)
-    }).collect()
+    })
+    .collect()
 }
 
 /// Generates `*_filter` input values for the given enum field.
@@ -253,7 +257,8 @@ fn field_enum_filter_input_values(
             "not",
             Type::NamedType(field_type.name.to_owned()),
         )),
-    ].into_iter()
+    ]
+    .into_iter()
     .filter_map(|value_opt| value_opt)
     .collect()
 }
@@ -430,7 +435,8 @@ mod tests {
         let enum_type = match order_direction {
             TypeDefinition::Enum(t) => Some(t),
             _ => None,
-        }.expect("OrderDirection type is not an enum");
+        }
+        .expect("OrderDirection type is not an enum");
 
         let values: Vec<&Name> = enum_type.values.iter().map(|value| &value.name).collect();
         assert_eq!(values, [&"asc".to_string(), &"desc".to_string()]);
@@ -457,7 +463,8 @@ mod tests {
         let enum_type = match user_order_by {
             TypeDefinition::Enum(t) => Some(t),
             _ => None,
-        }.expect("User_orderBy type is not an enum");
+        }
+        .expect("User_orderBy type is not an enum");
 
         let values: Vec<&Name> = enum_type.values.iter().map(|value| &value.name).collect();
         assert_eq!(values, [&"id".to_string(), &"name".to_string()]);
@@ -475,7 +482,8 @@ mod tests {
         let filter_type = match user_filter {
             TypeDefinition::InputObject(t) => Some(t),
             _ => None,
-        }.expect("User_filter type is not an input object");
+        }
+        .expect("User_filter type is not an input object");
 
         assert_eq!(
             filter_type
@@ -507,9 +515,9 @@ mod tests {
                 "name_ends_with",
                 "name_not_ends_with"
             ]
-                .iter()
-                .map(|name| name.to_string())
-                .collect::<Vec<String>>()
+            .iter()
+            .map(|name| name.to_string())
+            .collect::<Vec<String>>()
         );
     }
 
@@ -517,7 +525,8 @@ mod tests {
     fn api_schema_contains_object_fields_on_query_type() {
         let input_schema = parse_schema(
             "type User { id: ID!, name: String! } type UserProfile { id: ID!, title: String! }",
-        ).expect("Failed to parse input schema");
+        )
+        .expect("Failed to parse input schema");
         let schema = api_schema(&input_schema).expect("Failed to derived API schema");
 
         let query_type = ast::get_named_type(&schema, &"Query".to_string())
@@ -526,7 +535,8 @@ mod tests {
         let user_singular_field = match query_type {
             TypeDefinition::Object(t) => ast::get_field_type(t, &"user".to_string()),
             _ => None,
-        }.expect("\"user\" field is missing on Query type");
+        }
+        .expect("\"user\" field is missing on Query type");
 
         assert_eq!(
             user_singular_field.field_type,
@@ -545,7 +555,8 @@ mod tests {
         let user_plural_field = match query_type {
             TypeDefinition::Object(t) => ast::get_field_type(t, &"users".to_string()),
             _ => None,
-        }.expect("\"users\" field is missing on Query type");
+        }
+        .expect("\"users\" field is missing on Query type");
 
         assert_eq!(
             user_plural_field.field_type,
@@ -570,15 +581,16 @@ mod tests {
                 "orderDirection",
                 "where",
             ]
-                .into_iter()
-                .map(|name| name.to_string())
-                .collect::<Vec<String>>()
+            .into_iter()
+            .map(|name| name.to_string())
+            .collect::<Vec<String>>()
         );
 
         let user_profile_singular_field = match query_type {
             TypeDefinition::Object(t) => ast::get_field_type(t, &"userProfile".to_string()),
             _ => None,
-        }.expect("\"userProfile\" field is missing on Query type");
+        }
+        .expect("\"userProfile\" field is missing on Query type");
 
         assert_eq!(
             user_profile_singular_field.field_type,
@@ -588,7 +600,8 @@ mod tests {
         let user_profile_plural_field = match query_type {
             TypeDefinition::Object(t) => ast::get_field_type(t, &"userProfiles".to_string()),
             _ => None,
-        }.expect("\"userProfiles\" field is missing on Query type");
+        }
+        .expect("\"userProfiles\" field is missing on Query type");
 
         assert_eq!(
             user_profile_plural_field.field_type,
@@ -605,7 +618,8 @@ mod tests {
             interface Node { id: ID!, name: String! }
             type User implements Node { id: ID!, name: String!, email: String }
             ",
-        ).expect("Failed to parse input schema");
+        )
+        .expect("Failed to parse input schema");
         let schema = api_schema(&input_schema).expect("Failed to derived API schema");
 
         let query_type = ast::get_named_type(&schema, &"Query".to_string())
@@ -614,7 +628,8 @@ mod tests {
         let singular_field = match query_type {
             TypeDefinition::Object(ref t) => ast::get_field_type(t, &"node".to_string()),
             _ => None,
-        }.expect("\"node\" field is missing on Query type");
+        }
+        .expect("\"node\" field is missing on Query type");
 
         assert_eq!(
             singular_field.field_type,
@@ -633,7 +648,8 @@ mod tests {
         let plural_field = match query_type {
             TypeDefinition::Object(ref t) => ast::get_field_type(t, &"nodes".to_string()),
             _ => None,
-        }.expect("\"nodes\" field is missing on Query type");
+        }
+        .expect("\"nodes\" field is missing on Query type");
 
         assert_eq!(
             plural_field.field_type,
@@ -658,9 +674,9 @@ mod tests {
                 "orderDirection",
                 "where",
             ]
-                .into_iter()
-                .map(|name| name.to_string())
-                .collect::<Vec<String>>()
+            .into_iter()
+            .map(|name| name.to_string())
+            .collect::<Vec<String>>()
         );
     }
 }

@@ -108,7 +108,8 @@ impl Clone for EthereumEventData {
                 .map(|log_param| LogParam {
                     name: log_param.name.clone(),
                     value: log_param.value.clone(),
-                }).collect(),
+                })
+                .collect(),
         }
     }
 }

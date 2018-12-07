@@ -292,12 +292,14 @@ where
                                     error_sink.unbounded_send(msg.into()).unwrap();
                                 }
                             };
-                        }).and_then(move |result_stream| {
+                        })
+                        .and_then(move |result_stream| {
                             // Send results back to the client as GQL_DATA
                             result_stream
                                 .map(move |result| {
                                     OutgoingMessage::from_query_result(result_id.clone(), result)
-                                }).map(WsMessage::from)
+                                })
+                                .map(WsMessage::from)
                                 .forward(result_sink.sink_map_err(|_| ()))
                                 .map(|_| ())
                         });

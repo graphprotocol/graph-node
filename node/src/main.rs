@@ -58,14 +58,16 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .long("subgraph")
                 .value_name("[NAME:]IPFS_HASH")
                 .help("name and IPFS hash of the subgraph manifest"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("postgres-url")
                 .takes_value(true)
                 .required(true)
                 .long("postgres-url")
                 .value_name("URL")
                 .help("Location of the Postgres database used for storing entities"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("ethereum-rpc")
                 .takes_value(true)
                 .required_unless_one(&["ethereum-ws", "ethereum-ipc"])
@@ -76,7 +78,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                     "Ethereum network name (e.g. 'mainnet') and \
                      Ethereum RPC URL, separated by a ':'",
                 ),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("ethereum-ws")
                 .takes_value(true)
                 .required_unless_one(&["ethereum-rpc", "ethereum-ipc"])
@@ -87,7 +90,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                     "Ethereum network name (e.g. 'mainnet') and \
                      Ethereum WebSocket URL, separated by a ':'",
                 ),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("ethereum-ipc")
                 .takes_value(true)
                 .required_unless_one(&["ethereum-rpc", "ethereum-ws"])
@@ -98,68 +102,79 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                     "Ethereum network name (e.g. 'mainnet') and \
                      Ethereum IPC pipe, separated by a ':'",
                 ),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("ipfs")
                 .takes_value(true)
                 .required(true)
                 .long("ipfs")
                 .value_name("HOST:PORT")
                 .help("HTTP address of an IPFS node"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("http-port")
                 .default_value("8000")
                 .long("http-port")
                 .value_name("PORT")
                 .help("Port for the GraphQL HTTP server"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("ws-port")
                 .default_value("8001")
                 .long("ws-port")
                 .value_name("PORT")
                 .help("Port for the GraphQL WebSocket server"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("admin-port")
                 .default_value("8020")
                 .long("admin-port")
                 .value_name("PORT")
                 .help("Port for the JSON-RPC admin server"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("node-id")
                 .default_value("default")
                 .long("node-id")
                 .value_name("NODE_ID")
                 .help("a unique identifier for this node"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("debug")
                 .long("debug")
                 .help("Enable debug logging"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("elasticsearch-url")
                 .long("elasticsearch-url")
                 .value_name("URL")
                 .env("ELASTICSEARCH_URL")
                 .help("Elasticsearch service to write subgraph logs to"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("elasticsearch-user")
                 .long("elasticsearch-user")
                 .value_name("USER")
                 .env("ELASTICSEARCH_USER")
                 .help("User to use for Elasticsearch logging"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("elasticsearch-password")
                 .long("elasticsearch-password")
                 .value_name("PASSWORD")
                 .env("ELASTICSEARCH_PASSWORD")
                 .hide_env_values(true)
                 .help("Password to use for Elasticsearch logging"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("ethereum-polling-interval")
                 .long("ethereum-polling-interval")
                 .value_name("MILLISECONDS")
                 .default_value("500")
                 .env("ETHEREUM_POLLING_INTERVAL")
                 .help("How often to poll the Ethereum node for new blocks"),
-        ).get_matches();
+        )
+        .get_matches();
 
     // Set up logger
     let logger = logger(matches.is_present("debug"));
@@ -241,7 +256,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                     errors
                 })),
             }
-        }).into_inner()
+        })
+        .into_inner()
     {
         Ok((client, address)) => (client, address),
         Err(errors) => {
@@ -267,7 +283,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                     "Is there an IPFS node running at \"{}\"?", ipfs_address
                 );
                 panic!("Failed to connect to IPFS: {}", e);
-            }).map(move |_| {
+            })
+            .map(move |_| {
                 info!(
                     ipfs_ok_logger,
                     "Successfully connected to IPFS node at: {}", ipfs_address
@@ -282,7 +299,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             .filter_map(|x| x.to_owned())
             .next()
             .expect("one of --ethereum-ipc, --ethereum-rpc or --ethereum-ws must be provided"),
-    ).expect("failed to parse Ethereum connection string");
+    )
+    .expect("failed to parse Ethereum connection string");
 
     // Set up Ethereum transport
     let (transport_event_loop, transport) = ethereum_ipc
@@ -348,7 +366,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         50, // ancestor count, which we could make configuable
         logger.clone(),
         block_polling_interval,
-    ).expect("failed to create Ethereum block ingestor");
+    )
+    .expect("failed to create Ethereum block ingestor");
 
     // Run the Ethereum block ingestor in the background
     tokio::spawn(block_ingestor.into_polling_stream());
@@ -391,7 +410,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             &mut subgraph_provider,
             &subscription_server,
             &graphql_server,
-        ).unwrap(),
+        )
+        .unwrap(),
     );
 
     // Create named subgraph provider for resolving subgraph name->ID mappings
@@ -415,7 +435,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         named_subgraph_provider.clone(),
         node_id.clone(),
         logger.clone(),
-    ).expect("failed to start JSON-RPC admin server");
+    )
+    .expect("failed to start JSON-RPC admin server");
 
     // Let the server run forever.
     std::mem::forget(json_rpc_server);

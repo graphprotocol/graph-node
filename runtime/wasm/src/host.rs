@@ -157,7 +157,8 @@ impl RuntimeHost {
                     data_source_name,
                     config.data_source.source.abi,
                 )
-            })?.clone();
+            })?
+            .clone();
 
         thread::spawn(move || {
             debug!(module_logger, "Start WASM runtime");
@@ -210,7 +211,8 @@ impl RuntimeHost {
                     } else {
                         future::err(())
                     }
-                }).wait()
+                })
+                .wait()
                 .ok();
         });
 
@@ -333,12 +335,14 @@ impl RuntimeHostTrait for RuntimeHost {
                     params,
                     entity_operations,
                     result_sender,
-                }).map_err(move |_| {
+                })
+                .map_err(move |_| {
                     format_err!(
                         "Mapping terminated before passing in Ethereum event: {}",
                         before_event_signature
                     )
-                }).and_then(|_| {
+                })
+                .and_then(|_| {
                     result_receiver.map_err(move |_| {
                         format_err!(
                             "Mapping terminated before finishing to handle \
@@ -346,7 +350,8 @@ impl RuntimeHostTrait for RuntimeHost {
                             event_signature,
                         )
                     })
-                }).and_then(|result| result),
+                })
+                .and_then(|result| result),
         )
     }
 }

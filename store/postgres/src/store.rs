@@ -141,7 +141,8 @@ impl Store {
                         net_version.eq::<Option<String>>(Some(new_net_version.to_owned())),
                         genesis_block_hash
                             .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
-                    )).on_conflict(name)
+                    ))
+                    .on_conflict(name)
                     .do_nothing()
                     .execute(&*self.conn.lock().unwrap())?;
             }
@@ -174,7 +175,8 @@ impl Store {
                         net_version.eq::<Option<String>>(Some(new_net_version.to_owned())),
                         genesis_block_hash
                             .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
-                    )).filter(name.eq(&self.network_name))
+                    ))
+                    .filter(name.eq(&self.network_name))
                     .execute(&*self.conn.lock().unwrap())?;
             }
         }
@@ -205,7 +207,8 @@ impl Store {
                     subscription
                         .entities
                         .contains(&(change.subgraph_id.clone(), change.entity_type.clone()))
-                }).map(|(id, subscription)| (id.clone(), subscription.sender.clone()))
+                })
+                .map(|(id, subscription)| (id.clone(), subscription.sender.clone()))
                 .collect::<Vec<_>>();
 
             let subscriptions = subscriptions.clone();
@@ -221,7 +224,8 @@ impl Store {
                     .map_err(move |_| {
                         debug!(logger, "Unsubscribe"; "id" => &id);
                         subscriptions.write().unwrap().remove(&id);
-                    }).and_then(|_| Ok(()))
+                    })
+                    .and_then(|_| Ok(()))
             })
         }));
     }
@@ -244,7 +248,8 @@ impl Store {
                                 Err(_) => Some(id.clone()),
                                 _ => None,
                             },
-                        ).collect::<Vec<_>>();
+                        )
+                        .collect::<Vec<_>>();
 
                     // Remove all stale subscriptions
                     for id in stale_ids {
@@ -253,7 +258,8 @@ impl Store {
                     }
 
                     Ok(())
-                }).map_err(|_| unreachable!()),
+                })
+                .map_err(|_| unreachable!()),
         );
     }
 
@@ -346,7 +352,8 @@ impl Store {
                 subgraph.eq(op_subgraph_id.to_string()),
                 data.eq(&updated_json),
                 event_source.eq(op_event_source),
-            )).on_conflict((id, entity, subgraph))
+            ))
+            .on_conflict((id, entity, subgraph))
             .do_update()
             .set((
                 id.eq(op_entity_id),
@@ -354,7 +361,8 @@ impl Store {
                 subgraph.eq(op_subgraph_id.to_string()),
                 data.eq(&updated_json),
                 event_source.eq(op_event_source),
-            )).execute(conn)
+            ))
+            .execute(conn)
             .map(|_| ())
             .map_err(|e| {
                 format_err!(
@@ -386,7 +394,8 @@ impl Store {
             "vars.current_event_source",
             block_ptr_to.hash_hex(),
             true,
-        )).execute(conn)
+        ))
+        .execute(conn)
         .map_err(|e| format_err!("Failed to save event source for remove operation: {}", e))
         .map(|_| ())?;
 
@@ -395,7 +404,8 @@ impl Store {
                 .filter(subgraph.eq(op_subgraph_id.to_string()))
                 .filter(entity.eq(op_entity_type))
                 .filter(id.eq(op_entity_id)),
-        ).execute(conn)
+        )
+        .execute(conn)
         .map(|_| ())
         .map_err(|e| {
             format_err!(
@@ -452,7 +462,8 @@ impl Store {
             .set((
                 latest_block_hash.eq(to.hash_hex()),
                 latest_block_number.eq(to.number as i64),
-            )).filter(id.eq(subgraph_id.to_string()))
+            ))
+            .filter(id.eq(subgraph_id.to_string()))
             .filter(latest_block_hash.eq(from.hash_hex()))
             .filter(latest_block_number.eq(from.number as i64))
             .execute(conn)
@@ -483,7 +494,8 @@ impl StoreTrait for Store {
                 network_name.eq(&self.network_name),
                 latest_block_hash.eq(block_ptr.hash_hex()),
                 latest_block_number.eq(block_ptr.number as i64),
-            )).on_conflict(id)
+            ))
+            .on_conflict(id)
             .do_nothing()
             .execute(&*self.conn.lock().unwrap())
             .map_err(Error::from)
@@ -504,7 +516,8 @@ impl StoreTrait for Store {
                     number,
                 )
                     .into()
-            }).map_err(Error::from)
+            })
+            .map_err(Error::from)
     }
 
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
@@ -537,7 +550,8 @@ impl StoreTrait for Store {
                 .map(|direction| match direction {
                     EntityOrder::Ascending => "ASC",
                     EntityOrder::Descending => "DESC",
-                }).unwrap_or("ASC");
+                })
+                .unwrap_or("ASC");
             let cast_type = match value_type {
                 ValueType::BigInt => "::numeric",
                 ValueType::Boolean => "::boolean",
@@ -573,8 +587,10 @@ impl StoreTrait for Store {
                     .into_iter()
                     .map(|value| {
                         serde_json::from_value::<Entity>(value).expect("Error parsing entity JSON")
-                    }).collect()
-            }).map_err(|e| QueryExecutionError::ResolveEntitiesError(e.to_string()))
+                    })
+                    .collect()
+            })
+            .map_err(|e| QueryExecutionError::ResolveEntitiesError(e.to_string()))
     }
 
     fn set_block_ptr_with_no_changes(
@@ -636,7 +652,8 @@ impl StoreTrait for Store {
             block_ptr_from.number as i64,
             &block_ptr_to.hash_hex(),
             subgraph_id.to_string(),
-        )).execute(&*self.conn.lock().unwrap())
+        ))
+        .execute(&*self.conn.lock().unwrap())
         .map_err(|e| format_err!("Error reverting block: {}", e))
         .map(|_| ())
     }
@@ -688,7 +705,8 @@ impl SubgraphDeploymentStore for Store {
             .select((
                 subgraph_deployments::deployment_name,
                 subgraph_deployments::subgraph_id,
-            )).filter(subgraph_deployments::node_id.eq(node_id.to_string()))
+            ))
+            .filter(subgraph_deployments::node_id.eq(node_id.to_string()))
             .load::<(String, String)>(&*self.conn.lock().unwrap())
             .map_err(Error::from)
             .map(|rows| {
@@ -699,7 +717,8 @@ impl SubgraphDeploymentStore for Store {
                         let subgraph_id = SubgraphId::new(subgraph_id)
                             .expect("invalid subgraph ID found in database");
                         (name, subgraph_id)
-                    }).collect()
+                    })
+                    .collect()
             })
     }
 
@@ -716,12 +735,14 @@ impl SubgraphDeploymentStore for Store {
                 subgraph_deployments::deployment_name.eq(name.to_string()),
                 subgraph_deployments::subgraph_id.eq(subgraph_id.to_string()),
                 subgraph_deployments::node_id.eq(node_id.to_string()),
-            )).on_conflict(subgraph_deployments::deployment_name)
+            ))
+            .on_conflict(subgraph_deployments::deployment_name)
             .do_update()
             .set((
                 subgraph_deployments::subgraph_id.eq(subgraph_id.to_string()),
                 subgraph_deployments::node_id.eq(node_id.to_string()),
-            )).execute(&*self.conn.lock().unwrap())
+            ))
+            .execute(&*self.conn.lock().unwrap())
             .map_err(Error::from)
             .map(|_| ())
     }
@@ -733,7 +754,8 @@ impl SubgraphDeploymentStore for Store {
             .select((
                 subgraph_deployments::subgraph_id,
                 subgraph_deployments::node_id,
-            )).filter(subgraph_deployments::deployment_name.eq(name.to_string()))
+            ))
+            .filter(subgraph_deployments::deployment_name.eq(name.to_string()))
             .first::<(String, String)>(&*self.conn.lock().unwrap())
             .optional()
             .map_err(Error::from)
@@ -756,7 +778,8 @@ impl SubgraphDeploymentStore for Store {
                 0 => false,
                 1 => true,
                 _ => unreachable!(),
-            }).map_err(Error::from)
+            })
+            .map_err(Error::from)
     }
 
     fn deployment_events(
@@ -796,7 +819,8 @@ impl SubgraphDeploymentStore for Store {
                         });
 
                     update
-                }).map_err(|()| format_err!("deployment event notification listener failed")),
+                })
+                .map_err(|()| format_err!("deployment event notification listener failed")),
         )
     }
 }
@@ -849,7 +873,8 @@ impl ChainStore for Store {
         select(attempt_chain_head_update(
             &self.network_name,
             ancestor_count as i64,
-        )).load(&*self.conn.lock().unwrap())
+        ))
+        .load(&*self.conn.lock().unwrap())
         .map_err(Error::from)
         // We got a single return value, but it's returned generically as a set of rows
         .map(|mut rows: Vec<_>| {
@@ -862,7 +887,8 @@ impl ChainStore for Store {
                 .into_iter()
                 .map(|h| h.parse())
                 .collect::<Result<Vec<H256>, _>>()
-        }).and_then(|r| r.map_err(Error::from))
+        })
+        .and_then(|r| r.map_err(Error::from))
     }
 
     fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener {
@@ -882,8 +908,10 @@ impl ChainStore for Store {
                         (Some(hash), Some(number)) => Some((hash.parse().unwrap(), *number).into()),
                         (None, None) => None,
                         _ => unreachable!(),
-                    }).and_then(|opt| opt)
-            }).map_err(Error::from)
+                    })
+                    .and_then(|opt| opt)
+            })
+            .map_err(Error::from)
     }
 
     fn block(&self, block_hash: H256) -> Result<Option<EthereumBlock>, Error> {
@@ -901,7 +929,8 @@ impl ChainStore for Store {
                         .expect("Failed to deserialize block"),
                 ),
                 _ => unreachable!(),
-            }).map_err(Error::from)
+            })
+            .map_err(Error::from)
     }
 
     fn ancestor_block(
@@ -920,6 +949,7 @@ impl ChainStore for Store {
                     serde_json::from_value::<EthereumBlock>(val)
                         .expect("Failed to deserialize block from database")
                 })
-            }).map_err(Error::from)
+            })
+            .map_err(Error::from)
     }
 }

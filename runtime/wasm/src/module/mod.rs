@@ -43,7 +43,8 @@ impl AscHeap for WasmiAscHeap {
                 "memory.allocate",
                 &[RuntimeValue::I32(bytes.len() as i32)],
                 &mut NopExternals,
-            ).expect("Failed to invoke memory allocation function")
+            )
+            .expect("Failed to invoke memory allocation function")
             .expect("Function did not return a value")
             .try_into::<u32>()
             .expect("Function did not return u32");
@@ -244,7 +245,8 @@ where
                     .take()
                     .expect("processing event without context")
                     .entity_operations
-            }).map_err(|e| {
+            })
+            .map_err(|e| {
                 format_err!(
                     "Failed to handle Ethereum event with handler \"{}\": {}",
                     handler_name,
@@ -256,7 +258,8 @@ where
 
 impl<E> HostError for host_exports::HostExportError<E> where
     E: fmt::Debug + fmt::Display + Send + Sync + 'static
-{}
+{
+}
 
 /// Hosted functions for external use by wasm module
 pub struct HostExternals<T, L, S, U> {

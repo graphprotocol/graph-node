@@ -216,7 +216,8 @@ where
                      of the subgraph manifest",
                     unresolved_call.contract_name
                 ))
-            })?.contract
+            })?
+            .contract
             .clone();
 
         let function = contract
@@ -393,7 +394,8 @@ where
             .clone()
             .send(Box::new(future.then(|res| {
                 return_sender.send(res).map_err(|_| unreachable!())
-            }))).wait()
+            })))
+            .wait()
             .map_err(|_| panic!("task receiver dropped"))
             .unwrap();
         return_receiver.wait().expect("`return_sender` dropped")

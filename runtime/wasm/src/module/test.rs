@@ -95,7 +95,8 @@ fn test_module(
             store: Arc::new(FakeStore),
         },
         task_sender,
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 fn mock_data_source(path: &str) -> DataSource {
@@ -153,7 +154,8 @@ fn json_conversions() {
             "testToU64",
             &[RuntimeValue::from(module.heap.asc_new(&number.to_string()))],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return I64");
@@ -167,7 +169,8 @@ fn json_conversions() {
             "testToI64",
             &[RuntimeValue::from(module.heap.asc_new(&number.to_string()))],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return I64");
@@ -183,7 +186,8 @@ fn json_conversions() {
                 module.heap.asc_new(&number.to_float().to_string()),
             )],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return F64");
@@ -197,7 +201,8 @@ fn json_conversions() {
             "testToBigInt",
             &[RuntimeValue::from(module.heap.asc_new(number))],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return pointer");
@@ -221,7 +226,8 @@ fn ipfs_cat() {
             "ipfsCat",
             &[RuntimeValue::from(module.heap.asc_new(&hash))],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return pointer");
@@ -263,7 +269,8 @@ fn token_numeric_conversion() {
             "token_to_i32",
             &[RuntimeValue::from(token_ptr)],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into::<i32>()
         .expect("call did not return i32");
@@ -282,7 +289,8 @@ fn big_int_to_from_i32() {
             "i32_to_big_int",
             &[RuntimeValue::from(input)],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return pointer");
@@ -298,7 +306,8 @@ fn big_int_to_from_i32() {
             "big_int_to_i32",
             &[RuntimeValue::from(input_ptr)],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return pointer");
@@ -318,7 +327,8 @@ fn big_int_to_hex() {
             "big_int_to_hex",
             &[RuntimeValue::from(zero)],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return pointer");
@@ -334,7 +344,8 @@ fn big_int_to_hex() {
             "big_int_to_hex",
             &[RuntimeValue::from(one)],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return pointer");
@@ -350,7 +361,8 @@ fn big_int_to_hex() {
             "big_int_to_hex",
             &[RuntimeValue::from(u256_max)],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return pointer");
@@ -376,7 +388,8 @@ fn big_int_arithmetic() {
             "plus",
             &[RuntimeValue::from(zero), RuntimeValue::from(one)],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return pointer");
@@ -394,7 +407,8 @@ fn big_int_arithmetic() {
             "minus",
             &[RuntimeValue::from(five), RuntimeValue::from(ten)],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return pointer");
@@ -412,7 +426,8 @@ fn big_int_arithmetic() {
             "times",
             &[RuntimeValue::from(minus_twenty), RuntimeValue::from(five)],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return pointer");
@@ -430,7 +445,8 @@ fn big_int_arithmetic() {
             "dividedBy",
             &[RuntimeValue::from(five), RuntimeValue::from(two)],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return pointer");
@@ -448,7 +464,8 @@ fn big_int_arithmetic() {
             "mod",
             &[RuntimeValue::from(five), RuntimeValue::from(two)],
             &mut module.externals,
-        ).expect("call failed")
+        )
+        .expect("call failed")
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return pointer");

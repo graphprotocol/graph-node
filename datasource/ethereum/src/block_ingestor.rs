@@ -53,7 +53,8 @@ where
         tokio::timer::Interval::new(Instant::now(), static_self.polling_interval)
             .map_err(move |e| {
                 error!(static_self.logger, "timer::Interval failed: {:?}", e);
-            }).for_each(move |_| {
+            })
+            .for_each(move |_| {
                 // Attempt to poll
                 static_self.do_poll().then(move |result| {
                     if let Err(err) = result {
@@ -224,8 +225,10 @@ where
                             "could not get transaction receipt {} from Ethereum: {}",
                             tx_hash,
                             e
-                        ).into()
-                    }).and_then(move |receipt_opt| {
+                        )
+                        .into()
+                    })
+                    .and_then(move |receipt_opt| {
                         receipt_opt.ok_or_else(move || {
                             // No receipt was returned.
                             //
@@ -239,15 +242,18 @@ where
                             BlockIngestorError::BlockUnavailable(block_hash)
                         })
                     })
-            }).map_err(move |e| {
+            })
+            .map_err(move |e| {
                 e.into_inner().unwrap_or_else(move || {
                     // Timed out
                     format_err!(
                         "Ethereum node took too long to return transaction receipt {}",
                         tx_hash
-                    ).into()
+                    )
+                    .into()
                 })
-            }).and_then(move |receipt| {
+            })
+            .and_then(move |receipt| {
                 let receipt_block_hash = receipt.block_hash.expect("transaction not in a block");
                 // Check if receipt is for the right block
                 if receipt_block_hash != block_hash {
@@ -312,7 +318,8 @@ where
                     .map_err(|e| format_err!("could not get block from Ethereum: {}", e).into())
                     .and_then(move |block_opt| {
                         block_opt.ok_or_else(|| BlockIngestorError::BlockUnavailable(block_hash))
-                    }).and_then(move |block| self.load_full_block(block))
+                    })
+                    .and_then(move |block| self.load_full_block(block))
             })
             // Collect to ensure that `block_with_txs` calls happen before `submit_batch`
             .collect::<Vec<_>>();

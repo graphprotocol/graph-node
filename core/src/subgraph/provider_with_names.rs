@@ -72,10 +72,12 @@ where
                     .map_err(CancelableError::Error)
                     .cancelable(&deployment_event_stream_cancel_handle, || {
                         CancelableError::Cancel
-                    }).for_each(move |deployment_event| {
+                    })
+                    .for_each(move |deployment_event| {
                         assert_eq!(deployment_event.node_id(), &node_id);
                         handle_deployment_event(deployment_event, provider.clone(), &logger_clone1)
-                    }).map_err(move |e| match e {
+                    })
+                    .map_err(move |e| match e {
                         CancelableError::Cancel => {}
                         CancelableError::Error(e) => {
                             error!(logger_clone2, "deployment event stream failed: {}", e);
@@ -206,7 +208,8 @@ where
                     Ok(()) => Ok(()),
                     Err(SubgraphProviderError::NotRunning(_)) => Ok(()),
                     Err(e) => Err(e),
-                }).map_err(CancelableError::Error),
+                })
+                .map_err(CancelableError::Error),
         ),
     }
 }

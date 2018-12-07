@@ -77,23 +77,25 @@ where
 
         // List values may be coercible if they are empty or their values are coercible
         // into the inner type
-        (Type::ListType(t), Value::List(ref values)) => if values.is_empty() {
-            Some(Value::List(values.clone()))
-        } else {
-            let mut coerced_values = vec![];
+        (Type::ListType(t), Value::List(ref values)) => {
+            if values.is_empty() {
+                Some(Value::List(values.clone()))
+            } else {
+                let mut coerced_values = vec![];
 
-            // Coerce the list values individually
-            for value in values {
-                if let Some(v) = coerce_value(value, t, resolver) {
-                    coerced_values.push(v);
-                } else {
-                    // Fail if not all values could be coerced
-                    return None;
+                // Coerce the list values individually
+                for value in values {
+                    if let Some(v) = coerce_value(value, t, resolver) {
+                        coerced_values.push(v);
+                    } else {
+                        // Fail if not all values could be coerced
+                        return None;
+                    }
                 }
-            }
 
-            Some(Value::List(coerced_values))
-        },
+                Some(Value::List(coerced_values))
+            }
+        }
 
         // Everything else is unsupported for now
         _ => unimplemented!(),
@@ -262,7 +264,8 @@ mod tests {
             vec![
                 ("Foo".to_string(), Value::Boolean(false)),
                 ("Bar".to_string(), Value::Float(15.2)),
-            ].into_iter(),
+            ]
+            .into_iter(),
         );
         assert_eq!(
             Value::Object(example_object.clone()).coerce(&input_object_type),

@@ -89,7 +89,8 @@ impl BatchTransport for TestTransport {
                 requests
                     .into_iter()
                     .map(|(id, req)| self.send(id, req).map(|v| Ok(v))),
-            ).collect(),
+            )
+            .collect(),
         )
     }
 }

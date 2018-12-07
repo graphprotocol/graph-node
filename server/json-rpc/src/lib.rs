@@ -76,7 +76,8 @@ where
                     } else {
                         json_rpc_error(JSON_RPC_DEPLOY_ERROR, e.to_string())
                     }
-                }).map(move |_| routes),
+                })
+                .map(move |_| routes),
         )
     }
 
@@ -99,7 +100,8 @@ where
                     } else {
                         json_rpc_error(JSON_RPC_REMOVE_ERROR, e.to_string())
                     }
-                }).map(|_| Ok(Value::Null))
+                })
+                .map(|_| Ok(Value::Null))
                 .flatten(),
         )
     }
@@ -118,7 +120,8 @@ where
             .map_err(move |e| {
                 error!(logger, "Failed to list subgraphs: {}", e);
                 json_rpc_error(JSON_RPC_INTERNAL_ERROR, "database error".to_owned())
-            })?.into_iter()
+            })?
+            .into_iter()
             .map(|(name, id)| (name.to_string(), Value::String(id.to_string())));
 
         Ok(Value::from(serde_json::Map::from_iter(list)))

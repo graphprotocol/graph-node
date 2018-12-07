@@ -36,7 +36,8 @@ fn test_schema() -> Schema {
             }
             ",
         SubgraphId::new("testschema").unwrap(),
-    ).expect("Test schema invalid");
+    )
+    .expect("Test schema invalid");
 
     let api_document =
         api_schema(&schema.document).expect("Failed to derive API schema from test schema");
@@ -183,7 +184,8 @@ impl Store for TestStore {
             .find(|entity| {
                 entity.get("id") == Some(&Value::String(key.entity_id.clone()))
                     && entity.get("__typename") == Some(&Value::String(key.entity_type.clone()))
-            }).map_or(
+            })
+            .map_or(
                 Err(QueryExecutionError::ResolveEntitiesError(String::from(
                     "Mock get query error",
                 ))),
@@ -211,7 +213,8 @@ impl Store for TestStore {
                     .and_then(|filter| match filter {
                         EntityFilter::And(filters) => filters.get(0),
                         _ => None,
-                    }).map(|filter| match filter {
+                    })
+                    .map(|filter| match filter {
                         EntityFilter::Equal(k, v) => entity.get(k) == Some(&v),
                         EntityFilter::Contains(k, v) => match entity.get(k) {
                             Some(Value::List(values)) => values.contains(v),
@@ -222,8 +225,10 @@ impl Store for TestStore {
                             _ => unimplemented!(),
                         }),
                         _ => unimplemented!(),
-                    }).unwrap_or(true)
-            }).map(|entity| entity.clone())
+                    })
+                    .unwrap_or(true)
+            })
+            .map(|entity| entity.clone())
             .collect();
 
         Ok(entities)
@@ -263,7 +268,8 @@ fn can_query_one_to_one_relationship() {
                 }
             }
             ",
-        ).expect("Invalid test query"),
+        )
+        .expect("Invalid test query"),
     );
 
     assert!(
@@ -330,7 +336,8 @@ fn can_query_one_to_many_relationships_in_both_directions() {
             }
         }
         ",
-        ).expect("Invalid test query"),
+        )
+        .expect("Invalid test query"),
     );
 
     assert!(
@@ -426,7 +433,8 @@ fn can_query_many_to_many_relationship() {
                 }
             }
             ",
-        ).expect("Invalid test query"),
+        )
+        .expect("Invalid test query"),
     );
 
     assert!(

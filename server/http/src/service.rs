@@ -118,12 +118,14 @@ where
                         "invalid subgraph name {:?}",
                         name.to_string()
                     ))
-                }).and_then(move |name| {
+                })
+                .and_then(move |name| {
                     self_clone1
                         .store
                         .read(name)
                         .map_err(|e| GraphQLServerError::InternalError(e.to_string()))
-                }).and_then(move |deployment_opt| match deployment_opt {
+                })
+                .and_then(move |deployment_opt| match deployment_opt {
                     None => self_clone2.handle_not_found(),
                     Some((_, ref node_id)) if *node_id != self_clone2.node_id => {
                         self_clone2.handle_not_found()
@@ -158,7 +160,8 @@ where
             future::result(SubgraphDeploymentName::new(name.clone()))
                 .map_err(move |()| {
                     GraphQLServerError::ClientError(format!("invalid subgraph name {:?}", name))
-                }).and_then(move |name| {
+                })
+                .and_then(move |name| {
                     future::result(service.store.read(name.clone()))
                         .map_err(|e| GraphQLServerError::InternalError(e.to_string()))
                         .and_then(move |deployment_opt| {
@@ -168,7 +171,8 @@ where
                                     name.to_string()
                                 ))
                             })
-                        }).and_then(move |(subgraph_id, _node_id)| {
+                        })
+                        .and_then(move |(subgraph_id, _node_id)| {
                             service.handle_graphql_query(subgraph_id, request.into_body())
                         })
                 }),
@@ -207,7 +211,8 @@ where
                             .graphql_runner
                             .run_query(query)
                             .map_err(|e| GraphQLServerError::from(e))
-                    }).then(|result| GraphQLResponse::new(result)),
+                    })
+                    .then(|result| GraphQLResponse::new(result)),
             ),
         }
     }
@@ -343,7 +348,8 @@ mod tests {
                     vec![(
                         String::from("name"),
                         q::Value::String(String::from("Jordi")),
-                    )].into_iter(),
+                    )]
+                    .into_iter(),
                 ),
             )))))
         }
@@ -365,7 +371,8 @@ mod tests {
                      scalar String \
                      type Query { name: String } \
                      ",
-                ).unwrap(),
+                )
+                .unwrap(),
             },
         )))));
         let graphql_runner = Arc::new(TestGraphQlRunner);
@@ -414,7 +421,8 @@ mod tests {
                                  scalar String \
                                  type Query { name: String } \
                                  ",
-                            ).unwrap(),
+                            )
+                            .unwrap(),
                         },
                     )))));
                     let node_id = NodeId::new("test").unwrap();
@@ -443,6 +451,7 @@ mod tests {
                     assert_eq!(name, "Jordi".to_string());
                 });
                 res
-            })).unwrap()
+            }))
+            .unwrap()
     }
 }

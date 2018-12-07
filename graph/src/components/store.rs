@@ -168,7 +168,8 @@ impl EntityOperation {
                         let mut entity = entity.clone();
                         entity.merge(data.clone());
                         entity
-                    }).unwrap_or_else(|| data.clone()),
+                    })
+                    .unwrap_or_else(|| data.clone()),
             ),
             Remove { .. } => None,
         }

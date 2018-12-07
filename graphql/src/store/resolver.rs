@@ -64,10 +64,12 @@ where
         let derived_from_field = Self::get_derived_from_directive(field_definition)
             .and_then(|directive| {
                 qast::get_argument_value(&directive.arguments, &q::Name::from("field"))
-            }).and_then(|value| match value {
+            })
+            .and_then(|value| match value {
                 q::Value::String(s) => Some(s),
                 _ => None,
-            }).and_then(|derived_from_field_name| {
+            })
+            .and_then(|derived_from_field_name| {
                 sast::get_field_type(object_type, derived_from_field_name)
             });
 
@@ -88,11 +90,13 @@ where
                 .and_then(|value| match value {
                     q::Value::Object(o) => Some(o),
                     _ => None,
-                }).and_then(|object| object.get(&q::Name::from("id")))
+                })
+                .and_then(|object| object.get(&q::Name::from("id")))
                 .and_then(|value| match value {
                     q::Value::String(s) => Some(Value::from(s)),
                     _ => None,
-                }).expect("Parent object is missing an \"id\"")
+                })
+                .expect("Parent object is missing an \"id\"")
                 .clone();
 
             // Depending on whether the field we're deriving from has a list or a
@@ -146,11 +150,13 @@ where
                             .filter_map(|id| match id {
                                 q::Value::String(s) => Some(s),
                                 _ => None,
-                            }).map(|id| EntityFilter::Equal(String::from("id"), Value::from(id)))
+                            })
+                            .map(|id| EntityFilter::Equal(String::from("id"), Value::from(id)))
                             .collect(),
                     )),
                     _ => None,
-                }).unwrap_or_else(|| {
+                })
+                .unwrap_or_else(|| {
                     panic!(
                         "Field \"{}\" missing in parent object",
                         field_definition.name
@@ -177,11 +183,13 @@ where
             .and_then(|value| match value {
                 q::Value::Object(object) => Some(object),
                 _ => None,
-            }).and_then(|object| object.get(field))
+            })
+            .and_then(|object| object.get(field))
             .map(|value| match value {
                 q::Value::List(values) => values.is_empty(),
                 _ => true,
-            }).unwrap_or(true)
+            })
+            .unwrap_or(true)
     }
 
     /// Compute special fields that are not stored such as as `entityCount`.

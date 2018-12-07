@@ -16,12 +16,14 @@ pub fn logger(show_debug: bool) -> Logger {
             } else {
                 FilterLevel::Info
             },
-        ).parse(
+        )
+        .parse(
             env::var_os("GRAPH_LOG")
                 .unwrap_or_else(|| "".into())
                 .to_str()
                 .unwrap(),
-        ).build();
+        )
+        .build();
     let drain = slog_async::Async::new(drain).build().fuse();
     Logger::root(drain, o!())
 }

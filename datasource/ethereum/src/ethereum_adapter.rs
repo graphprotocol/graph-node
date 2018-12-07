@@ -66,9 +66,11 @@ where
                     .map(move |logs| {
                         debug!(logger, "Received logs for [{}, {}].", from, to);
                         logs
-                    }).map_err(SyncFailure::new)
+                    })
+                    .map_err(SyncFailure::new)
                     .from_err()
-            }).map_err(move |e| {
+            })
+            .map_err(move |e| {
                 e.into_inner().unwrap_or_else(move || {
                     format_err!(
                         "Ethereum node took too long to respond to eth_getLogs \
@@ -134,7 +136,8 @@ where
                             chunk_end,
                             addresses.clone(),
                             event_sigs.clone(),
-                        ).map(move |logs| {
+                        )
+                        .map(move |logs| {
                             logs.into_iter()
                                 // Filter out false positives
                                 .filter(move |log| log_filter.matches(log))
@@ -176,7 +179,8 @@ where
                                 chunk_end,
                                 addresses.clone(),
                                 event_sigs.clone(),
-                            ).map(move |logs| {
+                            )
+                            .map(move |logs| {
                                 logs.into_iter()
                                     // Filter out false positives
                                     .filter(move |log| log_filter.matches(log))
@@ -206,7 +210,8 @@ where
             } else {
                 None
             }
-        }).filter(|chunk| !chunk.is_empty())
+        })
+        .filter(|chunk| !chunk.is_empty())
     }
 
     fn call(
@@ -232,7 +237,8 @@ where
                     // Errors are retried in the inner retry
                     Err(_) => false,
                 }
-            }).limit(16)
+            })
+            .limit(16)
             .no_logging()
             .no_timeout()
             .run(move || {
@@ -255,7 +261,8 @@ where
                             .call(req, block_number_opt)
                             .map_err(SyncFailure::new)
                             .from_err()
-                    }).map_err(|e| {
+                    })
+                    .map_err(|e| {
                         e.into_inner().unwrap_or_else(|| {
                             format_err!("Ethereum node took too long to perform function call")
                         })
@@ -296,7 +303,8 @@ where
                             gen_block_opt
                                 .ok_or_else(|| {
                                     format_err!("Ethereum node could not find genesis block")
-                                }).map(|gen_block| gen_block.hash.unwrap()),
+                                })
+                                .map(|gen_block| gen_block.hash.unwrap()),
                         )
                     })
             });
@@ -309,7 +317,8 @@ where
                         net_version,
                         genesis_block_hash,
                     },
-                ).map_err(|e| {
+                )
+                .map_err(|e| {
                     e.into_inner().unwrap_or_else(|| {
                         format_err!("Ethereum node took too long to read network identifiers")
                     })
@@ -333,7 +342,8 @@ where
                     .block_with_txs(BlockId::Hash(block_hash))
                     .map_err(SyncFailure::new)
                     .from_err()
-            }).map_err(move |e| {
+            })
+            .map_err(move |e| {
                 e.into_inner().unwrap_or_else(move || {
                     format_err!("Ethereum node took too long to return block {}", block_hash)
                 })
@@ -375,7 +385,8 @@ where
                                                 tx_hash
                                             )
                                         })
-                                    }).and_then(move |receipt| {
+                                    })
+                                    .and_then(move |receipt| {
                                         let receipt_block_hash =
                                             receipt.block_hash.expect("transaction not in a block");
                                         // Check if receipt is for the right block
@@ -394,7 +405,8 @@ where
                                             Ok(receipt)
                                         }
                                     })
-                            }).collect::<Vec<_>>();
+                            })
+                            .collect::<Vec<_>>();
 
                         batching_web3
                             .transport()
@@ -409,7 +421,8 @@ where
                                     },
                                 )
                             })
-                    }).map_err(move |e| {
+                    })
+                    .map_err(move |e| {
                         e.into_inner().unwrap_or_else(move || {
                             format_err!(
                                 "Ethereum node took too long to return receipts for block {}",
@@ -438,7 +451,8 @@ where
                         .map_err(SyncFailure::new)
                         .from_err()
                         .map(|block_opt| block_opt.map(|block| block.hash.unwrap()))
-                }).map_err(move |e| {
+                })
+                .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
                         format_err!(
                             "Ethereum node took too long to return data for block #{}",
@@ -460,7 +474,8 @@ where
                     block_hash_opt
                         .ok_or_else(|| {
                             format_err!("Ethereum node is missing block #{}", block_ptr.number)
-                        }).map(|block_hash| block_hash == block_ptr.hash)
+                        })
+                        .map(|block_hash| block_hash == block_ptr.hash)
                 }),
         )
     }
@@ -537,7 +552,8 @@ where
                 call.address,
                 Bytes(call_data),
                 Some(call.block_ptr.number.into()),
-            ).map_err(EthereumContractCallError::from)
+            )
+            .map_err(EthereumContractCallError::from)
             .and_then(move |output| {
                 // Decode the return values according to the ABI
                 call.function

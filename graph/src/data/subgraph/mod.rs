@@ -229,12 +229,14 @@ impl UnresolvedMapping {
         stream::futures_ordered(
             abis.into_iter()
                 .map(|unresolved_abi| unresolved_abi.resolve(resolver)),
-        ).collect()
+        )
+        .collect()
         .join(
             resolver
                 .cat(&link)
                 .and_then(|module_bytes| Ok(parity_wasm::deserialize_buffer(&module_bytes)?)),
-        ).map(|(abis, runtime)| Mapping {
+        )
+        .map(|(abis, runtime)| Mapping {
             kind,
             api_version,
             language,
@@ -340,7 +342,8 @@ impl SubgraphManifest {
                 // Parse the YAML data into an UnresolvedSubgraphManifest
                 let unresolved: UnresolvedSubgraphManifest = serde_yaml::from_value(raw)?;
                 Ok(unresolved)
-            }).and_then(move |unresolved| {
+            })
+            .and_then(move |unresolved| {
                 unresolved
                     .resolve(&*resolver)
                     .map_err(SubgraphManifestResolveError::ResolveError)
@@ -368,7 +371,8 @@ impl UnresolvedSubgraphManifest {
             data_sources
                 .into_iter()
                 .map(|data_set| data_set.resolve(resolver)),
-        ).collect()
+        )
+        .collect()
         .join(schema.resolve(id.clone(), resolver))
         .map(|(data_sources, schema)| SubgraphManifest {
             id,
