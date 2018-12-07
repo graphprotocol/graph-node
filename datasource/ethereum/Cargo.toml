@@ -1,6 +1,6 @@
 [package]
 name = "graph-datasource-ethereum"
-version = "0.4.1"
+version = "0.5.0"
 
 [dependencies]
 failure = "0.1.2"
