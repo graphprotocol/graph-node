@@ -219,6 +219,7 @@ impl Value {
                     .ok_or_else(|| QueryExecutionError::NamedTypeError("Int".to_string()))?
                     as i32,
             ),
+            (query::Value::Variable(var), _) => Value::String(var.to_owned()),
             (query::Value::Float(f), _) => Value::Float(f.to_owned() as f32),
             (query::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
             (query::Value::Null, _) => Value::Null,
