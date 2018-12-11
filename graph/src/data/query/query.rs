@@ -61,7 +61,7 @@ where
 }
 
 /// Variable values for a GraphQL query.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct QueryVariables(
     #[serde(deserialize_with = "deserialize_variables")] HashMap<String, q::Value>,
 );
@@ -71,6 +71,12 @@ impl Deref for QueryVariables {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl DerefMut for QueryVariables {
+    fn deref_mut(&mut self) -> &mut HashMap<String, q::Value> {
+        &mut self.0
     }
 }
 
