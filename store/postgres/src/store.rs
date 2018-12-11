@@ -12,10 +12,12 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use graph::components::store::Store as StoreTrait;
+use graph::data::subgraph::schema::{MANIFEST_SUFFIX, SUBGRAPHS_ID, MANIFEST_ENTITY_TYPENAME};
 use graph::prelude::*;
 use graph::serde_json;
 use graph::web3::types::H256;
 use graph::{tokio, tokio::timer::Interval};
+use graph_graphql::prelude::api_schema;
 
 use chain_head_listener::ChainHeadUpdateListener;
 use entity_changes::EntityChangeListener;
@@ -817,6 +819,55 @@ impl SubgraphDeploymentStore for Store {
                 })
                 .map_err(|()| format_err!("deployment event notification listener failed")),
         )
+    }
+
+    fn is_deployed(&self, id: &SubgraphId) -> Result<bool, Error> {
+        use db_schema::subgraph_deployments::dsl::*;
+
+        // The subgraph of subgraphs is always deployed.
+        if id == &*SUBGRAPHS_ID {
+            return Ok(true);
+        }
+
+        let deployment_count = subgraph_deployments
+            .filter(subgraph_id.eq(id.to_string()))
+            .execute(&*self.conn.lock().unwrap())?;
+        Ok(match deployment_count {
+            0 => false,
+            1 => true,
+            _ => unreachable!(), // The `subgraph_id` column is `UNIQUE`
+        })
+    }
+
+    fn schema_of(&self, subgraph_id: SubgraphId) -> Result<Schema, Error> {
+        let raw_schema = if subgraph_id == *SUBGRAPHS_ID {
+            // The subgraph of subgraphs schema is built-in.
+            include_str!("subgraphs.graphql").to_owned()
+        } else {
+            let manifest_entity = self
+                .get(EntityKey {
+                    subgraph_id: SUBGRAPHS_ID.clone(),
+                    entity_type: MANIFEST_ENTITY_TYPENAME.to_owned(),
+                    entity_id: format!("{}{}", subgraph_id, MANIFEST_SUFFIX),
+                })?
+                .ok_or_else(|| format_err!("subgraph entity not found {}", subgraph_id))?;
+
+            match manifest_entity.get("schema") {
+                Some(Value::String(raw)) => raw.clone(),
+                _ => {
+                    return Err(format_err!(
+                        "schema not present or has wrong type, subgraph: {}",
+                        subgraph_id
+                    ))
+                }
+            }
+        };
+        let schema = Schema::parse(&raw_schema, subgraph_id)?;
+        let derived_schema = api_schema(&schema.document)?;
+        Ok(Schema {
+            id: schema.id,
+            document: derived_schema,
+        })
     }
 }
 

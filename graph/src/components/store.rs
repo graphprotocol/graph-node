@@ -342,6 +342,10 @@ pub trait SubgraphDeploymentStore: Send + Sync + 'static {
         &self,
         node_id: NodeId,
     ) -> Box<Stream<Item = DeploymentEvent, Error = Error> + Send>;
+
+    fn is_deployed(&self, id: &SubgraphId) -> Result<bool, Error>;
+
+    fn schema_of(&self, subgraph_id: SubgraphId) -> Result<Schema, Error>;
 }
 
 /// Common trait for blockchain store implementations.

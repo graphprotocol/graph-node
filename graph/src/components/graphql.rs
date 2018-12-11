@@ -11,7 +11,7 @@ pub type SubscriptionResultFuture =
     Box<Future<Item = SubscriptionResult, Error = SubscriptionError> + Send>;
 
 /// A component that can run GraphqL queries against a [Store](../store/trait.Store.html).
-pub trait GraphQlRunner: Send + Sync {
+pub trait GraphQlRunner: Send + Sync + 'static {
     /// Runs a GraphQL query and returns its result.
     fn run_query(&self, query: Query) -> QueryResultFuture;
 

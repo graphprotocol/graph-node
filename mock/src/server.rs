@@ -1,11 +1,9 @@
-use futures::sync::mpsc::{channel, Receiver, Sender};
 use graphql_parser;
 use std::error::Error;
 use std::fmt;
 use std::sync::Mutex;
 
 use graph::prelude::*;
-use graph_graphql::prelude::api_schema;
 
 #[derive(Debug)]
 pub struct MockServeError;
@@ -29,7 +27,6 @@ impl fmt::Display for MockServeError {
 /// A mock `GraphQLServer`.
 pub struct MockGraphQLServer<Q> {
     logger: Logger,
-    schema_event_sink: Sender<SchemaEvent>,
     schema: Arc<Mutex<Option<Schema>>>,
     query_runner: Arc<Q>,
 }
@@ -37,57 +34,17 @@ pub struct MockGraphQLServer<Q> {
 impl<Q> MockGraphQLServer<Q> {
     /// Creates a new mock `GraphQLServer`.
     pub fn new(logger: &Logger, query_runner: Arc<Q>) -> Self {
-        // Create channel for handling incoming schema events
-        let (schema_event_sink, schema_event_stream) = channel(100);
-
-        // Create a new mock GraphQL server
-        let mut server = MockGraphQLServer {
+        MockGraphQLServer {
             logger: logger.new(o!("component" => "MockGraphQLServer")),
-            schema_event_sink,
             schema: Arc::new(Mutex::new(None)),
             query_runner,
-        };
-
-        // Spawn tasks to handle incoming schema events
-        server.handle_schema_events(schema_event_stream);
-
-        // Return the new server
-        server
-    }
-
-    /// Handle incoming schema events
-    fn handle_schema_events(&mut self, stream: Receiver<SchemaEvent>) {
-        let logger = self.logger.clone();
-        let schema = self.schema.clone();
-
-        tokio::spawn(stream.for_each(move |event| {
-            info!(logger, "Received schema event"; "event" => format!("{:?}", event));
-
-            if let SchemaEvent::SchemaAdded(new_schema) = event {
-                let mut schema = schema.lock().unwrap();
-                let derived_schema = match api_schema(&new_schema.document) {
-                    Ok(document) => Schema {
-                        id: new_schema.id.clone(),
-                        document,
-                    },
-                    Err(e) => {
-                        error!(logger, "Error deriving schema {}", e);
-                        return Ok(());
-                    }
-                };
-                *schema = Some(derived_schema);
-            } else {
-                panic!("schema removal is yet not supported")
-            }
-
-            Ok(())
-        }));
+        }
     }
 }
 
 impl<Q> GraphQLServer for MockGraphQLServer<Q>
 where
-    Q: GraphQlRunner + 'static,
+    Q: GraphQlRunner,
 {
     type ServeError = MockServeError;
 
@@ -120,16 +77,5 @@ where
                 Ok(())
             })
         })))
-    }
-}
-
-impl<Q> EventConsumer<SchemaEvent> for MockGraphQLServer<Q> {
-    fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()> + Send> {
-        Box::new(self.schema_event_sink.clone().sink_map_err(move |e| {
-            panic!(
-                "Failed to send schema event, receiving component was dropped: {}",
-                e
-            );
-        }))
     }
 }

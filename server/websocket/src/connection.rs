@@ -11,8 +11,6 @@ use uuid::Uuid;
 use graph::prelude::*;
 use graph::serde_json;
 
-use server::GuardedSchema;
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StartPayload {
@@ -153,20 +151,18 @@ pub struct GraphQlConnection<Q, S> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     stream: WebSocketStream<S>,
-    subgraphs: SubgraphRegistry<GuardedSchema>,
-    subgraph_id: SubgraphId,
+    schema: Schema,
 }
 
 impl<Q, S> GraphQlConnection<Q, S>
 where
-    Q: GraphQlRunner + 'static,
+    Q: GraphQlRunner,
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
     /// Creates a new GraphQL subscription service.
     pub(crate) fn new(
         logger: &Logger,
-        subgraphs: SubgraphRegistry<GuardedSchema>,
-        subgraph_id: SubgraphId,
+        schema: Schema,
         stream: WebSocketStream<S>,
         graphql_runner: Arc<Q>,
     ) -> Self {
@@ -175,8 +171,7 @@ where
             logger: logger.new(o!("component" => "GraphQlConnection")),
             graphql_runner,
             stream,
-            subgraphs,
-            subgraph_id,
+            schema,
         }
     }
 
@@ -185,8 +180,7 @@ where
         mut msg_sink: mpsc::UnboundedSender<WsMessage>,
         logger: Logger,
         connection_id: String,
-        subgraphs: SubgraphRegistry<GuardedSchema>,
-        subgraph_id: SubgraphId,
+        schema: Schema,
         graphql_runner: Arc<Q>,
     ) -> impl Future<Item = (), Error = WsError> {
         let mut operations = Operations::new(msg_sink.clone());
@@ -233,19 +227,6 @@ where
                         );
                     }
 
-                    // Respond with a GQL_ERROR if the subgraph name or ID is unknown
-                    let schema = if let Some(schema) =
-                        subgraphs.resolve_map(&subgraph_id, |s| s.schema.clone())
-                    {
-                        schema
-                    } else {
-                        return send_error_string(
-                            &msg_sink,
-                            id.clone(),
-                            format!("Unknown subgraph ID: {}", subgraph_id),
-                        );
-                    };
-
                     // Parse the GraphQL query document; respond with a GQL_ERROR if
                     // the query is invalid
                     let query = match parse_query(&payload.query) {
@@ -264,7 +245,7 @@ where
                     // Construct a subscription
                     let subscription = Subscription {
                         query: Query {
-                            schema,
+                            schema: schema.clone(),
                             document: query,
                             variables: None,
                         },
@@ -326,7 +307,7 @@ where
 
 impl<Q, S> IntoFuture for GraphQlConnection<Q, S>
 where
-    Q: GraphQlRunner + 'static,
+    Q: GraphQlRunner,
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
     type Future = Box<Future<Item = Self::Item, Error = Self::Error> + Send>;
@@ -348,8 +329,7 @@ where
             msg_sink,
             self.logger.clone(),
             self.id.clone(),
-            self.subgraphs.clone(),
-            self.subgraph_id.clone(),
+            self.schema.clone(),
             self.graphql_runner.clone(),
         );
 

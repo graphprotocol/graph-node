@@ -9,19 +9,8 @@ pub enum SubgraphProviderEvent {
     SubgraphStop(SubgraphId),
 }
 
-/// Schema-only events emitted by a [SubgraphProvider](trait.SubgraphProvider.html).
-#[derive(Clone, Debug, PartialEq)]
-pub enum SchemaEvent {
-    /// A subgraph with a new schema was added.
-    SchemaAdded(Schema),
-    /// A subgraph with the given id was removed.
-    SchemaRemoved(SubgraphId),
-}
-
 /// Common trait for subgraph providers.
-pub trait SubgraphProvider:
-    EventProducer<SubgraphProviderEvent> + EventProducer<SchemaEvent> + Send + Sync + 'static
-{
+pub trait SubgraphProvider: EventProducer<SubgraphProviderEvent> + Send + Sync + 'static {
     fn start(
         &self,
         id: SubgraphId,

@@ -1,9 +1,7 @@
 use futures::prelude::*;
-use futures::sync::mpsc::{channel, Receiver, Sender};
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
 use graph::tokio::net::TcpListener;
-use graph_graphql::prelude::api_schema;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::Path;
 use std::sync::Mutex;
@@ -12,92 +10,24 @@ use tokio_tungstenite::tungstenite::{handshake::server::Request, Error as WsErro
 
 use connection::GraphQlConnection;
 
-/// On drop, cancels all connections to this subgraph.
-pub(crate) struct GuardedSchema {
-    pub(crate) schema: Schema,
-    connection_guards: Vec<CancelGuard>,
-}
-
-impl GuardedSchema {
-    fn new(schema: Schema) -> Self {
-        Self {
-            schema,
-            connection_guards: Vec::new(),
-        }
-    }
-}
-
 /// A GraphQL subscription server based on Hyper / Websockets.
 pub struct SubscriptionServer<Q, S> {
     logger: Logger,
     graphql_runner: Arc<Q>,
-    schema_event_sink: Sender<SchemaEvent>,
-    subgraphs: SubgraphRegistry<GuardedSchema>,
     store: Arc<S>,
 }
 
 impl<Q, S> SubscriptionServer<Q, S>
 where
-    Q: GraphQlRunner + 'static,
+    Q: GraphQlRunner,
     S: SubgraphDeploymentStore,
 {
     pub fn new(logger: &Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
-        let logger = logger.new(o!("component" => "SubscriptionServer"));
-
-        let (schema_event_sink, schema_event_stream) = channel(100);
-
-        let mut server = SubscriptionServer {
-            logger,
+        SubscriptionServer {
+            logger: logger.new(o!("component" => "SubscriptionServer")),
             graphql_runner,
-            schema_event_sink,
-            subgraphs: SubgraphRegistry::new(),
             store,
-        };
-
-        // Spawn task to handle incoming schema events
-        server.handle_schema_events(schema_event_stream);
-
-        // Return the server
-        server
-    }
-
-    fn handle_schema_events(&mut self, stream: Receiver<SchemaEvent>) {
-        let logger = self.logger.clone();
-        let mut subgraphs = self.subgraphs.clone();
-
-        tokio::spawn(stream.for_each(move |event| {
-            match event {
-                SchemaEvent::SchemaAdded(new_schema) => {
-                    debug!(logger, "Received SchemaAdded event"; "id" => new_schema.id.to_string());
-
-                    let derived_schema = match api_schema(&new_schema.document) {
-                        Ok(document) => Schema {
-                            id: new_schema.id.clone(),
-                            document,
-                        },
-                        Err(e) => {
-                            error!(logger, "Error deriving schema {}", e);
-                            return Ok(());
-                        }
-                    };
-
-                    // Add the subgraph name, ID and schema to the subgraph registry
-                    subgraphs.insert(
-                        derived_schema.id.clone(),
-                        GuardedSchema::new(derived_schema),
-                    );
-                }
-                SchemaEvent::SchemaRemoved(id) => {
-                    debug!(logger, "Received SchemaRemoved event"; "id" => id.to_string());
-
-                    // On removal, the `GuardedSchema` will be dropped and all
-                    // connections to it will be terminated.
-                    subgraphs.remove_id(id);
-                }
-            }
-
-            Ok(())
-        }));
+        }
     }
 
     fn subgraph_id_from_url_path(store: Arc<S>, path: &Path) -> Result<SubgraphId, ()> {
@@ -128,7 +58,7 @@ where
 
 impl<Q, S> SubscriptionServerTrait for SubscriptionServer<Q, S>
 where
-    Q: GraphQlRunner + 'static,
+    Q: GraphQlRunner,
     S: SubgraphDeploymentStore,
 {
     type ServeError = ();
@@ -139,7 +69,6 @@ where
     ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
         let logger = self.logger.clone();
         let error_logger = self.logger.clone();
-        let subgraphs = self.subgraphs.clone();
 
         info!(
             logger,
@@ -161,9 +90,7 @@ where
                 let logger = logger.clone();
                 let graphql_runner = graphql_runner.clone();
                 let store = store.clone();
-
-                // Clone subgraph registry to pass it on to connections
-                let subgraphs = subgraphs.clone();
+                let schema_store = store.clone();
 
                 // Subgraph that the request is resolved to (if any)
                 let subgraph_id = Arc::new(Mutex::new(None));
@@ -188,31 +115,25 @@ where
                         Ok(ws_stream) => {
                             // Obtain the subgraph ID or name that we resolved the request to
                             let subgraph_id = subgraph_id.lock().unwrap().clone().unwrap();
+                            let schema = match schema_store.schema_of(subgraph_id.clone()) {
+                                Ok(schema) => schema,
+                                Err(e) => {
+                                    info!(logger, "Failed to establish WS connection, could not find schema";
+                                                "subgraph" => subgraph_id.to_string(),
+                                                "error" => e.to_string(),
+                                    );
+                                    return Ok(())
+                                }
+                            };
 
                             // Spawn a GraphQL over WebSocket connection
                             let service = GraphQlConnection::new(
                                 &logger,
-                                subgraphs.clone(),
-                                subgraph_id.clone(),
+                                schema,
                                 ws_stream,
                                 graphql_runner.clone(),
                             );
-
-                            // Setup cancelation.
-                            let guard = CancelGuard::new();
-                            let cancel_subgraph = subgraph_id.clone();
-                            let connection = service.into_future().cancelable(&guard, move || {
-                                debug!(
-                                    logger,
-                                    "Canceling subscriptions";
-                                    "subgraph" => cancel_subgraph.to_string()
-                                )
-                            });
-                            subgraphs.mutate(&subgraph_id, |subgraph| {
-                                subgraph.connection_guards.push(guard)
-                            });
-
-                            tokio::spawn(connection);
+                            tokio::spawn(service.into_future());
                         }
                         Err(e) => {
                             // We gracefully skip over failed connection attempts rather
@@ -225,21 +146,5 @@ where
             });
 
         Ok(Box::new(task))
-    }
-}
-
-impl<Q, S> EventConsumer<SchemaEvent> for SubscriptionServer<Q, S>
-where
-    Q: GraphQlRunner + 'static,
-    S: SubgraphDeploymentStore,
-{
-    fn event_sink(&self) -> Box<Sink<SinkItem = SchemaEvent, SinkError = ()> + Send> {
-        let logger = self.logger.clone();
-        Box::new(self.schema_event_sink.clone().sink_map_err(move |e| {
-            error!(
-                logger,
-                "Failed to send schema event to subscription server: {}", e
-            )
-        }))
     }
 }

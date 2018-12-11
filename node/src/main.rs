@@ -24,7 +24,7 @@ use std::env;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 
-use graph::components::{forward, forward2};
+use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::{
@@ -403,16 +403,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Forward subgraph events from the subgraph provider to the subgraph instance manager
     tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());
-
-    // Forward schema events from the subgraph provider to the GraphQL servers.
-    tokio::spawn(
-        forward2(
-            &mut subgraph_provider,
-            &subscription_server,
-            &graphql_server,
-        )
-        .unwrap(),
-    );
 
     // Create named subgraph provider for resolving subgraph name->ID mappings
     let named_subgraph_provider = Arc::new(IpfsSubgraphProviderWithNames::new(
