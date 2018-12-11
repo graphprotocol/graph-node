@@ -20,11 +20,10 @@ However, other questions are more difficult to answer:
 
 For this you would need to process all [`Birth` events](https://github.com/dapperlabs/cryptokitties-bounty/blob/master/contracts/KittyBase.sol#L15) and then call the [`ownerOf` method](https://github.com/dapperlabs/cryptokitties-bounty/blob/master/contracts/KittyOwnership.sol#L144) for each cryptokitty that has been born into existence. (An alternate approach could involve processing all [`Transfer` events] and filtering on the most recent transfer for each cryptokitty in existence).
 
-Even for this relatively simple question, it would take hours to days for a decentralized application (dApp) running in a browser to get an answer. Indexing and caching data off blockchains is hard. There are 
-edge cases around finality, chain reorganizations, uncled blocks, etc.
+Even for this relatively simple question, it would take hours to days for a decentralized application (dApp) running in a browser to get an answer. Indexing and caching data off blockchains is hard. There are also edge cases around finality, chain reorganizations, uncled blocks, etc, which make it even more difficult to display deterministic data to the end user. 
 
 The Graph solves this today by providing an open source node implementation, [Graph Node](../README.md), which handles indexing and caching of blockchain data, which the entire community can contribute to and 
-leverage. It exposes this functionality through a GraphQL API.
+leverage. It exposes this functionality through a GraphQL API in the initial implementation.
 
 ### 0.2 How Does it Work?
 
@@ -32,7 +31,7 @@ The Graph must be run alongside a running IPFS node, Ethereum node and a store (
 
 ![Data Flow Diagram](images/TheGraph_DataFlowDiagram.png)
 
-The high level data flow is as follows:
+The high level data flow dor a decentralized application using The Graph is as follows:
 1. A decentralized application creates/modifies data on Ethereum through a transaction to a smart contract.
 2. The smart contract emits one or more events (logs) while processing the transaction.
 3. Graph Node listens for specific events and fires handlers in a user-defined mapping.
@@ -42,7 +41,7 @@ The high level data flow is as follows:
 7. The decentralized application displays this data in a rich UI, which an end-user leverages in making new transactions against the Ethereum blockchain.
 8. The cycle repeats.
 
-### 0.3 What's Included?
+### 0.3 What's Needed to Build a Graph Node?
 There are three repos relevant to building on The Graph:
 1. [Graph Node](../README.md) (this repo) - A server implementation for indexing, caching and serving queries against data from Ethereum.
 2. [Graph CLI](https://github.com/graphprotocol/graph-cli) - A CLI for building and compiling projects which are deployed to Graph Node.
@@ -69,23 +68,23 @@ Below we outline the required steps to build a subgraph from scratch, that will 
     3. [Start The Graph Node](#23-starting-the-graph-node-and-connecting-to-an-etheruem-node)
 
     4. [Build and Deploy the subgraph to the local Graph Node](#24-deploying-the-subgraph)
-3. Query The Subgraph
+3. Querying The Subgraph
     1. [Query the newly deployed GraphQL API](#3-query-the-local-graph-node)
 
 Now let's dig in!
 
 ## 1 Defining The Subgraph 
-When we refer to a subgraph we are referring to the whole project. Once deployed to the decentralized network, it will form a part of a global graph of blockchain data.
+When we refer to a subgraph we are referring to the whole project that is indexing a chosen set of data. 
 
-You can now create an empty repository to start the project. We will add the first file in section 1.1.
+To start, create an empty repository for the project. We will create the first file in section 1.1.
 
 ### 1.1 Define The Data Sources and Create a Manifest
 
-When building a subgraph you must decide ahead of time what blockchain data you want to index in a Graph Node. This is the `data source`, and it comprises of data on blockchain (i.e. an Ethereum smart contract).
+When building a subgraph you must decide ahead of time what blockchain data you want the Graph Node to index. These are known as `dataSources`, which are data sets derived from a blockchain (i.e. an Ethereum smart contract).
 
-The subgraph is defined by a YAML file called a **subgraph manifest**. This file should always be named `subgraph.yaml`. The full specification for the subgraph manifest can be viewed [here](subgraph-manifest.md). It comprises of a schema, data sources and mappings which are used to deploy the GraphQL endpoint.
+The subgraph is defined by a YAML file, known as the **subgraph manifest**. This file should always be named `subgraph.yaml`. The full specification for the subgraph manifest can be viewed [here](subgraph-manifest.md). It comprises of a schema, data sources and mappings which are used to deploy the GraphQL endpoint.
 
-Let's go through an example to show what a subgraph manifest should look like. We will use the common ERC721 contract as it is familiar to many developers. Below we have defined a subgraph manifest with a single `data sources`, which is a smart contract implementing the ERC721 interface:
+Let's go through an example to display what a subgraph manifest looks like. We will use the common ERC721 contract as it is familiar to many developers. Below we have defined a subgraph manifest with one contract under `dataSources`, which is a smart contract implementing the ERC721 interface:
 ```yaml
 specVersion: 0.0.1
 schema:
@@ -94,7 +93,7 @@ dataSources:
 - kind: ethereum/contract
   name: MyERC721Contract
   source:
-    address: "0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d"
+    address: "0x06012c8cf97BEaD5deAe237070F9587f8E7A266d"
     abi: ERC721
   mapping:
     kind: ethereum/events
@@ -110,18 +109,18 @@ dataSources:
       handler: handleTransfer
     file: ./mapping.ts
 ```
-We will point out a few important facts from this example that are supplementary to reading the subgraph manifest spec mentioned above:
+We will point out a few important facts from this example that are supplementary to reading the [subgraph manifest spec](subgraph-manifest.md):
 
 * The name `ERC721` under `source > abi` must match the name of the displayed underneath `abis >name`.
-* The event `Transfer(address,address,uint)` under `eventHandlers` must exactly match what is in the ABI. The name `handleTransfer` under `eventHandlers:handler` must exactly match the name of the mapping function (mappings will be explained in a few sections). 
-* Make sure you have the right contract address under `source > address`. Expecially when you are also deploying on testnets. The contract address may start with or without a `0x` prefix.
+* The event `Transfer(address,address,uint256)` under `eventHandlers` must exactly match what is in the ABI. The name `handleTransfer` under `eventHandlers:handler` must exactly match the name of the mapping function (mappings will be explained in a few sections). 
+* Make sure you have the right contract address under `source > address`. Especially when you are indexing testnet contracts as well.
 * You can define multiple data sources under dataSources. Within a datasource you can also have multiple `entities` and `events`. See [this subgraph](https://github.com/graphprotocol/decentraland-subgraph/blob/master/subgraph.yaml) for an example.
 * If the Graph CLI outputs 'Failed to copy subgraph files', it probably means you have a typo in the manifest.
 
-#### Getting The ABI 
-The ABI JSON file must contain the correct ABI to source all the events you wish to ingest into the Graph Node. There are a few ways to get an ABI for the contract: 
-* If you are building your own project, you should likely have access to your most current ABIs. 
-* If you are building a subgraph for a public project, you can download that project to your computer and get the ABI by using [`truffle compile`](https://truffleframework.com/docs/truffle/overview) or using `solc` to compile. 
+#### Getting The Contract ABIs  
+The ABI JSON file must contain the correct ABI to source all the events or any contract state you wish to ingest into the Graph Node. There are a few ways to get an ABI for the contract: 
+* If you are building your own project, you should likely have access to your most current ABIs of your smart contracts. 
+* If you are building a subgraph for a public project, you can download that project to your computer and get the ABI by using [`truffle compile`](https://truffleframework.com/docs/truffle/overview) or using `solc` to compile. This will create the ABIs, and then you can transfer them into your subgraph /abi folder. 
 * Sometimes you can also find the ABI on [Etherscan](https://etherscan.io), but this isn't always reliable, as the ABI that is uploaded there may be out of date. Make sure you have the right ABI, otherwise you won't be able to start a Graph Node. 
 
 If you are running into troubles here, double check the ABI and make sure the event signatures exist *exactly* as you expect them to be, by examining the smart contract code you are sourcing. Also note with the ABI you only need the array for the ABI. Compiling the contracts locally results in a `.json` file that contains the full ABI nested within the `.json` file, under the key `"abi"`.
@@ -131,11 +130,10 @@ Once the `subgraph.yaml` file is created, you can move onto the next section.
 ### 1.2 Create The GraphQL Schema for the Data Source 
 GraphQL schemas are defined using the GraphQL interface definition language (IDL). If you've never written a GraphQL schema, we recommend checking out a [quick primer](https://graphql.org/learn/schema/#type-language) on the GraphQL type system.
 
-With The Graph, you don't have to define the top-level `Query` type, you simply define entity types, and Graph Node will generate top level fields for querying single instances and collections of that entity type. Each type that should be an entity is required to be annotated with an `@entity` directive.
+With The Graph, you don't have to define the top-level `Query` type, you simply define entity types, and the Graph Node will generate top level fields for querying single instances and collections of that entity type. Each type that should be an entity is required to be annotated with an `@entity` directive.
 
-As you can see in the example `subgraph.yaml` manifest above, there is one entity named `Token`. Let's define what that would look like for the GraphQL Schema. 
+As you can see in the example `subgraph.yaml` manifest above, there is one entity named `Token`. Let's define what that would look like for the GraphQL Schema:
 
-##### Example
 Define a Token entity type:
 ```graphql
 type Token @entity {
@@ -144,8 +142,7 @@ type Token @entity {
 }
 ```
 
-This `entity` is tracking a single ER721 token on Ethereum. It tracks the token by it's id and the current owner. The `id` field is required, and it stores values of the ID type, which are strings. The `ID` must be a unique value. For an ERC721 token, the unique ID could be the token ID, as that value is unique to that coin. 
-
+This `entity` is tracking a single ER721 token on Ethereum. It tracks the token by it's id and the current owner. **The `id` field is required,** and it stores values of the ID type, which are strings. The `ID` must be a unique value so it can be placed into the store. For an ERC721 token, the unique ID could be the token ID, as that value is unique to that coin. 
 
 The exclamation mark represents the fact that that field must be set when the entity is stored in the database (i.e. it can't be `null`). See the [Schema API](graphql-api.md#3-schema) for a complete reference on defining the schema for The Graph.
 
@@ -157,16 +154,15 @@ schema:
   file: ./schema.graphql
 ```
 
-
 ### 1.3 Create a Subgraph Project and Generate Types
-Once you have the `subgraph.yaml` manifest and the `./schema.graphql` file, you are ready to use the Graph CLI to set up the subgraph directory. The Graph CLI is a command line tool that contains helpful commands for deploying the subgraphs. Before continuing with this guide, please go to the [Graph CLI README](https://github.com/graphprotocol/graph-cli/) and follow the instructions up to Step 7 for setting up the subgraph directory.
+Once you have the `subgraph.yaml` manifest and the `./schema.graphql` file, you are ready to use the Graph CLI to set up the subgraph directory. The Graph CLI is a command line tool that contains helpful commands for deploying the subgraphs. Before continuing with this guide, please go to the [Graph CLI README](https://github.com/graphprotocol/graph-cli/) and follow the instructions up to Step 7 for setting up the subgraph directory
 
-Once you run `yarn codegen` as outlined in the Graph CLI README, you are ready to create mappings! What this command does is it looks at the contract ABIs defined in the subgraph manifest, and generates TypeScript classes (actually AssemblyScript classes, but more on that later) for the smart contracts the mappings script will interface with, including the types of public methods and events.
-Classes are also generated based on the types defined in the the GraphQL schema. The classes generated are incredibly useful for writing correct mappings, as well as improving developer productivity using the TypeScript language support in your favorite editor or IDE.
+Once you run `yarn codegen` as outlined in the [Graph CLI README](https://github.com/graphprotocol/graph-cli/), you are ready to create the mappings! `yarn codegen` looks at the contract ABIs defined in the subgraph manifest, and generates TypeScript classes (actually AssemblyScript classes, but more on that later) for the smart contracts the mappings script will interface with, including the types of public methods and events.
+Classes are also generated based on the types defined in the the GraphQL schema. The classes generated are incredibly useful for writing correct mappings (i.e. allows you to autocomplete Ethererum events), as well as improving developer productivity using the TypeScript language support in your favorite editor or IDE.
 
 ### 1.4 Writing Mappings
 
-The mappings you write will perform transformations on the Ethereum data you are sourcing, and it will dictate how this data is loaded into The Graph Node. Mappings can be very simple, or they can get very complex, it depends how different you want the data to be, compared to how Ethereum delivers it through events and contract state. 
+The mappings you write will perform transformations on the Ethereum data you are sourcing, and it will dictate how this data is loaded into The Graph Node. Mappings can be very simple, or they can get very complex, it depends how abstracted you want the data to be, compared to how Ethereum exposes it through events and contract state. 
 
 Mappings are written in a subset of TypeScript called AssemblyScript which can be compiled down to WASM. AssemblyScript is stricter than normal TypeScript, yet provides a familiar syntax. A few TypeScript/Javascript features which are not supported in AssemblyScript include plain old Javascript objects (POJOs), untyped arrays, untyped maps, union types, the `any` type and variadic functions. `switch` statements also work differently. See [the AssemblyScript wiki](https://github.com/AssemblyScript/assemblyscript/wiki) for a full reference on AssemblyScript.
 
@@ -183,8 +179,11 @@ Assemblyscript's requirement of strictly typed functions is satisfied without th
 
 Let's look at an example. Staying in line with our previous token example, lets write a mapping that will track the owner of a particular ERC721 token. 
 
-#### Example
 ```typescript
+import 'allocator/arena'
+
+export {allocate_memory}
+
 import { store } from '@graphprotocol/graph-ts'
 
 // This is just an example event type generated by `graph-cli`
@@ -204,37 +203,38 @@ export function handleTransfer(event: Transfer): void {
 }
 ```
 There are a few things going on here:
-* We create a new Entity named `token`. This entity will be stored in the Graph Node database, and must have a unique ID
+* 'allocator/arena' must be imported, and `{allocate_memory}` must be exported in every mapping, which is a quirk of assembly script. 
+* We create a new Entity named `token`. This entity will be stored in the Graph Node database, and must have a unique ID.
 * This entity is getting updated by the `Transfer` event emitted by the ERC721 contract. 
-* We create the ID for the entity to be used later in `store.set()`. For an ERC721 token it should be the tokenId. We get the token ID from the event emitted by Ethereum, which was turned into an assembly script type by the Graph TypeScript Library, and we can access it at `event.params.tokenId`. Note that you must set `id` as a string, and call `toHex()` on the tokenId to turn it into a hex string.
+* We create the ID for the entity to be used later in `store.set()`. For an ERC721 token it should be the `tokenId`. We get the token ID from the event emitted by Ethereum, which was turned into an assembly script type by the [Graph TypeScript Library](https://github.com/graphprotocol/graph-ts), and we can access it at `event.params.tokenId`. Note that you must set `id` as a string, and call `toHex()` on the tokenId to turn it into a hex string.
 * The current owner is gathered from the event with `event.params.to`. It is set as an Address by the Token class.
+* The event handlers functions always return `void`.
 * `store.set()` is used to set the Token entity . `store` is also imported from `graph-ts`, just like the entity type (`Token` in this example). It is used for setting the value(s) of a particular entities attribute(s) in the store. There is also a `store.get()` function. These will be explained more below.
 
 
 #### Using the `store` API 
 
-The event handlers functions return `void`. The only way that entities may be added to the Graph is by calling `store.set()`. `store.set()` may be called multiple times in an event handler. `store.set()` will 
-only set the entity attributes that have explicitly been set on the `Entity`. Attributes which are not explicitly set, or unset by calling `Entity.unset(<attribute>)`, will not be overwritten. `store.set` 
-expects the name of an entity type, the ID of the entity and the `Entity` itself. See the definition below:
+The only way that entities may be added to the Graph is by calling `store.set()`. `store.set()` may be called multiple times in an event handler. `store.set()` will 
+only set the entity attributes that have explicitly been set on the `Entity`. Attributes which are not explicitly set, or unset by calling `Entity.unset(<attribute>)`, will not be overwritten. This means you can safely update one field of an entity, and not worry about overwriting other fields not referenced in the mapping. `store.set` expects the name of an entity type, the ID of the entity and the `Entity` itself. See the definition below:
 
-```
+```typescript
 store.set(entity: string, id: string, data: Entity)
 ```
 
-You can use `store.get` to retrieve information previously added with `store.set`. `store.get` expects the entity type and ID of the entity. Along with `store.get()` you can use `.getString()`, `.getU256()`, 
-etc. for getting attribute values from the entity (once again, all these functions come from the [Graph Typescript Library](https://github.com/graphprotocol/graph-ts)). See the definition below for `store.get()`:
+You can use `store.get()` to retrieve information previously added with `store.set()`. `store.get()` expects the entity type and ID of the entity. Along with `store.get()` you can use `.getString()`, `.getU256()`, etc. To get attribute values from the entity (once again, all these functions come from the [Graph Typescript Library](https://github.com/graphprotocol/graph-ts)). 
 
-```
+See the definition below for `store.get()`:
+
+```typescript
 store.get(entity: string, id: string)
 ```
 
-Let's look at the token example to see how you can use `store.get()`. We showed in the previous example how to use `store.set()`. Now, let's consider that you have another mapping that needs to retrieve the 
-currentOwner of an ERC721 token. In order to do this within a mapping, you would write the following:
+Let's look at the ERC721 token as an example for using `store.get()`. We showed in the previous example how to use `store.set()`. Now, let's consider that you have another event handler that needs to retrieve the currentOwner of an ERC721 token. In order to do this within an event handler, you would write the following:
 
 ```typescript
   let token = store.get('Token', tokenID.toHex())
   if (token !== null) {
-    let owner = token.getString("currentOwner")
+    let owner = token.currentOwner
   }
 ```
 
@@ -242,30 +242,30 @@ You now have the `owner` data, and you can use that in the mapping to set the ow
 
 There is also `store.remove()`, which allows you to erase an entry that exists in the store. You simply pass the entity and id:
 
-```
+```typescript
 store.remove(entity: string, id: string)
 ```
 
 #### Calling into the Contract Storage to Get Data
 
-You can also grab data that is stored in one of contracts you have included ABIs for. Any state variable that is marked `public`, or any `view` function can be accessed. Below shows how you grab the token 
+You can also obtain data that is stored in one of contracts you have included ABIs for. Any state variable that is marked `public`, or any `view` function can be accessed. Below shows how you obtain the token 
 symbol of an ERC721 token, which is a state variable of the smart contract. You would add this inside of the event handler function.  
 
 ```typescript
   let tokenContract = ERC721.bind(event.address);
-  let artPieceTokenAddress = tokenContract.symbol();
+  let tokenSymbol = tokenContract.symbol();
 ```
 
 Note that we are using an ERC721 class generated from the ABI, that we are calling bind on. This is gathered from the subgraph manifest here:
-```
+```yaml
   source:
-    address: "f87e31492faf9a91b02ee0deaad50d51d56d5d4d"
+    address: "0x06012c8cf97BEaD5deAe237070F9587f8E7A266d"
     abi: ERC721
 ```
 
-The class is imported from the ABI's TypeScript file generated via yarn codegen.
+The class is imported from the ABI's TypeScript file generated via `yarn codegen`.
 
-## 2 Build and Deploy The Subgraph 
+## 2 Deploying The Subgraph 
 
 ### 2.1 Start up IPFS
 In order to deploy the subgraph to the Graph Node, the subgraph will first need to be built and stored on IPFS (along with all linked files).
@@ -281,60 +281,61 @@ To confirm the subgraph is stored on IPFS, you can pass that subgraph ID into `i
 
 ### 2.2 Create the Postgres db 
 
-Make sure you have Postgres installed. Then run the following commands:
+Make sure you have Postgres installed. Then navigate to a location where you want to save the `.postgres` folder (desktop is fine, since this folder can be used for many different subgraphs). Then run the following commands:
 
 ```
 initdb -D .postgres
-pg_ctl -D .postgres start
+pg_ctl -D .postgres -l logfile start
 createdb <POSTGRES_DB_NAME>
 ```
 Name the database something relevant to the project, so you always know how to access it. 
 
 ### 2.3 Starting The Graph Node and Connecting to an Etheruem Node
 
-When you start the Graph Node, you need to specify which Ethereum network it should connect to. There are three common options to connect to Ethereum:
+When you start the Graph Node, you need to specify which Ethereum network it should connect to. There are three common ways this is done:
  * Infura
  * A local Ethereum Node 
  * Ganache 
  
-The Ethereum Network must be passed as a flag in the command that starts the Graph Node, as laid out in the next subsections. 
+The Ethereum Network (Mainnet, Ropsten, Rinkeby, etc.) must be passed as a flag in the command that starts the Graph Node, as laid out in the next subsections. 
 
 #### 2.3.1 Infura
 
-[Infura](https://infura.io/) is supported, and is the simplest way to source mainnet or testnet data, as you don't have to set up your own geth or parity node. However, it does sync slower than being connected 
+[Infura](https://infura.io/) is supported, and is the simplest way to connect to an Ethereum node, as you don't have to set up your own geth or parity node. However, it does sync slower than being connected 
 to your own node. The following flags are passed to start the Graph Node and indicate you want to use Infura:
 
-```
+```sh
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://<USERNAME><:PASSWORD>@localhost:5432/<POSTGRES_DB_NAME> \
   --ethereum-rpc <ETHEREUM_NETWORK_NAME>:https://mainnet.infura.io \
-  --ipfs 127.0.0.1:5001 
+  --ipfs 127.0.0.1:5001 \
+  --debug
 ```
 
 Also Note that the Postgres database may not have a password at all. If that is the case, the Postgres connection URL can be passed as follows:
 
-`  --postgres-url postgresql://<USERNAME>@localhost:5432/adchain-subgraph \ `
+`  --postgres-url postgresql://<USERNAME>@localhost:5432/<POSTGRES_DB_NAME> \ `
 
 #### 2.3.2 Local Geth or Parity Node
 
-This is the fastest way to get mainchain or testnet data. The problem is, if you don't already have a synced [geth](https://github.com/ethereum/go-ethereum/wiki/geth) or [parity](https://github
-.com/paritytech/parity-ethereum) node, you will have to sync one, which will take a very long time. Also, note that geth `fast sync` works, so if you are starting from scratch this is fastest. But expect at 
-least  12 hours of syncing on a modern laptop to sync geth. Normal mode geth or parity will take much longer. The following geth command can be used to get you started syncing:
+This is the speediest way to get mainnet or testnet data. The problem is, if you don't already have a synced [geth](https://github.com/ethereum/go-ethereum/wiki/geth) or [parity](https://github
+.com/paritytech/parity-ethereum) node, you will have to sync one, which will take a very long time, and use up a lot of space. Also, note that geth `fast sync` works, so if you are starting from scratch this is the fastest way to get caught up. But expect at least 12 hours of syncing on a modern laptop with a good internet connection to sync geth. Normal mode geth or parity will take much longer. The following geth command can be used start syncing:
 
 `geth --syncmode "fast" --rpc --ws --wsorigins="*" --rpcvhosts="*" --cache 1024`
 
 Once you have the local node fully synced, you can run the following command:
 
-```
+```sh
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://<USERNAME><:PASSWORD>@localhost:5432/<POSTGRES_DB_NAME> \
   --ethereum-rpc <ETHEREUM_NETWORK_NAME>:127.0.0.1:8545 \
-  --ipfs 127.0.0.1:5001
+  --ipfs 127.0.0.1:5001 \
+  --debug
 ```
 
 Note that this assumes the local node is on the default `8545` port. If you are on a different port, change it.
 
-Note that if you switch back and forth between sourcing data from Infura, and your own local nodes, this is completely fine.
+Note that if you switch back and forth between sourcing data from Infura, and your own local nodes, this is completely fine. The Graph Node picks up where it left off. 
 
 #### 2.3.3 Ganache
 
@@ -383,7 +384,11 @@ If you want to sync using a public testnet such as Kovan, Rinkeby, or Ropsten, j
 When you deploy the subgraph to the Graph Node, it will start ingesting all the subgraph events from the blockchain, transforming that data with the subgraph mappings, and storing it in the Graph Node. 
 Note that a running subgraph can safely be stopped and restarted; it will pick up where it has left off.
 
-Now that the infrastructure is set up you can run `yarn deploy --watch` in the subgraph directory. `yarn deploy` should have been added to `package.json` in section 1.3 when we took a moment to go through the setup for [Graph CLI documentation](https://github.com/graphprotocol/graph-cli). This will build the subgraph, upload its output files to IPFS and deploy it to the Graph Node. The subgraph is now fully running!
+Now that the infrastructure is set up you can run `yarn deploy --verbosity debug --watch` in the subgraph directory. `yarn deploy` should have been added to `package.json` in section 1.3 when we took a moment to go through the setup for [Graph CLI documentation](https://github.com/graphprotocol/graph-cli). This will build the subgraph, and create the WASM files in the `/dist` folder. Then it uploads the `/dist` files to IPFS and deploys it to the Graph Node. The subgraph is now fully running!
+
+The `watch` flag allows the subgraph to continually restart every time you save an update to the `manifest`, `schema`, or `mappings`. If you are doing a lot of edits, or you have a subgraph that has been syncing for a few hours, you can leave this flag off. 
+
+Depending on how many events have been emitted by your smart contracts, it could take less than a minute to get fully caught up. If it is a large contract it could take hours (ENS takes about 12-14 hours to register every single ENS domain).
 
 ## 3 Query the local Graph Node
 With the subgraph deployed to the locally running Graph Node, visit http://127.0.0.1:8000/ to open up a [GraphiQL](https://github.com/graphql/graphiql) 
@@ -391,7 +396,6 @@ interface where you can explore the deployed GraphQL API for the subgraph by iss
 
 We have provided a few simple examples below, but please see the [Query API](graphql-api.md#1-queries) for a complete reference on how to query the subgraph's entities.
 
-#### Example
 Query all `Token` entities:
 ```graphql
 {
@@ -403,7 +407,7 @@ Query all `Token` entities:
 ```
 Notice that it is just simply `tokens` pluralized, and it will return all of the entites in The Graph. 
 
-Later, when you've deployed the subgraph with this entity, you'll be able to query for a specific value, such as the token ID
+Later, when you've deployed the subgraph with this entity, you'll be able to query for a specific value, such as the token ID:
 
 ```graphql
 {
@@ -427,16 +431,28 @@ GraphQL provides a ton of functionality! Once again, check out the [Query API](g
 
 ## 4 Changing the schema, mappings, and manifest, and launching a new Subgraph
 
-When you first start building the subgraph, it is likely you will make a few iterations to the manifest, mappings, or schema. If you update any of them, you should rerun `yarn codegen` and `yarn deploy`. This 
-will post the new files on IPFS and deploy the new subgraph. Note that the Graph Node can track multiple subgraphs, so you can do this as many times as you like.
+When you first start building the subgraph, it is likely you will make a few iterations to the manifest, mappings, or schema. If you update any of them, you should rerun `yarn codegen` and `yarn deploy`. This will post the new files on IPFS and deploy the new subgraph. Note that the Graph Node can track multiple subgraphs, so you can do this as many times as you like.
+
+## 5 Common Patterns for Building Subgraphs
+
+### 5.1 Removing Elements of an Array in a Subgraph
+
+Using the Assembly Script built-in functions for arrays is the way to go. You can find the [source code here](https://github.com/AssemblyScript/assemblyscript/blob/18826798074c9fb02243dff76b1a938570a8eda7/std/assembly/array.ts) with all the built-in functions. Using `.indexOf()` to find the element and then using `.splice()` is one way to do so. See [this file](https://github.com/graphprotocol/aragon-subgraph/blob/master/individual-dao-subgraph/mappings/ACL.ts) from the Aragon subgraph for a working implementation.
+
+### 5.2 Getting Data from multiple Versions of your Contracts
+
+If you have launched multiple versions of your smart contracts onto Ethereum, it is very easy to source data from all of them. This just requires you add all versions of the contracts to the `subgraph.yaml` ffile, and handle the events from each contract. You should design your schema to consider both versions, and handle any changes to the event signatures that are emitted from each version. See the [0x Subgraph](thub.com/graphprotocol/0x-subgraph/tree/master/mappings) for an implementation of multiple versions of smart contracts being ingested by a subgraph. 
+
 
 ## 5 Example Subgraphs
 
 Here is a list of current subgraphs that we have open sourced:
 * https://github.com/graphprotocol/ens-subgraph
-* https://github.com/graphprotocol/decentraland-subgraph (most complex)
+* https://github.com/graphprotocol/decentraland-subgraph
 * https://github.com/graphprotocol/adchain-subgraph
-* https://github.com/graphprotocol/memefactory-subgraph (only for testing, not live on Ethereum mainnet)
+* https://github.com/graphprotocol/0x-subgraph
+* https://github.com/graphprotocol/aragon-subgraph
+* https://github.com/graphprotocol/dharma-subgraph 
 
 ## Contributions
 
