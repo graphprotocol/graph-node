@@ -237,3 +237,31 @@ pub fn get_object_type_directive(object_type: &ObjectType, name: Name) -> Option
         .iter()
         .find(|directive| directive.name == name)
 }
+
+// Returns true if the given type is a non-null type.
+pub fn is_non_null_type(t: &Type) -> bool {
+    match t {
+        Type::NonNullType(_) => true,
+        _ => false,
+    }
+}
+
+/// Returns true if the given type is an input type.
+///
+/// Uses the algorithm outlined on
+/// https://facebook.github.io/graphql/draft/#IsInputType().
+pub fn is_input_type(schema: &Document, t: &Type) -> bool {
+    use self::TypeDefinition::*;
+
+    match t {
+        Type::NamedType(name) => {
+            let named_type = get_named_type(schema, name);
+            named_type.map_or(false, |type_def| match type_def {
+                Scalar(_) | Enum(_) | InputObject(_) => true,
+                _ => false,
+            })
+        }
+        Type::ListType(inner) => is_input_type(schema, inner),
+        Type::NonNullType(inner) => is_input_type(schema, inner),
+    }
+}
