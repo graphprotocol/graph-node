@@ -285,9 +285,7 @@ mod tests {
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
     use std::collections::BTreeMap;
-    use std::iter::once;
     use std::iter::FromIterator;
-    use std::sync::RwLock;
 
     use graph::prelude::*;
 
@@ -318,23 +316,20 @@ mod tests {
     #[test]
     fn posting_invalid_query_yields_error_response() {
         let id = SubgraphId::new("testschema").unwrap();
-        let schema = Arc::new(RwLock::new(BTreeMap::from_iter(once((
-            id.clone(),
-            Schema {
-                id: id.clone(),
-                document: graphql_parser::parse_schema(
-                    "\
-                     scalar String \
-                     type Query { name: String } \
-                     ",
-                )
-                .unwrap(),
-            },
-        )))));
+        let schema = Schema {
+            id: id.clone(),
+            document: graphql_parser::parse_schema(
+                "\
+                 scalar String \
+                 type Query { name: String } \
+                 ",
+            )
+            .unwrap(),
+        };
         let graphql_runner = Arc::new(TestGraphQlRunner);
-        let store = Arc::new(MockStore::new());
+        let store = Arc::new(MockStore::new(vec![(id.clone(), schema)]));
         let node_id = NodeId::new("test").unwrap();
-        let mut service = GraphQLService::new(schema, graphql_runner, store, 8001, node_id);
+        let mut service = GraphQLService::new(graphql_runner, store, 8001, node_id);
 
         let request = Request::builder()
             .method(Method::POST)
@@ -361,29 +356,26 @@ mod tests {
 
     #[test]
     fn posting_valid_queries_yields_result_response() {
+        let id = SubgraphId::new("testschema").unwrap();
+        let schema = Schema {
+            id: id.clone(),
+            document: graphql_parser::parse_schema(
+                "\
+                 scalar String \
+                 type Query { name: String } \
+                 ",
+            )
+            .unwrap(),
+        };
+
         let graphql_runner = Arc::new(TestGraphQlRunner);
-        let store = Arc::new(MockStore::new());
+        let store = Arc::new(MockStore::new(vec![(id.clone(), schema)]));
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
-            .block_on(future::lazy(|| {
+            .block_on(future::lazy(move || {
                 let res: Result<_, ()> = Ok({
-                    let id = SubgraphId::new("testschema").unwrap();
-                    let schema = Arc::new(RwLock::new(BTreeMap::from_iter(once((
-                        id.clone(),
-                        Schema {
-                            id: id.clone(),
-                            document: graphql_parser::parse_schema(
-                                "\
-                                 scalar String \
-                                 type Query { name: String } \
-                                 ",
-                            )
-                            .unwrap(),
-                        },
-                    )))));
                     let node_id = NodeId::new("test").unwrap();
-                    let mut service =
-                        GraphQLService::new(schema, graphql_runner, store, 8001, node_id);
+                    let mut service = GraphQLService::new(graphql_runner, store, 8001, node_id);
 
                     let request = Request::builder()
                         .method(Method::POST)

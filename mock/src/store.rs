@@ -1,4 +1,5 @@
 use futures::sync::mpsc::{channel, Sender};
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 use graph::components::store::*;
@@ -22,13 +23,14 @@ impl EventProducer<ChainHeadUpdate> for MockChainHeadUpdateListener {
 
 pub struct MockStore {
     entities: Vec<Entity>,
+    schemas: HashMap<SubgraphId, Schema>,
     subgraph_deployments: Mutex<Vec<(SubgraphDeploymentName, SubgraphId, NodeId)>>,
     subgraph_deployment_event_senders: Mutex<Vec<Sender<DeploymentEvent>>>,
 }
 
 impl MockStore {
     /// Creates a new mock `Store`.
-    pub fn new() -> Self {
+    pub fn new(schemas: Vec<(SubgraphId, Schema)>) -> Self {
         // Create a few test entities
         let mut entities = vec![];
         for (i, name) in ["Joe", "Jeff", "Linda"].iter().enumerate() {
@@ -40,6 +42,7 @@ impl MockStore {
 
         MockStore {
             entities,
+            schemas: schemas.into_iter().collect(),
             subgraph_deployments: Default::default(),
             subgraph_deployment_event_senders: Default::default(),
         }
@@ -260,12 +263,12 @@ impl SubgraphDeploymentStore for MockStore {
         )
     }
 
-    fn is_deployed(&self, _id: &SubgraphId) -> Result<bool, Error> {
-        unimplemented!()
+    fn is_deployed(&self, subgraph_id: &SubgraphId) -> Result<bool, Error> {
+        Ok(self.schemas.keys().any(|id| subgraph_id == id))
     }
 
-    fn schema_of(&self, _subgraph_id: SubgraphId) -> Result<Schema, Error> {
-        unimplemented!()
+    fn schema_of(&self, subgraph_id: SubgraphId) -> Result<Schema, Error> {
+        Ok(self.schemas.get(&subgraph_id).unwrap().clone())
     }
 }
 
