@@ -3,6 +3,7 @@ use graphql_parser::schema as s;
 use indexmap::IndexMap;
 use std::cmp;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::ops::Deref;
 
 use graph::prelude::*;
 
@@ -33,6 +34,8 @@ where
     pub fields: Vec<&'a q::Field>,
     /// Whether or not we're executing an introspection query
     pub introspecting: bool,
+    /// Variable values.
+    pub variable_values: Arc<HashMap<q::Name, q::Value>>,
 }
 
 impl<'a, R1, R2> ExecutionContext<'a, R1, R2>
@@ -144,7 +147,7 @@ where
     let selections: Vec<_> = selection_set
         .items
         .iter()
-        .filter(|selection| !qast::skip_selection(selection))
+        .filter(|selection| !qast::skip_selection(selection, ctx.variable_values.deref()))
         .filter(|selection| qast::include_selection(selection))
         .collect();
 
@@ -722,38 +725,58 @@ where
     R2: Resolver,
 {
     let mut coerced_values = HashMap::new();
+    let mut errors = vec![];
 
     if let Some(argument_definitions) = sast::get_argument_definitions(object_type, &field.name) {
         for argument_def in argument_definitions.iter() {
-            match qast::get_argument_value(&field.arguments, &argument_def.name) {
-                // We don't support variables yet
-                Some(q::Value::Variable(_)) => unimplemented!(),
+            // Look up the argument value, resolve it if it is a variable
+            let mut value: Option<&q::Value> =
+                qast::get_argument_value(&field.arguments, &argument_def.name);
+            let mut is_variable = false;
 
-                // There is no value, either use the default or fail
-                None => {
-                    if let Some(ref default_value) = argument_def.default_value {
-                        coerced_values.insert(&argument_def.name, default_value.clone());
-                    } else if let s::Type::NonNullType(_) = argument_def.value_type {
-                        return Err(vec![QueryExecutionError::MissingArgumentError(
-                            field.position,
-                            argument_def.name.to_owned(),
-                        )]);
-                    };
+            if let Some(q::Value::Variable(name)) = value {
+                value = ctx.variable_values.get(name);
+                is_variable = true
+            }
+
+            if value.is_none() && argument_def.default_value.is_some() {
+                coerced_values.insert(
+                    &argument_def.name,
+                    argument_def.default_value.to_owned().unwrap(),
+                );
+            } else if sast::is_non_null_type(&argument_def.value_type)
+                && (value.is_none() || value == Some(&q::Value::Null))
+            {
+                if value.is_none() {
+                    errors.push(QueryExecutionError::MissingArgumentError(
+                        field.position,
+                        argument_def.name.to_owned(),
+                    ));
+                } else {
+                    errors.push(QueryExecutionError::InvalidArgumentError(
+                        field.position,
+                        argument_def.name.to_owned(),
+                        value.unwrap().to_owned(),
+                    ));
                 }
-
-                // There is a value for the argument, attempt to coerce it to the
-                // value type of the argument definition
-                Some(v) => {
+            } else if let Some(val) = value {
+                if val == &q::Value::Null || is_variable {
+                    coerced_values.insert(&argument_def.name, val.to_owned());
+                } else {
                     coerced_values.insert(
                         &argument_def.name,
-                        coerce_argument_value(ctx.clone(), field, argument_def, v)?,
+                        coerce_argument_value(ctx.clone(), field, argument_def, val)?,
                     );
                 }
-            };
+            }
         }
     };
 
-    Ok(coerced_values)
+    if errors.is_empty() {
+        Ok(coerced_values)
+    } else {
+        Err(errors)
+    }
 }
 
 /// Coerces a single argument value into a GraphQL value.
@@ -809,4 +832,94 @@ where
     }
 
     sast::get_field_type(object_type, name).map(|t| (t, ctx.introspecting))
+}
+
+/// Coerces variable values for an operation.
+pub fn coerce_variable_values(
+    schema: &Schema,
+    operation: &q::OperationDefinition,
+    variables: &Option<QueryVariables>,
+) -> Result<HashMap<q::Name, q::Value>, Vec<QueryExecutionError>> {
+    let mut coerced_values = HashMap::new();
+    let mut errors = vec![];
+
+    if let Some(variable_definitions) = qast::get_variable_definitions(operation) {
+        for variable_def in variable_definitions.iter() {
+            // Skip variable if it has an invalid type
+            if !sast::is_input_type(&schema.document, &variable_def.var_type) {
+                errors.push(QueryExecutionError::InvalidVariableTypeError(
+                    variable_def.position,
+                    variable_def.name.to_owned(),
+                ));
+                continue;
+            }
+
+            let value = match variables {
+                None => None,
+                Some(vars) => vars.get(&variable_def.name),
+            };
+
+            match value.map(|val| val.deref().to_owned()) {
+                // No variable value provided, either use the default or fail
+                None => {
+                    if let Some(ref default_value) = variable_def.default_value {
+                        coerced_values
+                            .insert(variable_def.name.to_owned(), default_value.to_owned());
+                    } else if let s::Type::NonNullType(_) = variable_def.var_type {
+                        errors.push(QueryExecutionError::MissingVariableError(
+                            variable_def.position,
+                            variable_def.name.to_owned(),
+                        ));
+                    }
+                }
+
+                // A null value was provided, either use it or fail
+                Some(q::Value::Null) => {
+                    if let s::Type::NonNullType(_) = variable_def.var_type {
+                        errors.push(QueryExecutionError::InvalidVariableError(
+                            variable_def.position,
+                            variable_def.name.to_owned(),
+                            q::Value::Null,
+                        ));
+                    } else {
+                        coerced_values.insert(variable_def.name.to_owned(), q::Value::Null);
+                    }
+                }
+
+                // We have a variable value, attempt to coerce it to the value type
+                // of the variable definition
+                Some(value) => {
+                    coerced_values.insert(
+                        variable_def.name.to_owned(),
+                        coerce_variable_value(schema, variable_def, &value)?,
+                    );
+                }
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(coerced_values)
+    } else {
+        Err(errors)
+    }
+}
+
+fn coerce_variable_value(
+    schema: &Schema,
+    variable_def: &q::VariableDefinition,
+    value: &q::Value,
+) -> Result<q::Value, Vec<QueryExecutionError>> {
+    use graphql_parser::schema::Name;
+    use values::coercion::coerce_value;
+
+    let resolver = |name: &Name| sast::get_named_type(&schema.document, name);
+
+    coerce_value(&value, &variable_def.var_type, &resolver).ok_or_else(|| {
+        vec![QueryExecutionError::InvalidArgumentError(
+            variable_def.position,
+            variable_def.name.to_owned(),
+            value.clone(),
+        )]
+    })
 }
