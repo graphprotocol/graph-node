@@ -24,6 +24,9 @@ pub enum QueryExecutionError {
     AbstractTypeError(String),
     InvalidArgumentError(Pos, String, q::Value),
     MissingArgumentError(Pos, String),
+    InvalidVariableTypeError(Pos, String),
+    InvalidVariableError(Pos, String, q::Value),
+    MissingVariableError(Pos, String),
     ResolveEntityError(SubgraphId, String, String, String),
     ResolveEntitiesError(String),
     OrderByNotSupportedError(String, String),
@@ -55,86 +58,97 @@ impl Error for QueryExecutionError {
 
 impl fmt::Display for QueryExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::QueryExecutionError::*;
+
         match self {
-            QueryExecutionError::OperationNameRequired => write!(f, "Operation name required"),
-            QueryExecutionError::OperationNotFound(s) => {
+            OperationNameRequired => write!(f, "Operation name required"),
+            OperationNotFound(s) => {
                 write!(f, "Operation name not found: {}", s)
             }
-            QueryExecutionError::NotSupported(s) => write!(f, "Not supported: {}", s),
-            QueryExecutionError::NoRootQueryObjectType => {
+            NotSupported(s) => write!(f, "Not supported: {}", s),
+            NoRootQueryObjectType => {
                 write!(f, "No root Query type defined in the schema")
             }
-            QueryExecutionError::NoRootSubscriptionObjectType => {
+            NoRootSubscriptionObjectType => {
                 write!(f, "No root Subscription type defined in the schema")
             }
-            QueryExecutionError::NonNullError(_, s) => {
+            NonNullError(_, s) => {
                 write!(f, "Null value resolved for non-null field: {}", s)
             }
-            QueryExecutionError::ListValueError(_, s) => {
+            ListValueError(_, s) => {
                 write!(f, "Non-list value resolved for list field: {}", s)
             }
-            QueryExecutionError::NamedTypeError(s) => {
+            NamedTypeError(s) => {
                 write!(f, "Failed to resolve named type: {}", s)
             }
-            QueryExecutionError::AbstractTypeError(s) => {
+            AbstractTypeError(s) => {
                 write!(f, "Failed to resolve abstract type: {}", s)
             }
-            QueryExecutionError::InvalidArgumentError(_, s, v) => {
+            InvalidArgumentError(_, s, v) => {
                 write!(f, "Invalid value provided for argument \"{}\": {:?}", s, v)
             }
-            QueryExecutionError::MissingArgumentError(_, s) => {
+            MissingArgumentError(_, s) => {
                 write!(f, "No value provided for required argument: {}", s)
             }
-            QueryExecutionError::ResolveEntityError(_, entity, id, e) => {
+            InvalidVariableTypeError(_, s) => {
+                write!(f, "Variable \"{}\" must have an input type", s)
+            }
+            InvalidVariableError(_, s, v) => {
+                write!(f, "Invalid value provided for variable \"{}\": {:?}", s, v)
+            }
+            MissingVariableError(_, s) => {
+                write!(f, "No value provided for required variable: {}", s)
+            }
+            ResolveEntityError(_, entity, id, e) => {
                 write!(f, "Failed to get {} entity with ID \"{}\" from store: {}", entity, id, e)
             }
-            QueryExecutionError::ResolveEntitiesError(e) => {
+            ResolveEntitiesError(e) => {
                 write!(f, "Failed to get entities from store: {}", e)
             }
-            QueryExecutionError::OrderByNotSupportedError(entity, field) => {
+            OrderByNotSupportedError(entity, field) => {
                 write!(f, "Ordering by \"{}\" is not supported for type \"{}\"", field, entity)
             }
-            QueryExecutionError::FilterNotSupportedError(value, filter) => {
+            FilterNotSupportedError(value, filter) => {
                 write!(f, "Filter not supported by value {} : {}", value, filter)
             }
-            QueryExecutionError::UnknownField(_, t, s) => {
+            UnknownField(_, t, s) => {
                 write!(f, "Type \"{}\" has no field \"{}\"", t, s)
             }
-            QueryExecutionError::EmptyQuery => write!(f, "The query is empty"),
-            QueryExecutionError::MultipleSubscriptionFields => write!(
+            EmptyQuery => write!(f, "The query is empty"),
+            MultipleSubscriptionFields => write!(
                 f,
                 "Only a single top-level field is allowed in subscriptions"
             ),
-            QueryExecutionError::SubgraphIdError(s) => {
+            SubgraphIdError(s) => {
                 write!(f, "Failed to get subgraph ID from type: {}", s)
             }
-            QueryExecutionError::RangeArgumentsError(s) => {
+            RangeArgumentsError(s) => {
                 write!(f, "Range arguments must be properly formed integer: {:}", s.join(", "))
             }
-            QueryExecutionError::InvalidFilterError => write!(f, "Filter must by an object"),
-            QueryExecutionError::EntityFieldError(e, a) => {
+            InvalidFilterError => write!(f, "Filter must by an object"),
+            EntityFieldError(e, a) => {
                 write!(f, "Entity {} has no attribute {}", e, a)
             }
 
-            QueryExecutionError::ListTypesError(s, v) => write!(
+            ListTypesError(s, v) => write!(
                 f,
                 "Values passed to filter {} must be of the same type but are of different types: {}",
                 s,
                 v.join(", ")
             ),
-            QueryExecutionError::ListFilterError(s) => {
+            ListFilterError(s) => {
                 write!(f, "Non-list value passed to {} filter", s)
             }
-            QueryExecutionError::ValueParseError(t, e) => {
+            ValueParseError(t, e) => {
                 write!(f, "Failed to decode {} value: {}", t, e)
             }
-            QueryExecutionError::AttributeTypeError(value, ty) => {
+            AttributeTypeError(value, ty) => {
                 write!(f, "Query contains value with invalid type {} : {}", ty, value)
             }
-            QueryExecutionError::EntityParseError(s) => {
+            EntityParseError(s) => {
                 write!(f, "Broken entity found in store: {}", s)
             }
-            QueryExecutionError::StoreError(e) => {
+            StoreError(e) => {
                 write!(f, "Store error: {}", e)
             }
         }
@@ -214,6 +228,8 @@ impl Serialize for QueryError {
     where
         S: Serializer,
     {
+        use self::QueryExecutionError::*;
+
         let mut map = serializer.serialize_map(Some(1))?;
 
         let msg = match self {
@@ -254,10 +270,13 @@ impl Serialize for QueryError {
             }
 
             // Serialize entity resolution errors using their position
-            QueryError::ExecutionError(QueryExecutionError::NonNullError(pos, _))
-            | QueryError::ExecutionError(QueryExecutionError::ListValueError(pos, _))
-            | QueryError::ExecutionError(QueryExecutionError::InvalidArgumentError(pos, _, _))
-            | QueryError::ExecutionError(QueryExecutionError::MissingArgumentError(pos, _)) => {
+            QueryError::ExecutionError(NonNullError(pos, _))
+            | QueryError::ExecutionError(ListValueError(pos, _))
+            | QueryError::ExecutionError(InvalidArgumentError(pos, _, _))
+            | QueryError::ExecutionError(MissingArgumentError(pos, _))
+            | QueryError::ExecutionError(InvalidVariableTypeError(pos, _))
+            | QueryError::ExecutionError(InvalidVariableError(pos, _, _))
+            | QueryError::ExecutionError(MissingVariableError(pos, _)) => {
                 let mut location = HashMap::new();
                 location.insert("line", pos.line);
                 location.insert("column", pos.column);
