@@ -1,5 +1,3 @@
-use components::subgraph::SchemaEvent;
-use components::EventConsumer;
 use data::query::QueryError;
 use futures::prelude::*;
 use futures::sync::oneshot::Canceled;
@@ -83,7 +81,7 @@ impl Serialize for GraphQLServerError {
 }
 
 /// Common trait for GraphQL server implementations.
-pub trait GraphQLServer: EventConsumer<SchemaEvent> {
+pub trait GraphQLServer {
     type ServeError;
 
     /// Creates a new Tokio task that, when spawned, brings up the GraphQL server.

@@ -10,6 +10,7 @@ extern crate failure;
 extern crate fallible_iterator;
 extern crate futures;
 extern crate graph;
+extern crate graph_graphql;
 extern crate postgres;
 extern crate serde;
 extern crate uuid;

@@ -10,6 +10,7 @@ failure = "0.1.2"
 fallible-iterator = "0.1.4"
 futures = "0.1.21"
 graph = { path = "../../graph" }
+graph-graphql = { path = "../../graphql" }
 postgres = "0.15.2"
 serde = "1.0"
 uuid = { version = "0.6", features = ["v4"] }

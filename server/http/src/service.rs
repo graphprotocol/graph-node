@@ -4,8 +4,6 @@ use graph::prelude::*;
 use http::header;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
-use std::collections::BTreeMap;
-use std::sync::RwLock;
 
 use request::GraphQLRequest;
 use response::GraphQLResponse;
@@ -17,8 +15,6 @@ pub type GraphQLServiceResponse =
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
 pub struct GraphQLService<Q, S> {
-    // Maps IDs to schemas.
-    schemas: Arc<RwLock<BTreeMap<SubgraphId, Schema>>>,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
     ws_port: u16,
@@ -28,7 +24,6 @@ pub struct GraphQLService<Q, S> {
 impl<Q, S> Clone for GraphQLService<Q, S> {
     fn clone(&self) -> Self {
         Self {
-            schemas: self.schemas.clone(),
             graphql_runner: self.graphql_runner.clone(),
             store: self.store.clone(),
             ws_port: self.ws_port,
@@ -39,19 +34,12 @@ impl<Q, S> Clone for GraphQLService<Q, S> {
 
 impl<Q, S> GraphQLService<Q, S>
 where
-    Q: GraphQlRunner + 'static,
+    Q: GraphQlRunner,
     S: SubgraphDeploymentStore,
 {
     /// Creates a new GraphQL service.
-    pub fn new(
-        schemas: Arc<RwLock<BTreeMap<SubgraphId, Schema>>>,
-        graphql_runner: Arc<Q>,
-        store: Arc<S>,
-        ws_port: u16,
-        node_id: NodeId,
-    ) -> Self {
+    pub fn new(graphql_runner: Arc<Q>, store: Arc<S>, ws_port: u16, node_id: NodeId) -> Self {
         GraphQLService {
-            schemas,
             graphql_runner,
             store,
             ws_port,
@@ -105,47 +93,8 @@ where
         ))
     }
 
-    fn handle_graphiql_by_name(&self, name: String) -> GraphQLServiceResponse {
-        let self_clone1 = self.clone();
-        let self_clone2 = self.clone();
-
-        let graphiql_html = self.graphiql_html();
-
-        Box::new(
-            future::result(SubgraphDeploymentName::new(name.clone()))
-                .map_err(move |()| {
-                    GraphQLServerError::ClientError(format!(
-                        "invalid subgraph name {:?}",
-                        name.to_string()
-                    ))
-                })
-                .and_then(move |name| {
-                    self_clone1
-                        .store
-                        .read(name)
-                        .map_err(|e| GraphQLServerError::InternalError(e.to_string()))
-                })
-                .and_then(move |deployment_opt| match deployment_opt {
-                    None => self_clone2.handle_not_found(),
-                    Some((_, ref node_id)) if *node_id != self_clone2.node_id => {
-                        self_clone2.handle_not_found()
-                    }
-                    Some((_, _)) => self_clone2.serve_dynamic_file(graphiql_html),
-                }),
-        )
-    }
-
-    fn handle_graphiql_by_id(&self, id: &str) -> GraphQLServiceResponse {
-        match SubgraphId::new(id) {
-            Err(()) => self.handle_not_found(),
-            Ok(id) => {
-                if self.schemas.read().unwrap().contains_key(&id) {
-                    self.serve_dynamic_file(self.graphiql_html())
-                } else {
-                    self.handle_not_found()
-                }
-            }
-        }
+    fn handle_graphiql(&self) -> GraphQLServiceResponse {
+        self.serve_dynamic_file(self.graphiql_html())
     }
 
     fn handle_graphql_query_by_name(
@@ -193,28 +142,40 @@ where
     fn handle_graphql_query(&self, id: SubgraphId, request_body: Body) -> GraphQLServiceResponse {
         let service = self.clone();
 
-        let schemas_rwlock = service.schemas.clone();
-        let schemas = schemas_rwlock.read().unwrap();
-
-        let schema_opt = schemas.get(&id).map(|s| s.to_owned());
-
-        match schema_opt {
-            None => service.handle_not_found(),
-            Some(schema) => Box::new(
-                request_body
-                    .concat2()
-                    .map_err(|_| GraphQLServerError::from("Failed to read request body"))
-                    .and_then(move |body| GraphQLRequest::new(body, schema.clone()))
-                    .and_then(move |query| {
-                        // Run the query using the query runner
-                        service
-                            .graphql_runner
-                            .run_query(query)
-                            .map_err(|e| GraphQLServerError::from(e))
-                    })
-                    .then(|result| GraphQLResponse::new(result)),
-            ),
+        match self.store.is_deployed(&id) {
+            Err(e) => return Box::new(future::err(GraphQLServerError::ClientError(e.to_string()))),
+            Ok(false) => {
+                return Box::new(future::err(GraphQLServerError::ClientError(format!(
+                    "Subgraph {} not deployed",
+                    id
+                ))))
+            }
+            Ok(true) => (),
         }
+
+        let schema = match self.store.schema_of(id) {
+            Ok(schema) => schema,
+            Err(e) => {
+                return Box::new(future::err(GraphQLServerError::InternalError(
+                    e.to_string(),
+                )))
+            }
+        };
+
+        Box::new(
+            request_body
+                .concat2()
+                .map_err(|_| GraphQLServerError::from("Failed to read request body"))
+                .and_then(move |body| GraphQLRequest::new(body, schema))
+                .and_then(move |query| {
+                    // Run the query using the query runner
+                    service
+                        .graphql_runner
+                        .run_query(query)
+                        .map_err(|e| GraphQLServerError::from(e))
+                })
+                .then(|result| GraphQLResponse::new(result)),
+        )
     }
 
     // Handles OPTIONS requests
@@ -258,7 +219,7 @@ where
 
 impl<Q, S> Service for GraphQLService<Q, S>
 where
-    Q: GraphQlRunner + 'static,
+    Q: GraphQlRunner,
     S: SubgraphDeploymentStore,
 {
     type ReqBody = Body;
@@ -287,19 +248,15 @@ where
             (Method::GET, ["graphiql.min.js"]) => {
                 self.serve_file(include_str!("../assets/graphiql.min.js"))
             }
+            (Method::GET, &["subgraphs", "id", _])
+            | (Method::GET, &["subgraphs", "name", _])
+            | (Method::GET, &["subgraphs"]) => self.handle_graphiql(),
 
-            (Method::GET, &["subgraphs", "id", subgraph_id]) => {
-                self.handle_graphiql_by_id(subgraph_id)
-            }
             (Method::POST, &["subgraphs", "id", subgraph_id, "graphql"]) => {
                 self.handle_graphql_query_by_id(subgraph_id, req)
             }
             (Method::OPTIONS, ["subgraphs", "id", _, "graphql"]) => {
                 self.handle_graphql_options(req)
-            }
-
-            (Method::GET, &["subgraphs", "name", subgraph_name]) => {
-                self.handle_graphiql_by_name(subgraph_name.to_owned())
             }
             (Method::POST, ["subgraphs", "name", subgraph_name, "graphql"]) => {
                 self.handle_graphql_query_by_name(subgraph_name, req)
@@ -309,7 +266,6 @@ where
             }
 
             // `/subgraphs` acts as an alias to `/subgraphs/id/SUBGRAPHS_ID`
-            (Method::GET, &["subgraphs"]) => self.handle_graphiql_by_id(&SUBGRAPHS_ID.to_string()),
             (Method::POST, &["subgraphs", "graphql"]) => {
                 self.handle_graphql_query_by_id(&SUBGRAPHS_ID.to_string(), req)
             }

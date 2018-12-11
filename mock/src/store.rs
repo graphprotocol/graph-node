@@ -259,6 +259,14 @@ impl SubgraphDeploymentStore for MockStore {
                 .map_err(|()| format_err!("receiver error")),
         )
     }
+
+    fn is_deployed(&self, _id: &SubgraphId) -> Result<bool, Error> {
+        unimplemented!()
+    }
+
+    fn schema_of(&self, _subgraph_id: SubgraphId) -> Result<Schema, Error> {
+        unimplemented!()
+    }
 }
 
 impl ChainStore for MockStore {

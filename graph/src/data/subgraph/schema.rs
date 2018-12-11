@@ -1,4 +1,4 @@
-//! See `core/src/subgraph/subgraphs.graphql` for corresponding graphql schema.
+//! See `subgraphs.graphql` in the store for corresponding graphql schema.
 
 use super::SubgraphId;
 use components::store::{EntityKey, EntityOperation};
@@ -12,6 +12,12 @@ lazy_static! {
 
 /// Type name of the root entity in the subgraph of subgraphs.
 pub const SUBGRAPH_ENTITY_TYPENAME: &str = "Subgraph";
+
+/// Type name of manifests in the subgraph of subgraphs.
+pub const MANIFEST_ENTITY_TYPENAME: &str = "SubgraphManifest";
+
+/// The ID of the manifest entity is the subgraph id plus this.
+pub const MANIFEST_SUFFIX: &str = "-manifest";
 
 #[derive(Debug)]
 pub struct SubgraphEntity {
