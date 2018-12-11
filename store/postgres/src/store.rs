@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use graph::components::store::Store as StoreTrait;
-use graph::data::subgraph::schema::{MANIFEST_SUFFIX, SUBGRAPHS_ID, MANIFEST_ENTITY_TYPENAME};
+use graph::data::subgraph::schema::{MANIFEST_ENTITY_TYPENAME, MANIFEST_SUFFIX, SUBGRAPHS_ID};
 use graph::prelude::*;
 use graph::serde_json;
 use graph::web3::types::H256;
