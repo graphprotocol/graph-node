@@ -90,7 +90,7 @@ where
                 let logger = logger.clone();
                 let graphql_runner = graphql_runner.clone();
                 let store = store.clone();
-                let schema_store = store.clone();
+                let store2 = store.clone();
 
                 // Subgraph that the request is resolved to (if any)
                 let subgraph_id = Arc::new(Mutex::new(None));
@@ -115,10 +115,24 @@ where
                         Ok(ws_stream) => {
                             // Obtain the subgraph ID or name that we resolved the request to
                             let subgraph_id = subgraph_id.lock().unwrap().clone().unwrap();
-                            let schema = match schema_store.schema_of(subgraph_id.clone()) {
+
+                            // Check if the subgraph is deployed
+                            match store2.is_deployed(&subgraph_id) {
+                                Err(_) |
+                                Ok(false) => {
+                                    error!(logger, "Failed to establish WS connection, subgraph not deployed";
+                                                "subgraph" => subgraph_id.to_string(),
+                                    );
+                                    return Ok(());
+                                }
+                                Ok(true) => (),
+                            }
+
+                            // Get the subgraph schema
+                            let schema = match store2.schema_of(subgraph_id.clone()) {
                                 Ok(schema) => schema,
                                 Err(e) => {
-                                    info!(logger, "Failed to establish WS connection, could not find schema";
+                                    error!(logger, "Failed to establish WS connection, could not find schema";
                                                 "subgraph" => subgraph_id.to_string(),
                                                 "error" => e.to_string(),
                                     );

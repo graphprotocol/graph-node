@@ -143,7 +143,11 @@ where
         let service = self.clone();
 
         match self.store.is_deployed(&id) {
-            Err(e) => return Box::new(future::err(GraphQLServerError::ClientError(e.to_string()))),
+            Err(e) => {
+                return Box::new(future::err(GraphQLServerError::InternalError(
+                    e.to_string(),
+                )))
+            }
             Ok(false) => {
                 return Box::new(future::err(GraphQLServerError::ClientError(format!(
                     "Subgraph {} not deployed",
