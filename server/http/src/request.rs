@@ -75,7 +75,9 @@ impl Future for GraphQLRequest {
 #[cfg(test)]
 mod tests {
     use graphql_parser;
+    use graphql_parser::query as q;
     use hyper;
+    use std::ops::DerefMut;
 
     use graph::prelude::*;
 
@@ -205,8 +207,10 @@ mod tests {
         let query = request.wait().expect("Should accept valid queries");
 
         let expected_query = graphql_parser::parse_query("{ user { name } }").unwrap();
-        let mut expected_variables = QueryVariables::new();
-        expected_variables.insert("foo".to_string(), QueryVariableValue::from("bar"));
+        let mut expected_variables: QueryVariables = Default::default();
+        expected_variables
+            .deref_mut()
+            .insert(String::from("foo"), q::Value::String(String::from("bar")));
 
         assert_eq!(query.document, expected_query);
         assert_eq!(query.variables, Some(expected_variables));
