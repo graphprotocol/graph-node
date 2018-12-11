@@ -33,6 +33,13 @@ where
         Err(e) => return QueryResult::from(e),
     };
 
+    // Parse variable values
+    let coerced_variable_values =
+        match coerce_variable_values(&query.schema, operation, &query.variables) {
+            Ok(values) => values,
+            Err(errors) => return QueryResult::from(errors),
+        };
+
     // Create an introspection type store and resolver
     let introspection_schema = introspection_schema();
     let introspection_resolver = IntrospectionResolver::new(&options.logger, &query.schema);
@@ -47,6 +54,7 @@ where
         introspecting: false,
         document: &query.document,
         fields: vec![],
+        variable_values: Arc::new(coerced_variable_values),
     };
 
     let result = match *operation {

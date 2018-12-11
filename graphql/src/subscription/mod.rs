@@ -33,6 +33,16 @@ where
     // Obtain the only operation of the subscription (fail if there is none or more than one)
     let operation = qast::get_operation(&subscription.query.document, None)?;
 
+    // Parse variable values
+    let coerced_variable_values = match coerce_variable_values(
+        &subscription.query.schema,
+        operation,
+        &subscription.query.variables,
+    ) {
+        Ok(values) => values,
+        Err(errors) => return Err(SubscriptionError::from(errors)),
+    };
+
     // Create an introspection type store and resolver
     let introspection_schema = introspection_schema();
     let introspection_resolver =
@@ -48,6 +58,7 @@ where
         introspecting: false,
         document: &subscription.query.document,
         fields: vec![],
+        variable_values: Arc::new(coerced_variable_values),
     };
 
     match *operation {
@@ -127,6 +138,7 @@ where
     let schema = ctx.schema.clone();
     let document = ctx.document.clone();
     let subscription = subscription.to_owned();
+    let variable_values = ctx.variable_values.clone();
 
     Ok(Box::new(source_stream.map(move |event| {
         execute_subscription_event(
@@ -135,6 +147,7 @@ where
             schema.clone(),
             document.clone(),
             subscription.clone(),
+            variable_values.clone(),
             event,
         )
     })))
@@ -146,6 +159,7 @@ fn execute_subscription_event<R1>(
     schema: Schema,
     document: q::Document,
     subscription: q::Subscription,
+    variable_values: Arc<HashMap<q::Name, q::Value>>,
     event: EntityChange,
 ) -> QueryResult
 where
@@ -167,6 +181,7 @@ where
         introspecting: false,
         document: &document,
         fields: vec![],
+        variable_values,
     };
 
     // We have established that this exists earlier in the subscription execution
