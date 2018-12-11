@@ -6,6 +6,7 @@ use diesel::sql_types::Text;
 use diesel::{delete, insert_into, select, update};
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
+use lru_time_cache::LruCache;
 use std::collections::HashMap;
 use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -66,6 +67,7 @@ pub struct Store {
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
     pub conn: Arc<Mutex<PgConnection>>,
+    schema_cache: Mutex<LruCache<SubgraphId, Schema>>,
 }
 
 impl Store {
@@ -101,6 +103,7 @@ impl Store {
             network_name: config.network_name.clone(),
             genesis_block_ptr: (net_identifiers.genesis_block_hash, 0u64).into(),
             conn: Arc::new(Mutex::new(conn)),
+            schema_cache: Mutex::new(LruCache::with_capacity(100)),
         };
 
         // Add network to store and check network identifiers
@@ -840,6 +843,11 @@ impl SubgraphDeploymentStore for Store {
     }
 
     fn schema_of(&self, subgraph_id: SubgraphId) -> Result<Schema, Error> {
+        if let Some(schema) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
+            trace!(self.logger, "schema cache hit"; "id" => subgraph_id.to_string());
+            return Ok(schema.clone());
+        }
+
         let raw_schema = if subgraph_id == *SUBGRAPHS_ID {
             // The subgraph of subgraphs schema is built-in.
             include_str!("subgraphs.graphql").to_owned()
@@ -862,12 +870,18 @@ impl SubgraphDeploymentStore for Store {
                 }
             }
         };
-        let schema = Schema::parse(&raw_schema, subgraph_id)?;
-        let derived_schema = api_schema(&schema.document)?;
-        Ok(Schema {
-            id: schema.id,
-            document: derived_schema,
-        })
+        let mut schema = Schema::parse(&raw_schema, subgraph_id.clone())?;
+        schema.document = api_schema(&schema.document)?;
+
+        if !self.schema_cache.lock().unwrap().contains_key(&subgraph_id) {
+            trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
+            self.schema_cache
+                .lock()
+                .unwrap()
+                .insert(subgraph_id, schema.clone());
+        }
+
+        Ok(schema)
     }
 }
 
