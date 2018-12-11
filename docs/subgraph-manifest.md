@@ -62,7 +62,7 @@ The `mapping` field may be one of the following supported mapping manifests:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| **event** | *String* | An identifier for an event which will be handled in the mapping script. For Ethereum contracts, this must be the full event signature to disambiguate from events which may share the same name. |
+| **event** | *String* | An identifier for an event which will be handled in the mapping script. For Ethereum contracts, this must be the full event signature to disambiguate from events which may share the same name. No alias types can be used (i.e. uint will not work, uint256 must be used)|
 | **handler** | *String* | The name of an exported function in the mapping script which should handle the specified event. |
 
 ## 1.6 Path

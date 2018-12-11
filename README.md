@@ -33,10 +33,11 @@ For Ethereum network data you can either run a local node or use Infura.io:
 
 ### Running a local Graph Node
 
-This is a quick example to get you up and running, it uses a [subgraph for ENS](https://github.com/graphprotocol/ens-subgraph) that we built as a reference.
+This is a quick example to to show a working Graph Node. It is a [subgraph for the Ethereum Name Service (ENS)](https://github.com/graphprotocol/ens-subgraph) that The Graph team built.
                                                    
 1. Install IPFS and run `ipfs init` followed by `ipfs daemon`
-2. Install PostgreSQL and run `initdb -D .postgres` followed by `createdb graph-node`
+2. Install PostgreSQL and run `initdb -D .postgres` followed by `pg_ctl -D .postgres -l logfile start`
+ and `createdb graph-node`
 3. If using Ubuntu, you may need to install additional packages:
    - `sudo apt-get install -y clang libpq-dev libssl-dev pkg-config`
 4. Clone https://github.com/graphprotocol/ens-subgraph, install dependencies and generate types for contract ABIs:
@@ -61,13 +62,13 @@ Try your OS username as `USERNAME` and `PASSWORD`. The password might be optiona
 
 This will also spin up a GraphiQL interface at `http://127.0.0.1:8000/`.
 
-6.  Back in your subgraph directory, run
+6.  Back in the terminal of the subgraph directory, run
 
 ```
 yarn deploy --verbosity debug
 ```
 
-in order to build and deploy your subgraph to the Graph Node. It should start indexing the subgraph immediately.
+This will build and deploy the subgraph to the Graph Node. It should start indexing the subgraph immediately.
 
 ### Command-line interface
 
