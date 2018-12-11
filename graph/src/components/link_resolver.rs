@@ -3,7 +3,7 @@ use failure;
 use ipfs_api;
 use tokio::prelude::*;
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Resolves links to subgraph manifests and resources referenced by them.
 pub trait LinkResolver: Send + Sync + 'static {
@@ -21,7 +21,7 @@ impl LinkResolver for ipfs_api::IpfsClient {
             self.cat(path)
                 .concat2()
                 // Guard against IPFS unresponsiveness.
-                .deadline(Instant::now() + Duration::from_secs(10))
+                .timeout(Duration::from_secs(10))
                 .map(|x| x.to_vec())
                 .map_err(|e| failure::err_msg(e.to_string())),
         )

@@ -272,10 +272,10 @@ impl Drain for ElasticDrain {
 
         let mut text = format!("{}", record.msg());
         if n_logger_kvs > 0 {
-            write!(text, ", {}", logger_kvs);
+            write!(text, ", {}", logger_kvs).unwrap();
         }
         if n_value_kvs > 0 {
-            write!(text, ", {}", value_kvs);
+            write!(text, ", {}", value_kvs).unwrap();
         }
 
         // Prepare log document

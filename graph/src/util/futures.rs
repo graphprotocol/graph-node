@@ -2,9 +2,9 @@ use slog::{debug, trace, Logger};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::prelude::*;
-use tokio::timer::DeadlineError;
+use tokio::timer::timeout;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Error as RetryError;
 use tokio_retry::Retry;
@@ -27,7 +27,7 @@ use tokio_retry::Retry;
 /// ```
 /// # extern crate graph;
 /// # use graph::prelude::*;
-/// # use graph::tokio::timer::DeadlineError;
+/// # use graph::tokio::timer::timeout;
 /// #
 /// # type Memes = (); // the memes are a lie :(
 /// #
@@ -35,7 +35,7 @@ use tokio_retry::Retry;
 /// #     future::ok(())
 /// # }
 ///
-/// fn async_function(logger: Logger) -> impl Future<Item=Memes, Error=DeadlineError<()>> {
+/// fn async_function(logger: Logger) -> impl Future<Item=Memes, Error=timeout::Error<()>> {
 ///     // Retry on error
 ///     retry("download memes", &logger)
 ///         .no_limit() // Retry forever
@@ -146,7 +146,7 @@ where
     E: Debug + Send,
 {
     /// Rerun the provided function as many times as needed.
-    pub fn run<F, R>(self, try_it: F) -> impl Future<Item = I, Error = DeadlineError<E>>
+    pub fn run<F, R>(self, try_it: F) -> impl Future<Item = I, Error = timeout::Error<E>>
     where
         F: Fn() -> R + Send,
         R: Future<Item = I, Error = E> + Send,
@@ -166,7 +166,7 @@ where
             condition,
             log_after,
             limit_opt,
-            move || try_it().deadline(Instant::now() + timeout),
+            move || try_it().timeout(timeout),
         )
     }
 }
@@ -201,7 +201,7 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
             move || {
                 try_it().map_err(|e| {
                     // No timeout, so all errors are inner errors
-                    DeadlineError::inner(e)
+                    timeout::Error::inner(e)
                 })
             },
         )
@@ -219,12 +219,12 @@ fn run_retry<I, E, F, R>(
     log_after: u64,
     limit_opt: Option<usize>,
     try_it_with_deadline: F,
-) -> impl Future<Item = I, Error = DeadlineError<E>> + Send
+) -> impl Future<Item = I, Error = timeout::Error<E>> + Send
 where
     I: Debug + Send,
     E: Debug + Send,
     F: Fn() -> R + Send,
-    R: Future<Item = I, Error = DeadlineError<E>> + Send,
+    R: Future<Item = I, Error = timeout::Error<E>> + Send,
 {
     let condition = Arc::new(condition);
 
@@ -267,7 +267,7 @@ where
             } else {
                 // Any error must now be an inner error.
                 // Unwrap the inner error so that the predicate doesn't need to think
-                // about DeadlineError.
+                // about timeout::Error.
                 let result = result_with_deadline.map_err(|e| e.into_inner().unwrap());
 
                 // If needs retry
@@ -282,10 +282,10 @@ where
                     }
 
                     // Wrap in Err to force retry
-                    Err(result.map_err(DeadlineError::inner))
+                    Err(result.map_err(timeout::Error::inner))
                 } else {
                     // Wrap in Ok to prevent retry
-                    Ok(result.map_err(DeadlineError::inner))
+                    Ok(result.map_err(timeout::Error::inner))
                 }
             }
         })
