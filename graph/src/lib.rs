@@ -75,7 +75,7 @@ pub mod prelude {
 
     pub use data::graphql::SerializableValue;
     pub use data::query::{
-        Query, QueryError, QueryExecutionError, QueryResult, QueryVariableValue, QueryVariables,
+        Query, QueryError, QueryExecutionError, QueryResult, QueryVariables,
     };
     pub use data::schema::Schema;
     pub use data::store::scalar::{BigInt, BigIntSign};
