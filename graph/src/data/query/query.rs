@@ -1,73 +1,76 @@
 use graphql_parser::query as q;
+use serde::de::{Deserialize, Deserializer, Error as DeserializerError};
 use std::cmp::PartialEq;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
 
 use data::schema::Schema;
 
+fn deserialize_number<'de, D>(deserializer: D) -> Result<q::Number, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let i: i32 = Deserialize::deserialize(deserializer)?;
+    Ok(q::Number::from(i))
+}
+
+fn deserialize_list<'de, D>(deserializer: D) -> Result<Vec<q::Value>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let values: Vec<DeserializableGraphQlValue> = Deserialize::deserialize(deserializer)?;
+    Ok(values.into_iter().map(|v| v.0).collect())
+}
+
+fn deserialize_object<'de, D>(deserializer: D) -> Result<BTreeMap<String, q::Value>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let pairs: BTreeMap<String, DeserializableGraphQlValue> =
+        Deserialize::deserialize(deserializer)?;
+    Ok(pairs.into_iter().map(|(k, v)| (k, v.0)).collect())
+}
+
 #[derive(Deserialize)]
 #[serde(untagged, remote = "q::Value")]
 enum GraphQLValue {
+    #[serde(deserialize_with = "deserialize_number")]
+    Int(q::Number),
+    Float(f64),
     String(String),
+    Boolean(bool),
+    Null,
+    Enum(String),
+    #[serde(deserialize_with = "deserialize_list")]
+    List(Vec<q::Value>),
+    #[serde(deserialize_with = "deserialize_object")]
+    Object(BTreeMap<String, q::Value>),
 }
 
 /// Variable value for a GraphQL query.
 #[derive(Clone, Debug, Deserialize)]
-pub struct QueryVariableValue(#[serde(with = "GraphQLValue")] q::Value);
+pub struct DeserializableGraphQlValue(#[serde(with = "GraphQLValue")] q::Value);
 
-impl Deref for QueryVariableValue {
-    type Target = q::Value;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for QueryVariableValue {
-    fn deref_mut(&mut self) -> &mut q::Value {
-        &mut self.0
-    }
-}
-
-impl PartialEq for QueryVariableValue {
-    fn eq(&self, other: &QueryVariableValue) -> bool {
-        self.0 == other.0
-    }
-}
-
-impl<'a> From<&'a str> for QueryVariableValue {
-    fn from(s: &'a str) -> Self {
-        QueryVariableValue(q::Value::String(s.to_string()))
-    }
+fn deserialize_variables<'de, D>(deserializer: D) -> Result<HashMap<String, q::Value>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let pairs: BTreeMap<String, DeserializableGraphQlValue> =
+        Deserialize::deserialize(deserializer)?;
+    Ok(pairs.into_iter().map(|(k, v)| (k, v.0)).collect())
 }
 
 /// Variable values for a GraphQL query.
 #[derive(Clone, Debug, Default, Deserialize)]
-pub struct QueryVariables(HashMap<String, QueryVariableValue>);
-
-impl QueryVariables {
-    pub fn new() -> Self {
-        Default::default()
-    }
-}
+pub struct QueryVariables(
+    #[serde(deserialize_with = "deserialize_variables")] HashMap<String, q::Value>,
+);
 
 impl Deref for QueryVariables {
-    type Target = HashMap<String, QueryVariableValue>;
+    type Target = HashMap<String, q::Value>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
-    }
-}
-
-impl DerefMut for QueryVariables {
-    fn deref_mut(&mut self) -> &mut HashMap<String, QueryVariableValue> {
-        &mut self.0
-    }
-}
-
-impl PartialEq for QueryVariables {
-    fn eq(&self, other: &QueryVariables) -> bool {
-        self.0 == other.0
     }
 }
 
