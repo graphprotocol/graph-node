@@ -1,4 +1,5 @@
 use graphql_parser::query::*;
+use std::collections::HashMap;
 
 use graph::prelude::QueryExecutionError;
 
@@ -64,11 +65,17 @@ pub fn get_argument_value<'a>(arguments: &'a [(Name, Value)], name: &Name) -> Op
 }
 
 /// Returns true if a selection should be skipped (as per the `@skip` directive).
-pub fn skip_selection(selection: &Selection) -> bool {
+pub fn skip_selection(selection: &Selection, variables: &HashMap<Name, Value>) -> bool {
     match get_directive(selection, "skip".to_string()) {
         Some(directive) => match get_argument_value(&directive.arguments, &"if".to_string()) {
             Some(val) => match val {
+                // Skip if @skip(if: true)
                 Value::Boolean(skip_if) => *skip_if,
+                // Also skip if @skip(if: $variable) where $variable is true
+                Value::Variable(name) => variables.get(name).map_or(false, |var| match var {
+                    Value::Boolean(v) => v.to_owned(),
+                    _ => false,
+                }),
                 _ => false,
             },
             None => true,
@@ -106,4 +113,16 @@ pub fn get_fragment<'a>(document: &'a Document, name: &Name) -> Option<&'a Fragm
             _ => None,
         })
         .find(|fd| &fd.name == name)
+}
+
+/// Returns the variable definitions for an operation.
+pub fn get_variable_definitions(
+    operation: &OperationDefinition,
+) -> Option<&Vec<VariableDefinition>> {
+    match operation {
+        OperationDefinition::Query(q) => Some(&q.variable_definitions),
+        OperationDefinition::Subscription(s) => Some(&s.variable_definitions),
+        OperationDefinition::Mutation(m) => Some(&m.variable_definitions),
+        OperationDefinition::SelectionSet(_) => None,
+    }
 }
