@@ -63,7 +63,7 @@ pub struct SubgraphManifestEntity {
 
 impl SubgraphManifestEntity {
     pub fn id(subgraph_id: &SubgraphId) -> String {
-        format!("{}-manifest", subgraph_id.to_string())
+        format!("{}-manifest", subgraph_id)
     }
 
     fn write_operations(self, id: &str) -> Vec<EntityOperation> {
