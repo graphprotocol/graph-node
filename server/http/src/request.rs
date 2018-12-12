@@ -77,7 +77,8 @@ mod tests {
     use graphql_parser;
     use graphql_parser::query as q;
     use hyper;
-    use std::ops::DerefMut;
+    use std::collections::{BTreeMap, HashMap};
+    use std::iter::FromIterator;
 
     use graph::prelude::*;
 
@@ -199,7 +200,9 @@ mod tests {
                 "\
                  {\
                  \"query\": \"{ user { name } }\", \
-                 \"variables\": { \"foo\": \"bar\" } \
+                 \"variables\": { \
+                 \"string\": \"s\", \"map\": {\"k\": \"v\"}, \"int\": 5 \
+                 } \
                  }",
             ),
             schema,
@@ -207,10 +210,19 @@ mod tests {
         let query = request.wait().expect("Should accept valid queries");
 
         let expected_query = graphql_parser::parse_query("{ user { name } }").unwrap();
-        let mut expected_variables: QueryVariables = Default::default();
-        expected_variables
-            .deref_mut()
-            .insert(String::from("foo"), q::Value::String(String::from("bar")));
+        let expected_variables = QueryVariables::new(HashMap::from_iter(
+            vec![
+                (String::from("string"), q::Value::String(String::from("s"))),
+                (
+                    String::from("map"),
+                    q::Value::Object(BTreeMap::from_iter(
+                        vec![(String::from("k"), q::Value::String(String::from("v")))].into_iter(),
+                    )),
+                ),
+                (String::from("int"), q::Value::Int(q::Number::from(5))),
+            ]
+            .into_iter(),
+        ));
 
         assert_eq!(query.document, expected_query);
         assert_eq!(query.variables, Some(expected_variables));
