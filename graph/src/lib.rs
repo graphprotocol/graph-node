@@ -74,9 +74,7 @@ pub mod prelude {
     pub use components::{EventConsumer, EventProducer};
 
     pub use data::graphql::SerializableValue;
-    pub use data::query::{
-        Query, QueryError, QueryExecutionError, QueryResult, QueryVariables,
-    };
+    pub use data::query::{Query, QueryError, QueryExecutionError, QueryResult, QueryVariables};
     pub use data::schema::Schema;
     pub use data::store::scalar::{BigInt, BigIntSign};
     pub use data::store::{
