@@ -1,6 +1,5 @@
 use graphql_parser::query as q;
-use serde::de::{Deserialize, Deserializer, Error as DeserializerError};
-use std::cmp::PartialEq;
+use serde::de::{Deserialize, Deserializer};
 use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
 
@@ -65,6 +64,12 @@ where
 pub struct QueryVariables(
     #[serde(deserialize_with = "deserialize_variables")] HashMap<String, q::Value>,
 );
+
+impl QueryVariables {
+    pub fn new(variables: HashMap<String, q::Value>) -> Self {
+        QueryVariables(variables)
+    }
+}
 
 impl Deref for QueryVariables {
     type Target = HashMap<String, q::Value>;
