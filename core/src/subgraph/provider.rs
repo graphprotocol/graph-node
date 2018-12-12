@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use graph::data::subgraph::schema::{SubgraphEntity, SUBGRAPHS_ID};
+use graph::data::subgraph::schema::SubgraphEntity;
 use graph::prelude::{SubgraphProvider as SubgraphProviderTrait, *};
 
 pub struct SubgraphProvider<L, S> {

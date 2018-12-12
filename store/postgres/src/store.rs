@@ -13,7 +13,9 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use graph::components::store::Store as StoreTrait;
-use graph::data::subgraph::schema::{MANIFEST_ENTITY_TYPENAME, MANIFEST_SUFFIX, SUBGRAPHS_ID};
+use graph::data::subgraph::schema::{
+    SubgraphManifestEntity, MANIFEST_ENTITY_TYPENAME, SUBGRAPHS_ID,
+};
 use graph::prelude::*;
 use graph::serde_json;
 use graph::web3::types::H256;
@@ -847,6 +849,7 @@ impl SubgraphDeploymentStore for Store {
             trace!(self.logger, "schema cache hit"; "id" => subgraph_id.to_string());
             return Ok(schema.clone());
         }
+        trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
 
         let raw_schema = if subgraph_id == *SUBGRAPHS_ID {
             // The subgraph of subgraphs schema is built-in.
@@ -856,7 +859,7 @@ impl SubgraphDeploymentStore for Store {
                 .get(EntityKey {
                     subgraph_id: SUBGRAPHS_ID.clone(),
                     entity_type: MANIFEST_ENTITY_TYPENAME.to_owned(),
-                    entity_id: format!("{}{}", subgraph_id, MANIFEST_SUFFIX),
+                    entity_id: SubgraphManifestEntity::id(&subgraph_id),
                 })?
                 .ok_or_else(|| format_err!("subgraph entity not found {}", subgraph_id))?;
 
@@ -874,7 +877,6 @@ impl SubgraphDeploymentStore for Store {
         schema.document = api_schema(&schema.document)?;
 
         if !self.schema_cache.lock().unwrap().contains_key(&subgraph_id) {
-            trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
             self.schema_cache
                 .lock()
                 .unwrap()
