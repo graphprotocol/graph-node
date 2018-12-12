@@ -842,7 +842,7 @@ impl SubgraphDeploymentStore for Store {
         })
     }
 
-    fn schema_of(&self, subgraph_id: SubgraphId) -> Result<Schema, Error> {
+    fn subgraph_schema(&self, subgraph_id: SubgraphId) -> Result<Schema, Error> {
         if let Some(schema) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
             trace!(self.logger, "schema cache hit"; "id" => subgraph_id.to_string());
             return Ok(schema.clone());

@@ -121,7 +121,7 @@ where
                                 Err(_) |
                                 Ok(false) => {
                                     error!(logger, "Failed to establish WS connection, subgraph not deployed";
-                                                "subgraph" => subgraph_id.to_string(),
+                                                   "subgraph" => subgraph_id.to_string(),
                                     );
                                     return Ok(());
                                 }
@@ -129,12 +129,12 @@ where
                             }
 
                             // Get the subgraph schema
-                            let schema = match store2.schema_of(subgraph_id.clone()) {
+                            let schema = match store2.subgraph_schema(subgraph_id.clone()) {
                                 Ok(schema) => schema,
                                 Err(e) => {
                                     error!(logger, "Failed to establish WS connection, could not find schema";
-                                                "subgraph" => subgraph_id.to_string(),
-                                                "error" => e.to_string(),
+                                                    "subgraph" => subgraph_id.to_string(),
+                                                    "error" => e.to_string(),
                                     );
                                     return Ok(())
                                 }

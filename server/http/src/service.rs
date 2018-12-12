@@ -157,7 +157,7 @@ where
             Ok(true) => (),
         }
 
-        let schema = match self.store.schema_of(id) {
+        let schema = match self.store.subgraph_schema(id) {
             Ok(schema) => schema,
             Err(e) => {
                 return Box::new(future::err(GraphQLServerError::InternalError(
