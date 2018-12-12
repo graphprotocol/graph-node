@@ -88,6 +88,7 @@ where
             })
             .for_each(move |stream| {
                 let logger = logger.clone();
+                let logger2 = logger.clone();
                 let graphql_runner = graphql_runner.clone();
                 let store = store.clone();
                 let store2 = store.clone();
@@ -100,10 +101,21 @@ where
                     // Try to obtain the subgraph ID or name from the URL path.
                     // Return a 404 if the URL path contains no name/ID segment.
                     let path = &request.path;
-                    *accept_subgraph_id.lock().unwrap() = Some(
-                        Self::subgraph_id_from_url_path(store.clone(), path.as_ref())
-                            .map_err(|()| WsError::Http(404))?,
-                    );
+                    let subgraph_id = Self::subgraph_id_from_url_path(store.clone(), path.as_ref())
+                        .map_err(|()| WsError::Http(404))?;
+
+                    // Check if the subgraph is deployed
+                    match store.is_deployed(&subgraph_id) {
+                        Err(_) | Ok(false) => {
+                            error!(logger, "Failed to establish WS connection, subgraph not deployed";
+                                            "subgraph" => subgraph_id.to_string(),
+                            );
+                            return Err(WsError::Http(404));
+                        }
+                        Ok(true) => (),
+                    }
+
+                    *accept_subgraph_id.lock().unwrap() = Some(subgraph_id);
 
                     Ok(Some(vec![(
                         String::from("Sec-WebSocket-Protocol"),
@@ -116,23 +128,11 @@ where
                             // Obtain the subgraph ID or name that we resolved the request to
                             let subgraph_id = subgraph_id.lock().unwrap().clone().unwrap();
 
-                            // Check if the subgraph is deployed
-                            match store2.is_deployed(&subgraph_id) {
-                                Err(_) |
-                                Ok(false) => {
-                                    error!(logger, "Failed to establish WS connection, subgraph not deployed";
-                                                   "subgraph" => subgraph_id.to_string(),
-                                    );
-                                    return Ok(());
-                                }
-                                Ok(true) => (),
-                            }
-
                             // Get the subgraph schema
                             let schema = match store2.subgraph_schema(subgraph_id.clone()) {
                                 Ok(schema) => schema,
                                 Err(e) => {
-                                    error!(logger, "Failed to establish WS connection, could not find schema";
+                                    error!(logger2, "Failed to establish WS connection, could not find schema";
                                                     "subgraph" => subgraph_id.to_string(),
                                                     "error" => e.to_string(),
                                     );
@@ -142,7 +142,7 @@ where
 
                             // Spawn a GraphQL over WebSocket connection
                             let service = GraphQlConnection::new(
-                                &logger,
+                                &logger2,
                                 schema,
                                 ws_stream,
                                 graphql_runner.clone(),
@@ -152,7 +152,7 @@ where
                         Err(e) => {
                             // We gracefully skip over failed connection attempts rather
                             // than tearing down the entire stream
-                            trace!(logger, "Failed to establish WebSocket connection: {}", e);
+                            trace!(logger2, "Failed to establish WebSocket connection: {}", e);
                         }
                     }
                     Ok(())
