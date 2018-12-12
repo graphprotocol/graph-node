@@ -16,9 +16,6 @@ pub const SUBGRAPH_ENTITY_TYPENAME: &str = "Subgraph";
 /// Type name of manifests in the subgraph of subgraphs.
 pub const MANIFEST_ENTITY_TYPENAME: &str = "SubgraphManifest";
 
-/// The ID of the manifest entity is the subgraph id plus this.
-pub const MANIFEST_SUFFIX: &str = "-manifest";
-
 #[derive(Debug)]
 pub struct SubgraphEntity {
     id: SubgraphId,
@@ -38,7 +35,7 @@ impl SubgraphEntity {
     pub fn write_operations(self) -> Vec<EntityOperation> {
         let mut ops = vec![];
 
-        let manifest_id = format!("{}-manifest", self.id);
+        let manifest_id = SubgraphManifestEntity::id(&self.id);
         ops.append(&mut self.manifest.write_operations(&manifest_id));
 
         let mut entity = HashMap::new();
@@ -56,7 +53,7 @@ impl SubgraphEntity {
 }
 
 #[derive(Debug)]
-struct SubgraphManifestEntity {
+pub struct SubgraphManifestEntity {
     spec_version: String,
     description: Option<String>,
     repository: Option<String>,
@@ -65,6 +62,10 @@ struct SubgraphManifestEntity {
 }
 
 impl SubgraphManifestEntity {
+    pub fn id(subgraph_id: &SubgraphId) -> String {
+        format!("{}-manifest", subgraph_id.to_string())
+    }
+
     fn write_operations(self, id: &str) -> Vec<EntityOperation> {
         let mut ops = vec![];
 
