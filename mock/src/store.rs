@@ -267,7 +267,7 @@ impl SubgraphDeploymentStore for MockStore {
         Ok(self.schemas.keys().any(|id| subgraph_id == id))
     }
 
-    fn schema_of(&self, subgraph_id: SubgraphId) -> Result<Schema, Error> {
+    fn subgraph_schema(&self, subgraph_id: SubgraphId) -> Result<Schema, Error> {
         Ok(self.schemas.get(&subgraph_id).unwrap().clone())
     }
 }
