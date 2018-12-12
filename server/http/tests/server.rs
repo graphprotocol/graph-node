@@ -25,15 +25,35 @@ use tokio::timer::Delay;
 pub struct TestGraphQlRunner;
 
 impl GraphQlRunner for TestGraphQlRunner {
-    fn run_query(&self, _query: Query) -> QueryResultFuture {
+    fn run_query(&self, query: Query) -> QueryResultFuture {
         Box::new(future::ok(QueryResult::new(Some(q::Value::Object(
-            BTreeMap::from_iter(
-                vec![(
-                    String::from("name"),
-                    q::Value::String(String::from("Jordi")),
-                )]
-                .into_iter(),
-            ),
+            if query.variables.is_some()
+                && query
+                    .variables
+                    .as_ref()
+                    .unwrap()
+                    .get(&String::from("equals"))
+                    .is_some()
+                && query
+                    .variables
+                    .unwrap()
+                    .get(&String::from("equals"))
+                    .unwrap()
+                    == &q::Value::String(String::from("John"))
+            {
+                BTreeMap::from_iter(
+                    vec![(String::from("name"), q::Value::String(String::from("John")))]
+                        .into_iter(),
+                )
+            } else {
+                BTreeMap::from_iter(
+                    vec![(
+                        String::from("name"),
+                        q::Value::String(String::from("Jordi")),
+                    )]
+                    .into_iter(),
+                )
+            },
         )))))
     }
 
@@ -234,6 +254,77 @@ mod test {
                             .as_str()
                             .expect("Query result field \"name\" is not a string");
                         assert_eq!(name, "Jordi".to_string());
+
+                        Ok(())
+                    })
+            }))
+            .unwrap()
+    }
+
+    #[test]
+    fn accepts_valid_queries_with_variables() {
+        let mut runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime
+            .block_on(futures::lazy(|| {
+                let logger = Logger::root(slog::Discard, o!());
+
+                let query_runner = Arc::new(TestGraphQlRunner);
+                let store = Arc::new(MockStore::new());
+                let node_id = NodeId::new("test").unwrap();
+                let mut server = HyperGraphQLServer::new(&logger, query_runner, store, node_id);
+                let http_server = server
+                    .serve(8005, 8006)
+                    .expect("Failed to start GraphQL server");
+
+                // Launch the server to handle a single request
+                tokio::spawn(http_server.fuse());
+                // Give some time for the server to start.
+                Delay::new(Instant::now() + Duration::from_secs(2))
+                    .map_err(|e| panic!("failed to start server: {:?}", e))
+                    .and_then(move |()| {
+                        // Create a simple schema and send it to the server
+                        let schema = test_schema();
+                        let id = schema.id.clone();
+
+                        server
+                            .event_sink()
+                            .send(SchemaEvent::SchemaAdded(schema))
+                            .wait()
+                            .expect("Failed to send schema to server");
+
+                        // Send a valid example query
+                        let client = Client::new();
+                        let request = Request::post(format!(
+                            "http://localhost:8005/subgraphs/id/{}/graphql",
+                            id
+                        ))
+                        .body(Body::from(
+                            "
+                            {
+                              \"query\": \" \
+                                query name($equals: String!) { \
+                                  name(equals: $equals) \
+                                } \
+                              \",
+                              \"variables\": { \"equals\": \"John\" }
+                            }
+                            ",
+                        ))
+                        .unwrap();
+
+                        // The response must be a 200
+                        client.request(request)
+                    })
+                    .and_then(|response| {
+                        let data = test_utils::assert_successful_response(response);
+
+                        // The JSON response should match the simulated query result
+                        let name = data
+                            .get("name")
+                            .expect("Query result data has no \"name\" field")
+                            .as_str()
+                            .expect("Query result field \"name\" is not a string");
+                        assert_eq!(name, "John".to_string());
 
                         Ok(())
                     })
