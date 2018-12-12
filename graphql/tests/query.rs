@@ -8,6 +8,8 @@ extern crate graph_core;
 extern crate graph_graphql;
 
 use graphql_parser::query as q;
+use std::collections::HashMap;
+use std::iter::FromIterator;
 
 use graph::prelude::*;
 use graph_graphql::prelude::*;
@@ -240,10 +242,17 @@ impl Store for TestStore {
 }
 
 fn execute_query_document(query: q::Document) -> QueryResult {
+    execute_query_document_with_variables(query, None)
+}
+
+fn execute_query_document_with_variables(
+    query: q::Document,
+    variables: Option<QueryVariables>,
+) -> QueryResult {
     let query = Query {
         schema: test_schema(),
         document: query,
-        variables: None,
+        variables,
     };
 
     let logger = Logger::root(slog::Discard, o!());
@@ -497,6 +506,42 @@ fn can_query_many_to_many_relationship() {
                     ("bands", q::Value::List(vec![])),
                 ]),
             ]),
+        )]))
+    );
+}
+
+#[test]
+fn query_variables_are_used() {
+    let query = graphql_parser::parse_query(
+        "
+        query musicians($where: Musician_filter!) {
+          musicians(where: $where) {
+            name
+          }
+        }
+    ",
+    )
+    .expect("invalid test query");
+
+    let result = execute_query_document_with_variables(
+        query,
+        Some(QueryVariables::new(HashMap::from_iter(
+            vec![(
+                String::from("where"),
+                object_value(vec![("name", q::Value::String(String::from("Tom")))]),
+            )]
+            .into_iter(),
+        ))),
+    );
+
+    assert_eq!(
+        result.data,
+        Some(object_value(vec![(
+            "musicians",
+            q::Value::List(vec![object_value(vec![(
+                "name",
+                q::Value::String(String::from("Tom"))
+            )])],)
         )]))
     );
 }
