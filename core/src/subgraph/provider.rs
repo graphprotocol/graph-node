@@ -81,7 +81,9 @@ where
                         .duration_since(UNIX_EPOCH)
                         .unwrap()
                         .as_secs();
-                    let entity_ops = SubgraphEntity::new(&subgraph, created_at).write_operations();
+                    let entity_ops =
+                        SubgraphEntity::new(&subgraph, SubgraphStatus::Syncing, 0, 0, created_at)
+                            .write_operations();
                     self_clone
                         .store
                         .apply_entity_operations(entity_ops, EventSource::None)

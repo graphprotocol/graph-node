@@ -83,7 +83,7 @@ pub mod prelude {
     };
     pub use data::subgraph::{
         DataSource, Link, MappingABI, MappingEventHandler, SubgraphId, SubgraphManifest,
-        SubgraphManifestResolveError, SubgraphProviderError,
+        SubgraphManifestResolveError, SubgraphProviderError, SubgraphStatus,
     };
     pub use data::subscription::{
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,

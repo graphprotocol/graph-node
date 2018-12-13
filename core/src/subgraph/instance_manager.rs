@@ -1,5 +1,6 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use graph::components::subgraph::SubgraphProviderEvent;
+use graph::data::subgraph::schema::SubgraphEntity;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -134,6 +135,8 @@ impl SubgraphInstanceManager {
         let id = manifest.id.clone();
         let id_for_block = manifest.id.clone();
         let id_for_err = manifest.id.clone();
+        let store_for_events = store.clone();
+        let store_for_errors = store.clone();
 
         // Request a block stream for this subgraph
         let block_stream_canceler = CancelGuard::new();
@@ -159,7 +162,7 @@ impl SubgraphInstanceManager {
                 .for_each(move |block| {
                     let id = id_for_block.clone();
                     let instance = instance.clone();
-                    let store = store.clone();
+                    let store = store_for_events.clone();
                     let logger = block_logger.new(o!(
                         "block_number" => format!("{:?}", block.block.number.unwrap()),
                         "block_hash" => format!("{:?}", block.block.hash.unwrap())
@@ -250,7 +253,7 @@ impl SubgraphInstanceManager {
                 })
                 .map_err(move |e| match e {
                     CancelableError::Cancel => {
-                        info!(
+                        debug!(
                             error_logger,
                             "Subgraph block stream shut down cleanly";
                             "id" => id_for_err.to_string()
@@ -262,6 +265,21 @@ impl SubgraphInstanceManager {
                             "Subgraph instance failed to run: {}", e;
                             "id" => id_for_err.to_string()
                         );
+
+                        // Set subgraph status to Failed
+                        let status_ops = SubgraphEntity::write_status_operations(
+                            &id_for_err,
+                            SubgraphStatus::Failed,
+                        );
+                        if let Err(e) =
+                            store_for_errors.apply_entity_operations(status_ops, EventSource::None)
+                        {
+                            error!(
+                                error_logger,
+                                "Failed to set subgraph status to Failed: {}", e;
+                                "id" => id_for_err.to_string()
+                            );
+                        }
                     }
                 }),
         );
