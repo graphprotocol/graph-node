@@ -148,7 +148,7 @@ where
         .items
         .iter()
         .filter(|selection| !qast::skip_selection(selection, ctx.variable_values.deref()))
-        .filter(|selection| qast::include_selection(selection))
+        .filter(|selection| qast::include_selection(selection, ctx.variable_values.deref()))
         .collect();
 
     for selection in selections {
