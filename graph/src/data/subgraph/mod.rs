@@ -77,6 +77,43 @@ impl<'de> de::Deserialize<'de> for SubgraphId {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum SubgraphStatus {
+    /// Initial state for new subgraphs. Valid next states are `Synced`, `Failed`, and `Paused`.
+    ///
+    /// Subgraphs stay in this state until they have caught up to the head block, at which point
+    /// they become `Synced`.
+    Syncing,
+
+    /// Subgraphs spend most of their time here. Valid next states are `Failed` and `Paused`.
+    ///
+    /// As new blocks arrive, a subgraph will temporarily fall behind the head block pointer again.
+    /// This does not affect the subgraph status; the subgraph remains in the `Synced` state.
+    ///
+    /// The separation between `Syncing` and `Synced` states is to make it easier to monitor system
+    /// health. It is normal for subgraphs in the `Syncing` state to be far behind the chain's head
+    /// block, while it is abnormal for subgraphs in the `Synced` state to be far behind the
+    /// chain's head block.
+    Synced,
+
+    /// When block processing encounters an error. Valid next state is `Syncing` (if user forces retry).
+    Failed,
+
+    /// Subgraph has stopped processing new blocks. Valid next state is `Syncing`.
+    Paused,
+}
+
+impl fmt::Display for SubgraphStatus {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SubgraphStatus::Syncing => write!(f, "SYNCING"),
+            SubgraphStatus::Synced => write!(f, "SYNCED"),
+            SubgraphStatus::Failed => write!(f, "FAILED"),
+            SubgraphStatus::Paused => write!(f, "PAUSED"),
+        }
+    }
+}
+
 #[derive(Fail, Debug)]
 pub enum SubgraphProviderError {
     #[fail(display = "subgraph resolve error: {}", _0)]

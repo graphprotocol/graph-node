@@ -6,6 +6,7 @@ use std::mem;
 use std::sync::Mutex;
 
 use graph::components::forward;
+use graph::data::subgraph::schema::SubgraphEntity;
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
 };
@@ -172,20 +173,30 @@ where
         let ctx = self.clone();
 
         Box::new(future::loop_fn((), move |()| {
-            let ctx = ctx.clone();
+            let ctx1 = ctx.clone();
+            let ctx2 = ctx.clone();
+            let ctx3 = ctx.clone();
+            let log_filter = log_filter.clone();
 
-            // Determine the next step.
-            ctx.get_next_step(log_filter.clone())
+            // Update progress metrics
+            future::result(ctx1.update_subgraph_block_counts())
+                // Determine the next step.
+                .and_then(move |()| ctx1.get_next_step(log_filter))
                 // Do the next step.
-                .and_then(move |step| ctx.do_step(step))
+                .and_then(move |step| ctx2.do_step(step))
                 // Check outcome.
                 // Exit loop if done or there are blocks to process.
-                .map(|outcome| match outcome {
+                .and_then(move |outcome| match outcome {
                     ReconciliationStepOutcome::YieldBlocks(next_blocks) => {
-                        future::Loop::Break(Some(next_blocks))
+                        Ok(future::Loop::Break(Some(next_blocks)))
                     }
-                    ReconciliationStepOutcome::MoreSteps => future::Loop::Continue(()),
-                    ReconciliationStepOutcome::Done => future::Loop::Break(None),
+                    ReconciliationStepOutcome::MoreSteps => Ok(future::Loop::Continue(())),
+                    ReconciliationStepOutcome::Done => {
+                        // Reconciliation is complete, so try to mark subgraph as Synced
+                        ctx3.update_subgraph_synced_status()?;
+
+                        Ok(future::Loop::Break(None))
+                    }
                 })
         }))
     }
@@ -457,6 +468,7 @@ where
                                 parent_ptr,
                             )
                             .map_err(Error::from)
+                            .and_then(|()| ctx.update_subgraph_block_counts())
                             .map(|()| {
                                 // At this point, the loop repeats, and we try to move the subgraph ptr another
                                 // step in the right direction.
@@ -478,6 +490,7 @@ where
                         from,
                         to,
                     ))
+                    .and_then(move |()| ctx.update_subgraph_block_counts())
                     .map(|()| ReconciliationStepOutcome::MoreSteps),
                 )
             }
@@ -490,7 +503,7 @@ where
                 // Advance the subgraph ptr to each of the specified descendants and yield each
                 // block with relevant events.
                 Box::new(future::ok(ReconciliationStepOutcome::YieldBlocks(
-                    Box::new(descendant_blocks.map(move |descendant_block| {
+                    Box::new(descendant_blocks.and_then(move |descendant_block| {
                         // First, check if there are blocks between subgraph_ptr and
                         // descendant_block.
                         let descendant_parent_ptr =
@@ -507,23 +520,64 @@ where
                             );
 
                             // Update subgraph_ptr in store to skip the irrelevant blocks.
-                            ctx.subgraph_store
-                                .set_block_ptr_with_no_changes(
-                                    ctx.subgraph_id.clone(),
-                                    subgraph_ptr,
-                                    descendant_parent_ptr,
-                                )
-                                .unwrap();
+                            ctx.subgraph_store.set_block_ptr_with_no_changes(
+                                ctx.subgraph_id.clone(),
+                                subgraph_ptr,
+                                descendant_parent_ptr,
+                            )?;
                         }
+
+                        ctx.update_subgraph_block_counts()?;
 
                         // Update our copy of the subgraph ptr to reflect the
                         // value it will have after descendant_block is
                         // processed.
                         subgraph_ptr = (&descendant_block).into();
 
-                        descendant_block
+                        Ok(descendant_block)
                     })) as Box<Stream<Item = _, Error = _> + Send>,
                 )))
+            }
+        }
+    }
+
+    /// Write SYNCED to the subgraph entity status field if and only if the subgraph block pointer
+    /// is caught up to the head block pointer.
+    fn update_subgraph_synced_status(&self) -> Result<(), Error> {
+        let head_ptr_opt = self.chain_store.chain_head_ptr()?;
+        let subgraph_ptr = self.subgraph_store.block_ptr(self.subgraph_id.clone())?;
+
+        if head_ptr_opt != Some(subgraph_ptr) {
+            // Not synced yet
+            Ok(())
+        } else {
+            // Synced
+            let ops =
+                SubgraphEntity::write_status_operations(&self.subgraph_id, SubgraphStatus::Synced);
+            self.subgraph_store
+                .apply_entity_operations(ops, EventSource::None)
+        }
+    }
+
+    /// Write latest block counts into subgraph entity based on current value of head and subgraph
+    /// block pointers.
+    fn update_subgraph_block_counts(&self) -> Result<(), Error> {
+        let head_ptr_opt = self.chain_store.chain_head_ptr()?;
+        let subgraph_ptr = self.subgraph_store.block_ptr(self.subgraph_id.clone())?;
+
+        match head_ptr_opt {
+            None => Ok(()),
+            Some(head_ptr) => {
+                let processed = subgraph_ptr.number;
+                let total = head_ptr.number;
+
+                let ops = SubgraphEntity::write_ethereum_block_counts_operations(
+                    &self.subgraph_id,
+                    processed,
+                    total,
+                );
+                self.subgraph_store
+                    .apply_entity_operations(ops, EventSource::None)
             }
         }
     }

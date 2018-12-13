@@ -3,6 +3,16 @@ type Subgraph @entity {
     manifest: SubgraphManifest!
     entityCount: BigInt! # Computed field, not stored.
     createdAt: BigInt!
+    status: SubgraphStatus!
+    processedEthereumBlocksCount: BigInt!
+    totalEthereumBlocksCount: BigInt!
+}
+
+enum SubgraphStatus {
+    SYNCING
+    SYNCED
+    FAILED
+    PAUSED
 }
 
 type SubgraphManifest @entity {
@@ -13,7 +23,6 @@ type SubgraphManifest @entity {
     schema: String!
     dataSources: [EthereumContractDataSource!]!
 }
-
 
 type EthereumContractDataSource @entity {
     id: ID!

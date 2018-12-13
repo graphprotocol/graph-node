@@ -3,6 +3,7 @@
 use super::SubgraphId;
 use components::store::{EntityKey, EntityOperation};
 use data::store::{Entity, Value};
+use data::subgraph::SubgraphStatus;
 use std::collections::HashMap;
 
 /// ID of the subgraph of subgraphs.
@@ -20,14 +21,26 @@ pub const MANIFEST_ENTITY_TYPENAME: &str = "SubgraphManifest";
 pub struct SubgraphEntity {
     id: SubgraphId,
     manifest: SubgraphManifestEntity,
+    status: SubgraphStatus,
+    processed_ethereum_blocks_count: u64,
+    total_ethereum_blocks_count: u64,
     created_at: u64,
 }
 
 impl SubgraphEntity {
-    pub fn new(source_manifest: &super::SubgraphManifest, created_at: u64) -> Self {
+    pub fn new(
+        source_manifest: &super::SubgraphManifest,
+        status: SubgraphStatus,
+        processed_ethereum_blocks_count: u64,
+        total_ethereum_blocks_count: u64,
+        created_at: u64,
+    ) -> Self {
         Self {
             id: source_manifest.id.clone(),
             manifest: SubgraphManifestEntity::from(source_manifest),
+            status,
+            processed_ethereum_blocks_count,
+            total_ethereum_blocks_count,
             created_at,
         }
     }
@@ -41,6 +54,15 @@ impl SubgraphEntity {
         let mut entity = HashMap::new();
         entity.insert("id".to_owned(), self.id.to_string().into());
         entity.insert("manifest".to_owned(), manifest_id.into());
+        entity.insert("status".to_owned(), self.status.to_string().into());
+        entity.insert(
+            "processedEthereumBlocksCount".to_owned(),
+            self.processed_ethereum_blocks_count.into(),
+        );
+        entity.insert(
+            "totalEthereumBlocksCount".to_owned(),
+            self.total_ethereum_blocks_count.into(),
+        );
         entity.insert("createdAt".to_owned(), self.created_at.into());
         ops.push(set_entity_operation(
             SUBGRAPH_ENTITY_TYPENAME,
@@ -49,6 +71,34 @@ impl SubgraphEntity {
         ));
 
         ops
+    }
+
+    pub fn write_status_operations(
+        id: &SubgraphId,
+        status: SubgraphStatus,
+    ) -> Vec<EntityOperation> {
+        let mut entity = HashMap::new();
+        entity.insert("status".to_owned(), status.to_string().into());
+        vec![set_entity_operation(
+            SUBGRAPH_ENTITY_TYPENAME,
+            id.to_string(),
+            entity,
+        )]
+    }
+
+    pub fn write_ethereum_block_counts_operations(
+        id: &SubgraphId,
+        processed: u64,
+        total: u64,
+    ) -> Vec<EntityOperation> {
+        let mut entity = HashMap::new();
+        entity.insert("processedEthereumBlocksCount".to_owned(), processed.into());
+        entity.insert("totalEthereumBlocksCount".to_owned(), total.into());
+        vec![set_entity_operation(
+            SUBGRAPH_ENTITY_TYPENAME,
+            id.to_string(),
+            entity,
+        )]
     }
 }
 
