@@ -226,13 +226,17 @@ impl Store {
             stream::iter_ok::<_, ()>(matches).for_each(move |(id, sender)| {
                 let logger = logger.clone();
                 let subscriptions = subscriptions.clone();
-                sender
-                    .send(change.clone())
-                    .map_err(move |_| {
-                        debug!(logger, "Unsubscribe"; "id" => &id);
-                        subscriptions.write().unwrap().remove(&id);
-                    })
-                    .and_then(|_| Ok(()))
+                sender.send(change.clone()).then(move |result| {
+                    match result {
+                        Err(_send_error) => {
+                            // Receiver was dropped
+                            debug!(logger, "Unsubscribe"; "id" => &id);
+                            subscriptions.write().unwrap().remove(&id);
+                            Ok(())
+                        }
+                        Ok(_sender) => Ok(()),
+                    }
+                })
             })
         }));
     }
