@@ -545,3 +545,145 @@ fn query_variables_are_used() {
         )]))
     );
 }
+
+#[test]
+fn skip_directive_works_with_query_variables() {
+    let query = graphql_parser::parse_query(
+        "
+        query musicians($skip: Boolean!) {
+          musicians {
+            id @skip(if: $skip)
+            name
+          }
+        }
+    ",
+    )
+    .expect("invalid test query");
+
+    // Set variable $skip to true
+    let result = execute_query_document_with_variables(
+        query.clone(),
+        Some(QueryVariables::new(HashMap::from_iter(
+            vec![(String::from("skip"), q::Value::Boolean(true))].into_iter(),
+        ))),
+    );
+
+    // Assert that only names are returned
+    assert_eq!(
+        result.data,
+        Some(object_value(vec![(
+            "musicians",
+            q::Value::List(vec![
+                object_value(vec![("name", q::Value::String(String::from("John")))]),
+                object_value(vec![("name", q::Value::String(String::from("Lisa")))]),
+                object_value(vec![("name", q::Value::String(String::from("Tom")))]),
+                object_value(vec![("name", q::Value::String(String::from("Valerie")))]),
+            ],)
+        )]))
+    );
+
+    // Set variable $skip to false
+    let result = execute_query_document_with_variables(
+        query,
+        Some(QueryVariables::new(HashMap::from_iter(
+            vec![(String::from("skip"), q::Value::Boolean(false))].into_iter(),
+        ))),
+    );
+
+    // Assert that IDs and names are returned
+    assert_eq!(
+        result.data,
+        Some(object_value(vec![(
+            "musicians",
+            q::Value::List(vec![
+                object_value(vec![
+                    ("id", q::Value::String(String::from("m1"))),
+                    ("name", q::Value::String(String::from("John")))
+                ]),
+                object_value(vec![
+                    ("id", q::Value::String(String::from("m2"))),
+                    ("name", q::Value::String(String::from("Lisa")))
+                ]),
+                object_value(vec![
+                    ("id", q::Value::String(String::from("m3"))),
+                    ("name", q::Value::String(String::from("Tom")))
+                ]),
+                object_value(vec![
+                    ("id", q::Value::String(String::from("m4"))),
+                    ("name", q::Value::String(String::from("Valerie")))
+                ]),
+            ],)
+        )]))
+    );
+}
+
+#[test]
+fn include_directive_works_with_query_variables() {
+    let query = graphql_parser::parse_query(
+        "
+        query musicians($include: Boolean!) {
+          musicians {
+            id @include(if: $include)
+            name
+          }
+        }
+    ",
+    )
+    .expect("invalid test query");
+
+    // Set variable $include to true
+    let result = execute_query_document_with_variables(
+        query.clone(),
+        Some(QueryVariables::new(HashMap::from_iter(
+            vec![(String::from("include"), q::Value::Boolean(true))].into_iter(),
+        ))),
+    );
+
+    // Assert that IDs and names are returned
+    assert_eq!(
+        result.data,
+        Some(object_value(vec![(
+            "musicians",
+            q::Value::List(vec![
+                object_value(vec![
+                    ("id", q::Value::String(String::from("m1"))),
+                    ("name", q::Value::String(String::from("John")))
+                ]),
+                object_value(vec![
+                    ("id", q::Value::String(String::from("m2"))),
+                    ("name", q::Value::String(String::from("Lisa")))
+                ]),
+                object_value(vec![
+                    ("id", q::Value::String(String::from("m3"))),
+                    ("name", q::Value::String(String::from("Tom")))
+                ]),
+                object_value(vec![
+                    ("id", q::Value::String(String::from("m4"))),
+                    ("name", q::Value::String(String::from("Valerie")))
+                ]),
+            ],)
+        )]))
+    );
+
+    // Set variable $include to false
+    let result = execute_query_document_with_variables(
+        query,
+        Some(QueryVariables::new(HashMap::from_iter(
+            vec![(String::from("include"), q::Value::Boolean(false))].into_iter(),
+        ))),
+    );
+
+    // Assert that only names are returned
+    assert_eq!(
+        result.data,
+        Some(object_value(vec![(
+            "musicians",
+            q::Value::List(vec![
+                object_value(vec![("name", q::Value::String(String::from("John")))]),
+                object_value(vec![("name", q::Value::String(String::from("Lisa")))]),
+                object_value(vec![("name", q::Value::String(String::from("Tom")))]),
+                object_value(vec![("name", q::Value::String(String::from("Valerie")))]),
+            ],)
+        )]))
+    );
+}
