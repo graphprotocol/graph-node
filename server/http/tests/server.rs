@@ -268,8 +268,9 @@ mod test {
             .block_on(futures::lazy(|| {
                 let logger = Logger::root(slog::Discard, o!());
 
+                let id = SubgraphId::new("testschema").unwrap();
                 let query_runner = Arc::new(TestGraphQlRunner);
-                let store = Arc::new(MockStore::new());
+                let store = mock_store(id.clone());
                 let node_id = NodeId::new("test").unwrap();
                 let mut server = HyperGraphQLServer::new(&logger, query_runner, store, node_id);
                 let http_server = server
@@ -282,16 +283,6 @@ mod test {
                 Delay::new(Instant::now() + Duration::from_secs(2))
                     .map_err(|e| panic!("failed to start server: {:?}", e))
                     .and_then(move |()| {
-                        // Create a simple schema and send it to the server
-                        let schema = test_schema();
-                        let id = schema.id.clone();
-
-                        server
-                            .event_sink()
-                            .send(SchemaEvent::SchemaAdded(schema))
-                            .wait()
-                            .expect("Failed to send schema to server");
-
                         // Send a valid example query
                         let client = Client::new();
                         let request = Request::post(format!(
