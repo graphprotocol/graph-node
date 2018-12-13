@@ -1370,9 +1370,7 @@ fn revert_block_with_partial_update() {
     })
 }
 
-// Disabled due to issue #332
 #[test]
-#[ignore]
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store| {
         let subgraph_id = SubgraphId::new("EntityChangeTestSubgraph").unwrap();
@@ -1410,7 +1408,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                     .map(|(id, data)| EntityOperation::Set {
                         key: EntityKey {
                             subgraph_id: subgraph_id.clone(),
-                            entity_type: "user".to_owned(),
+                            entity_type: "User".to_owned(),
                             entity_id: id.to_owned(),
                         },
                         data: data.to_owned(),
