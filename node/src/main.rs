@@ -23,7 +23,7 @@ use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
 use std::env;
 use std::net::ToSocketAddrs;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use graph::components::forward;
@@ -48,7 +48,7 @@ fn main() {
     let (shutdown_sender, shutdown_receiver) = oneshot::channel();
     // Register guarded panic logger which ensures logs flush on shutdown
     let (panic_logger, _panic_guard) = guarded_logger();
-    register_panic_hook(panic_logger, Mutex::new(Some(shutdown_sender)));
+    register_panic_hook(panic_logger, shutdown_sender);
 
     // Create components for tokio context: multi-threaded runtime, reactor reference,
     // executor context on the runtime, and Timer handle.

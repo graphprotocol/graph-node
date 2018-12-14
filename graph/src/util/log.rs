@@ -38,10 +38,8 @@ pub fn guarded_logger() -> (Logger, slog_async::AsyncGuard) {
     (Logger::root(drain.fuse(), o!()), guard)
 }
 
-pub fn register_panic_hook(
-    panic_logger: Logger,
-    shutdown_sender: Mutex<Option<oneshot::Sender<()>>>,
-) {
+pub fn register_panic_hook(panic_logger: Logger, shutdown_sender: oneshot::Sender<()>) {
+    let shutdown_mutex = Mutex::new(Some(shutdown_sender));
     panic::set_hook(Box::new(move |panic_info| {
         let panic_payload = panic_info
             .payload()
