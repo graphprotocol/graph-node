@@ -396,6 +396,25 @@ fn big_int_arithmetic() {
     let result: BigInt = module.heap.asc_get(result_ptr);
     assert_eq!(result, BigInt::from(1));
 
+    // 127 + 1 = 128
+    let zero = BigInt::from(127);
+    let zero: AscPtr<AscBigInt> = module.heap.asc_new(&zero);
+    let one = BigInt::from(1);
+    let one: AscPtr<AscBigInt> = module.heap.asc_new(&one);
+    let result_ptr: AscPtr<AscBigInt> = module
+        .module
+        .invoke_export(
+            "plus",
+            &[RuntimeValue::from(zero), RuntimeValue::from(one)],
+            &mut module.externals,
+        )
+        .expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    let result: BigInt = module.heap.asc_get(result_ptr);
+    assert_eq!(result, BigInt::from(128));
+
     // 5 - 10 = -5
     let five = BigInt::from(5);
     let five: AscPtr<AscBigInt> = module.heap.asc_new(&five);

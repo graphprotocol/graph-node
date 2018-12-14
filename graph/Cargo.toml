@@ -12,7 +12,9 @@ ipfs-api = "0.5.0-alpha2"
 parity-wasm = "0.31"
 failure = "0.1.2"
 lazy_static = "1.2.0"
-num-bigint = { version = "0.2.0", features = ["serde"] }
+
+# Go back to upstream as soon as https://github.com/rust-num/num-bigint/pull/72 is merged.
+num-bigint = { git = "http://github.com/leodasvacas/num-bigint", branch = "fix-to-signed-bytes", features = ["serde"] }
 serde = "1.0"
 serde_derive = "1.0"
 
