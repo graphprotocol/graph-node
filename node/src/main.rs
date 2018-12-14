@@ -29,7 +29,6 @@ use std::time::Duration;
 use graph::components::forward;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::tokio_executor;
-use graph::tokio_reactor;
 use graph::tokio_timer;
 use graph::tokio_timer::timer::Timer;
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
@@ -50,10 +49,9 @@ fn main() {
     let (panic_logger, _panic_guard) = guarded_logger();
     register_panic_hook(panic_logger, shutdown_sender);
 
-    // Create components for tokio context: multi-threaded runtime, reactor reference,
+    // Create components for tokio context: multi-threaded runtime,
     // executor context on the runtime, and Timer handle.
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-    let reactor = tokio_reactor::Handle::current();
     let mut executor = runtime.executor();
     let mut enter = tokio_executor::enter()
         .expect("Failed to enter runtime executor, multiple executors at once");
@@ -62,6 +60,7 @@ fn main() {
 
     // Shutdown the runtime after a panic
     std::thread::spawn(|| {
+        let shutdown_logger = logger(false);
         shutdown_receiver
             .wait()
             .map(|_| {
@@ -69,17 +68,20 @@ fn main() {
                     .shutdown_now()
                     .wait()
                     .expect("Failed to shutdown Tokio Runtime");
-            }).expect("Runtime shutdown process did not finish");
+                info!(
+                    shutdown_logger,
+                    "Runtime cleaned up and shutdown successfully"
+                );
+            })
+            .expect("Runtime shutdown process did not finish");
     });
 
     // Setup runtime context with defaults and run the main application
-    tokio_reactor::with_default(&reactor, &mut enter, |enter| {
-        tokio_executor::with_default(&mut executor, enter, |enter| {
-            tokio_timer::with_default(&timer_handle, enter, |enter| {
-                enter
-                    .block_on(future::lazy(|| async_main()))
-                    .expect("Failed to run main function");
-            })
+    tokio_executor::with_default(&mut executor, &mut enter, |enter| {
+        tokio_timer::with_default(&timer_handle, enter, |enter| {
+            enter
+                .block_on(future::lazy(|| async_main()))
+                .expect("Failed to run main function");
         })
     });
 }
