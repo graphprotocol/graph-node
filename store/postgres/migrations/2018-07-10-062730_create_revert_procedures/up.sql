@@ -252,24 +252,7 @@ $$
 DECLARE
     event_row RECORD;
     entity_row RECORD;
-    subgraph_ptr_hash VARCHAR;
-    subgraph_ptr_number BIGINT;
 BEGIN
-    -- Read subgraph pointer
-    PERFORM
-        latest_block_hash AS subgraph_ptr_hash,
-        latest_block_number AS subgraph_ptr_number
-    FROM subgraphs
-    WHERE subgraphs.id = subgraph_id;
-
-    -- Check that subgraph ptr points to block_to_revert
-    IF
-        subgraph_ptr_hash != block_to_revert_hash OR
-        subgraph_ptr_number != block_to_revert_number
-    THEN
-        RAISE 'cannot revert block when it is not latest block in subgraph';
-    END IF;
-
     -- Revert all relevant events
     FOR event_row IN
         -- Get all events associated with the given block
@@ -286,13 +269,6 @@ BEGIN
     LOOP
         PERFORM revert_transaction(event_row.event_id::integer);
     END LOOP;
-
-    -- Update the subgraph ptr
-    UPDATE subgraphs
-    SET
-        latest_block_hash = target_block_hash,
-        latest_block_number = block_to_revert_number - 1
-    WHERE subgraphs.id = subgraph_id;
 END;
 $$ LANGUAGE plpgsql;
 

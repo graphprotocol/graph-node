@@ -1,5 +1,8 @@
-use futures::sync::mpsc::{channel, Sender};
+use futures::sync::mpsc;
+use rand::rngs::OsRng;
+use rand::seq::SliceRandom;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Mutex;
 
 use graph::components::store::*;
@@ -22,76 +25,113 @@ impl EventProducer<ChainHeadUpdate> for MockChainHeadUpdateListener {
 }
 
 pub struct MockStore {
-    entities: Vec<Entity>,
     schemas: HashMap<SubgraphId, Schema>,
-    subgraph_deployments: Mutex<Vec<(SubgraphDeploymentName, SubgraphId, NodeId)>>,
-    subgraph_deployment_event_senders: Mutex<Vec<Sender<DeploymentEvent>>>,
+
+    // Entities by (subgraph ID, entity type, entity ID)
+    entities: Mutex<HashMap<SubgraphId, HashMap<String, HashMap<String, Entity>>>>,
+
+    subscriptions: Mutex<Vec<(HashSet<SubgraphEntityPair>, mpsc::Sender<EntityChange>)>>,
 }
 
 impl MockStore {
     /// Creates a new mock `Store`.
     pub fn new(schemas: Vec<(SubgraphId, Schema)>) -> Self {
-        // Create a few test entities
-        let mut entities = vec![];
-        for (i, name) in ["Joe", "Jeff", "Linda"].iter().enumerate() {
-            let mut entity = Entity::new();
-            entity.insert("id".to_string(), Value::String(i.to_string()));
-            entity.insert("name".to_string(), Value::String(name.to_string()));
-            entities.push(entity);
-        }
-
         MockStore {
-            entities,
             schemas: schemas.into_iter().collect(),
-            subgraph_deployments: Default::default(),
-            subgraph_deployment_event_senders: Default::default(),
+            entities: Default::default(),
+            subscriptions: Default::default(),
         }
     }
 
-    fn emit_deployment_event(&self, event: DeploymentEvent) {
-        for sender in self
-            .subgraph_deployment_event_senders
-            .lock()
-            .unwrap()
-            .iter()
-        {
-            let sender = sender.clone();
-            let event = event.clone();
-            tokio::spawn(future::lazy(move || {
-                sender
-                    .send(event)
-                    .map(|_| ())
-                    .map_err(|e| panic!("sender error: {}", e))
-            }));
+    fn execute_query(
+        &self,
+        entities: &HashMap<SubgraphId, HashMap<String, HashMap<String, Entity>>>,
+        query: EntityQuery,
+    ) -> Result<Vec<Entity>, QueryExecutionError> {
+        fn entity_matches_filter(entity: &Entity, filter: &EntityFilter) -> bool {
+            match filter {
+                EntityFilter::And(subfilters) => subfilters
+                    .iter()
+                    .all(|subfilter| entity_matches_filter(entity, subfilter)),
+                EntityFilter::Or(subfilters) => subfilters
+                    .iter()
+                    .any(|subfilter| entity_matches_filter(entity, subfilter)),
+                EntityFilter::Equal(attr_name, attr_value) => {
+                    entity.get(attr_name) == Some(attr_value)
+                }
+                EntityFilter::In(attr_name, allowed_attr_values) => {
+                    let attr_value = entity.get(attr_name);
+
+                    allowed_attr_values
+                        .iter()
+                        .any(|allowed_attr_value| attr_value == Some(allowed_attr_value))
+                }
+                _ => unimplemented!(),
+            }
         }
+
+        let EntityQuery {
+            subgraph_id,
+            entity_type,
+            filter,
+            order_by,
+            order_direction,
+            range,
+        } = query;
+
+        // List all entities with correct type
+        let empty1 = HashMap::default();
+        let empty2 = HashMap::default();
+        let entities_of_type = entities
+            .get(&subgraph_id)
+            .unwrap_or(&empty1)
+            .get(&entity_type)
+            .unwrap_or(&empty2)
+            .values();
+
+        // Apply filter, if any
+        let filtered_entities: Vec<_> = if let Some(filter) = filter {
+            entities_of_type
+                .filter(|entity| entity_matches_filter(entity, &filter))
+                .collect()
+        } else {
+            entities_of_type.collect()
+        };
+
+        // Sort results
+        let sorted_entities = if let Some((_order_by_attr_name, _order_by_attr_type)) = order_by {
+            unimplemented!();
+        } else {
+            assert_eq!(order_direction, None);
+
+            // Randomize order to help identify bugs where ordering is assumed to be deterministic.
+            let mut sorted_entities = filtered_entities;
+            sorted_entities.shuffle(&mut OsRng::new().unwrap());
+            sorted_entities
+        };
+
+        if range.is_some() {
+            unimplemented!();
+        }
+
+        Ok(sorted_entities.into_iter().cloned().collect())
     }
 }
 
 impl Store for MockStore {
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
-        if key.entity_type == "User" {
-            self.entities
-                .iter()
-                .find(|entity| {
-                    let id = entity.get("id").unwrap();
-                    match *id {
-                        Value::String(ref s) => s == &key.entity_id,
-                        _ => false,
-                    }
-                })
-                .map(|entity| Some(entity.clone()))
-                .ok_or_else(|| unimplemented!())
-        } else {
-            unimplemented!()
-        }
+        Ok(self
+            .entities
+            .lock()
+            .unwrap()
+            .get(&key.subgraph_id)
+            .and_then(|entities_in_subgraph| entities_in_subgraph.get(&key.entity_type))
+            .and_then(|entities_of_type| entities_of_type.get(&key.entity_id))
+            .map(|entity| entity.to_owned()))
     }
 
-    fn find(&self, _query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
-        Ok(self.entities.clone())
-    }
-
-    fn add_subgraph_if_missing(&self, _: SubgraphId, _: EthereumBlockPointer) -> Result<(), Error> {
-        unimplemented!();
+    fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
+        self.execute_query(&self.entities.lock().unwrap(), query)
     }
 
     fn block_ptr(&self, _: SubgraphId) -> Result<EthereumBlockPointer, Error> {
@@ -103,7 +143,7 @@ impl Store for MockStore {
         _: SubgraphId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!();
     }
 
@@ -113,15 +153,111 @@ impl Store for MockStore {
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
         _: Vec<EntityOperation>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!();
     }
 
     fn apply_entity_operations(
         &self,
-        _: Vec<EntityOperation>,
+        ops: Vec<EntityOperation>,
         _: EventSource,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
+        let mut entities_ref = self.entities.lock().unwrap();
+
+        let mut entities: HashMap<_, _> = entities_ref.clone();
+        let mut entity_changes = vec![];
+        for op in ops {
+            match op {
+                EntityOperation::Set { key, data } => {
+                    let entities_of_type = entities
+                        .entry(key.subgraph_id.clone())
+                        .or_default()
+                        .entry(key.entity_type.clone())
+                        .or_default();
+
+                    if entities_of_type.contains_key(&key.entity_id) {
+                        let existing_entity = entities_of_type.get_mut(&key.entity_id).unwrap();
+                        existing_entity.merge(data);
+
+                        entity_changes
+                            .push(EntityChange::from_key(key, EntityChangeOperation::Updated));
+                    } else {
+                        let mut new_entity = data;
+                        new_entity.insert("id".to_owned(), key.entity_id.clone().into());
+                        entities_of_type.insert(key.entity_id.clone(), new_entity);
+
+                        entity_changes
+                            .push(EntityChange::from_key(key, EntityChangeOperation::Added));
+                    }
+                }
+                EntityOperation::Remove { key } => {
+                    if let Some(in_subgraph) = entities.get_mut(&key.subgraph_id) {
+                        if let Some(of_type) = in_subgraph.get_mut(&key.entity_type) {
+                            if of_type.remove(&key.entity_id).is_some() {
+                                entity_changes.push(EntityChange::from_key(
+                                    key,
+                                    EntityChangeOperation::Removed,
+                                ));
+                            }
+                        }
+                    }
+                }
+                EntityOperation::AbortUnless {
+                    description,
+                    query,
+                    entity_ids: mut expected_entity_ids,
+                } => {
+                    if query.range.is_some() && query.order_by.is_none() {
+                        panic!("AbortUnless query cannot have a range without order_by");
+                    }
+
+                    let query_results = self.execute_query(&entities, query.clone()).unwrap();
+                    let mut actual_entity_ids = query_results
+                        .into_iter()
+                        .map(|entity| entity.id().unwrap())
+                        .collect::<Vec<_>>();
+
+                    if query.order_by.is_none() {
+                        actual_entity_ids.sort();
+                        expected_entity_ids.sort();
+                    }
+
+                    if actual_entity_ids != expected_entity_ids {
+                        return Err(TransactionAbortError::AbortUnless {
+                            expected_entity_ids,
+                            actual_entity_ids,
+                            description,
+                        }
+                        .into());
+                    }
+                }
+            }
+        }
+
+        *entities_ref = entities;
+        ::std::mem::drop(entities_ref);
+
+        // Now that the transaction has been committed,
+        // send entity changes to subscribers.
+        let subscriptions = self.subscriptions.lock().unwrap();
+        for entity_change in entity_changes {
+            let entity_type = entity_change.subgraph_entity_pair();
+
+            for (entity_types_set, sender) in subscriptions.iter() {
+                if entity_types_set.contains(&entity_type) {
+                    let entity_change = entity_change.clone();
+                    let sender = sender.clone();
+
+                    tokio::spawn(future::lazy(move || {
+                        sender
+                            .send(entity_change)
+                            .map(|_| ())
+                            .map_err(|e| panic!("subscription send error: {}", e))
+                    }));
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -130,12 +266,19 @@ impl Store for MockStore {
         _: SubgraphId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!();
     }
 
-    fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> EntityChangeStream {
-        unimplemented!();
+    fn subscribe(&self, entity_types: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+        let (sender, receiver) = mpsc::channel(100);
+
+        self.subscriptions
+            .lock()
+            .unwrap()
+            .push((entity_types.into_iter().collect(), sender));
+
+        Box::new(receiver)
     }
 
     fn count_entities(&self, _: SubgraphId) -> Result<u64, Error> {
@@ -144,126 +287,14 @@ impl Store for MockStore {
 }
 
 impl SubgraphDeploymentStore for MockStore {
-    fn read_by_node_id(
+    fn resolve_subgraph_name_to_id(
         &self,
-        by_node_id: NodeId,
-    ) -> Result<Vec<(SubgraphDeploymentName, SubgraphId)>, Error> {
-        Ok(self
-            .subgraph_deployments
-            .lock()
-            .unwrap()
-            .iter()
-            .filter_map(|(name, subgraph_id, node_id)| {
-                if *node_id == by_node_id {
-                    Some((name.to_owned(), subgraph_id.to_owned()))
-                } else {
-                    None
-                }
-            })
-            .collect())
+        _name: SubgraphName,
+    ) -> Result<Option<SubgraphId>, Error> {
+        unimplemented!();
     }
 
-    fn write(
-        &self,
-        name: SubgraphDeploymentName,
-        new_subgraph_id: SubgraphId,
-        new_node_id: NodeId,
-    ) -> Result<(), Error> {
-        let mut deployments = self.subgraph_deployments.lock().unwrap();
-
-        // Find first deployment with matching name
-        for deployment in deployments.iter_mut() {
-            if deployment.0 == name {
-                // Keep old values for event
-                let old_subgraph_id = deployment.1.to_owned();
-                let old_node_id = deployment.2.to_owned();
-
-                // Update deployment
-                deployment.1 = new_subgraph_id.clone();
-                deployment.2 = new_node_id.clone();
-
-                // Send events
-                self.emit_deployment_event(DeploymentEvent::Remove {
-                    deployment_name: name.clone(),
-                    subgraph_id: old_subgraph_id.clone(),
-                    node_id: old_node_id.clone(),
-                });
-                self.emit_deployment_event(DeploymentEvent::Add {
-                    deployment_name: name.clone(),
-                    subgraph_id: new_subgraph_id.clone(),
-                    node_id: new_node_id.clone(),
-                });
-
-                return Ok(());
-            }
-        }
-
-        // Add deployment
-        deployments.push((name.clone(), new_subgraph_id.clone(), new_node_id.clone()));
-
-        // Send event
-        self.emit_deployment_event(DeploymentEvent::Add {
-            deployment_name: name.clone(),
-            subgraph_id: new_subgraph_id.clone(),
-            node_id: new_node_id.clone(),
-        });
-        Ok(())
-    }
-
-    fn read(&self, by_name: SubgraphDeploymentName) -> Result<Option<(SubgraphId, NodeId)>, Error> {
-        Ok(self
-            .subgraph_deployments
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|(name, _, _)| *name == by_name)
-            .map(|(_, subgraph_id, node_id)| (subgraph_id.to_owned(), node_id.to_owned())))
-    }
-
-    fn remove(&self, by_name: SubgraphDeploymentName) -> Result<bool, Error> {
-        let mut deployments = self.subgraph_deployments.lock().unwrap();
-
-        // Find deployment by name
-        let pos_opt = deployments.iter().position(|(name, _, _)| *name == by_name);
-
-        // If found
-        if let Some(pos) = pos_opt {
-            // Remove the deployment
-            let (deployment_name, subgraph_id, node_id) = deployments.swap_remove(pos);
-
-            // Send event
-            self.emit_deployment_event(DeploymentEvent::Remove {
-                deployment_name,
-                subgraph_id,
-                node_id,
-            });
-
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-
-    fn deployment_events(
-        &self,
-        by_node_id: NodeId,
-    ) -> Box<Stream<Item = DeploymentEvent, Error = Error> + Send> {
-        let (sender, receiver) = channel(100);
-        self.subgraph_deployment_event_senders
-            .lock()
-            .unwrap()
-            .push(sender);
-        Box::new(
-            receiver
-                .filter(move |event| match event {
-                    DeploymentEvent::Add { node_id, .. } => *node_id == by_node_id,
-                    DeploymentEvent::Remove { node_id, .. } => *node_id == by_node_id,
-                })
-                .map_err(|()| format_err!("receiver error")),
-        )
-    }
-
-    fn is_deployed(&self, subgraph_id: &SubgraphId) -> Result<bool, Error> {
+    fn is_queryable(&self, subgraph_id: &SubgraphId) -> Result<bool, Error> {
         Ok(self.schemas.keys().any(|id| subgraph_id == id))
     }
 
@@ -276,7 +307,10 @@ impl ChainStore for MockStore {
     type ChainHeadUpdateListener = MockChainHeadUpdateListener;
 
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error> {
-        unimplemented!();
+        Ok(EthereumBlockPointer {
+            hash: H256::zero(),
+            number: 0,
+        })
     }
 
     fn upsert_blocks<'a, B, E>(&self, _: B) -> Box<Future<Item = (), Error = E> + Send + 'a>
@@ -296,7 +330,7 @@ impl ChainStore for MockStore {
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
-        unimplemented!();
+        Ok(None)
     }
 
     fn block(&self, _: H256) -> Result<Option<EthereumBlock>, Error> {
@@ -323,10 +357,6 @@ impl Store for FakeStore {
         unimplemented!();
     }
 
-    fn add_subgraph_if_missing(&self, _: SubgraphId, _: EthereumBlockPointer) -> Result<(), Error> {
-        unimplemented!();
-    }
-
     fn block_ptr(&self, _: SubgraphId) -> Result<EthereumBlockPointer, Error> {
         unimplemented!();
     }
@@ -336,7 +366,7 @@ impl Store for FakeStore {
         _: SubgraphId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!();
     }
 
@@ -346,7 +376,7 @@ impl Store for FakeStore {
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
         _: Vec<EntityOperation>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!();
     }
 
@@ -354,7 +384,7 @@ impl Store for FakeStore {
         &self,
         _: Vec<EntityOperation>,
         _: EventSource,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         Ok(())
     }
 
@@ -363,7 +393,7 @@ impl Store for FakeStore {
         _: SubgraphId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!();
     }
 

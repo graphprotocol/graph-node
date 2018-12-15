@@ -5,7 +5,7 @@ use std::result;
 use std::sync::Arc;
 
 use graph::components::store::*;
-use graph::data::subgraph::schema::{SUBGRAPHS_ID, SUBGRAPH_ENTITY_TYPENAME};
+use graph::data::subgraph::schema::SubgraphStateEntity;
 use graph::prelude::*;
 
 use prelude::*;
@@ -198,17 +198,15 @@ where
         mut entity: Entity,
         object_type: &s::ObjectType,
     ) -> Result<Entity, QueryExecutionError> {
-        if parse_subgraph_id(object_type)? == *SUBGRAPHS_ID
-            && object_type.name == SUBGRAPH_ENTITY_TYPENAME
+        let subgraph_state_entity_pair = SubgraphStateEntity::subgraph_entity_pair();
+        if (parse_subgraph_id(object_type)?, object_type.name.clone()) == subgraph_state_entity_pair
         {
-            let id = match entity["id"].clone() {
-                Value::String(id) => SubgraphId::new(id).expect("invalid subgraph ID in database"),
-                _ => panic!("no id field"),
-            };
+            let id = entity.id().expect("subgraph state entity should have ID");
+            let hash = SubgraphId::new(id).expect("invalid subgraph ID in database");
             entity.insert(
                 "entityCount".to_owned(),
                 self.store
-                    .count_entities(id)
+                    .count_entities(hash)
                     .map_err(QueryExecutionError::StoreError)?
                     .into(),
             );

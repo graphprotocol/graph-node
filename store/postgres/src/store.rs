@@ -1,3 +1,4 @@
+use diesel::debug_query;
 use diesel::dsl::sql;
 use diesel::pg::Pg;
 use diesel::pg::PgConnection;
@@ -14,9 +15,7 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use graph::components::store::Store as StoreTrait;
-use graph::data::subgraph::schema::{
-    SubgraphManifestEntity, MANIFEST_ENTITY_TYPENAME, SUBGRAPHS_ID,
-};
+use graph::data::subgraph::schema::*;
 use graph::prelude::*;
 use graph::serde_json;
 use graph::web3::types::H256;
@@ -26,7 +25,6 @@ use graph_graphql::prelude::api_schema;
 use chain_head_listener::ChainHeadUpdateListener;
 use entity_changes::EntityChangeListener;
 use functions::{attempt_chain_head_update, lookup_ancestor_block, revert_block, set_config};
-use notification_listener::{NotificationListener, SafeChannelName};
 
 embed_migrations!("./migrations");
 
@@ -323,223 +321,11 @@ impl Store {
         }
     }
 
-    /// Applies a set operation in Postgres.
-    fn apply_set_operation(
+    fn execute_query(
         &self,
         conn: &PgConnection,
-        operation: EntityOperation,
-        op_event_source: EventSource,
-    ) -> Result<(), Error> {
-        assert!(operation.is_set());
-
-        use db_schema::entities::dsl::*;
-
-        let EntityKey {
-            subgraph_id: op_subgraph_id,
-            entity_type: op_entity_type,
-            entity_id: op_entity_id,
-        } = operation.entity_key();
-
-        // Load the entity if exists
-        let existing_entity =
-            self.get_entity(conn, op_subgraph_id, op_entity_type, op_entity_id)?;
-
-        // Apply the operation
-        let updated_entity = operation.apply(existing_entity);
-        let updated_json: serde_json::Value =
-            serde_json::to_value(&updated_entity).map_err(|e| {
-                format_err!(
-                    "Failed to set entity ({}, {}, {}) as setting it would break it: {}",
-                    op_subgraph_id,
-                    op_entity_type,
-                    op_entity_id,
-                    e
-                )
-            })?;
-
-        // Either add or update the entity in Postgres
-        insert_into(entities)
-            .values((
-                id.eq(op_entity_id),
-                entity.eq(op_entity_type),
-                subgraph.eq(op_subgraph_id.to_string()),
-                data.eq(&updated_json),
-                event_source.eq(op_event_source.to_string()),
-            ))
-            .on_conflict((id, entity, subgraph))
-            .do_update()
-            .set((
-                id.eq(op_entity_id),
-                entity.eq(op_entity_type),
-                subgraph.eq(op_subgraph_id.to_string()),
-                data.eq(&updated_json),
-                event_source.eq(op_event_source.to_string()),
-            ))
-            .execute(conn)
-            .map(|_| ())
-            .map_err(|e| {
-                format_err!(
-                    "Failed to set entity ({}, {}, {}): {}",
-                    op_subgraph_id,
-                    op_entity_type,
-                    op_entity_id,
-                    e
-                )
-            })
-    }
-
-    /// Applies a remove operation by deleting the entity from Postgres.
-    fn apply_remove_operation(
-        &self,
-        conn: &PgConnection,
-        operation: EntityOperation,
-        op_event_source: EventSource,
-    ) -> Result<(), Error> {
-        use db_schema::entities::dsl::*;
-
-        let EntityKey {
-            subgraph_id: op_subgraph_id,
-            entity_type: op_entity_type,
-            entity_id: op_entity_id,
-        } = operation.entity_key();
-
-        select(set_config(
-            "vars.current_event_source",
-            op_event_source.to_string(),
-            true,
-        ))
-        .execute(conn)
-        .map_err(|e| format_err!("Failed to save event source for remove operation: {}", e))
-        .map(|_| ())?;
-
-        delete(
-            entities
-                .filter(subgraph.eq(op_subgraph_id.to_string()))
-                .filter(entity.eq(op_entity_type))
-                .filter(id.eq(op_entity_id)),
-        )
-        .execute(conn)
-        .map(|_| ())
-        .map_err(|e| {
-            format_err!(
-                "Failed to remove entity ({}, {}, {}): {}",
-                op_subgraph_id,
-                op_entity_type,
-                op_entity_id,
-                e
-            )
-        })
-    }
-
-    /// Apply an entity operation in Postgres.
-    fn apply_entity_operation(
-        &self,
-        conn: &PgConnection,
-        operation: EntityOperation,
-        event_source: EventSource,
-    ) -> Result<(), Error> {
-        match operation {
-            EntityOperation::Set { .. } => self.apply_set_operation(conn, operation, event_source),
-            EntityOperation::Remove { .. } => {
-                self.apply_remove_operation(conn, operation, event_source)
-            }
-        }
-    }
-
-    /// Apply a series of entity operations in Postgres.
-    fn apply_entity_operations_with_conn(
-        &self,
-        conn: &PgConnection,
-        operations: Vec<EntityOperation>,
-        event_source: EventSource,
-    ) -> Result<(), Error> {
-        for operation in operations.into_iter() {
-            self.apply_entity_operation(conn, operation, event_source)?;
-        }
-        Ok(())
-    }
-
-    /// Update the block pointer of the subgraph with the given ID.
-    fn update_subgraph_block_pointer(
-        &self,
-        conn: &PgConnection,
-        subgraph_id: SubgraphId,
-        from: EthereumBlockPointer,
-        to: EthereumBlockPointer,
-    ) -> Result<(), Error> {
-        use db_schema::subgraphs::dsl::*;
-
-        update(subgraphs)
-            .set((
-                latest_block_hash.eq(to.hash_hex()),
-                latest_block_number.eq(to.number as i64),
-            ))
-            .filter(id.eq(subgraph_id.to_string()))
-            .filter(latest_block_hash.eq(from.hash_hex()))
-            .filter(latest_block_number.eq(from.number as i64))
-            .execute(conn)
-            .map_err(Error::from)
-            .and_then(move |row_count| match row_count {
-                0 => Err(format_err!(
-                    "failed to update subgraph block pointer from {:?} to {:?}",
-                    from,
-                    to
-                )),
-                1 => Ok(()),
-                _ => unreachable!(),
-            })
-    }
-}
-
-impl StoreTrait for Store {
-    fn add_subgraph_if_missing(
-        &self,
-        subgraph_id: SubgraphId,
-        block_ptr: EthereumBlockPointer,
-    ) -> Result<(), Error> {
-        use db_schema::subgraphs::dsl::*;
-
-        insert_into(subgraphs)
-            .values((
-                id.eq(subgraph_id.to_string()),
-                network_name.eq(&self.network_name),
-                latest_block_hash.eq(block_ptr.hash_hex()),
-                latest_block_number.eq(block_ptr.number as i64),
-            ))
-            .on_conflict(id)
-            .do_nothing()
-            .execute(&*self.conn.get()?)
-            .map_err(Error::from)
-            .map(|_| ())
-    }
-
-    fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
-        use db_schema::subgraphs::dsl::*;
-
-        subgraphs
-            .select((latest_block_hash, latest_block_number))
-            .filter(id.eq(subgraph_id.to_string()))
-            .first::<(String, i64)>(&*self.conn.get()?)
-            .map(|(hash, number)| {
-                (
-                    hash.parse()
-                        .expect("subgraph block ptr hash in database should be a valid H256"),
-                    number,
-                )
-                    .into()
-            })
-            .map_err(Error::from)
-    }
-
-    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
-        let conn = self
-            .conn
-            .get()
-            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        self.get_entity(&*conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
-    }
-
-    fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
+        query: EntityQuery,
+    ) -> Result<Vec<Entity>, QueryExecutionError> {
         use db_schema::entities::dsl::*;
 
         // Create base boxed query; this will be added to based on the
@@ -593,22 +379,269 @@ impl StoreTrait for Store {
                 .offset(range.skip as i64);
         }
 
+        // Record debug info in case of error
+        let diesel_query_debug_info = debug_query(&diesel_query).to_string();
+
         // Process results; deserialize JSON data
-        let conn = self
-            .conn
-            .get()
-            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         diesel_query
-            .load::<serde_json::Value>(&*conn)
+            .load::<serde_json::Value>(conn)
             .map(|values| {
                 values
                     .into_iter()
                     .map(|value| {
-                        serde_json::from_value::<Entity>(value).expect("Error parsing entity JSON")
+                        let parse_error_msg = format!("Error parsing entity JSON: {:?}", value);
+                        serde_json::from_value::<Entity>(value).expect(&parse_error_msg)
                     })
                     .collect()
             })
-            .map_err(|e| QueryExecutionError::ResolveEntitiesError(e.to_string()))
+            .map_err(|e| {
+                QueryExecutionError::ResolveEntitiesError(format!(
+                    "{}, query = {:?}",
+                    e, diesel_query_debug_info
+                ))
+            })
+    }
+
+    /// Applies a set operation in Postgres.
+    fn apply_set_operation(
+        &self,
+        conn: &PgConnection,
+        key: EntityKey,
+        data: Entity,
+        event_source: EventSource,
+    ) -> Result<(), StoreError> {
+        use db_schema::entities;
+
+        // Load the entity if exists
+        let existing_entity = self
+            .get_entity(conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
+            .map_err(Error::from)?;
+
+        // Apply the operation
+        let operation = EntityOperation::Set {
+            key: key.clone(),
+            data,
+        };
+        let updated_entity = operation.apply(existing_entity);
+        let updated_json: serde_json::Value =
+            serde_json::to_value(&updated_entity).map_err(|e| {
+                format_err!(
+                    "Failed to set entity ({}, {}, {}) as setting it would break it: {}",
+                    key.subgraph_id,
+                    key.entity_type,
+                    key.entity_id,
+                    e
+                )
+            })?;
+
+        // Either add or update the entity in Postgres
+        insert_into(entities::table)
+            .values((
+                entities::id.eq(&key.entity_id),
+                entities::entity.eq(&key.entity_type),
+                entities::subgraph.eq(key.subgraph_id.to_string()),
+                entities::data.eq(&updated_json),
+                entities::event_source.eq(event_source.to_string()),
+            ))
+            .on_conflict((entities::id, entities::entity, entities::subgraph))
+            .do_update()
+            .set((
+                entities::id.eq(&key.entity_id),
+                entities::entity.eq(&key.entity_type),
+                entities::subgraph.eq(key.subgraph_id.to_string()),
+                entities::data.eq(&updated_json),
+                entities::event_source.eq(event_source.to_string()),
+            ))
+            .execute(conn)
+            .map(|_| ())
+            .map_err(|e| {
+                format_err!(
+                    "Failed to set entity ({}, {}, {}): {}",
+                    key.subgraph_id,
+                    key.entity_type,
+                    key.entity_id,
+                    e
+                )
+                .into()
+            })
+    }
+
+    /// Applies a remove operation by deleting the entity from Postgres.
+    fn apply_remove_operation(
+        &self,
+        conn: &PgConnection,
+        key: EntityKey,
+        event_source: EventSource,
+    ) -> Result<(), StoreError> {
+        use db_schema::entities;
+
+        select(set_config(
+            "vars.current_event_source",
+            event_source.to_string(),
+            true,
+        ))
+        .execute(conn)
+        .map_err(|e| format_err!("Failed to save event source for remove operation: {}", e))
+        .map(|_| ())?;
+
+        delete(
+            entities::table
+                .filter(entities::subgraph.eq(key.subgraph_id.to_string()))
+                .filter(entities::entity.eq(&key.entity_type))
+                .filter(entities::id.eq(&key.entity_id)),
+        )
+        .execute(conn)
+        .map(|_| ())
+        .map_err(|e| {
+            format_err!(
+                "Failed to remove entity ({}, {}, {}): {}",
+                key.subgraph_id,
+                key.entity_type,
+                key.entity_id,
+                e
+            )
+            .into()
+        })
+    }
+
+    fn apply_abort_unless_operation(
+        &self,
+        conn: &PgConnection,
+        description: String,
+        query: EntityQuery,
+        mut expected_entity_ids: Vec<String>,
+        _event_source: EventSource,
+    ) -> Result<(), StoreError> {
+        if query.range.is_some() && query.order_by.is_none() {
+            // Queries with a range but no sort key can vary non-deterministically in what they
+            // return, and so are not suitable for use with AbortUnless.
+            panic!("Cannot use range in an AbortUnless query without order_by");
+        }
+
+        // Execute query
+        let actual_entities = self.execute_query(conn, query.clone()).map_err(|e| {
+            format_err!(
+                "AbortUnless ({}): query execution error: {:?}, {}",
+                description,
+                query,
+                e
+            )
+        })?;
+
+        // Extract IDs from entities
+        let mut actual_entity_ids: Vec<String> = actual_entities
+            .into_iter()
+            .map(|entity| entity.id())
+            .collect::<Result<_, _>>()?;
+
+        // Sort entity IDs lexicographically if and only if no sort order is specified.
+        // When no sort order is specified, the entity ordering is arbitrary and should not be a
+        // factor in deciding whether or not to abort.
+        if query.order_by.is_none() {
+            expected_entity_ids.sort();
+            actual_entity_ids.sort();
+        }
+
+        // Abort if actual IDs do not match expected
+        if actual_entity_ids != expected_entity_ids {
+            return Err(TransactionAbortError::AbortUnless {
+                expected_entity_ids,
+                actual_entity_ids,
+                description,
+            }
+            .into());
+        }
+
+        // Safe to continue
+        Ok(())
+    }
+
+    /// Apply an entity operation in Postgres.
+    fn apply_entity_operation(
+        &self,
+        conn: &PgConnection,
+        operation: EntityOperation,
+        event_source: EventSource,
+    ) -> Result<(), StoreError> {
+        match operation {
+            EntityOperation::Set { key, data } => {
+                self.apply_set_operation(conn, key, data, event_source)
+            }
+            EntityOperation::Remove { key } => self.apply_remove_operation(conn, key, event_source),
+            EntityOperation::AbortUnless {
+                description,
+                query,
+                entity_ids,
+            } => self.apply_abort_unless_operation(
+                conn,
+                description,
+                query,
+                entity_ids,
+                event_source,
+            ),
+        }
+    }
+
+    /// Apply a series of entity operations in Postgres.
+    fn apply_entity_operations_with_conn(
+        &self,
+        conn: &PgConnection,
+        operations: Vec<EntityOperation>,
+        event_source: EventSource,
+    ) -> Result<(), StoreError> {
+        for operation in operations.into_iter() {
+            self.apply_entity_operation(conn, operation, event_source)?;
+        }
+        Ok(())
+    }
+}
+
+impl StoreTrait for Store {
+    fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
+        let subgraph_entity = self
+            .get(SubgraphStateEntity::key(subgraph_id.clone()))
+            .map_err(|e| format_err!("error reading subgraph entity: {}", e))?
+            .ok_or_else(|| {
+                format_err!(
+                    "could not read block ptr for non-existent subgraph {}",
+                    subgraph_id
+                )
+            })?;
+
+        let hash = subgraph_entity
+            .get("latestEthereumBlockHash")
+            .ok_or_else(|| format_err!("SubgraphState is missing latestEthereumBlockHash"))?
+            .to_owned()
+            .as_string()
+            .map_err(|()| format_err!("SubgraphState has wrong type in latestEthereumBlockHash"))?
+            .parse::<H256>()
+            .map_err(|e| format_err!("latestEthereumBlockHash: {}", e))?;
+
+        let number = subgraph_entity
+            .get("latestEthereumBlockNumber")
+            .ok_or_else(|| format_err!("SubgraphState is missing latestEthereumBlockNumber"))?
+            .to_owned()
+            .as_bigint()
+            .map_err(|()| format_err!("SubgraphState has wrong type in latestEthereumBlockNumber"))?
+            .to_u64();
+
+        Ok(EthereumBlockPointer { hash, number })
+    }
+
+    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
+        let conn = self
+            .conn
+            .get()
+            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+        self.get_entity(&*conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
+    }
+
+    fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
+        let conn = self
+            .conn
+            .get()
+            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+        self.execute_query(&conn, query)
     }
 
     fn set_block_ptr_with_no_changes(
@@ -616,9 +649,13 @@ impl StoreTrait for Store {
         subgraph_id: SubgraphId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
-    ) -> Result<(), Error> {
-        let conn = self.conn.get()?;
-        self.update_subgraph_block_pointer(&*conn, subgraph_id, block_ptr_from, block_ptr_to)
+    ) -> Result<(), StoreError> {
+        let ops = SubgraphStateEntity::update_ethereum_block_pointer_operations(
+            &subgraph_id,
+            block_ptr_from,
+            block_ptr_to,
+        );
+        self.apply_entity_operations(ops, EventSource::None)
     }
 
     fn transact_block_operations(
@@ -626,8 +663,8 @@ impl StoreTrait for Store {
         subgraph_id: SubgraphId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
-        operations: Vec<EntityOperation>,
-    ) -> Result<(), Error> {
+        mut operations: Vec<EntityOperation>,
+    ) -> Result<(), StoreError> {
         // Sanity check on block numbers
         if block_ptr_from.number != block_ptr_to.number - 1 {
             panic!("transact_block_operations must transact a single block only");
@@ -640,24 +677,25 @@ impl StoreTrait for Store {
             }
         }
 
-        // Fold the operations of each entity into a single one
-        let operations = EntityOperation::fold(&operations);
+        // Update subgraph block pointer in same transaction
+        operations.append(
+            &mut SubgraphStateEntity::update_ethereum_block_pointer_operations(
+                &subgraph_id,
+                block_ptr_from,
+                block_ptr_to,
+            ),
+        );
 
-        let conn = self.conn.get()?;
-
-        conn.transaction(|| {
-            let event_source = EventSource::EthereumBlock(block_ptr_to);
-            self.apply_entity_operations_with_conn(&*conn, operations, event_source)?;
-            self.update_subgraph_block_pointer(&*conn, subgraph_id, block_ptr_from, block_ptr_to)
-        })
+        let event_source = EventSource::EthereumBlock(block_ptr_to);
+        self.apply_entity_operations(operations, event_source)
     }
 
     fn apply_entity_operations(
         &self,
         operations: Vec<EntityOperation>,
         event_source: EventSource,
-    ) -> Result<(), Error> {
-        let conn = self.conn.get()?;
+    ) -> Result<(), StoreError> {
+        let conn = self.conn.get().map_err(Error::from)?;
         conn.transaction(|| self.apply_entity_operations_with_conn(&conn, operations, event_source))
     }
 
@@ -666,21 +704,31 @@ impl StoreTrait for Store {
         subgraph_id: SubgraphId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         // Sanity check on block numbers
         if block_ptr_from.number != block_ptr_to.number + 1 {
             panic!("revert_block_operations must revert a single block only");
         }
 
-        select(revert_block(
-            &block_ptr_from.hash_hex(),
-            block_ptr_from.number as i64,
-            &block_ptr_to.hash_hex(),
-            subgraph_id.to_string(),
-        ))
-        .execute(&*self.conn.get()?)
-        .map_err(|e| format_err!("Error reverting block: {}", e))
-        .map(|_| ())
+        let conn = self.conn.get().map_err(Error::from)?;
+        conn.transaction(|| {
+            let ops = SubgraphStateEntity::update_ethereum_block_pointer_operations(
+                &subgraph_id,
+                block_ptr_from,
+                block_ptr_to,
+            );
+            self.apply_entity_operations_with_conn(&conn, ops, EventSource::None)?;
+
+            select(revert_block(
+                &block_ptr_from.hash_hex(),
+                block_ptr_from.number as i64,
+                &block_ptr_to.hash_hex(),
+                subgraph_id.to_string(),
+            ))
+            .execute(&*conn)
+            .map(|_| ())
+            .map_err(|e| format_err!("Error reverting block: {}", e).into())
+        })
     }
 
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
@@ -720,151 +768,71 @@ impl StoreTrait for Store {
 }
 
 impl SubgraphDeploymentStore for Store {
-    fn read_by_node_id(
-        &self,
-        node_id: NodeId,
-    ) -> Result<Vec<(SubgraphDeploymentName, SubgraphId)>, Error> {
-        use db_schema::subgraph_deployments;
+    fn resolve_subgraph_name_to_id(&self, name: SubgraphName) -> Result<Option<SubgraphId>, Error> {
+        // Find subgraph entity by name
+        let subgraph_entities = self
+            .find(SubgraphEntity::query().filter(EntityFilter::Equal(
+                "name".to_owned(),
+                name.to_string().into(),
+            )))
+            .map_err(QueryError::from)?;
+        let subgraph_entity = match subgraph_entities.len() {
+            0 => return Ok(None),
+            1 => {
+                let mut subgraph_entities = subgraph_entities;
+                Ok(subgraph_entities.pop().unwrap())
+            }
+            _ => Err(format_err!(
+                "multiple subgraphs found with name {:?}",
+                name.to_string()
+            )),
+        }?;
 
-        subgraph_deployments::table
-            .select((
-                subgraph_deployments::deployment_name,
-                subgraph_deployments::subgraph_id,
-            ))
-            .filter(subgraph_deployments::node_id.eq(node_id.to_string()))
-            .load::<(String, String)>(&*self.conn.get()?)
-            .map_err(Error::from)
-            .map(|rows| {
-                rows.into_iter()
-                    .map(|(name, subgraph_id)| {
-                        let name = SubgraphDeploymentName::new(name)
-                            .expect("invalid subgraph name found in database");
-                        let subgraph_id = SubgraphId::new(subgraph_id)
-                            .expect("invalid subgraph ID found in database");
-                        (name, subgraph_id)
-                    })
-                    .collect()
-            })
+        // Get current active subgraph version ID
+        let current_version_id = match subgraph_entity
+            .get("currentVersion")
+            .ok_or_else(|| format_err!("Subgraph entity without `currentVersion`"))?
+        {
+            Value::String(s) => s.to_owned(),
+            Value::Null => return Ok(None),
+            _ => {
+                return Err(format_err!(
+                    "Subgraph entity has wrong type in `currentVersion`"
+                ))
+            }
+        };
+
+        // Read subgraph version entity
+        let version_entity_opt = self
+            .get(SubgraphVersionEntity::key(current_version_id))
+            .map_err(QueryError::from)?;
+        if version_entity_opt == None {
+            return Ok(None);
+        }
+        let version_entity = version_entity_opt.unwrap();
+
+        // Parse subgraph ID
+        let subgraph_id_str = version_entity
+            .get("state")
+            .ok_or_else(|| format_err!("SubgraphVersion entity without `state`"))?
+            .to_owned()
+            .as_string()
+            .map_err(|()| format_err!("SubgraphVersion entity has wrong type in `state`"))?;
+        SubgraphId::new(subgraph_id_str)
+            .map_err(|()| format_err!("SubgraphVersion entity has invalid subgraph ID in `state`"))
+            .map(Some)
     }
 
-    fn write(
-        &self,
-        name: SubgraphDeploymentName,
-        subgraph_id: SubgraphId,
-        node_id: NodeId,
-    ) -> Result<(), Error> {
-        use db_schema::subgraph_deployments;
-
-        insert_into(subgraph_deployments::table)
-            .values((
-                subgraph_deployments::deployment_name.eq(name.to_string()),
-                subgraph_deployments::subgraph_id.eq(subgraph_id.to_string()),
-                subgraph_deployments::node_id.eq(node_id.to_string()),
-            ))
-            .on_conflict(subgraph_deployments::deployment_name)
-            .do_update()
-            .set((
-                subgraph_deployments::subgraph_id.eq(subgraph_id.to_string()),
-                subgraph_deployments::node_id.eq(node_id.to_string()),
-            ))
-            .execute(&*self.conn.get()?)
-            .map_err(Error::from)
-            .map(|_| ())
-    }
-
-    fn read(&self, name: SubgraphDeploymentName) -> Result<Option<(SubgraphId, NodeId)>, Error> {
-        use db_schema::subgraph_deployments;
-
-        subgraph_deployments::table
-            .select((
-                subgraph_deployments::subgraph_id,
-                subgraph_deployments::node_id,
-            ))
-            .filter(subgraph_deployments::deployment_name.eq(name.to_string()))
-            .first::<(String, String)>(&*self.conn.get()?)
-            .optional()
-            .map_err(Error::from)
-            .map(|row_opt| {
-                row_opt.map(|(subgraph_id, node_id)| {
-                    let subgraph_id = SubgraphId::new(subgraph_id)
-                        .expect("invalid subgraph ID found in database");
-                    let node_id = NodeId::new(node_id).expect("invalid node ID found in database");
-                    (subgraph_id, node_id)
-                })
-            })
-    }
-
-    fn remove(&self, name: SubgraphDeploymentName) -> Result<bool, Error> {
-        use db_schema::subgraph_deployments;
-
-        delete(subgraph_deployments::table.find(name.to_string()))
-            .execute(&*self.conn.get()?)
-            .map(|row_count| match row_count {
-                0 => false,
-                1 => true,
-                _ => unreachable!(),
-            })
-            .map_err(Error::from)
-    }
-
-    fn deployment_events(
-        &self,
-        node_id: NodeId,
-    ) -> Box<Stream<Item = DeploymentEvent, Error = Error> + Send> {
-        // Create postgres listener
-        // This way of choosing a channel name is only safe because NodeId is restricted to
-        // alphanumeric and underscores, and because we forcibly prefix the node ID (which prevents
-        // the channel name from being a keyword).
-        let raw_channel_name = format!("subgraph_deployments_{}", node_id);
-        let channel_name = SafeChannelName::i_promise_this_is_safe(raw_channel_name);
-        let mut listener = NotificationListener::new(self.postgres_url.clone(), channel_name);
-
-        // Start receiving notifications
-        listener.start();
-
-        Box::new(
-            listener
-                .take_event_stream()
-                .unwrap()
-                .map(move |notification| {
-                    // Move listener into closure so that listener lives as long as stream does
-                    let _ = listener;
-
-                    // Parse notification as JSON
-                    let value: serde_json::Value = serde_json::from_str(&notification.payload)
-                        .expect("invalid JSON deployment event received from database");
-
-                    // Create DeploymentEvent from JSON
-                    let update: DeploymentEvent = serde_json::from_value(value.clone())
-                        .unwrap_or_else(|_| {
-                            panic!(
-                                "invalid deployment event received from database: {:?}",
-                                value
-                            )
-                        });
-
-                    update
-                })
-                .map_err(|()| format_err!("deployment event notification listener failed")),
-        )
-    }
-
-    fn is_deployed(&self, id: &SubgraphId) -> Result<bool, Error> {
-        use db_schema::subgraph_deployments::dsl::*;
-
+    fn is_queryable(&self, id: &SubgraphId) -> Result<bool, Error> {
         // The subgraph of subgraphs is always deployed.
         if id == &*SUBGRAPHS_ID {
             return Ok(true);
         }
 
-        let deployment_count = subgraph_deployments
-            .filter(subgraph_id.eq(id.to_string()))
-            .execute(&*self.conn.get()?)?;
-        Ok(match deployment_count {
-            0 => false,
-            1 => true,
-            _ => unreachable!(), // The `subgraph_id` column is `UNIQUE`
-        })
+        // Check store for a state entity for this subgraph ID
+        self.get(SubgraphStateEntity::key(id.to_owned()))
+            .map_err(|e| format_err!("failed to query SubgraphState entities: {}", e))
+            .map(|entity_opt| entity_opt.is_some())
     }
 
     fn subgraph_schema(&self, subgraph_id: SubgraphId) -> Result<Schema, Error> {
@@ -881,7 +849,7 @@ impl SubgraphDeploymentStore for Store {
             let manifest_entity = self
                 .get(EntityKey {
                     subgraph_id: SUBGRAPHS_ID.clone(),
-                    entity_type: MANIFEST_ENTITY_TYPENAME.to_owned(),
+                    entity_type: SubgraphManifestEntity::TYPENAME.to_owned(),
                     entity_id: SubgraphManifestEntity::id(&subgraph_id),
                 })?
                 .ok_or_else(|| format_err!("subgraph entity not found {}", subgraph_id))?;

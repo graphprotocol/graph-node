@@ -19,47 +19,6 @@ pub mod scalar;
 pub type SubgraphEntityPair = (SubgraphId, String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SubgraphDeploymentName(String);
-
-impl SubgraphDeploymentName {
-    pub fn new(s: impl Into<String>) -> Result<Self, ()> {
-        let s = s.into();
-
-        // Enforce length limit
-        if s.len() > 255 {
-            return Err(());
-        }
-
-        // Check that the name contains only allowed characters.
-        if !s
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(());
-        }
-
-        Ok(SubgraphDeploymentName(s))
-    }
-}
-
-impl fmt::Display for SubgraphDeploymentName {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl<'de> de::Deserialize<'de> for SubgraphDeploymentName {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: de::Deserializer<'de>,
-    {
-        let s: String = de::Deserialize::deserialize(deserializer)?;
-        SubgraphDeploymentName::new(s.clone())
-            .map_err(|()| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid subgraph name"))
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(String);
 
 impl NodeId {
@@ -102,12 +61,10 @@ impl<'de> de::Deserialize<'de> for NodeId {
 #[serde(tag = "type")]
 pub enum DeploymentEvent {
     Add {
-        deployment_name: SubgraphDeploymentName,
         subgraph_id: SubgraphId,
         node_id: NodeId,
     },
     Remove {
-        deployment_name: SubgraphDeploymentName,
         subgraph_id: SubgraphId,
         node_id: NodeId,
     },
@@ -231,6 +188,66 @@ impl Value {
             }
         })
     }
+
+    pub fn as_string(self) -> Result<String, ()> {
+        if let Value::String(s) = self {
+            Ok(s)
+        } else {
+            Err(())
+        }
+    }
+
+    pub fn as_int(self) -> Result<i32, ()> {
+        if let Value::Int(i) = self {
+            Ok(i)
+        } else {
+            Err(())
+        }
+    }
+
+    pub fn as_float(self) -> Result<f32, ()> {
+        if let Value::Float(f) = self {
+            Ok(f)
+        } else {
+            Err(())
+        }
+    }
+
+    pub fn as_bool(self) -> Result<bool, ()> {
+        if let Value::Bool(b) = self {
+            Ok(b)
+        } else {
+            Err(())
+        }
+    }
+
+    pub fn as_list(self) -> Result<Vec<Value>, ()> {
+        if let Value::List(v) = self {
+            Ok(v)
+        } else {
+            Err(())
+        }
+    }
+
+    pub fn is_null(&self) -> bool {
+        *self == Value::Null
+    }
+
+    pub fn as_bytes(self) -> Result<scalar::Bytes, ()> {
+        if let Value::Bytes(b) = self {
+            Ok(b)
+        } else {
+            Err(())
+        }
+    }
+
+    pub fn as_bigint(self) -> Result<scalar::BigInt, ()> {
+        if let Value::BigInt(b) = self {
+            Ok(b)
+        } else {
+            Err(())
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -290,9 +307,21 @@ impl<'a> From<&'a String> for Value {
     }
 }
 
+impl From<bool> for Value {
+    fn from(value: bool) -> Value {
+        Value::Bool(value)
+    }
+}
+
 impl From<i32> for Value {
     fn from(value: i32) -> Value {
         Value::Int(value)
+    }
+}
+
+impl From<f32> for Value {
+    fn from(value: f32) -> Value {
+        Value::Float(value)
     }
 }
 
@@ -333,6 +362,20 @@ impl Entity {
     /// Creates a new entity with no attributes set.
     pub fn new() -> Self {
         Default::default()
+    }
+
+    /// Try to get this entity's ID
+    pub fn id(&self) -> Result<String, Error> {
+        match self.get("id") {
+            None => Err(format_err!("entity is missing an `id` attribute")),
+            Some(Value::String(s)) => Ok(s.to_owned()),
+            _ => Err(format_err!("entity has non-string `id` attribute")),
+        }
+    }
+
+    /// Convenience method to save having to `.into()` the arguments.
+    pub fn set(&mut self, name: impl Into<Attribute>, value: impl Into<Value>) -> Option<Value> {
+        self.insert(name.into(), value.into())
     }
 
     /// Merges an entity update `update` into this entity.

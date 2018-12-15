@@ -36,6 +36,27 @@ impl BigInt {
         self.0.to_signed_bytes_le()
     }
 
+    pub fn to_u64(&self) -> u64 {
+        let (sign, bytes) = self.to_bytes_le();
+
+        if sign == num_bigint::Sign::Minus {
+            panic!("cannot convert negative BigInt into u64");
+        }
+
+        if bytes.len() > 8 {
+            panic!("BigInt value is too large for a u64");
+        }
+
+        // Replace this with u64::from_le_bytes when stabilized
+        let mut n = 0u64;
+        let mut shift_dist = 0;
+        for b in bytes {
+            n = ((b as u64) << shift_dist) | n;
+            shift_dist += 8;
+        }
+        n
+    }
+
     pub fn from_unsigned_u256(n: &U256) -> Self {
         let mut bytes: [u8; 32] = [0; 32];
         n.to_little_endian(&mut bytes);

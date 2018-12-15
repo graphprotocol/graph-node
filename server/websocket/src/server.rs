@@ -20,7 +20,7 @@ pub struct SubscriptionServer<Q, S> {
 impl<Q, S> SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: SubgraphDeploymentStore,
+    S: SubgraphDeploymentStore + Store,
 {
     pub fn new(logger: &Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
         SubscriptionServer {
@@ -43,14 +43,13 @@ where
         match path_segments.as_slice() {
             &["subgraphs"] => Ok(SUBGRAPHS_ID.clone()),
             &["subgraphs", "id", subgraph_id] => SubgraphId::new(subgraph_id),
-            &["subgraphs", "name", subgraph_name] => SubgraphDeploymentName::new(subgraph_name)
+            &["subgraphs", "name", subgraph_name] => SubgraphName::new(subgraph_name)
                 .map(|subgraph_name| {
                     store
-                        .read(subgraph_name)
-                        .expect("error reading subgraph name from store")
+                        .resolve_subgraph_name_to_id(subgraph_name)
+                        .expect("failed to resolve subgraph name to ID")
                 })
-                .and_then(|deployment_opt| deployment_opt.ok_or(()))
-                .map(|(subgraph_id, _node_id)| subgraph_id),
+                .and_then(|deployment_opt| deployment_opt.ok_or(())),
             _ => return Err(()),
         }
     }
@@ -59,7 +58,7 @@ where
 impl<Q, S> SubscriptionServerTrait for SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: SubgraphDeploymentStore,
+    S: SubgraphDeploymentStore + Store,
 {
     type ServeError = ();
 
@@ -105,10 +104,10 @@ where
                         .map_err(|()| WsError::Http(404))?;
 
                     // Check if the subgraph is deployed
-                    match store.is_deployed(&subgraph_id) {
+                    match store.is_queryable(&subgraph_id) {
                         Err(_) | Ok(false) => {
-                            error!(logger, "Failed to establish WS connection, subgraph not deployed";
-                                            "subgraph" => subgraph_id.to_string(),
+                            error!(logger, "Failed to establish WS connection, no data found for subgraph";
+                                            "subgraph_id" => subgraph_id.to_string(),
                             );
                             return Err(WsError::Http(404));
                         }
