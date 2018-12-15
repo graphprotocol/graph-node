@@ -33,8 +33,8 @@ use graph::tokio_timer;
 use graph::tokio_timer::timer::Timer;
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::{
-    ElasticLoggingConfig, SubgraphInstanceManager, SubgraphProvider as IpfsSubgraphProvider,
-    SubgraphProviderWithNames as IpfsSubgraphProviderWithNames,
+    ElasticLoggingConfig, SubgraphDeploymentProvider as IpfsSubgraphDeploymentProvider,
+    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
@@ -413,8 +413,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     tokio::spawn(block_ingestor.into_polling_stream());
 
     // Prepare a block stream builder for subgraphs
-    let block_stream_builder =
-        BlockStreamBuilder::new(store.clone(), store.clone(), ethereum.clone());
+    let block_stream_builder = BlockStreamBuilder::new(
+        store.clone(),
+        store.clone(),
+        ethereum.clone(),
+        node_id.clone(),
+    );
 
     // Optionally, identify the Elasticsearch logging configuration
     let elastic_config =
@@ -439,20 +443,22 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Create IPFS-based subgraph provider
     let mut subgraph_provider =
-        IpfsSubgraphProvider::new(logger.clone(), ipfs_client, store.clone());
+        IpfsSubgraphDeploymentProvider::new(logger.clone(), ipfs_client.clone(), store.clone());
 
     // Forward subgraph events from the subgraph provider to the subgraph instance manager
     tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());
 
     // Create named subgraph provider for resolving subgraph name->ID mappings
-    let named_subgraph_provider = Arc::new(IpfsSubgraphProviderWithNames::new(
+    let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
         logger.clone(),
+        ipfs_client,
         Arc::new(subgraph_provider),
+        store.clone(),
         store.clone(),
         node_id.clone(),
     ));
     tokio::spawn(
-        named_subgraph_provider
+        subgraph_registrar
             .start()
             .then(|start_result| Ok(start_result.expect("failed to initialize subgraph provider"))),
     );
@@ -462,7 +468,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         json_rpc_port,
         http_port,
         ws_port,
-        named_subgraph_provider.clone(),
+        subgraph_registrar.clone(),
         node_id.clone(),
         logger.clone(),
     )
@@ -480,15 +486,21 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             ("cli", subgraph)
         };
 
-        let name = SubgraphDeploymentName::new(name)
+        let name = SubgraphName::new(name)
             .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
         let subgraph_id = SubgraphId::new(hash).expect("Subgraph hash must be a valid IPFS hash");
 
         tokio::spawn(
-            named_subgraph_provider
-                .deploy(name, subgraph_id, node_id.clone())
-                .then(|deploy_result| {
-                    Ok(deploy_result.expect("Failed to deploy subgraph from `--subgraph` flag"))
+            subgraph_registrar
+                .create_subgraph(name.clone())
+                .then(
+                    |result| Ok(result.expect("Failed to create subgraph from `--subgraph` flag")),
+                )
+                .and_then(move |()| {
+                    subgraph_registrar.create_subgraph_version(name, subgraph_id, node_id)
+                })
+                .then(|result| {
+                    Ok(result.expect("Failed to deploy subgraph from `--subgraph` flag"))
                 }),
         );
     }

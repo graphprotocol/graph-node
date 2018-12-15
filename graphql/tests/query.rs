@@ -129,10 +129,6 @@ impl TestStore {
 }
 
 impl Store for TestStore {
-    fn add_subgraph_if_missing(&self, _: SubgraphId, _: EthereumBlockPointer) -> Result<(), Error> {
-        unimplemented!()
-    }
-
     fn block_ptr(&self, _: SubgraphId) -> Result<EthereumBlockPointer, Error> {
         unimplemented!()
     }
@@ -142,7 +138,7 @@ impl Store for TestStore {
         _: SubgraphId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -150,7 +146,7 @@ impl Store for TestStore {
         &self,
         _: Vec<EntityOperation>,
         _: EventSource,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -160,7 +156,7 @@ impl Store for TestStore {
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
         _: Vec<EntityOperation>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -169,7 +165,7 @@ impl Store for TestStore {
         _: SubgraphId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!()
     }
 

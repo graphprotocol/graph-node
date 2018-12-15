@@ -8,14 +8,13 @@ extern crate hex;
 
 use diesel::pg::PgConnection;
 use diesel::*;
-use std::collections::HashSet;
 use std::fmt::Debug;
-use std::iter::FromIterator;
 use std::str::FromStr;
 use std::sync::Mutex;
 
 use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityRange};
 use graph::data::store::scalar;
+use graph::data::subgraph::schema::SubgraphStateEntity;
 use graph::prelude::*;
 use graph::web3::types::H256;
 use graph_store_postgres::{db_schema, Store as DieselStore, StoreConfig};
@@ -125,8 +124,23 @@ where
 /// Inserts data in test blocks 1, 2, and 3, leaving test blocks 3A, 4, and 4A for the tests to
 /// use.
 fn insert_test_data(store: Arc<DieselStore>) {
+    let manifest = SubgraphManifest {
+        id: TEST_SUBGRAPH_ID.clone(),
+        location: "/ipfs/test".to_owned(),
+        spec_version: "1".to_owned(),
+        description: None,
+        repository: None,
+        schema: Schema::parse("scalar Foo", TEST_SUBGRAPH_ID.clone()).unwrap(),
+        data_sources: vec![],
+    };
+
+    // Create SubgraphStateEntity
     store
-        .add_subgraph_if_missing(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_0_PTR)
+        .apply_entity_operations(
+            SubgraphStateEntity::new(&manifest, false, *TEST_BLOCK_0_PTR, 1)
+                .create_operations(&*TEST_SUBGRAPH_ID),
+            EventSource::None,
+        )
         .unwrap();
 
     let test_entity_1 = create_test_entity(
@@ -137,6 +151,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         67 as i32,
         184.4 as f32,
         false,
+        None,
     );
     store
         .transact_block_operations(
@@ -155,6 +170,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         43 as i32,
         159.1 as f32,
         true,
+        Some("red"),
     );
     let test_entity_3_1 = create_test_entity(
         "3",
@@ -164,6 +180,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         28 as i32,
         111.7 as f32,
         false,
+        Some("blue"),
     );
     store
         .transact_block_operations(
@@ -182,6 +199,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         28 as i32,
         111.7 as f32,
         false,
+        Some("blue"),
     );
     store
         .transact_block_operations(
@@ -202,6 +220,7 @@ fn create_test_entity(
     age: i32,
     weight: f32,
     coffee: bool,
+    favorite_color: Option<&str>,
 ) -> EntityOperation {
     let mut test_entity = Entity::new();
 
@@ -213,6 +232,12 @@ fn create_test_entity(
     test_entity.insert("age".to_owned(), Value::Int(age));
     test_entity.insert("weight".to_owned(), Value::Float(weight));
     test_entity.insert("coffee".to_owned(), Value::Bool(coffee));
+    test_entity.insert(
+        "favorite_color".to_owned(),
+        favorite_color
+            .map(|s| Value::String(s.to_owned()))
+            .unwrap_or(Value::Null),
+    );
 
     EntityOperation::Set {
         key: EntityKey {
@@ -227,20 +252,12 @@ fn create_test_entity(
 /// Removes test data from the database behind the store.
 fn remove_test_data() {
     use db_schema::entities;
-    use db_schema::subgraph_deployments;
-    use db_schema::subgraphs;
 
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
     delete(entities::table)
         .execute(&conn)
         .expect("Failed to remove entity test data");
-    delete(subgraphs::table)
-        .execute(&conn)
-        .expect("Failed to remove subgraph test data");
-    delete(subgraph_deployments::table)
-        .execute(&conn)
-        .expect("Failed to remove subgraph test data");
 }
 
 #[test]
@@ -295,6 +312,7 @@ fn get_entity() {
         expected_entity.insert("age".to_owned(), Value::Int(67 as i32));
         expected_entity.insert("weight".to_owned(), Value::Float(184.4 as f32));
         expected_entity.insert("coffee".to_owned(), Value::Bool(false));
+        expected_entity.insert("favorite_color".to_owned(), Value::Null);
 
         // Check that the expected entity was returned
         assert_eq!(result, Some(expected_entity));
@@ -319,6 +337,7 @@ fn insert_entity() {
             76 as i32,
             111.7 as f32,
             true,
+            Some("green"),
         );
         store
             .transact_block_operations(
@@ -353,6 +372,7 @@ fn update_existing() {
             76 as i32,
             111.7 as f32,
             true,
+            Some("green"),
         );
         let mut new_data = match op {
             EntityOperation::Set { ref data, .. } => data.clone(),
@@ -1090,6 +1110,57 @@ fn find_bytes_equal() {
 }
 
 #[test]
+fn find_null_equal() {
+    test_find(
+        vec!["1"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: Some(EntityFilter::Equal(
+                "favorite_color".to_owned(),
+                Value::Null,
+            )),
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Descending),
+            range: None,
+        },
+    )
+}
+
+#[test]
+fn find_null_not_equal() {
+    test_find(
+        vec!["3", "2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: Some(EntityFilter::Not("favorite_color".to_owned(), Value::Null)),
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Descending),
+            range: None,
+        },
+    )
+}
+
+#[test]
+fn find_null_not_in() {
+    test_find(
+        vec!["3", "2"],
+        EntityQuery {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            filter: Some(EntityFilter::NotIn(
+                "favorite_color".to_owned(),
+                vec![Value::Null],
+            )),
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Descending),
+            range: None,
+        },
+    )
+}
+
+#[test]
 fn find_order_by_float() {
     test_find(
         vec!["3", "2", "1"],
@@ -1370,8 +1441,23 @@ fn revert_block_with_partial_update() {
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store| {
         let subgraph_id = SubgraphId::new("EntityChangeTestSubgraph").unwrap();
+        let manifest = SubgraphManifest {
+            id: subgraph_id.clone(),
+            location: "/ipfs/test".to_owned(),
+            spec_version: "1".to_owned(),
+            description: None,
+            repository: None,
+            schema: Schema::parse("scalar Foo", subgraph_id.clone()).unwrap(),
+            data_sources: vec![],
+        };
+
+        // Create SubgraphStateEntity
         store
-            .add_subgraph_if_missing(subgraph_id.clone(), *TEST_BLOCK_0_PTR)
+            .apply_entity_operations(
+                SubgraphStateEntity::new(&manifest, false, *TEST_BLOCK_0_PTR, 1)
+                    .create_operations(&subgraph_id),
+                EventSource::None,
+            )
             .unwrap();
 
         // Create a store subscription
@@ -1489,146 +1575,5 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 Ok(())
             })
             .and_then(|_| Ok(()))
-    })
-}
-
-#[test]
-fn write_and_read_deployments() {
-    run_test(|store| -> Result<(), ()> {
-        let name1 = SubgraphDeploymentName::new("name1").unwrap();
-        let name2 = SubgraphDeploymentName::new("name2").unwrap();
-        let subgraph_id1 = SubgraphId::new("mysubgraph").unwrap();
-        let subgraph_id2 = SubgraphId::new("mysubgraph2").unwrap();
-        let subgraph_id3 = SubgraphId::new("mysubgraph3").unwrap();
-        let node_id = NodeId::new("thisnode").unwrap();
-
-        store
-            .write(name1.clone(), subgraph_id1.clone(), node_id.clone())
-            .unwrap();
-        store
-            .write(name2.clone(), subgraph_id2.clone(), node_id.clone())
-            .unwrap();
-        assert_eq!(
-            store.read(name1.clone()).unwrap(),
-            Some((subgraph_id1.clone(), node_id.clone()))
-        );
-        assert_eq!(
-            HashSet::from_iter(store.read_by_node_id(node_id.clone()).unwrap()),
-            vec![
-                (name1.clone(), subgraph_id1.clone()),
-                (name2.clone(), subgraph_id2.clone()),
-            ]
-            .into_iter()
-            .collect::<HashSet<_>>()
-        );
-        assert_eq!(
-            store.read(name2.clone()).unwrap(),
-            Some((subgraph_id2.clone(), node_id.clone()))
-        );
-        store
-            .write(name1.clone(), subgraph_id3.clone(), node_id.clone())
-            .unwrap();
-        assert_eq!(
-            store.read(name1.clone()).unwrap(),
-            Some((subgraph_id3.clone(), node_id.clone()))
-        );
-        Ok(())
-    })
-}
-
-#[test]
-fn write_and_delete_deployments() {
-    run_test(|store| -> Result<(), ()> {
-        let name1 = SubgraphDeploymentName::new("name1").unwrap();
-        let name2 = SubgraphDeploymentName::new("name2").unwrap();
-        let subgraph_id1 = SubgraphId::new("mysubgraph").unwrap();
-        let node_id = NodeId::new("thisnode").unwrap();
-
-        assert_eq!(store.read(name1.clone()).unwrap(), None);
-
-        store
-            .write(name1.clone(), subgraph_id1.clone(), node_id.clone())
-            .unwrap();
-
-        assert_eq!(
-            store.read(name1.clone()).unwrap(),
-            Some((subgraph_id1.clone(), node_id.clone()))
-        );
-
-        store.remove(name1.clone()).unwrap();
-
-        assert_eq!(
-            HashSet::from_iter(store.read_by_node_id(node_id.clone()).unwrap()),
-            vec![].into_iter().collect::<HashSet<_>>()
-        );
-        assert_eq!(store.read(name1.clone()).unwrap(), None);
-        assert_eq!(store.read(name2.clone()).unwrap(), None);
-
-        Ok(())
-    })
-}
-
-#[test]
-fn receive_deployment_events() {
-    run_test(|store| {
-        let name1 = SubgraphDeploymentName::new("name1").unwrap();
-        let subgraph_id1 = SubgraphId::new("mysubgraph").unwrap();
-        let node_id1 = NodeId::new("thisnode").unwrap();
-        let node_id2 = NodeId::new("othernode").unwrap();
-
-        let event_stream_node1 = store.deployment_events(node_id1.clone());
-        let event_stream_node2 = store.deployment_events(node_id2.clone());
-
-        store
-            .write(name1.clone(), subgraph_id1.clone(), node_id1.clone())
-            .unwrap();
-        store
-            .write(name1.clone(), subgraph_id1.clone(), node_id2.clone())
-            .unwrap();
-        store.remove(name1.clone()).unwrap();
-
-        event_stream_node1
-            .take(2)
-            .collect()
-            .and_then(move |events| {
-                assert_eq!(
-                    events,
-                    vec![
-                        DeploymentEvent::Add {
-                            deployment_name: name1.clone(),
-                            subgraph_id: subgraph_id1.clone(),
-                            node_id: node_id1.clone(),
-                        },
-                        DeploymentEvent::Remove {
-                            deployment_name: name1.clone(),
-                            subgraph_id: subgraph_id1.clone(),
-                            node_id: node_id1.clone(),
-                        },
-                    ]
-                );
-
-                event_stream_node2
-                    .take(2)
-                    .collect()
-                    .and_then(move |events| {
-                        assert_eq!(
-                            events,
-                            vec![
-                                DeploymentEvent::Add {
-                                    deployment_name: name1.clone(),
-                                    subgraph_id: subgraph_id1.clone(),
-                                    node_id: node_id2.clone(),
-                                },
-                                DeploymentEvent::Remove {
-                                    deployment_name: name1.clone(),
-                                    subgraph_id: subgraph_id1.clone(),
-                                    node_id: node_id2.clone(),
-                                },
-                            ]
-                        );
-
-                        Ok(())
-                    })
-            })
     })
 }

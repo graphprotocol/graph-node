@@ -200,7 +200,9 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                 Value::Null => Ok(Box::new(
                     sql("data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql(" -> 'data' = 'null' "),
+                        .sql(" ->> 'type'")
+                        .sql(op)
+                        .sql("'Null' "),
                 ) as FilterExpression),
                 Value::String(s) => Ok(s.into_filter(attribute, op)),
             }

@@ -1,4 +1,5 @@
 extern crate backtrace;
+extern crate diesel;
 pub extern crate ethabi;
 extern crate futures;
 extern crate graphql_parser;
@@ -15,6 +16,7 @@ pub extern crate slog;
 pub extern crate failure;
 extern crate ipfs_api;
 extern crate parity_wasm;
+extern crate rand;
 pub extern crate serde_json;
 pub extern crate slog_async;
 extern crate slog_envlogger;
@@ -67,11 +69,11 @@ pub mod prelude {
     pub use components::store::{
         ChainStore, EntityChange, EntityChangeOperation, EntityChangeStream, EntityFilter,
         EntityKey, EntityOperation, EntityOrder, EntityQuery, EntityRange, EventSource, Store,
-        SubgraphDeploymentStore,
+        StoreError, SubgraphDeploymentStore, TransactionAbortError,
     };
     pub use components::subgraph::{
-        RuntimeHost, RuntimeHostBuilder, SubgraphInstance, SubgraphInstanceManager,
-        SubgraphProvider, SubgraphProviderEvent, SubgraphProviderWithNames, SubgraphRegistry,
+        RuntimeHost, RuntimeHostBuilder, SubgraphDeploymentProvider, SubgraphInstance,
+        SubgraphInstanceManager, SubgraphRegistrar,
     };
     pub use components::{EventConsumer, EventProducer};
 
@@ -80,12 +82,13 @@ pub mod prelude {
     pub use data::schema::Schema;
     pub use data::store::scalar::{BigInt, BigIntSign};
     pub use data::store::{
-        Attribute, DeploymentEvent, Entity, NodeId, SubgraphDeploymentName, SubgraphEntityPair,
-        Value, ValueType,
+        Attribute, DeploymentEvent, Entity, NodeId, SubgraphEntityPair, Value, ValueType,
     };
+    pub use data::subgraph::schema::TypedEntity;
     pub use data::subgraph::{
-        DataSource, Link, MappingABI, MappingEventHandler, SubgraphId, SubgraphManifest,
-        SubgraphManifestResolveError, SubgraphProviderError, SubgraphStatus,
+        DataSource, Link, MappingABI, MappingEventHandler, SubgraphDeploymentProviderError,
+        SubgraphDeploymentProviderEvent, SubgraphId, SubgraphManifest,
+        SubgraphManifestResolveError, SubgraphName, SubgraphRegistrarError,
     };
     pub use data::subscription::{
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,

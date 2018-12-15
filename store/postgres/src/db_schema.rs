@@ -27,22 +27,3 @@ table! {
         data -> Jsonb,
     }
 }
-
-table! {
-    subgraphs (id) {
-        id -> Varchar,
-        network_name -> Varchar,
-        latest_block_hash -> Varchar,
-        latest_block_number -> BigInt,
-    }
-}
-allow_tables_to_appear_in_same_query!(entities, subgraphs);
-joinable!(entities -> subgraphs (subgraph));
-
-table! {
-    subgraph_deployments (deployment_name) {
-        deployment_name -> Varchar,
-        subgraph_id -> Varchar,
-        node_id -> Varchar,
-    }
-}

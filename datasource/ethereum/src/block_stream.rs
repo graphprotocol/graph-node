@@ -6,7 +6,7 @@ use std::mem;
 use std::sync::Mutex;
 
 use graph::components::forward;
-use graph::data::subgraph::schema::SubgraphEntity;
+use graph::data::subgraph::schema::{SubgraphDeploymentEntity, SubgraphStateEntity};
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
 };
@@ -92,6 +92,7 @@ struct BlockStreamContext<S, C, E> {
     subgraph_store: Arc<S>,
     chain_store: Arc<C>,
     eth_adapter: Arc<E>,
+    node_id: NodeId,
     subgraph_id: SubgraphId,
     logger: Logger,
 }
@@ -102,6 +103,7 @@ impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
             subgraph_store: self.subgraph_store.clone(),
             chain_store: self.chain_store.clone(),
             eth_adapter: self.eth_adapter.clone(),
+            node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
             logger: self.logger.clone(),
         }
@@ -127,6 +129,7 @@ where
         subgraph_store: Arc<S>,
         chain_store: Arc<C>,
         eth_adapter: Arc<E>,
+        node_id: NodeId,
         subgraph_id: SubgraphId,
         log_filter: EthereumLogFilter,
         logger: Logger,
@@ -147,6 +150,7 @@ where
                 subgraph_store,
                 chain_store,
                 eth_adapter,
+                node_id,
                 subgraph_id,
                 logger,
             },
@@ -179,7 +183,7 @@ where
             let log_filter = log_filter.clone();
 
             // Update progress metrics
-            future::result(ctx1.update_subgraph_block_counts())
+            future::result(ctx1.update_subgraph_block_count())
                 // Determine the next step.
                 .and_then(move |()| ctx1.get_next_step(log_filter))
                 // Do the next step.
@@ -468,7 +472,6 @@ where
                                 parent_ptr,
                             )
                             .map_err(Error::from)
-                            .and_then(|()| ctx.update_subgraph_block_counts())
                             .map(|()| {
                                 // At this point, the loop repeats, and we try to move the subgraph ptr another
                                 // step in the right direction.
@@ -490,8 +493,8 @@ where
                         from,
                         to,
                     ))
-                    .and_then(move |()| ctx.update_subgraph_block_counts())
-                    .map(|()| ReconciliationStepOutcome::MoreSteps),
+                    .map(|()| ReconciliationStepOutcome::MoreSteps)
+                    .map_err(|e| format_err!("failed to skip blocks: {}", e)),
                 )
             }
             ReconciliationStep::ProcessDescendantBlocks {
@@ -527,8 +530,6 @@ where
                             )?;
                         }
 
-                        ctx.update_subgraph_block_counts()?;
-
                         // Update our copy of the subgraph ptr to reflect the
                         // value it will have after descendant_block is
                         // processed.
@@ -552,32 +553,32 @@ where
             Ok(())
         } else {
             // Synced
-            let ops =
-                SubgraphEntity::write_status_operations(&self.subgraph_id, SubgraphStatus::Synced);
+            let ops = SubgraphDeploymentEntity::update_synced_operations(
+                &self.subgraph_id,
+                self.node_id.clone(),
+                true,
+            );
             self.subgraph_store
                 .apply_entity_operations(ops, EventSource::None)
+                .map_err(|e| format_err!("failed to set deployment synced flag: {}", e))
         }
     }
 
     /// Write latest block counts into subgraph entity based on current value of head and subgraph
     /// block pointers.
-    fn update_subgraph_block_counts(&self) -> Result<(), Error> {
+    fn update_subgraph_block_count(&self) -> Result<(), Error> {
         let head_ptr_opt = self.chain_store.chain_head_ptr()?;
-        let subgraph_ptr = self.subgraph_store.block_ptr(self.subgraph_id.clone())?;
 
         match head_ptr_opt {
             None => Ok(()),
             Some(head_ptr) => {
-                let processed = subgraph_ptr.number;
-                let total = head_ptr.number;
-
-                let ops = SubgraphEntity::write_ethereum_block_counts_operations(
+                let ops = SubgraphStateEntity::update_ethereum_blocks_count_operations(
                     &self.subgraph_id,
-                    processed,
-                    total,
+                    head_ptr.number,
                 );
                 self.subgraph_store
                     .apply_entity_operations(ops, EventSource::None)
+                    .map_err(|e| format_err!("failed to set subgraph block count: {}", e))
             }
         }
     }
@@ -859,6 +860,7 @@ pub struct BlockStreamBuilder<S, C, E> {
     subgraph_store: Arc<S>,
     chain_store: Arc<C>,
     eth_adapter: Arc<E>,
+    node_id: NodeId,
 }
 
 impl<S, C, E> Clone for BlockStreamBuilder<S, C, E> {
@@ -867,6 +869,7 @@ impl<S, C, E> Clone for BlockStreamBuilder<S, C, E> {
             subgraph_store: self.subgraph_store.clone(),
             chain_store: self.chain_store.clone(),
             eth_adapter: self.eth_adapter.clone(),
+            node_id: self.node_id.clone(),
         }
     }
 }
@@ -877,11 +880,17 @@ where
     C: ChainStore,
     E: EthereumAdapter,
 {
-    pub fn new(subgraph_store: Arc<S>, chain_store: Arc<C>, eth_adapter: Arc<E>) -> Self {
+    pub fn new(
+        subgraph_store: Arc<S>,
+        chain_store: Arc<C>,
+        eth_adapter: Arc<E>,
+        node_id: NodeId,
+    ) -> Self {
         BlockStreamBuilder {
             subgraph_store,
             chain_store,
             eth_adapter,
+            node_id,
         }
     }
 }
@@ -895,12 +904,6 @@ where
     type Stream = BlockStream<S, C, E>;
 
     fn from_subgraph(&self, manifest: &SubgraphManifest, logger: Logger) -> Self::Stream {
-        // Add entry to subgraphs table in Store
-        let genesis_block_ptr = self.chain_store.genesis_block_ptr().unwrap();
-        self.subgraph_store
-            .add_subgraph_if_missing(manifest.id.clone(), genesis_block_ptr)
-            .unwrap();
-
         // Listen for chain head block updates
         let mut chain_head_update_listener = self.chain_store.chain_head_updates();
 
@@ -910,6 +913,7 @@ where
             self.subgraph_store.clone(),
             self.chain_store.clone(),
             self.eth_adapter.clone(),
+            self.node_id.clone(),
             manifest.id.clone(),
             log_filter,
             logger,

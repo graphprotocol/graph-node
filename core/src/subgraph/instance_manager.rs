@@ -1,6 +1,5 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use graph::components::subgraph::SubgraphProviderEvent;
-use graph::data::subgraph::schema::SubgraphEntity;
+use graph::data::subgraph::schema::SubgraphStateEntity;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -16,7 +15,7 @@ type InstanceShutdownMap = Arc<RwLock<HashMap<SubgraphId, CancelGuard>>>;
 
 pub struct SubgraphInstanceManager {
     logger: Logger,
-    input: Sender<SubgraphProviderEvent>,
+    input: Sender<SubgraphDeploymentProviderEvent>,
 }
 
 impl SubgraphInstanceManager {
@@ -57,7 +56,7 @@ impl SubgraphInstanceManager {
     /// Handle incoming events from subgraph providers.
     fn handle_subgraph_events<B, S, T>(
         logger: Logger,
-        receiver: Receiver<SubgraphProviderEvent>,
+        receiver: Receiver<SubgraphDeploymentProviderEvent>,
         store: Arc<S>,
         host_builder: T,
         block_stream_builder: B,
@@ -71,7 +70,7 @@ impl SubgraphInstanceManager {
         let instances: InstanceShutdownMap = Default::default();
 
         tokio::spawn(receiver.for_each(move |event| {
-            use self::SubgraphProviderEvent::*;
+            use self::SubgraphDeploymentProviderEvent::*;
 
             match event {
                 SubgraphStart(manifest) => {
@@ -140,6 +139,7 @@ impl SubgraphInstanceManager {
 
         // Request a block stream for this subgraph
         let block_stream_canceler = CancelGuard::new();
+        let block_stream_cancel_handle = block_stream_canceler.handle();
         let block_stream = block_stream_builder
             .from_subgraph(&manifest, logger.clone())
             .from_err()
@@ -163,6 +163,7 @@ impl SubgraphInstanceManager {
                     let id = id_for_block.clone();
                     let instance = instance.clone();
                     let store = store_for_events.clone();
+                    let block_stream_cancel_handle = block_stream_cancel_handle.clone();
                     let logger = block_logger.new(o!(
                         "block_number" => format!("{:?}", block.block.number.unwrap()),
                         "block_hash" => format!("{:?}", block.block.hash.unwrap())
@@ -228,6 +229,11 @@ impl SubgraphInstanceManager {
                             let block_ptr_now = EthereumBlockPointer::to_parent(&block);
                             let block_ptr_after = EthereumBlockPointer::from(&*block);
 
+                            // Avoid writing to store if block stream has been canceled
+                            if block_stream_cancel_handle.is_canceled() {
+                                return Err(CancelableError::Cancel);
+                            }
+
                             info!(
                                 logger,
                                 "Applying {} entity operation(s)",
@@ -236,19 +242,20 @@ impl SubgraphInstanceManager {
 
                             // Transact entity operations into the store and update the
                             // subgraph's block stream pointer
-                            future::result(store.transact_block_operations(
-                                id.clone(),
-                                block_ptr_now,
-                                block_ptr_after,
-                                entity_operations,
-                            ))
-                            .map_err(|e| {
-                                format_err!(
-                                    "Error while processing block stream for a subgraph: {}",
-                                    e
+                            store
+                                .transact_block_operations(
+                                    id.clone(),
+                                    block_ptr_now,
+                                    block_ptr_after,
+                                    entity_operations,
                                 )
-                            })
-                            .from_err()
+                                .map_err(|e| {
+                                    format_err!(
+                                        "Error while processing block stream for a subgraph: {}",
+                                        e
+                                    )
+                                    .into()
+                                })
                         })
                 })
                 .map_err(move |e| match e {
@@ -267,10 +274,8 @@ impl SubgraphInstanceManager {
                         );
 
                         // Set subgraph status to Failed
-                        let status_ops = SubgraphEntity::write_status_operations(
-                            &id_for_err,
-                            SubgraphStatus::Failed,
-                        );
+                        let status_ops =
+                            SubgraphStateEntity::update_failed_operations(&id_for_err, true);
                         if let Err(e) =
                             store_for_errors.apply_entity_operations(status_ops, EventSource::None)
                         {
@@ -296,9 +301,11 @@ impl SubgraphInstanceManager {
     }
 }
 
-impl EventConsumer<SubgraphProviderEvent> for SubgraphInstanceManager {
+impl EventConsumer<SubgraphDeploymentProviderEvent> for SubgraphInstanceManager {
     /// Get the wrapped event sink.
-    fn event_sink(&self) -> Box<Sink<SinkItem = SubgraphProviderEvent, SinkError = ()> + Send> {
+    fn event_sink(
+        &self,
+    ) -> Box<Sink<SinkItem = SubgraphDeploymentProviderEvent, SinkError = ()> + Send> {
         let logger = self.logger.clone();
         Box::new(self.input.clone().sink_map_err(move |e| {
             error!(logger, "Component was dropped: {}", e);

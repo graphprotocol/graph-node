@@ -61,7 +61,7 @@ impl<Q, S> GraphQLServer<Q, S> {
 impl<Q, S> GraphQLServerTrait for GraphQLServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: SubgraphDeploymentStore,
+    S: SubgraphDeploymentStore + Store,
 {
     type ServeError = GraphQLServeError;
 

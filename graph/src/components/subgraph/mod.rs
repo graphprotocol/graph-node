@@ -2,12 +2,12 @@ mod host;
 mod instance;
 mod instance_manager;
 mod provider;
-mod registry;
+mod registrar;
 
 pub use prelude::Entity;
 
 pub use self::host::{RuntimeHost, RuntimeHostBuilder};
 pub use self::instance::SubgraphInstance;
 pub use self::instance_manager::SubgraphInstanceManager;
-pub use self::provider::{SubgraphProvider, SubgraphProviderEvent, SubgraphProviderWithNames};
-pub use self::registry::SubgraphRegistry;
+pub use self::provider::SubgraphDeploymentProvider;
+pub use self::registrar::SubgraphRegistrar;
