@@ -2,6 +2,7 @@ use diesel::dsl::sql;
 use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
+use diesel::r2d2::{self, ConnectionManager, Pool};
 use diesel::sql_types::Text;
 use diesel::{delete, insert_into, select, update};
 use filter::store_filter;
@@ -68,7 +69,7 @@ pub struct Store {
     postgres_url: String,
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
-    pub conn: Arc<Mutex<PgConnection>>,
+    conn: Pool<ConnectionManager<PgConnection>>,
     schema_cache: Mutex<LruCache<SubgraphId, Schema>>,
 }
 
@@ -81,14 +82,25 @@ impl Store {
         // Create a store-specific logger
         let logger = logger.new(o!("component" => "Store"));
 
-        // Connect to Postgres
-        let conn = PgConnection::establish(config.postgres_url.as_str())
-            .expect("failed to connect to Postgres");
+        #[derive(Debug)]
+        struct ErrorHandler(Logger);
+        impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
+            fn handle_error(&self, error: r2d2::Error) {
+                error!(self.0, "Postgres connection error"; "error" => error.to_string())
+            }
+        }
+        let error_handler = Box::new(ErrorHandler(logger.clone()));
 
+        // Connect to Postgres
+        let conn_manager = ConnectionManager::new(config.postgres_url.as_str());
+        let pool = Pool::builder()
+            .error_handler(error_handler)
+            .build(conn_manager)
+            .unwrap();
         info!(logger, "Connected to Postgres"; "url" => &config.postgres_url);
 
         // Create the entities table (if necessary)
-        initiate_schema(&logger, &conn);
+        initiate_schema(&logger, &pool.get().unwrap());
 
         // Listen to entity changes in Postgres
         let mut change_listener = EntityChangeListener::new(config.postgres_url.clone());
@@ -104,7 +116,7 @@ impl Store {
             postgres_url: config.postgres_url.clone(),
             network_name: config.network_name.clone(),
             genesis_block_ptr: (net_identifiers.genesis_block_hash, 0u64).into(),
-            conn: Arc::new(Mutex::new(conn)),
+            conn: pool,
             schema_cache: Mutex::new(LruCache::with_capacity(100)),
         };
 
@@ -134,7 +146,7 @@ impl Store {
         let network_identifiers_opt = ethereum_networks
             .select((net_version, genesis_block_hash))
             .filter(name.eq(&self.network_name))
-            .first::<(Option<String>, Option<String>)>(&*self.conn.lock().unwrap())
+            .first::<(Option<String>, Option<String>)>(&*self.conn.get()?)
             .optional()?;
 
         match network_identifiers_opt {
@@ -151,7 +163,7 @@ impl Store {
                     ))
                     .on_conflict(name)
                     .do_nothing()
-                    .execute(&*self.conn.lock().unwrap())?;
+                    .execute(&*self.conn.get()?)?;
             }
 
             // Network is in database and has identifiers
@@ -184,7 +196,7 @@ impl Store {
                             .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
                     ))
                     .filter(name.eq(&self.network_name))
-                    .execute(&*self.conn.lock().unwrap())?;
+                    .execute(&*self.conn.get()?)?;
             }
         }
 
@@ -496,7 +508,7 @@ impl StoreTrait for Store {
             ))
             .on_conflict(id)
             .do_nothing()
-            .execute(&*self.conn.lock().unwrap())
+            .execute(&*self.conn.get()?)
             .map_err(Error::from)
             .map(|_| ())
     }
@@ -507,7 +519,7 @@ impl StoreTrait for Store {
         subgraphs
             .select((latest_block_hash, latest_block_number))
             .filter(id.eq(subgraph_id.to_string()))
-            .first::<(String, i64)>(&*self.conn.lock().unwrap())
+            .first::<(String, i64)>(&*self.conn.get()?)
             .map(|(hash, number)| {
                 (
                     hash.parse()
@@ -520,7 +532,10 @@ impl StoreTrait for Store {
     }
 
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .get()
+            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         self.get_entity(&*conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
     }
 
@@ -579,8 +594,12 @@ impl StoreTrait for Store {
         }
 
         // Process results; deserialize JSON data
+        let conn = self
+            .conn
+            .get()
+            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         diesel_query
-            .load::<serde_json::Value>(&*self.conn.lock().unwrap())
+            .load::<serde_json::Value>(&*conn)
             .map(|values| {
                 values
                     .into_iter()
@@ -598,7 +617,7 @@ impl StoreTrait for Store {
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), Error> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.get()?;
         self.update_subgraph_block_pointer(&*conn, subgraph_id, block_ptr_from, block_ptr_to)
     }
 
@@ -624,7 +643,7 @@ impl StoreTrait for Store {
         // Fold the operations of each entity into a single one
         let operations = EntityOperation::fold(&operations);
 
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.get()?;
 
         conn.transaction(|| {
             let event_source = EventSource::EthereumBlock(block_ptr_to);
@@ -638,7 +657,7 @@ impl StoreTrait for Store {
         operations: Vec<EntityOperation>,
         event_source: EventSource,
     ) -> Result<(), Error> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.get()?;
         conn.transaction(|| self.apply_entity_operations_with_conn(&conn, operations, event_source))
     }
 
@@ -659,7 +678,7 @@ impl StoreTrait for Store {
             &block_ptr_to.hash_hex(),
             subgraph_id.to_string(),
         ))
-        .execute(&*self.conn.lock().unwrap())
+        .execute(&*self.conn.get()?)
         .map_err(|e| format_err!("Error reverting block: {}", e))
         .map(|_| ())
     }
@@ -695,7 +714,7 @@ impl StoreTrait for Store {
         let count: i64 = entities
             .filter(subgraph.eq(subgraph_id.to_string()))
             .count()
-            .get_result(&*self.conn.lock().unwrap())?;
+            .get_result(&*self.conn.get()?)?;
         Ok(count as u64)
     }
 }
@@ -713,7 +732,7 @@ impl SubgraphDeploymentStore for Store {
                 subgraph_deployments::subgraph_id,
             ))
             .filter(subgraph_deployments::node_id.eq(node_id.to_string()))
-            .load::<(String, String)>(&*self.conn.lock().unwrap())
+            .load::<(String, String)>(&*self.conn.get()?)
             .map_err(Error::from)
             .map(|rows| {
                 rows.into_iter()
@@ -748,7 +767,7 @@ impl SubgraphDeploymentStore for Store {
                 subgraph_deployments::subgraph_id.eq(subgraph_id.to_string()),
                 subgraph_deployments::node_id.eq(node_id.to_string()),
             ))
-            .execute(&*self.conn.lock().unwrap())
+            .execute(&*self.conn.get()?)
             .map_err(Error::from)
             .map(|_| ())
     }
@@ -762,7 +781,7 @@ impl SubgraphDeploymentStore for Store {
                 subgraph_deployments::node_id,
             ))
             .filter(subgraph_deployments::deployment_name.eq(name.to_string()))
-            .first::<(String, String)>(&*self.conn.lock().unwrap())
+            .first::<(String, String)>(&*self.conn.get()?)
             .optional()
             .map_err(Error::from)
             .map(|row_opt| {
@@ -779,7 +798,7 @@ impl SubgraphDeploymentStore for Store {
         use db_schema::subgraph_deployments;
 
         delete(subgraph_deployments::table.find(name.to_string()))
-            .execute(&*self.conn.lock().unwrap())
+            .execute(&*self.conn.get()?)
             .map(|row_count| match row_count {
                 0 => false,
                 1 => true,
@@ -840,7 +859,7 @@ impl SubgraphDeploymentStore for Store {
 
         let deployment_count = subgraph_deployments
             .filter(subgraph_id.eq(id.to_string()))
-            .execute(&*self.conn.lock().unwrap())?;
+            .execute(&*self.conn.get()?)?;
         Ok(match deployment_count {
             0 => false,
             1 => true,
@@ -927,7 +946,7 @@ impl ChainStore for Store {
                 .on_conflict(hash)
                 .do_update()
                 .set(values)
-                .execute(&*conn.lock().unwrap())
+                .execute(&*conn.get().map_err(Error::from)?)
                 .map_err(Error::from)
                 .map_err(E::from)
                 .map(|_| ())
@@ -940,7 +959,7 @@ impl ChainStore for Store {
             &self.network_name,
             ancestor_count as i64,
         ))
-        .load(&*self.conn.lock().unwrap())
+        .load(&*self.conn.get()?)
         .map_err(Error::from)
         // We got a single return value, but it's returned generically as a set of rows
         .map(|mut rows: Vec<_>| {
@@ -967,7 +986,7 @@ impl ChainStore for Store {
         ethereum_networks
             .select((head_block_hash, head_block_number))
             .filter(name.eq(&self.network_name))
-            .load::<(Option<String>, Option<i64>)>(&*self.conn.lock().unwrap())
+            .load::<(Option<String>, Option<i64>)>(&*self.conn.get()?)
             .map(|rows| {
                 rows.first()
                     .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
@@ -987,7 +1006,7 @@ impl ChainStore for Store {
             .select(data)
             .filter(network_name.eq(&self.network_name))
             .filter(hash.eq(format!("{:x}", block_hash)))
-            .load::<serde_json::Value>(&*self.conn.lock().unwrap())
+            .load::<serde_json::Value>(&*self.conn.get()?)
             .map(|json_blocks| match json_blocks.len() {
                 0 => None,
                 1 => Some(
@@ -1009,7 +1028,7 @@ impl ChainStore for Store {
         }
 
         select(lookup_ancestor_block(block_ptr.hash_hex(), offset as i64))
-            .first::<Option<serde_json::Value>>(&*self.conn.lock().unwrap())
+            .first::<Option<serde_json::Value>>(&*self.conn.get()?)
             .map(|val_opt| {
                 val_opt.map(|val| {
                     serde_json::from_value::<EthereumBlock>(val)

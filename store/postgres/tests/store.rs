@@ -248,29 +248,28 @@ fn delete_entity() {
     run_test(|store| -> Result<(), ()> {
         use db_schema::entities::dsl::*;
 
+        let entity_key = EntityKey {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            entity_id: "3".to_owned(),
+        };
+
+        // Check that there is an entity to remove.
+        store.get(entity_key.clone()).unwrap().unwrap();
+
         store
             .transact_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
                 *TEST_BLOCK_3_PTR,
                 *TEST_BLOCK_4_PTR,
                 vec![EntityOperation::Remove {
-                    key: EntityKey {
-                        subgraph_id: TEST_SUBGRAPH_ID.clone(),
-                        entity_type: "user".to_owned(),
-                        entity_id: "3".to_owned(),
-                    },
+                    key: entity_key.clone(),
                 }],
             )
             .unwrap();
 
-        // Get all ids in table
-        let all_ids = entities
-            .select(id)
-            .load::<String>(&*store.conn.lock().unwrap())
-            .unwrap();
-
         // Check that that the deleted entity id is not present
-        assert!(!all_ids.contains(&"3".to_owned()));
+        assert!(store.get(entity_key).unwrap().is_none());
 
         Ok(())
     })
@@ -311,6 +310,11 @@ fn insert_entity() {
     run_test(|store| -> Result<(), ()> {
         use db_schema::entities::dsl::*;
 
+        let entity_key = EntityKey {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            entity_id: "7".to_owned(),
+        };
         let test_entity = create_test_entity(
             "7",
             "user",
@@ -330,11 +334,7 @@ fn insert_entity() {
             .unwrap();
 
         // Check that new record is in the store
-        let all_ids = entities
-            .select(id)
-            .load::<String>(&*store.conn.lock().unwrap())
-            .unwrap();
-        assert!(all_ids.iter().any(|x| x == &"7".to_owned()));
+        store.get(entity_key).unwrap().unwrap();
 
         Ok(())
     })
