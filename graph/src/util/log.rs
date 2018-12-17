@@ -5,7 +5,7 @@ use slog_async;
 use slog_envlogger;
 use slog_term;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{env, panic, process, thread};
 
 pub fn logger(show_debug: bool) -> Logger {
