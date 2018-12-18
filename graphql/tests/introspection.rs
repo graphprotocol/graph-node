@@ -42,10 +42,8 @@ impl Resolver for MockResolver {
 /// Creates a basic GraphQL schema that exercies scalars, directives,
 /// enums, interfaces, input objects, object types and field arguments.
 fn mock_schema() -> Schema {
-    Schema {
-        id: SubgraphId::new("mockschema").unwrap(),
-        document: graphql_parser::parse_schema(
-            "
+    Schema::parse(
+        "
              scalar String
              scalar ID
 
@@ -62,7 +60,7 @@ fn mock_schema() -> Schema {
                id: ID!
              }
 
-             type User implements Node {
+             type User implements Node @entity {
                id: ID!
                name: String! @language(language: \"English\")
                role: Role!
@@ -78,14 +76,14 @@ fn mock_schema() -> Schema {
                name_not: String,
              }
 
-             type Query {
+             type Query @entity {
                allUsers(orderBy: User_orderBy, filter: User_filter): [User!]
                User: User
              }
              ",
-        )
-        .unwrap(),
-    }
+        SubgraphId::new("mockschema").unwrap(),
+    )
+    .unwrap()
 }
 
 /// Builds the expected result for GraphiQL's introspection query that we are
@@ -884,7 +882,7 @@ enum VoteOption {
   voteOption_voteAgainst
 }
 
-type Vote {
+type Vote @entity {
   vote_secretHash: String
   vote_option: VoteOption
   vote_amount: Int
@@ -893,7 +891,7 @@ type Vote {
   vote_reward: Int
 }
 
-type Meme implements RegEntry {
+type Meme implements RegEntry @entity {
   regEntry_address: ID
   regEntry_version: Int
   regEntry_status: RegEntryStatus
@@ -928,12 +926,12 @@ type Meme implements RegEntry {
   meme_tags: [Tag]
 }
 
-type Tag {
+type Tag  @entity {
   tag_id: ID
   tag_name: String
 }
 
-type MemeToken {
+type MemeToken @entity {
   memeToken_tokenId: ID
   memeToken_number: Int
   memeToken_owner: User
@@ -946,7 +944,7 @@ enum MemeAuctionStatus {
   memeAuction_status_done
 }
 
-type MemeAuction {
+type MemeAuction @entity {
   memeAuction_address: ID
   memeAuction_seller: User
   memeAuction_buyer: User
@@ -959,7 +957,7 @@ type MemeAuction {
   memeAuction_memeToken: MemeToken
 }
 
-type ParamChange implements RegEntry {
+type ParamChange implements RegEntry @entity {
   regEntry_address: ID
   regEntry_version: Int
   regEntry_status: RegEntryStatus
@@ -988,7 +986,7 @@ type ParamChange implements RegEntry {
   paramChange_appliedOn: String
 }
 
-type User {
+type User @entity {
   # Ethereum address of an user
   user_address: ID
   # Total number of memes submitted by user
@@ -1029,7 +1027,7 @@ type User {
   user_curatorRank: Int
 }
 
-type Parameter {
+type Parameter @entity {
   param_db: ID
   param_key: ID
   param_value: Int
@@ -1038,13 +1036,9 @@ type Parameter {
 
 #[test]
 fn successfully_runs_introspection_query_against_complex_schema() {
-    let document = graphql_parser::parse_schema(COMPLEX_SCHEMA).unwrap();
-    let api_document = api_schema(&document).unwrap();
-
-    let schema = Schema {
-        id: SubgraphId::new("complexschema").unwrap(),
-        document: api_document,
-    };
+    let mut schema =
+        Schema::parse(COMPLEX_SCHEMA, SubgraphId::new("complexschema").unwrap()).unwrap();
+    schema.document = api_schema(&schema.document).unwrap();
 
     let result = introspection_query(
         schema.clone(),
@@ -1147,14 +1141,10 @@ fn successfully_runs_introspection_query_against_complex_schema() {
 }
 
 #[test]
-fn instrospection_possible_types() {
-    let document = graphql_parser::parse_schema(COMPLEX_SCHEMA).unwrap();
-    let api_document = api_schema(&document).unwrap();
-
-    let schema = Schema {
-        id: SubgraphId::new("complexschema").unwrap(),
-        document: api_document,
-    };
+fn introspection_possible_types() {
+    let mut schema =
+        Schema::parse(COMPLEX_SCHEMA, SubgraphId::new("complexschema").unwrap()).unwrap();
+    schema.document = api_schema(&schema.document).unwrap();
 
     // Test "possibleTypes" introspection in interfaces
     let response = introspection_query(

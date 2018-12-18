@@ -68,10 +68,7 @@ mod test {
     use graph_mock::MockStore;
 
     fn mock_store(id: SubgraphId) -> Arc<MockStore> {
-        let schema = Schema {
-            id: id.clone(),
-            document: Default::default(),
-        };
+        let schema = Schema::parse("scalar Foo", id.clone()).unwrap();
         Arc::new(MockStore::new(vec![(id, schema)]))
     }
 
