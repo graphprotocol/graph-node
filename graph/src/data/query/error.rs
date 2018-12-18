@@ -44,6 +44,7 @@ pub enum QueryExecutionError {
     AttributeTypeError(String, String),
     EntityParseError(String),
     StoreError(failure::Error),
+    MissingNameInTypeIntrospection,
 }
 
 impl Error for QueryExecutionError {
@@ -150,6 +151,9 @@ impl fmt::Display for QueryExecutionError {
             }
             StoreError(e) => {
                 write!(f, "Store error: {}", e)
+            }
+            MissingNameInTypeIntrospection => {
+                write!(f, "Name missing in `__type(name: String!)` query")
             }
         }
     }

@@ -113,7 +113,7 @@ fn resolve_field_stream<'a, R1, R2>(
     ctx: &'a ExecutionContext<'a, R1, R2>,
     object_type: &'a s::ObjectType,
     field: &'a q::Field,
-    _argument_values: HashMap<&q::Name, q::Value>,
+    _argument_values: HashMap<q::Name, q::Value>,
 ) -> Result<EntityChangeStream, SubscriptionError>
 where
     R1: Resolver,

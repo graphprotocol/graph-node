@@ -457,15 +457,13 @@ impl<'a> IntrospectionResolver<'a> {
         ])
     }
 
-    fn type_object(&self, arguments: &HashMap<&q::Name, q::Value>) -> q::Value {
-        arguments
-            .get(&String::from("name"))
-            .and_then(|value| match value {
-                q::Value::String(s) => Some(s),
-                _ => None,
-            })
-            .and_then(|name| self.type_objects.get(name).cloned())
-            .unwrap_or(q::Value::Null)
+    fn type_object(&self, name: &q::Value) -> q::Value {
+        match name {
+            q::Value::String(s) => Some(s),
+            _ => None,
+        }
+        .and_then(|name| self.type_objects.get(name).cloned())
+        .unwrap_or(q::Value::Null)
     }
 }
 
@@ -477,7 +475,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         field: &q::Name,
         _field_definition: &s::Field,
         _object_type: &s::ObjectType,
-        _arguments: &HashMap<&q::Name, q::Value>,
+        _arguments: &HashMap<q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         match field.as_str() {
             "possibleTypes" => {
@@ -514,11 +512,16 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         field: &q::Name,
         _field_definition: &s::Field,
         _object_type: &s::ObjectType,
-        arguments: &HashMap<&q::Name, q::Value>,
+        arguments: &HashMap<q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         let object = match field.as_str() {
             "__schema" => self.schema_object(),
-            "__type" => self.type_object(arguments),
+            "__type" => {
+                let name = arguments
+                    .get(&String::from("name"))
+                    .ok_or(QueryExecutionError::MissingNameInTypeIntrospection)?;
+                self.type_object(name)
+            }
             "type" => object_field(parent, "type")
                 .and_then(|value| match value {
                     q::Value::String(type_name) => self.type_objects.get(type_name).cloned(),
