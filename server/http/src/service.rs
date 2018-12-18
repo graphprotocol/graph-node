@@ -61,13 +61,29 @@ where
                 .and_then(
                     move |mut subgraph_name_mappings| -> GraphQLServiceResponse {
                         // If there is only one subgraph, redirect to it
-                        if subgraph_name_mappings.len() == 1 {
-                            let (name, _subgraph_id) = subgraph_name_mappings.pop().unwrap();
-                            return service
-                                .handle_temp_redirect(&format!("/subgraphs/name/{}", name));
+                        match subgraph_name_mappings.len() {
+                            0 => Box::new(future::ok(
+                                Response::builder()
+                                    .status(200)
+                                    .body(Body::from(String::from("No subgraphs deployed yet")))
+                                    .unwrap(),
+                            )),
+                            1 => {
+                                let (name, _subgraph_id) = subgraph_name_mappings.pop().unwrap();
+                                return service
+                                    .handle_temp_redirect(&format!("/subgraphs/name/{}", name));
+                            }
+                            _ => Box::new(future::ok(
+                                Response::builder()
+                                    .status(200)
+                                    .body(Body::from(String::from(
+                                        "Multiple subgraphs deployed. \
+                                         Try /subgraphs/id/<ID> or \
+                                         /subgraphs/name/<NAME>",
+                                    )))
+                                    .unwrap(),
+                            )),
                         }
-
-                        service.handle_not_found()
                     },
                 ),
         )
