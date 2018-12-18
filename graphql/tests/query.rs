@@ -15,7 +15,7 @@ use graph::prelude::*;
 use graph_graphql::prelude::*;
 
 fn test_schema() -> Schema {
-    let schema = Schema::parse(
+    let mut schema = Schema::parse(
         "
             type Musician @entity {
                 id: ID!
@@ -41,12 +41,9 @@ fn test_schema() -> Schema {
     )
     .expect("Test schema invalid");
 
-    let api_document =
+    schema.document =
         api_schema(&schema.document).expect("Failed to derive API schema from test schema");
-    Schema {
-        id: schema.id,
-        document: api_document,
-    }
+    schema
 }
 
 #[derive(Clone)]

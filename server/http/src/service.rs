@@ -299,7 +299,6 @@ where
 #[cfg(test)]
 mod tests {
     use graph_mock::MockStore;
-    use graphql_parser;
     use graphql_parser::query as q;
     use http::status::StatusCode;
     use hyper::service::Service;
@@ -336,16 +335,14 @@ mod tests {
     #[test]
     fn posting_invalid_query_yields_error_response() {
         let id = SubgraphId::new("testschema").unwrap();
-        let schema = Schema {
-            id: id.clone(),
-            document: graphql_parser::parse_schema(
-                "\
-                 scalar String \
-                 type Query { name: String } \
-                 ",
-            )
-            .unwrap(),
-        };
+        let schema = Schema::parse(
+            "\
+             scalar String \
+             type Query @entity { name: String } \
+             ",
+            id.clone(),
+        )
+        .unwrap();
         let graphql_runner = Arc::new(TestGraphQlRunner);
         let store = Arc::new(MockStore::new(vec![(id.clone(), schema)]));
         let node_id = NodeId::new("test").unwrap();
@@ -377,17 +374,14 @@ mod tests {
     #[test]
     fn posting_valid_queries_yields_result_response() {
         let id = SubgraphId::new("testschema").unwrap();
-        let schema = Schema {
-            id: id.clone(),
-            document: graphql_parser::parse_schema(
-                "\
-                 scalar String \
-                 type Query { name: String } \
-                 ",
-            )
-            .unwrap(),
-        };
-
+        let schema = Schema::parse(
+            "\
+             scalar String \
+             type Query @entity { name: String } \
+             ",
+            id.clone(),
+        )
+        .unwrap();
         let graphql_runner = Arc::new(TestGraphQlRunner);
         let store = Arc::new(MockStore::new(vec![(id.clone(), schema)]));
         let mut runtime = tokio::runtime::Runtime::new().unwrap();

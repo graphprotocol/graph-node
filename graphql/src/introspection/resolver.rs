@@ -179,16 +179,15 @@ fn interface_type_object(
         (
             "possibleTypes",
             q::Value::List(
-                sast::get_object_type_definitions(&schema.document)
-                    .iter()
-                    .filter(|object_type| {
-                        object_type
-                            .implements_interfaces
+                schema
+                    .type_for_interface(&interface_type.name)
+                    .map(|types| {
+                        types
                             .iter()
-                            .any(|implemented_name| implemented_name == &interface_type.name)
+                            .map(|object_type| q::Value::String(object_type.name.to_owned()))
+                            .collect()
                     })
-                    .map(|object_type| q::Value::String(object_type.name.to_owned()))
-                    .collect(),
+                    .unwrap_or_default(),
             ),
         ),
     ])

@@ -8,10 +8,8 @@ mod block_stream;
 mod graphql;
 mod server;
 mod store;
-mod subgraph;
 
 pub use self::block_stream::{MockBlockStream, MockBlockStreamBuilder};
 pub use self::graphql::MockGraphQlRunner;
 pub use self::server::MockGraphQLServer;
 pub use self::store::{FakeStore, MockStore};
-pub use self::subgraph::MockSubgraphProvider;
