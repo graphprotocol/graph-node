@@ -22,7 +22,7 @@ impl Resolver for MockResolver {
         _field: &q::Name,
         _field_definition: &s::Field,
         _object_type: &s::ObjectType,
-        _arguments: &HashMap<&q::Name, q::Value>,
+        _arguments: &HashMap<q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }
@@ -33,7 +33,7 @@ impl Resolver for MockResolver {
         _field: &q::Name,
         _field_definition: &s::Field,
         _object_type: &s::ObjectType,
-        _arguments: &HashMap<&q::Name, q::Value>,
+        _arguments: &HashMap<q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }
@@ -847,9 +847,7 @@ fn satisfies_graphiql_introspection_query_with_fragments() {
     assert_eq!(data, expected_mock_schema_introspection());
 }
 
-#[test]
-fn successfully_runs_introspection_query_against_complex_schema() {
-    let complex_schema = "
+const COMPLEX_SCHEMA: &str = "
 enum RegEntryStatus {
   regEntry_status_challengePeriod
   regEntry_status_commitPeriod
@@ -1038,7 +1036,9 @@ type Parameter {
 }
 ";
 
-    let document = graphql_parser::parse_schema(complex_schema).unwrap();
+#[test]
+fn successfully_runs_introspection_query_against_complex_schema() {
+    let document = graphql_parser::parse_schema(COMPLEX_SCHEMA).unwrap();
     let api_document = api_schema(&document).unwrap();
 
     let schema = Schema {
@@ -1047,7 +1047,7 @@ type Parameter {
     };
 
     let result = introspection_query(
-        schema,
+        schema.clone(),
         "
         query IntrospectionQuery {
           __schema {
@@ -1144,4 +1144,47 @@ type Parameter {
     );
 
     assert!(result.errors.is_none(), format!("{:#?}", result.errors));
+}
+
+#[test]
+fn instrospection_possible_types() {
+    let document = graphql_parser::parse_schema(COMPLEX_SCHEMA).unwrap();
+    let api_document = api_schema(&document).unwrap();
+
+    let schema = Schema {
+        id: SubgraphId::new("complexschema").unwrap(),
+        document: api_document,
+    };
+
+    // Test "possibleTypes" introspection in interfaces
+    let response = introspection_query(
+        schema,
+        "query {
+          __type(name: \"RegEntry\") {
+              name
+              possibleTypes {
+                name
+              }
+          }
+        }",
+    )
+    .data
+    .unwrap();
+
+    assert_eq!(
+        response,
+        object_value(vec![(
+            "__type",
+            object_value(vec![
+                ("name", q::Value::String("RegEntry".to_string())),
+                (
+                    "possibleTypes",
+                    q::Value::List(vec![
+                        object_value(vec![("name", q::Value::String("Meme".to_owned()))]),
+                        object_value(vec![("name", q::Value::String("ParamChange".to_owned()))])
+                    ])
+                )
+            ])
+        )])
+    )
 }

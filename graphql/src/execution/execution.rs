@@ -119,6 +119,12 @@ where
                     errors.append(&mut e);
                 }
             };
+        } else {
+            errors.push(QueryExecutionError::UnknownField(
+                fields[0].position,
+                object_type.name.clone(),
+                fields[0].name.clone(),
+            ))
         }
     }
 
