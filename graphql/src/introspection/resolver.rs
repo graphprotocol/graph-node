@@ -1,4 +1,4 @@
-use graphql_parser::{query as q, schema as s};
+use graphql_parser::{query as q, schema as s, Pos};
 use std::collections::{BTreeMap, HashMap};
 
 use graph::prelude::*;
@@ -516,9 +516,12 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         let object = match field.as_str() {
             "__schema" => self.schema_object(),
             "__type" => {
-                let name = arguments
-                    .get(&String::from("name"))
-                    .ok_or(QueryExecutionError::MissingNameInTypeIntrospection)?;
+                let name = arguments.get(&String::from("name")).ok_or_else(|| {
+                    QueryExecutionError::MissingArgumentError(
+                        Pos::default(),
+                        "missing argument `name` in `__type(name: String!)`".to_owned(),
+                    )
+                })?;
                 self.type_object(name)
             }
             "type" => object_field(parent, "type")
