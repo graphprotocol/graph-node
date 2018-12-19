@@ -47,15 +47,6 @@ impl Schema {
         self.types_for_interface.get(interface_name)
     }
 
-    // #[cfg(test)]
-    // pub fn new(id: SubgraphId, document: Schema::Document) -> Self {
-    //     Schema {
-    //         id,
-    //         document,
-    //         types_for_interface: BTreeMap::new(),
-    //     }
-    // }
-
     // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the schema.
     fn add_subgraph_id_directives(&mut self, id: SubgraphId) {
         for definition in self.document.definitions.iter_mut() {
