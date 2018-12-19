@@ -7,7 +7,7 @@ use std::mem::discriminant;
 /// Builds a EntityQuery from GraphQL arguments.
 pub fn build_query(
     entity: &s::ObjectType,
-    arguments: &HashMap<q::Name, q::Value>,
+    arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<EntityQuery, QueryExecutionError> {
     Ok(EntityQuery {
         subgraph_id: parse_subgraph_id(entity)?,
@@ -21,7 +21,7 @@ pub fn build_query(
 
 /// Parses GraphQL arguments into a EntityRange, if present.
 fn build_range(
-    arguments: &HashMap<q::Name, q::Value>,
+    arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<Option<EntityRange>, QueryExecutionError> {
     let first = arguments
         .get(&"first".to_string())
@@ -77,7 +77,7 @@ fn build_range(
 /// Parses GraphQL arguments into a EntityFilter, if present.
 fn build_filter(
     entity: &s::ObjectType,
-    arguments: &HashMap<q::Name, q::Value>,
+    arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     match arguments.get(&"where".to_string()) {
         Some(value) => match value {
@@ -161,7 +161,7 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
 /// Parses GraphQL arguments into an field name to order by, if present.
 fn build_order_by(
     entity: &s::ObjectType,
-    arguments: &HashMap<q::Name, q::Value>,
+    arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     arguments
         .get(&"orderBy".to_string())
@@ -185,7 +185,7 @@ fn build_order_by(
 
 /// Parses GraphQL arguments into a EntityOrder, if present.
 fn build_order_direction(
-    arguments: &HashMap<q::Name, q::Value>,
+    arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<Option<EntityOrder>, QueryExecutionError> {
     Ok(arguments
         .get(&"orderDirection".to_string())
@@ -384,7 +384,7 @@ mod tests {
             build_query(
                 &default_object(),
                 &HashMap::from_iter(
-                    vec![("orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
+                    vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
                 )
             )
             .unwrap()
@@ -395,7 +395,7 @@ mod tests {
             build_query(
                 &default_object(),
                 &HashMap::from_iter(
-                    vec![("orderBy".to_string(), q::Value::Enum("email".to_string()))].into_iter()
+                    vec![(&"orderBy".to_string(), q::Value::Enum("email".to_string()))].into_iter()
                 )
             )
             .unwrap()
@@ -410,7 +410,8 @@ mod tests {
             build_query(
                 &default_object(),
                 &HashMap::from_iter(
-                    vec![("orderBy".to_string(), q::Value::String("name".to_string()))].into_iter()
+                    vec![(&"orderBy".to_string(), q::Value::String("name".to_string()))]
+                        .into_iter()
                 ),
             )
             .unwrap()
@@ -421,8 +422,11 @@ mod tests {
             build_query(
                 &default_object(),
                 &HashMap::from_iter(
-                    vec![("orderBy".to_string(), q::Value::String("email".to_string()),)]
-                        .into_iter(),
+                    vec![(
+                        &"orderBy".to_string(),
+                        q::Value::String("email".to_string()),
+                    )]
+                    .into_iter(),
                 )
             )
             .unwrap()
@@ -438,7 +442,7 @@ mod tests {
                 &default_object(),
                 &HashMap::from_iter(
                     vec![(
-                        "orderDirection".to_string(),
+                        &"orderDirection".to_string(),
                         q::Value::Enum("asc".to_string()),
                     )]
                     .into_iter(),
@@ -453,7 +457,7 @@ mod tests {
                 &default_object(),
                 &HashMap::from_iter(
                     vec![(
-                        "orderDirection".to_string(),
+                        &"orderDirection".to_string(),
                         q::Value::Enum("desc".to_string()),
                     )]
                     .into_iter()
@@ -468,7 +472,7 @@ mod tests {
                 &default_object(),
                 &HashMap::from_iter(
                     vec![(
-                        "orderDirection".to_string(),
+                        &"orderDirection".to_string(),
                         q::Value::Enum("ascending...".to_string()),
                     )]
                     .into_iter()
@@ -487,7 +491,7 @@ mod tests {
                 &default_object(),
                 &HashMap::from_iter(
                     vec![(
-                        "orderDirection".to_string(),
+                        &"orderDirection".to_string(),
                         q::Value::String("asc".to_string()),
                     )]
                     .into_iter()
@@ -502,7 +506,7 @@ mod tests {
                 &default_object(),
                 &HashMap::from_iter(
                     vec![(
-                        "orderDirection".to_string(),
+                        &"orderDirection".to_string(),
                         q::Value::String("desc".to_string()),
                     )]
                     .into_iter(),
@@ -530,7 +534,7 @@ mod tests {
             build_query(
                 &default_object(),
                 &HashMap::from_iter(
-                    vec![("skip".to_string(), q::Value::Int(q::Number::from(50)))].into_iter()
+                    vec![(&"skip".to_string(), q::Value::Int(q::Number::from(50)))].into_iter()
                 )
             )
             .unwrap()
@@ -548,7 +552,7 @@ mod tests {
             build_query(
                 &default_object(),
                 &HashMap::from_iter(
-                    vec![("first".to_string(), q::Value::Int(q::Number::from(70)))].into_iter()
+                    vec![(&"first".to_string(), q::Value::Int(q::Number::from(70)))].into_iter()
                 )
             )
             .unwrap()
@@ -567,7 +571,7 @@ mod tests {
                 },
                 &HashMap::from_iter(
                     vec![(
-                        "where".to_string(),
+                        &"where".to_string(),
                         q::Value::Object(BTreeMap::from_iter(vec![(
                             "name_ends_with".to_string(),
                             q::Value::String("ello".to_string()),

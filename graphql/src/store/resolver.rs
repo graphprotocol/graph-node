@@ -227,7 +227,7 @@ where
         _field: &q::Name,
         field_definition: &s::Field,
         object_type: &s::ObjectType,
-        arguments: &HashMap<q::Name, q::Value>,
+        arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         let mut query = build_query(&object_type, arguments)?;
 
@@ -263,7 +263,7 @@ where
         field: &q::Name,
         field_definition: &s::Field,
         object_type: &s::ObjectType,
-        arguments: &HashMap<q::Name, q::Value>,
+        arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         let id = arguments.get(&"id".to_string()).and_then(|id| match id {
             q::Value::String(s) => Some(s),

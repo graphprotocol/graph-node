@@ -13,7 +13,7 @@ pub trait Resolver: Clone + Send + Sync {
         field: &q::Name,
         field_definition: &s::Field,
         object_type: &s::ObjectType,
-        arguments: &HashMap<q::Name, q::Value>,
+        arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an entity referenced by a parent object.
@@ -23,7 +23,7 @@ pub trait Resolver: Clone + Send + Sync {
         field: &q::Name,
         field_definition: &s::Field,
         object_type: &s::ObjectType,
-        arguments: &HashMap<q::Name, q::Value>,
+        arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an enum value for a given enum type.
