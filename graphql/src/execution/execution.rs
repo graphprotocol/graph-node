@@ -315,7 +315,7 @@ fn resolve_field_value<'a, R1, R2>(
     field: &q::Field,
     field_definition: &s::Field,
     field_type: &s::Type,
-    argument_values: &HashMap<q::Name, q::Value>,
+    argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R1: Resolver,
@@ -360,7 +360,7 @@ fn resolve_field_value_for_named_type<'a, R1, R2>(
     field: &q::Field,
     field_definition: &s::Field,
     type_name: &s::Name,
-    argument_values: &HashMap<q::Name, q::Value>,
+    argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R1: Resolver,
@@ -452,7 +452,7 @@ fn resolve_field_value_for_list_type<'a, R1, R2>(
     field: &q::Field,
     field_definition: &s::Field,
     inner_type: &s::Type,
-    argument_values: &HashMap<q::Name, q::Value>,
+    argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R1: Resolver,
@@ -722,10 +722,10 @@ fn merge_selection_sets(fields: Vec<&q::Field>) -> q::SelectionSet {
 
 /// Coerces argument values into GraphQL values.
 pub fn coerce_argument_values<'a, R1, R2>(
-    ctx: ExecutionContext<'a, R1, R2>,
-    object_type: &s::ObjectType,
+    ctx: ExecutionContext<'_, R1, R2>,
+    object_type: &'a s::ObjectType,
     field: &q::Field,
-) -> Result<HashMap<q::Name, q::Value>, Vec<QueryExecutionError>>
+) -> Result<HashMap<&'a q::Name, q::Value>, Vec<QueryExecutionError>>
 where
     R1: Resolver,
     R2: Resolver,
@@ -734,7 +734,7 @@ where
     let mut errors = vec![];
 
     if let Some(argument_definitions) = sast::get_argument_definitions(object_type, &field.name) {
-        for argument_def in argument_definitions.into_iter() {
+        for argument_def in argument_definitions {
             // Look up the argument value, resolve it if it is a variable
             let mut value: Option<&q::Value> =
                 qast::get_argument_value(&field.arguments, &argument_def.name);
@@ -747,7 +747,7 @@ where
 
             if value.is_none() && argument_def.default_value.is_some() {
                 coerced_values.insert(
-                    argument_def.name,
+                    &argument_def.name,
                     argument_def.default_value.to_owned().unwrap(),
                 );
             } else if sast::is_non_null_type(&argument_def.value_type)
@@ -767,10 +767,10 @@ where
                 }
             } else if let Some(val) = value {
                 if val == &q::Value::Null || is_variable {
-                    coerced_values.insert(argument_def.name, val.to_owned());
+                    coerced_values.insert(&argument_def.name, val.to_owned());
                 } else {
                     let value = coerce_argument_value(ctx.clone(), field, &argument_def, val)?;
-                    coerced_values.insert(argument_def.name, value);
+                    coerced_values.insert(&argument_def.name, value);
                 }
             }
         }

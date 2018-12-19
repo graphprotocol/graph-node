@@ -22,7 +22,7 @@ impl Resolver for MockResolver {
         _field: &q::Name,
         _field_definition: &s::Field,
         _object_type: &s::ObjectType,
-        _arguments: &HashMap<q::Name, q::Value>,
+        _arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }
@@ -33,7 +33,7 @@ impl Resolver for MockResolver {
         _field: &q::Name,
         _field_definition: &s::Field,
         _object_type: &s::ObjectType,
-        _arguments: &HashMap<q::Name, q::Value>,
+        _arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }

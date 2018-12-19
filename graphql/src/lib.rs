@@ -6,6 +6,7 @@ extern crate inflector;
 extern crate serde;
 #[macro_use]
 extern crate failure;
+extern crate lazy_static;
 
 /// Utilities for working with GraphQL schemas.
 pub mod schema;

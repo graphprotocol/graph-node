@@ -474,7 +474,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         field: &q::Name,
         _field_definition: &s::Field,
         _object_type: &s::ObjectType,
-        _arguments: &HashMap<q::Name, q::Value>,
+        _arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         match field.as_str() {
             "possibleTypes" => {
@@ -511,7 +511,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         field: &q::Name,
         _field_definition: &s::Field,
         _object_type: &s::ObjectType,
-        arguments: &HashMap<q::Name, q::Value>,
+        arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         let object = match field.as_str() {
             "__schema" => self.schema_object(),

@@ -1,6 +1,7 @@
 use failure::Error;
 use graphql_parser::schema::*;
 use graphql_parser::Pos;
+use lazy_static::lazy_static;
 use std::str::FromStr;
 
 use graph::prelude::ValueType;
@@ -207,19 +208,23 @@ pub fn get_type_description(t: &TypeDefinition) -> &Option<String> {
 pub fn get_argument_definitions<'a>(
     object_type: &'a ObjectType,
     name: &Name,
-) -> Option<Vec<InputValue>> {
-    // Introspection: `__type(name: String!): __Type`
-    if name == "__type" {
-        Some(vec![InputValue {
+) -> Option<&'a Vec<InputValue>> {
+    lazy_static! {
+        pub static ref NAME_ARGUMENT: Vec<InputValue> = vec![InputValue {
             position: Pos::default(),
             description: None,
             name: "name".to_owned(),
             value_type: Type::NonNullType(Box::new(Type::NamedType("String".to_owned()))),
             default_value: None,
             directives: vec![],
-        }])
+        }];
+    }
+
+    // Introspection: `__type(name: String!): __Type`
+    if name == "__type" {
+        Some(&NAME_ARGUMENT)
     } else {
-        get_field_type(object_type, name).map(|field| field.arguments.clone())
+        get_field_type(object_type, name).map(|field| &field.arguments)
     }
 }
 
