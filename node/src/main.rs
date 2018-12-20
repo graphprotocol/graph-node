@@ -283,7 +283,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let (ipfs_client, ipfs_address) = match ipfs_address
         // Resolve the IPFS address into socket addresses
         .to_socket_addrs()
-        .unwrap_or_else(|_| panic!("failed to parse IPFS address: {}", ipfs_address))
+        .unwrap_or_else(|e| panic!("failed to resolve IPFS address {}: {}", ipfs_address, e))
         // Try to create an IPFS client for one of these addresses; collect
         // errors in case we can't create a client for any of them
         .fold_while(Err(vec![]), |result, address| {
