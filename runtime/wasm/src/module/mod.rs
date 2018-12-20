@@ -122,19 +122,22 @@ where
         // to the built-in "env" module. The name of that module is not fixed,
         // to able able to infer the name we allow only one module with imports,
         // with "env" being optional.
-        let mut user_modules: Vec<_> = parsed_module
+        let mut user_modules = parsed_module
             .import_section()
-            .ok_or_else(|| err_msg("no import section"))?
-            .entries()
-            .into_iter()
-            .map(|import| import.module().to_owned())
-            .filter(|module| module != "env")
-            .collect();
+            .map(|import_section| {
+                import_section
+                    .entries()
+                    .into_iter()
+                    .map(|import| import.module().to_owned())
+                    .filter(|module| module != "env")
+                    .collect()
+            })
+            .unwrap_or(vec![]);
         user_modules.dedup();
-        let user_module = if user_modules.len() != 1 {
-            return Err(err_msg("WASM module has wrong number of import sections"));
-        } else {
-            user_modules.into_iter().next().unwrap()
+        let user_module = match user_modules.len() {
+            0 => None,
+            1 => Some(user_modules.into_iter().next().unwrap()),
+            _ => return Err(err_msg("WASM module has multiple import sections")),
         };
 
         let module = Module::from_parity_wasm_module(parsed_module).map_err(|e| {
@@ -148,7 +151,9 @@ where
         // Build import resolver
         let mut imports = ImportsBuilder::new();
         imports.push_resolver("env", &EnvModuleResolver);
-        imports.push_resolver(user_module, &ModuleResolver);
+        if let Some(user_module) = user_module {
+            imports.push_resolver(user_module, &ModuleResolver);
+        }
 
         // Instantiate the runtime module using hosted functions and import resolver
         let module = ModuleInstance::new(&module, &imports)
