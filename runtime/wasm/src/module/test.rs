@@ -499,5 +499,5 @@ fn abort() {
         .module
         .invoke_export("abort", &[], &mut module.externals)
         .unwrap_err();
-    assert_eq!(err.to_string(), "Trap: Trap { kind: Host(HostExportError(\"Mapping aborted at abort.ts, line 7, column 2, with message: not true\")) }");
+    assert_eq!(err.to_string(), "Trap: Trap { kind: Host(HostExportError(\"Mapping aborted at abort.ts, line 6, column 2, with message: not true\")) }");
 }

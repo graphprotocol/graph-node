@@ -246,8 +246,6 @@ fn remove_test_data() {
 #[test]
 fn delete_entity() {
     run_test(|store| -> Result<(), ()> {
-        use db_schema::entities::dsl::*;
-
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: "user".to_owned(),
@@ -308,8 +306,6 @@ fn get_entity() {
 #[test]
 fn insert_entity() {
     run_test(|store| -> Result<(), ()> {
-        use db_schema::entities::dsl::*;
-
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: "user".to_owned(),
