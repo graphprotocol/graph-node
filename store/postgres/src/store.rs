@@ -5,7 +5,7 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool};
 use diesel::sql_types::Text;
-use diesel::{delete, insert_into, select, sql_query, update};
+use diesel::{delete, insert_into, select, update};
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
@@ -24,7 +24,10 @@ use graph_graphql::prelude::api_schema;
 
 use chain_head_listener::ChainHeadUpdateListener;
 use entity_changes::EntityChangeListener;
-use functions::{attempt_chain_head_update, lookup_ancestor_block, revert_block, set_config};
+use functions::{
+    attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, revert_block,
+    set_config,
+};
 
 embed_migrations!("./migrations");
 
@@ -606,29 +609,24 @@ impl Store {
         conn: &PgConnection,
         operation: AttributeIndexOperation,
     ) -> Result<(), Error> {
-        //        name.chars().all(char::is_alphanumeric)
-        let query = format!("CREATE INDEX {} ON entities USING {} ((data -> {} ->>'data')) where subgraph= '{}' and entity= '{}' ",
-                            operation.index_name.clone(), operation.index_type.clone(), operation.attribute_name.clone(), operation.subgraph_id.to_string(),
-                            operation.entity_name.clone());
-        //        sql_query(format!("CREATE INDEX CONCURRENTLY $1 ON entities USING $2 ((data -> $3 ->>'data')) where subgraph= $4 and entity= $5 ")
-        //            .bind::<Text, _>(operation.index_name.clone())
-        //            .bind::<Text, _>(operation.index_type.clone())
-        //            .bind::<Text, _>(operation.attribute_name.clone()) //  ''
-        //            .bind::<Text, _>(operation.subgraph_id.to_string()) // ''
-        //            .bind::<Text, _>(operation.entity_name.clone()) // ''
-        sql_query(query)
-            .execute(conn)
-            .map_err(Error::from)
-            .and_then(move |row_count| match row_count {
-                0 => Err(format_err!(
-                    "failed to create index on {:?}-{:?}-{:?}",
-                    operation.subgraph_id,
-                    operation.entity_name,
-                    operation.attribute_name
-                )),
-                1 => Ok(()),
-                _ => unreachable!(),
-            })
+        select(build_attribute_index(
+            operation.subgraph_id.to_string(),
+            operation.index_name.clone(),
+            operation.index_type.clone(),
+            operation.index_operator.clone(),
+            operation.attribute_name.clone(),
+            operation.entity_name.clone(),
+        ))
+        .execute(conn)
+        .map_err(Error::from)
+        .and_then(move |row_count| match row_count {
+            1 => Ok(()),
+            _ => Err(format_err!(
+                "failed to create indexes for subgraph:{:?}",
+                operation.clone().subgraph_id,
+            )),
+        })
+        //
     }
 
     /// Build a set of indexes on the entities table

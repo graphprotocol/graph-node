@@ -26,3 +26,16 @@ sql_function! {
     LookupAncestorBlock,
     (start_block_hash: Varchar, ancestor_count: BigInt) -> Nullable<Jsonb>
 }
+
+sql_function! {
+    build_attribute_index,
+    BuildAttributeIndex,
+    (
+        subgraph_id: Text,
+        index_name: Text,
+        index_type: Text,
+        index_operator: Text,
+        attribute_name: Text,
+        entity_name: Text
+    )
+}
