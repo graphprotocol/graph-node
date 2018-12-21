@@ -265,6 +265,10 @@ impl Store for MockStore {
         Ok(())
     }
 
+    fn build_entity_attribute_indexes(&self, _: Vec<AttributeIndexOperation>) -> Result<(), Error> {
+        Ok(())
+    }
+
     fn revert_block_operations(
         &self,
         _: SubgraphDeploymentId,
@@ -393,6 +397,10 @@ impl Store for FakeStore {
         _: Vec<EntityOperation>,
         _: EventSource,
     ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    fn build_entity_attribute_indexes(&self, _: Vec<AttributeIndexOperation>) -> Result<(), Error> {
         Ok(())
     }
 
