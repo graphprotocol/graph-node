@@ -5,7 +5,7 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool};
 use diesel::sql_types::Text;
-use diesel::{delete, insert_into, select, update};
+use diesel::{delete, insert_into, select, sql_query, update};
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
@@ -599,6 +599,49 @@ impl Store {
         }
         Ok(())
     }
+
+    /// Build a partial Postgres index on a Subgraph-Entity-Attribute
+    fn build_entity_attribute_index_with_conn(
+        &self,
+        conn: &PgConnection,
+        operation: AttributeIndexOperation,
+    ) -> Result<(), Error> {
+        //        name.chars().all(char::is_alphanumeric)
+        let query = format!("CREATE INDEX {} ON entities USING {} ((data -> {} ->>'data')) where subgraph= '{}' and entity= '{}' ",
+                            operation.index_name.clone(), operation.index_type.clone(), operation.attribute_name.clone(), operation.subgraph_id.to_string(),
+                            operation.entity_name.clone());
+        //        sql_query(format!("CREATE INDEX CONCURRENTLY $1 ON entities USING $2 ((data -> $3 ->>'data')) where subgraph= $4 and entity= $5 ")
+        //            .bind::<Text, _>(operation.index_name.clone())
+        //            .bind::<Text, _>(operation.index_type.clone())
+        //            .bind::<Text, _>(operation.attribute_name.clone()) //  ''
+        //            .bind::<Text, _>(operation.subgraph_id.to_string()) // ''
+        //            .bind::<Text, _>(operation.entity_name.clone()) // ''
+        sql_query(query)
+            .execute(conn)
+            .map_err(Error::from)
+            .and_then(move |row_count| match row_count {
+                0 => Err(format_err!(
+                    "failed to create index on {:?}-{:?}-{:?}",
+                    operation.subgraph_id,
+                    operation.entity_name,
+                    operation.attribute_name
+                )),
+                1 => Ok(()),
+                _ => unreachable!(),
+            })
+    }
+
+    /// Build a set of indexes on the entities table
+    fn build_entity_attribute_indexes_with_conn(
+        &self,
+        conn: &PgConnection,
+        operations: Vec<AttributeIndexOperation>,
+    ) -> Result<(), Error> {
+        for operation in operations.into_iter() {
+            self.build_entity_attribute_index_with_conn(conn, operation)?;
+        }
+        Ok(())
+    }
 }
 
 impl StoreTrait for Store {
@@ -730,6 +773,14 @@ impl StoreTrait for Store {
     ) -> Result<(), StoreError> {
         let conn = self.conn.get().map_err(Error::from)?;
         conn.transaction(|| self.apply_entity_operations_with_conn(&conn, operations, event_source))
+    }
+
+    fn build_entity_attribute_indexes(
+        &self,
+        operations: Vec<AttributeIndexOperation>,
+    ) -> Result<(), Error> {
+        let conn = self.conn.get()?;
+        conn.transaction(|| self.build_entity_attribute_indexes_with_conn(&conn, operations))
     }
 
     fn revert_block_operations(

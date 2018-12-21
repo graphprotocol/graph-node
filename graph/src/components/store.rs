@@ -277,6 +277,16 @@ impl fmt::Display for EventSource {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AttributeIndexOperation {
+    pub subgraph_id: SubgraphDeploymentId,
+    pub index_name: String,
+    pub index_type: String,
+    pub index_operator: String,
+    pub attribute_name: String,
+    pub entity_name: String,
+}
+
 #[derive(Fail, Debug)]
 pub enum StoreError {
     #[fail(display = "store transaction failed, need to retry: {}", _0)]
@@ -362,6 +372,12 @@ pub trait Store: Send + Sync + 'static {
         operations: Vec<EntityOperation>,
         event_source: EventSource,
     ) -> Result<(), StoreError>;
+
+    /// Build indexes for a set of subgraph entity attributes
+    fn build_entity_attribute_indexes(
+        &self,
+        operations: Vec<AttributeIndexOperation>,
+    ) -> Result<(), Error>;
 
     /// Revert the entity changes from a single block atomically in the store, and update the
     /// subgraph block pointer from `block_ptr_from` to `block_ptr_to`.
