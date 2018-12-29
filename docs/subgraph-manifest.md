@@ -1,46 +1,46 @@
-# 1 Subgraph Manifest
+# Subgraph Manifest
 ##### v.0.0.1
 
 ## 1.1 Overview
-The Subgraph manifest specifies all the information required to index and query a specific subgraph. It is the entry point to your subgraph, so to speak.
+The subgraph manifest specifies all the information required to index and query a specific subgraph. This is the entry point to your subgraph.
 
-The subgraph manifest, and all the files linked from it, are what is deployed to IPFS, and hashed to produce a subgraph ID that can be referenced and used to retrieve your subgraph in The Graph.
+The subgraph manifest, and all the files linked from it, is what is deployed to IPFS and hashed to produce a subgraph ID that can be referenced and used to retrieve your subgraph in The Graph.
 
 ## 1.2 Format
-Any data format which has a well-defined 1:1 mapping with [IPLD Canonical Format](https://github.com/ipld/specs/blob/master/IPLD.md#serialized-data-formats) may be used to define a subgraph manifest. This includes YAML and JSON. Examples in this document will be provided in YAML.
+Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical Format](https://github.com/ipld/specs/) may be used to define a subgraph manifest. This includes YAML and JSON. Examples in this document are in YAML.
 
 ## 1.3 Top-Level API
 
 | Field  | Type | Description   |
 | --- | --- | --- |
-| **specVersion** | *String*   | A semver version indicating which version of this API is being used.|
-| **schema**   | [*Schema*](#14-schema) | The GraphQL schema of this subgraph|
+| **specVersion** | *String*   | A Semver version indicating which version of this API is being used.|
+| **schema**   | [*Schema*](#14-schema) | The GraphQL schema of this subgraph.|
 | **description**   | *String* | An optional description of the subgraph's purpose. |
 | **repository**   | *String* | An optional link to where the subgraph lives. |
-| **dataSources**| [*Data Source Spec*](#15-data-source)| Each Data Source spec defines data which will be ingested, and transformation logic to derive the state of the subgraph's entities based on the source data.|
+| **dataSources**| [*Data Source Spec*](#15-data-source)| Each data source spec defines the data that will be ingested as well as the transformation logic to derive the state of the subgraph's entities based on the source data.|
 
 ## 1.4 Schema
 
 | Field | Type | Description |
 | --- | --- | --- |
-| **file**| [*Path*](#16-path) | The path of the GraphQL IDL file, either locally or on IPFS |
+| **file**| [*Path*](#16-path) | The path of the GraphQL IDL file, either locally or on IPFS. |
 
 ## 1.5 Data Source
 
 | Field | Type | Description |
 | --- | --- | --- |
-| **kind** | *String | The type of data source. Possible values: *ethereum/contract*|
-| **name** | *String* | The name of the source data. Will be used to generate APIs in mapping, and also for self-documentation purposes |
-| **network** | *String* | For blockchains this describes which network the subgraph targets. For Ethereum this could be, for example, "mainnet" or "rinkeby". |
-| **source** | [*EthereumContractSource*](#151-ethereumcontractsource) | The source data on a blockchain such as Ethereum |
-| **mapping** | [*Mapping*](#152-mapping) | The transformation logic applied to the data prior to being indexed |
+| **kind** | *String | The type of data source. Possible values: *ethereum/contract*.|
+| **name** | *String* | The name of the source data. Will be used to generate APIs in the mapping and also for self-documentation purposes |
+| **network** | *String* | For blockchains, this describes which network the subgraph targets. For Ethereum this could be, for example, "mainnet" or "rinkeby". |
+| **source** | [*EthereumContractSource*](#151-ethereumcontractsource) | The source data on a blockchain such as Ethereum. |
+| **mapping** | [*Mapping*](#152-mapping) | The transformation logic applied to the data prior to being indexed. |
 
 ### 1.5.1 EthereumContractSource
 
 | Field | Type | Description |
 | --- | --- | --- |
-| **address** | *String* | The address of the source data in its respective blockchain |
-| **abi** | *String* | The name of the ABI for this Ethereum contract (see `abis` in `mapping` manifest) |
+| **address** | *String* | The address of the source data in its respective blockchain. |
+| **abi** | *String* | The name of the ABI for this Ethereum contract. See `abis` in `mapping` manifest. |
 
 ### 1.5.2 Mapping
 The `mapping` field may be one of the following supported mapping manifests:
@@ -50,26 +50,26 @@ The `mapping` field may be one of the following supported mapping manifests:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| **kind** | *String* | Must be "ethereum/events" for Ethereum Events Mapping |
-| **apiVersion** | *String* | Semver string of the version of the Mappings API which will be used by the mapping script |
-| **language** | *String* | The language of the runtime for the Mapping API. Possible values: *wasm/assemblyscript* |
-| **entities** | *[String]* | A list of entities which will be ingested as part of this mapping. Must correspond to names of entities in the GraphQL IDL |
-| **abis** | *ABI* | ABIs for the contract classes which should be generated in the Mapping ABI. Name is also used to reference the ABI elsewhere in the manifest |
-| **eventHandlers** | *EventHandler* | Handlers for specific events, which will be defined in the mapping script |
-| **file** | [*Path*](#16-path) | The path of the mapping script |
+| **kind** | *String* | Must be "ethereum/events" for Ethereum Events Mapping. |
+| **apiVersion** | *String* | Semver string of the version of the Mappings API that will be used by the mapping script. |
+| **language** | *String* | The language of the runtime for the Mapping API. Possible values: *wasm/assemblyscript*. |
+| **entities** | *[String]* | A list of entities that will be ingested as part of this mapping. Must correspond to names of entities in the GraphQL IDL. |
+| **abis** | *ABI* | ABIs for the contract classes that should be generated in the Mapping ABI. Name is also used to reference the ABI elsewhere in the manifest. |
+| **eventHandlers** | *EventHandler* | Handlers for specific events, which will be defined in the mapping script. |
+| **file** | [*Path*](#16-path) | The path of the mapping script. |
 
 #### 1.5.2.2 EventHandler
 
 | Field | Type | Description |
 | --- | --- | --- |
-| **event** | *String* | An identifier for an event which will be handled in the mapping script. For Ethereum contracts, this must be the full event signature to disambiguate from events which may share the same name. No alias types can be used (i.e. uint will not work, uint256 must be used)|
-| **handler** | *String* | The name of an exported function in the mapping script which should handle the specified event. |
+| **event** | *String* | An identifier for an event that will be handled in the mapping script. For Ethereum contracts, this must be the full event signature to distinguish from events that may share the same name. No alias types can be used. For example, uint will not work, uint256 must be used.|
+| **handler** | *String* | The name of an exported function in the mapping script that should handle the specified event. |
 
 ## 1.6 Path
-A path has one field `path` which either refers to a path of a file on the local dev machine, or an [IPLD link](https://github.com/ipld/specs/blob/master/IPLD.md#linking-between-nodes).
+A path has one field `path`, which either refers to a path of a file on the local dev machine or an [IPLD link](https://github.com/ipld/specs/).
 
-When using the Graph-CLI, local paths may be used during development, and then the tool will take care of deploying linked files to IPFS and replacing the local paths with IPLD links at deploy time.
+When using the Graph-CLI, local paths may be used during development, and then, the tool will take care of deploying linked files to IPFS and replacing the local paths with IPLD links at deploy time.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| **path** | *String or [IPLD Link](https://github.com/ipld/specs/blob/master/IPLD.md#linking-between-nodes)* | A path to a local file or an IPLD link |
+| **path** | *String or [IPLD Link](https://github.com/ipld/specs/)* | A path to a local file or an IPLD link. |
