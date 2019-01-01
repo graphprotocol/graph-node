@@ -2,7 +2,7 @@
 
 ## 1 Queries
 ### 1.1 Basics
-For each type `Entity` that you define in your schema, an `entity` and `entities` field will be generated on the top-level `Query` type. Note that `query` does not need to be included at the top of the `graphql` query when using The Graph.
+For each `Entity` type that you define in your schema, an `entity` and `entities` field will be generated on the top-level `Query` type. Note that `query` does not need to be included at the top of the `graphql` query when using The Graph.
 
 #### Example
 Query for a single `Token` entity defined in your schema:
@@ -184,7 +184,7 @@ It is typical for developers to define their own root `Query` and `Subscription`
 
 ### 3.2 Entities
 
-All GraphQL types with `@entity` directives in your schema will be treated as entities, and must have an `ID` field.
+All GraphQL types with `@entity` directives in your schema will be treated as entities and must have an `ID` field.
 
 > **Note:** Currently, all types in your schema must have an `@entity` directive. In the future, we will treat types without an `@entity` directive as value objects, but this is not yet supported.
 
@@ -269,7 +269,7 @@ type TokenBalance @entity {
 #### 3.5.2 Reverse Lookups
 Defining reverse lookups can be defined on an entity through the `@derivedFrom` field. This creates a virtual field on the entity that may be queried but cannot be set manually through the mappings API. Rather, it is derived from the relationship defined on the other entity.
 
-The type of a `@derivedFrom` field must be a collection since multiple entities may specify relationships to a single entity.
+The type of an `@derivedFrom` field must be a collection since multiple entities may specify relationships to a single entity.
 
 #### Example
 Define a reverse lookup from a `User` entity type to an `Organization` entity type:
