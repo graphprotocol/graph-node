@@ -7,49 +7,47 @@
 [![Build Status](https://travis-ci.org/graphprotocol/graph-node.svg?branch=master)](https://travis-ci.org/graphprotocol/graph-node)
 [![Getting Started Docs](https://img.shields.io/badge/docs-getting--started-brightgreen.svg)](docs/getting-started.md)
 
-[The Graph](https://thegraph.com/) is a protocol for building decentralized applications quickly on Ethereum and IPFS using GraphQL.
+[The Graph](https://thegraph.com/) is a protocol for building decentralized applications (dApp) quickly on Ethereum and IPFS using GraphQL.
 
-Graph Node is an open source Rust implementation that event-sources the Ethereum blockchain to deterministically update a datastore which can be queried via the GraphQL endpoint.
+Graph Node is an open source Rust implementation that event sources the Ethereum blockchain to deterministically update a datastore that can be queried via the GraphQL endpoint.
 
-For detailed instructions and more context check out the [Getting Started Guide](docs/getting-started.md).
+For detailed instructions and more context, check out the [Getting Started Guide](docs/getting-started.md).
 
-_Note: this project is heavily WIP and until it reaches v1.0 the API is subject to change in breaking ways without notice._
+**Note:** This project is a heavily WIP and until it reaches v1.0, the API is subject to change in breaking ways without notice.
 
 ## Quick Start
 
 ### Prerequisites
 
-To build and run this project you need
-to have the following installed on your system:
+To build and run this project you need to have the following installed on your system:
 
-- Rust (latest stable) - [How to install Rust](https://www.rust-lang.org/en-US/install.html)
+- Rust (latest stable) – [How to install Rust](https://www.rust-lang.org/en-US/install.html)
 - PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/)
 - IPFS – [Installing IPFS](https://ipfs.io/docs/install/)
 
-For Ethereum network data you can either run a local node or use Infura.io:
+For Ethereum network data, you can either run a local node or use Infura.io:
 
 - Local node – [Installing and running Ethereum node](https://ethereum.gitbooks.io/frontier-guide/content/getting_a_client.html)
 - Infura infra – [Infura.io](https://infura.io/)
 
-### Running a local Graph Node
+### Running a Local Graph Node
 
-This is a quick example to to show a working Graph Node. It is a [subgraph for the Ethereum Name Service (ENS)](https://github.com/graphprotocol/ens-subgraph) that The Graph team built.
-                                                   
-1. Install IPFS and run `ipfs init` followed by `ipfs daemon`
-2. Install PostgreSQL and run `initdb -D .postgres` followed by `pg_ctl -D .postgres -l logfile start`
- and `createdb graph-node`
+This is a quick example to show a working Graph Node. It is a [subgraph for the Ethereum Name Service (ENS)](https://github.com/graphprotocol/ens-subgraph) that The Graph team built.
+
+1. Install IPFS and run `ipfs init` followed by `ipfs daemon`.
+2. Install PostgreSQL and run `initdb -D .postgres` followed by `pg_ctl -D .postgres -l logfile start` and `createdb graph-node`.
 3. If using Ubuntu, you may need to install additional packages:
    - `sudo apt-get install -y clang libpq-dev libssl-dev pkg-config`
-4. Clone https://github.com/graphprotocol/ens-subgraph, install dependencies and generate types for contract ABIs:
+4. Clone https://github.com/graphprotocol/ens-subgraph, and install dependencies and generate types for contract ABIs:
 
 ```
 yarn install
 yarn codegen
 ```
 
-5. Clone https://github.com/graphprotocol/graph-node and run `cargo build`
+5. Clone https://github.com/graphprotocol/graph-node and run `cargo build`.
 
-Once you have all the dependencies set up you can run the following:
+Once you have all the dependencies set up, you can run the following:
 
 ```
 cargo run -p graph-node --release -- \
@@ -58,7 +56,7 @@ cargo run -p graph-node --release -- \
   --ipfs 127.0.0.1:5001
 ```
 
-Try your OS username as `USERNAME` and `PASSWORD`. The password might be optional, it depends on your setup.
+Try your OS username as `USERNAME` and `PASSWORD`. The password might be optional. It depends on your setup.
 
 This will also spin up a GraphiQL interface at `http://127.0.0.1:8000/`.
 
@@ -70,7 +68,7 @@ yarn deploy --verbosity debug
 
 This will build and deploy the subgraph to the Graph Node. It should start indexing the subgraph immediately.
 
-### Command-line interface
+### Command-Line Interface
 
 ```
 USAGE:
@@ -89,9 +87,9 @@ FLAGS:
 
 OPTIONS:
         --subgraph [<NAME>:]<IPFS_HASH>         Name (optional) and IPFS hash of the subgraph manifest
-        --ethereum-ipc <NETWORK_NAME>:<FILE>    Ethereum network name (e.g. 'mainnet') and Ethereum IPC pipe path, separated by a ':'
-        --ethereum-rpc <NETWORK_NAME>:<URL>     Ethereum network name (e.g. 'mainnet') and Ethereum RPC endpoint URL, separated by a ':'
-        --ethereum-ws <NETWORK_NAME>:<URL>      Ethereum network name (e.g. 'mainnet') and Ethereum WebSocket endpoint URL, separated by a ':'
+        --ethereum-ipc <NETWORK_NAME>:<FILE>    Ethereum network name (e.g., 'mainnet') and Ethereum IPC pipe path, separated by a ':'
+        --ethereum-rpc <NETWORK_NAME>:<URL>     Ethereum network name (e.g., 'mainnet') and Ethereum RPC endpoint URL, separated by a ':'
+        --ethereum-ws <NETWORK_NAME>:<URL>      Ethereum network name (e.g., 'mainnet') and Ethereum WebSocket endpoint URL, separated by a ':'
         --ipfs <HOST>:<PORT>                    HTTP address of an IPFS node
         --postgres-url <URL>                    Location of the Postgres database used for storing entities
 ```
@@ -106,7 +104,7 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 
 ## Project Layout
 
-- `node` — A local Graph node.
+- `node` — A local Graph Node.
 - `graph` — A library providing traits for system components and types for
   common data.
 - `core` — A library providing implementations for core components, used by all
@@ -114,11 +112,11 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 - `datasource/ethereum` — A library with components for obtaining data from
   Ethereum.
 - `graphql` — A GraphQL implementation with API schema generation,
-  introspection and more.
+  introspection, and more.
 - `mock` — A library providing mock implementations for all system components.
 - `runtime/wasm` — A library for running WASM data extraction scripts.
 - `server/http` — A library providing a GraphQL server over HTTP.
-- `store/postgres` — A Postgres store with a GraphQL friendly interface
+- `store/postgres` — A Postgres store with a GraphQL-friendly interface
   and audit logs.
 
 ## Roadmap
@@ -155,13 +153,8 @@ Here's [a list of good first issues](https://github.com/graphprotocol/graph-node
 
 ## License
 
-Copyright &copy; 2018 Graph Protocol, Inc. and contributors.
+Copyright &copy; 2019 Graph Protocol, Inc. and contributors.
 
-The Graph is dual-licensed under the [MIT license](LICENSE-MIT) and the
-[Apache License, Version 2.0](LICENSE-APACHE).
+The Graph is dual-licensed under the [MIT license](LICENSE-MIT) and the [Apache License, Version 2.0](LICENSE-APACHE).
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
