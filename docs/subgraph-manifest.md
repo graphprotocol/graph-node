@@ -23,15 +23,15 @@ Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical For
 
 | Field | Type | Description |
 | --- | --- | --- |
-| **file**| [*Path*](#16-path) | The path of the GraphQL IDL file, either locally or on IPFS. |
+| **file**| [*Path*](#16-path) | The path of the GraphQL IDL file, either local or on IPFS. |
 
 ## 1.5 Data Source
 
 | Field | Type | Description |
 | --- | --- | --- |
 | **kind** | *String | The type of data source. Possible values: *ethereum/contract*.|
-| **name** | *String* | The name of the source data. Will be used to generate APIs in the mapping and also for self-documentation purposes |
-| **network** | *String* | For blockchains, this describes which network the subgraph targets. For Ethereum this could be, for example, "mainnet" or "rinkeby". |
+| **name** | *String* | The name of the source data. Will be used to generate APIs in the mapping and also for self-documentation purposes. |
+| **network** | *String* | For blockchains, this describes which network the subgraph targets. For Ethereum, this could be, for example, "mainnet" or "rinkeby". |
 | **source** | [*EthereumContractSource*](#151-ethereumcontractsource) | The source data on a blockchain such as Ethereum. |
 | **mapping** | [*Mapping*](#152-mapping) | The transformation logic applied to the data prior to being indexed. |
 
@@ -40,7 +40,7 @@ Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical For
 | Field | Type | Description |
 | --- | --- | --- |
 | **address** | *String* | The address of the source data in its respective blockchain. |
-| **abi** | *String* | The name of the ABI for this Ethereum contract. See `abis` in `mapping` manifest. |
+| **abi** | *String* | The name of the ABI for this Ethereum contract. See `abis` in the `mapping` manifest. |
 
 ### 1.5.2 Mapping
 The `mapping` field may be one of the following supported mapping manifests:
@@ -72,4 +72,4 @@ When using the Graph-CLI, local paths may be used during development, and then, 
 
 | Field | Type | Description |
 | --- | --- | --- |
-| **path** | *String or [IPLD Link](https://github.com/ipld/specs/)* | A path to a local file or an IPLD link. |
+| **path** | *String or [IPLD Link](https://github.com/ipld/specs/)* | A path to a local file or IPLD link. |
