@@ -4,16 +4,16 @@
 
 # Graph Node
 
+**Note:** This project is a heavily WIP and until it reaches v1.0, the API is subject to change in breaking ways without notice.
+
 [![Build Status](https://travis-ci.org/graphprotocol/graph-node.svg?branch=master)](https://travis-ci.org/graphprotocol/graph-node)
 [![Getting Started Docs](https://img.shields.io/badge/docs-getting--started-brightgreen.svg)](docs/getting-started.md)
 
-[The Graph](https://thegraph.com/) is a protocol for building decentralized applications (dApp) quickly on Ethereum and IPFS using GraphQL.
+[The Graph](https://thegraph.com/) is a protocol for building decentralized applications (dApps) quickly on Ethereum and IPFS using GraphQL.
 
-Graph Node is an open source Rust implementation that event sources the Ethereum blockchain to deterministically update a datastore that can be queried via the GraphQL endpoint.
+Graph Node is an open source Rust implementation that event sources the Ethereum blockchain to deterministically update a data store that can be queried via the GraphQL endpoint.
 
 For detailed instructions and more context, check out the [Getting Started Guide](docs/getting-started.md).
-
-**Note:** This project is a heavily WIP and until it reaches v1.0, the API is subject to change in breaking ways without notice.
 
 ## Quick Start
 
@@ -38,14 +38,14 @@ This is a quick example to show a working Graph Node. It is a [subgraph for the 
 2. Install PostgreSQL and run `initdb -D .postgres` followed by `pg_ctl -D .postgres -l logfile start` and `createdb graph-node`.
 3. If using Ubuntu, you may need to install additional packages:
    - `sudo apt-get install -y clang libpq-dev libssl-dev pkg-config`
-4. Clone https://github.com/graphprotocol/ens-subgraph, and install dependencies and generate types for contract ABIs:
+4. In the terminal, clone https://github.com/graphprotocol/ens-subgraph, and install dependencies and generate types for contract ABIs:
 
 ```
 yarn install
 yarn codegen
 ```
 
-5. Clone https://github.com/graphprotocol/graph-node and run `cargo build`.
+5. In the terminal, clone https://github.com/graphprotocol/graph-node, and run `cargo build`.
 
 Once you have all the dependencies set up, you can run the following:
 
@@ -114,7 +114,7 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 - `graphql` — A GraphQL implementation with API schema generation,
   introspection, and more.
 - `mock` — A library providing mock implementations for all system components.
-- `runtime/wasm` — A library for running WASM data extraction scripts.
+- `runtime/wasm` — A library for running WASM data-extraction scripts.
 - `server/http` — A library providing a GraphQL server over HTTP.
 - `store/postgres` — A Postgres store with a GraphQL-friendly interface
   and audit logs.
@@ -131,7 +131,7 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 | Feature |  Status |
 | ------- |  :------: |
 | **Ethereum** |    |
-| Indexing Smart Contract Events | ✅ |
+| Indexing smart contract events | ✅ |
 | Handle chain reorganizations | 🛠 |
 | **Mappings** |    |
 | WASM-based mappings| ✅ |
@@ -157,4 +157,4 @@ Copyright &copy; 2019 Graph Protocol, Inc. and contributors.
 
 The Graph is dual-licensed under the [MIT license](LICENSE-MIT) and the [Apache License, Version 2.0](LICENSE-APACHE).
 
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the License for the specific language governing permissions and limitations under the License.
