@@ -1,5 +1,8 @@
+use data::store::ValueType;
+use failure::Error;
 use graphql_parser::schema::*;
 use std::fmt;
+use std::str::FromStr;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Strings(Vec<String>);
@@ -59,4 +62,13 @@ pub fn get_object_type_directive(object_type: &ObjectType, name: Name) -> Option
         .directives
         .iter()
         .find(|directive| directive.name == name)
+}
+
+/// Returns the value type for a GraphQL field type.
+pub fn get_valid_value_type(field_type: &Type) -> Result<ValueType, Error> {
+    match field_type {
+        Type::NamedType(ref name) => ValueType::from_str(&name),
+        Type::NonNullType(inner) => get_valid_value_type(&inner),
+        Type::ListType(inner) => get_valid_value_type(&inner),
+    }
 }

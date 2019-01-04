@@ -609,11 +609,21 @@ impl Store {
         conn: &PgConnection,
         operation: AttributeIndexOperation,
     ) -> Result<(), Error> {
+        let (index_type, index_operator) = match operation.field_value_type {
+            ValueType::Boolean
+            | ValueType::BigInt
+            | ValueType::Bytes
+            | ValueType::Float
+            | ValueType::ID
+            | ValueType::Int => (String::from("btree"), String::from("")),
+            ValueType::String => (String::from("gin"), String::from("gin_trgm_ops")),
+        };
+
         select(build_attribute_index(
             operation.subgraph_id.to_string(),
             operation.index_name.clone(),
-            operation.index_type.clone(),
-            operation.index_operator.clone(),
+            index_type,
+            index_operator,
             operation.attribute_name.clone(),
             operation.entity_name.clone(),
         ))
