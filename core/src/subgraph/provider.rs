@@ -2,10 +2,8 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::collections::HashSet;
 use std::sync::Mutex;
 
+use graph::data::subgraph::schema::{attribute_indexing_operations};
 use graph::prelude::{SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *};
-use graph_graphql::schema::ast as sast;
-use graph_graphql::prelude::schema::{Definition, Document, TypeDefinition};
-
 
 pub struct SubgraphAssignmentProvider<L, S> {
     logger: Logger,
@@ -141,49 +139,4 @@ impl<L, S> EventProducer<SubgraphAssignmentProviderEvent> for SubgraphAssignment
             Box::new(s) as Box<Stream<Item = SubgraphAssignmentProviderEvent, Error = ()> + Send>
         })
     }
-}
-
-fn attribute_indexing_operations(
-    subgraph_id: SubgraphDeploymentId,
-    document: Document,
-) -> Vec<AttributeIndexOperation> {
-    let mut indexing_ops = vec![];
-    for (entity_number, schema_type) in document.definitions.clone().into_iter().enumerate() {
-        if let Definition::TypeDefinition(definition) = schema_type {
-            if let TypeDefinition::Object(schema_object) = definition {
-                for (attribute_number, entity_field) in schema_object.fields.into_iter().enumerate()
-                {
-                    let field_value_type =
-                        match sast::get_valid_value_type(&entity_field.field_type) {
-                            Ok(value_type) => value_type,
-                            Err(_) => continue,
-                        };
-                    let (index_type, index_operator) = match field_value_type {
-                        ValueType::Boolean
-                        | ValueType::BigInt
-                        | ValueType::Bytes
-                        | ValueType::Float
-                        | ValueType::ID
-                        | ValueType::Int => (String::from("btree"), String::from("")),
-                        ValueType::String => (String::from("gin"), String::from("gin_trgm_ops")),
-                    };
-
-                    indexing_ops.push(AttributeIndexOperation {
-                        subgraph_id: subgraph_id.clone(),
-                        index_name: format!(
-                            "{}_{}_{}_idx",
-                            subgraph_id.clone(),
-                            entity_number,
-                            attribute_number,
-                        ),
-                        index_type,
-                        index_operator,
-                        attribute_name: entity_field.name,
-                        entity_name: schema_object.name.clone(),
-                    });
-                }
-            }
-        }
-    }
-    indexing_ops
 }
