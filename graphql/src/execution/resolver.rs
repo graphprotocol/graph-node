@@ -21,7 +21,6 @@ pub trait Resolver: Clone + Send + Sync {
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
-        field_definition: &s::Field,
         object_type: &s::ObjectType,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError>;
