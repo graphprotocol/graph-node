@@ -509,7 +509,6 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
-        _field_definition: &s::Field,
         _object_type: &s::ObjectType,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {

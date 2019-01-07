@@ -332,14 +332,9 @@ where
             argument_values,
         ),
 
-        s::Type::NamedType(ref name) => resolve_field_value_for_named_type(
-            ctx,
-            object_value,
-            field,
-            field_definition,
-            name,
-            argument_values,
-        ),
+        s::Type::NamedType(ref name) => {
+            resolve_field_value_for_named_type(ctx, object_value, field, name, argument_values)
+        }
 
         s::Type::ListType(inner_type) => resolve_field_value_for_list_type(
             ctx,
@@ -358,7 +353,6 @@ fn resolve_field_value_for_named_type<'a, R1, R2>(
     ctx: ExecutionContext<'a, R1, R2>,
     object_value: &Option<q::Value>,
     field: &q::Field,
-    field_definition: &s::Field,
     type_name: &s::Name,
     argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>>
@@ -385,18 +379,12 @@ where
                 ctx.introspection_resolver.resolve_object(
                     object_value,
                     &field.name,
-                    field_definition,
                     t,
                     argument_values,
                 )
             } else {
-                ctx.resolver.resolve_object(
-                    object_value,
-                    &field.name,
-                    field_definition,
-                    t,
-                    argument_values,
-                )
+                ctx.resolver
+                    .resolve_object(object_value, &field.name, t, argument_values)
             }
         }
 
