@@ -288,21 +288,7 @@ where
                     })?,
                     _ => None,
                 },
-                _ => {
-                    let mut query = build_query(&object_type, arguments)?;
-
-                    // Add matching filter for derived fields
-                    Self::add_filter_for_derived_field(
-                        &mut query,
-                        parent,
-                        field_definition,
-                        object_type,
-                    );
-
-                    query.range = Some(EntityRange { first: 1, skip: 0 });
-
-                    self.store.find(query)?.into_iter().next()
-                }
+                _ => panic!("top level queries must either take an `id` or return a list"),
             }
         };
 
