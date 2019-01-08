@@ -72,13 +72,7 @@ This will build and deploy the subgraph to the Graph Node. It should start index
 
 ```
 USAGE:
-    graph-node
-      --subgraph <IPFS_HASH>
-      --ethereum-ipc <FILE>
-        or --ethereum-rpc <URL>
-        or --ethereum-ws <URL>
-      --ipfs <HOST:PORT>
-      --postgres-url <URL>
+    graph-node [FLAGS] [OPTIONS] --ethereum-ipc <NETWORK_NAME:FILE> --ethereum-rpc <NETWORK_NAME:URL> --ethereum-ws <NETWORK_NAME:URL> --ipfs <HOST:PORT> --postgres-url <URL>
 
 FLAGS:
         --debug      Enable debug logging
@@ -86,12 +80,32 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-        --subgraph [<NAME>:]<IPFS_HASH>         Name (optional) and IPFS hash of the subgraph manifest
-        --ethereum-ipc <NETWORK_NAME>:<FILE>    Ethereum network name (e.g., 'mainnet') and Ethereum IPC pipe path, separated by a ':'
-        --ethereum-rpc <NETWORK_NAME>:<URL>     Ethereum network name (e.g., 'mainnet') and Ethereum RPC endpoint URL, separated by a ':'
-        --ethereum-ws <NETWORK_NAME>:<URL>      Ethereum network name (e.g., 'mainnet') and Ethereum WebSocket endpoint URL, separated by a ':'
-        --ipfs <HOST>:<PORT>                    HTTP address of an IPFS node
-        --postgres-url <URL>                    Location of the Postgres database used for storing entities
+        --admin-port <PORT>                           Port for the JSON-RPC admin server [default: 8020]
+        --elasticsearch-password <PASSWORD>
+            Password to use for Elasticsearch logging [env: ELASTICSEARCH_PASSWORD]
+
+        --elasticsearch-url <URL>
+            Elasticsearch service to write subgraph logs to [env: ELASTICSEARCH_URL=]
+
+        --elasticsearch-user <USER>                   User to use for Elasticsearch logging [env: ELASTICSEARCH_USER=]
+        --ethereum-ipc <NETWORK_NAME:FILE>
+            Ethereum network name (e.g. 'mainnet') and Ethereum IPC pipe, separated by a ':'
+
+        --ethereum-polling-interval <MILLISECONDS>
+            How often to poll the Ethereum node for new blocks [env: ETHEREUM_POLLING_INTERVAL=]  [default: 500]
+
+        --ethereum-rpc <NETWORK_NAME:URL>
+            Ethereum network name (e.g. 'mainnet') and Ethereum RPC URL, separated by a ':'
+
+        --ethereum-ws <NETWORK_NAME:URL>
+            Ethereum network name (e.g. 'mainnet') and Ethereum WebSocket URL, separated by a ':'
+
+        --http-port <PORT>                            Port for the GraphQL HTTP server [default: 8000]
+        --ipfs <HOST:PORT>                            HTTP address of an IPFS node
+        --node-id <NODE_ID>                           a unique identifier for this node [default: default]
+        --postgres-url <URL>                          Location of the Postgres database used for storing entities
+        --subgraph <[NAME:]IPFS_HASH>                 name and IPFS hash of the subgraph manifest
+        --ws-port <PORT>                              Port for the GraphQL WebSocket server [default: 8001]
 ```
 
 ### Environment Variables
@@ -153,7 +167,7 @@ Here's [a list of good first issues](https://github.com/graphprotocol/graph-node
 
 ## License
 
-Copyright &copy; 2019 Graph Protocol, Inc. and contributors.
+Copyright &copy; 2018-2019 Graph Protocol, Inc. and contributors.
 
 The Graph is dual-licensed under the [MIT license](LICENSE-MIT) and the [Apache License, Version 2.0](LICENSE-APACHE).
 
