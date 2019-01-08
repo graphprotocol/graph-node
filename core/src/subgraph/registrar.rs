@@ -326,8 +326,6 @@ fn create_subgraph(
     store: Arc<impl Store>,
     name: SubgraphName,
 ) -> Result<(), SubgraphRegistrarError> {
-    debug!(logger, "Creating subgraph: {:?}", name.to_string());
-
     let mut ops = vec![];
 
     // Check if this subgraph already exists
@@ -336,6 +334,11 @@ fn create_subgraph(
         name.to_string().into(),
     )))?;
     if !subgraph_entities.is_empty() {
+        debug!(
+            logger,
+            "Subgraph name already exists: {:?}",
+            name.to_string()
+        );
         return Err(SubgraphRegistrarError::NameExists(name.to_string()));
     }
 
@@ -352,11 +355,13 @@ fn create_subgraph(
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    let entity = SubgraphEntity::new(name, None, created_at);
+    let entity = SubgraphEntity::new(name.clone(), None, created_at);
     let entity_id = generate_entity_id();
     ops.extend(entity.write_operations(&entity_id));
 
     store.apply_entity_operations(ops, EventSource::None)?;
+
+    debug!(logger, "Created subgraph"; "subgraph_name" => name.to_string());
 
     Ok(())
 }
@@ -369,13 +374,6 @@ fn create_subgraph_version(
     manifest: SubgraphManifest,
     node_id: NodeId,
 ) -> Result<(), SubgraphRegistrarError> {
-    debug!(
-        logger,
-        "Writing new subgraph version to store: subgraph name = {:?}, subgraph hash = {:?}",
-        name.to_string(),
-        manifest.id.to_string()
-    );
-
     let mut ops = vec![];
 
     // Look up subgraph entity by name
@@ -384,16 +382,23 @@ fn create_subgraph_version(
         name.to_string().into(),
     )))?;
     let subgraph_entity = match subgraph_entities.len() {
-        0 => Err(SubgraphRegistrarError::NameNotFound(name.to_string())),
+        0 => {
+            debug!(
+                logger,
+                "Subgraph not found, could not create_subgraph_version";
+                "subgraph_name" => name.to_string()
+            );
+            return Err(SubgraphRegistrarError::NameNotFound(name.to_string()));
+        }
         1 => {
             let mut subgraph_entities = subgraph_entities;
-            Ok(subgraph_entities.pop().unwrap())
+            subgraph_entities.pop().unwrap()
         }
         _ => panic!(
             "multiple subgraph entities with name {:?}",
             name.to_string()
         ),
-    }?;
+    };
     let subgraph_entity_id = subgraph_entity.id()?;
     let current_version_id_opt = match subgraph_entity.get("currentVersion") {
         Some(Value::String(current_version_id)) => Some(current_version_id.to_owned()),
@@ -542,6 +547,13 @@ fn create_subgraph_version(
     // Commit entity ops
     store.apply_entity_operations(ops, EventSource::None)?;
 
+    debug!(
+        logger,
+        "Wrote new subgraph version to store";
+        "subgraph_name" => name.to_string(),
+        "subgraph_hash" => manifest.id.to_string()
+    );
+
     Ok(())
 }
 
@@ -550,8 +562,6 @@ fn remove_subgraph(
     store: Arc<impl Store>,
     name: SubgraphName,
 ) -> Result<(), SubgraphRegistrarError> {
-    debug!(logger, "Removing subgraph: {:?}", name.to_string());
-
     let mut ops = vec![];
 
     // Find the subgraph entity
@@ -605,6 +615,8 @@ fn remove_subgraph(
     });
 
     store.apply_entity_operations(ops, EventSource::None)?;
+
+    debug!(logger, "Removed subgraph"; "subgraph_name" => name.to_string());
 
     Ok(())
 }
