@@ -462,7 +462,7 @@ fn create_subgraph_version(
         );
     }
 
-    // If currentVersion is actually being changed
+    // If currentVersion is actually being changed, an old deployment may need to be removed.
     if current_version_id_opt != Some(manifest.id.to_string()) {
         // If there is a previous version that will no longer be "current"
         if let Some(current_version_id) = current_version_id_opt {
@@ -480,40 +480,43 @@ fn create_subgraph_version(
                 .as_string()
                 .unwrap();
 
-            // Find all subgraph versions that point to this hash
-            let referencing_version_entities =
-                store.find(SubgraphVersionEntity::query().filter(EntityFilter::Equal(
-                    "state".to_owned(),
-                    previous_version_hash.clone().into(),
-                )))?;
-            let referencing_version_entity_ids = referencing_version_entities
-                .iter()
-                .map(|entity| entity.id().unwrap())
-                .collect::<Vec<_>>();
-
-            // Find all subgraphs that have one of these versions as currentVersion
-            let subgraphs_with_current_version_referencing_hash = store.find(
-                SubgraphEntity::query().filter(EntityFilter::In(
-                    "currentVersion".to_owned(),
-                    referencing_version_entity_ids
-                        .into_iter()
-                        .map(Value::from)
-                        .collect(),
-                )),
-            )?;
-            let subgraph_ids_with_current_version_referencing_hash =
-                subgraphs_with_current_version_referencing_hash
+            // If old current and new current versions have same hash, no need to remove deployment
+            if previous_version_hash != manifest.id.to_string() {
+                // Find all subgraph versions that point to this hash
+                let referencing_version_entities =
+                    store.find(SubgraphVersionEntity::query().filter(EntityFilter::Equal(
+                        "state".to_owned(),
+                        previous_version_hash.clone().into(),
+                    )))?;
+                let referencing_version_entity_ids = referencing_version_entities
                     .iter()
                     .map(|entity| entity.id().unwrap())
                     .collect::<Vec<_>>();
 
-            // If this subgraph is the only one with this hash as the current version
-            if subgraph_ids_with_current_version_referencing_hash.len() == 1 {
-                ops.push(EntityOperation::Remove {
-                    key: SubgraphDeploymentEntity::key(
-                        SubgraphId::new(previous_version_hash).unwrap(),
-                    ),
-                });
+                // Find all subgraphs that have one of these versions as currentVersion
+                let subgraphs_with_current_version_referencing_hash = store.find(
+                    SubgraphEntity::query().filter(EntityFilter::In(
+                        "currentVersion".to_owned(),
+                        referencing_version_entity_ids
+                            .into_iter()
+                            .map(Value::from)
+                            .collect(),
+                    )),
+                )?;
+                let subgraph_ids_with_current_version_referencing_hash =
+                    subgraphs_with_current_version_referencing_hash
+                        .iter()
+                        .map(|entity| entity.id().unwrap())
+                        .collect::<Vec<_>>();
+
+                // If this subgraph is the only one with this hash as the current version
+                if subgraph_ids_with_current_version_referencing_hash.len() == 1 {
+                    ops.push(EntityOperation::Remove {
+                        key: SubgraphDeploymentEntity::key(
+                            SubgraphId::new(previous_version_hash).unwrap(),
+                        ),
+                    });
+                }
             }
         }
     }
