@@ -494,7 +494,7 @@ where
                         to,
                     ))
                     .map(|()| ReconciliationStepOutcome::MoreSteps)
-                    .map_err(|e| format_err!("failed to skip blocks: {}", e)),
+                    .map_err(|e| format_err!("Failed to skip blocks: {}", e)),
                 )
             }
             ReconciliationStep::ProcessDescendantBlocks {
