@@ -367,9 +367,9 @@ impl Entity {
     /// Try to get this entity's ID
     pub fn id(&self) -> Result<String, Error> {
         match self.get("id") {
-            None => Err(format_err!("entity is missing an `id` attribute")),
+            None => Err(format_err!("Entity is missing an `id` attribute")),
             Some(Value::String(s)) => Ok(s.to_owned()),
-            _ => Err(format_err!("entity has non-string `id` attribute")),
+            _ => Err(format_err!("Entity has non-string `id` attribute")),
         }
     }
 

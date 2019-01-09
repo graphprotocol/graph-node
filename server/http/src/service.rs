@@ -132,7 +132,7 @@ where
             SubgraphName::new(subgraph_name)
                 .map_err(|()| {
                     GraphQLServerError::ClientError(format!(
-                        "invalid subgraph name {:?}",
+                        "Invalid subgraph name {:?}",
                         subgraph_name
                     ))
                 })
@@ -141,7 +141,7 @@ where
                         .resolve_subgraph_name_to_id(subgraph_name)
                         .map_err(|e| {
                             GraphQLServerError::InternalError(format!(
-                                "error resolving subgraph name: {}",
+                                "Error resolving subgraph name: {}",
                                 e
                             ))
                         })
@@ -149,7 +149,7 @@ where
                 .into_future()
                 .and_then(|subgraph_id_opt| {
                     subgraph_id_opt.ok_or(GraphQLServerError::ClientError(
-                        "subgraph name not found".to_owned(),
+                        "Subgraph name not found".to_owned(),
                     ))
                 })
                 .and_then(move |subgraph_id| {
@@ -190,7 +190,6 @@ where
         let schema = match self.store.subgraph_schema(id) {
             Ok(schema) => schema,
             Err(e) => {
-                println!("handle_graphql_query: schema error: {}", e);
                 return Box::new(future::err(GraphQLServerError::InternalError(
                     e.to_string(),
                 )));

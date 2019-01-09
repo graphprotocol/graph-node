@@ -111,17 +111,19 @@ where
 
         store
             .subscribe(vec![SubgraphDeploymentEntity::subgraph_entity_pair()])
-            .map_err(|()| format_err!("entity change stream failed"))
+            .map_err(|()| format_err!("Entity change stream failed"))
             .and_then(
                 move |entity_change| -> Result<Box<Stream<Item = _, Error = _> + Send>, _> {
                     let subgraph_hash = SubgraphId::new(entity_change.entity_id.clone())
-                        .map_err(|()| format_err!("invalid subgraph hash in deployment entity"))?;
+                        .map_err(|()| format_err!("Invalid subgraph hash in deployment entity"))?;
 
                     match entity_change.operation {
                         EntityChangeOperation::Added | EntityChangeOperation::Updated => {
                             store
                                 .get(SubgraphDeploymentEntity::key(subgraph_hash.clone()))
-                                .map_err(|e| format_err!("failed to get entity: {}", e))
+                                .map_err(|e| {
+                                    format_err!("Failed to get subgraph deployment entity: {}", e)
+                                })
                                 .map(|entity_opt| -> Box<Stream<Item = _, Error = _> + Send> {
                                     if let Some(entity) = entity_opt {
                                         if entity.get("nodeId") == Some(&node_id.to_string().into())
@@ -170,7 +172,7 @@ where
         ));
 
         future::result(self.store.find(deployment_query))
-            .map_err(|e| format_err!("error querying subgraph deployments: {}", e))
+            .map_err(|e| format_err!("Error querying subgraph deployments: {}", e))
             .and_then(move |deployment_entities| {
                 deployment_entities
                     .into_iter()
@@ -178,7 +180,7 @@ where
                         // Parse as subgraph hash
                         deployment_entity.id().and_then(|id| {
                             SubgraphId::new(id).map_err(|()| {
-                                format_err!("invalid subgraph hash in deployment entity")
+                                format_err!("Invalid subgraph hash in deployment entity")
                             })
                         })
                     })
@@ -254,7 +256,7 @@ where
                             SubgraphName::new(name_string.to_owned())
                                 .map_err(|()| {
                                     format_err!(
-                                        "subgraph name in store has invalid format: {:?}",
+                                        "Subgraph name in store has invalid format: {:?}",
                                         name_string
                                     )
                                 })
@@ -296,7 +298,8 @@ where
                                 // in a UI.
                                 error!(
                                     logger,
-                                    "Subgraph instance failed to start: {}", e;
+                                    "Subgraph instance failed to start";
+                                    "error" => e.to_string(),
                                     "subgraph_id" => subgraph_id.to_string()
                                 );
                                 Ok(())
@@ -470,7 +473,7 @@ fn create_subgraph_version(
             let previous_version_entity = store
                 .get(SubgraphVersionEntity::key(current_version_id))?
                 .ok_or_else(|| {
-                    TransactionAbortError::Other(format!("subgraph version entity missing"))
+                    TransactionAbortError::Other(format!("Subgraph version entity missing"))
                 })
                 .map_err(StoreError::from)?;
             let previous_version_hash = previous_version_entity
