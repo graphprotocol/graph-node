@@ -152,6 +152,13 @@ impl<'de> de::Deserialize<'de> for SubgraphName {
     }
 }
 
+/// Result of a creating a subgraph in the registar.
+#[derive(Serialize)]
+pub struct CreateSubgraphResult {
+    /// The ID of the subgraph that was created.
+    pub id: String,
+}
+
 #[derive(Fail, Debug)]
 pub enum SubgraphRegistrarError {
     #[fail(display = "subgraph resolve error: {}", _0)]
