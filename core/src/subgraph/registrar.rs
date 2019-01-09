@@ -203,7 +203,7 @@ where
     fn create_subgraph(
         &self,
         name: SubgraphName,
-    ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
+    ) -> Box<Future<Item = String, Error = SubgraphRegistrarError> + Send + 'static> {
         Box::new(future::result(create_subgraph(
             &self.logger,
             self.store.clone(),
@@ -328,7 +328,7 @@ fn create_subgraph(
     logger: &Logger,
     store: Arc<impl Store>,
     name: SubgraphName,
-) -> Result<(), SubgraphRegistrarError> {
+) -> Result<String, SubgraphRegistrarError> {
     let mut ops = vec![];
 
     // Check if this subgraph already exists
@@ -366,7 +366,7 @@ fn create_subgraph(
 
     debug!(logger, "Created subgraph"; "subgraph_name" => name.to_string());
 
-    Ok(())
+    Ok(entity_id)
 }
 
 fn create_subgraph_version(
