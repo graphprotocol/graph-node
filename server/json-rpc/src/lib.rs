@@ -67,7 +67,7 @@ where
                         json_rpc_error(JSON_RPC_CREATE_ERROR, e.to_string())
                     }
                 })
-                .map(move |_| Value::Null),
+                .map(move |id| Value::String(id)),
         )
     }
 

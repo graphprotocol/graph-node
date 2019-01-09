@@ -496,7 +496,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .then(
                     |result| Ok(result.expect("Failed to create subgraph from `--subgraph` flag")),
                 )
-                .and_then(move |()| {
+                .and_then(move |_| {
                     subgraph_registrar.create_subgraph_version(name, subgraph_id, node_id)
                 })
                 .then(|result| {
