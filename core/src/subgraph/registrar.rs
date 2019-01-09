@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use graph::data::subgraph::schema::*;
 use graph::prelude::{
-    SubgraphDeploymentProvider as SubgraphDeploymentProviderTrait,
+    CreateSubgraphResult, SubgraphDeploymentProvider as SubgraphDeploymentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
 
@@ -203,7 +203,8 @@ where
     fn create_subgraph(
         &self,
         name: SubgraphName,
-    ) -> Box<Future<Item = String, Error = SubgraphRegistrarError> + Send + 'static> {
+    ) -> Box<Future<Item = CreateSubgraphResult, Error = SubgraphRegistrarError> + Send + 'static>
+    {
         Box::new(future::result(create_subgraph(
             &self.logger,
             self.store.clone(),
@@ -328,7 +329,7 @@ fn create_subgraph(
     logger: &Logger,
     store: Arc<impl Store>,
     name: SubgraphName,
-) -> Result<String, SubgraphRegistrarError> {
+) -> Result<CreateSubgraphResult, SubgraphRegistrarError> {
     let mut ops = vec![];
 
     // Check if this subgraph already exists
@@ -366,7 +367,7 @@ fn create_subgraph(
 
     debug!(logger, "Created subgraph"; "subgraph_name" => name.to_string());
 
-    Ok(entity_id)
+    Ok(CreateSubgraphResult { id: entity_id })
 }
 
 fn create_subgraph_version(

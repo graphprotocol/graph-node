@@ -67,7 +67,9 @@ where
                         json_rpc_error(JSON_RPC_CREATE_ERROR, e.to_string())
                     }
                 })
-                .map(move |id| Value::String(id)),
+                .map(move |result| {
+                    serde_json::to_value(result).expect("invalid subgraph creation result")
+                }),
         )
     }
 
