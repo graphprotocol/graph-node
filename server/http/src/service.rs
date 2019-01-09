@@ -123,13 +123,13 @@ where
 
     fn handle_graphql_query_by_name(
         &self,
-        subgraph_name: &str,
+        subgraph_name: String,
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
         let service = self.clone();
 
         Box::new(
-            SubgraphName::new(subgraph_name)
+            SubgraphName::new(subgraph_name.as_str())
                 .map_err(|()| {
                     GraphQLServerError::ClientError(format!(
                         "Invalid subgraph name {:?}",
@@ -160,7 +160,7 @@ where
 
     fn handle_graphql_query_by_id(
         &self,
-        id: &str,
+        id: String,
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
         match SubgraphId::new(id) {
@@ -282,26 +282,37 @@ where
             (Method::GET, ["graphiql.min.js"]) => {
                 self.serve_file(include_str!("../assets/graphiql.min.js"))
             }
-            (Method::GET, &["subgraphs", "id", _])
-            | (Method::GET, &["subgraphs", "name", _])
-            | (Method::GET, &["subgraphs"]) => self.handle_graphiql(),
 
-            (Method::POST, &["subgraphs", "id", subgraph_id, "graphql"]) => {
-                self.handle_graphql_query_by_id(subgraph_id, req)
+            (Method::GET, &["subgraphs", "id", _, "graphql"])
+            | (Method::GET, &["subgraphs", "name", _, "graphql"])
+            | (Method::GET, &["subgraphs", "name", _, _, "graphql"])
+            | (Method::GET, &["subgraphs", "graphql"]) => self.handle_graphiql(),
+
+            (Method::GET, path @ ["subgraphs", "id", _])
+            | (Method::GET, path @ ["subgraphs", "name", _])
+            | (Method::GET, path @ ["subgraphs", "name", _, _])
+            | (Method::GET, path @ ["subgraphs"]) => {
+                let dest = format!("/{}/graphql", path.join("/"));
+                self.handle_temp_redirect(&dest)
             }
-            (Method::OPTIONS, ["subgraphs", "id", _, "graphql"]) => {
-                self.handle_graphql_options(req)
+
+            (Method::POST, &["subgraphs", "id", subgraph_id]) => {
+                self.handle_graphql_query_by_id(subgraph_id.to_owned(), req)
             }
-            (Method::POST, ["subgraphs", "name", subgraph_name, "graphql"]) => {
+            (Method::OPTIONS, ["subgraphs", "id", _]) => self.handle_graphql_options(req),
+            (Method::POST, &["subgraphs", "name", subgraph_name]) => {
+                self.handle_graphql_query_by_name(subgraph_name.to_owned(), req)
+            }
+            (Method::POST, ["subgraphs", "name", subgraph_name_part1, subgraph_name_part2]) => {
+                let subgraph_name = format!("{}/{}", subgraph_name_part1, subgraph_name_part2);
                 self.handle_graphql_query_by_name(subgraph_name, req)
             }
-            (Method::OPTIONS, ["subgraphs", "name", _, "graphql"]) => {
-                self.handle_graphql_options(req)
-            }
+            (Method::OPTIONS, ["subgraphs", "name", _])
+            | (Method::OPTIONS, ["subgraphs", "name", _, _]) => self.handle_graphql_options(req),
 
             // `/subgraphs` acts as an alias to `/subgraphs/id/SUBGRAPHS_ID`
-            (Method::POST, &["subgraphs", "graphql"]) => {
-                self.handle_graphql_query_by_id(&SUBGRAPHS_ID.to_string(), req)
+            (Method::POST, &["subgraphs"]) => {
+                self.handle_graphql_query_by_id(SUBGRAPHS_ID.to_string(), req)
             }
             (Method::OPTIONS, ["subgraphs"]) => self.handle_graphql_options(req),
 
@@ -364,7 +375,7 @@ mod tests {
 
         let request = Request::builder()
             .method(Method::POST)
-            .uri(format!("http://localhost:8000/subgraphs/id/{}/graphql", id))
+            .uri(format!("http://localhost:8000/subgraphs/id/{}", id))
             .body(Body::from("{}"))
             .unwrap();
 
@@ -407,7 +418,7 @@ mod tests {
 
                     let request = Request::builder()
                         .method(Method::POST)
-                        .uri(format!("http://localhost:8000/subgraphs/id/{}/graphql", id))
+                        .uri(format!("http://localhost:8000/subgraphs/id/{}", id))
                         .body(Body::from("{\"query\": \"{ name }\"}"))
                         .unwrap();
 
