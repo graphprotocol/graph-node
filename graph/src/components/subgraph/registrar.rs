@@ -5,7 +5,7 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
     fn create_subgraph(
         &self,
         name: SubgraphName,
-    ) -> Box<Future<Item = String, Error = SubgraphRegistrarError> + Send + 'static>;
+    ) -> Box<Future<Item = CreateSubgraphResult, Error = SubgraphRegistrarError> + Send + 'static>;
 
     fn create_subgraph_version(
         &self,

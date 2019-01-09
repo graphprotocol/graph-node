@@ -222,7 +222,7 @@ fn subgraph_provider_events() {
             );
             registrar
                 .start()
-                .and_then(move |()| {
+                .and_then(move |_| {
                     add_subgraph_to_ipfs(resolver.clone(), "two-datasources")
                         .join(add_subgraph_to_ipfs(resolver, "dummy"))
                 })
@@ -266,7 +266,7 @@ fn subgraph_provider_events() {
                             // Create subgraph
                             registrar_clone1.create_subgraph(subgraph_name_clone1.clone())
                         })
-                        .and_then(move |()| {
+                        .and_then(move |_| {
                             // Deploy
                             registrar_clone2.create_subgraph_version(
                                 subgraph_name_clone2.clone(),
@@ -393,8 +393,8 @@ fn subgraph_list() {
                         .and_then(move |()| {
                             registrar_clone1.create_subgraph(subgraph1_name_clone1.clone())
                         })
-                        .and_then(move |()| registrar_clone2.create_subgraph(subgraph2_name_clone1))
-                        .and_then(move |()| registrar_clone3.list_subgraphs())
+                        .and_then(move |_| registrar_clone2.create_subgraph(subgraph2_name_clone1))
+                        .and_then(move |_| registrar_clone3.list_subgraphs())
                         .and_then(move |subgraphs| {
                             assert_eq!(
                                 subgraphs.into_iter().collect::<HashSet<_>>(),
