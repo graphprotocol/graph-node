@@ -40,8 +40,8 @@ can access these via:
 
 * Graph Node:
     - GraphiQL: `http://localhost:8000/`
-    - HTTP: `http://localhost:8000/<subgraph>/graphql`
-    - WebSockets: `ws://localhost:8001/<subgraph>`
+    - HTTP: `http://localhost:8000/subgraphs/name/<subgraph-name>`
+    - WebSockets: `ws://localhost:8001/subgraphs/name/<subgraph-name>`
     - JSON-RPC admin: `http://localhost:8020/`
 * IPFS:
     - `127.0.0.1:5001` or `/ip4/127.0.0.1/tcp/5001`
