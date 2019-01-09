@@ -108,13 +108,14 @@
              history.replaceState(null, null, newSearch);
          }
 
+         var graphQLEndpoint = window.location.pathname
+             .substring(0, window.location.pathname.length - "/graphql".length);
+
          // Defines a GraphQL fetcher using the fetch API. You're not required to
          // use fetch, and could instead implement graphQLFetcher however you like,
          // as long as it returns a Promise or Observable.
          function graphQLFetcher(graphQLParams) {
-             // This example expects a GraphQL server at the path /graphql.
-             // Change this to point wherever you host your GraphQL server.
-             return fetch(window.location.pathname + '/graphql', {
+             return fetch(graphQLEndpoint, {
                  method: 'post',
                  headers: {
                      'Accept': 'application/json',
@@ -135,7 +136,7 @@
 
          let wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
          let wsHostname = window.location.hostname
-         let wsPath = window.location.pathname.replace(/^\//, '')
+         let wsPath = graphQLEndpoint.replace(/^\//, '')
          let wsUrl = `${wsProtocol}//${wsHostname}:__WS_PORT__/${wsPath}`
          var subscriptionsClient = new window.SubscriptionsTransportWs.SubscriptionClient(
              wsUrl, { reconnect: true }

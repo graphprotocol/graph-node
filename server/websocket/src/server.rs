@@ -43,13 +43,17 @@ where
         match path_segments.as_slice() {
             &["subgraphs"] => Ok(SUBGRAPHS_ID.clone()),
             &["subgraphs", "id", subgraph_id] => SubgraphId::new(subgraph_id),
-            &["subgraphs", "name", subgraph_name] => SubgraphName::new(subgraph_name)
-                .map(|subgraph_name| {
-                    store
-                        .resolve_subgraph_name_to_id(subgraph_name)
-                        .expect("failed to resolve subgraph name to ID")
-                })
-                .and_then(|deployment_opt| deployment_opt.ok_or(())),
+            &["subgraphs", "name", _] | &["subgraphs", "name", _, _] => {
+                let subgraph_name = path_segments[2..].join("/");
+
+                SubgraphName::new(subgraph_name)
+                    .map(|subgraph_name| {
+                        store
+                            .resolve_subgraph_name_to_id(subgraph_name)
+                            .expect("failed to resolve subgraph name to ID")
+                    })
+                    .and_then(|deployment_opt| deployment_opt.ok_or(()))
+            }
             _ => return Err(()),
         }
     }
