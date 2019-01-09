@@ -117,6 +117,11 @@ impl SubgraphName {
             return Err(());
         }
 
+        // To keep URLs unambiguous, reserve the token "graphql"
+        if s.split("/").any(|part| part == "graphql") {
+            return Err(());
+        }
+
         Ok(SubgraphName(s))
     }
 }
