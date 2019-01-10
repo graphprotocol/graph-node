@@ -197,7 +197,9 @@ fn build_order_direction(
 }
 
 /// Parses the subgraph ID from the ObjectType directives.
-pub fn parse_subgraph_id(entity: &s::ObjectType) -> Result<SubgraphDeploymentId, QueryExecutionError> {
+pub fn parse_subgraph_id(
+    entity: &s::ObjectType,
+) -> Result<SubgraphDeploymentId, QueryExecutionError> {
     let entity_name = entity.name.clone();
     entity
         .directives

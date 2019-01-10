@@ -29,7 +29,8 @@ fn postgres_test_url() -> String {
 
 lazy_static! {
     static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
-    static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId = SubgraphDeploymentId::new("testsubgraph").unwrap();
+    static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId =
+        SubgraphDeploymentId::new("testsubgraph").unwrap();
     static ref TEST_BLOCK_0_PTR: EthereumBlockPointer = (
         H256::from("0xbd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"),
         0u64

@@ -88,14 +88,16 @@ mod tests {
 
     #[test]
     fn rejects_invalid_json() {
-        let schema = Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema =
+            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = GraphQLRequest::new(hyper::Chunk::from("!@#)%"), schema);
         request.wait().expect_err("Should reject invalid JSON");
     }
 
     #[test]
     fn rejects_json_without_query_field() {
-        let schema = Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema =
+            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = GraphQLRequest::new(hyper::Chunk::from("{}"), schema);
         request
             .wait()
@@ -104,7 +106,8 @@ mod tests {
 
     #[test]
     fn rejects_json_with_non_string_query_field() {
-        let schema = Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema =
+            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": 5}"), schema);
         request
             .wait()
@@ -113,14 +116,16 @@ mod tests {
 
     #[test]
     fn rejects_broken_queries() {
-        let schema = Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema =
+            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": \"foo\"}"), schema);
         request.wait().expect_err("Should reject broken queries");
     }
 
     #[test]
     fn accepts_valid_queries() {
-        let schema = Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema =
+            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = GraphQLRequest::new(
             hyper::Chunk::from("{\"query\": \"{ user { name } }\"}"),
             schema,
@@ -134,7 +139,8 @@ mod tests {
 
     #[test]
     fn accepts_null_variables() {
-        let schema = Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema =
+            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = GraphQLRequest::new(
             hyper::Chunk::from(
                 "\
@@ -154,7 +160,8 @@ mod tests {
 
     #[test]
     fn rejects_non_map_variables() {
-        let schema = Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema =
+            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = GraphQLRequest::new(
             hyper::Chunk::from(
                 "\
@@ -170,7 +177,8 @@ mod tests {
 
     #[test]
     fn parses_variables() {
-        let schema = Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema =
+            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = GraphQLRequest::new(
             hyper::Chunk::from(
                 "\

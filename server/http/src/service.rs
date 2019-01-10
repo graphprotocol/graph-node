@@ -169,7 +169,11 @@ where
         }
     }
 
-    fn handle_graphql_query(&self, id: SubgraphDeploymentId, request_body: Body) -> GraphQLServiceResponse {
+    fn handle_graphql_query(
+        &self,
+        id: SubgraphDeploymentId,
+        request_body: Body,
+    ) -> GraphQLServiceResponse {
         let service = self.clone();
 
         match self.store.is_deployed(&id) {

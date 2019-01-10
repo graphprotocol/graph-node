@@ -199,9 +199,12 @@ where
         object_type: &s::ObjectType,
     ) -> Result<Entity, QueryExecutionError> {
         let subgraph_deployment_entity_pair = SubgraphDeploymentEntity::subgraph_entity_pair();
-        if (parse_subgraph_id(object_type)?, object_type.name.clone()) == subgraph_deployment_entity_pair
+        if (parse_subgraph_id(object_type)?, object_type.name.clone())
+            == subgraph_deployment_entity_pair
         {
-            let id = entity.id().expect("subgraph deployment entity should have ID");
+            let id = entity
+                .id()
+                .expect("subgraph deployment entity should have ID");
             let hash = SubgraphDeploymentId::new(id).expect("invalid subgraph ID in database");
             entity.insert(
                 "entityCount".to_owned(),

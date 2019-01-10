@@ -110,7 +110,9 @@ where
         let node_id = self.node_id.clone();
 
         store
-            .subscribe(vec![SubgraphDeploymentAssignmentEntity::subgraph_entity_pair()])
+            .subscribe(vec![
+                SubgraphDeploymentAssignmentEntity::subgraph_entity_pair(),
+            ])
             .map_err(|()| format_err!("Entity change stream failed"))
             .and_then(
                 move |entity_change| -> Result<Box<Stream<Item = _, Error = _> + Send>, _> {
@@ -120,7 +122,9 @@ where
                     match entity_change.operation {
                         EntityChangeOperation::Added | EntityChangeOperation::Updated => {
                             store
-                                .get(SubgraphDeploymentAssignmentEntity::key(subgraph_hash.clone()))
+                                .get(SubgraphDeploymentAssignmentEntity::key(
+                                    subgraph_hash.clone(),
+                                ))
                                 .map_err(|e| {
                                     format_err!("Failed to get subgraph assignment entity: {}", e)
                                 })
@@ -166,10 +170,9 @@ where
         let provider = self.provider.clone();
 
         // Create a query to find all assignments with this node ID
-        let assignment_query = SubgraphDeploymentAssignmentEntity::query().filter(EntityFilter::Equal(
-            "nodeId".to_owned(),
-            self.node_id.to_string().into(),
-        ));
+        let assignment_query = SubgraphDeploymentAssignmentEntity::query().filter(
+            EntityFilter::Equal("nodeId".to_owned(), self.node_id.to_string().into()),
+        );
 
         future::result(self.store.find(assignment_query))
             .map_err(|e| format_err!("Error querying subgraph assignments: {}", e))
@@ -449,8 +452,13 @@ fn create_subgraph_version(
         };
         let genesis_block_ptr = chain_store.genesis_block_ptr()?;
         ops.extend(
-            SubgraphDeploymentEntity::new(&manifest, false, genesis_block_ptr, chain_head_block_number)
-                .create_operations(&manifest.id),
+            SubgraphDeploymentEntity::new(
+                &manifest,
+                false,
+                genesis_block_ptr,
+                chain_head_block_number,
+            )
+            .create_operations(&manifest.id),
         );
     }
 
@@ -514,7 +522,8 @@ fn create_subgraph_version(
     }
 
     // Check if assignment already exists for this hash
-    let assignment_entity_opt = store.get(SubgraphDeploymentAssignmentEntity::key(manifest.id.clone()))?;
+    let assignment_entity_opt =
+        store.get(SubgraphDeploymentAssignmentEntity::key(manifest.id.clone()))?;
     ops.push(EntityOperation::AbortUnless {
         description: "Subgraph assignment entity must continue to exist/not exist".to_owned(),
         query: SubgraphDeploymentAssignmentEntity::query().filter(EntityFilter::Equal(
@@ -530,7 +539,9 @@ fn create_subgraph_version(
 
     // Create assignment entity only if it does not exist already
     if assignment_entity_opt.is_none() {
-        ops.extend(SubgraphDeploymentAssignmentEntity::new(node_id, false).write_operations(&manifest.id));
+        ops.extend(
+            SubgraphDeploymentAssignmentEntity::new(node_id, false).write_operations(&manifest.id),
+        );
     }
 
     // TODO support delayed update of currentVersion
@@ -691,7 +702,9 @@ fn remove_subgraph_versions(
         subgraph_deployment_hashes_needing_deletion
             .into_iter()
             .map(|subgraph_hash| EntityOperation::Remove {
-                key: SubgraphDeploymentEntity::key(SubgraphDeploymentId::new(subgraph_hash).unwrap()),
+                key: SubgraphDeploymentEntity::key(
+                    SubgraphDeploymentId::new(subgraph_hash).unwrap(),
+                ),
             }),
     );
 
@@ -763,7 +776,9 @@ fn remove_subgraph_versions(
         subgraph_assignment_hashes_needing_deletion
             .into_iter()
             .map(|subgraph_hash| EntityOperation::Remove {
-                key: SubgraphDeploymentAssignmentEntity::key(SubgraphDeploymentId::new(subgraph_hash).unwrap()),
+                key: SubgraphDeploymentAssignmentEntity::key(
+                    SubgraphDeploymentId::new(subgraph_hash).unwrap(),
+                ),
             }),
     );
 

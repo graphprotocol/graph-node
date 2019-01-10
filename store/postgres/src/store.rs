@@ -613,7 +613,9 @@ impl StoreTrait for Store {
             .ok_or_else(|| format_err!("SubgraphDeployment is missing latestEthereumBlockHash"))?
             .to_owned()
             .as_string()
-            .ok_or_else(|| format_err!("SubgraphDeployment has wrong type in latestEthereumBlockHash"))?
+            .ok_or_else(|| {
+                format_err!("SubgraphDeployment has wrong type in latestEthereumBlockHash")
+            })?
             .parse::<H256>()
             .map_err(|e| format_err!("latestEthereumBlockHash: {}", e))?;
 
@@ -794,7 +796,10 @@ impl StoreTrait for Store {
 }
 
 impl SubgraphDeploymentStore for Store {
-    fn resolve_subgraph_name_to_id(&self, name: SubgraphName) -> Result<Option<SubgraphDeploymentId>, Error> {
+    fn resolve_subgraph_name_to_id(
+        &self,
+        name: SubgraphName,
+    ) -> Result<Option<SubgraphDeploymentId>, Error> {
         // Find subgraph entity by name
         let subgraph_entities = self
             .find(SubgraphEntity::query().filter(EntityFilter::Equal(
@@ -845,7 +850,9 @@ impl SubgraphDeploymentStore for Store {
             .as_string()
             .ok_or_else(|| format_err!("SubgraphVersion entity has wrong type in `deployment`"))?;
         SubgraphDeploymentId::new(subgraph_id_str)
-            .map_err(|()| format_err!("SubgraphVersion entity has invalid subgraph ID in `deployment`"))
+            .map_err(|()| {
+                format_err!("SubgraphVersion entity has invalid subgraph ID in `deployment`")
+            })
             .map(Some)
     }
 

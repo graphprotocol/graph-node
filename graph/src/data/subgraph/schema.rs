@@ -24,7 +24,8 @@ use data::subgraph::{SubgraphManifest, SubgraphName};
 
 /// ID of the subgraph of subgraphs.
 lazy_static! {
-    pub static ref SUBGRAPHS_ID: SubgraphDeploymentId = SubgraphDeploymentId::new("subgraphs").unwrap();
+    pub static ref SUBGRAPHS_ID: SubgraphDeploymentId =
+        SubgraphDeploymentId::new("subgraphs").unwrap();
 }
 
 /// Generic type for the entity types defined below.
@@ -250,7 +251,10 @@ impl SubgraphDeploymentEntity {
         ops
     }
 
-    pub fn update_failed_operations(id: &SubgraphDeploymentId, failed: bool) -> Vec<EntityOperation> {
+    pub fn update_failed_operations(
+        id: &SubgraphDeploymentId,
+        failed: bool,
+    ) -> Vec<EntityOperation> {
         let mut ops = vec![];
 
         ops.push(EntityOperation::AbortUnless {
