@@ -19,4 +19,4 @@ mod subgraph;
 pub use graphql::GraphQlRunner;
 pub use log::elastic::{elastic_logger, ElasticDrainConfig, ElasticLoggingConfig};
 pub use log::split::split_logger;
-pub use subgraph::{SubgraphDeploymentProvider, SubgraphInstanceManager, SubgraphRegistrar};
+pub use subgraph::{SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar};

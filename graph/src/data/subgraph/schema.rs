@@ -105,7 +105,7 @@ impl SubgraphEntity {
 #[derive(Debug)]
 pub struct SubgraphVersionEntity {
     subgraph_id: String,
-    state_subgraph_hash: SubgraphId,
+    deployment_id: SubgraphId,
     created_at: u64,
 }
 
@@ -115,10 +115,10 @@ impl TypedEntity for SubgraphVersionEntity {
 }
 
 impl SubgraphVersionEntity {
-    pub fn new(subgraph_id: String, subgraph_hash: SubgraphId, created_at: u64) -> Self {
+    pub fn new(subgraph_id: String, deployment_id: SubgraphId, created_at: u64) -> Self {
         Self {
             subgraph_id,
-            state_subgraph_hash: subgraph_hash,
+            deployment_id,
             created_at,
         }
     }
@@ -127,14 +127,14 @@ impl SubgraphVersionEntity {
         let mut entity = Entity::new();
         entity.set("id", id.to_owned());
         entity.set("subgraph", self.subgraph_id);
-        entity.set("state", self.state_subgraph_hash.to_string());
+        entity.set("deployment", self.deployment_id.to_string());
         entity.set("createdAt", self.created_at);
         vec![set_entity_operation(Self::TYPENAME, id, entity)]
     }
 }
 
 #[derive(Debug)]
-pub struct SubgraphStateEntity {
+pub struct SubgraphDeploymentEntity {
     manifest: SubgraphManifestEntity,
     failed: bool,
     latest_ethereum_block_hash: H256,
@@ -142,12 +142,12 @@ pub struct SubgraphStateEntity {
     total_ethereum_blocks_count: u64,
 }
 
-impl TypedEntity for SubgraphStateEntity {
-    const TYPENAME: &'static str = "SubgraphState";
+impl TypedEntity for SubgraphDeploymentEntity {
+    const TYPENAME: &'static str = "SubgraphDeployment";
     type IdType = SubgraphId;
 }
 
-impl SubgraphStateEntity {
+impl SubgraphDeploymentEntity {
     pub fn new(
         source_manifest: &SubgraphManifest,
         failed: bool,
@@ -168,7 +168,7 @@ impl SubgraphStateEntity {
 
         // Abort unless no entity exists with this ID
         ops.push(EntityOperation::AbortUnless {
-            description: "Subgraph state entity must not exist yet to be created".to_owned(),
+            description: "Subgraph deployment entity must not exist yet to be created".to_owned(),
             query: Self::query()
                 .filter(EntityFilter::Equal("id".to_owned(), id.to_string().into())),
             entity_ids: vec![],
@@ -234,7 +234,7 @@ impl SubgraphStateEntity {
         let mut ops = vec![];
 
         ops.push(EntityOperation::AbortUnless {
-            description: "Subgraph state entity must exist to be updated".to_owned(),
+            description: "Subgraph deployment entity must exist to be updated".to_owned(),
             query: Self::query().filter(EntityFilter::And(vec![EntityFilter::Equal(
                 "id".to_owned(),
                 id.to_string().into(),
@@ -254,7 +254,7 @@ impl SubgraphStateEntity {
         let mut ops = vec![];
 
         ops.push(EntityOperation::AbortUnless {
-            description: "Subgraph state entity must exist to be updated".to_owned(),
+            description: "Subgraph deployment entity must exist to be updated".to_owned(),
             query: Self::query().filter(EntityFilter::And(vec![EntityFilter::Equal(
                 "id".to_owned(),
                 id.to_string().into(),
@@ -272,18 +272,18 @@ impl SubgraphStateEntity {
 }
 
 #[derive(Debug)]
-pub struct SubgraphDeploymentEntity {
+pub struct SubgraphDeploymentAssignmentEntity {
     node_id: NodeId,
     synced: bool,
     cost: u64,
 }
 
-impl TypedEntity for SubgraphDeploymentEntity {
-    const TYPENAME: &'static str = "SubgraphDeployment";
+impl TypedEntity for SubgraphDeploymentAssignmentEntity {
+    const TYPENAME: &'static str = "SubgraphDeploymentAssignment";
     type IdType = SubgraphId;
 }
 
-impl SubgraphDeploymentEntity {
+impl SubgraphDeploymentAssignmentEntity {
     pub fn new(node_id: NodeId, synced: bool) -> Self {
         Self {
             node_id,
@@ -310,7 +310,7 @@ impl SubgraphDeploymentEntity {
 
         ops.push(EntityOperation::AbortUnless {
             description:
-                "Subgraph deployment entity must exist and have proper node ID to be updated"
+                "Subgraph assignment entity must exist and have proper node ID to be updated"
                     .to_owned(),
             query: Self::query().filter(EntityFilter::And(vec![
                 EntityFilter::Equal("id".to_owned(), id.to_string().into()),

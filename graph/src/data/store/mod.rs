@@ -59,7 +59,7 @@ impl<'de> de::Deserialize<'de> for NodeId {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type")]
-pub enum DeploymentEvent {
+pub enum AssignmentEvent {
     Add {
         subgraph_id: SubgraphId,
         node_id: NodeId,
@@ -70,11 +70,11 @@ pub enum DeploymentEvent {
     },
 }
 
-impl DeploymentEvent {
+impl AssignmentEvent {
     pub fn node_id(&self) -> &NodeId {
         match self {
-            DeploymentEvent::Add { node_id, .. } => node_id,
-            DeploymentEvent::Remove { node_id, .. } => node_id,
+            AssignmentEvent::Add { node_id, .. } => node_id,
+            AssignmentEvent::Remove { node_id, .. } => node_id,
         }
     }
 }

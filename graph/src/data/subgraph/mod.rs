@@ -194,7 +194,7 @@ impl From<Error> for SubgraphRegistrarError {
 }
 
 #[derive(Fail, Debug)]
-pub enum SubgraphDeploymentProviderError {
+pub enum SubgraphAssignmentProviderError {
     #[fail(display = "subgraph resolve error: {}", _0)]
     ResolveError(SubgraphManifestResolveError),
     /// Occurs when attempting to remove a subgraph that's not hosted.
@@ -209,15 +209,15 @@ pub enum SubgraphDeploymentProviderError {
     Unknown(failure::Error),
 }
 
-impl From<Error> for SubgraphDeploymentProviderError {
+impl From<Error> for SubgraphAssignmentProviderError {
     fn from(e: Error) -> Self {
-        SubgraphDeploymentProviderError::Unknown(e)
+        SubgraphAssignmentProviderError::Unknown(e)
     }
 }
 
-/// Events emitted by [SubgraphDeploymentProvider](trait.SubgraphDeploymentProvider.html) implementations.
+/// Events emitted by [SubgraphAssignmentProvider](trait.SubgraphAssignmentProvider.html) implementations.
 #[derive(Debug, PartialEq)]
-pub enum SubgraphDeploymentProviderEvent {
+pub enum SubgraphAssignmentProviderEvent {
     /// A subgraph with the given manifest should start processing.
     SubgraphStart(SubgraphManifest),
     /// The subgraph with the given ID should stop processing.

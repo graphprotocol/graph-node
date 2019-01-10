@@ -33,7 +33,7 @@ use graph::tokio_timer;
 use graph::tokio_timer::timer::Timer;
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph_core::{
-    ElasticLoggingConfig, SubgraphDeploymentProvider as IpfsSubgraphDeploymentProvider,
+    ElasticLoggingConfig, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
@@ -443,7 +443,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Create IPFS-based subgraph provider
     let mut subgraph_provider =
-        IpfsSubgraphDeploymentProvider::new(logger.clone(), ipfs_client.clone(), store.clone());
+        IpfsSubgraphAssignmentProvider::new(logger.clone(), ipfs_client.clone(), store.clone());
 
     // Forward subgraph events from the subgraph provider to the subgraph instance manager
     tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());

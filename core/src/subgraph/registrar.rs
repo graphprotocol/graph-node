@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use graph::data::subgraph::schema::*;
 use graph::prelude::{
-    CreateSubgraphResult, SubgraphDeploymentProvider as SubgraphDeploymentProviderTrait,
+    CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
 
@@ -14,13 +14,13 @@ pub struct SubgraphRegistrar<L, P, S, CS> {
     store: Arc<S>,
     chain_store: Arc<CS>,
     node_id: NodeId,
-    deployment_event_stream_cancel_guard: CancelGuard, // cancels on drop
+    assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
 }
 
 impl<L, P, S, CS> SubgraphRegistrar<L, P, S, CS>
 where
     L: LinkResolver,
-    P: SubgraphDeploymentProviderTrait,
+    P: SubgraphAssignmentProviderTrait,
     S: Store,
     CS: ChainStore,
 {
@@ -41,7 +41,7 @@ where
             store,
             chain_store,
             node_id,
-            deployment_event_stream_cancel_guard: CancelGuard::new(),
+            assignment_event_stream_cancel_guard: CancelGuard::new(),
         }
     }
 
@@ -50,19 +50,19 @@ where
         let logger_clone2 = self.logger.clone();
         let provider = self.provider.clone();
         let node_id = self.node_id.clone();
-        let deployment_event_stream_cancel_handle =
-            self.deployment_event_stream_cancel_guard.handle();
+        let assignment_event_stream_cancel_handle =
+            self.assignment_event_stream_cancel_guard.handle();
 
         // The order of the following three steps is important:
-        // - Start deployment event stream
-        // - Read deployments table and start deployed subgraphs
-        // - Start processing deployment event stream
+        // - Start assignment event stream
+        // - Read assignments table and start assigned subgraphs
+        // - Start processing assignment event stream
         //
-        // Starting the event stream before reading the deployments table ensures that no
-        // deployments are missed in the period of time between the table read and starting event
+        // Starting the event stream before reading the assignments table ensures that no
+        // assignments are missed in the period of time between the table read and starting event
         // processing.
         // Delaying the start of event processing until after the table has been read and processed
-        // ensures that Remove events happen after the deployed subgraphs have been started, not
+        // ensures that Remove events happen after the assigned subgraphs have been started, not
         // before (otherwise a subgraph could be left running due to a race condition).
         //
         // The discrepancy between the start time of the event stream and the table read can result
@@ -71,32 +71,32 @@ where
         //   subgraph A is already in the table.
         // - The event stream sees a Remove event for subgraph B, but the table query finds that
         //   subgraph B has already been removed.
-        // The `handle_deployment_events` function handles these cases by ignoring AlreadyRunning
+        // The `handle_assignment_events` function handles these cases by ignoring AlreadyRunning
         // (on subgraph start) or NotRunning (on subgraph stop) error types, which makes the
         // operations idempotent.
 
         // Start event stream
-        let deployment_event_stream = self.deployment_events();
+        let assignment_event_stream = self.assignment_events();
 
         // Deploy named subgraphs found in store
-        self.start_deployed_subgraphs().and_then(move |()| {
-            // Spawn a task to handle deployment events
+        self.start_assigned_subgraphs().and_then(move |()| {
+            // Spawn a task to handle assignment events
             tokio::spawn(future::lazy(move || {
-                deployment_event_stream
-                    .map_err(SubgraphDeploymentProviderError::Unknown)
+                assignment_event_stream
+                    .map_err(SubgraphAssignmentProviderError::Unknown)
                     .map_err(CancelableError::Error)
-                    .cancelable(&deployment_event_stream_cancel_handle, || {
+                    .cancelable(&assignment_event_stream_cancel_handle, || {
                         CancelableError::Cancel
                     })
-                    .for_each(move |deployment_event| {
-                        assert_eq!(deployment_event.node_id(), &node_id);
-                        handle_deployment_event(deployment_event, provider.clone(), &logger_clone1)
+                    .for_each(move |assignment_event| {
+                        assert_eq!(assignment_event.node_id(), &node_id);
+                        handle_assignment_event(assignment_event, provider.clone(), &logger_clone1)
                     })
                     .map_err(move |e| match e {
                         CancelableError::Cancel => {}
                         CancelableError::Error(e) => {
-                            error!(logger_clone2, "deployment event stream failed: {}", e);
-                            panic!("deployment event stream error: {}", e);
+                            error!(logger_clone2, "assignment event stream failed: {}", e);
+                            panic!("assignment event stream error: {}", e);
                         }
                     })
             }));
@@ -105,37 +105,37 @@ where
         })
     }
 
-    pub fn deployment_events(&self) -> impl Stream<Item = DeploymentEvent, Error = Error> + Send {
+    pub fn assignment_events(&self) -> impl Stream<Item = AssignmentEvent, Error = Error> + Send {
         let store = self.store.clone();
         let node_id = self.node_id.clone();
 
         store
-            .subscribe(vec![SubgraphDeploymentEntity::subgraph_entity_pair()])
+            .subscribe(vec![SubgraphDeploymentAssignmentEntity::subgraph_entity_pair()])
             .map_err(|()| format_err!("Entity change stream failed"))
             .and_then(
                 move |entity_change| -> Result<Box<Stream<Item = _, Error = _> + Send>, _> {
                     let subgraph_hash = SubgraphId::new(entity_change.entity_id.clone())
-                        .map_err(|()| format_err!("Invalid subgraph hash in deployment entity"))?;
+                        .map_err(|()| format_err!("Invalid subgraph hash in assignment entity"))?;
 
                     match entity_change.operation {
                         EntityChangeOperation::Added | EntityChangeOperation::Updated => {
                             store
-                                .get(SubgraphDeploymentEntity::key(subgraph_hash.clone()))
+                                .get(SubgraphDeploymentAssignmentEntity::key(subgraph_hash.clone()))
                                 .map_err(|e| {
-                                    format_err!("Failed to get subgraph deployment entity: {}", e)
+                                    format_err!("Failed to get subgraph assignment entity: {}", e)
                                 })
                                 .map(|entity_opt| -> Box<Stream<Item = _, Error = _> + Send> {
                                     if let Some(entity) = entity_opt {
                                         if entity.get("nodeId") == Some(&node_id.to_string().into())
                                         {
                                             // Start subgraph on this node
-                                            Box::new(stream::once(Ok(DeploymentEvent::Add {
+                                            Box::new(stream::once(Ok(AssignmentEvent::Add {
                                                 subgraph_id: subgraph_hash,
                                                 node_id: node_id.clone(),
                                             })))
                                         } else {
                                             // Ensure it is removed from this node
-                                            Box::new(stream::once(Ok(DeploymentEvent::Remove {
+                                            Box::new(stream::once(Ok(AssignmentEvent::Remove {
                                                 subgraph_id: subgraph_hash,
                                                 node_id: node_id.clone(),
                                             })))
@@ -150,8 +150,8 @@ where
                         EntityChangeOperation::Removed => {
                             // Send remove event without checking node ID.
                             // If node ID does not match, then this is a no-op when handled in
-                            // deployment provider.
-                            Ok(Box::new(stream::once(Ok(DeploymentEvent::Remove {
+                            // assignment provider.
+                            Ok(Box::new(stream::once(Ok(AssignmentEvent::Remove {
                                 subgraph_id: subgraph_hash,
                                 node_id: node_id.clone(),
                             }))))
@@ -162,25 +162,25 @@ where
             .flatten()
     }
 
-    fn start_deployed_subgraphs(&self) -> impl Future<Item = (), Error = Error> {
+    fn start_assigned_subgraphs(&self) -> impl Future<Item = (), Error = Error> {
         let provider = self.provider.clone();
 
-        // Create a query to find all deployments with this node ID
-        let deployment_query = SubgraphDeploymentEntity::query().filter(EntityFilter::Equal(
+        // Create a query to find all assignments with this node ID
+        let assignment_query = SubgraphDeploymentAssignmentEntity::query().filter(EntityFilter::Equal(
             "nodeId".to_owned(),
             self.node_id.to_string().into(),
         ));
 
-        future::result(self.store.find(deployment_query))
-            .map_err(|e| format_err!("Error querying subgraph deployments: {}", e))
-            .and_then(move |deployment_entities| {
-                deployment_entities
+        future::result(self.store.find(assignment_query))
+            .map_err(|e| format_err!("Error querying subgraph assignments: {}", e))
+            .and_then(move |assignment_entities| {
+                assignment_entities
                     .into_iter()
-                    .map(|deployment_entity| {
+                    .map(|assignment_entity| {
                         // Parse as subgraph hash
-                        deployment_entity.id().and_then(|id| {
+                        assignment_entity.id().and_then(|id| {
                             SubgraphId::new(id).map_err(|()| {
-                                format_err!("Invalid subgraph hash in deployment entity")
+                                format_err!("Invalid subgraph hash in assignment entity")
                             })
                         })
                     })
@@ -196,7 +196,7 @@ where
 impl<L, P, S, CS> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS>
 where
     L: LinkResolver,
-    P: SubgraphDeploymentProviderTrait,
+    P: SubgraphAssignmentProviderTrait,
     S: Store,
     CS: ChainStore,
 {
@@ -269,20 +269,20 @@ where
     }
 }
 
-fn handle_deployment_event<P>(
-    event: DeploymentEvent,
+fn handle_assignment_event<P>(
+    event: AssignmentEvent,
     provider: Arc<P>,
     logger: &Logger,
-) -> Box<Future<Item = (), Error = CancelableError<SubgraphDeploymentProviderError>> + Send>
+) -> Box<Future<Item = (), Error = CancelableError<SubgraphAssignmentProviderError>> + Send>
 where
-    P: SubgraphDeploymentProviderTrait,
+    P: SubgraphAssignmentProviderTrait,
 {
     let logger = logger.to_owned();
 
-    debug!(logger, "Received deployment event: {:?}", event);
+    debug!(logger, "Received assignment event: {:?}", event);
 
     match event {
-        DeploymentEvent::Add {
+        AssignmentEvent::Add {
             subgraph_id,
             node_id: _,
         } => {
@@ -292,7 +292,7 @@ where
                     .then(move |result| -> Result<(), _> {
                         match result {
                             Ok(()) => Ok(()),
-                            Err(SubgraphDeploymentProviderError::AlreadyRunning(_)) => Ok(()),
+                            Err(SubgraphAssignmentProviderError::AlreadyRunning(_)) => Ok(()),
                             Err(e) => {
                                 // Errors here are likely an issue with the subgraph.
                                 // These will be recorded eventually so that they can be displayed
@@ -309,7 +309,7 @@ where
                     }),
             )
         }
-        DeploymentEvent::Remove {
+        AssignmentEvent::Remove {
             subgraph_id,
             node_id: _,
         } => Box::new(
@@ -317,7 +317,7 @@ where
                 .stop(subgraph_id)
                 .then(|result| match result {
                     Ok(()) => Ok(()),
-                    Err(SubgraphDeploymentProviderError::NotRunning(_)) => Ok(()),
+                    Err(SubgraphAssignmentProviderError::NotRunning(_)) => Ok(()),
                     Err(e) => Err(e),
                 })
                 .map_err(CancelableError::Error),
@@ -425,23 +425,23 @@ fn create_subgraph_version(
             .write_operations(&version_entity_id),
     );
 
-    // Check if subgraph state already exists for this hash
-    let state_entity_opt = store.get(SubgraphStateEntity::key(manifest.id.clone()))?;
+    // Check if subgraph deployment already exists for this hash
+    let deployment_entity_opt = store.get(SubgraphDeploymentEntity::key(manifest.id.clone()))?;
     ops.push(EntityOperation::AbortUnless {
-        description: "Subgraph state entity must continue to exist/not exist".to_owned(),
-        query: SubgraphStateEntity::query().filter(EntityFilter::Equal(
+        description: "Subgraph deployment entity must continue to exist/not exist".to_owned(),
+        query: SubgraphDeploymentEntity::query().filter(EntityFilter::Equal(
             "id".to_owned(),
             manifest.id.to_string().into(),
         )),
-        entity_ids: if state_entity_opt.is_some() {
+        entity_ids: if deployment_entity_opt.is_some() {
             vec![manifest.id.to_string()]
         } else {
             vec![]
         },
     });
 
-    // Create state only if it does not exist already
-    if state_entity_opt.is_none() {
+    // Create deployment only if it does not exist already
+    if deployment_entity_opt.is_none() {
         let chain_head_ptr_opt = chain_store.chain_head_ptr()?;
         let chain_head_block_number = match chain_head_ptr_opt {
             Some(chain_head_ptr) => chain_head_ptr.number,
@@ -449,12 +449,12 @@ fn create_subgraph_version(
         };
         let genesis_block_ptr = chain_store.genesis_block_ptr()?;
         ops.extend(
-            SubgraphStateEntity::new(&manifest, false, genesis_block_ptr, chain_head_block_number)
+            SubgraphDeploymentEntity::new(&manifest, false, genesis_block_ptr, chain_head_block_number)
                 .create_operations(&manifest.id),
         );
     }
 
-    // If currentVersion is actually being changed, an old deployment may need to be removed.
+    // If currentVersion is actually being changed, an old assignment may need to be removed.
     if current_version_id_opt != Some(manifest.id.to_string()) {
         // If there is a previous version that will no longer be "current"
         if let Some(current_version_id) = current_version_id_opt {
@@ -466,18 +466,18 @@ fn create_subgraph_version(
                 })
                 .map_err(StoreError::from)?;
             let previous_version_hash = previous_version_entity
-                .get("state")
+                .get("deployment")
                 .unwrap()
                 .to_owned()
                 .as_string()
                 .unwrap();
 
-            // If old current and new current versions have same hash, no need to remove deployment
+            // If old current and new current versions have same hash, no need to remove assignment
             if previous_version_hash != manifest.id.to_string() {
                 // Find all subgraph versions that point to this hash
                 let referencing_version_entities =
                     store.find(SubgraphVersionEntity::query().filter(EntityFilter::Equal(
-                        "state".to_owned(),
+                        "deployment".to_owned(),
                         previous_version_hash.clone().into(),
                     )))?;
                 let referencing_version_entity_ids = referencing_version_entities
@@ -504,7 +504,7 @@ fn create_subgraph_version(
                 // If this subgraph is the only one with this hash as the current version
                 if subgraph_ids_with_current_version_referencing_hash.len() == 1 {
                     ops.push(EntityOperation::Remove {
-                        key: SubgraphDeploymentEntity::key(
+                        key: SubgraphDeploymentAssignmentEntity::key(
                             SubgraphId::new(previous_version_hash).unwrap(),
                         ),
                     });
@@ -513,24 +513,24 @@ fn create_subgraph_version(
         }
     }
 
-    // Check if deployment already exists for this hash
-    let deployment_entity_opt = store.get(SubgraphDeploymentEntity::key(manifest.id.clone()))?;
+    // Check if assignment already exists for this hash
+    let assignment_entity_opt = store.get(SubgraphDeploymentAssignmentEntity::key(manifest.id.clone()))?;
     ops.push(EntityOperation::AbortUnless {
-        description: "Subgraph deployment entity must continue to exist/not exist".to_owned(),
-        query: SubgraphDeploymentEntity::query().filter(EntityFilter::Equal(
+        description: "Subgraph assignment entity must continue to exist/not exist".to_owned(),
+        query: SubgraphDeploymentAssignmentEntity::query().filter(EntityFilter::Equal(
             "id".to_owned(),
             manifest.id.to_string().into(),
         )),
-        entity_ids: if deployment_entity_opt.is_some() {
+        entity_ids: if assignment_entity_opt.is_some() {
             vec![manifest.id.to_string()]
         } else {
             vec![]
         },
     });
 
-    // Create deployment entity only if it does not exist already
-    if deployment_entity_opt.is_none() {
-        ops.extend(SubgraphDeploymentEntity::new(node_id, false).write_operations(&manifest.id));
+    // Create assignment entity only if it does not exist already
+    if assignment_entity_opt.is_none() {
+        ops.extend(SubgraphDeploymentAssignmentEntity::new(node_id, false).write_operations(&manifest.id));
     }
 
     // TODO support delayed update of currentVersion
@@ -595,7 +595,7 @@ fn remove_subgraph(
             .collect(),
     });
 
-    // Remove subgraph version entities, and their state/deployment when applicable
+    // Remove subgraph version entities, and their deployment/assignment when applicable
     ops.extend(remove_subgraph_versions(
         store.clone(),
         subgraph_version_entities,
@@ -618,8 +618,8 @@ fn remove_subgraph(
 /// It may seem like it would be easier to generate the EntityOperations for subgraph versions
 /// removal one at a time, but that approach is significantly complicated by the fact that the
 /// store does not reflect the EntityOperations that have been accumulated so far. Earlier subgraph
-/// version creations/removals can affect later ones by affecting whether or not a subgraph state
-/// or deployment needs to be created/removed.
+/// version creations/removals can affect later ones by affecting whether or not a subgraph deployment
+/// or assignment needs to be created/removed.
 fn remove_subgraph_versions(
     store: Arc<impl Store>,
     version_entities_to_delete: Vec<Entity>,
@@ -637,7 +637,7 @@ fn remove_subgraph_versions(
         .iter()
         .map(|version_entity| {
             version_entity
-                .get("state")
+                .get("deployment")
                 .unwrap()
                 .to_owned()
                 .as_string()
@@ -645,12 +645,12 @@ fn remove_subgraph_versions(
         })
         .collect::<HashSet<_>>();
 
-    // Figure out which subgraph states need to be removed.
-    // A subgraph state entity should be removed when the subgraph hash will no longer be
+    // Figure out which subgraph deployments need to be removed.
+    // A subgraph deployment entity should be removed when the subgraph hash will no longer be
     // referenced by any subgraph versions.
     let all_referencing_versions =
         store.find(SubgraphVersionEntity::query().filter(EntityFilter::In(
-            "state".to_owned(),
+            "deployment".to_owned(),
             referenced_subgraph_hashes.iter().map(Value::from).collect(),
         )))?;
     let all_referencing_version_ids = all_referencing_versions
@@ -661,7 +661,7 @@ fn remove_subgraph_versions(
         description: "Same set of subgraph versions must reference these subgraph hashes"
             .to_owned(),
         query: SubgraphVersionEntity::query().filter(EntityFilter::In(
-            "state".to_owned(),
+            "deployment".to_owned(),
             referenced_subgraph_hashes.iter().map(Value::from).collect(),
         )),
         entity_ids: all_referencing_version_ids.clone(),
@@ -673,12 +673,12 @@ fn remove_subgraph_versions(
             !version_entity_ids_to_delete.contains(&version_entity.id().unwrap())
         })
         .collect::<Vec<_>>();
-    let subgraph_state_hashes_needing_deletion = &referenced_subgraph_hashes
+    let subgraph_deployment_hashes_needing_deletion = &referenced_subgraph_hashes
         - &all_referencing_versions_after_delete
             .iter()
             .map(|version_entity| {
                 version_entity
-                    .get("state")
+                    .get("deployment")
                     .unwrap()
                     .to_owned()
                     .as_string()
@@ -686,17 +686,17 @@ fn remove_subgraph_versions(
             })
             .collect::<HashSet<_>>();
 
-    // Remove subgraph state entities based on subgraph_state_hashes_needing_deletion
+    // Remove subgraph deployment entities based on subgraph_deployment_hashes_needing_deletion
     ops.extend(
-        subgraph_state_hashes_needing_deletion
+        subgraph_deployment_hashes_needing_deletion
             .into_iter()
             .map(|subgraph_hash| EntityOperation::Remove {
-                key: SubgraphStateEntity::key(SubgraphId::new(subgraph_hash).unwrap()),
+                key: SubgraphDeploymentEntity::key(SubgraphId::new(subgraph_hash).unwrap()),
             }),
     );
 
-    // Figure out which subgraph deployments need to be removed.
-    // A subgraph deployment entity should be removed when the subgraph hash will no longer be
+    // Figure out which subgraph assignments need to be removed.
+    // A subgraph assignment entity should be removed when the subgraph hash will no longer be
     // referenced by any "current" subgraph version.
     // A "current" subgraph version is a subgraph version that is pointed to by a subgraph's
     // `currentVersion` field.
@@ -745,12 +745,12 @@ fn remove_subgraph_versions(
             !version_entity_ids_to_delete.contains(&version_entity.id().unwrap())
         })
         .collect::<Vec<_>>();
-    let subgraph_deployment_hashes_needing_deletion = &referenced_subgraph_hashes
+    let subgraph_assignment_hashes_needing_deletion = &referenced_subgraph_hashes
         - &all_current_referencing_versions_after_delete
             .iter()
             .map(|version_entity| {
                 version_entity
-                    .get("state")
+                    .get("deployment")
                     .unwrap()
                     .to_owned()
                     .as_string()
@@ -758,12 +758,12 @@ fn remove_subgraph_versions(
             })
             .collect::<HashSet<_>>();
 
-    // Remove subgraph deployment entities based on subgraph_deployment_hashes_needing_deletion
+    // Remove subgraph assignment entities based on subgraph_assignment_hashes_needing_deletion
     ops.extend(
-        subgraph_deployment_hashes_needing_deletion
+        subgraph_assignment_hashes_needing_deletion
             .into_iter()
             .map(|subgraph_hash| EntityOperation::Remove {
-                key: SubgraphDeploymentEntity::key(SubgraphId::new(subgraph_hash).unwrap()),
+                key: SubgraphDeploymentAssignmentEntity::key(SubgraphId::new(subgraph_hash).unwrap()),
             }),
     );
 

@@ -14,7 +14,7 @@ use std::sync::Mutex;
 
 use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityRange};
 use graph::data::store::scalar;
-use graph::data::subgraph::schema::SubgraphStateEntity;
+use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::*;
 use graph::web3::types::H256;
 use graph_store_postgres::{db_schema, Store as DieselStore, StoreConfig};
@@ -134,10 +134,10 @@ fn insert_test_data(store: Arc<DieselStore>) {
         data_sources: vec![],
     };
 
-    // Create SubgraphStateEntity
+    // Create SubgraphDeploymentEntity
     store
         .apply_entity_operations(
-            SubgraphStateEntity::new(&manifest, false, *TEST_BLOCK_0_PTR, 1)
+            SubgraphDeploymentEntity::new(&manifest, false, *TEST_BLOCK_0_PTR, 1)
                 .create_operations(&*TEST_SUBGRAPH_ID),
             EventSource::None,
         )
@@ -1451,10 +1451,10 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             data_sources: vec![],
         };
 
-        // Create SubgraphStateEntity
+        // Create SubgraphDeploymentEntity
         store
             .apply_entity_operations(
-                SubgraphStateEntity::new(&manifest, false, *TEST_BLOCK_0_PTR, 1)
+                SubgraphDeploymentEntity::new(&manifest, false, *TEST_BLOCK_0_PTR, 1)
                     .create_operations(&subgraph_id),
                 EventSource::None,
             )

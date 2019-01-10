@@ -9,22 +9,21 @@ type Subgraph @entity {
 type SubgraphVersion @entity {
     id: ID!
     subgraph: Subgraph!
-    state: SubgraphState!
+    deployment: SubgraphDeployment!
     createdAt: BigInt!
 }
 
-type SubgraphState @entity {
+type SubgraphDeployment @entity {
     id: ID! # Subgraph IPFS hash
     manifest: SubgraphManifest!
     failed: Boolean!
-    deployments: [SubgraphDeployment!]! @derivedFrom(field: "id")
     latestEthereumBlockHash: String!
     latestEthereumBlockNumber: BigInt!
     totalEthereumBlocksCount: BigInt!
     entityCount: BigInt! # Computed field, not stored.
 }
 
-type SubgraphDeployment @entity {
+type SubgraphDeploymentAssignment @entity {
     id: ID! # Subgraph IPFS hash
     nodeId: String!
     synced: Boolean!

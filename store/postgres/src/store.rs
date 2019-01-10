@@ -599,7 +599,7 @@ impl Store {
 impl StoreTrait for Store {
     fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
         let subgraph_entity = self
-            .get(SubgraphStateEntity::key(subgraph_id.clone()))
+            .get(SubgraphDeploymentEntity::key(subgraph_id.clone()))
             .map_err(|e| format_err!("error reading subgraph entity: {}", e))?
             .ok_or_else(|| {
                 format_err!(
@@ -610,20 +610,20 @@ impl StoreTrait for Store {
 
         let hash = subgraph_entity
             .get("latestEthereumBlockHash")
-            .ok_or_else(|| format_err!("SubgraphState is missing latestEthereumBlockHash"))?
+            .ok_or_else(|| format_err!("SubgraphDeployment is missing latestEthereumBlockHash"))?
             .to_owned()
             .as_string()
-            .ok_or_else(|| format_err!("SubgraphState has wrong type in latestEthereumBlockHash"))?
+            .ok_or_else(|| format_err!("SubgraphDeployment has wrong type in latestEthereumBlockHash"))?
             .parse::<H256>()
             .map_err(|e| format_err!("latestEthereumBlockHash: {}", e))?;
 
         let number = subgraph_entity
             .get("latestEthereumBlockNumber")
-            .ok_or_else(|| format_err!("SubgraphState is missing latestEthereumBlockNumber"))?
+            .ok_or_else(|| format_err!("SubgraphDeployment is missing latestEthereumBlockNumber"))?
             .to_owned()
             .as_bigint()
             .ok_or_else(|| {
-                format_err!("SubgraphState has wrong type in latestEthereumBlockNumber")
+                format_err!("SubgraphDeployment has wrong type in latestEthereumBlockNumber")
             })?
             .to_u64();
 
@@ -676,7 +676,7 @@ impl StoreTrait for Store {
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
-        let ops = SubgraphStateEntity::update_ethereum_block_pointer_operations(
+        let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
             &subgraph_id,
             block_ptr_from,
             block_ptr_to,
@@ -705,7 +705,7 @@ impl StoreTrait for Store {
 
         // Update subgraph block pointer in same transaction
         operations.append(
-            &mut SubgraphStateEntity::update_ethereum_block_pointer_operations(
+            &mut SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
                 &subgraph_id,
                 block_ptr_from,
                 block_ptr_to,
@@ -738,7 +738,7 @@ impl StoreTrait for Store {
 
         let conn = self.conn.get().map_err(Error::from)?;
         conn.transaction(|| {
-            let ops = SubgraphStateEntity::update_ethereum_block_pointer_operations(
+            let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
                 &subgraph_id,
                 block_ptr_from,
                 block_ptr_to,
@@ -839,13 +839,13 @@ impl SubgraphDeploymentStore for Store {
 
         // Parse subgraph ID
         let subgraph_id_str = version_entity
-            .get("state")
-            .ok_or_else(|| format_err!("SubgraphVersion entity without `state`"))?
+            .get("deployment")
+            .ok_or_else(|| format_err!("SubgraphVersion entity without `deployment`"))?
             .to_owned()
             .as_string()
-            .ok_or_else(|| format_err!("SubgraphVersion entity has wrong type in `state`"))?;
+            .ok_or_else(|| format_err!("SubgraphVersion entity has wrong type in `deployment`"))?;
         SubgraphId::new(subgraph_id_str)
-            .map_err(|()| format_err!("SubgraphVersion entity has invalid subgraph ID in `state`"))
+            .map_err(|()| format_err!("SubgraphVersion entity has invalid subgraph ID in `deployment`"))
             .map(Some)
     }
 
@@ -855,9 +855,9 @@ impl SubgraphDeploymentStore for Store {
             return Ok(true);
         }
 
-        // Check store for a state entity for this subgraph ID
-        self.get(SubgraphStateEntity::key(id.to_owned()))
-            .map_err(|e| format_err!("failed to query SubgraphState entities: {}", e))
+        // Check store for a deployment entity for this subgraph ID
+        self.get(SubgraphDeploymentEntity::key(id.to_owned()))
+            .map_err(|e| format_err!("failed to query SubgraphDeployment entities: {}", e))
             .map(|entity_opt| entity_opt.is_some())
     }
 
