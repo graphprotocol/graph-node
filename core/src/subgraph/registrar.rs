@@ -333,11 +333,10 @@ fn create_subgraph(
     let mut ops = vec![];
 
     // Check if this subgraph already exists
-    let subgraph_entities = store.find(SubgraphEntity::query().filter(EntityFilter::Equal(
-        "name".to_owned(),
-        name.to_string().into(),
-    )))?;
-    if !subgraph_entities.is_empty() {
+    let subgraph_entity_opt = store.find_one(SubgraphEntity::query().filter(
+        EntityFilter::Equal("name".to_owned(), name.to_string().into()),
+    ))?;
+    if subgraph_entity_opt.is_some() {
         debug!(
             logger,
             "Subgraph name already exists: {:?}",
@@ -381,28 +380,17 @@ fn create_subgraph_version(
     let mut ops = vec![];
 
     // Look up subgraph entity by name
-    let subgraph_entities = store.find(SubgraphEntity::query().filter(EntityFilter::Equal(
-        "name".to_owned(),
-        name.to_string().into(),
-    )))?;
-    let subgraph_entity = match subgraph_entities.len() {
-        0 => {
-            debug!(
-                logger,
-                "Subgraph not found, could not create_subgraph_version";
-                "subgraph_name" => name.to_string()
-            );
-            return Err(SubgraphRegistrarError::NameNotFound(name.to_string()));
-        }
-        1 => {
-            let mut subgraph_entities = subgraph_entities;
-            subgraph_entities.pop().unwrap()
-        }
-        _ => panic!(
-            "multiple subgraph entities with name {:?}",
-            name.to_string()
-        ),
-    };
+    let subgraph_entity_opt = store.find_one(SubgraphEntity::query().filter(
+        EntityFilter::Equal("name".to_owned(), name.to_string().into()),
+    ))?;
+    let subgraph_entity = subgraph_entity_opt.ok_or_else(|| {
+        debug!(
+            logger,
+            "Subgraph not found, could not create_subgraph_version";
+            "subgraph_name" => name.to_string()
+        );
+        SubgraphRegistrarError::NameNotFound(name.to_string())
+    })?;
     let subgraph_entity_id = subgraph_entity.id()?;
     let current_version_id_opt = match subgraph_entity.get("currentVersion") {
         Some(Value::String(current_version_id)) => Some(current_version_id.to_owned()),
@@ -572,17 +560,14 @@ fn remove_subgraph(
     let mut ops = vec![];
 
     // Find the subgraph entity
-    let matching_subgraph_entities = store
-        .find(SubgraphEntity::query().filter(EntityFilter::Equal(
+    let subgraph_entity_opt = store
+        .find_one(SubgraphEntity::query().filter(EntityFilter::Equal(
             "name".to_owned(),
             name.to_string().into(),
         )))
         .map_err(|e| format_err!("query execution error: {}", e))?;
-    let subgraph_entity = match matching_subgraph_entities.as_slice() {
-        [] => return Err(SubgraphRegistrarError::NameNotFound(name.to_string())),
-        [subgraph] => subgraph,
-        _ => panic!("multiple subgraphs with same name in store"),
-    };
+    let subgraph_entity = subgraph_entity_opt
+        .ok_or_else(|| SubgraphRegistrarError::NameNotFound(name.to_string()))?;
 
     ops.push(EntityOperation::AbortUnless {
         description: "Subgraph entity must still exist".to_owned(),

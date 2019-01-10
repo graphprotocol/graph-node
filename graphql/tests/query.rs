@@ -232,6 +232,10 @@ impl Store for TestStore {
 
         Ok(entities)
     }
+
+    fn find_one(&self, query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
+        Ok(self.find(query)?.pop())
+    }
 }
 
 fn execute_query_document(query: q::Document) -> QueryResult {

@@ -134,6 +134,10 @@ impl Store for MockStore {
         self.execute_query(&self.entities.lock().unwrap(), query)
     }
 
+    fn find_one(&self, query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
+        Ok(self.find(query)?.pop())
+    }
+
     fn block_ptr(&self, _: SubgraphId) -> Result<EthereumBlockPointer, Error> {
         unimplemented!();
     }
@@ -354,6 +358,10 @@ impl Store for FakeStore {
     }
 
     fn find(&self, _: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
+        unimplemented!();
+    }
+
+    fn find_one(&self, _: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
         unimplemented!();
     }
 

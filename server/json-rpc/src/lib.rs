@@ -250,6 +250,9 @@ fn subgraph_routes(name: &SubgraphName, http_port: u16, ws_port: u16) -> Value {
         format!(":{}/subgraphs/name/{}/graphql", http_port, name),
     );
     map.insert("queries", format!(":{}/subgraphs/name/{}", http_port, name));
-    map.insert("subscriptions", format!(":{}/subgraphs/name/{}", ws_port, name));
+    map.insert(
+        "subscriptions",
+        format!(":{}/subgraphs/name/{}", ws_port, name),
+    );
     jsonrpc_core::to_value(map).unwrap()
 }

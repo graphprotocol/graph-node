@@ -644,6 +644,30 @@ impl StoreTrait for Store {
         self.execute_query(&conn, query)
     }
 
+    fn find_one(&self, mut query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
+        if let Some(mut range) = query.range.clone() {
+            if range.first == 0 {
+                return Ok(None);
+            }
+
+            range.first = 1;
+            query.range = Some(range);
+        } else {
+            query.range = Some(EntityRange { first: 1, skip: 0 })
+        }
+
+        let conn = self
+            .conn
+            .get()
+            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+
+        let mut results = self.execute_query(&conn, query)?;
+        match results.len() {
+            0 | 1 => Ok(results.pop()),
+            n => panic!("find_one query found {} results", n),
+        }
+    }
+
     fn set_block_ptr_with_no_changes(
         &self,
         subgraph_id: SubgraphId,
