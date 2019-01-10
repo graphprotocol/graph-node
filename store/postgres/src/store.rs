@@ -422,7 +422,7 @@ impl Store {
             key: key.clone(),
             data,
         };
-        let updated_entity = operation.apply(existing_entity);
+        let updated_entity = operation.apply(existing_entity)?;
         let updated_json: serde_json::Value =
             serde_json::to_value(&updated_entity).map_err(|e| {
                 format_err!(

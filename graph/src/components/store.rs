@@ -217,11 +217,11 @@ impl EntityOperation {
     ///
     /// Returns `Some(entity)` with an updated entity if the operation is a `Set`.
     /// Returns `None` if the operation is a `Remove`.
-    pub fn apply(&self, entity: Option<Entity>) -> Option<Entity> {
+    pub fn apply(&self, entity: Option<Entity>) -> Result<Option<Entity>, Error> {
         use self::EntityOperation::*;
 
         match self {
-            Set { data, .. } => Some(
+            Set { data, .. } => Ok(Some(
                 entity
                     .map(|entity| {
                         let mut entity = entity.clone();
@@ -229,22 +229,27 @@ impl EntityOperation {
                         entity
                     })
                     .unwrap_or_else(|| data.clone()),
-            ),
-            Remove { .. } => None,
-            AbortUnless { .. } => panic!("cannot apply AbortUnless entity operation to an entity"),
+            )),
+            Remove { .. } => Ok(None),
+            AbortUnless { .. } => Err(format_err!(
+                "cannot apply AbortUnless entity operation to an entity"
+            )),
         }
     }
 
     /// Applies all entity operations to the given entity in order.
     /// `ops` must not contain any `AbortUnless` operations.
-    pub fn apply_all(entity: Option<Entity>, ops: &Vec<EntityOperation>) -> Option<Entity> {
+    pub fn apply_all(
+        entity: Option<Entity>,
+        ops: &Vec<EntityOperation>,
+    ) -> Result<Option<Entity>, Error> {
         use self::EntityOperation::*;
 
         // Only continue if all operations are Set/Remove.
-        ops.iter().for_each(|op| match op {
-            Set { .. } | Remove { .. } => {}
-            AbortUnless { .. } => panic!("Cannot apply {:?} to an Entity", op),
-        });
+        ops.iter().try_for_each(|op| match op {
+            Set { .. } | Remove { .. } => Ok(()),
+            AbortUnless { .. } => Err(format_err!("Cannot apply {:?} to an Entity", op)),
+        })?;
 
         // If there is a remove operations, we only need to consider the operations after that
         ops.iter()
@@ -253,7 +258,7 @@ impl EntityOperation {
             .collect::<Vec<_>>()
             .iter()
             .rev()
-            .fold(entity, |entity, op| op.apply(entity))
+            .try_fold(entity, |entity, op| op.apply(entity))
     }
 }
 
