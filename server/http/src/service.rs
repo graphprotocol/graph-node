@@ -172,7 +172,7 @@ where
     fn handle_graphql_query(&self, id: SubgraphDeploymentId, request_body: Body) -> GraphQLServiceResponse {
         let service = self.clone();
 
-        match self.store.is_queryable(&id) {
+        match self.store.is_deployed(&id) {
             Err(e) => {
                 return Box::new(future::err(GraphQLServerError::InternalError(
                     e.to_string(),

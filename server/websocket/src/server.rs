@@ -108,7 +108,7 @@ where
                         .map_err(|()| WsError::Http(404))?;
 
                     // Check if the subgraph is deployed
-                    match store.is_queryable(&subgraph_id) {
+                    match store.is_deployed(&subgraph_id) {
                         Err(_) | Ok(false) => {
                             error!(logger, "Failed to establish WS connection, no data found for subgraph";
                                             "subgraph_id" => subgraph_id.to_string(),

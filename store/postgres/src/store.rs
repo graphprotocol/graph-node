@@ -809,7 +809,7 @@ impl SubgraphDeploymentStore for Store {
                 Ok(subgraph_entities.pop().unwrap())
             }
             _ => Err(format_err!(
-                "multiple subgraphs found with name {:?}",
+                "Multiple subgraphs found with name {:?}",
                 name.to_string()
             )),
         }?;
@@ -849,7 +849,7 @@ impl SubgraphDeploymentStore for Store {
             .map(Some)
     }
 
-    fn is_queryable(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
+    fn is_deployed(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
         // The subgraph of subgraphs is always deployed.
         if id == &*SUBGRAPHS_ID {
             return Ok(true);
@@ -857,7 +857,7 @@ impl SubgraphDeploymentStore for Store {
 
         // Check store for a deployment entity for this subgraph ID
         self.get(SubgraphDeploymentEntity::key(id.to_owned()))
-            .map_err(|e| format_err!("failed to query SubgraphDeployment entities: {}", e))
+            .map_err(|e| format_err!("Failed to query SubgraphDeployment entities: {}", e))
             .map(|entity_opt| entity_opt.is_some())
     }
 
@@ -878,13 +878,13 @@ impl SubgraphDeploymentStore for Store {
                     entity_type: SubgraphManifestEntity::TYPENAME.to_owned(),
                     entity_id: SubgraphManifestEntity::id(&subgraph_id),
                 })?
-                .ok_or_else(|| format_err!("subgraph entity not found {}", subgraph_id))?;
+                .ok_or_else(|| format_err!("Subgraph entity not found {}", subgraph_id))?;
 
             match manifest_entity.get("schema") {
                 Some(Value::String(raw)) => raw.clone(),
                 _ => {
                     return Err(format_err!(
-                        "schema not present or has wrong type, subgraph: {}",
+                        "Schema not present or has wrong type, subgraph: {}",
                         subgraph_id
                     ))
                 }
