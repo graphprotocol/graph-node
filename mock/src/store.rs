@@ -25,17 +25,17 @@ impl EventProducer<ChainHeadUpdate> for MockChainHeadUpdateListener {
 }
 
 pub struct MockStore {
-    schemas: HashMap<SubgraphId, Schema>,
+    schemas: HashMap<SubgraphDeploymentId, Schema>,
 
     // Entities by (subgraph ID, entity type, entity ID)
-    entities: Mutex<HashMap<SubgraphId, HashMap<String, HashMap<String, Entity>>>>,
+    entities: Mutex<HashMap<SubgraphDeploymentId, HashMap<String, HashMap<String, Entity>>>>,
 
     subscriptions: Mutex<Vec<(HashSet<SubgraphEntityPair>, mpsc::Sender<EntityChange>)>>,
 }
 
 impl MockStore {
     /// Creates a new mock `Store`.
-    pub fn new(schemas: Vec<(SubgraphId, Schema)>) -> Self {
+    pub fn new(schemas: Vec<(SubgraphDeploymentId, Schema)>) -> Self {
         MockStore {
             schemas: schemas.into_iter().collect(),
             entities: Default::default(),
@@ -45,7 +45,7 @@ impl MockStore {
 
     fn execute_query(
         &self,
-        entities: &HashMap<SubgraphId, HashMap<String, HashMap<String, Entity>>>,
+        entities: &HashMap<SubgraphDeploymentId, HashMap<String, HashMap<String, Entity>>>,
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         fn entity_matches_filter(entity: &Entity, filter: &EntityFilter) -> bool {
@@ -138,13 +138,13 @@ impl Store for MockStore {
         Ok(self.find(query)?.pop())
     }
 
-    fn block_ptr(&self, _: SubgraphId) -> Result<EthereumBlockPointer, Error> {
+    fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
         unimplemented!();
     }
 
     fn set_block_ptr_with_no_changes(
         &self,
-        _: SubgraphId,
+        _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
@@ -153,7 +153,7 @@ impl Store for MockStore {
 
     fn transact_block_operations(
         &self,
-        _: SubgraphId,
+        _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
         _: Vec<EntityOperation>,
@@ -267,7 +267,7 @@ impl Store for MockStore {
 
     fn revert_block_operations(
         &self,
-        _: SubgraphId,
+        _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
@@ -285,7 +285,7 @@ impl Store for MockStore {
         Box::new(receiver)
     }
 
-    fn count_entities(&self, _: SubgraphId) -> Result<u64, Error> {
+    fn count_entities(&self, _: SubgraphDeploymentId) -> Result<u64, Error> {
         unimplemented!();
     }
 }
@@ -294,15 +294,15 @@ impl SubgraphDeploymentStore for MockStore {
     fn resolve_subgraph_name_to_id(
         &self,
         _name: SubgraphName,
-    ) -> Result<Option<SubgraphId>, Error> {
+    ) -> Result<Option<SubgraphDeploymentId>, Error> {
         unimplemented!();
     }
 
-    fn is_queryable(&self, subgraph_id: &SubgraphId) -> Result<bool, Error> {
+    fn is_queryable(&self, subgraph_id: &SubgraphDeploymentId) -> Result<bool, Error> {
         Ok(self.schemas.keys().any(|id| subgraph_id == id))
     }
 
-    fn subgraph_schema(&self, subgraph_id: SubgraphId) -> Result<Schema, Error> {
+    fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Schema, Error> {
         Ok(self.schemas.get(&subgraph_id).unwrap().clone())
     }
 }
@@ -365,13 +365,13 @@ impl Store for FakeStore {
         unimplemented!();
     }
 
-    fn block_ptr(&self, _: SubgraphId) -> Result<EthereumBlockPointer, Error> {
+    fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
         unimplemented!();
     }
 
     fn set_block_ptr_with_no_changes(
         &self,
-        _: SubgraphId,
+        _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
@@ -380,7 +380,7 @@ impl Store for FakeStore {
 
     fn transact_block_operations(
         &self,
-        _: SubgraphId,
+        _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
         _: Vec<EntityOperation>,
@@ -398,7 +398,7 @@ impl Store for FakeStore {
 
     fn revert_block_operations(
         &self,
-        _: SubgraphId,
+        _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
@@ -409,7 +409,7 @@ impl Store for FakeStore {
         unimplemented!();
     }
 
-    fn count_entities(&self, _: SubgraphId) -> Result<u64, Error> {
+    fn count_entities(&self, _: SubgraphDeploymentId) -> Result<u64, Error> {
         unimplemented!();
     }
 }

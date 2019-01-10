@@ -7,7 +7,7 @@ use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
-use data::subgraph::SubgraphId;
+use data::subgraph::SubgraphDeploymentId;
 use graphql_parser::query;
 use graphql_parser::schema;
 use prelude::QueryExecutionError;
@@ -16,7 +16,7 @@ use prelude::QueryExecutionError;
 pub mod scalar;
 
 /// A pair of subgraph ID and entity type name.
-pub type SubgraphEntityPair = (SubgraphId, String);
+pub type SubgraphEntityPair = (SubgraphDeploymentId, String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(String);
@@ -61,11 +61,11 @@ impl<'de> de::Deserialize<'de> for NodeId {
 #[serde(tag = "type")]
 pub enum AssignmentEvent {
     Add {
-        subgraph_id: SubgraphId,
+        subgraph_id: SubgraphDeploymentId,
         node_id: NodeId,
     },
     Remove {
-        subgraph_id: SubgraphId,
+        subgraph_id: SubgraphDeploymentId,
         node_id: NodeId,
     },
 }

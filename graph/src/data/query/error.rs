@@ -27,14 +27,14 @@ pub enum QueryExecutionError {
     InvalidVariableTypeError(Pos, String),
     InvalidVariableError(Pos, String, q::Value),
     MissingVariableError(Pos, String),
-    ResolveEntityError(SubgraphId, String, String, String),
+    ResolveEntityError(SubgraphDeploymentId, String, String, String),
     ResolveEntitiesError(String),
     OrderByNotSupportedError(String, String),
     FilterNotSupportedError(String, String),
     UnknownField(Pos, String, String),
     EmptyQuery,
     MultipleSubscriptionFields,
-    SubgraphIdError(String),
+    SubgraphDeploymentIdError(String),
     RangeArgumentsError(Vec<String>),
     InvalidFilterError,
     EntityFieldError(String, String),
@@ -119,7 +119,7 @@ impl fmt::Display for QueryExecutionError {
                 f,
                 "Only a single top-level field is allowed in subscriptions"
             ),
-            SubgraphIdError(s) => {
+            SubgraphDeploymentIdError(s) => {
                 write!(f, "Failed to get subgraph ID from type: {}", s)
             }
             RangeArgumentsError(s) => {

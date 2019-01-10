@@ -34,9 +34,9 @@ where
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct SubgraphId(String);
+pub struct SubgraphDeploymentId(String);
 
-impl SubgraphId {
+impl SubgraphDeploymentId {
     pub fn new(s: impl Into<String>) -> Result<Self, ()> {
         let s = s.into();
 
@@ -50,7 +50,7 @@ impl SubgraphId {
             return Err(());
         }
 
-        Ok(SubgraphId(s))
+        Ok(SubgraphDeploymentId(s))
     }
 
     pub fn to_ipfs_link(&self) -> Link {
@@ -60,13 +60,13 @@ impl SubgraphId {
     }
 }
 
-impl fmt::Display for SubgraphId {
+impl fmt::Display for SubgraphDeploymentId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl ser::Serialize for SubgraphId {
+impl ser::Serialize for SubgraphDeploymentId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: ser::Serializer,
@@ -75,13 +75,13 @@ impl ser::Serialize for SubgraphId {
     }
 }
 
-impl<'de> de::Deserialize<'de> for SubgraphId {
+impl<'de> de::Deserialize<'de> for SubgraphDeploymentId {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: de::Deserializer<'de>,
     {
         let s: String = de::Deserialize::deserialize(deserializer)?;
-        SubgraphId::new(s.clone())
+        SubgraphDeploymentId::new(s.clone())
             .map_err(|()| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid subgraph name"))
     }
 }
@@ -199,9 +199,9 @@ pub enum SubgraphAssignmentProviderError {
     ResolveError(SubgraphManifestResolveError),
     /// Occurs when attempting to remove a subgraph that's not hosted.
     #[fail(display = "subgraph with ID {} already running", _0)]
-    AlreadyRunning(SubgraphId),
+    AlreadyRunning(SubgraphDeploymentId),
     #[fail(display = "subgraph with ID {} is not running", _0)]
-    NotRunning(SubgraphId),
+    NotRunning(SubgraphDeploymentId),
     /// Occurs when a subgraph's GraphQL schema is invalid.
     #[fail(display = "GraphQL schema error: {}", _0)]
     SchemaValidationError(failure::Error),
@@ -221,7 +221,7 @@ pub enum SubgraphAssignmentProviderEvent {
     /// A subgraph with the given manifest should start processing.
     SubgraphStart(SubgraphManifest),
     /// The subgraph with the given ID should stop processing.
-    SubgraphStop(SubgraphId),
+    SubgraphStop(SubgraphDeploymentId),
 }
 
 #[derive(Fail, Debug)]
@@ -257,7 +257,7 @@ pub struct SchemaData {
 impl SchemaData {
     pub fn resolve(
         self,
-        id: SubgraphId,
+        id: SubgraphDeploymentId,
         resolver: &impl LinkResolver,
     ) -> impl Future<Item = Schema, Error = failure::Error> + Send {
         resolver
@@ -409,7 +409,7 @@ impl UnresolvedDataSource {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BaseSubgraphManifest<S, D> {
-    pub id: SubgraphId,
+    pub id: SubgraphDeploymentId,
     pub location: String,
     pub spec_version: String,
     pub description: Option<String>,

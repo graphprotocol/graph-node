@@ -9,7 +9,7 @@ pub struct SubgraphAssignmentProvider<L, S> {
     event_stream: Option<Receiver<SubgraphAssignmentProviderEvent>>,
     event_sink: Sender<SubgraphAssignmentProviderEvent>,
     resolver: Arc<L>,
-    subgraphs_running: Arc<Mutex<HashSet<SubgraphId>>>,
+    subgraphs_running: Arc<Mutex<HashSet<SubgraphDeploymentId>>>,
     store: Arc<S>,
 }
 
@@ -52,7 +52,7 @@ where
 {
     fn start(
         &self,
-        id: SubgraphId,
+        id: SubgraphDeploymentId,
     ) -> Box<Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static> {
         let self_clone = self.clone();
 
@@ -89,7 +89,7 @@ where
 
     fn stop(
         &self,
-        id: SubgraphId,
+        id: SubgraphDeploymentId,
     ) -> Box<Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static> {
         // If subgraph ID was in set
         if self.subgraphs_running.lock().unwrap().remove(&id) {

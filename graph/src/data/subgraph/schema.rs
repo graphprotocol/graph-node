@@ -16,7 +16,7 @@ use rand::rngs::OsRng;
 use rand::Rng;
 use web3::types::*;
 
-use super::SubgraphId;
+use super::SubgraphDeploymentId;
 use components::ethereum::EthereumBlockPointer;
 use components::store::{EntityFilter, EntityKey, EntityOperation, EntityQuery};
 use data::store::{Entity, NodeId, SubgraphEntityPair, Value};
@@ -24,7 +24,7 @@ use data::subgraph::{SubgraphManifest, SubgraphName};
 
 /// ID of the subgraph of subgraphs.
 lazy_static! {
-    pub static ref SUBGRAPHS_ID: SubgraphId = SubgraphId::new("subgraphs").unwrap();
+    pub static ref SUBGRAPHS_ID: SubgraphDeploymentId = SubgraphDeploymentId::new("subgraphs").unwrap();
 }
 
 /// Generic type for the entity types defined below.
@@ -105,7 +105,7 @@ impl SubgraphEntity {
 #[derive(Debug)]
 pub struct SubgraphVersionEntity {
     subgraph_id: String,
-    deployment_id: SubgraphId,
+    deployment_id: SubgraphDeploymentId,
     created_at: u64,
 }
 
@@ -115,7 +115,7 @@ impl TypedEntity for SubgraphVersionEntity {
 }
 
 impl SubgraphVersionEntity {
-    pub fn new(subgraph_id: String, deployment_id: SubgraphId, created_at: u64) -> Self {
+    pub fn new(subgraph_id: String, deployment_id: SubgraphDeploymentId, created_at: u64) -> Self {
         Self {
             subgraph_id,
             deployment_id,
@@ -144,7 +144,7 @@ pub struct SubgraphDeploymentEntity {
 
 impl TypedEntity for SubgraphDeploymentEntity {
     const TYPENAME: &'static str = "SubgraphDeployment";
-    type IdType = SubgraphId;
+    type IdType = SubgraphDeploymentId;
 }
 
 impl SubgraphDeploymentEntity {
@@ -163,7 +163,7 @@ impl SubgraphDeploymentEntity {
         }
     }
 
-    pub fn create_operations(self, id: &SubgraphId) -> Vec<EntityOperation> {
+    pub fn create_operations(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
         let mut ops = vec![];
 
         // Abort unless no entity exists with this ID
@@ -196,7 +196,7 @@ impl SubgraphDeploymentEntity {
     }
 
     pub fn update_ethereum_block_pointer_operations(
-        id: &SubgraphId,
+        id: &SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Vec<EntityOperation> {
@@ -228,7 +228,7 @@ impl SubgraphDeploymentEntity {
     }
 
     pub fn update_ethereum_blocks_count_operations(
-        id: &SubgraphId,
+        id: &SubgraphDeploymentId,
         total_blocks_count: u64,
     ) -> Vec<EntityOperation> {
         let mut ops = vec![];
@@ -250,7 +250,7 @@ impl SubgraphDeploymentEntity {
         ops
     }
 
-    pub fn update_failed_operations(id: &SubgraphId, failed: bool) -> Vec<EntityOperation> {
+    pub fn update_failed_operations(id: &SubgraphDeploymentId, failed: bool) -> Vec<EntityOperation> {
         let mut ops = vec![];
 
         ops.push(EntityOperation::AbortUnless {
@@ -280,7 +280,7 @@ pub struct SubgraphDeploymentAssignmentEntity {
 
 impl TypedEntity for SubgraphDeploymentAssignmentEntity {
     const TYPENAME: &'static str = "SubgraphDeploymentAssignment";
-    type IdType = SubgraphId;
+    type IdType = SubgraphDeploymentId;
 }
 
 impl SubgraphDeploymentAssignmentEntity {
@@ -292,7 +292,7 @@ impl SubgraphDeploymentAssignmentEntity {
         }
     }
 
-    pub fn write_operations(self, id: &SubgraphId) -> Vec<EntityOperation> {
+    pub fn write_operations(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
         let mut entity = Entity::new();
         entity.set("id", id.to_string());
         entity.set("nodeId", self.node_id.to_string());
@@ -302,7 +302,7 @@ impl SubgraphDeploymentAssignmentEntity {
     }
 
     pub fn update_synced_operations(
-        id: &SubgraphId,
+        id: &SubgraphDeploymentId,
         node_id: NodeId,
         synced: bool,
     ) -> Vec<EntityOperation> {
@@ -343,7 +343,7 @@ impl TypedEntity for SubgraphManifestEntity {
 }
 
 impl SubgraphManifestEntity {
-    pub fn id(subgraph_id: &SubgraphId) -> String {
+    pub fn id(subgraph_id: &SubgraphDeploymentId) -> String {
         format!("{}-manifest", subgraph_id)
     }
 

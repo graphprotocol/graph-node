@@ -1,5 +1,5 @@
 use data::graphql::validation::{get_object_type_definitions, validate_schema};
-use data::subgraph::SubgraphId;
+use data::subgraph::SubgraphDeploymentId;
 use failure::Error;
 use graphql_parser;
 use graphql_parser::{
@@ -12,14 +12,14 @@ use std::collections::BTreeMap;
 /// A validated and preprocessed GraphQL schema for a subgraph.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Schema {
-    pub id: SubgraphId,
+    pub id: SubgraphDeploymentId,
     pub document: schema::Document,
     // Maps an interface name to the list of entities that implement it.
     types_for_interface: BTreeMap<query::Name, Vec<ObjectType>>,
 }
 
 impl Schema {
-    pub fn parse(raw: &str, id: SubgraphId) -> Result<Self, Error> {
+    pub fn parse(raw: &str, id: SubgraphDeploymentId) -> Result<Self, Error> {
         let document = graphql_parser::parse_schema(&raw)?;
         validate_schema(&document)?;
 
@@ -48,7 +48,7 @@ impl Schema {
     }
 
     // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the schema.
-    fn add_subgraph_id_directives(&mut self, id: SubgraphId) {
+    fn add_subgraph_id_directives(&mut self, id: SubgraphDeploymentId) {
         for definition in self.document.definitions.iter_mut() {
             let subgraph_id_argument = (
                 schema::Name::from("id"),

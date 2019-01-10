@@ -68,7 +68,7 @@ pub struct Store {
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
-    schema_cache: Mutex<LruCache<SubgraphId, Schema>>,
+    schema_cache: Mutex<LruCache<SubgraphDeploymentId, Schema>>,
 }
 
 impl Store {
@@ -288,7 +288,7 @@ impl Store {
     fn get_entity(
         &self,
         conn: &PgConnection,
-        op_subgraph: &SubgraphId,
+        op_subgraph: &SubgraphDeploymentId,
         op_entity: &String,
         op_id: &String,
     ) -> Result<Option<Entity>, QueryExecutionError> {
@@ -597,7 +597,7 @@ impl Store {
 }
 
 impl StoreTrait for Store {
-    fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error> {
+    fn block_ptr(&self, subgraph_id: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
         let subgraph_entity = self
             .get(SubgraphDeploymentEntity::key(subgraph_id.clone()))
             .map_err(|e| format_err!("error reading subgraph entity: {}", e))?
@@ -672,7 +672,7 @@ impl StoreTrait for Store {
 
     fn set_block_ptr_with_no_changes(
         &self,
-        subgraph_id: SubgraphId,
+        subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
@@ -686,7 +686,7 @@ impl StoreTrait for Store {
 
     fn transact_block_operations(
         &self,
-        subgraph_id: SubgraphId,
+        subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
         mut operations: Vec<EntityOperation>,
@@ -727,7 +727,7 @@ impl StoreTrait for Store {
 
     fn revert_block_operations(
         &self,
-        subgraph_id: SubgraphId,
+        subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
@@ -782,7 +782,7 @@ impl StoreTrait for Store {
         Box::new(receiver)
     }
 
-    fn count_entities(&self, subgraph_id: SubgraphId) -> Result<u64, Error> {
+    fn count_entities(&self, subgraph_id: SubgraphDeploymentId) -> Result<u64, Error> {
         use db_schema::entities::dsl::*;
 
         let count: i64 = entities
@@ -794,7 +794,7 @@ impl StoreTrait for Store {
 }
 
 impl SubgraphDeploymentStore for Store {
-    fn resolve_subgraph_name_to_id(&self, name: SubgraphName) -> Result<Option<SubgraphId>, Error> {
+    fn resolve_subgraph_name_to_id(&self, name: SubgraphName) -> Result<Option<SubgraphDeploymentId>, Error> {
         // Find subgraph entity by name
         let subgraph_entities = self
             .find(SubgraphEntity::query().filter(EntityFilter::Equal(
@@ -844,12 +844,12 @@ impl SubgraphDeploymentStore for Store {
             .to_owned()
             .as_string()
             .ok_or_else(|| format_err!("SubgraphVersion entity has wrong type in `deployment`"))?;
-        SubgraphId::new(subgraph_id_str)
+        SubgraphDeploymentId::new(subgraph_id_str)
             .map_err(|()| format_err!("SubgraphVersion entity has invalid subgraph ID in `deployment`"))
             .map(Some)
     }
 
-    fn is_queryable(&self, id: &SubgraphId) -> Result<bool, Error> {
+    fn is_queryable(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
         // The subgraph of subgraphs is always deployed.
         if id == &*SUBGRAPHS_ID {
             return Ok(true);
@@ -861,7 +861,7 @@ impl SubgraphDeploymentStore for Store {
             .map(|entity_opt| entity_opt.is_some())
     }
 
-    fn subgraph_schema(&self, subgraph_id: SubgraphId) -> Result<Schema, Error> {
+    fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Schema, Error> {
         if let Some(schema) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
             trace!(self.logger, "schema cache hit"; "id" => subgraph_id.to_string());
             return Ok(schema.clone());

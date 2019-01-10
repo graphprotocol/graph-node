@@ -202,7 +202,7 @@ where
         if (parse_subgraph_id(object_type)?, object_type.name.clone()) == subgraph_deployment_entity_pair
         {
             let id = entity.id().expect("subgraph deployment entity should have ID");
-            let hash = SubgraphId::new(id).expect("invalid subgraph ID in database");
+            let hash = SubgraphDeploymentId::new(id).expect("invalid subgraph ID in database");
             entity.insert(
                 "entityCount".to_owned(),
                 self.store

@@ -67,7 +67,7 @@ mod test {
     use super::*;
     use graph_mock::MockStore;
 
-    fn mock_store(id: SubgraphId) -> Arc<MockStore> {
+    fn mock_store(id: SubgraphDeploymentId) -> Arc<MockStore> {
         let schema = Schema::parse("scalar Foo", id.clone()).unwrap();
         Arc::new(MockStore::new(vec![(id, schema)]))
     }
@@ -78,7 +78,7 @@ mod test {
         runtime
             .block_on(futures::lazy(|| {
                 let logger = Logger::root(slog::Discard, o!());
-                let id = SubgraphId::new("testschema").unwrap();
+                let id = SubgraphDeploymentId::new("testschema").unwrap();
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = mock_store(id.clone());
                 let node_id = NodeId::new("test").unwrap();
@@ -127,7 +127,7 @@ mod test {
         runtime
             .block_on(futures::lazy(|| {
                 let logger = Logger::root(slog::Discard, o!());
-                let id = SubgraphId::new("testschema").unwrap();
+                let id = SubgraphDeploymentId::new("testschema").unwrap();
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = mock_store(id.clone());
                 let node_id = NodeId::new("test").unwrap();
@@ -210,7 +210,7 @@ mod test {
         runtime
             .block_on(futures::lazy(|| {
                 let logger = Logger::root(slog::Discard, o!());
-                let id = SubgraphId::new("testschema").unwrap();
+                let id = SubgraphDeploymentId::new("testschema").unwrap();
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = mock_store(id.clone());
                 let node_id = NodeId::new("test").unwrap();
@@ -259,7 +259,7 @@ mod test {
             .block_on(futures::lazy(|| {
                 let logger = Logger::root(slog::Discard, o!());
 
-                let id = SubgraphId::new("testschema").unwrap();
+                let id = SubgraphDeploymentId::new("testschema").unwrap();
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = mock_store(id.clone());
                 let node_id = NodeId::new("test").unwrap();

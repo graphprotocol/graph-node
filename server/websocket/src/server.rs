@@ -30,7 +30,7 @@ where
         }
     }
 
-    fn subgraph_id_from_url_path(store: Arc<S>, path: &Path) -> Result<SubgraphId, ()> {
+    fn subgraph_id_from_url_path(store: Arc<S>, path: &Path) -> Result<SubgraphDeploymentId, ()> {
         let path_segments = {
             let mut segments = path.iter();
 
@@ -42,7 +42,7 @@ where
 
         match path_segments.as_slice() {
             &["subgraphs"] => Ok(SUBGRAPHS_ID.clone()),
-            &["subgraphs", "id", subgraph_id] => SubgraphId::new(subgraph_id),
+            &["subgraphs", "id", subgraph_id] => SubgraphDeploymentId::new(subgraph_id),
             &["subgraphs", "name", _] | &["subgraphs", "name", _, _] => {
                 let subgraph_name = path_segments[2..].join("/");
 

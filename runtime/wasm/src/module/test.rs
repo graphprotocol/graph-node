@@ -88,7 +88,7 @@ fn test_module(
     WasmiModule::new(
         &logger,
         WasmiModuleConfig {
-            subgraph_id: SubgraphId::new("testsubgraph").unwrap(),
+            subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
             data_source,
             ethereum_adapter: mock_ethereum_adapter,
             link_resolver: Arc::new(ipfs_api::IpfsClient::default()),

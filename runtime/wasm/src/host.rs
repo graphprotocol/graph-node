@@ -17,7 +17,7 @@ use super::EventHandlerContext;
 use module::{WasmiModule, WasmiModuleConfig};
 
 pub struct RuntimeHostConfig {
-    subgraph_id: SubgraphId,
+    subgraph_id: SubgraphDeploymentId,
     data_source: DataSource,
 }
 
@@ -68,7 +68,7 @@ where
     fn build(
         &self,
         logger: &Logger,
-        subgraph_id: SubgraphId,
+        subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
     ) -> Result<Self::Host, Error> {
         RuntimeHost::new(
