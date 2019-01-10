@@ -86,7 +86,7 @@ const BIG_INT_DIVIDED_BY: usize = 22;
 const BIG_INT_MOD: usize = 23;
 
 pub struct WasmiModuleConfig<T, L, S> {
-    pub subgraph_id: SubgraphId,
+    pub subgraph_id: SubgraphDeploymentId,
     pub data_source: DataSource,
     pub ethereum_adapter: Arc<T>,
     pub link_resolver: Arc<L>,

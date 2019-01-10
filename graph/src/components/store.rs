@@ -11,7 +11,7 @@ use prelude::*;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EntityKey {
     /// ID of the subgraph.
-    pub subgraph_id: SubgraphId,
+    pub subgraph_id: SubgraphDeploymentId,
 
     /// Name of the entity type.
     pub entity_type: String,
@@ -62,7 +62,7 @@ pub struct EntityRange {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EntityQuery {
     /// ID of the subgraph.
-    pub subgraph_id: SubgraphId,
+    pub subgraph_id: SubgraphDeploymentId,
 
     /// The name of the entity type.
     pub entity_type: String,
@@ -81,7 +81,7 @@ pub struct EntityQuery {
 }
 
 impl EntityQuery {
-    pub fn new(subgraph_id: SubgraphId, entity_type: impl Into<String>) -> Self {
+    pub fn new(subgraph_id: SubgraphDeploymentId, entity_type: impl Into<String>) -> Self {
         EntityQuery {
             subgraph_id,
             entity_type: entity_type.into(),
@@ -125,7 +125,7 @@ pub enum EntityChangeOperation {
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct EntityChange {
     /// ID of the subgraph the changed entity belongs to.
-    pub subgraph_id: SubgraphId,
+    pub subgraph_id: SubgraphDeploymentId,
     /// Entity type name of the changed entity.
     pub entity_type: String,
     /// ID of the changed entity.
@@ -316,7 +316,7 @@ pub enum TransactionAbortError {
 /// Common trait for store implementations.
 pub trait Store: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
-    fn block_ptr(&self, subgraph_id: SubgraphId) -> Result<EthereumBlockPointer, Error>;
+    fn block_ptr(&self, subgraph_id: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error>;
 
     /// Looks up an entity using the given store key.
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
@@ -333,7 +333,7 @@ pub trait Store: Send + Sync + 'static {
     /// `block_ptr_from` must match the current value of the subgraph block pointer.
     fn set_block_ptr_with_no_changes(
         &self,
-        subgraph_id: SubgraphId,
+        subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError>;
@@ -345,7 +345,7 @@ pub trait Store: Send + Sync + 'static {
     /// `block_ptr_to` must point to a child block of `block_ptr_from`.
     fn transact_block_operations(
         &self,
-        subgraph_id: SubgraphId,
+        subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
         operations: Vec<EntityOperation>,
@@ -365,7 +365,7 @@ pub trait Store: Send + Sync + 'static {
     /// `block_ptr_to` must point to the parent block of `block_ptr_from`.
     fn revert_block_operations(
         &self,
-        subgraph_id: SubgraphId,
+        subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError>;
@@ -376,18 +376,18 @@ pub trait Store: Send + Sync + 'static {
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
 
     /// Counts the total number of entities in a subgraph.
-    fn count_entities(&self, subgraph: SubgraphId) -> Result<u64, Error>;
+    fn count_entities(&self, subgraph: SubgraphDeploymentId) -> Result<u64, Error>;
 }
 
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {
-    fn resolve_subgraph_name_to_id(&self, name: SubgraphName) -> Result<Option<SubgraphId>, Error>;
+    fn resolve_subgraph_name_to_id(&self, name: SubgraphName) -> Result<Option<SubgraphDeploymentId>, Error>;
 
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently deployed,
     /// as the store will still accept queries for paused subgraphs.
-    fn is_queryable(&self, id: &SubgraphId) -> Result<bool, Error>;
+    fn is_queryable(&self, id: &SubgraphDeploymentId) -> Result<bool, Error>;
 
-    fn subgraph_schema(&self, subgraph_id: SubgraphId) -> Result<Schema, Error>;
+    fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Schema, Error>;
 }
 
 /// Common trait for blockchain store implementations.

@@ -37,7 +37,7 @@ fn test_schema() -> Schema {
                 writtenBy: Musician!
             }
             ",
-        SubgraphId::new("testschema").unwrap(),
+        SubgraphDeploymentId::new("testschema").unwrap(),
     )
     .expect("Test schema invalid");
 
@@ -129,13 +129,13 @@ impl TestStore {
 }
 
 impl Store for TestStore {
-    fn block_ptr(&self, _: SubgraphId) -> Result<EthereumBlockPointer, Error> {
+    fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
         unimplemented!()
     }
 
     fn set_block_ptr_with_no_changes(
         &self,
-        _: SubgraphId,
+        _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
@@ -152,7 +152,7 @@ impl Store for TestStore {
 
     fn transact_block_operations(
         &self,
-        _: SubgraphId,
+        _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
         _: Vec<EntityOperation>,
@@ -162,7 +162,7 @@ impl Store for TestStore {
 
     fn revert_block_operations(
         &self,
-        _: SubgraphId,
+        _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
@@ -173,7 +173,7 @@ impl Store for TestStore {
         unimplemented!()
     }
 
-    fn count_entities(&self, _: SubgraphId) -> Result<u64, Error> {
+    fn count_entities(&self, _: SubgraphDeploymentId) -> Result<u64, Error> {
         Ok(1)
     }
 

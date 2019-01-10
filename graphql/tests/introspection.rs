@@ -81,7 +81,7 @@ fn mock_schema() -> Schema {
                User: User
              }
              ",
-        SubgraphId::new("mockschema").unwrap(),
+        SubgraphDeploymentId::new("mockschema").unwrap(),
     )
     .unwrap()
 }
@@ -1037,7 +1037,7 @@ type Parameter @entity {
 #[test]
 fn successfully_runs_introspection_query_against_complex_schema() {
     let mut schema =
-        Schema::parse(COMPLEX_SCHEMA, SubgraphId::new("complexschema").unwrap()).unwrap();
+        Schema::parse(COMPLEX_SCHEMA, SubgraphDeploymentId::new("complexschema").unwrap()).unwrap();
     schema.document = api_schema(&schema.document).unwrap();
 
     let result = introspection_query(
@@ -1143,7 +1143,7 @@ fn successfully_runs_introspection_query_against_complex_schema() {
 #[test]
 fn introspection_possible_types() {
     let mut schema =
-        Schema::parse(COMPLEX_SCHEMA, SubgraphId::new("complexschema").unwrap()).unwrap();
+        Schema::parse(COMPLEX_SCHEMA, SubgraphDeploymentId::new("complexschema").unwrap()).unwrap();
     schema.document = api_schema(&schema.document).unwrap();
 
     // Test "possibleTypes" introspection in interfaces

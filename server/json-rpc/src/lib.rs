@@ -26,7 +26,7 @@ struct SubgraphCreateParams {
 #[derive(Debug, Deserialize)]
 struct SubgraphDeployParams {
     name: SubgraphName,
-    ipfs_hash: SubgraphId,
+    ipfs_hash: SubgraphDeploymentId,
     node_id: Option<NodeId>,
 }
 

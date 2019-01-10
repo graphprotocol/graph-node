@@ -114,7 +114,7 @@ where
             .map_err(|()| format_err!("Entity change stream failed"))
             .and_then(
                 move |entity_change| -> Result<Box<Stream<Item = _, Error = _> + Send>, _> {
-                    let subgraph_hash = SubgraphId::new(entity_change.entity_id.clone())
+                    let subgraph_hash = SubgraphDeploymentId::new(entity_change.entity_id.clone())
                         .map_err(|()| format_err!("Invalid subgraph hash in assignment entity"))?;
 
                     match entity_change.operation {
@@ -179,12 +179,12 @@ where
                     .map(|assignment_entity| {
                         // Parse as subgraph hash
                         assignment_entity.id().and_then(|id| {
-                            SubgraphId::new(id).map_err(|()| {
+                            SubgraphDeploymentId::new(id).map_err(|()| {
                                 format_err!("Invalid subgraph hash in assignment entity")
                             })
                         })
                     })
-                    .collect::<Result<HashSet<SubgraphId>, _>>()
+                    .collect::<Result<HashSet<SubgraphDeploymentId>, _>>()
             })
             .and_then(move |subgraph_ids| {
                 let provider = provider.clone();
@@ -215,7 +215,7 @@ where
     fn create_subgraph_version(
         &self,
         name: SubgraphName,
-        hash: SubgraphId,
+        hash: SubgraphDeploymentId,
         node_id: NodeId,
     ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
         let logger = self.logger.clone();
@@ -505,7 +505,7 @@ fn create_subgraph_version(
                 if subgraph_ids_with_current_version_referencing_hash.len() == 1 {
                     ops.push(EntityOperation::Remove {
                         key: SubgraphDeploymentAssignmentEntity::key(
-                            SubgraphId::new(previous_version_hash).unwrap(),
+                            SubgraphDeploymentId::new(previous_version_hash).unwrap(),
                         ),
                     });
                 }
@@ -691,7 +691,7 @@ fn remove_subgraph_versions(
         subgraph_deployment_hashes_needing_deletion
             .into_iter()
             .map(|subgraph_hash| EntityOperation::Remove {
-                key: SubgraphDeploymentEntity::key(SubgraphId::new(subgraph_hash).unwrap()),
+                key: SubgraphDeploymentEntity::key(SubgraphDeploymentId::new(subgraph_hash).unwrap()),
             }),
     );
 
@@ -763,7 +763,7 @@ fn remove_subgraph_versions(
         subgraph_assignment_hashes_needing_deletion
             .into_iter()
             .map(|subgraph_hash| EntityOperation::Remove {
-                key: SubgraphDeploymentAssignmentEntity::key(SubgraphId::new(subgraph_hash).unwrap()),
+                key: SubgraphDeploymentAssignmentEntity::key(SubgraphDeploymentId::new(subgraph_hash).unwrap()),
             }),
     );
 

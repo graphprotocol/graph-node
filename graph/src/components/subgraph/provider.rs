@@ -6,11 +6,11 @@ pub trait SubgraphAssignmentProvider:
 {
     fn start(
         &self,
-        id: SubgraphId,
+        id: SubgraphDeploymentId,
     ) -> Box<Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static>;
 
     fn stop(
         &self,
-        id: SubgraphId,
+        id: SubgraphDeploymentId,
     ) -> Box<Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static>;
 }

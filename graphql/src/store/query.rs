@@ -197,7 +197,7 @@ fn build_order_direction(
 }
 
 /// Parses the subgraph ID from the ObjectType directives.
-pub fn parse_subgraph_id(entity: &s::ObjectType) -> Result<SubgraphId, QueryExecutionError> {
+pub fn parse_subgraph_id(entity: &s::ObjectType) -> Result<SubgraphDeploymentId, QueryExecutionError> {
     let entity_name = entity.name.clone();
     entity
         .directives
@@ -214,8 +214,8 @@ pub fn parse_subgraph_id(entity: &s::ObjectType) -> Result<SubgraphId, QueryExec
             _ => None,
         })
         .ok_or(())
-        .and_then(|id| SubgraphId::new(id))
-        .map_err(|()| QueryExecutionError::SubgraphIdError(entity_name))
+        .and_then(|id| SubgraphDeploymentId::new(id))
+        .map_err(|()| QueryExecutionError::SubgraphDeploymentIdError(entity_name))
 }
 
 /// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.
@@ -223,7 +223,7 @@ pub fn collect_entities_from_query_field(
     schema: &s::Document,
     object_type: &s::ObjectType,
     field: &q::Field,
-) -> Vec<(SubgraphId, String)> {
+) -> Vec<(SubgraphDeploymentId, String)> {
     // Output entities
     let mut entities = HashSet::new();
 

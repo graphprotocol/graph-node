@@ -11,7 +11,7 @@ use split_logger;
 use ElasticDrainConfig;
 use ElasticLoggingConfig;
 
-type InstanceShutdownMap = Arc<RwLock<HashMap<SubgraphId, CancelGuard>>>;
+type InstanceShutdownMap = Arc<RwLock<HashMap<SubgraphDeploymentId, CancelGuard>>>;
 
 pub struct SubgraphInstanceManager {
     logger: Logger,
@@ -294,7 +294,7 @@ impl SubgraphInstanceManager {
         Ok(())
     }
 
-    fn stop_subgraph(instances: InstanceShutdownMap, id: SubgraphId) {
+    fn stop_subgraph(instances: InstanceShutdownMap, id: SubgraphDeploymentId) {
         // Drop the cancel guard to shut down the subgraph now
         let mut instances = instances.write().unwrap();
         instances.remove(&id);

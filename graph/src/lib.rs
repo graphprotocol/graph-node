@@ -87,7 +87,7 @@ pub mod prelude {
     pub use data::subgraph::schema::TypedEntity;
     pub use data::subgraph::{
         CreateSubgraphResult, DataSource, Link, MappingABI, MappingEventHandler,
-        SubgraphAssignmentProviderError, SubgraphAssignmentProviderEvent, SubgraphId,
+        SubgraphAssignmentProviderError, SubgraphAssignmentProviderEvent, SubgraphDeploymentId,
         SubgraphManifest, SubgraphManifestResolveError, SubgraphName, SubgraphRegistrarError,
     };
     pub use data::subscription::{

@@ -29,7 +29,7 @@ impl<E: fmt::Display> fmt::Display for HostExportError<E> {
 }
 
 pub(crate) struct HostExports<E, L, S, U> {
-    subgraph_id: SubgraphId,
+    subgraph_id: SubgraphDeploymentId,
     data_source: DataSource,
     ethereum_adapter: Arc<E>,
     link_resolver: Arc<L>,
@@ -46,7 +46,7 @@ where
     U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone,
 {
     pub(crate) fn new(
-        subgraph_id: SubgraphId,
+        subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
         ethereum_adapter: Arc<E>,
         link_resolver: Arc<L>,

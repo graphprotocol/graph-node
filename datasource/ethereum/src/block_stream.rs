@@ -93,7 +93,7 @@ struct BlockStreamContext<S, C, E> {
     chain_store: Arc<C>,
     eth_adapter: Arc<E>,
     node_id: NodeId,
-    subgraph_id: SubgraphId,
+    subgraph_id: SubgraphDeploymentId,
     logger: Logger,
 }
 
@@ -130,7 +130,7 @@ where
         chain_store: Arc<C>,
         eth_adapter: Arc<E>,
         node_id: NodeId,
-        subgraph_id: SubgraphId,
+        subgraph_id: SubgraphDeploymentId,
         log_filter: EthereumLogFilter,
         logger: Logger,
     ) -> Self {

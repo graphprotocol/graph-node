@@ -55,7 +55,7 @@ struct ElasticLogMeta {
 #[serde(rename_all = "camelCase")]
 struct ElasticLog {
     id: String,
-    subgraph_id: SubgraphId,
+    subgraph_id: SubgraphDeploymentId,
     timestamp: String,
     text: String,
     #[serde(serialize_with = "serialize_log_level")]
@@ -102,7 +102,7 @@ pub struct ElasticDrainConfig {
     /// The Elasticsearch type to use for logs.
     pub document_type: String,
     /// The subgraph ID that the drain is for.
-    pub subgraph_id: SubgraphId,
+    pub subgraph_id: SubgraphDeploymentId,
     /// The batching interval.
     pub flush_interval: Duration,
 }

@@ -29,7 +29,7 @@ fn postgres_test_url() -> String {
 
 lazy_static! {
     static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
-    static ref TEST_SUBGRAPH_ID: SubgraphId = SubgraphId::new("testsubgraph").unwrap();
+    static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId = SubgraphDeploymentId::new("testsubgraph").unwrap();
     static ref TEST_BLOCK_0_PTR: EthereumBlockPointer = (
         H256::from("0xbd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"),
         0u64
@@ -1440,7 +1440,7 @@ fn revert_block_with_partial_update() {
 #[test]
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store| {
-        let subgraph_id = SubgraphId::new("EntityChangeTestSubgraph").unwrap();
+        let subgraph_id = SubgraphDeploymentId::new("EntityChangeTestSubgraph").unwrap();
         let manifest = SubgraphManifest {
             id: subgraph_id.clone(),
             location: "/ipfs/test".to_owned(),

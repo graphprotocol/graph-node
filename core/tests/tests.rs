@@ -110,7 +110,7 @@ fn multiple_data_sources_per_subgraph() {
         fn build(
             &self,
             _: &Logger,
-            _: SubgraphId,
+            _: SubgraphDeploymentId,
             data_source: DataSource,
         ) -> Result<Self::Host, Error> {
             self.data_sources_received.lock().unwrap().push(data_source);
@@ -189,7 +189,7 @@ fn multiple_data_sources_per_subgraph() {
         .unwrap();
 }
 
-fn added_subgraph_id_eq(event: &SubgraphAssignmentProviderEvent, id: &SubgraphId) -> bool {
+fn added_subgraph_id_eq(event: &SubgraphAssignmentProviderEvent, id: &SubgraphDeploymentId) -> bool {
     match event {
         SubgraphAssignmentProviderEvent::SubgraphStart(manifest) => &manifest.id == id,
         _ => false,
@@ -229,9 +229,9 @@ fn subgraph_provider_events() {
                 .and_then(move |(subgraph1_link, subgraph2_link)| {
                     let registrar = Arc::new(registrar);
                     let subgraph1_id =
-                        SubgraphId::new(subgraph1_link.trim_left_matches("/ipfs/")).unwrap();
+                        SubgraphDeploymentId::new(subgraph1_link.trim_left_matches("/ipfs/")).unwrap();
                     let subgraph2_id =
-                        SubgraphId::new(subgraph2_link.trim_left_matches("/ipfs/")).unwrap();
+                        SubgraphDeploymentId::new(subgraph2_link.trim_left_matches("/ipfs/")).unwrap();
                     let subgraph_name = SubgraphName::new("subgraph").unwrap();
 
                     // Prepare the clones

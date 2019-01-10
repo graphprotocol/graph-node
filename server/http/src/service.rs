@@ -163,13 +163,13 @@ where
         id: String,
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
-        match SubgraphId::new(id) {
+        match SubgraphDeploymentId::new(id) {
             Err(()) => self.handle_not_found(),
             Ok(id) => self.handle_graphql_query(id, request.into_body()),
         }
     }
 
-    fn handle_graphql_query(&self, id: SubgraphId, request_body: Body) -> GraphQLServiceResponse {
+    fn handle_graphql_query(&self, id: SubgraphDeploymentId, request_body: Body) -> GraphQLServiceResponse {
         let service = self.clone();
 
         match self.store.is_queryable(&id) {
@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn posting_invalid_query_yields_error_response() {
-        let id = SubgraphId::new("testschema").unwrap();
+        let id = SubgraphDeploymentId::new("testschema").unwrap();
         let schema = Schema::parse(
             "\
              scalar String \
@@ -398,7 +398,7 @@ mod tests {
 
     #[test]
     fn posting_valid_queries_yields_result_response() {
-        let id = SubgraphId::new("testschema").unwrap();
+        let id = SubgraphDeploymentId::new("testschema").unwrap();
         let schema = Schema::parse(
             "\
              scalar String \
