@@ -278,7 +278,7 @@ impl fmt::Display for EventSource {
 }
 
 #[derive(Clone, Debug)]
-pub struct AttributeIndexOperation {
+pub struct AttributeIndexDefinition {
     pub subgraph_id: SubgraphDeploymentId,
     pub index_name: String,
     pub field_value_type: ValueType,
@@ -375,7 +375,7 @@ pub trait Store: Send + Sync + 'static {
     /// Build indexes for a set of subgraph entity attributes
     fn build_entity_attribute_indexes(
         &self,
-        operations: Vec<AttributeIndexOperation>,
+        indexes: Vec<AttributeIndexDefinition>,
     ) -> Result<(), Error>;
 
     /// Revert the entity changes from a single block atomically in the store, and update the

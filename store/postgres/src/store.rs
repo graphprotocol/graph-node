@@ -607,9 +607,9 @@ impl Store {
     fn build_entity_attribute_index_with_conn(
         &self,
         conn: &PgConnection,
-        operation: AttributeIndexOperation,
+        index: AttributeIndexDefinition,
     ) -> Result<(), Error> {
-        let (index_type, index_operator) = match operation.field_value_type {
+        let (index_type, index_operator) = match index.field_value_type {
             ValueType::Boolean
             | ValueType::BigInt
             | ValueType::Bytes
@@ -620,33 +620,32 @@ impl Store {
         };
 
         select(build_attribute_index(
-            operation.subgraph_id.to_string(),
-            operation.index_name.clone(),
+            index.subgraph_id.to_string(),
+            index.index_name.clone(),
             index_type,
             index_operator,
-            operation.attribute_name.clone(),
-            operation.entity_name.clone(),
+            index.attribute_name.clone(),
+            index.entity_name.clone(),
         ))
         .execute(conn)
         .map_err(Error::from)
         .and_then(move |row_count| match row_count {
             1 => Ok(()),
             _ => Err(format_err!(
-                "failed to create indexes for subgraph:{:?}",
-                operation.clone().subgraph_id,
+                "Failed to build subgraph attribute index: {}",
+                index.index_name.clone()
             )),
         })
-        //
     }
 
     /// Build a set of indexes on the entities table
     fn build_entity_attribute_indexes_with_conn(
         &self,
         conn: &PgConnection,
-        operations: Vec<AttributeIndexOperation>,
+        indexes: Vec<AttributeIndexDefinition>,
     ) -> Result<(), Error> {
-        for operation in operations.into_iter() {
-            self.build_entity_attribute_index_with_conn(conn, operation)?;
+        for index in indexes.into_iter() {
+            self.build_entity_attribute_index_with_conn(conn, index)?;
         }
         Ok(())
     }
@@ -785,10 +784,10 @@ impl StoreTrait for Store {
 
     fn build_entity_attribute_indexes(
         &self,
-        operations: Vec<AttributeIndexOperation>,
+        indexes: Vec<AttributeIndexDefinition>,
     ) -> Result<(), Error> {
         let conn = self.conn.get()?;
-        conn.transaction(|| self.build_entity_attribute_indexes_with_conn(&conn, operations))
+        conn.transaction(|| self.build_entity_attribute_indexes_with_conn(&conn, indexes))
     }
 
     fn revert_block_operations(

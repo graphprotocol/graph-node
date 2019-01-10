@@ -11,18 +11,19 @@
 //!
 //! See `subgraphs.graphql` in the store for corresponding graphql schema.
 
-use graphql_parser::schema::{Definition, Document, TypeDefinition};
+
+use failure::Error;
+use graphql_parser::schema::{Definition, Document, Type, TypeDefinition};
 use hex;
 use rand::rngs::OsRng;
 use rand::Rng;
 use web3::types::*;
-use std::collections::HashMap;
+use std::str::FromStr;
 
 use super::SubgraphDeploymentId;
 use components::ethereum::EthereumBlockPointer;
-use components::store::{AttributeIndexOperation, EntityFilter, EntityKey, EntityOperation, EntityQuery};
-use data::graphql::validation::get_valid_value_type;
-use data::store::{Entity, NodeId, SubgraphEntityPair, Value};
+use components::store::{AttributeIndexDefinition, EntityFilter, EntityKey, EntityOperation, EntityQuery};
+use data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
 use data::subgraph::{SubgraphManifest, SubgraphName};
 
 /// ID of the subgraph of subgraphs.
@@ -612,6 +613,7 @@ fn set_entity_operation(
     }
 }
 
+
 pub fn generate_entity_id() -> String {
     // Fast crypto RNG from operating system
     let mut rng = OsRng::new().unwrap();
@@ -625,17 +627,17 @@ pub fn generate_entity_id() -> String {
     hex::encode(id_bytes)
 }
 
-pub fn attribute_indexing_operations(
+pub fn attribute_index_definitions(
     subgraph_id: SubgraphDeploymentId,
     document: Document,
-) -> Vec<AttributeIndexOperation> {
+) -> Vec<AttributeIndexDefinition> {
     let mut indexing_ops = vec![];
     for (entity_number, schema_type) in document.definitions.clone().into_iter().enumerate() {
         if let Definition::TypeDefinition(definition) = schema_type {
             if let TypeDefinition::Object(schema_object) = definition {
                 for (attribute_number, entity_field) in schema_object.fields.into_iter().enumerate()
                 {
-                    indexing_ops.push(AttributeIndexOperation {
+                    indexing_ops.push(AttributeIndexDefinition {
                         subgraph_id: subgraph_id.clone(),
                         index_name: format!(
                             "{}_{}_{}_idx",
@@ -643,7 +645,7 @@ pub fn attribute_indexing_operations(
                             entity_number,
                             attribute_number,
                         ),
-                        field_value_type: match get_valid_value_type(&entity_field.field_type) {
+                        field_value_type: match inner_type_name(&entity_field.field_type) {
                             Ok(value_type) => value_type,
                             Err(_) => continue,
                         },
@@ -655,4 +657,13 @@ pub fn attribute_indexing_operations(
         }
     }
     indexing_ops
+}
+
+/// Returns the value type for a GraphQL field type.
+pub fn inner_type_name(field_type: &Type) -> Result<ValueType, Error> {
+    match field_type {
+        Type::NamedType(ref name) => ValueType::from_str(&name),
+        Type::NonNullType(inner) => inner_type_name(&inner),
+        Type::ListType(inner) => inner_type_name(&inner),
+    }
 }

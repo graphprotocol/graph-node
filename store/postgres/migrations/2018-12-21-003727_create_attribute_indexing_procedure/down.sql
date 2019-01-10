@@ -1,2 +1,9 @@
 --  DROP ATTRIBUTE INDEXING FUNCTION
-DROP FUNCTION BuildSubgraphEntityAttributeIndexes(attribute_array entity_attribute_type[]);
+DROP FUNCTION build_attribute_index(
+  subgraph_id Text,
+  index_name Text,
+  index_type Text,
+  index_operator Text,
+  attribute_name Text,
+  entity_name Text
+);

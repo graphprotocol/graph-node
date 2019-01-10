@@ -2,7 +2,7 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::collections::HashSet;
 use std::sync::Mutex;
 
-use graph::data::subgraph::schema::{attribute_indexing_operations};
+use graph::data::subgraph::schema::{attribute_index_definitions};
 use graph::prelude::{SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *};
 
 pub struct SubgraphAssignmentProvider<L, S> {
@@ -76,24 +76,19 @@ where
                     }
 
                     // Build indexes for each entity attribute in the Subgraph
-                    let indexing_ops = attribute_indexing_operations(
+                    let index_definitions = attribute_index_definitions(
                         subgraph.id.clone(),
                         subgraph.schema.document.clone(),
                     );
                     self_clone
                         .store
                         .clone()
-                        .build_entity_attribute_indexes(indexing_ops)
-                        .map_err(|err| {
-                            debug!(
-                                self_clone.logger,
-                                "No subgraph entity indexes created: {}", err
-                            )
-                        })
+                        .build_entity_attribute_indexes(index_definitions)
+                        .map_err(SubgraphAssignmentProviderError::IndexesBuildError)
                         .map(|_| {
                             info!(
                                 self_clone.logger,
-                                "Successfully created indexes for all attributes"
+                                "Successfully created attribute indexes for subgraph entities"
                             )
                         })
                         .ok();
