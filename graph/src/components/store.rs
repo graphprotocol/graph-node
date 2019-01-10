@@ -380,7 +380,10 @@ pub trait Store: Send + Sync + 'static {
 }
 
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {
-    fn resolve_subgraph_name_to_id(&self, name: SubgraphName) -> Result<Option<SubgraphDeploymentId>, Error>;
+    fn resolve_subgraph_name_to_id(
+        &self,
+        name: SubgraphName,
+    ) -> Result<Option<SubgraphDeploymentId>, Error>;
 
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently assigned to an indexing
