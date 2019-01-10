@@ -189,63 +189,59 @@ impl Value {
         })
     }
 
-    pub fn as_string(self) -> Result<String, ()> {
+    pub fn as_string(self) -> Option<String> {
         if let Value::String(s) = self {
-            Ok(s)
+            Some(s)
         } else {
-            Err(())
+            None
         }
     }
 
-    pub fn as_int(self) -> Result<i32, ()> {
+    pub fn as_int(self) -> Option<i32> {
         if let Value::Int(i) = self {
-            Ok(i)
+            Some(i)
         } else {
-            Err(())
+            None
         }
     }
 
-    pub fn as_float(self) -> Result<f32, ()> {
+    pub fn as_float(self) -> Option<f32> {
         if let Value::Float(f) = self {
-            Ok(f)
+            Some(f)
         } else {
-            Err(())
+            None
         }
     }
 
-    pub fn as_bool(self) -> Result<bool, ()> {
+    pub fn as_bool(self) -> Option<bool> {
         if let Value::Bool(b) = self {
-            Ok(b)
+            Some(b)
         } else {
-            Err(())
+            None
         }
     }
 
-    pub fn as_list(self) -> Result<Vec<Value>, ()> {
+    pub fn as_list(self) -> Option<Vec<Value>> {
         if let Value::List(v) = self {
-            Ok(v)
+            Some(v)
         } else {
-            Err(())
+            None
         }
     }
 
-    pub fn is_null(&self) -> bool {
-        *self == Value::Null
-    }
-
-    pub fn as_bytes(self) -> Result<scalar::Bytes, ()> {
+    pub fn as_bytes(self) -> Option<scalar::Bytes> {
         if let Value::Bytes(b) = self {
-            Ok(b)
+            Some(b)
         } else {
-            Err(())
+            None
         }
     }
 
-    pub fn as_bigint(self) -> Result<scalar::BigInt, ()> {
+    pub fn as_bigint(self) -> Option<scalar::BigInt> {
         if let Value::BigInt(b) = self {
-            Ok(b)
+            Some(b)
         } else {
-            Err(())
+            None
         }
     }
 }
