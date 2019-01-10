@@ -613,7 +613,7 @@ impl StoreTrait for Store {
             .ok_or_else(|| format_err!("SubgraphState is missing latestEthereumBlockHash"))?
             .to_owned()
             .as_string()
-            .map_err(|()| format_err!("SubgraphState has wrong type in latestEthereumBlockHash"))?
+            .ok_or_else(|| format_err!("SubgraphState has wrong type in latestEthereumBlockHash"))?
             .parse::<H256>()
             .map_err(|e| format_err!("latestEthereumBlockHash: {}", e))?;
 
@@ -622,7 +622,9 @@ impl StoreTrait for Store {
             .ok_or_else(|| format_err!("SubgraphState is missing latestEthereumBlockNumber"))?
             .to_owned()
             .as_bigint()
-            .map_err(|()| format_err!("SubgraphState has wrong type in latestEthereumBlockNumber"))?
+            .ok_or_else(|| {
+                format_err!("SubgraphState has wrong type in latestEthereumBlockNumber")
+            })?
             .to_u64();
 
         Ok(EthereumBlockPointer { hash, number })
@@ -841,7 +843,7 @@ impl SubgraphDeploymentStore for Store {
             .ok_or_else(|| format_err!("SubgraphVersion entity without `state`"))?
             .to_owned()
             .as_string()
-            .map_err(|()| format_err!("SubgraphVersion entity has wrong type in `state`"))?;
+            .ok_or_else(|| format_err!("SubgraphVersion entity has wrong type in `state`"))?;
         SubgraphId::new(subgraph_id_str)
             .map_err(|()| format_err!("SubgraphVersion entity has invalid subgraph ID in `state`"))
             .map(Some)
