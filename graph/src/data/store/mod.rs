@@ -95,6 +95,7 @@ pub enum ValueType {
     ID,
     Int,
     String,
+    List,
 }
 
 impl FromStr for ValueType {
@@ -109,6 +110,7 @@ impl FromStr for ValueType {
             "ID" => Ok(ValueType::ID),
             "Int" => Ok(ValueType::Int),
             "String" => Ok(ValueType::String),
+            "List" => Ok(ValueType::List),
             s => Err(format_err!("Type not available in this context: {}", s)),
         }
     }

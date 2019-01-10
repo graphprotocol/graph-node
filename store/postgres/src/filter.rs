@@ -159,7 +159,7 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                     let s = serde_json::to_string(&lst).expect("failed to serialize list value");
                     let predicate = sql("data -> ")
                         .bind::<Text, _>(attribute)
-                        .sql("->> 'data' @> ")
+                        .sql("-> 'data' @> ")
                         .bind::<Text, _>(s);
                     if contains {
                         Ok(Box::new(predicate) as FilterExpression)

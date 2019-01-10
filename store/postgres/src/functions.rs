@@ -35,6 +35,7 @@ sql_function! {
         index_name: Text,
         index_type: Text,
         index_operator: Text,
+        jsonb_index: Bool,
         attribute_name: Text,
         entity_name: Text
     )

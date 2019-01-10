@@ -664,6 +664,6 @@ pub fn inner_type_name(field_type: &Type) -> Result<ValueType, Error> {
     match field_type {
         Type::NamedType(ref name) => ValueType::from_str(&name),
         Type::NonNullType(inner) => inner_type_name(&inner),
-        Type::ListType(inner) => inner_type_name(&inner),
+        Type::ListType(inner) => inner_type_name(inner).and(Ok(ValueType::List)),
     }
 }
