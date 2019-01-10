@@ -1,5 +1,5 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use graph::data::subgraph::schema::SubgraphStateEntity;
+use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -15,7 +15,7 @@ type InstanceShutdownMap = Arc<RwLock<HashMap<SubgraphId, CancelGuard>>>;
 
 pub struct SubgraphInstanceManager {
     logger: Logger,
-    input: Sender<SubgraphDeploymentProviderEvent>,
+    input: Sender<SubgraphAssignmentProviderEvent>,
 }
 
 impl SubgraphInstanceManager {
@@ -56,7 +56,7 @@ impl SubgraphInstanceManager {
     /// Handle incoming events from subgraph providers.
     fn handle_subgraph_events<B, S, T>(
         logger: Logger,
-        receiver: Receiver<SubgraphDeploymentProviderEvent>,
+        receiver: Receiver<SubgraphAssignmentProviderEvent>,
         store: Arc<S>,
         host_builder: T,
         block_stream_builder: B,
@@ -70,7 +70,7 @@ impl SubgraphInstanceManager {
         let instances: InstanceShutdownMap = Default::default();
 
         tokio::spawn(receiver.for_each(move |event| {
-            use self::SubgraphDeploymentProviderEvent::*;
+            use self::SubgraphAssignmentProviderEvent::*;
 
             match event {
                 SubgraphStart(manifest) => {
@@ -275,7 +275,7 @@ impl SubgraphInstanceManager {
 
                         // Set subgraph status to Failed
                         let status_ops =
-                            SubgraphStateEntity::update_failed_operations(&id_for_err, true);
+                            SubgraphDeploymentEntity::update_failed_operations(&id_for_err, true);
                         if let Err(e) =
                             store_for_errors.apply_entity_operations(status_ops, EventSource::None)
                         {
@@ -301,11 +301,11 @@ impl SubgraphInstanceManager {
     }
 }
 
-impl EventConsumer<SubgraphDeploymentProviderEvent> for SubgraphInstanceManager {
+impl EventConsumer<SubgraphAssignmentProviderEvent> for SubgraphInstanceManager {
     /// Get the wrapped event sink.
     fn event_sink(
         &self,
-    ) -> Box<Sink<SinkItem = SubgraphDeploymentProviderEvent, SinkError = ()> + Send> {
+    ) -> Box<Sink<SinkItem = SubgraphAssignmentProviderEvent, SinkError = ()> + Send> {
         let logger = self.logger.clone();
         Box::new(self.input.clone().sink_map_err(move |e| {
             error!(logger, "Component was dropped: {}", e);

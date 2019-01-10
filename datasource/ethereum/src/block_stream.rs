@@ -6,7 +6,7 @@ use std::mem;
 use std::sync::Mutex;
 
 use graph::components::forward;
-use graph::data::subgraph::schema::{SubgraphDeploymentEntity, SubgraphStateEntity};
+use graph::data::subgraph::schema::{SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity};
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
 };
@@ -553,14 +553,14 @@ where
             Ok(())
         } else {
             // Synced
-            let ops = SubgraphDeploymentEntity::update_synced_operations(
+            let ops = SubgraphDeploymentAssignmentEntity::update_synced_operations(
                 &self.subgraph_id,
                 self.node_id.clone(),
                 true,
             );
             self.subgraph_store
                 .apply_entity_operations(ops, EventSource::None)
-                .map_err(|e| format_err!("failed to set deployment synced flag: {}", e))
+                .map_err(|e| format_err!("failed to set assignment synced flag: {}", e))
         }
     }
 
@@ -572,7 +572,7 @@ where
         match head_ptr_opt {
             None => Ok(()),
             Some(head_ptr) => {
-                let ops = SubgraphStateEntity::update_ethereum_blocks_count_operations(
+                let ops = SubgraphDeploymentEntity::update_ethereum_blocks_count_operations(
                     &self.subgraph_id,
                     head_ptr.number,
                 );

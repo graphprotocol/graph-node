@@ -52,7 +52,7 @@ where
                             .resolve_subgraph_name_to_id(subgraph_name)
                             .expect("failed to resolve subgraph name to ID")
                     })
-                    .and_then(|deployment_opt| deployment_opt.ok_or(()))
+                    .and_then(|assignment_opt| assignment_opt.ok_or(()))
             }
             _ => return Err(()),
         }

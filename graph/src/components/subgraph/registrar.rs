@@ -11,7 +11,7 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
         &self,
         name: SubgraphName,
         hash: SubgraphId,
-        deployment_node_id: NodeId,
+        assignment_node_id: NodeId,
     ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static>;
 
     fn remove_subgraph(
