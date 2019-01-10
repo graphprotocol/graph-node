@@ -240,14 +240,36 @@ where
                         }
                     };
 
-                    // TODO Parse query variables and operation name
+                    // Parse the query variables, if present
+                    let variables = match payload.variables {
+                        None | Some(serde_json::Value::Null) => None,
+                        Some(variables @ serde_json::Value::Object(_)) => {
+                            match serde_json::from_value(variables.clone()) {
+                                Ok(variables) => Some(variables),
+                                Err(e) => {
+                                    return send_error_string(
+                                        &msg_sink,
+                                        id.clone(),
+                                        format!("Invalid variables provided: {}", e),
+                                    )
+                                }
+                            }
+                        }
+                        _ => {
+                            return send_error_string(
+                                &msg_sink,
+                                id.clone(),
+                                format!("Invalid variables provided (must be an object)"),
+                            )
+                        }
+                    };
 
                     // Construct a subscription
                     let subscription = Subscription {
                         query: Query {
                             schema: schema.clone(),
                             document: query,
-                            variables: None,
+                            variables,
                         },
                     };
 
