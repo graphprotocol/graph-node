@@ -180,16 +180,20 @@ where
         // entity will be the result of the operations after that, so we
         // don't have to hit the store for anything
         if matching_operations.iter().any(|op| op.is_remove()) {
-            return Ok(EntityOperation::apply_all(None, &matching_operations));
+            return EntityOperation::apply_all(None, &matching_operations)
+                .map_err(QueryExecutionError::StoreError)
+                .map_err(HostExportError);
         }
 
         // No removal in the operations => read the entity from the store, then apply
         // the operations to it to obtain the result
-        Ok(self
-            .store
+        self.store
             .get(store_key)
-            .map(|entity| EntityOperation::apply_all(entity, &matching_operations))
-            .map_err(HostExportError)?)
+            .and_then(|entity| {
+                EntityOperation::apply_all(entity, &matching_operations)
+                    .map_err(QueryExecutionError::StoreError)
+            })
+            .map_err(HostExportError)
     }
 
     pub(crate) fn ethereum_call(
