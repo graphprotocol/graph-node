@@ -298,7 +298,7 @@ impl SubgraphDeploymentStore for MockStore {
         unimplemented!();
     }
 
-    fn is_queryable(&self, subgraph_id: &SubgraphDeploymentId) -> Result<bool, Error> {
+    fn is_deployed(&self, subgraph_id: &SubgraphDeploymentId) -> Result<bool, Error> {
         Ok(self.schemas.keys().any(|id| subgraph_id == id))
     }
 

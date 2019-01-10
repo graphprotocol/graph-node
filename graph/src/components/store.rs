@@ -383,9 +383,9 @@ pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     fn resolve_subgraph_name_to_id(&self, name: SubgraphName) -> Result<Option<SubgraphDeploymentId>, Error>;
 
     /// Check if the store is accepting queries for the specified subgraph.
-    /// May return true even if the specified subgraph is not currently deployed,
-    /// as the store will still accept queries for paused subgraphs.
-    fn is_queryable(&self, id: &SubgraphDeploymentId) -> Result<bool, Error>;
+    /// May return true even if the specified subgraph is not currently assigned to an indexing
+    /// node, as the store will still accept queries.
+    fn is_deployed(&self, id: &SubgraphDeploymentId) -> Result<bool, Error>;
 
     fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Schema, Error>;
 }
