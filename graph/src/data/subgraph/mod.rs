@@ -97,7 +97,7 @@ impl SubgraphName {
         // implemented in any other components that rely on subgraph names.
 
         // Enforce length limits
-        if s.len() < 1 || s.len() > 255 {
+        if s.is_empty() || s.len() > 255 {
             return Err(());
         }
 
@@ -109,17 +109,24 @@ impl SubgraphName {
             return Err(());
         }
 
-        // Check that name does not start or end with a special character
-        // Note: we may in the future split names by '/' and do this check on each name "part".
-        let first_char = s.chars().next().unwrap(); // length >= 1, checked earlier
-        let last_char = s.chars().last().unwrap(); // length >= 1, checked earlier
-        if !first_char.is_ascii_alphanumeric() || !last_char.is_ascii_alphanumeric() {
-            return Err(());
-        }
+        // Parse into components and validate each
+        for part in s.split("/") {
+            // Each part must be non-empty and not too long
+            if part.is_empty() || part.len() > 32 {
+                return Err(());
+            }
 
-        // To keep URLs unambiguous, reserve the token "graphql"
-        if s.split("/").any(|part| part == "graphql") {
-            return Err(());
+            // To keep URLs unambiguous, reserve the token "graphql"
+            if part == "graphql" {
+                return Err(());
+            }
+
+            // Part should not start or end with a special character or start with a number.
+            let first_char = part.chars().next().unwrap();
+            let last_char = part.chars().last().unwrap();
+            if !first_char.is_ascii_alphabetic() || !last_char.is_ascii_alphanumeric() {
+                return Err(());
+            }
         }
 
         Ok(SubgraphName(s))
@@ -150,6 +157,35 @@ impl<'de> de::Deserialize<'de> for SubgraphName {
         SubgraphName::new(s.clone())
             .map_err(|()| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid subgraph name"))
     }
+}
+
+#[test]
+fn test_subgraph_name_validation() {
+    assert!(SubgraphName::new("a").is_ok());
+    assert!(SubgraphName::new("a/a").is_ok());
+    assert!(SubgraphName::new("a-lOng-name_with_0ne-component").is_ok());
+    assert!(SubgraphName::new("a-long-name_with_one-3omponent").is_ok());
+    assert!(SubgraphName::new("a/b_c").is_ok());
+    assert!(SubgraphName::new("A/Z-Z").is_ok());
+    assert!(SubgraphName::new("a1/A-A").is_ok());
+    assert!(SubgraphName::new("aaa/a1").is_ok());
+
+    assert!(SubgraphName::new("").is_err());
+    assert!(SubgraphName::new("/a").is_err());
+    assert!(SubgraphName::new("a/").is_err());
+    assert!(SubgraphName::new("a//a").is_err());
+    assert!(SubgraphName::new("a/0").is_err());
+    assert!(SubgraphName::new("a/_").is_err());
+    assert!(SubgraphName::new("a/a_").is_err());
+    assert!(SubgraphName::new("a/_a").is_err());
+    assert!(SubgraphName::new("1a/aaaa").is_err());
+    assert!(SubgraphName::new("aaaa/1a").is_err());
+    assert!(SubgraphName::new("aaaa aaaaa").is_err());
+    assert!(SubgraphName::new("aaaa!aaaaa").is_err());
+    assert!(SubgraphName::new("aaaa+aaaaa").is_err());
+    assert!(SubgraphName::new("a/graphql").is_err());
+    assert!(SubgraphName::new("graphql/a").is_err());
+    assert!(SubgraphName::new("this-component-is-longer-than-the-length-limit").is_err());
 }
 
 /// Result of a creating a subgraph in the registar.
