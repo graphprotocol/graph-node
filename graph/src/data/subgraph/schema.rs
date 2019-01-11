@@ -138,6 +138,7 @@ impl SubgraphVersionEntity {
 pub struct SubgraphDeploymentEntity {
     manifest: SubgraphManifestEntity,
     failed: bool,
+    synced: bool,
     latest_ethereum_block_hash: H256,
     latest_ethereum_block_number: u64,
     total_ethereum_blocks_count: u64,
@@ -152,12 +153,14 @@ impl SubgraphDeploymentEntity {
     pub fn new(
         source_manifest: &SubgraphManifest,
         failed: bool,
+        synced: bool,
         latest_ethereum_block: EthereumBlockPointer,
         total_ethereum_blocks_count: u64,
     ) -> Self {
         Self {
             manifest: SubgraphManifestEntity::from(source_manifest),
             failed,
+            synced,
             latest_ethereum_block_hash: latest_ethereum_block.hash,
             latest_ethereum_block_number: latest_ethereum_block.number,
             total_ethereum_blocks_count,
@@ -182,6 +185,7 @@ impl SubgraphDeploymentEntity {
         entity.set("id", id.to_string());
         entity.set("manifest", manifest_id);
         entity.set("failed", self.failed);
+        entity.set("synced", self.synced);
         entity.set(
             "latestEthereumBlockHash",
             format!("{:x}", self.latest_ethereum_block_hash),
@@ -273,53 +277,19 @@ impl SubgraphDeploymentEntity {
 
         ops
     }
-}
-
-#[derive(Debug)]
-pub struct SubgraphDeploymentAssignmentEntity {
-    node_id: NodeId,
-    synced: bool,
-    cost: u64,
-}
-
-impl TypedEntity for SubgraphDeploymentAssignmentEntity {
-    const TYPENAME: &'static str = "SubgraphDeploymentAssignment";
-    type IdType = SubgraphDeploymentId;
-}
-
-impl SubgraphDeploymentAssignmentEntity {
-    pub fn new(node_id: NodeId, synced: bool) -> Self {
-        Self {
-            node_id,
-            synced,
-            cost: 1,
-        }
-    }
-
-    pub fn write_operations(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
-        let mut entity = Entity::new();
-        entity.set("id", id.to_string());
-        entity.set("nodeId", self.node_id.to_string());
-        entity.set("synced", self.synced);
-        entity.set("cost", self.cost);
-        vec![set_entity_operation(Self::TYPENAME, id.to_string(), entity)]
-    }
 
     pub fn update_synced_operations(
         id: &SubgraphDeploymentId,
-        node_id: NodeId,
         synced: bool,
     ) -> Vec<EntityOperation> {
         let mut ops = vec![];
 
         ops.push(EntityOperation::AbortUnless {
-            description:
-                "Subgraph assignment entity must exist and have proper node ID to be updated"
-                    .to_owned(),
-            query: Self::query().filter(EntityFilter::And(vec![
-                EntityFilter::Equal("id".to_owned(), id.to_string().into()),
-                EntityFilter::Equal("nodeId".to_owned(), node_id.to_string().into()),
-            ])),
+            description: "Subgraph deployment entity must exist to be updated".to_owned(),
+            query: Self::query().filter(EntityFilter::And(vec![EntityFilter::Equal(
+                "id".to_owned(),
+                id.to_string().into(),
+            )])),
             entity_ids: vec![id.to_string()],
         });
 
@@ -329,6 +299,31 @@ impl SubgraphDeploymentAssignmentEntity {
         ops.push(set_entity_operation(Self::TYPENAME, id.to_string(), entity));
 
         ops
+    }
+}
+
+#[derive(Debug)]
+pub struct SubgraphDeploymentAssignmentEntity {
+    node_id: NodeId,
+    cost: u64,
+}
+
+impl TypedEntity for SubgraphDeploymentAssignmentEntity {
+    const TYPENAME: &'static str = "SubgraphDeploymentAssignment";
+    type IdType = SubgraphDeploymentId;
+}
+
+impl SubgraphDeploymentAssignmentEntity {
+    pub fn new(node_id: NodeId) -> Self {
+        Self { node_id, cost: 1 }
+    }
+
+    pub fn write_operations(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
+        let mut entity = Entity::new();
+        entity.set("id", id.to_string());
+        entity.set("nodeId", self.node_id.to_string());
+        entity.set("cost", self.cost);
+        vec![set_entity_operation(Self::TYPENAME, id.to_string(), entity)]
     }
 }
 
