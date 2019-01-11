@@ -17,6 +17,7 @@ type SubgraphDeployment @entity {
     id: ID! # Subgraph IPFS hash
     manifest: SubgraphManifest!
     failed: Boolean!
+    synced: Boolean!
     latestEthereumBlockHash: String!
     latestEthereumBlockNumber: BigInt!
     totalEthereumBlocksCount: BigInt!
@@ -26,7 +27,6 @@ type SubgraphDeployment @entity {
 type SubgraphDeploymentAssignment @entity {
     id: ID! # Subgraph IPFS hash
     nodeId: String!
-    synced: Boolean!
     cost: BigInt!
 }
 

@@ -138,7 +138,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
     // Create SubgraphDeploymentEntity
     store
         .apply_entity_operations(
-            SubgraphDeploymentEntity::new(&manifest, false, *TEST_BLOCK_0_PTR, 1)
+            SubgraphDeploymentEntity::new(&manifest, false, false, *TEST_BLOCK_0_PTR, 1)
                 .create_operations(&*TEST_SUBGRAPH_ID),
             EventSource::None,
         )
@@ -1455,7 +1455,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         // Create SubgraphDeploymentEntity
         store
             .apply_entity_operations(
-                SubgraphDeploymentEntity::new(&manifest, false, *TEST_BLOCK_0_PTR, 1)
+                SubgraphDeploymentEntity::new(&manifest, false, false, *TEST_BLOCK_0_PTR, 1)
                     .create_operations(&subgraph_id),
                 EventSource::None,
             )

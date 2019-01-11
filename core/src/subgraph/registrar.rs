@@ -455,6 +455,7 @@ fn create_subgraph_version(
             SubgraphDeploymentEntity::new(
                 &manifest,
                 false,
+                false,
                 genesis_block_ptr,
                 chain_head_block_number,
             )
@@ -539,9 +540,7 @@ fn create_subgraph_version(
 
     // Create assignment entity only if it does not exist already
     if assignment_entity_opt.is_none() {
-        ops.extend(
-            SubgraphDeploymentAssignmentEntity::new(node_id, false).write_operations(&manifest.id),
-        );
+        ops.extend(SubgraphDeploymentAssignmentEntity::new(node_id).write_operations(&manifest.id));
     }
 
     // TODO support delayed update of currentVersion

@@ -6,7 +6,7 @@ use std::mem;
 use std::sync::Mutex;
 
 use graph::components::forward;
-use graph::data::subgraph::schema::{SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity};
+use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
 };
@@ -542,8 +542,8 @@ where
         }
     }
 
-    /// Write SYNCED to the subgraph entity status field if and only if the subgraph block pointer
-    /// is caught up to the head block pointer.
+    /// Set subgraph deployment entity synced flag if and only if the subgraph block pointer is
+    /// caught up to the head block pointer.
     fn update_subgraph_synced_status(&self) -> Result<(), Error> {
         let head_ptr_opt = self.chain_store.chain_head_ptr()?;
         let subgraph_ptr = self.subgraph_store.block_ptr(self.subgraph_id.clone())?;
@@ -553,14 +553,10 @@ where
             Ok(())
         } else {
             // Synced
-            let ops = SubgraphDeploymentAssignmentEntity::update_synced_operations(
-                &self.subgraph_id,
-                self.node_id.clone(),
-                true,
-            );
+            let ops = SubgraphDeploymentEntity::update_synced_operations(&self.subgraph_id, true);
             self.subgraph_store
                 .apply_entity_operations(ops, EventSource::None)
-                .map_err(|e| format_err!("Failed to set assignment synced flag: {}", e))
+                .map_err(|e| format_err!("Failed to set deployment synced flag: {}", e))
         }
     }
 
