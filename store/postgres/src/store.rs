@@ -43,7 +43,12 @@ fn initiate_schema(logger: &Logger, conn: &PgConnection) {
 
     match embedded_migrations::run_with_output(conn, &mut output) {
         Ok(_) => info!(logger, "Completed pending Postgres schema migrations"),
-        Err(e) => panic!("Error with Postgres schema setup: {:?}", e),
+        Err(e) => panic!(
+            "Error setting up Postgres database: \
+             You may need to drop and recreate your database to work with the \
+             latest version of graph-node. Error information: {:?}",
+            e
+        ),
     }
 
     // If there was any migration output, log it now
