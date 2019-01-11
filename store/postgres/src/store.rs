@@ -640,8 +640,10 @@ impl Store {
         .and_then(move |row_count| match row_count {
             1 => Ok(()),
             _ => Err(format_err!(
-                "Failed to build subgraph attribute index: {}",
-                index.index_name.clone()
+                "Failed to create index for subgraph {} on {}.{}",
+                index.subgraph_id.to_string(),
+                index.entity_name.clone(),
+                index.attribute_name.clone()
             )),
         })
     }

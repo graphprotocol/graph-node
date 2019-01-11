@@ -11,7 +11,6 @@
 //!
 //! See `subgraphs.graphql` in the store for corresponding graphql schema.
 
-
 use failure::Error;
 use graphql_parser::schema::{Definition, Document, Type, TypeDefinition};
 use hex;

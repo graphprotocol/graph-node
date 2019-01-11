@@ -84,7 +84,7 @@ where
                         .store
                         .clone()
                         .build_entity_attribute_indexes(index_definitions)
-                        .map_err(SubgraphAssignmentProviderError::IndexesBuildError)
+                        .map_err(SubgraphAssignmentProviderError::BuildIndexesError)
                         .map(|_| {
                             info!(
                                 self_clone.logger,
