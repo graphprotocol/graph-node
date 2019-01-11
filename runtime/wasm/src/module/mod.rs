@@ -1,10 +1,11 @@
 use std::fmt;
 use std::ops::Deref;
+use std::time::Instant;
 
 use wasmi::{
     nan_preserving_float::F64, Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder,
-    MemoryRef, Module, ModuleImportResolver, ModuleInstance, ModuleRef, NopExternals, RuntimeArgs,
-    RuntimeValue, Signature, Trap,
+    MemoryRef, Module, ModuleImportResolver, ModuleInstance, ModuleRef, RuntimeArgs, RuntimeValue,
+    Signature, Trap,
 };
 
 use graph::components::ethereum::*;
@@ -21,43 +22,6 @@ use asc_abi::*;
 
 #[cfg(test)]
 mod test;
-
-/// AssemblyScript-compatible WASM memory heap.
-#[derive(Clone)]
-struct WasmiAscHeap {
-    module: ModuleRef,
-    memory: MemoryRef,
-}
-
-impl WasmiAscHeap {
-    pub fn new(module: ModuleRef, memory: MemoryRef) -> Self {
-        WasmiAscHeap { module, memory }
-    }
-}
-
-impl AscHeap for WasmiAscHeap {
-    fn raw_new(&self, bytes: &[u8]) -> Result<u32, Error> {
-        let address = self
-            .module
-            .invoke_export(
-                "memory.allocate",
-                &[RuntimeValue::I32(bytes.len() as i32)],
-                &mut NopExternals,
-            )
-            .expect("Failed to invoke memory allocation function")
-            .expect("Function did not return a value")
-            .try_into::<u32>()
-            .expect("Function did not return u32");
-
-        self.memory.set(address, bytes)?;
-
-        Ok(address)
-    }
-
-    fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, Error> {
-        self.memory.get(offset, size as usize)
-    }
-}
 
 // Indexes for exported host functions
 const ABORT_FUNC_INDEX: usize = 0;
@@ -84,6 +48,7 @@ const BIG_INT_MINUS: usize = 20;
 const BIG_INT_TIMES: usize = 21;
 const BIG_INT_DIVIDED_BY: usize = 22;
 const BIG_INT_MOD: usize = 23;
+const GAS_FUNC_INDEX: usize = 24;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
@@ -97,8 +62,9 @@ pub struct WasmiModuleConfig<T, L, S> {
 pub struct WasmiModule<T, L, S, U> {
     pub logger: Logger,
     pub module: ModuleRef,
-    externals: HostExternals<T, L, S, U>,
-    heap: WasmiAscHeap,
+    memory: MemoryRef,
+    host_exports: host_exports::HostExports<T, L, S, U>,
+    start_time: Instant,
 }
 
 impl<T, L, S, U> WasmiModule<T, L, S, U>
@@ -118,21 +84,23 @@ where
 
         let parsed_module = config.data_source.mapping.runtime.clone();
 
+        // Inject metering calls, which are used for checking timeouts.
+        let parsed_module = pwasm_utils::inject_gas_counter(parsed_module, &Default::default())
+            .map_err(|_| err_msg("failed to inject gas counter"))?;
+
+        // `inject_gas_counter` injects an import so the section must exist.
+        let import_section = parsed_module.import_section().unwrap().clone();
+
         // Hack: AS currently puts all user imports in one module, in addition
         // to the built-in "env" module. The name of that module is not fixed,
         // to able able to infer the name we allow only one module with imports,
         // with "env" being optional.
-        let mut user_modules = parsed_module
-            .import_section()
-            .map(|import_section| {
-                import_section
-                    .entries()
-                    .into_iter()
-                    .map(|import| import.module().to_owned())
-                    .filter(|module| module != "env")
-                    .collect()
-            })
-            .unwrap_or(vec![]);
+        let mut user_modules: Vec<_> = import_section
+            .entries()
+            .into_iter()
+            .map(|import| import.module().to_owned())
+            .filter(|module| module != "env")
+            .collect();
         user_modules.dedup();
         let user_module = match user_modules.len() {
             0 => None,
@@ -168,33 +136,30 @@ where
             .ok_or_else(|| format_err!("Export \"memory\" has an invalid type"))?
             .clone();
 
-        // Create a AssemblyScript-compatible WASM memory heap
-        let heap = WasmiAscHeap::new(not_started_module, memory);
-
         // Create new instance of externally hosted functions invoker
-        let mut externals = HostExternals {
-            heap: heap.clone(),
-            host_exports: host_exports::HostExports::new(
-                config.subgraph_id,
-                config.data_source,
-                config.ethereum_adapter.clone(),
-                config.link_resolver.clone(),
-                config.store.clone(),
-                task_sink,
-                None,
-            ),
+        let host_exports = host_exports::HostExports::new(
+            config.subgraph_id,
+            config.data_source,
+            config.ethereum_adapter.clone(),
+            config.link_resolver.clone(),
+            config.store.clone(),
+            task_sink,
+            None,
+        );
+
+        let mut this = WasmiModule {
+            logger,
+            module: not_started_module,
+            memory,
+            host_exports,
+            start_time: Instant::now(),
         };
 
-        let module = module
-            .run_start(&mut externals)
+        this.module = module
+            .run_start(&mut this)
             .map_err(|e| format_err!("Failed to start WASM module instance: {}", e))?;
 
-        Ok(WasmiModule {
-            logger,
-            module,
-            externals,
-            heap,
-        })
+        Ok(this)
     }
 
     pub(crate) fn handle_ethereum_event(
@@ -204,28 +169,14 @@ where
         log: Arc<Log>,
         params: Vec<LogParam>,
     ) -> Result<Vec<EntityOperation>, FailureError> {
-        self.externals.host_exports.ctx = Some(ctx);
+        self.host_exports.ctx = Some(ctx);
+        self.start_time = Instant::now();
 
         // Prepare an EthereumEvent for the WASM runtime
         let event = EthereumEventData {
-            block: EthereumBlockData::from(
-                &self
-                    .externals
-                    .host_exports
-                    .ctx
-                    .as_ref()
-                    .unwrap()
-                    .block
-                    .block,
-            ),
+            block: EthereumBlockData::from(&self.host_exports.ctx.as_ref().unwrap().block.block),
             transaction: EthereumTransactionData::from(
-                self.externals
-                    .host_exports
-                    .ctx
-                    .as_ref()
-                    .unwrap()
-                    .transaction
-                    .deref(),
+                self.host_exports.ctx.as_ref().unwrap().transaction.deref(),
             ),
             address: log.address,
             log_index: log.log_index.unwrap_or(U256::zero()),
@@ -235,17 +186,16 @@ where
         };
 
         // Invoke the event handler
-        let result = self.module.invoke_export(
+        let result = self.module.clone().invoke_export(
             handler_name,
-            &[RuntimeValue::from(self.heap.asc_new(&event))],
-            &mut self.externals,
+            &[RuntimeValue::from(self.asc_new(&event))],
+            self,
         );
 
         // Return either the collected entity operations or an error
         result
             .map(|_| {
-                self.externals
-                    .host_exports
+                self.host_exports
                     .ctx
                     .take()
                     .expect("processing event without context")
@@ -261,39 +211,70 @@ where
     }
 }
 
-impl<E> HostError for host_exports::HostExportError<E> where
-    E: fmt::Debug + fmt::Display + Send + Sync + 'static
-{
-}
-
-/// Hosted functions for external use by wasm module
-pub struct HostExternals<T, L, S, U> {
-    heap: WasmiAscHeap,
-    host_exports: host_exports::HostExports<T, L, S, U>,
-}
-
-impl<T, L, S, U> HostExternals<T, L, S, U>
+impl<T, L, S, U> AscHeap for WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
     S: Store + Send + Sync + 'static,
     U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + 'static,
 {
+    fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, Error> {
+        let address = self
+            .module
+            .clone()
+            .invoke_export(
+                "memory.allocate",
+                &[RuntimeValue::I32(bytes.len() as i32)],
+                self,
+            )
+            .expect("Failed to invoke memory allocation function")
+            .expect("Function did not return a value")
+            .try_into::<u32>()
+            .expect("Function did not return u32");
+
+        self.memory.set(address, bytes)?;
+
+        Ok(address)
+    }
+
+    fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, Error> {
+        self.memory.get(offset, size as usize)
+    }
+}
+
+impl<E> HostError for host_exports::HostExportError<E> where
+    E: fmt::Debug + fmt::Display + Send + Sync + 'static
+{
+}
+
+// Implementation of externals.
+impl<T, L, S, U> WasmiModule<T, L, S, U>
+where
+    T: EthereumAdapter,
+    L: LinkResolver,
+    S: Store + Send + Sync + 'static,
+    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + 'static,
+{
+    fn gas(&mut self, _gas_spent: u32) -> Result<Option<RuntimeValue>, Trap> {
+        self.host_exports.check_timeout(self.start_time)?;
+        Ok(None)
+    }
+
     /// function abort(message?: string | null, fileName?: string | null, lineNumber?: u32, columnNumber?: u32): void
     /// Always returns a trap.
     fn abort(
-        &self,
+        &mut self,
         message_ptr: AscPtr<AscString>,
         file_name_ptr: AscPtr<AscString>,
         line_number: u32,
         column_number: u32,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let message = match message_ptr.is_null() {
-            false => Some(self.heap.asc_get(message_ptr)),
+            false => Some(self.asc_get(message_ptr)),
             true => None,
         };
         let file_name = match file_name_ptr.is_null() {
-            false => Some(self.heap.asc_get(file_name_ptr)),
+            false => Some(self.asc_get(file_name_ptr)),
             true => None,
         };
         let line_number = match line_number {
@@ -318,11 +299,10 @@ where
         id_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<AscEntity>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        self.host_exports.store_set(
-            self.heap.asc_get(entity_ptr),
-            self.heap.asc_get(id_ptr),
-            self.heap.asc_get(data_ptr),
-        )?;
+        let entity = self.asc_get(entity_ptr);
+        let id = self.asc_get(id_ptr);
+        let data = self.asc_get(data_ptr);
+        self.host_exports.store_set(entity, id, data)?;
         Ok(None)
     }
 
@@ -332,217 +312,223 @@ where
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        self.host_exports
-            .store_remove(self.heap.asc_get(entity_ptr), self.heap.asc_get(id_ptr));
+        let entity = self.asc_get(entity_ptr);
+        let id = self.asc_get(id_ptr);
+        self.host_exports.store_remove(entity, id);
         Ok(None)
     }
 
     /// function store.get(entity: string, id: string): Entity | null
     fn store_get(
-        &self,
+        &mut self,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let entity_option = self
             .host_exports
-            .store_get(self.heap.asc_get(entity_ptr), self.heap.asc_get(id_ptr))?;
+            .store_get(self.asc_get(entity_ptr), self.asc_get(id_ptr))?;
 
         Ok(Some(match entity_option {
-            Some(entity) => RuntimeValue::from(self.heap.asc_new(&entity)),
+            Some(entity) => RuntimeValue::from(self.asc_new(&entity)),
             None => RuntimeValue::from(0),
         }))
     }
 
     /// function ethereum.call(call: SmartContractCall): Array<Token>
     fn ethereum_call(
-        &self,
+        &mut self,
         call_ptr: AscPtr<AscUnresolvedContractCall>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self
-            .host_exports
-            .ethereum_call(self.heap.asc_get(call_ptr))?;
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(&*result))))
+        let result = self.host_exports.ethereum_call(self.asc_get(call_ptr))?;
+        Ok(Some(RuntimeValue::from(self.asc_new(&*result))))
     }
 
     /// function typeConversion.bytesToString(bytes: Bytes): string
-    fn bytes_to_string(&self, bytes_ptr: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
-        let string = self
-            .host_exports
-            .bytes_to_string(self.heap.asc_get(bytes_ptr))?;
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(&string))))
+    fn bytes_to_string(
+        &mut self,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let string = self.host_exports.bytes_to_string(self.asc_get(bytes_ptr))?;
+        Ok(Some(RuntimeValue::from(self.asc_new(&string))))
     }
 
     /// Converts bytes to a hex string.
     /// function typeConversion.bytesToHex(bytes: Bytes): string
-    fn bytes_to_hex(&self, bytes_ptr: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self.host_exports.bytes_to_hex(self.heap.asc_get(bytes_ptr));
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(&result))))
+    fn bytes_to_hex(
+        &mut self,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self.host_exports.bytes_to_hex(self.asc_get(bytes_ptr));
+        Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
     /// function typeConversion.bigIntToString(n: Uint8Array): string
     fn big_int_to_string(
-        &self,
+        &mut self,
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let bytes: Vec<u8> = self.heap.asc_get(big_int_ptr);
+        let bytes: Vec<u8> = self.asc_get(big_int_ptr);
         let n = BigInt::from_signed_bytes_le(&*bytes);
         let result = self.host_exports.big_int_to_string(n);
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(&result))))
+        Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
     /// function typeConversion.bigIntToHex(n: Uint8Array): string
-    fn big_int_to_hex(&self, big_int_ptr: AscPtr<AscBigInt>) -> Result<Option<RuntimeValue>, Trap> {
-        let n: BigInt = self.heap.asc_get(big_int_ptr);
+    fn big_int_to_hex(
+        &mut self,
+        big_int_ptr: AscPtr<AscBigInt>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let n: BigInt = self.asc_get(big_int_ptr);
         let result = self.host_exports.big_int_to_hex(n);
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(&result))))
+        Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
     /// function typeConversion.stringToH160(s: String): H160
-    fn string_to_h160(&self, str_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
-        let s: String = self.heap.asc_get(str_ptr);
+    fn string_to_h160(&mut self, str_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
+        let s: String = self.asc_get(str_ptr);
         let h160 = host_exports::string_to_h160(&s)?;
-        let h160_obj: AscPtr<AscH160> = self.heap.asc_new(&h160);
+        let h160_obj: AscPtr<AscH160> = self.asc_new(&h160);
         Ok(Some(RuntimeValue::from(h160_obj)))
     }
 
     /// function typeConversion.i32ToBigInt(i: i32): Uint64Array
-    fn i32_to_big_int(&self, i: i32) -> Result<Option<RuntimeValue>, Trap> {
+    fn i32_to_big_int(&mut self, i: i32) -> Result<Option<RuntimeValue>, Trap> {
         let bytes = BigInt::from(i).to_signed_bytes_le();
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(&*bytes))))
+        Ok(Some(RuntimeValue::from(self.asc_new(&*bytes))))
     }
 
     /// function typeConversion.i32ToBigInt(i: i32): Uint64Array
-    fn big_int_to_i32(&self, n_ptr: AscPtr<AscBigInt>) -> Result<Option<RuntimeValue>, Trap> {
-        let n: BigInt = self.heap.asc_get(n_ptr);
+    fn big_int_to_i32(&mut self, n_ptr: AscPtr<AscBigInt>) -> Result<Option<RuntimeValue>, Trap> {
+        let n: BigInt = self.asc_get(n_ptr);
         let i = self.host_exports.big_int_to_i32(n)?;
         Ok(Some(RuntimeValue::from(i)))
     }
 
     /// function json.fromBytes(bytes: Bytes): JSONValue
-    fn json_from_bytes(&self, bytes_ptr: AscPtr<Uint8Array>) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self
-            .host_exports
-            .json_from_bytes(self.heap.asc_get(bytes_ptr))?;
-        Ok(Some(RuntimeValue::from(self.heap.asc_new(&result))))
+    fn json_from_bytes(
+        &mut self,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self.host_exports.json_from_bytes(self.asc_get(bytes_ptr))?;
+        Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
     /// function ipfs.cat(link: String): Bytes
-    fn ipfs_cat(&self, link_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
-        let bytes = self.host_exports.ipfs_cat(self.heap.asc_get(link_ptr))?;
-        let bytes_obj: AscPtr<Uint8Array> = self.heap.asc_new(&*bytes);
+    fn ipfs_cat(&mut self, link_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
+        let bytes = self.host_exports.ipfs_cat(self.asc_get(link_ptr))?;
+        let bytes_obj: AscPtr<Uint8Array> = self.asc_new(&*bytes);
         Ok(Some(RuntimeValue::from(bytes_obj)))
     }
 
     /// Expects a decimal string.
     /// function json.toI64(json: String): i64
-    fn json_to_i64(&self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.json_to_i64(self.heap.asc_get(json_ptr))?;
+    fn json_to_i64(&mut self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
+        let number = self.host_exports.json_to_i64(self.asc_get(json_ptr))?;
         Ok(Some(RuntimeValue::from(number)))
     }
 
     /// Expects a decimal string.
     /// function json.toU64(json: String): u64
-    fn json_to_u64(&self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.json_to_u64(self.heap.asc_get(json_ptr))?;
+    fn json_to_u64(&mut self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
+        let number = self.host_exports.json_to_u64(self.asc_get(json_ptr))?;
         Ok(Some(RuntimeValue::from(number)))
     }
 
     /// Expects a decimal string.
     /// function json.toF64(json: String): f64
-    fn json_to_f64(&self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.json_to_f64(self.heap.asc_get(json_ptr))?;
+    fn json_to_f64(&mut self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
+        let number = self.host_exports.json_to_f64(self.asc_get(json_ptr))?;
         Ok(Some(RuntimeValue::from(F64::from(number))))
     }
 
     /// Expects a decimal string.
     /// function json.toBigInt(json: String): BigInt
-    fn json_to_big_int(&self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
-        let big_int = self
-            .host_exports
-            .json_to_big_int(self.heap.asc_get(json_ptr))?;
-        let big_int_ptr: AscPtr<AscBigInt> = self.heap.asc_new(&*big_int);
+    fn json_to_big_int(
+        &mut self,
+        json_ptr: AscPtr<AscString>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let big_int = self.host_exports.json_to_big_int(self.asc_get(json_ptr))?;
+        let big_int_ptr: AscPtr<AscBigInt> = self.asc_new(&*big_int);
         Ok(Some(RuntimeValue::from(big_int_ptr)))
     }
 
     /// function crypto.keccak256(input: Bytes): Bytes
     fn crypto_keccak_256(
-        &self,
+        &mut self,
         input_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let input = self
-            .host_exports
-            .crypto_keccak_256(self.heap.asc_get(input_ptr));
-        let hash_ptr: AscPtr<Uint8Array> = self.heap.asc_new(input.as_ref());
+        let input = self.host_exports.crypto_keccak_256(self.asc_get(input_ptr));
+        let hash_ptr: AscPtr<Uint8Array> = self.asc_new(input.as_ref());
         Ok(Some(RuntimeValue::from(hash_ptr)))
     }
 
     /// function bigInt.plus(x: BigInt, y: BigInt): BigInt
     fn big_int_plus(
-        &self,
+        &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
             .host_exports
-            .big_int_plus(self.heap.asc_get(x_ptr), self.heap.asc_get(y_ptr));
-        let result_ptr: AscPtr<AscBigInt> = self.heap.asc_new(&result);
+            .big_int_plus(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
 
     /// function bigInt.minus(x: BigInt, y: BigInt): BigInt
     fn big_int_minus(
-        &self,
+        &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
             .host_exports
-            .big_int_minus(self.heap.asc_get(x_ptr), self.heap.asc_get(y_ptr));
-        let result_ptr: AscPtr<AscBigInt> = self.heap.asc_new(&result);
+            .big_int_minus(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
 
     /// function bigInt.times(x: BigInt, y: BigInt): BigInt
     fn big_int_times(
-        &self,
+        &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
             .host_exports
-            .big_int_times(self.heap.asc_get(x_ptr), self.heap.asc_get(y_ptr));
-        let result_ptr: AscPtr<AscBigInt> = self.heap.asc_new(&result);
+            .big_int_times(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
 
     /// function bigInt.dividedBy(x: BigInt, y: BigInt): BigInt
     fn big_int_divided_by(
-        &self,
+        &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
             .host_exports
-            .big_int_divided_by(self.heap.asc_get(x_ptr), self.heap.asc_get(y_ptr));
-        let result_ptr: AscPtr<AscBigInt> = self.heap.asc_new(&result);
+            .big_int_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
 
     /// function bigInt.mod(x: BigInt, y: BigInt): BigInt
     fn big_int_mod(
-        &self,
+        &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
             .host_exports
-            .big_int_mod(self.heap.asc_get(x_ptr), self.heap.asc_get(y_ptr));
-        let result_ptr: AscPtr<AscBigInt> = self.heap.asc_new(&result);
+            .big_int_mod(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
 }
 
-impl<T, L, S, U> Externals for HostExternals<T, L, S, U>
+impl<T, L, S, U> Externals for WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
@@ -596,6 +582,7 @@ where
                 self.big_int_divided_by(args.nth_checked(0)?, args.nth_checked(1)?)
             }
             BIG_INT_MOD => self.big_int_mod(args.nth_checked(0)?, args.nth_checked(1)?),
+            GAS_FUNC_INDEX => self.gas(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -607,6 +594,7 @@ pub struct EnvModuleResolver;
 impl ModuleImportResolver for EnvModuleResolver {
     fn resolve_func(&self, field_name: &str, signature: &Signature) -> Result<FuncRef, Error> {
         Ok(match field_name {
+            "gas" => FuncInstance::alloc_host(signature.clone(), GAS_FUNC_INDEX),
             "abort" => FuncInstance::alloc_host(signature.clone(), ABORT_FUNC_INDEX),
             _ => {
                 return Err(Error::Instantiation(format!(

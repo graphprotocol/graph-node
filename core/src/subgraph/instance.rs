@@ -85,7 +85,7 @@ where
             entity_operations,
             move |entity_operations, host| {
                 host.process_log(
-                    &logger,
+                    logger.clone(),
                     block.clone(),
                     transaction.clone(),
                     log.clone(),
