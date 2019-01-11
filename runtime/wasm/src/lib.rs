@@ -2,6 +2,7 @@ extern crate ethabi;
 extern crate futures;
 extern crate graph;
 extern crate hex;
+extern crate pwasm_utils;
 extern crate tiny_keccak;
 extern crate wasmi;
 
@@ -13,8 +14,8 @@ mod to_from;
 /// Runtime-agnostic implementation of exports to WASM.
 mod host_exports;
 
-use self::graph::prelude::*;
-use self::graph::web3::types::{Address, Transaction};
+use graph::prelude::*;
+use graph::web3::types::{Address, Transaction};
 
 pub use self::host::{RuntimeHost, RuntimeHostBuilder, RuntimeHostConfig};
 

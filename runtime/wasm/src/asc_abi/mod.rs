@@ -5,8 +5,6 @@ use wasmi;
 
 pub mod asc_ptr;
 pub mod class;
-#[cfg(test)]
-mod test;
 
 ///! Facilities for creating and reading objects on the memory of an
 ///! AssemblyScript (Asc) WASM module. Objects are passed through
@@ -27,7 +25,7 @@ compile_error!("big-endian targets are currently unsupported");
 /// The implementor must provide the direct Asc interface with `raw_new` and `get`.
 pub trait AscHeap: Sized {
     /// Allocate new space and write `bytes`, return the allocated address.
-    fn raw_new(&self, bytes: &[u8]) -> Result<u32, wasmi::Error>;
+    fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, wasmi::Error>;
 
     /// Just like `wasmi::MemoryInstance::get`.
     fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, wasmi::Error>;
@@ -37,7 +35,7 @@ pub trait AscHeap: Sized {
     ///
     /// This operation is expensive as it requires a call to `raw_new` for every
     /// nested object.
-    fn asc_new<C, T: ?Sized>(&self, rust_obj: &T) -> AscPtr<C>
+    fn asc_new<C, T: ?Sized>(&mut self, rust_obj: &T) -> AscPtr<C>
     where
         C: AscType,
         T: ToAscObj<C>,
@@ -60,7 +58,7 @@ pub trait AscHeap: Sized {
 
 /// Type that can be converted to an Asc object of class `C`.
 pub trait ToAscObj<C: AscType> {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> C;
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> C;
 }
 
 /// Type that can be converted from an Asc object of class `C`.

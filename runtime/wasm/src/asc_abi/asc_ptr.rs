@@ -39,7 +39,7 @@ impl<C: AscType> AscPtr<C> {
     }
 
     /// Allocate `asc_obj` as an Asc object of class `C`.
-    pub(super) fn alloc_obj<H: AscHeap>(asc_obj: &C, heap: &H) -> AscPtr<C> {
+    pub(super) fn alloc_obj<H: AscHeap>(asc_obj: &C, heap: &mut H) -> AscPtr<C> {
         AscPtr(heap.raw_new(&asc_obj.to_asc_bytes()).unwrap(), PhantomData)
     }
 

@@ -75,7 +75,7 @@ fn multiple_data_sources_per_subgraph() {
 
         fn process_log(
             &self,
-            _: &Logger,
+            _: Logger,
             _: Arc<EthereumBlock>,
             _: Arc<Transaction>,
             _: Arc<Log>,

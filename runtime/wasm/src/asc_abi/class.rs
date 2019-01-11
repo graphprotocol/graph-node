@@ -117,7 +117,7 @@ pub(crate) struct TypedArray<T> {
 }
 
 impl<T: AscValue> TypedArray<T> {
-    pub(crate) fn new<H: AscHeap>(content: &[T], heap: &H) -> Self {
+    pub(crate) fn new<H: AscHeap>(content: &[T], heap: &mut H) -> Self {
         let buffer = ArrayBuffer::new(content);
         TypedArray {
             buffer: AscPtr::alloc_obj(&buffer, heap),
@@ -216,7 +216,7 @@ pub(crate) struct Array<T> {
 }
 
 impl<T: AscValue> Array<T> {
-    pub fn new<H: AscHeap>(content: &[T], heap: &H) -> Self {
+    pub fn new<H: AscHeap>(content: &[T], heap: &mut H) -> Self {
         Array {
             buffer: AscPtr::alloc_obj(&ArrayBuffer::new(content), heap),
             // If this cast would overflow, the above line has already panicked.

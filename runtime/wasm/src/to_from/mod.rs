@@ -10,7 +10,7 @@ use asc_abi::{AscHeap, AscPtr, AscType, AscValue, FromAscObj, ToAscObj};
 mod external;
 
 impl<T: AscValue> ToAscObj<TypedArray<T>> for [T] {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> TypedArray<T> {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> TypedArray<T> {
         TypedArray::new(self, heap)
     }
 }
@@ -54,13 +54,13 @@ impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 4] {
 }
 
 impl ToAscObj<AscString> for str {
-    fn to_asc_obj<H: AscHeap>(&self, _: &H) -> AscString {
+    fn to_asc_obj<H: AscHeap>(&self, _: &mut H) -> AscString {
         AscString::new(&self.encode_utf16().collect::<Vec<_>>())
     }
 }
 
 impl ToAscObj<AscString> for String {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscString {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscString {
         self.as_str().to_asc_obj(heap)
     }
 }
@@ -72,7 +72,7 @@ impl FromAscObj<AscString> for String {
 }
 
 impl<C: AscType, T: ToAscObj<C>> ToAscObj<Array<AscPtr<C>>> for [T] {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> Array<AscPtr<C>> {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> Array<AscPtr<C>> {
         let content: Vec<_> = self.iter().map(|x| heap.asc_new(x)).collect();
         Array::new(&*content, heap)
     }
@@ -99,7 +99,7 @@ impl<K: AscType, V: AscType, T: FromAscObj<K>, U: FromAscObj<V>> FromAscObj<AscT
 impl<'a, 'b, K: AscType, V: AscType, T: ToAscObj<K>, U: ToAscObj<V>>
     ToAscObj<AscTypedMapEntry<K, V>> for (&'a T, &'b U)
 {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscTypedMapEntry<K, V> {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscTypedMapEntry<K, V> {
         AscTypedMapEntry {
             key: heap.asc_new(self.0),
             value: heap.asc_new(self.1),

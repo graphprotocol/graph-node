@@ -13,7 +13,7 @@ pub trait RuntimeHost: Send + Sync + Debug {
     /// Process an Ethereum event and return a vector of entity operations.
     fn process_log(
         &self,
-        logger: &Logger,
+        logger: Logger,
         block: Arc<EthereumBlock>,
         transaction: Arc<Transaction>,
         log: Arc<Log>,

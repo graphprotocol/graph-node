@@ -13,7 +13,7 @@ use asc_abi::{AscHeap, AscPtr, FromAscObj, ToAscObj};
 use UnresolvedContractCall;
 
 impl ToAscObj<Uint8Array> for web3::H160 {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> Uint8Array {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> Uint8Array {
         self.0.to_asc_obj(heap)
     }
 }
@@ -31,13 +31,13 @@ impl FromAscObj<Uint8Array> for web3::H256 {
 }
 
 impl ToAscObj<Uint8Array> for web3::H256 {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> Uint8Array {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> Uint8Array {
         self.0.to_asc_obj(heap)
     }
 }
 
 impl ToAscObj<AscBigInt> for web3::U128 {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscBigInt {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscBigInt {
         let mut bytes: [u8; 16] = [0; 16];
         self.to_little_endian(&mut bytes);
         bytes.to_asc_obj(heap)
@@ -45,7 +45,7 @@ impl ToAscObj<AscBigInt> for web3::U128 {
 }
 
 impl ToAscObj<AscBigInt> for BigInt {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscBigInt {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscBigInt {
         let bytes = self.to_signed_bytes_le();
         bytes.to_asc_obj(heap)
     }
@@ -59,7 +59,7 @@ impl FromAscObj<AscBigInt> for BigInt {
 }
 
 impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEnum<EthereumValueKind> {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEnum<EthereumValueKind> {
         use ethabi::Token::*;
 
         let kind = EthereumValueKind::get_kind(self);
@@ -167,7 +167,7 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
 }
 
 impl ToAscObj<AscEnum<StoreValueKind>> for store::Value {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEnum<StoreValueKind> {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEnum<StoreValueKind> {
         use self::store::Value;
 
         let payload = match self {
@@ -195,7 +195,7 @@ impl ToAscObj<AscEnum<StoreValueKind>> for store::Value {
 }
 
 impl ToAscObj<AscLogParam> for ethabi::LogParam {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscLogParam {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscLogParam {
         AscLogParam {
             name: heap.asc_new(self.name.as_str()),
             value: heap.asc_new(&self.value),
@@ -204,7 +204,7 @@ impl ToAscObj<AscLogParam> for ethabi::LogParam {
 }
 
 impl ToAscObj<AscJson> for serde_json::Map<String, serde_json::Value> {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscJson {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscJson {
         AscTypedMap {
             entries: heap.asc_new(&*self.iter().collect::<Vec<_>>()),
         }
@@ -212,7 +212,7 @@ impl ToAscObj<AscJson> for serde_json::Map<String, serde_json::Value> {
 }
 
 impl ToAscObj<AscEntity> for HashMap<String, store::Value> {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEntity {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEntity {
         AscTypedMap {
             entries: heap.asc_new(&*self.iter().collect::<Vec<_>>()),
         }
@@ -220,7 +220,7 @@ impl ToAscObj<AscEntity> for HashMap<String, store::Value> {
 }
 
 impl ToAscObj<AscEntity> for store::Entity {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEntity {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEntity {
         AscTypedMap {
             entries: heap.asc_new(&*self.iter().collect::<Vec<_>>()),
         }
@@ -228,7 +228,7 @@ impl ToAscObj<AscEntity> for store::Entity {
 }
 
 impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEnum<JsonValueKind> {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEnum<JsonValueKind> {
         use graph::serde_json::Value;
 
         let payload = match self {
@@ -248,7 +248,7 @@ impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
 }
 
 impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEthereumBlock {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumBlock {
         AscEthereumBlock {
             hash: heap.asc_new(&self.hash),
             parent_hash: heap.asc_new(&self.parent_hash),
@@ -272,7 +272,7 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
 }
 
 impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEthereumTransaction {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumTransaction {
         AscEthereumTransaction {
             hash: heap.asc_new(&self.hash),
             index: heap.asc_new(&BigInt::from(self.index)),
@@ -289,7 +289,7 @@ impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
 }
 
 impl ToAscObj<AscEthereumEvent> for EthereumEventData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &H) -> AscEthereumEvent {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumEvent {
         AscEthereumEvent {
             address: heap.asc_new(&self.address),
             log_index: heap.asc_new(&BigInt::from_unsigned_u256(&self.log_index)),

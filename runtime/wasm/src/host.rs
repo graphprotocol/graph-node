@@ -1,6 +1,7 @@
 use futures::sync::mpsc::{channel, Sender};
 use futures::sync::oneshot;
 use std::thread;
+use std::time::Instant;
 
 use graph::components::ethereum::*;
 use graph::components::store::Store;
@@ -241,7 +242,7 @@ impl RuntimeHost {
         })
     }
 
-    fn event_handler_for_log(&self, log: &Arc<Log>) -> Result<&MappingEventHandler, Error> {
+    fn event_handler_for_log(&self, log: &Arc<Log>) -> Result<MappingEventHandler, Error> {
         // Get signature from the log
         if log.topics.is_empty() {
             return Err(format_err!("Ethereum event has no topics"));
@@ -251,6 +252,7 @@ impl RuntimeHost {
         self.data_source_event_handlers
             .iter()
             .find(|handler| signature == util::ethereum::string_to_h256(handler.event.as_str()))
+            .cloned()
             .ok_or_else(|| {
                 format_err!(
                     "No event handler found for event in data source \"{}\"",
@@ -267,7 +269,7 @@ impl RuntimeHostTrait for RuntimeHost {
 
     fn process_log(
         &self,
-        logger: &Logger,
+        logger: Logger,
         block: Arc<EthereumBlock>,
         transaction: Arc<Transaction>,
         log: Arc<Log>,
@@ -312,7 +314,7 @@ impl RuntimeHostTrait for RuntimeHost {
         };
 
         debug!(
-            logger, "Process Ethereum event";
+            logger, "Start processing Ethereum event";
             "signature" => &event_handler.event,
             "handler" => &event_handler.handler
         );
@@ -322,6 +324,7 @@ impl RuntimeHostTrait for RuntimeHost {
 
         let before_event_signature = event_handler.event.clone();
         let event_signature = event_handler.event.clone();
+        let start_time = Instant::now();
 
         Box::new(
             self.handle_event_sender
@@ -351,7 +354,17 @@ impl RuntimeHostTrait for RuntimeHost {
                         )
                     })
                 })
-                .and_then(|result| result),
+                .and_then(move |result| {
+                    debug!(
+                        logger, "Done processing Ethereum event";
+                        "signature" => &event_handler.event,
+                        "handler" => &event_handler.handler,
+                        // Replace this when `as_millis` is stable.
+                        "secs" => start_time.elapsed().as_secs(),
+                        "ms" => start_time.elapsed().subsec_millis()
+                    );
+                    result
+                }),
         )
     }
 }

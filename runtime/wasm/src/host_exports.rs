@@ -12,8 +12,11 @@ use std::fmt;
 use std::mem;
 use std::ops::Deref;
 use std::str::FromStr;
+use std::time::{Duration, Instant};
 use EventHandlerContext;
 use UnresolvedContractCall;
+
+pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_EVENT_HANDLER_TIMEOUT";
 
 pub(crate) trait ExportError: fmt::Debug + fmt::Display + Send + Sync + 'static {}
 impl<E> ExportError for E where E: fmt::Debug + fmt::Display + Send + Sync + 'static {}
@@ -403,6 +406,22 @@ where
             .map_err(|_| panic!("task receiver dropped"))
             .unwrap();
         return_receiver.wait().expect("`return_sender` dropped")
+    }
+
+    pub(crate) fn check_timeout(
+        &self,
+        start_time: Instant,
+    ) -> Result<(), HostExportError<impl ExportError>> {
+        let event_handler_timeout = std::env::var(TIMEOUT_ENV_VAR)
+            .ok()
+            .and_then(|s| u64::from_str(&s).ok())
+            .map(Duration::from_secs);
+        if let Some(timeout) = event_handler_timeout {
+            if start_time.elapsed() > timeout {
+                return Err(HostExportError(format!("Event handler timed out")));
+            }
+        }
+        Ok(())
     }
 }
 
