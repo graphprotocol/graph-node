@@ -232,7 +232,7 @@ impl EntityOperation {
             )),
             Remove { .. } => Ok(None),
             AbortUnless { .. } => Err(format_err!(
-                "cannot apply AbortUnless entity operation to an entity"
+                "Cannot apply AbortUnless entity operation to an entity"
             )),
         }
     }

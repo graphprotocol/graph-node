@@ -560,7 +560,7 @@ where
             );
             self.subgraph_store
                 .apply_entity_operations(ops, EventSource::None)
-                .map_err(|e| format_err!("failed to set assignment synced flag: {}", e))
+                .map_err(|e| format_err!("Failed to set assignment synced flag: {}", e))
         }
     }
 
@@ -578,7 +578,7 @@ where
                 );
                 self.subgraph_store
                     .apply_entity_operations(ops, EventSource::None)
-                    .map_err(|e| format_err!("failed to set subgraph block count: {}", e))
+                    .map_err(|e| format_err!("Failed to set subgraph block count: {}", e))
             }
         }
     }
