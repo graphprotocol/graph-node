@@ -241,8 +241,8 @@ pub enum SubgraphAssignmentProviderError {
     /// Occurs when a subgraph's GraphQL schema is invalid.
     #[fail(display = "GraphQL schema error: {}", _0)]
     SchemaValidationError(failure::Error),
-    #[fail(display = "subgraph index build error: {}", _0)]
-    IndexesBuildError(failure::Error),
+    #[fail(display = "subgraph attribute indexes build error: {}", _0)]
+    BuildIndexesError(failure::Error),
     #[fail(display = "subgraph provider error: {}", _0)]
     Unknown(failure::Error),
 }
