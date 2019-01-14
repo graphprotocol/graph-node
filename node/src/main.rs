@@ -399,18 +399,20 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let mut subscription_server =
         GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), store.clone());
 
-    // Create Ethereum block ingestor
-    let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
-        store.clone(),
-        transport.clone(),
-        50, // ancestor count, which we could make configuable
-        logger.clone(),
-        block_polling_interval,
-    )
-    .expect("failed to create Ethereum block ingestor");
+    if env::var_os("DISABLE_BLOCK_INGESTOR").unwrap_or("".into()) != "true" {
+        // Create Ethereum block ingestor
+        let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
+            store.clone(),
+            transport.clone(),
+            50, // ancestor count, which we could make configuable
+            logger.clone(),
+            block_polling_interval,
+        )
+        .expect("failed to create Ethereum block ingestor");
 
-    // Run the Ethereum block ingestor in the background
-    tokio::spawn(block_ingestor.into_polling_stream());
+        // Run the Ethereum block ingestor in the background
+        tokio::spawn(block_ingestor.into_polling_stream());
+    }
 
     // Prepare a block stream builder for subgraphs
     let block_stream_builder = BlockStreamBuilder::new(
