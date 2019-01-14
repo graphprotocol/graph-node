@@ -8,6 +8,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 use std::{env, panic, process, thread};
 
+pub const MAPPING_THREAD_PREFIX: &str = "mapping-thread";
+
 pub fn logger(show_debug: bool) -> Logger {
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::CompactFormat::new(decorator).build().fuse();
@@ -73,6 +75,15 @@ pub fn register_panic_hook(panic_logger: Logger, shutdown_sender: oneshot::Sende
                 );
             }
         };
+
+        // Don't kill the process when a mapping thread panics.
+        if thread::current()
+            .name()
+            .filter(|name| name.starts_with(MAPPING_THREAD_PREFIX))
+            .is_some()
+        {
+            return;
+        }
 
         // Send a shutdown signal to main which will attempt to cleanly shutdown the runtime
         // After sending shutdown, the thread sleeps for 3 seconds then forces the process to
