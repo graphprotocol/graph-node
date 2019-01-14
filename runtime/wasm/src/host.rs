@@ -161,7 +161,13 @@ impl RuntimeHost {
             })?
             .clone();
 
-        thread::spawn(move || {
+        let conf = thread::Builder::new().name(format!(
+            "{}-{}-{}",
+            util::log::MAPPING_THREAD_PREFIX,
+            config.subgraph_id,
+            data_source_name
+        ));
+        conf.spawn(move || {
             debug!(module_logger, "Start WASM runtime");
 
             // Load the mapping of the data source as a WASM module
@@ -215,7 +221,8 @@ impl RuntimeHost {
                 })
                 .wait()
                 .ok();
-        });
+        })
+        .expect("failed to spawn runtime thread");
 
         Ok(RuntimeHost {
             data_source_name,
