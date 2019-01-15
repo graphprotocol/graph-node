@@ -161,6 +161,15 @@ pub fn get_field_value_type(field_type: &Type) -> Result<ValueType, Error> {
     }
 }
 
+/// Returns the value type for a GraphQL field type.
+pub fn get_field_name(field_type: &Type) -> Name {
+    match field_type {
+        Type::NamedType(name) => name.to_string(),
+        Type::NonNullType(inner) => get_field_name(&inner),
+        Type::ListType(inner) => get_field_name(&inner),
+    }
+}
+
 /// Returns the type with the given name.
 pub fn get_named_type<'a>(schema: &'a Document, name: &Name) -> Option<&'a TypeDefinition> {
     schema
