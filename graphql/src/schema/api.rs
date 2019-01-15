@@ -30,7 +30,6 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_query_type(&mut schema, &object_types, &interface_types)?;
     add_subscription_type(&mut schema, &object_types, &interface_types)?;
-
     Ok(schema)
 }
 
@@ -75,7 +74,6 @@ fn add_order_direction_enum(schema: &mut Document) {
     schema.definitions.push(def);
 }
 
-/// Adds `*_orderBy` and `*_filter` enum types for the given object types to the schema.
 fn add_types_for_object_types(
     schema: &mut Document,
     object_types: &Vec<&ObjectType>,
@@ -140,7 +138,6 @@ fn add_filter_type(
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let filter_type_name = format!("{}_filter", type_name).to_string();
-
     match ast::get_named_type(schema, &filter_type_name) {
         None => {
             let typedef = TypeDefinition::InputObject(InputObjectType {
@@ -191,7 +188,9 @@ fn field_filter_input_values(
                 _ => vec![],
             })
         }
-        Type::ListType(ref t) => Ok(field_list_filter_input_values(schema, field, t)),
+        Type::ListType(ref t) => {
+            Ok(field_list_filter_input_values(schema, field, t).map_or(vec![], |values| values))
+        }
         Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
     }
 }
@@ -266,10 +265,22 @@ fn field_enum_filter_input_values(
 /// Generates `*_filter` input values for the given list field.
 fn field_list_filter_input_values(
     _schema: &Document,
-    _field: &Field,
-    _field_type: &Type,
-) -> Vec<InputValue> {
-    vec![]
+    field: &Field,
+    field_type: &Type,
+) -> Option<Vec<InputValue>> {
+    let _value_type = ast::get_field_value_type(field_type).ok()?;
+    Some(
+        vec!["", "not", "contains", "not_contains"]
+            .into_iter()
+            .map(|filter_type| {
+                input_value(
+                    &field.name,
+                    filter_type,
+                    Type::ListType(Box::new(field_type.to_owned())),
+                )
+            })
+            .collect(),
+    )
 }
 
 /// Generates a `*_filter` input value for the given field name, suffix and value type.
@@ -472,7 +483,7 @@ mod tests {
 
     #[test]
     fn api_schema_contains_object_type_filter_enum() {
-        let input_schema = parse_schema("type User { id: ID!, name: String! }")
+        let input_schema = parse_schema("type User { id: ID!, name: String!}")
             .expect("Failed to parse input schema");
         let schema = api_schema(&input_schema).expect("Failed to derived API schema");
 
