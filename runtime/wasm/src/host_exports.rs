@@ -423,6 +423,11 @@ where
         }
         Ok(())
     }
+
+    /// Useful for IPFS hashes stored as bytes
+    pub(crate) fn bytes_to_base58(&self, bytes: Vec<u8>) -> String {
+        ::bs58::encode(&bytes).into_string()
+    }
 }
 
 pub(crate) fn string_to_h160(string: &str) -> Result<H160, HostExportError<impl ExportError>> {

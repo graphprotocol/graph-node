@@ -532,3 +532,14 @@ fn abort() {
         .unwrap_err();
     assert_eq!(err.to_string(), "Trap: Trap { kind: Host(HostExportError(\"Mapping aborted at abort.ts, line 6, column 2, with message: not true\")) }");
 }
+
+#[test]
+fn bytes_to_base58() {
+    let mut module = test_module(mock_data_source("wasm_test/bytes_to_base58.wasm"));
+    let bytes = hex::decode("12207D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89")
+        .unwrap();
+    let bytes_ptr = module.asc_new(bytes.as_slice());
+    let result_ptr: AscPtr<AscString> = module.takes_ptr_returns_ptr("bytes_to_base58", bytes_ptr);
+    let base58: String = module.asc_get(result_ptr);
+    assert_eq!(base58, "QmWmyoMoctfbAaiEs2G46gpeUmhqFRDW6KWo64y5r581Vz");
+}

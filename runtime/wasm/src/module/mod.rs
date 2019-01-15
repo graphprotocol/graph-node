@@ -49,6 +49,7 @@ const BIG_INT_TIMES: usize = 21;
 const BIG_INT_DIVIDED_BY: usize = 22;
 const BIG_INT_MOD: usize = 23;
 const GAS_FUNC_INDEX: usize = 24;
+const TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX: usize = 25;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
@@ -526,6 +527,15 @@ where
         let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
+
+    fn bytes_to_base58(
+        &mut self,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self.host_exports.bytes_to_base58(self.asc_get(bytes_ptr));
+        let result_ptr: AscPtr<AscString> = self.asc_new(&result);
+        Ok(Some(RuntimeValue::from(result_ptr)))
+    }
 }
 
 impl<T, L, S, U> Externals for WasmiModule<T, L, S, U>
@@ -583,6 +593,7 @@ where
             }
             BIG_INT_MOD => self.big_int_mod(args.nth_checked(0)?, args.nth_checked(1)?),
             GAS_FUNC_INDEX => self.gas(args.nth_checked(0)?),
+            TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX => self.bytes_to_base58(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -641,6 +652,9 @@ impl ModuleImportResolver for ModuleResolver {
             }
             "typeConversion.bigIntToI32" => {
                 FuncInstance::alloc_host(signature, TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX)
+            }
+            "typeConversion.bytesToBase58" => {
+                FuncInstance::alloc_host(signature, TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX)
             }
 
             // json

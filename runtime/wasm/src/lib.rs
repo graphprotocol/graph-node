@@ -1,3 +1,4 @@
+extern crate bs58;
 extern crate ethabi;
 extern crate futures;
 extern crate graph;
