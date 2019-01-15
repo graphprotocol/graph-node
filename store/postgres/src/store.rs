@@ -24,18 +24,18 @@ use graph::{tokio, tokio::timer::Interval};
 use graph_graphql::prelude::api_schema;
 
 use chain_head_listener::ChainHeadUpdateListener;
-use entity_changes::EntityChangeListener;
 use functions::{
-    attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, revert_block,
-    set_config,
+    attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, pg_notify,
+    revert_block, set_config,
 };
+use store_events::StoreEventListener;
 
 embed_migrations!("./migrations");
 
 /// The kind of event that we get from Postgres: either a notification about
 /// a change to a specific entity, or that we are done with a certain block
-#[allow(dead_code)]
-enum StoreEvent {
+#[derive(Clone, Debug, Deserialize)]
+pub enum StoreEvent {
     Change(EntityChange),
     Tick(BlockTick),
 }
@@ -139,7 +139,7 @@ pub struct StoreConfig {
 pub struct Store {
     logger: Logger,
     subscriptions: Arc<RwLock<HashMap<String, Subscription>>>,
-    change_listener: EntityChangeListener,
+    listener: StoreEventListener,
     postgres_url: String,
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
@@ -177,8 +177,8 @@ impl Store {
         initiate_schema(&logger, &pool.get().unwrap());
 
         // Listen to entity changes in Postgres
-        let mut change_listener = EntityChangeListener::new(config.postgres_url.clone());
-        let entity_changes = change_listener
+        let mut listener = StoreEventListener::new(config.postgres_url.clone());
+        let store_events = listener
             .take_event_stream()
             .expect("Failed to listen to entity change events in Postgres");
 
@@ -186,7 +186,7 @@ impl Store {
         let mut store = Store {
             logger: logger.clone(),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
-            change_listener,
+            listener,
             postgres_url: config.postgres_url.clone(),
             network_name: config.network_name.clone(),
             genesis_block_ptr: (net_identifiers.genesis_block_hash, 0u64).into(),
@@ -198,11 +198,11 @@ impl Store {
         store.add_network_if_missing(net_identifiers).unwrap();
 
         // Deal with store subscriptions
-        store.handle_entity_changes(entity_changes);
+        store.handle_store_events(store_events);
         store.periodically_clean_up_stale_subscriptions();
 
         // We're ready for processing entity changes
-        store.change_listener.start();
+        store.listener.start();
 
         // Return the store
         store
@@ -277,29 +277,30 @@ impl Store {
         Ok(())
     }
 
-    /// Handles entity changes emitted by Postgres.
-    fn handle_entity_changes(
-        &self,
-        entity_changes: Box<Stream<Item = EntityChange, Error = ()> + Send>,
-    ) {
+    /// Handles change events emitted by Postgres.
+    fn handle_store_events(&self, store_events: Box<Stream<Item = StoreEvent, Error = ()> + Send>) {
         let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
 
-        tokio::spawn(entity_changes.for_each(move |change| {
-            trace!(logger, "Received entity change event";
+        tokio::spawn(store_events.for_each(move |event| {
+            match &event {
+                StoreEvent::Change(change) => {
+                    trace!(logger, "Received entity change event";
                            "subgraph_id" => change.subgraph_id.to_string(),
                            "entity_type" => &change.entity_type,
                            "entity_id" => &change.entity_id);
+                }
+                StoreEvent::Tick(tick) => {
+                    trace!(logger, "Received block tick"; "block" => tick.block.to_string());
+                }
+            }
 
             // Obtain IDs and senders of subscriptions matching the entity change
             let matches = subscriptions
                 .read()
                 .unwrap()
                 .iter()
-                .filter(|(_, subscription)| {
-                    let event = StoreEvent::Change(change.clone());
-                    subscription.matches(&event)
-                })
+                .filter(|(_, subscription)| subscription.matches(&event))
                 .map(|(id, subscription)| (id.clone(), subscription.clone()))
                 .collect::<Vec<_>>();
 
@@ -311,17 +312,16 @@ impl Store {
             stream::iter_ok::<_, ()>(matches).for_each(move |(id, sender)| {
                 let logger = logger.clone();
                 let subscriptions = subscriptions.clone();
-                sender
-                    .send(StoreEvent::Change(change.clone()))
-                    .then(move |result| match result {
-                        Err(_) => {
-                            // Receiver was dropped
-                            debug!(logger, "Unsubscribe"; "id" => &id);
-                            subscriptions.write().unwrap().remove(&id);
-                            Ok(())
-                        }
-                        Ok(_) => Ok(()),
-                    })
+                trace!(logger, "Sending event {:?}", event);
+                sender.send(event.clone()).then(move |result| match result {
+                    Err(_) => {
+                        // Receiver was dropped
+                        debug!(logger, "Unsubscribe"; "id" => &id);
+                        subscriptions.write().unwrap().remove(&id);
+                        Ok(())
+                    }
+                    Ok(_) => Ok(()),
+                })
             })
         }));
     }
@@ -747,6 +747,22 @@ impl Store {
         let mut subscriptions = subscriptions.write().unwrap();
         subscriptions.insert(id, subscription);
     }
+
+    fn emit_block_tick(
+        &self,
+        conn: &PgConnection,
+        event_source: EventSource,
+    ) -> Result<(), StoreError> {
+        // Only emit block ticks for actual blocks
+        if event_source != EventSource::None {
+            trace!(self.logger, "Emit block tick"; "block" => event_source.to_string());
+            let v = serde_json::to_value(BlockTick {
+                block: event_source,
+            })?;
+            select(pg_notify("entity_changes", v.to_string())).execute(conn)?;
+        }
+        return Ok(());
+    }
 }
 
 impl StoreTrait for Store {
@@ -877,7 +893,10 @@ impl StoreTrait for Store {
         event_source: EventSource,
     ) -> Result<(), StoreError> {
         let conn = self.conn.get().map_err(Error::from)?;
-        conn.transaction(|| self.apply_entity_operations_with_conn(&conn, operations, event_source))
+        conn.transaction(|| {
+            self.apply_entity_operations_with_conn(&conn, operations, event_source)?;
+            self.emit_block_tick(&conn, event_source)
+        })
     }
 
     fn build_entity_attribute_indexes(

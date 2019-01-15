@@ -40,3 +40,9 @@ sql_function! {
         entity_name: Text
     )
 }
+
+sql_function! {
+    pg_notify,
+    PGNotify,
+    (channel: Text, msg: Text)
+}

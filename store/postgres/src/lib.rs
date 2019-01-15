@@ -18,12 +18,12 @@ extern crate uuid;
 
 mod chain_head_listener;
 pub mod db_schema;
-mod entity_changes;
 mod filter;
 pub mod functions;
 pub mod models;
 mod notification_listener;
 pub mod store;
+mod store_events;
 
 pub use self::chain_head_listener::ChainHeadUpdateListener;
 pub use self::store::{Store, StoreConfig};

@@ -1469,6 +1469,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 
         // Create a store subscription
         let subscription = store.subscribe(vec![(subgraph_id.clone(), "User".to_owned())]);
+        let block_ticks = store.block_ticks(vec![(subgraph_id.clone(), "User".to_owned())]);
 
         // Add two entities to the store
         let added_entities = vec![
@@ -1538,6 +1539,24 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 vec![update_op, delete_op],
             )
             .unwrap();
+
+        // Check for the block ticks that should have been produced
+        let source1 = EventSource::EthereumBlock(*TEST_BLOCK_1_PTR);
+        let source2 = EventSource::EthereumBlock(*TEST_BLOCK_2_PTR);
+        let block_check = block_ticks
+            .take(2)
+            .collect()
+            .and_then(move |ticks| {
+                assert_eq!(
+                    ticks,
+                    vec![BlockTick { block: source1 }, BlockTick { block: source2 }]
+                );
+                Ok(())
+            })
+            .timeout(std::time::Duration::from_secs(5))
+            .map(|_| ())
+            .map_err(|_| assert!(false, "waited too long to get BlockTicks"));
+        tokio::spawn(block_check);
 
         // We're expecting four events to be written to the subscription stream
         subscription

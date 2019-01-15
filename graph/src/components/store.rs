@@ -312,6 +312,12 @@ impl From<Error> for StoreError {
     }
 }
 
+impl From<serde_json::Error> for StoreError {
+    fn from(e: serde_json::Error) -> Self {
+        StoreError::Unknown(e.into())
+    }
+}
+
 #[derive(Fail, Debug)]
 pub enum TransactionAbortError {
     #[fail(
