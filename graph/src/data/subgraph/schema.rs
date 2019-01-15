@@ -16,12 +16,14 @@ use graphql_parser::schema::{Definition, Document, Type, TypeDefinition};
 use hex;
 use rand::rngs::OsRng;
 use rand::Rng;
-use web3::types::*;
 use std::str::FromStr;
+use web3::types::*;
 
 use super::SubgraphDeploymentId;
 use components::ethereum::EthereumBlockPointer;
-use components::store::{AttributeIndexDefinition, EntityFilter, EntityKey, EntityOperation, EntityQuery};
+use components::store::{
+    AttributeIndexDefinition, EntityFilter, EntityKey, EntityOperation, EntityQuery,
+};
 use data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
 use data::subgraph::{SubgraphManifest, SubgraphName};
 
@@ -611,7 +613,6 @@ fn set_entity_operation(
         data: data.into(),
     }
 }
-
 
 pub fn generate_entity_id() -> String {
     // Fast crypto RNG from operating system

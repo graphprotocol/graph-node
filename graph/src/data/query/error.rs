@@ -30,6 +30,7 @@ pub enum QueryExecutionError {
     ResolveEntityError(SubgraphDeploymentId, String, String, String),
     ResolveEntitiesError(String),
     OrderByNotSupportedError(String, String),
+    OrderByNotSupportedForType(String),
     FilterNotSupportedError(String, String),
     UnknownField(Pos, String, String),
     EmptyQuery,
@@ -107,6 +108,9 @@ impl fmt::Display for QueryExecutionError {
             }
             OrderByNotSupportedError(entity, field) => {
                 write!(f, "Ordering by \"{}\" is not supported for type \"{}\"", field, entity)
+            }
+            OrderByNotSupportedForType(field_type) => {
+                write!(f, "Ordering by \"{}\" fields is not supported", field_type)
             }
             FilterNotSupportedError(value, filter) => {
                 write!(f, "Filter not supported by value {} : {}", value, filter)

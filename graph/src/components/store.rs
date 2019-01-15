@@ -376,7 +376,7 @@ pub trait Store: Send + Sync + 'static {
     fn build_entity_attribute_indexes(
         &self,
         indexes: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), Error>;
+    ) -> Result<(), SubgraphAssignmentProviderError>;
 
     /// Revert the entity changes from a single block atomically in the store, and update the
     /// subgraph block pointer from `block_ptr_from` to `block_ptr_to`.

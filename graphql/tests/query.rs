@@ -153,7 +153,7 @@ impl Store for TestStore {
     fn build_entity_attribute_indexes(
         &self,
         _: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), SubgraphAssignmentProviderError> {
         unimplemented!()
     }
 
