@@ -7,7 +7,8 @@ use diesel::r2d2::{self, ConnectionManager, Pool};
 use diesel::sql_types::Text;
 use diesel::{delete, insert_into, select, update};
 use filter::store_filter;
-use futures::sync::mpsc::{channel, Sender};
+use futures::future::{ok, Either};
+use futures::sync::mpsc::{channel, SendError, Sender};
 use lru_time_cache::LruCache;
 use std::collections::HashMap;
 use std::sync::{Mutex, RwLock};
@@ -31,10 +32,77 @@ use functions::{
 
 embed_migrations!("./migrations");
 
-/// Internal representation of a Store subscription.
-struct Subscription {
-    pub entities: Vec<SubgraphEntityPair>,
-    pub sender: Sender<EntityChange>,
+/// The kind of event that we get from Postgres: either a notification about
+/// a change to a specific entity, or that we are done with a certain block
+#[allow(dead_code)]
+enum StoreEvent {
+    Change(EntityChange),
+    Tick(BlockTick),
+}
+
+/// Internal representation of a Store subscription. Calling `subscribe`
+/// results in us storing an `EntityChange` sender, calling `block_ticks`
+/// results in us storing a `BlockTick` sender
+#[derive(Clone, Debug)]
+enum Subscription {
+    // We have entities in both kinds of subscriptions; since we clone the
+    // entire subscription in a few places, we make the entities an Arc
+    // to make the cloning cheaper.
+    Changes {
+        entities: Arc<Vec<SubgraphEntityPair>>,
+        sender: Sender<EntityChange>,
+    },
+    Ticks {
+        entities: Arc<Vec<SubgraphEntityPair>>,
+        sender: Sender<BlockTick>,
+    },
+}
+
+/// Subscription translates from the internal `StoreEvent` to either
+/// `EntityChange` or `BlockTick`, depending on what the subscriber is
+/// interested in. The 'other' kind of event for a subscriber is simply
+/// dropped on the floor
+///
+/// This is not a full implementation of a `futures::sink::Sink` since
+/// we don't need that right now, but could be expanded to that
+impl Subscription {
+    fn send(self, e: StoreEvent) -> impl Future<Item = (), Error = ()> {
+        match (self, e) {
+            (Subscription::Changes { sender, .. }, StoreEvent::Change(change)) => {
+                let s = sender.send(change);
+                let unit = s.map(|_| ()).map_err(|_| ());
+                Either::A(Either::A(unit))
+            }
+            (Subscription::Ticks { sender, .. }, StoreEvent::Tick(tick)) => {
+                let s = sender.send(tick);
+                let unit = s.map(|_| ()).map_err(|_| ());
+                Either::A(Either::B(unit))
+            }
+            _ => Either::B(ok(())),
+        }
+    }
+
+    fn poll_ready(&mut self) -> Poll<(), SendError<()>> {
+        match self {
+            Subscription::Changes { sender, .. } => sender.poll_ready(),
+            Subscription::Ticks { sender, .. } => sender.poll_ready(),
+        }
+    }
+
+    fn matches(&self, event: &StoreEvent) -> bool {
+        match self {
+            Subscription::Changes { entities, .. } => match event {
+                StoreEvent::Change(change) => {
+                    entities.contains(&(change.subgraph_id.clone(), change.entity_type.clone()))
+                }
+                StoreEvent::Tick(_) => false,
+            },
+            Subscription::Ticks { .. } => match event {
+                StoreEvent::Change(_) => false,
+                StoreEvent::Tick(_) => true,
+            },
+        }
+    }
 }
 
 /// Run all initial schema migrations.
@@ -229,11 +297,10 @@ impl Store {
                 .unwrap()
                 .iter()
                 .filter(|(_, subscription)| {
-                    subscription
-                        .entities
-                        .contains(&(change.subgraph_id.clone(), change.entity_type.clone()))
+                    let event = StoreEvent::Change(change.clone());
+                    subscription.matches(&event)
                 })
-                .map(|(id, subscription)| (id.clone(), subscription.sender.clone()))
+                .map(|(id, subscription)| (id.clone(), subscription.clone()))
                 .collect::<Vec<_>>();
 
             let subscriptions = subscriptions.clone();
@@ -244,17 +311,17 @@ impl Store {
             stream::iter_ok::<_, ()>(matches).for_each(move |(id, sender)| {
                 let logger = logger.clone();
                 let subscriptions = subscriptions.clone();
-                sender.send(change.clone()).then(move |result| {
-                    match result {
-                        Err(_send_error) => {
+                sender
+                    .send(StoreEvent::Change(change.clone()))
+                    .then(move |result| match result {
+                        Err(_) => {
                             // Receiver was dropped
                             debug!(logger, "Unsubscribe"; "id" => &id);
                             subscriptions.write().unwrap().remove(&id);
                             Ok(())
                         }
-                        Ok(_sender) => Ok(()),
-                    }
-                })
+                        Ok(_) => Ok(()),
+                    })
             })
         }));
     }
@@ -272,12 +339,10 @@ impl Store {
                     // Obtain IDs of subscriptions whose receiving end has gone
                     let stale_ids = subscriptions
                         .iter_mut()
-                        .filter_map(
-                            |(id, subscription)| match subscription.sender.poll_ready() {
-                                Err(_) => Some(id.clone()),
-                                _ => None,
-                            },
-                        )
+                        .filter_map(|(id, subscription)| match subscription.poll_ready() {
+                            Err(_) => Some(id.clone()),
+                            _ => None,
+                        })
                         .collect::<Vec<_>>();
 
                     // Remove all stale subscriptions
@@ -657,6 +722,31 @@ impl Store {
         }
         Ok(())
     }
+
+    fn add_subscription(&self, subscription: Subscription) {
+        let subscriptions = self.subscriptions.clone();
+
+        // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions
+        let mut id = Uuid::new_v4().to_string();
+        while subscriptions.read().unwrap().contains_key(&id) {
+            id = Uuid::new_v4().to_string();
+        }
+
+        {
+            let (entities, kind) = match &subscription {
+                Subscription::Changes { entities, .. } => (entities, "Changes"),
+                Subscription::Ticks { entities, .. } => (entities, "Ticks"),
+            };
+            debug!(self.logger, "Subscribe";
+               "id" => &id,
+               "kind" => kind,
+               "entities" => format!("{:?}", entities));
+        }
+
+        // Add the new subscription
+        let mut subscriptions = subscriptions.write().unwrap();
+        subscriptions.insert(id, subscription);
+    }
 }
 
 impl StoreTrait for Store {
@@ -831,27 +921,26 @@ impl StoreTrait for Store {
     }
 
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
-        let subscriptions = self.subscriptions.clone();
-
-        // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions
-        let mut id = Uuid::new_v4().to_string();
-        while subscriptions.read().unwrap().contains_key(&id) {
-            id = Uuid::new_v4().to_string();
-        }
-
-        debug!(self.logger, "Subscribe";
-               "id" => &id,
-               "entities" => format!("{:?}", entities));
-
         // Prepare the new subscription by creating a channel and a subscription object
         let (sender, receiver) = channel(100);
-        let subscription = Subscription { entities, sender };
+        let entities = Arc::new(entities);
+        let subscription = Subscription::Changes { entities, sender };
 
-        // Add the new subscription
-        let mut subscriptions = subscriptions.write().unwrap();
-        subscriptions.insert(id, subscription);
+        self.add_subscription(subscription);
 
-        // Return the subscription ID and entity change stream
+        // Return the entity change stream
+        Box::new(receiver)
+    }
+
+    fn block_ticks(&self, entities: Vec<SubgraphEntityPair>) -> BlockTickStream {
+        // Prepare the new subscription by creating a channel and a subscription object
+        let (sender, receiver) = channel(100);
+        let entities = Arc::new(entities);
+        let subscription = Subscription::Ticks { entities, sender };
+
+        self.add_subscription(subscription);
+
+        // Return the block tick stream
         Box::new(receiver)
     }
 

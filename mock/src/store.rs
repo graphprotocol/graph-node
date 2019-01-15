@@ -292,6 +292,10 @@ impl Store for MockStore {
         Box::new(receiver)
     }
 
+    fn block_ticks(&self, _entities: Vec<SubgraphEntityPair>) -> BlockTickStream {
+        unimplemented!()
+    }
+
     fn count_entities(&self, _: SubgraphDeploymentId) -> Result<u64, Error> {
         unimplemented!();
     }
@@ -420,6 +424,10 @@ impl Store for FakeStore {
     }
 
     fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+        unimplemented!();
+    }
+
+    fn block_ticks(&self, _: Vec<SubgraphEntityPair>) -> BlockTickStream {
         unimplemented!();
     }
 

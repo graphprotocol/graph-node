@@ -262,7 +262,7 @@ impl EntityOperation {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum EventSource {
     None,
     EthereumBlock(EthereumBlockPointer),
@@ -326,6 +326,17 @@ pub enum TransactionAbortError {
     #[fail(display = "transaction aborted: {}", _0)]
     Other(String),
 }
+
+/// Block tick events emitted by [Store](trait.Store.html) implementations.
+/// These events are emitted every time we are finished with processing a
+/// block for a subgraph.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct BlockTick {
+    pub block: EventSource,
+}
+
+/// A stream of block tick events.
+pub type BlockTickStream = Box<Stream<Item = BlockTick, Error = ()> + Send>;
 
 /// Common trait for store implementations.
 pub trait Store: Send + Sync + 'static {
@@ -394,6 +405,11 @@ pub trait Store: Send + Sync + 'static {
     ///
     /// Returns a stream of entity changes that match the input arguments.
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
+
+    /// Subscribe to block ticks. Block ticks are generated every time a block
+    /// finishes processing. The event is only generated if any of the subgraphs
+    /// and entities were changed.
+    fn block_ticks(&self, entities: Vec<SubgraphEntityPair>) -> BlockTickStream;
 
     /// Counts the total number of entities in a subgraph.
     fn count_entities(&self, subgraph: SubgraphDeploymentId) -> Result<u64, Error>;

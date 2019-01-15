@@ -117,7 +117,7 @@ impl Clone for EthereumEventData {
 /// A block hash and block number from a specific Ethereum block.
 ///
 /// Maximum block number supported: 2^63 - 1
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EthereumBlockPointer {
     pub hash: H256,
     pub number: u64,

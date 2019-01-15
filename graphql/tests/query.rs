@@ -180,6 +180,10 @@ impl Store for TestStore {
         unimplemented!()
     }
 
+    fn block_ticks(&self, _: Vec<SubgraphEntityPair>) -> BlockTickStream {
+        unimplemented!()
+    }
+
     fn count_entities(&self, _: SubgraphDeploymentId) -> Result<u64, Error> {
         Ok(1)
     }
