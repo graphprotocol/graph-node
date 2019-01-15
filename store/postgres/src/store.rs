@@ -369,9 +369,8 @@ impl Store {
                 ValueType::Int => "::bigint",
                 ValueType::String => "",
                 ValueType::List => {
-                    return Err(QueryExecutionError::OrderByNotSupportedError(
+                    return Err(QueryExecutionError::OrderByNotSupportedForType(
                         "List".to_string(),
-                        "All".to_string(),
                     ));
                 }
             };
@@ -614,7 +613,7 @@ impl Store {
         &self,
         conn: &PgConnection,
         index: AttributeIndexDefinition,
-    ) -> Result<(), Error> {
+    ) -> Result<(), SubgraphAssignmentProviderError> {
         let (index_type, index_operator, jsonb_index) = match index.field_value_type {
             ValueType::Boolean
             | ValueType::BigInt
@@ -636,14 +635,13 @@ impl Store {
             index.entity_name.clone(),
         ))
         .execute(conn)
-        .map_err(Error::from)
+        .map_err(|e| SubgraphAssignmentProviderError::Unknown(e.into()))
         .and_then(move |row_count| match row_count {
             1 => Ok(()),
-            _ => Err(format_err!(
-                "Failed to create index for subgraph {} on {}.{}",
+            _ => Err(SubgraphAssignmentProviderError::BuildIndexesError(
                 index.subgraph_id.to_string(),
                 index.entity_name.clone(),
-                index.attribute_name.clone()
+                index.attribute_name.clone(),
             )),
         })
     }
@@ -653,7 +651,7 @@ impl Store {
         &self,
         conn: &PgConnection,
         indexes: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), SubgraphAssignmentProviderError> {
         for index in indexes.into_iter() {
             self.build_entity_attribute_index_with_conn(conn, index)?;
         }
@@ -795,8 +793,8 @@ impl StoreTrait for Store {
     fn build_entity_attribute_indexes(
         &self,
         indexes: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), Error> {
-        let conn = self.conn.get()?;
+    ) -> Result<(), SubgraphAssignmentProviderError> {
+        let conn = self.conn.get().map_err(Error::from)?;
         conn.transaction(|| self.build_entity_attribute_indexes_with_conn(&conn, indexes))
     }
 

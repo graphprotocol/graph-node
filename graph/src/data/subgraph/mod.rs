@@ -241,8 +241,11 @@ pub enum SubgraphAssignmentProviderError {
     /// Occurs when a subgraph's GraphQL schema is invalid.
     #[fail(display = "GraphQL schema error: {}", _0)]
     SchemaValidationError(failure::Error),
-    #[fail(display = "subgraph attribute indexes build error: {}", _0)]
-    BuildIndexesError(failure::Error),
+    #[fail(
+        display = "Error building index for subgraph {}, entity {} and attribute {}",
+        _0, _1, _2
+    )]
+    BuildIndexesError(String, String, String),
     #[fail(display = "subgraph provider error: {}", _0)]
     Unknown(failure::Error),
 }
@@ -250,6 +253,12 @@ pub enum SubgraphAssignmentProviderError {
 impl From<Error> for SubgraphAssignmentProviderError {
     fn from(e: Error) -> Self {
         SubgraphAssignmentProviderError::Unknown(e)
+    }
+}
+
+impl From<::diesel::result::Error> for SubgraphAssignmentProviderError {
+    fn from(e: ::diesel::result::Error) -> Self {
+        SubgraphAssignmentProviderError::Unknown(e.into())
     }
 }
 

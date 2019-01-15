@@ -2,7 +2,7 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::collections::HashSet;
 use std::sync::Mutex;
 
-use graph::data::subgraph::schema::{attribute_index_definitions};
+use graph::data::subgraph::schema::attribute_index_definitions;
 use graph::prelude::{SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *};
 
 pub struct SubgraphAssignmentProvider<L, S> {
@@ -84,7 +84,6 @@ where
                         .store
                         .clone()
                         .build_entity_attribute_indexes(index_definitions)
-                        .map_err(SubgraphAssignmentProviderError::BuildIndexesError)
                         .map(|_| {
                             info!(
                                 self_clone.logger,
