@@ -1,5 +1,5 @@
 -- Installs the pg_trgm extension for trigram indexing
-CREATE EXTENSION pg_trgm;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- Build a partial index for each entity-attribute
 CREATE OR REPLACE FUNCTION build_attribute_index(subgraph_id Text,index_name Text,index_type Text,index_operator Text,
