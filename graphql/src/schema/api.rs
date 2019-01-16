@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn api_schema_contains_object_type_filter_enum() {
-        let input_schema = parse_schema("type User { id: ID!, name: String!}")
+        let input_schema = parse_schema("type User { id: ID!, name: String!, pets: [String!]}")
             .expect("Failed to parse input schema");
         let schema = api_schema(&input_schema).expect("Failed to derived API schema");
 
@@ -524,7 +524,11 @@ mod tests {
                 "name_starts_with",
                 "name_not_starts_with",
                 "name_ends_with",
-                "name_not_ends_with"
+                "name_not_ends_with",
+                "pets",
+                "pets_not",
+                "pets_contains",
+                "pets_not_contains"
             ]
             .iter()
             .map(|name| name.to_string())
