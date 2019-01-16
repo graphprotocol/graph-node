@@ -33,6 +33,10 @@ SET op_id = 1
 WHERE data_before IS NOT NULL AND
     data_after IS NOT NULL;
 
+ALTER TABLE entity_history
+ALTER COLUMN op_id
+DROP DEFAULT;
+
 /**************************************************************
 * LOG ENTITY CHANGES
 *

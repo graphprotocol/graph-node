@@ -1,4 +1,26 @@
 /**************************************************************
+* REVERT ENTITY_HISTORY STRUCTURE UPDATE
+*
+* Moves the op_id column back to the event_meta_data table.
+**************************************************************/
+ALTER TABLE event_meta_data
+ADD COLUMN IF NOT EXISTS op_id SMALLINT NOT NULL
+DEFAULT 3;
+
+UPDATE event_meta_data
+SET op_id = eh.op_id
+FROM entity_history eh
+JOIN event_meta_data emd
+  ON emd.id = eh.event_id;
+
+ALTER TABLE entity_history
+DROP COLUMN IF EXISTS op_id;
+
+ALTER TABLE event_meta_data
+ALTER COLUMN op_id
+DROP DEFAULT;
+
+/**************************************************************
 * DROP TRIGGER ON INSERT, UPDATE, AND DELETE OPERATIONS
 **************************************************************/
 DROP TRIGGER after_entity_change_trigger ON entities;
