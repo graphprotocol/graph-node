@@ -8,6 +8,7 @@ extern crate hex;
 
 use diesel::pg::PgConnection;
 use diesel::*;
+use std::env;
 use std::fmt::Debug;
 use std::str::FromStr;
 use std::sync::Mutex;
@@ -18,6 +19,7 @@ use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::*;
+use graph::util::log;
 use graph::web3::types::H256;
 use graph_store_postgres::{db_schema, Store as DieselStore, StoreConfig};
 
@@ -34,7 +36,11 @@ lazy_static! {
     static ref STORE_MUTEX: Mutex<(Arc<DieselStore>, Runtime)> = {
         let mut runtime = Runtime::new().unwrap();
         let store = runtime.block_on(future::lazy(|| -> Result<_, ()> {
-            let logger = Logger::root(slog::Discard, o!());
+            // Set up Store
+            let logger = match env::var_os("GRAPH_LOG") {
+                Some(_) => log::logger(false),
+                None => Logger::root(slog::Discard, o!()),
+            };
             let postgres_url = postgres_test_url();
             let net_identifiers = EthereumNetworkIdentifier {
                 net_version: "graph test suite".to_owned(),
