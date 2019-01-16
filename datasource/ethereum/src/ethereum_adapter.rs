@@ -1,6 +1,7 @@
 use futures::future;
 use futures::prelude::*;
 use graph::ethabi::Token;
+use lazy_static::lazy_static;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -18,6 +19,15 @@ pub struct EthereumAdapter<T: web3::Transport> {
 
 /// Number of chunks to request in parallel when streaming logs.
 const LOG_STREAM_PARALLEL_CHUNKS: u64 = 5;
+
+lazy_static! {
+    static ref LOG_STREAM_FAST_SCAN_END: u64 = ::std::env::var_os("ETHEREUM_FAST_SCAN_END")
+        .unwrap_or_else(|| "4000000".into())
+        .to_str()
+        .expect("invalid fast scan end block number (character encoding error)")
+        .parse::<u64>()
+        .expect("invalid fast scan end block number");
+}
 
 /// Number of blocks to request in each chunk.
 const LOG_STREAM_CHUNK_SIZE_IN_BLOCKS: u64 = 10000;
@@ -121,8 +131,10 @@ where
             if chunk_offset <= to {
                 let mut chunk_futures = vec![];
 
-                if chunk_offset < 4_000_000 {
-                    let chunk_end = (chunk_offset + 100_000 - 1).min(to).min(4_000_000);
+                if chunk_offset < *LOG_STREAM_FAST_SCAN_END {
+                    let chunk_end = (chunk_offset + 100_000 - 1)
+                        .min(to)
+                        .min(*LOG_STREAM_FAST_SCAN_END);
 
                     debug!(
                         logger,
