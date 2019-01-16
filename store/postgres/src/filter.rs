@@ -160,7 +160,8 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                     let predicate = sql("data -> ")
                         .bind::<Text, _>(attribute)
                         .sql("-> 'data' @> ")
-                        .bind::<Text, _>(s);
+                        .bind::<Text, _>(s)
+                        .sql("::jsonb");
                     if contains {
                         Ok(Box::new(predicate) as FilterExpression)
                     } else {
