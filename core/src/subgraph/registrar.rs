@@ -655,9 +655,7 @@ fn remove_subgraph_versions(
         })
         .collect::<HashSet<_>>();
 
-    // Figure out which subgraph deployments need to be removed.
-    // A subgraph deployment entity should be removed when the subgraph hash will no longer be
-    // referenced by any subgraph versions.
+    // Find all subgraph version entities that point to these subgraph deployments
     let all_referencing_versions =
         store.find(SubgraphVersionEntity::query().filter(EntityFilter::In(
             "deployment".to_owned(),
@@ -676,36 +674,6 @@ fn remove_subgraph_versions(
         )),
         entity_ids: all_referencing_version_ids.clone(),
     });
-    let all_referencing_versions_after_delete = all_referencing_versions
-        .clone()
-        .into_iter()
-        .filter(|version_entity| {
-            !version_entity_ids_to_delete.contains(&version_entity.id().unwrap())
-        })
-        .collect::<Vec<_>>();
-    let subgraph_deployment_hashes_needing_deletion = &referenced_subgraph_hashes
-        - &all_referencing_versions_after_delete
-            .iter()
-            .map(|version_entity| {
-                version_entity
-                    .get("deployment")
-                    .unwrap()
-                    .to_owned()
-                    .as_string()
-                    .unwrap()
-            })
-            .collect::<HashSet<_>>();
-
-    // Remove subgraph deployment entities based on subgraph_deployment_hashes_needing_deletion
-    ops.extend(
-        subgraph_deployment_hashes_needing_deletion
-            .into_iter()
-            .map(|subgraph_hash| EntityOperation::Remove {
-                key: SubgraphDeploymentEntity::key(
-                    SubgraphDeploymentId::new(subgraph_hash).unwrap(),
-                ),
-            }),
-    );
 
     // Figure out which subgraph assignments need to be removed.
     // A subgraph assignment entity should be removed when the subgraph hash will no longer be
