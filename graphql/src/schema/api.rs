@@ -189,7 +189,7 @@ fn field_filter_input_values(
             })
         }
         Type::ListType(ref t) => {
-            Ok(field_list_filter_input_values(schema, field, t).map_or(vec![], |values| values))
+            Ok(field_list_filter_input_values(schema, field, t).unwrap_or(vec![]))
         }
         Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
     }
