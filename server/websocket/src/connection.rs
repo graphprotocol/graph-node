@@ -251,7 +251,7 @@ where
                                         &msg_sink,
                                         id.clone(),
                                         format!("Invalid variables provided: {}", e),
-                                    )
+                                    );
                                 }
                             }
                         }
@@ -260,7 +260,7 @@ where
                                 &msg_sink,
                                 id.clone(),
                                 format!("Invalid variables provided (must be an object)"),
-                            )
+                            );
                         }
                     };
 

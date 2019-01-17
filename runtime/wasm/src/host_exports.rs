@@ -109,7 +109,7 @@ where
                     "Value of {} attribute 'id' conflicts with ID passed to `store.set()`: \
                      {} != {}",
                     entity_type, v, entity_id,
-                )))
+                )));
             }
             _ => (),
         }

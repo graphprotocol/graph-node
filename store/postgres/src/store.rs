@@ -900,7 +900,7 @@ impl SubgraphDeploymentStore for Store {
             _ => {
                 return Err(format_err!(
                     "Subgraph entity has wrong type in `currentVersion`"
-                ))
+                ));
             }
         };
 
@@ -964,7 +964,7 @@ impl SubgraphDeploymentStore for Store {
                     return Err(format_err!(
                         "Schema not present or has wrong type, subgraph: {}",
                         subgraph_id
-                    ))
+                    ));
                 }
             }
         };

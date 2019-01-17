@@ -180,13 +180,13 @@ where
             Err(e) => {
                 return Box::new(future::err(GraphQLServerError::InternalError(
                     e.to_string(),
-                )))
+                )));
             }
             Ok(false) => {
                 return Box::new(future::err(GraphQLServerError::ClientError(format!(
                     "No data found for subgraph {}",
                     id
-                ))))
+                ))));
             }
             Ok(true) => (),
         }

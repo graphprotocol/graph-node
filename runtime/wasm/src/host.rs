@@ -301,7 +301,7 @@ impl RuntimeHostTrait for RuntimeHost {
                     event_handler.event,
                     self.data_source_contract_abi.name,
                     self.data_source_name
-                )))
+                )));
             }
         };
 
@@ -316,7 +316,7 @@ impl RuntimeHostTrait for RuntimeHost {
                     "Failed to parse parameters of event: {}: {}",
                     event_handler.event,
                     e
-                )))
+                )));
             }
         };
 

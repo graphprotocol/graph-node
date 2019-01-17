@@ -186,7 +186,7 @@ impl Value {
                 return Err(QueryExecutionError::AttributeTypeError(
                     value.to_string(),
                     ty.to_string(),
-                ))
+                ));
             }
         })
     }

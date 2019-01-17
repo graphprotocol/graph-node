@@ -680,7 +680,7 @@ impl ModuleImportResolver for ModuleResolver {
                 return Err(Error::Instantiation(format!(
                     "Export '{}' not found",
                     field_name
-                )))
+                )));
             }
         })
     }

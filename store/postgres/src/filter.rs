@@ -176,7 +176,7 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                     return Err(UnsupportedFilter {
                         filter: if contains { "contains" } else { "not_contains" }.to_owned(),
                         value,
-                    })
+                    });
                 }
             }
         }
@@ -227,7 +227,7 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                     return Err(UnsupportedFilter {
                         filter: op.to_owned(),
                         value,
-                    })
+                    });
                 }
             }
         }
@@ -263,7 +263,7 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                     return Err(UnsupportedFilter {
                         filter: "in".to_owned(),
                         value: Value::List(values),
-                    })
+                    });
                 }
             }
         }
@@ -303,7 +303,7 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                         }
                         .to_owned(),
                         value,
-                    })
+                    });
                 }
             }
         }
@@ -332,7 +332,7 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                         }
                         .to_owned(),
                         value,
-                    })
+                    });
                 }
             }
         }
