@@ -58,6 +58,36 @@ enum Subscription {
     },
 }
 
+/// Track which subscriptions have had changes to their blocks. The entries
+/// in the set are the id's of subscriptions for which we've seen an
+/// EntityChange matching their interesting entities. When the corresponding
+/// BlockTick comes by, we pass a BlockTick to the receiver and remove
+/// the id from the set
+#[derive(Clone)]
+struct DirtyBlocks {
+    ids: Arc<RwLock<std::collections::HashSet<String>>>,
+}
+
+impl DirtyBlocks {
+    fn new() -> Self {
+        DirtyBlocks {
+            ids: Arc::new(RwLock::new(std::collections::HashSet::new())),
+        }
+    }
+
+    fn remove(&self, id: &str) -> bool {
+        self.ids.write().unwrap().remove(id)
+    }
+
+    fn insert(&self, id: String) -> bool {
+        self.ids.write().unwrap().insert(id)
+    }
+
+    fn contains(&self, id: &str) -> bool {
+        self.ids.read().unwrap().contains(id)
+    }
+}
+
 /// Subscription translates from the internal `StoreEvent` to either
 /// `EntityChange` or `BlockTick`, depending on what the subscriber is
 /// interested in. The 'other' kind of event for a subscriber is simply
@@ -66,7 +96,12 @@ enum Subscription {
 /// This is not a full implementation of a `futures::sink::Sink` since
 /// we don't need that right now, but could be expanded to that
 impl Subscription {
-    fn send(self, e: StoreEvent) -> impl Future<Item = (), Error = ()> {
+    fn send(
+        self,
+        e: StoreEvent,
+        id: &String,
+        dirty_blocks: &DirtyBlocks,
+    ) -> impl Future<Item = (), Error = ()> {
         match (self, e) {
             (Subscription::Changes { sender, .. }, StoreEvent::Change(change)) => {
                 let s = sender.send(change);
@@ -74,9 +109,14 @@ impl Subscription {
                 Either::A(Either::A(unit))
             }
             (Subscription::Ticks { sender, .. }, StoreEvent::Tick(tick)) => {
-                let s = sender.send(tick);
-                let unit = s.map(|_| ()).map_err(|_| ());
-                Either::A(Either::B(unit))
+                let dirty = dirty_blocks.remove(id);
+                if dirty {
+                    let s = sender.send(tick);
+                    let unit = s.map(|_| ()).map_err(|_| ());
+                    Either::A(Either::B(unit))
+                } else {
+                    Either::B(ok(()))
+                }
             }
             _ => Either::B(ok(())),
         }
@@ -89,7 +129,7 @@ impl Subscription {
         }
     }
 
-    fn matches(&self, event: &StoreEvent) -> bool {
+    fn matches(&self, event: &StoreEvent, id: &String, dirty_blocks: &DirtyBlocks) -> bool {
         match self {
             Subscription::Changes { entities, .. } => match event {
                 StoreEvent::Change(change) => {
@@ -99,8 +139,17 @@ impl Subscription {
             },
             Subscription::Ticks { .. } => match event {
                 StoreEvent::Change(_) => false,
-                StoreEvent::Tick(_) => true,
+                StoreEvent::Tick(_) => dirty_blocks.contains(id),
             },
+        }
+    }
+
+    fn is_dirty(&self, event: &StoreEvent) -> bool {
+        match (self, event) {
+            (Subscription::Ticks { entities, .. }, StoreEvent::Change(change)) => {
+                entities.contains(&(change.subgraph_id.clone(), change.entity_type.clone()))
+            }
+            _ => false,
         }
     }
 }
@@ -139,6 +188,7 @@ pub struct StoreConfig {
 pub struct Store {
     logger: Logger,
     subscriptions: Arc<RwLock<HashMap<String, Subscription>>>,
+    dirty_blocks: DirtyBlocks,
     listener: StoreEventListener,
     postgres_url: String,
     network_name: String,
@@ -186,6 +236,7 @@ impl Store {
         let mut store = Store {
             logger: logger.clone(),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
+            dirty_blocks: DirtyBlocks::new(),
             listener,
             postgres_url: config.postgres_url.clone(),
             network_name: config.network_name.clone(),
@@ -281,6 +332,7 @@ impl Store {
     fn handle_store_events(&self, store_events: Box<Stream<Item = StoreEvent, Error = ()> + Send>) {
         let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
+        let dirty_blocks = self.dirty_blocks.clone();
 
         tokio::spawn(store_events.for_each(move |event| {
             match &event {
@@ -295,12 +347,20 @@ impl Store {
                 }
             }
 
+            // Record which BlockTick subscriptions have had 'interesting'
+            // changes and are therefore dirty
+            for (id, subscription) in subscriptions.read().unwrap().iter() {
+                if subscription.is_dirty(&event) {
+                    dirty_blocks.insert(id.clone());
+                }
+            }
+
             // Obtain IDs and senders of subscriptions matching the entity change
             let matches = subscriptions
                 .read()
                 .unwrap()
                 .iter()
-                .filter(|(_, subscription)| subscription.matches(&event))
+                .filter(|(id, subscription)| subscription.matches(&event, id, &dirty_blocks))
                 .map(|(id, subscription)| (id.clone(), subscription.clone()))
                 .collect::<Vec<_>>();
 
@@ -309,19 +369,25 @@ impl Store {
 
             // Write change to all matching subscription streams; remove subscriptions
             // whose receiving end has been dropped
+            let dirty_blocks = dirty_blocks.clone();
             stream::iter_ok::<_, ()>(matches).for_each(move |(id, sender)| {
                 let logger = logger.clone();
                 let subscriptions = subscriptions.clone();
+                let dirty_blocks = dirty_blocks.clone();
+
                 trace!(logger, "Sending event {:?}", event);
-                sender.send(event.clone()).then(move |result| match result {
-                    Err(_) => {
-                        // Receiver was dropped
-                        debug!(logger, "Unsubscribe"; "id" => &id);
-                        subscriptions.write().unwrap().remove(&id);
-                        Ok(())
-                    }
-                    Ok(_) => Ok(()),
-                })
+                sender
+                    .send(event.clone(), &id, &dirty_blocks)
+                    .then(move |result| match result {
+                        Err(_) => {
+                            // Receiver was dropped
+                            debug!(logger, "Unsubscribe"; "id" => &id);
+                            subscriptions.write().unwrap().remove(&id);
+                            dirty_blocks.remove(&id);
+                            Ok(())
+                        }
+                        Ok(_) => Ok(()),
+                    })
             })
         }));
     }
@@ -329,6 +395,7 @@ impl Store {
     fn periodically_clean_up_stale_subscriptions(&self) {
         let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
+        let dirty_blocks = self.dirty_blocks.clone();
 
         // Clean up stale subscriptions every 5s
         tokio::spawn(
@@ -349,6 +416,7 @@ impl Store {
                     for id in stale_ids {
                         debug!(logger, "Unsubscribe"; "id" => &id);
                         subscriptions.remove(&id);
+                        dirty_blocks.remove(&id);
                     }
 
                     Ok(())
