@@ -303,7 +303,7 @@ where
         schema: &'a s::Document,
         object_type: &'a s::ObjectType,
         field: &'b q::Field,
-    ) -> result::Result<EntityChangeStream, QueryExecutionError> {
+    ) -> result::Result<BlockTickStream, QueryExecutionError> {
         // Fail if the field does not exist on the object type
         if sast::get_field_type(object_type, &field.name).is_none() {
             return Err(QueryExecutionError::UnknownField(
@@ -317,6 +317,6 @@ where
         let entities = collect_entities_from_query_field(schema, object_type, field);
 
         // Subscribe to the store and return the entity change stream
-        Ok(self.store.subscribe(entities))
+        Ok(self.store.block_ticks(entities))
     }
 }

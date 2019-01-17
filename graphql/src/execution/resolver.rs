@@ -1,7 +1,7 @@
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 
-use graph::prelude::{EntityChangeStream, QueryExecutionError};
+use graph::prelude::{BlockTickStream, QueryExecutionError};
 use prelude::*;
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
@@ -107,7 +107,7 @@ pub trait Resolver: Clone + Send + Sync {
         _schema: &'a s::Document,
         _object_type: &'a s::ObjectType,
         _field: &'b q::Field,
-    ) -> Result<EntityChangeStream, QueryExecutionError> {
+    ) -> Result<BlockTickStream, QueryExecutionError> {
         Err(QueryExecutionError::NotSupported(String::from(
             "Resolving field streams is not supported by this resolver",
         )))
