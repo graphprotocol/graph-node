@@ -20,6 +20,8 @@ ALTER TABLE event_meta_data
 ALTER COLUMN op_id
 DROP DEFAULT;
 
+DROP INDEX IF EXISTS entity_history_event_id_btree_idx;
+
 /**************************************************************
 * DROP TRIGGER ON INSERT, UPDATE, AND DELETE OPERATIONS
 **************************************************************/

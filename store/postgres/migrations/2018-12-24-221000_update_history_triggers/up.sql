@@ -37,6 +37,10 @@ ALTER TABLE entity_history
 ALTER COLUMN op_id
 DROP DEFAULT;
 
+CREATE INDEX IF NOT EXISTS entity_history_event_id_btree_idx
+ON entity_history
+USING BTREE (event_id);
+
 /**************************************************************
 * LOG ENTITY CHANGES
 *
