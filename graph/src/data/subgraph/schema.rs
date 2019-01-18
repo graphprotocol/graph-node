@@ -60,6 +60,7 @@ pub trait TypedEntity {
 pub struct SubgraphEntity {
     name: SubgraphName,
     current_version_id: Option<String>,
+    pending_version_id: Option<String>,
     created_at: u64,
 }
 
@@ -72,11 +73,13 @@ impl SubgraphEntity {
     pub fn new(
         name: SubgraphName,
         current_version_id: Option<String>,
+        pending_version_id: Option<String>,
         created_at: u64,
     ) -> SubgraphEntity {
         SubgraphEntity {
             name: name,
             current_version_id,
+            pending_version_id,
             created_at,
         }
     }
@@ -86,22 +89,46 @@ impl SubgraphEntity {
         entity.set("id", id);
         entity.set("name", self.name.to_string());
         entity.set("currentVersion", self.current_version_id);
+        entity.set("pendingVersion", self.pending_version_id);
         entity.set("createdAt", self.created_at);
         vec![set_entity_operation(Self::TYPENAME, id, entity)]
     }
 
-    pub fn update_current_version_operations(id: &str, version_id: &str) -> Vec<EntityOperation> {
+    pub fn update_current_version_operations(
+        id: &str,
+        version_id_opt: Option<String>,
+    ) -> Vec<EntityOperation> {
         let mut ops = vec![];
 
         ops.push(EntityOperation::AbortUnless {
             description: "Subgraph entity must still exist to be updated".to_owned(),
-            query: Self::query().filter(EntityFilter::Equal("id".to_owned(), id.to_owned().into())),
+            query: Self::query().filter(EntityFilter::new_equal("id", id)),
             entity_ids: vec![id.to_owned()],
         });
 
         let mut entity = Entity::new();
         entity.set("id", id);
-        entity.set("currentVersion", version_id);
+        entity.set("currentVersion", version_id_opt);
+        ops.push(set_entity_operation(Self::TYPENAME, id, entity));
+
+        ops
+    }
+
+    pub fn update_pending_version_operations(
+        id: &str,
+        version_id_opt: Option<String>,
+    ) -> Vec<EntityOperation> {
+        let mut ops = vec![];
+
+        ops.push(EntityOperation::AbortUnless {
+            description: "Subgraph entity must still exist to be updated".to_owned(),
+            query: Self::query().filter(EntityFilter::new_equal("id", id)),
+            entity_ids: vec![id.to_owned()],
+        });
+
+        let mut entity = Entity::new();
+        entity.set("id", id);
+        entity.set("pendingVersion", version_id_opt);
         ops.push(set_entity_operation(Self::TYPENAME, id, entity));
 
         ops
@@ -178,8 +205,7 @@ impl SubgraphDeploymentEntity {
         // Abort unless no entity exists with this ID
         ops.push(EntityOperation::AbortUnless {
             description: "Subgraph deployment entity must not exist yet to be created".to_owned(),
-            query: Self::query()
-                .filter(EntityFilter::Equal("id".to_owned(), id.to_string().into())),
+            query: Self::query().filter(EntityFilter::new_equal("id", id.to_string())),
             entity_ids: vec![],
         });
 
@@ -215,15 +241,9 @@ impl SubgraphDeploymentEntity {
         ops.push(EntityOperation::AbortUnless {
             description: "Subgraph's Ethereum block pointer must match block_ptr_from".to_owned(),
             query: Self::query().filter(EntityFilter::And(vec![
-                EntityFilter::Equal("id".to_owned(), id.to_string().into()),
-                EntityFilter::Equal(
-                    "latestEthereumBlockHash".to_owned(),
-                    block_ptr_from.hash_hex().into(),
-                ),
-                EntityFilter::Equal(
-                    "latestEthereumBlockNumber".to_owned(),
-                    block_ptr_from.number.into(),
-                ),
+                EntityFilter::new_equal("id", id.to_string()),
+                EntityFilter::new_equal("latestEthereumBlockHash", block_ptr_from.hash_hex()),
+                EntityFilter::new_equal("latestEthereumBlockNumber", block_ptr_from.number),
             ])),
             entity_ids: vec![id.to_string()],
         });
@@ -245,9 +265,9 @@ impl SubgraphDeploymentEntity {
 
         ops.push(EntityOperation::AbortUnless {
             description: "Subgraph deployment entity must exist to be updated".to_owned(),
-            query: Self::query().filter(EntityFilter::And(vec![EntityFilter::Equal(
-                "id".to_owned(),
-                id.to_string().into(),
+            query: Self::query().filter(EntityFilter::And(vec![EntityFilter::new_equal(
+                "id",
+                id.to_string(),
             )])),
             entity_ids: vec![id.to_string()],
         });
@@ -268,9 +288,9 @@ impl SubgraphDeploymentEntity {
 
         ops.push(EntityOperation::AbortUnless {
             description: "Subgraph deployment entity must exist to be updated".to_owned(),
-            query: Self::query().filter(EntityFilter::And(vec![EntityFilter::Equal(
-                "id".to_owned(),
-                id.to_string().into(),
+            query: Self::query().filter(EntityFilter::And(vec![EntityFilter::new_equal(
+                "id",
+                id.to_string(),
             )])),
             entity_ids: vec![id.to_string()],
         });
@@ -291,9 +311,9 @@ impl SubgraphDeploymentEntity {
 
         ops.push(EntityOperation::AbortUnless {
             description: "Subgraph deployment entity must exist to be updated".to_owned(),
-            query: Self::query().filter(EntityFilter::And(vec![EntityFilter::Equal(
-                "id".to_owned(),
-                id.to_string().into(),
+            query: Self::query().filter(EntityFilter::And(vec![EntityFilter::new_equal(
+                "id",
+                id.to_string(),
             )])),
             entity_ids: vec![id.to_string()],
         });

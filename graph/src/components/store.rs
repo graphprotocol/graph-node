@@ -1,10 +1,12 @@
 use failure::Error;
 use futures::Future;
 use futures::Stream;
+use std::collections::HashSet;
 use std::fmt;
 use web3::types::H256;
 
 use data::store::*;
+use data::subgraph::schema::*;
 use prelude::*;
 
 /// Key by which an individual entity in the store can be accessed.
@@ -39,6 +41,26 @@ pub enum EntityFilter {
     NotStartsWith(Attribute, Value),
     EndsWith(Attribute, Value),
     NotEndsWith(Attribute, Value),
+}
+
+// Define some convenience methods
+impl EntityFilter {
+    pub fn new_equal(
+        attribute_name: impl Into<Attribute>,
+        attribute_value: impl Into<Value>,
+    ) -> Self {
+        EntityFilter::Equal(attribute_name.into(), attribute_value.into())
+    }
+
+    pub fn new_in(
+        attribute_name: impl Into<Attribute>,
+        attribute_values: Vec<impl Into<Value>>,
+    ) -> Self {
+        EntityFilter::In(
+            attribute_name.into(),
+            attribute_values.into_iter().map(Into::into).collect(),
+        )
+    }
 }
 
 /// The order in which entities should be restored from a store.
@@ -393,19 +415,255 @@ pub trait Store: Send + Sync + 'static {
 
     /// Counts the total number of entities in a subgraph.
     fn count_entities(&self, subgraph: SubgraphDeploymentId) -> Result<u64, Error>;
-}
 
-pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     fn resolve_subgraph_name_to_id(
         &self,
         name: SubgraphName,
-    ) -> Result<Option<SubgraphDeploymentId>, Error>;
+    ) -> Result<Option<SubgraphDeploymentId>, Error> {
+        // Find subgraph entity by name
+        let subgraph_entities = self
+            .find(SubgraphEntity::query().filter(EntityFilter::Equal(
+                "name".to_owned(),
+                name.to_string().into(),
+            )))
+            .map_err(QueryError::from)?;
+        let subgraph_entity = match subgraph_entities.len() {
+            0 => return Ok(None),
+            1 => {
+                let mut subgraph_entities = subgraph_entities;
+                Ok(subgraph_entities.pop().unwrap())
+            }
+            _ => Err(format_err!(
+                "Multiple subgraphs found with name {:?}",
+                name.to_string()
+            )),
+        }?;
+
+        // Get current active subgraph version ID
+        let current_version_id = match subgraph_entity
+            .get("currentVersion")
+            .ok_or_else(|| format_err!("Subgraph entity without `currentVersion`"))?
+        {
+            Value::String(s) => s.to_owned(),
+            Value::Null => return Ok(None),
+            _ => {
+                return Err(format_err!(
+                    "Subgraph entity has wrong type in `currentVersion`"
+                ));
+            }
+        };
+
+        // Read subgraph version entity
+        let version_entity_opt = self
+            .get(SubgraphVersionEntity::key(current_version_id))
+            .map_err(QueryError::from)?;
+        if version_entity_opt == None {
+            return Ok(None);
+        }
+        let version_entity = version_entity_opt.unwrap();
+
+        // Parse subgraph ID
+        let subgraph_id_str = version_entity
+            .get("deployment")
+            .ok_or_else(|| format_err!("SubgraphVersion entity without `deployment`"))?
+            .to_owned()
+            .as_string()
+            .ok_or_else(|| format_err!("SubgraphVersion entity has wrong type in `deployment`"))?;
+        SubgraphDeploymentId::new(subgraph_id_str)
+            .map_err(|()| {
+                format_err!("SubgraphVersion entity has invalid subgraph ID in `deployment`")
+            })
+            .map(Some)
+    }
+
+    /// Read all version entities pointing to the specified deployment IDs and determine whether
+    /// they are current or pending in order to produce `SubgraphVersionSummary`s.
+    fn read_subgraph_version_summaries(
+        &self,
+        deployment_ids: Vec<SubgraphDeploymentId>,
+    ) -> Result<(Vec<SubgraphVersionSummary>, Vec<EntityOperation>), Error> {
+        let version_filter = EntityFilter::new_in(
+            "deployment",
+            deployment_ids.iter().map(|id| id.to_string()).collect(),
+        );
+
+        let mut ops = vec![];
+
+        let versions = self.find(SubgraphVersionEntity::query().filter(version_filter.clone()))?;
+        let version_ids = versions
+            .iter()
+            .map(|version_entity| version_entity.id().unwrap())
+            .collect::<Vec<_>>();
+        ops.push(EntityOperation::AbortUnless {
+            description: "Same set of subgraph versions must match filter".to_owned(),
+            query: SubgraphVersionEntity::query().filter(version_filter),
+            entity_ids: version_ids.clone(),
+        });
+
+        // Find subgraphs with one of these versions as current or pending
+        let subgraphs_with_version_as_current_or_pending =
+            self.find(SubgraphEntity::query().filter(EntityFilter::Or(vec![
+                EntityFilter::new_in("currentVersion", version_ids.clone()),
+                EntityFilter::new_in("pendingVersion", version_ids.clone()),
+            ])))?;
+        let subgraph_ids_with_version_as_current_or_pending =
+            subgraphs_with_version_as_current_or_pending
+                .iter()
+                .map(|subgraph_entity| subgraph_entity.id().unwrap())
+                .collect::<HashSet<_>>();
+        ops.push(EntityOperation::AbortUnless {
+            description: "Same set of subgraphs must have these versions as current or pending"
+                .to_owned(),
+            query: SubgraphEntity::query().filter(EntityFilter::Or(vec![
+                EntityFilter::new_in("currentVersion", version_ids.clone()),
+                EntityFilter::new_in("pendingVersion", version_ids),
+            ])),
+            entity_ids: subgraph_ids_with_version_as_current_or_pending
+                .into_iter()
+                .collect(),
+        });
+
+        // Produce summaries, deriving flags from information in subgraph entities
+        let version_summaries =
+            versions
+                .into_iter()
+                .map(|version_entity| {
+                    let is_current = subgraphs_with_version_as_current_or_pending.iter().any(
+                        |subgraph_entity| {
+                            subgraph_entity.get("currentVersion")
+                                == Some(version_entity.get("id").unwrap())
+                        },
+                    );
+                    let is_pending = subgraphs_with_version_as_current_or_pending.iter().any(
+                        |subgraph_entity| {
+                            subgraph_entity.get("pendingVersion")
+                                == Some(version_entity.get("id").unwrap())
+                        },
+                    );
+
+                    SubgraphVersionSummary {
+                        id: version_entity.id().unwrap(),
+                        subgraph_id: version_entity
+                            .get("subgraph")
+                            .unwrap()
+                            .to_owned()
+                            .as_string()
+                            .unwrap(),
+                        deployment_id: SubgraphDeploymentId::new(
+                            version_entity
+                                .get("deployment")
+                                .unwrap()
+                                .to_owned()
+                                .as_string()
+                                .unwrap(),
+                        )
+                        .unwrap(),
+                        current: is_current,
+                        pending: is_pending,
+                    }
+                })
+                .collect();
+
+        Ok((version_summaries, ops))
+    }
+
+    /// Produce the EntityOperations needed to create/remove SubgraphDeploymentAssignments to
+    /// reflect the addition/removal of SubgraphVersions between `versions_before` and
+    /// `versions_after`. Any new assignments are created with the specified `node_id`.
+    /// `node_id` can be `None` if it is known that no versions were added.
+    fn reconcile_assignments(
+        &self,
+        logger: &Logger,
+        versions_before: Vec<SubgraphVersionSummary>,
+        versions_after: Vec<SubgraphVersionSummary>,
+        node_id: Option<NodeId>,
+    ) -> Vec<EntityOperation> {
+        fn should_have_assignment(version: &SubgraphVersionSummary) -> bool {
+            version.pending || version.current
+        }
+
+        let assignments_before = versions_before
+            .into_iter()
+            .filter(should_have_assignment)
+            .map(|v| v.deployment_id)
+            .collect::<HashSet<_>>();
+        let assignments_after = versions_after
+            .into_iter()
+            .filter(should_have_assignment)
+            .map(|v| v.deployment_id)
+            .collect::<HashSet<_>>();
+        let removed_assignments = &assignments_before - &assignments_after;
+        let added_assignments = &assignments_after - &assignments_before;
+
+        let mut ops = vec![];
+
+        if !removed_assignments.is_empty() {
+            debug!(
+                logger,
+                "Removing subgraph node assignments for {} subgraph deployment ID(s) ({})",
+                removed_assignments.len(),
+                removed_assignments
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        if !added_assignments.is_empty() {
+            debug!(
+                logger,
+                "Adding subgraph node assignments for {} subgraph deployment ID(s) ({})",
+                removed_assignments.len(),
+                removed_assignments
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        if removed_assignments.is_empty() && added_assignments.is_empty() {
+            debug!(
+                logger,
+                "No subgraph node assignment additions/removals needed"
+            );
+        }
+
+        ops.extend(
+            removed_assignments
+                .into_iter()
+                .map(|deployment_id| EntityOperation::Remove {
+                    key: SubgraphDeploymentAssignmentEntity::key(deployment_id),
+                }),
+        );
+        ops.extend(added_assignments.iter().flat_map(|deployment_id| {
+            SubgraphDeploymentAssignmentEntity::new(
+                node_id
+                    .clone()
+                    .expect("Cannot create new subgraph deployment assignment without node ID"),
+            )
+            .write_operations(deployment_id)
+        }));
+
+        ops
+    }
 
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently assigned to an indexing
     /// node, as the store will still accept queries.
-    fn is_deployed(&self, id: &SubgraphDeploymentId) -> Result<bool, Error>;
+    fn is_deployed(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
+        // The subgraph of subgraphs is always deployed.
+        if id == &*SUBGRAPHS_ID {
+            return Ok(true);
+        }
 
+        // Check store for a deployment entity for this subgraph ID
+        self.get(SubgraphDeploymentEntity::key(id.to_owned()))
+            .map_err(|e| format_err!("Failed to query SubgraphDeployment entities: {}", e))
+            .map(|entity_opt| entity_opt.is_some())
+    }
+}
+
+pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Schema, Error>;
 }
 

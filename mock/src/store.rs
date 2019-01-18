@@ -298,17 +298,6 @@ impl Store for MockStore {
 }
 
 impl SubgraphDeploymentStore for MockStore {
-    fn resolve_subgraph_name_to_id(
-        &self,
-        _name: SubgraphName,
-    ) -> Result<Option<SubgraphDeploymentId>, Error> {
-        unimplemented!();
-    }
-
-    fn is_deployed(&self, subgraph_id: &SubgraphDeploymentId) -> Result<bool, Error> {
-        Ok(self.schemas.keys().any(|id| subgraph_id == id))
-    }
-
     fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Schema, Error> {
         Ok(self.schemas.get(&subgraph_id).unwrap().clone())
     }

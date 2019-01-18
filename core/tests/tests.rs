@@ -200,6 +200,7 @@ fn added_subgraph_id_eq(
 }
 
 #[test]
+#[ignore]
 fn subgraph_provider_events() {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     runtime
@@ -222,6 +223,7 @@ fn subgraph_provider_events() {
                 store.clone(),
                 store,
                 node_id.clone(),
+                SubgraphVersionSwitchingMode::Instant,
             );
             registrar
                 .start()
@@ -368,6 +370,7 @@ fn subgraph_list() {
                 store.clone(),
                 store,
                 node_id.clone(),
+                SubgraphVersionSwitchingMode::Instant,
             );
             registrar
                 .start()

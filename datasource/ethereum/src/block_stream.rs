@@ -1,12 +1,15 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std;
+use std::collections::HashSet;
 use std::env;
 use std::mem;
 use std::sync::Mutex;
 
 use graph::components::forward;
-use graph::data::subgraph::schema::SubgraphDeploymentEntity;
+use graph::data::subgraph::schema::{
+    SubgraphDeploymentEntity, SubgraphEntity, SubgraphVersionEntity,
+};
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
 };
@@ -553,7 +556,132 @@ where
             Ok(())
         } else {
             // Synced
-            let ops = SubgraphDeploymentEntity::update_synced_operations(&self.subgraph_id, true);
+            let mut ops = vec![];
+
+            // Set deployment synced flag
+            ops.extend(SubgraphDeploymentEntity::update_synced_operations(
+                &self.subgraph_id,
+                true,
+            ));
+
+            // Find versions pointing to this deployment
+            let versions = self
+                .subgraph_store
+                .find(SubgraphVersionEntity::query().filter(EntityFilter::Equal(
+                    "deployment".to_owned(),
+                    self.subgraph_id.to_string().into(),
+                )))?;
+            let version_ids = versions
+                .iter()
+                .map(|entity| entity.id().unwrap())
+                .collect::<Vec<_>>();
+            let version_id_values = version_ids.iter().map(Value::from).collect::<Vec<_>>();
+            ops.push(EntityOperation::AbortUnless {
+                description: "The same subgraph version entities must point to this deployment"
+                    .to_owned(),
+                query: SubgraphVersionEntity::query().filter(EntityFilter::Equal(
+                    "deployment".to_owned(),
+                    self.subgraph_id.to_string().into(),
+                )),
+                entity_ids: version_ids.clone(),
+            });
+
+            // Find subgraphs with one of these versions as pending version
+            let subgraphs_to_update =
+                self.subgraph_store
+                    .find(SubgraphEntity::query().filter(EntityFilter::In(
+                        "pendingVersion".to_owned(),
+                        version_id_values.clone(),
+                    )))?;
+            let subgraph_ids_to_update = subgraphs_to_update
+                .iter()
+                .map(|entity| entity.id().unwrap())
+                .collect();
+            ops.push(EntityOperation::AbortUnless {
+                description: "The same subgraph entities must have these versions pending"
+                    .to_owned(),
+                query: SubgraphEntity::query().filter(EntityFilter::In(
+                    "pendingVersion".to_owned(),
+                    version_id_values.clone(),
+                )),
+                entity_ids: subgraph_ids_to_update,
+            });
+
+            // The current versions of these subgraphs will no longer be current now that this
+            // deployment is synced (they will be replaced by the pending version)
+            let current_version_ids = subgraphs_to_update
+                .iter()
+                .filter_map(|subgraph| match subgraph.get("currentVersion") {
+                    Some(Value::String(id)) => Some(id.to_owned()),
+                    Some(Value::Null) => None,
+                    Some(_) => panic!("subgraph entity has invalid value type in currentVersion"),
+                    None => None,
+                })
+                .collect::<Vec<_>>();
+            let current_versions = self.subgraph_store.find(
+                SubgraphVersionEntity::query()
+                    .filter(EntityFilter::new_in("id", current_version_ids.clone())),
+            )?;
+
+            // These versions becoming non-current might mean that some assignments are no longer
+            // needed. Get a list of deployment IDs that are affected by marking these versions as
+            // non-current.
+            let subgraph_hashes_affected = current_versions
+                .iter()
+                .map(|version| {
+                    SubgraphDeploymentId::new(
+                        version
+                            .get("deployment")
+                            .unwrap()
+                            .to_owned()
+                            .as_string()
+                            .unwrap(),
+                    )
+                    .unwrap()
+                })
+                .collect::<HashSet<_>>();
+
+            // Read version summaries for these subgraph hashes
+            let (versions_before, read_summary_ops) = self
+                .subgraph_store
+                .read_subgraph_version_summaries(subgraph_hashes_affected.into_iter().collect())?;
+            ops.extend(read_summary_ops);
+
+            // Simulate demoting existing current versions to non-current
+            let versions_after = versions_before
+                .clone()
+                .into_iter()
+                .map(|mut version| {
+                    if current_version_ids.contains(&version.id) {
+                        version.current = false;
+                    }
+                    version
+                })
+                .collect::<Vec<_>>();
+
+            // Apply changes to assignments
+            ops.extend(self.subgraph_store.reconcile_assignments(
+                &self.logger,
+                versions_before,
+                versions_after,
+                None, // no new assignments will be added
+            ));
+
+            // Update subgraph entities to promote pending versions to current
+            for subgraph in subgraphs_to_update {
+                let mut data = Entity::new();
+                data.set("id", subgraph.id().unwrap());
+                data.set("pendingVersion", Value::Null);
+                data.set(
+                    "currentVersion",
+                    subgraph.get("pendingVersion").unwrap().to_owned(),
+                );
+                ops.push(EntityOperation::Set {
+                    key: SubgraphEntity::key(subgraph.id().unwrap()),
+                    data,
+                });
+            }
+
             self.subgraph_store
                 .apply_entity_operations(ops, EventSource::None)
                 .map_err(|e| format_err!("Failed to set deployment synced flag: {}", e))

@@ -3,6 +3,7 @@ type Subgraph @entity {
     name: String!
     versions: [SubgraphVersion!]! @derivedFrom(field: "subgraph")
     currentVersion: SubgraphVersion
+    pendingVersion: SubgraphVersion
     createdAt: BigInt!
 }
 
