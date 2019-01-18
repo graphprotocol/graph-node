@@ -200,7 +200,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         28 as i32,
         111.7 as f32,
         false,
-        Some("blue"),
+        None,
     );
     store
         .transact_block_operations(
@@ -291,8 +291,9 @@ fn delete_entity() {
     })
 }
 
+/// Check that user 1 was inserted correctly
 #[test]
-fn get_entity() {
+fn get_entity_1() {
     run_test(|store| -> Result<(), ()> {
         let key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
@@ -313,7 +314,39 @@ fn get_entity() {
         expected_entity.insert("age".to_owned(), Value::Int(67 as i32));
         expected_entity.insert("weight".to_owned(), Value::Float(184.4 as f32));
         expected_entity.insert("coffee".to_owned(), Value::Bool(false));
-        expected_entity.insert("favorite_color".to_owned(), Value::Null);
+        // favorite_color was null, so we expect the property to be omitted
+
+        // Check that the expected entity was returned
+        assert_eq!(result, Some(expected_entity));
+
+        Ok(())
+    })
+}
+
+/// Check that user 3 was updated correctly
+#[test]
+fn get_entity_3() {
+    run_test(|store| -> Result<(), ()> {
+        let key = EntityKey {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            entity_id: "3".to_owned(),
+        };
+        let result = store.get(key).unwrap();
+
+        let mut expected_entity = Entity::new();
+
+        expected_entity.insert("id".to_owned(), "3".into());
+        expected_entity.insert("name".to_owned(), "Shaqueeena".into());
+        expected_entity.insert(
+            "bin_name".to_owned(),
+            Value::Bytes("Shaqueeena".as_bytes().into()),
+        );
+        expected_entity.insert("email".to_owned(), "teeko@email.com".into());
+        expected_entity.insert("age".to_owned(), Value::Int(28 as i32));
+        expected_entity.insert("weight".to_owned(), Value::Float(111.7 as f32));
+        expected_entity.insert("coffee".to_owned(), Value::Bool(false));
+        // favorite_color was later set to null, so we expect the property to be omitted
 
         // Check that the expected entity was returned
         assert_eq!(result, Some(expected_entity));
@@ -1113,7 +1146,7 @@ fn find_bytes_equal() {
 #[test]
 fn find_null_equal() {
     test_find(
-        vec!["1"],
+        vec!["3", "1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: "user".to_owned(),
@@ -1131,7 +1164,7 @@ fn find_null_equal() {
 #[test]
 fn find_null_not_equal() {
     test_find(
-        vec!["3", "2"],
+        vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: "user".to_owned(),
@@ -1146,7 +1179,7 @@ fn find_null_not_equal() {
 #[test]
 fn find_null_not_in() {
     test_find(
-        vec!["3", "2"],
+        vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: "user".to_owned(),

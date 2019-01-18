@@ -221,15 +221,11 @@ impl EntityOperation {
         use self::EntityOperation::*;
 
         match self {
-            Set { data, .. } => Ok(Some(
-                entity
-                    .map(|entity| {
-                        let mut entity = entity.clone();
-                        entity.merge(data.clone());
-                        entity
-                    })
-                    .unwrap_or_else(|| data.clone()),
-            )),
+            Set { data, .. } => {
+                let mut entity = entity.unwrap_or(Entity::new());
+                entity.merge(data.clone());
+                Ok(Some(entity))
+            }
             Remove { .. } => Ok(None),
             AbortUnless { .. } => Err(format_err!(
                 "Cannot apply AbortUnless entity operation to an entity"
