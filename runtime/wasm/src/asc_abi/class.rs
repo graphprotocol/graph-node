@@ -3,7 +3,7 @@ use ethabi;
 use graph::data::store;
 use graph::serde_json;
 use std::marker::PhantomData;
-use std::mem::{self, size_of, size_of_val};
+use std::mem::{size_of, size_of_val};
 
 ///! Rust types that have with a direct correspondence to an Asc class,
 ///! with their `AscType` implementations.
@@ -68,7 +68,7 @@ impl<T> AscType for ArrayBuffer<T> {
         let mut asc_layout: Vec<u8> = Vec::new();
 
         // This is just `self.byte_length.to_bytes()` which is unstable.
-        let byte_length: [u8; 4] = unsafe { mem::transmute(self.byte_length) };
+        let byte_length: [u8; 4] = self.byte_length.to_le_bytes();
         asc_layout.extend(&byte_length);
         asc_layout.extend(&self.padding);
         asc_layout.extend(self.content.iter());
@@ -165,8 +165,7 @@ impl AscType for AscString {
     fn to_asc_bytes(&self) -> Vec<u8> {
         let mut asc_layout: Vec<u8> = Vec::new();
 
-        // This is just `self.length.to_bytes()` which is unstable.
-        let length: [u8; 4] = unsafe { mem::transmute(self.length) };
+        let length: [u8; 4] = self.length.to_le_bytes();
         asc_layout.extend(&length);
 
         // Write the code points, in little-endian (LE) order.
@@ -191,8 +190,7 @@ impl AscType for AscString {
         while offset < asc_obj.len() {
             let code_point_bytes = [asc_obj[offset], asc_obj[offset + 1]];
 
-            // This is just `u16::from_bytes` which is unstable.
-            let code_point = unsafe { mem::transmute(code_point_bytes) };
+            let code_point = u16::from_le_bytes(code_point_bytes);
             content.push(code_point);
             offset += size_of::<u16>();
         }
@@ -241,8 +239,7 @@ impl AscValue for EnumPayload {}
 
 impl From<EnumPayload> for i32 {
     fn from(payload: EnumPayload) -> i32 {
-        // This is just `i32::from_bytes` which is unstable.
-        unsafe { ::std::mem::transmute::<u32, i32>(payload.0 as u32) }
+        payload.0 as i32
     }
 }
 
@@ -260,8 +257,7 @@ impl From<EnumPayload> for bool {
 
 impl From<i32> for EnumPayload {
     fn from(x: i32) -> EnumPayload {
-        // This is just `i32::from_bytes` which is unstable.
-        EnumPayload(unsafe { ::std::mem::transmute::<i32, u32>(x) } as u64)
+        EnumPayload(x as u64)
     }
 }
 
@@ -279,8 +275,7 @@ impl From<bool> for EnumPayload {
 
 impl From<i64> for EnumPayload {
     fn from(x: i64) -> EnumPayload {
-        // This is just `u64::from_bytes` which is unstable.
-        EnumPayload(unsafe { ::std::mem::transmute::<i64, u64>(x) })
+        EnumPayload(x as u64)
     }
 }
 

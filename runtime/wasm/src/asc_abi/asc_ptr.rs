@@ -1,7 +1,7 @@
 use super::{class::EnumPayload, AscHeap, AscType};
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem::{self, size_of};
+use std::mem::size_of;
 use wasmi::{FromRuntimeValue, RuntimeValue};
 
 /// A pointer to an object in the Asc heap.
@@ -49,9 +49,7 @@ impl<C: AscType> AscPtr<C> {
         let raw_bytes = heap.get(self.0, size_of::<u32>() as u32).unwrap();
         let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
         u32_bytes.copy_from_slice(&raw_bytes);
-
-        // Get the u32 from the bytes. This is just `u32::from_bytes` which is unstable.
-        unsafe { mem::transmute(u32_bytes) }
+        u32::from_le_bytes(u32_bytes)
     }
 
     /// Conversion to `u64` for use with `AscEnum`.
