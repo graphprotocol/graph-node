@@ -199,6 +199,8 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                     Ok(s.into_filter(attribute, op))
                 }
                 Value::Null => Ok(if is_negated {
+                    // Value is not null if the property is present ("IS NOT NULL") and is not a
+                    // value of the 'Null' type.
                     Box::new(
                         sql("data -> ")
                             .bind::<Text, _>(attribute.clone())
@@ -210,6 +212,8 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                             ),
                     )
                 } else {
+                    // Value is null if the property is missing ("IS NULL") or is present but is a
+                    // value of the 'Null' type.
                     Box::new(
                         sql("data -> ")
                             .bind::<Text, _>(attribute.clone())
