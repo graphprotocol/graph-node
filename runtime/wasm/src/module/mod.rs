@@ -60,22 +60,21 @@ pub struct WasmiModuleConfig<T, L, S> {
 }
 
 /// A WASM module based on wasmi that powers a subgraph runtime.
-pub struct WasmiModule<T, L, S, U> {
+pub(crate) struct ValidModule<T, L, S, U> {
     pub logger: Logger,
-    pub module: ModuleRef,
-    memory: MemoryRef,
+    pub module: Module,
     host_exports: host_exports::HostExports<T, L, S, U>,
-    start_time: Instant,
+    user_module: Option<String>,
 }
 
-impl<T, L, S, U> WasmiModule<T, L, S, U>
+impl<T, L, S, U> ValidModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
     S: Store + Send + Sync + 'static,
     U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + 'static,
 {
-    /// Creates a new wasmi module
+    /// Pre-process and validate the module.
     pub fn new(
         logger: &Logger,
         config: WasmiModuleConfig<T, L, S>,
@@ -83,7 +82,7 @@ where
     ) -> Result<Self, FailureError> {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
-        let parsed_module = config.data_source.mapping.runtime.clone();
+        let parsed_module = config.data_source.mapping.runtime;
 
         // Inject metering calls, which are used for checking timeouts.
         let parsed_module = pwasm_utils::inject_gas_counter(parsed_module, &Default::default())
@@ -109,23 +108,62 @@ where
             _ => return Err(err_msg("WASM module has multiple import sections")),
         };
 
-        let module = Module::from_parity_wasm_module(parsed_module).map_err(|e| {
-            format_err!(
-                "Wasmi could not interpret module of data source `{}`: {}",
-                config.data_source.name,
-                e
-            )
-        })?;
+        let name = config.data_source.name;
+        let module = Module::from_parity_wasm_module(parsed_module)
+            .map_err(|e| format_err!("Invalid module of data source `{}`: {}", name, e))?;
+
+        // Create new instance of externally hosted functions invoker
+        let host_exports = host_exports::HostExports::new(
+            config.subgraph_id,
+            config.data_source.mapping.abis,
+            config.ethereum_adapter.clone(),
+            config.link_resolver.clone(),
+            config.store.clone(),
+            task_sink,
+        );
+
+        Ok(ValidModule {
+            logger,
+            module,
+            host_exports,
+            user_module,
+        })
+    }
+}
+
+/// A WASM module based on wasmi that powers a subgraph runtime.
+pub(crate) struct WasmiModule<'a, T, L, S, U> {
+    pub logger: Logger,
+    pub module: ModuleRef,
+    memory: MemoryRef,
+    host_exports: &'a host_exports::HostExports<T, L, S, U>,
+    start_time: Instant,
+    ctx: EventHandlerContext,
+}
+
+impl<'a, T, L, S, U> WasmiModule<'a, T, L, S, U>
+where
+    T: EthereumAdapter,
+    L: LinkResolver,
+    S: Store + Send + Sync + 'static,
+    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + 'static,
+{
+    /// Creates a new wasmi module
+    pub fn from_valid_module_with_ctx(
+        valid_module: &'a ValidModule<T, L, S, U>,
+        ctx: EventHandlerContext,
+    ) -> Result<Self, FailureError> {
+        let logger = valid_module.logger.new(o!("component" => "WasmiModule"));
 
         // Build import resolver
         let mut imports = ImportsBuilder::new();
         imports.push_resolver("env", &EnvModuleResolver);
-        if let Some(user_module) = user_module {
+        if let Some(user_module) = valid_module.user_module.clone() {
             imports.push_resolver(user_module, &ModuleResolver);
         }
 
         // Instantiate the runtime module using hosted functions and import resolver
-        let module = ModuleInstance::new(&module, &imports)
+        let module = ModuleInstance::new(&valid_module.module, &imports)
             .map_err(|e| format_err!("Failed to instantiate WASM module: {}", e))?;
 
         // Provide access to the WASM runtime linear memory
@@ -137,23 +175,13 @@ where
             .ok_or_else(|| format_err!("Export \"memory\" has an invalid type"))?
             .clone();
 
-        // Create new instance of externally hosted functions invoker
-        let host_exports = host_exports::HostExports::new(
-            config.subgraph_id,
-            config.data_source,
-            config.ethereum_adapter.clone(),
-            config.link_resolver.clone(),
-            config.store.clone(),
-            task_sink,
-            None,
-        );
-
         let mut this = WasmiModule {
             logger,
             module: not_started_module,
             memory,
-            host_exports,
+            host_exports: &valid_module.host_exports,
             start_time: Instant::now(),
+            ctx,
         };
 
         this.module = module
@@ -164,21 +192,17 @@ where
     }
 
     pub(crate) fn handle_ethereum_event(
-        &mut self,
-        ctx: EventHandlerContext,
+        mut self,
         handler_name: &str,
         log: Arc<Log>,
         params: Vec<LogParam>,
     ) -> Result<Vec<EntityOperation>, FailureError> {
-        self.host_exports.ctx = Some(ctx);
         self.start_time = Instant::now();
 
         // Prepare an EthereumEvent for the WASM runtime
         let event = EthereumEventData {
-            block: EthereumBlockData::from(&self.host_exports.ctx.as_ref().unwrap().block.block),
-            transaction: EthereumTransactionData::from(
-                self.host_exports.ctx.as_ref().unwrap().transaction.deref(),
-            ),
+            block: EthereumBlockData::from(&self.ctx.block.block),
+            transaction: EthereumTransactionData::from(self.ctx.transaction.deref()),
             address: log.address,
             log_index: log.log_index.unwrap_or(U256::zero()),
             transaction_log_index: log.transaction_log_index.unwrap_or(U256::zero()),
@@ -190,29 +214,21 @@ where
         let result = self.module.clone().invoke_export(
             handler_name,
             &[RuntimeValue::from(self.asc_new(&event))],
-            self,
+            &mut self,
         );
 
         // Return either the collected entity operations or an error
-        result
-            .map(|_| {
-                self.host_exports
-                    .ctx
-                    .take()
-                    .expect("processing event without context")
-                    .entity_operations
-            })
-            .map_err(|e| {
-                format_err!(
-                    "Failed to handle Ethereum event with handler \"{}\": {}",
-                    handler_name,
-                    e
-                )
-            })
+        result.map(|_| self.ctx.entity_operations).map_err(|e| {
+            format_err!(
+                "Failed to handle Ethereum event with handler \"{}\": {}",
+                handler_name,
+                e
+            )
+        })
     }
 }
 
-impl<T, L, S, U> AscHeap for WasmiModule<T, L, S, U>
+impl<'a, T, L, S, U> AscHeap for WasmiModule<'a, T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
@@ -249,7 +265,7 @@ impl<E> HostError for host_exports::HostExportError<E> where
 }
 
 // Implementation of externals.
-impl<T, L, S, U> WasmiModule<T, L, S, U>
+impl<'a, T, L, S, U> WasmiModule<'a, T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
@@ -303,7 +319,8 @@ where
         let entity = self.asc_get(entity_ptr);
         let id = self.asc_get(id_ptr);
         let data = self.asc_get(data_ptr);
-        self.host_exports.store_set(entity, id, data)?;
+        self.host_exports
+            .store_set(&mut self.ctx, entity, id, data)?;
         Ok(None)
     }
 
@@ -315,7 +332,7 @@ where
     ) -> Result<Option<RuntimeValue>, Trap> {
         let entity = self.asc_get(entity_ptr);
         let id = self.asc_get(id_ptr);
-        self.host_exports.store_remove(entity, id);
+        self.host_exports.store_remove(&mut self.ctx, entity, id);
         Ok(None)
     }
 
@@ -325,9 +342,11 @@ where
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let entity_option = self
-            .host_exports
-            .store_get(self.asc_get(entity_ptr), self.asc_get(id_ptr))?;
+        let entity_option = self.host_exports.store_get(
+            &self.ctx,
+            self.asc_get(entity_ptr),
+            self.asc_get(id_ptr),
+        )?;
 
         Ok(Some(match entity_option {
             Some(entity) => RuntimeValue::from(self.asc_new(&entity)),
@@ -340,7 +359,8 @@ where
         &mut self,
         call_ptr: AscPtr<AscUnresolvedContractCall>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self.host_exports.ethereum_call(self.asc_get(call_ptr))?;
+        let call = self.asc_get(call_ptr);
+        let result = self.host_exports.ethereum_call(&mut self.ctx, call)?;
         Ok(Some(RuntimeValue::from(self.asc_new(&*result))))
     }
 
@@ -538,7 +558,7 @@ where
     }
 }
 
-impl<T, L, S, U> Externals for WasmiModule<T, L, S, U>
+impl<'a, T, L, S, U> Externals for WasmiModule<'a, T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,

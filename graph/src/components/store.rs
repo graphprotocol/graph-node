@@ -241,7 +241,7 @@ impl EntityOperation {
     /// `ops` must not contain any `AbortUnless` operations.
     pub fn apply_all(
         entity: Option<Entity>,
-        ops: &Vec<EntityOperation>,
+        ops: &[&EntityOperation],
     ) -> Result<Option<Entity>, Error> {
         use self::EntityOperation::*;
 

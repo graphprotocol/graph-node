@@ -3,7 +3,6 @@ use futures::sync::oneshot;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
 use graph::data::store::scalar;
-use graph::data::subgraph::DataSource;
 use graph::prelude::*;
 use graph::serde_json;
 use graph::web3::types::H160;
@@ -33,12 +32,11 @@ impl<E: fmt::Display> fmt::Display for HostExportError<E> {
 
 pub(crate) struct HostExports<E, L, S, U> {
     subgraph_id: SubgraphDeploymentId,
-    data_source: DataSource,
+    abis: Vec<MappingABI>,
     ethereum_adapter: Arc<E>,
     link_resolver: Arc<L>,
     store: Arc<S>,
     task_sink: U,
-    pub(crate) ctx: Option<EventHandlerContext>,
 }
 
 impl<E, L, S, U> HostExports<E, L, S, U>
@@ -50,21 +48,19 @@ where
 {
     pub(crate) fn new(
         subgraph_id: SubgraphDeploymentId,
-        data_source: DataSource,
+        abis: Vec<MappingABI>,
         ethereum_adapter: Arc<E>,
         link_resolver: Arc<L>,
         store: Arc<S>,
         task_sink: U,
-        ctx: Option<EventHandlerContext>,
     ) -> Self {
         HostExports {
             subgraph_id,
-            data_source,
+            abis,
             ethereum_adapter,
             link_resolver,
             store,
             task_sink,
-            ctx,
         }
     }
 
@@ -97,7 +93,8 @@ where
     }
 
     pub(crate) fn store_set(
-        &mut self,
+        &self,
+        ctx: &mut EventHandlerContext,
         entity_type: String,
         entity_id: String,
         mut data: HashMap<String, Value>,
@@ -114,38 +111,36 @@ where
             _ => (),
         }
 
-        self.ctx
-            .as_mut()
-            .map(|ctx| &mut ctx.entity_operations)
-            .expect("processing event without context")
-            .push(EntityOperation::Set {
-                key: EntityKey {
-                    subgraph_id: self.subgraph_id.clone(),
-                    entity_type,
-                    entity_id,
-                },
-                data: Entity::from(data),
-            });
+        ctx.entity_operations.push(EntityOperation::Set {
+            key: EntityKey {
+                subgraph_id: self.subgraph_id.clone(),
+                entity_type,
+                entity_id,
+            },
+            data: Entity::from(data),
+        });
 
         Ok(())
     }
 
-    pub(crate) fn store_remove(&mut self, entity_type: String, entity_id: String) {
-        self.ctx
-            .as_mut()
-            .map(|ctx| &mut ctx.entity_operations)
-            .expect("processing event without context")
-            .push(EntityOperation::Remove {
-                key: EntityKey {
-                    subgraph_id: self.subgraph_id.clone(),
-                    entity_type,
-                    entity_id,
-                },
-            });
+    pub(crate) fn store_remove(
+        &self,
+        ctx: &mut EventHandlerContext,
+        entity_type: String,
+        entity_id: String,
+    ) {
+        ctx.entity_operations.push(EntityOperation::Remove {
+            key: EntityKey {
+                subgraph_id: self.subgraph_id.clone(),
+                entity_type,
+                entity_id,
+            },
+        });
     }
 
     pub(crate) fn store_get(
         &self,
+        ctx: &EventHandlerContext,
         entity_type: String,
         entity_id: String,
     ) -> Result<Option<Entity>, HostExportError<impl ExportError>> {
@@ -156,14 +151,9 @@ where
         };
 
         // Get all operations for this entity
-        let matching_operations: Vec<_> = self
-            .ctx
-            .as_ref()
-            .map(|ctx| &ctx.entity_operations)
-            .expect("processing event without context")
-            .clone()
+        let matching_operations: Vec<_> = ctx
+            .entity_operations
             .iter()
-            .cloned()
             .filter(|op| op.matches_entity(&store_key))
             .collect();
 
@@ -201,10 +191,9 @@ where
 
     pub(crate) fn ethereum_call(
         &self,
+        ctx: &EventHandlerContext,
         unresolved_call: UnresolvedContractCall,
     ) -> Result<Vec<Token>, HostExportError<impl ExportError>> {
-        let ctx = self.ctx.as_ref().expect("processing event without context");
-
         debug!(ctx.logger, "Call smart contract";
               "address" => &unresolved_call.contract_address.to_string(),
               "contract" => &unresolved_call.contract_name,
@@ -212,8 +201,6 @@ where
 
         // Obtain the path to the contract ABI
         let contract = self
-            .data_source
-            .mapping
             .abis
             .iter()
             .find(|abi| abi.name == unresolved_call.contract_name)
