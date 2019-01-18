@@ -165,7 +165,9 @@ fn execute_subscription_event<R1>(
 where
     R1: Resolver + 'static,
 {
-    debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
+    if let EventSource::EthereumBlock(ebp) = event.block {
+        debug!(logger, "Execute subscription event"; "block_number" => ebp.number);
+    }
 
     // Create an introspection type store and resolver
     let introspection_schema = introspection_schema();
