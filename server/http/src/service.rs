@@ -327,6 +327,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use graph::web3::types::H256;
     use graph_mock::MockStore;
     use graphql_parser::query as q;
     use http::status::StatusCode;
@@ -335,6 +336,7 @@ mod tests {
     use std::collections::BTreeMap;
     use std::iter::FromIterator;
 
+    use graph::data::subgraph::schema::*;
     use graph::prelude::*;
 
     use super::GraphQLService;
@@ -372,8 +374,35 @@ mod tests {
             id.clone(),
         )
         .unwrap();
+        let manifest = SubgraphManifest {
+            id: id.clone(),
+            location: "".to_owned(),
+            spec_version: "".to_owned(),
+            description: None,
+            repository: None,
+            schema: schema.clone(),
+            data_sources: vec![],
+        };
+
         let graphql_runner = Arc::new(TestGraphQlRunner);
         let store = Arc::new(MockStore::new(vec![(id.clone(), schema)]));
+        store
+            .apply_entity_operations(
+                SubgraphDeploymentEntity::new(
+                    &manifest,
+                    false,
+                    false,
+                    EthereumBlockPointer {
+                        hash: H256::zero(),
+                        number: 0,
+                    },
+                    0,
+                )
+                .create_operations(&id),
+                EventSource::None,
+            )
+            .unwrap();
+
         let node_id = NodeId::new("test").unwrap();
         let mut service = GraphQLService::new(graphql_runner, store, 8001, node_id);
 
@@ -411,12 +440,39 @@ mod tests {
             id.clone(),
         )
         .unwrap();
+        let manifest = SubgraphManifest {
+            id: id.clone(),
+            location: "".to_owned(),
+            spec_version: "".to_owned(),
+            description: None,
+            repository: None,
+            schema: schema.clone(),
+            data_sources: vec![],
+        };
         let graphql_runner = Arc::new(TestGraphQlRunner);
         let store = Arc::new(MockStore::new(vec![(id.clone(), schema)]));
+
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
             .block_on(future::lazy(move || {
                 let res: Result<_, ()> = Ok({
+                    store
+                        .apply_entity_operations(
+                            SubgraphDeploymentEntity::new(
+                                &manifest,
+                                false,
+                                false,
+                                EthereumBlockPointer {
+                                    hash: H256::zero(),
+                                    number: 0,
+                                },
+                                0,
+                            )
+                            .create_operations(&id),
+                            EventSource::None,
+                        )
+                        .unwrap();
+
                     let node_id = NodeId::new("test").unwrap();
                     let mut service = GraphQLService::new(graphql_runner, store, 8001, node_id);
 

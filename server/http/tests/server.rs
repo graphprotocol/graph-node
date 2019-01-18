@@ -65,11 +65,41 @@ impl GraphQlRunner for TestGraphQlRunner {
 #[cfg(test)]
 mod test {
     use super::*;
+    use graph::data::subgraph::schema::*;
+    use graph::web3::types::H256;
     use graph_mock::MockStore;
 
     fn mock_store(id: SubgraphDeploymentId) -> Arc<MockStore> {
         let schema = Schema::parse("scalar Foo", id.clone()).unwrap();
-        Arc::new(MockStore::new(vec![(id, schema)]))
+        let manifest = SubgraphManifest {
+            id: id.clone(),
+            location: "".to_owned(),
+            spec_version: "".to_owned(),
+            description: None,
+            repository: None,
+            schema: schema.clone(),
+            data_sources: vec![],
+        };
+
+        let store = Arc::new(MockStore::new(vec![(id, schema)]));
+        store
+            .apply_entity_operations(
+                SubgraphDeploymentEntity::new(
+                    &manifest,
+                    false,
+                    false,
+                    EthereumBlockPointer {
+                        hash: H256::zero(),
+                        number: 0,
+                    },
+                    0,
+                )
+                .create_operations(&manifest.id),
+                EventSource::None,
+            )
+            .unwrap();
+
+        store
     }
 
     #[test]

@@ -74,7 +74,7 @@ pub mod prelude {
     };
     pub use components::subgraph::{
         RuntimeHost, RuntimeHostBuilder, SubgraphAssignmentProvider, SubgraphInstance,
-        SubgraphInstanceManager, SubgraphRegistrar,
+        SubgraphInstanceManager, SubgraphRegistrar, SubgraphVersionSwitchingMode,
     };
     pub use components::{EventConsumer, EventProducer};
 
@@ -83,7 +83,8 @@ pub mod prelude {
     pub use data::schema::Schema;
     pub use data::store::scalar::{BigInt, BigIntSign};
     pub use data::store::{
-        AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, Value, ValueType,
+        AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, SubgraphVersionSummary,
+        Value, ValueType,
     };
     pub use data::subgraph::schema::TypedEntity;
     pub use data::subgraph::{

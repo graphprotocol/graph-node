@@ -265,9 +265,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Set up Sentry, with release tracking and panic handling;
     // fall back to an empty URL, which will result in no errors being reported
-    let sentry_url = env::var_os("THEGRAPH_SENTRY_URL")
-        .or_else(|| Some("".into()))
-        .unwrap();
+    let sentry_url = env::var_os("THEGRAPH_SENTRY_URL").unwrap_or_else(|| "".into());
     let _sentry = sentry::init((
         sentry_url,
         sentry::ClientOptions {
@@ -450,6 +448,14 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Forward subgraph events from the subgraph provider to the subgraph instance manager
     tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());
 
+    // Check version switching mode environment variable
+    let version_switching_mode = SubgraphVersionSwitchingMode::parse(
+        env::var_os("EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE")
+            .unwrap_or_else(|| "instant".into())
+            .to_str()
+            .expect("invalid version switching mode"),
+    );
+
     // Create named subgraph provider for resolving subgraph name->ID mappings
     let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
         logger.clone(),
@@ -458,6 +464,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         store.clone(),
         store.clone(),
         node_id.clone(),
+        version_switching_mode,
     ));
     tokio::spawn(
         subgraph_registrar
