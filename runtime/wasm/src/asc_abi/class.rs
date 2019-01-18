@@ -67,7 +67,6 @@ impl<T> AscType for ArrayBuffer<T> {
     fn to_asc_bytes(&self) -> Vec<u8> {
         let mut asc_layout: Vec<u8> = Vec::new();
 
-        // This is just `self.byte_length.to_bytes()` which is unstable.
         let byte_length: [u8; 4] = self.byte_length.to_le_bytes();
         asc_layout.extend(&byte_length);
         asc_layout.extend(&self.padding);
