@@ -29,7 +29,9 @@ BEGIN
             id,
             op_id
         FROM entity_history
-        WHERE event_id = event_id_to_revert
+        WHERE (
+            subgraph <> 'subgraphs' AND
+            event_id = event_id_to_revert)
         ORDER BY id DESC
     -- Iterate over entity changes and revert each
     LOOP
@@ -56,7 +58,9 @@ BEGIN
             id,
             op_id
         FROM entity_history
-        WHERE event_id = ANY(event_id_to_revert)
+        WHERE (
+          subgraph <> 'subgraphs' AND
+          event_id = ANY(event_id_to_revert) )
         ORDER BY id DESC
     LOOP
         PERFORM revert_entity_event(row.id, row.op_id);
