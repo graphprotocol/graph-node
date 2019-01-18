@@ -57,14 +57,14 @@ impl MockStore {
                     .iter()
                     .any(|subfilter| entity_matches_filter(entity, subfilter)),
                 EntityFilter::Equal(attr_name, attr_value) => {
-                    entity.get(attr_name) == Some(attr_value)
+                    entity.get(attr_name).unwrap_or(&Value::Null) == attr_value
                 }
                 EntityFilter::In(attr_name, allowed_attr_values) => {
-                    let attr_value = entity.get(attr_name);
+                    let attr_value = entity.get(attr_name).unwrap_or(&Value::Null);
 
                     allowed_attr_values
                         .iter()
-                        .any(|allowed_attr_value| attr_value == Some(allowed_attr_value))
+                        .any(|allowed_attr_value| attr_value == allowed_attr_value)
                 }
                 _ => unimplemented!(),
             }
@@ -188,6 +188,7 @@ impl Store for MockStore {
                     } else {
                         let mut new_entity = data;
                         new_entity.insert("id".to_owned(), key.entity_id.clone().into());
+                        new_entity.retain(|_k, v| *v != Value::Null);
                         entities_of_type.insert(key.entity_id.clone(), new_entity);
 
                         entity_changes
