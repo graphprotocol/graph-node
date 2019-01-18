@@ -75,21 +75,21 @@ impl EthereumAdapter for MockEthereumAdapter {
     }
 }
 
-fn test_module(
+fn test_valid_module(
     data_source: DataSource,
-) -> (WasmiModule<
+) -> ValidModule<
     MockEthereumAdapter,
     ipfs_api::IpfsClient,
     FakeStore,
     Sender<Box<Future<Item = (), Error = ()> + Send>>,
->) {
+> {
     let logger = Logger::root(slog::Discard, o!());
     let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
     let (task_sender, task_receiver) = channel(100);
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     runtime.spawn(task_receiver.for_each(tokio::spawn));
     ::std::mem::forget(runtime);
-    WasmiModule::new(
+    ValidModule::new(
         &logger,
         WasmiModuleConfig {
             subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
@@ -129,7 +129,16 @@ fn mock_data_source(path: &str) -> DataSource {
     }
 }
 
-impl<T, L, S, U> WasmiModule<T, L, S, U>
+fn mock_context() -> EventHandlerContext {
+    EventHandlerContext {
+        logger: Logger::root(slog::Discard, o!()),
+        block: Default::default(),
+        transaction: Default::default(),
+        entity_operations: Vec::new(),
+    }
+}
+
+impl<'a, T, L, S, U> WasmiModule<'a, T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
@@ -178,7 +187,9 @@ where
 
 #[test]
 fn json_conversions() {
-    let mut module = test_module(mock_data_source("wasm_test/string_to_number.wasm"));
+    let valid_module = test_valid_module(mock_data_source("wasm_test/string_to_number.wasm"));
+    let mut module =
+        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
 
     // test u64 conversion
     let number = 9223372036850770800;
@@ -243,7 +254,9 @@ fn json_conversions() {
 
 #[test]
 fn ipfs_cat() {
-    let mut module = test_module(mock_data_source("wasm_test/ipfs_cat.wasm"));
+    let valid_module = test_valid_module(mock_data_source("wasm_test/ipfs_cat.wasm"));
+    let mut module =
+        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
     let ipfs = Arc::new(ipfs_api::IpfsClient::default());
 
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
@@ -266,7 +279,9 @@ fn ipfs_cat() {
 
 #[test]
 fn crypto_keccak256() {
-    let mut module = test_module(mock_data_source("wasm_test/crypto.wasm"));
+    let valid_module = test_valid_module(mock_data_source("wasm_test/crypto.wasm"));
+    let mut module =
+        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
     let input: &[u8] = "eth".as_ref();
     let input: AscPtr<Uint8Array> = module.asc_new(input);
 
@@ -287,7 +302,9 @@ fn crypto_keccak256() {
 
 #[test]
 fn token_numeric_conversion() {
-    let mut module = test_module(mock_data_source("wasm_test/token_to_numeric.wasm"));
+    let valid_module = test_valid_module(mock_data_source("wasm_test/token_to_numeric.wasm"));
+    let mut module =
+        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
 
     // Convert numeric to token and back.
     let num = i32::min_value();
@@ -310,7 +327,9 @@ fn token_numeric_conversion() {
 
 #[test]
 fn big_int_to_from_i32() {
-    let mut module = test_module(mock_data_source("wasm_test/big_int_to_from_i32.wasm"));
+    let valid_module = test_valid_module(mock_data_source("wasm_test/big_int_to_from_i32.wasm"));
+    let mut module =
+        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
 
     // Convert i32 to BigInt
     let input: i32 = -157;
@@ -345,7 +364,9 @@ fn big_int_to_from_i32() {
 
 #[test]
 fn big_int_to_hex() {
-    let mut module = test_module(mock_data_source("wasm_test/big_int_to_hex.wasm"));
+    let valid_module = test_valid_module(mock_data_source("wasm_test/big_int_to_hex.wasm"));
+    let mut module =
+        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
 
     // Convert zero to hex
     let zero = BigInt::from_unsigned_u256(&U256::zero());
@@ -399,7 +420,9 @@ fn big_int_to_hex() {
 
 #[test]
 fn big_int_arithmetic() {
-    let mut module = test_module(mock_data_source("wasm_test/big_int_arithmetic.wasm"));
+    let valid_module = test_valid_module(mock_data_source("wasm_test/big_int_arithmetic.wasm"));
+    let mut module =
+        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
 
     // 0 + 1 = 1
     let zero = BigInt::from(0);
@@ -524,7 +547,9 @@ fn big_int_arithmetic() {
 
 #[test]
 fn abort() {
-    let mut module = test_module(mock_data_source("wasm_test/abort.wasm"));
+    let valid_module = test_valid_module(mock_data_source("wasm_test/abort.wasm"));
+    let mut module =
+        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
     let err = module
         .module
         .clone()
@@ -535,7 +560,9 @@ fn abort() {
 
 #[test]
 fn bytes_to_base58() {
-    let mut module = test_module(mock_data_source("wasm_test/bytes_to_base58.wasm"));
+    let valid_module = test_valid_module(mock_data_source("wasm_test/bytes_to_base58.wasm"));
+    let mut module =
+        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
     let bytes = hex::decode("12207D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89")
         .unwrap();
     let bytes_ptr = module.asc_new(bytes.as_slice());

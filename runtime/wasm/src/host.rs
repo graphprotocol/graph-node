@@ -9,13 +9,13 @@ use graph::data::subgraph::{DataSource, Source};
 use graph::ethabi::LogParam;
 use graph::ethabi::RawLog;
 use graph::prelude::{
-    MappingABI, RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
+    RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
 use graph::util;
 use graph::web3::types::{Log, Transaction};
 
 use super::EventHandlerContext;
-use module::{WasmiModule, WasmiModuleConfig};
+use module::{ValidModule, WasmiModule, WasmiModuleConfig};
 
 pub struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
@@ -179,45 +179,40 @@ impl RuntimeHost {
                 store: store.clone(),
             };
 
-            // Start the mapping as a WASM module
-            let mut module = WasmiModule::new(&module_logger, wasmi_config, task_sender)
-                .expect("Failed to load module");
+            // Validate the mapping's WASM module
+            let valid_module = ValidModule::new(&module_logger, wasmi_config, task_sender)
+                .expect("Failed to validate module");
 
             // Pass incoming events to the WASM module and send entity changes back;
-            // stop when cancelled from the outside
+            // stop when cancelled from the outside.
+            let canceler = cancel_receiver.into_stream();
             handle_event_receiver
-                .map(Some)
-                .select(cancel_receiver.into_stream().map(|_| None).map_err(|_| ()))
-                .for_each(move |request: Option<HandleEventRequest>| {
-                    if let Some(request) = request {
-                        let HandleEventRequest {
-                            handler,
-                            logger,
-                            block,
-                            transaction,
-                            log,
-                            params,
-                            entity_operations,
-                            result_sender,
-                        } = request;
+                .select(canceler.map(|_| panic!("sent to canceler")).map_err(|_| ()))
+                .map_err(|()| err_msg("Canceled"))
+                .for_each(move |request: HandleEventRequest| -> Result<(), Error> {
+                    let HandleEventRequest {
+                        handler,
+                        logger,
+                        block,
+                        transaction,
+                        log,
+                        params,
+                        entity_operations,
+                        result_sender,
+                    } = request;
 
-                        let ctx = EventHandlerContext {
-                            logger,
-                            block,
-                            transaction,
-                            entity_operations,
-                        };
+                    let ctx = EventHandlerContext {
+                        logger,
+                        block,
+                        transaction,
+                        entity_operations,
+                    };
 
-                        let result = module.handle_ethereum_event(
-                            ctx,
-                            handler.handler.as_str(),
-                            log,
-                            params,
-                        );
-                        future::result(result_sender.send(result).map_err(|_| ()))
-                    } else {
-                        future::err(())
-                    }
+                    let result = WasmiModule::from_valid_module_with_ctx(&valid_module, ctx)?
+                        .handle_ethereum_event(handler.handler.as_str(), log, params);
+                    result_sender
+                        .send(result)
+                        .map_err(|_| err_msg("receiver dropped"))
                 })
                 .wait()
                 .ok();
