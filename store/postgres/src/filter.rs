@@ -182,9 +182,9 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
         }
 
         Equal(..) | Not(..) => {
-            let (attribute, op, value) = match filter {
-                Equal(attribute, value) => (attribute, " = ", value),
-                Not(attribute, value) => (attribute, " != ", value),
+            let (attribute, op, is_negated, value) = match filter {
+                Equal(attribute, value) => (attribute, " = ", false, value),
+                Not(attribute, value) => (attribute, " != ", true, value),
                 _ => unreachable!(),
             };
 
@@ -198,13 +198,27 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                     let s = serde_json::to_string(&lst).expect("failed to serialize list value");
                     Ok(s.into_filter(attribute, op))
                 }
-                Value::Null => Ok(Box::new(
-                    sql("data -> ")
-                        .bind::<Text, _>(attribute)
-                        .sql(" ->> 'type'")
-                        .sql(op)
-                        .sql("'Null' "),
-                ) as FilterExpression),
+                Value::Null => Ok(if is_negated {
+                    Box::new(
+                        sql("data -> ")
+                            .bind::<Text, _>(attribute.clone())
+                            .sql(" IS NOT NULL ")
+                            .and(
+                                sql("data -> ")
+                                    .bind::<Text, _>(attribute)
+                                    .sql(" ->> 'type' != 'Null' "),
+                            ),
+                    )
+                } else {
+                    Box::new(
+                        sql("data -> ")
+                            .bind::<Text, _>(attribute.clone())
+                            .sql(" IS NULL ")
+                            .or(sql("data -> ")
+                                .bind::<Text, _>(attribute)
+                                .sql(" ->> 'type' = 'Null' ")),
+                    )
+                }),
                 Value::String(s) => Ok(s.into_filter(attribute, op)),
             }
         }
