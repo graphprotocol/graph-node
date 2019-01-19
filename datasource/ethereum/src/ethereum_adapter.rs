@@ -399,8 +399,18 @@ where
                                         })
                                     })
                                     .and_then(move |receipt| {
+                                        // Parity nodes seem to return receipts with no block hash
+                                        // when a transaction is no longer in the main chain, so
+                                        // this is the same as a receipt being absent entirely.
                                         let receipt_block_hash =
-                                            receipt.block_hash.expect("transaction not in a block");
+                                            receipt.block_hash.ok_or_else(|| {
+                                                format_err!(
+                                                    "Ethereum node returned receipt without block \
+                                                     hash, expected {:?}",
+                                                    block_hash
+                                                )
+                                            })?;
+
                                         // Check if receipt is for the right block
                                         if receipt_block_hash != block_hash {
                                             // If the receipt came from a different block, then the Ethereum
@@ -409,7 +419,7 @@ where
                                             // block.
                                             // There is no way to get the transaction receipt from this block.
                                             Err(format_err!(
-                                                "could not get receipt for block {:?} \
+                                                "Could not get receipt for block {:?} \
                                                  because block is off the main chain",
                                                 block_hash
                                             ))

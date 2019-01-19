@@ -254,7 +254,13 @@ where
                 })
             })
             .and_then(move |receipt| {
-                let receipt_block_hash = receipt.block_hash.expect("transaction not in a block");
+                // Parity nodes seem to return receipts with no block hash when a transaction is no
+                // longer in the main chain, so treat that case the same as a receipt being absent
+                // entirely.
+                let receipt_block_hash = receipt
+                    .block_hash
+                    .ok_or_else(|| BlockIngestorError::BlockUnavailable(block_hash))?;
+
                 // Check if receipt is for the right block
                 if receipt_block_hash != block_hash {
                     trace!(self.logger, "receipt block mismatch";
