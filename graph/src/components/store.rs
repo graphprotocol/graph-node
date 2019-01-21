@@ -533,27 +533,43 @@ pub trait Store: Send + Sync + 'static {
             versions
                 .into_iter()
                 .map(|version_entity| {
+                    let version_entity_id = version_entity.id().unwrap();
+                    let version_entity_id_value = Value::String(version_entity_id.clone());
+                    let subgraph_id = version_entity
+                        .get("subgraph")
+                        .unwrap()
+                        .to_owned()
+                        .as_string()
+                        .unwrap();
+
                     let is_current = subgraphs_with_version_as_current_or_pending.iter().any(
                         |subgraph_entity| {
-                            subgraph_entity.get("currentVersion")
-                                == Some(version_entity.get("id").unwrap())
+                            if subgraph_entity.get("currentVersion")
+                                == Some(&version_entity_id_value)
+                            {
+                                assert_eq!(subgraph_entity.id().unwrap(), subgraph_id);
+                                true
+                            } else {
+                                false
+                            }
                         },
                     );
                     let is_pending = subgraphs_with_version_as_current_or_pending.iter().any(
                         |subgraph_entity| {
-                            subgraph_entity.get("pendingVersion")
-                                == Some(version_entity.get("id").unwrap())
+                            if subgraph_entity.get("pendingVersion")
+                                == Some(&version_entity_id_value)
+                            {
+                                assert_eq!(subgraph_entity.id().unwrap(), subgraph_id);
+                                true
+                            } else {
+                                false
+                            }
                         },
                     );
 
                     SubgraphVersionSummary {
-                        id: version_entity.id().unwrap(),
-                        subgraph_id: version_entity
-                            .get("subgraph")
-                            .unwrap()
-                            .to_owned()
-                            .as_string()
-                            .unwrap(),
+                        id: version_entity_id,
+                        subgraph_id,
                         deployment_id: SubgraphDeploymentId::new(
                             version_entity
                                 .get("deployment")
