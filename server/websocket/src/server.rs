@@ -2,8 +2,8 @@ use futures::prelude::*;
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
 use graph::tokio::net::TcpListener;
+use hyper::Uri;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::path::Path;
 use std::sync::Mutex;
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::{handshake::server::Request, Error as WsError};
@@ -30,14 +30,17 @@ where
         }
     }
 
-    fn subgraph_id_from_url_path(store: Arc<S>, path: &Path) -> Result<SubgraphDeploymentId, ()> {
+    fn subgraph_id_from_url_path(store: Arc<S>, path: &str) -> Result<SubgraphDeploymentId, ()> {
         let path_segments = {
-            let mut segments = path.iter();
+            let mut segments = path.split("/");
 
             // Remove leading '/'
-            assert_eq!(segments.next().and_then(|s| s.to_str()), Some("/"));
+            let first_segment = segments.next();
+            if first_segment != Some("") {
+                return Err(());
+            }
 
-            segments.map(|s| s.to_str().unwrap()).collect::<Vec<_>>()
+            segments.collect::<Vec<_>>()
         };
 
         match path_segments.as_slice() {
@@ -103,7 +106,27 @@ where
                 accept_hdr_async(stream, move |request: &Request| {
                     // Try to obtain the subgraph ID or name from the URL path.
                     // Return a 404 if the URL path contains no name/ID segment.
-                    let path = &request.path;
+
+                    // request.path is straight from the HTTP request line
+                    // and might be an absolute URI (according to RFC7230
+                    // section 5.3.2, "a server MUST accept the absolute-form
+                    // in requests").
+                    //
+                    // Use hyper's URI parser to extract the path part of the
+                    // URI. This will be a no-op in the normal case where
+                    // request.path is only a path.
+                    let path = request.path.parse::<Uri>()
+                        .map_err(|e| {
+                            debug!(
+                                logger,
+                                "Could not parse WebSockets request.path";
+                                "error" => e.to_string()
+                            );
+
+                            WsError::Http(400)
+                        })?
+                        .path().to_owned();
+
                     let subgraph_id = Self::subgraph_id_from_url_path(store.clone(), path.as_ref())
                         .map_err(|()| WsError::Http(404))?;
 
