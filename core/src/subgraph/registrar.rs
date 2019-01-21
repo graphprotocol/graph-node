@@ -431,51 +431,19 @@ fn create_subgraph_version(
 
     // Look up current version's deployment hash
     let current_version_hash_opt = match current_version_id_opt {
-        Some(ref current_version_id) => {
-            let version_entity = store
-                .get(SubgraphVersionEntity::key(current_version_id.clone()))?
-                .ok_or_else(|| {
-                    TransactionAbortError::Other(format!("Subgraph version entity missing"))
-                })
-                .map_err(StoreError::from)?;
-
-            Some(
-                SubgraphDeploymentId::new(
-                    version_entity
-                        .get("deployment")
-                        .unwrap()
-                        .to_owned()
-                        .as_string()
-                        .unwrap(),
-                )
-                .unwrap(),
-            )
-        }
+        Some(ref current_version_id) => Some(get_subgraph_version_deployment_id(
+            store.clone(),
+            current_version_id.clone(),
+        )?),
         None => None,
     };
 
     // Look up pending version's deployment hash
     let pending_version_hash_opt = match pending_version_id_opt {
-        Some(ref pending_version_id) => {
-            let version_entity = store
-                .get(SubgraphVersionEntity::key(pending_version_id.clone()))?
-                .ok_or_else(|| {
-                    TransactionAbortError::Other(format!("Subgraph version entity missing"))
-                })
-                .map_err(StoreError::from)?;
-
-            Some(
-                SubgraphDeploymentId::new(
-                    version_entity
-                        .get("deployment")
-                        .unwrap()
-                        .to_owned()
-                        .as_string()
-                        .unwrap(),
-                )
-                .unwrap(),
-            )
-        }
+        Some(ref pending_version_id) => Some(get_subgraph_version_deployment_id(
+            store.clone(),
+            pending_version_id.clone(),
+        )?),
         None => None,
     };
 
@@ -659,6 +627,26 @@ fn create_subgraph_version(
     );
 
     Ok(())
+}
+
+fn get_subgraph_version_deployment_id(
+    store: Arc<impl Store>,
+    version_id: String,
+) -> Result<SubgraphDeploymentId, SubgraphRegistrarError> {
+    let version_entity = store
+        .get(SubgraphVersionEntity::key(version_id))?
+        .ok_or_else(|| TransactionAbortError::Other(format!("Subgraph version entity missing")))
+        .map_err(StoreError::from)?;
+
+    Ok(SubgraphDeploymentId::new(
+        version_entity
+            .get("deployment")
+            .unwrap()
+            .to_owned()
+            .as_string()
+            .unwrap(),
+    )
+    .unwrap())
 }
 
 fn remove_subgraph(
