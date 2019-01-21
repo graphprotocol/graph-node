@@ -21,7 +21,7 @@ impl<E> ExportError for E where E: fmt::Debug + fmt::Display + Send + Sync + 'st
 
 /// Error raised in host functions.
 #[derive(Debug)]
-pub(crate) struct HostExportError<E>(E);
+pub(crate) struct HostExportError<E>(pub(crate) E);
 
 impl<E: fmt::Display> fmt::Display for HostExportError<E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

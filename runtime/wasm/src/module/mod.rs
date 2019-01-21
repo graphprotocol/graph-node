@@ -13,7 +13,7 @@ use graph::data::subgraph::DataSource;
 use graph::ethabi::LogParam;
 use graph::prelude::{Error as FailureError, *};
 use graph::web3::types::{Log, U256};
-use host_exports;
+use host_exports::{self, HostExportError, HostExports};
 use EventHandlerContext;
 
 use asc_abi::asc_ptr::*;
@@ -63,7 +63,7 @@ pub struct WasmiModuleConfig<T, L, S> {
 pub(crate) struct ValidModule<T, L, S, U> {
     pub logger: Logger,
     pub module: Module,
-    host_exports: host_exports::HostExports<T, L, S, U>,
+    host_exports: HostExports<T, L, S, U>,
     user_module: Option<String>,
 }
 
@@ -113,7 +113,7 @@ where
             .map_err(|e| format_err!("Invalid module of data source `{}`: {}", name, e))?;
 
         // Create new instance of externally hosted functions invoker
-        let host_exports = host_exports::HostExports::new(
+        let host_exports = HostExports::new(
             config.subgraph_id,
             config.data_source.mapping.abis,
             config.ethereum_adapter.clone(),
@@ -136,9 +136,15 @@ pub(crate) struct WasmiModule<'a, T, L, S, U> {
     pub logger: Logger,
     pub module: ModuleRef,
     memory: MemoryRef,
-    host_exports: &'a host_exports::HostExports<T, L, S, U>,
-    start_time: Instant,
+    host_exports: &'a HostExports<T, L, S, U>,
     ctx: EventHandlerContext,
+
+    // Time when the current handler began processing.
+    start_time: Instant,
+
+    // True if `run_start` has not yet been called on the module.
+    // This is used to prevent mutating store state in start.
+    running_start: bool,
 }
 
 impl<'a, T, L, S, U> WasmiModule<'a, T, L, S, U>
@@ -180,13 +186,15 @@ where
             module: not_started_module,
             memory,
             host_exports: &valid_module.host_exports,
-            start_time: Instant::now(),
             ctx,
+            start_time: Instant::now(),
+            running_start: true,
         };
 
         this.module = module
             .run_start(&mut this)
             .map_err(|e| format_err!("Failed to start WASM module instance: {}", e))?;
+        this.running_start = false;
 
         Ok(this)
     }
@@ -259,10 +267,7 @@ where
     }
 }
 
-impl<E> HostError for host_exports::HostExportError<E> where
-    E: fmt::Debug + fmt::Display + Send + Sync + 'static
-{
-}
+impl<E> HostError for HostExportError<E> where E: fmt::Debug + fmt::Display + Send + Sync + 'static {}
 
 // Implementation of externals.
 impl<'a, T, L, S, U> WasmiModule<'a, T, L, S, U>
@@ -316,6 +321,9 @@ where
         id_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<AscEntity>,
     ) -> Result<Option<RuntimeValue>, Trap> {
+        if self.running_start {
+            return Err(HostExportError("store.set may not be called in start function").into());
+        }
         let entity = self.asc_get(entity_ptr);
         let id = self.asc_get(id_ptr);
         let data = self.asc_get(data_ptr);
@@ -330,6 +338,9 @@ where
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
+        if self.running_start {
+            return Err(HostExportError("store.remove may not be called in start function").into());
+        }
         let entity = self.asc_get(entity_ptr);
         let id = self.asc_get(id_ptr);
         self.host_exports.store_remove(&mut self.ctx, entity, id);

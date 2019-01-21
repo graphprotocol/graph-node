@@ -15,7 +15,7 @@ impl EthereumBlock {
     }
 }
 
-// Remove this and derive after a new web3 is released is released.
+// Remove this and derive after a new web3 is released.
 impl Default for EthereumBlock {
     fn default() -> Self {
         Self {
