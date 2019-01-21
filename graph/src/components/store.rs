@@ -476,8 +476,13 @@ pub trait Store: Send + Sync + 'static {
             .map(Some)
     }
 
-    /// Read all version entities pointing to the specified deployment IDs and determine whether
-    /// they are current or pending in order to produce `SubgraphVersionSummary`s.
+    /// Read all version entities pointing to the specified deployment IDs and
+    /// determine whether they are current or pending in order to produce
+    /// `SubgraphVersionSummary`s.
+    ///
+    /// Returns the version summaries and a sequence of `AbortUnless`
+    /// `EntityOperation`s, which will abort the transaction if the version
+    /// summaries are out of date by the time the entity operations are applied.
     fn read_subgraph_version_summaries(
         &self,
         deployment_ids: Vec<SubgraphDeploymentId>,
