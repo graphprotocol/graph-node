@@ -588,9 +588,10 @@ pub trait Store: Send + Sync + 'static {
         Ok((version_summaries, ops))
     }
 
-    /// Produce the EntityOperations needed to create/remove SubgraphDeploymentAssignments to
-    /// reflect the addition/removal of SubgraphVersions between `versions_before` and
-    /// `versions_after`. Any new assignments are created with the specified `node_id`.
+    /// Produce the EntityOperations needed to create/remove
+    /// SubgraphDeploymentAssignments to reflect the addition/removal of
+    /// SubgraphVersions between `versions_before` and `versions_after`.
+    /// Any new assignments are created with the specified `node_id`.
     /// `node_id` can be `None` if it is known that no versions were added.
     fn reconcile_assignments(
         &self,
