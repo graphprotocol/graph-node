@@ -38,7 +38,7 @@ services:
     ports:
       - "8545:8545"
       - "8546:8546"
-      - "3030:3030"
+      - "30303:30303"
     volumes:
       - ./parity:/root/.local/share/io.parity.ethereum/
     command: >
