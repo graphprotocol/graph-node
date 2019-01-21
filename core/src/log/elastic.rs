@@ -34,7 +34,7 @@ where
     serializer.serialize_str(match level {
         Level::Critical => "critical",
         Level::Error => "error",
-        Level::Warning => "warn",
+        Level::Warning => "warning",
         Level::Info => "info",
         Level::Debug => "debug",
         Level::Trace => "trace",
