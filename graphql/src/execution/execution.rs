@@ -460,7 +460,7 @@ where
                 },
                 type_name,
             )
-            .expect("Failed to resolve named type inside list type");
+            .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
 
             match named_type {
                 // Let the resolver decide how the list field (with the given item object type)
