@@ -29,12 +29,10 @@ pub fn get_operations(document: &Document) -> Vec<&OperationDefinition> {
     document
         .definitions
         .iter()
-        .map(|d| match d {
+        .filter_map(|d| match d {
             Definition::Operation(op) => Some(op),
             _ => None,
         })
-        .filter(|op| op.is_some())
-        .map(|op| op.unwrap())
         .collect()
 }
 
