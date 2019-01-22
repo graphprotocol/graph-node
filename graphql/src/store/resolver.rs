@@ -157,6 +157,7 @@ where
                     _ => None,
                 })
                 .unwrap_or_else(|| {
+                    // Unreachable, caught by `UnknownField` error.
                     panic!(
                         "Field \"{}\" missing in parent object",
                         field_definition.name
