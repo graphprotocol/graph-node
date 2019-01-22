@@ -233,9 +233,7 @@ pub fn collect_entities_from_query_field(
     let mut queue = VecDeque::new();
     queue.push_back((object_type, field));
 
-    while !queue.is_empty() {
-        let (object_type, field) = queue.pop_front().unwrap();
-
+    while let Some((object_type, field)) = queue.pop_front() {
         // Check if the field exists on the object type
         if let Some(field_type) = sast::get_field_type(object_type, &field.name) {
             // Check if the field type corresponds to a type definition (in a valid schema,

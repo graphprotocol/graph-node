@@ -147,7 +147,7 @@ where
     R2: Resolver,
 {
     let mut visited_fragments = visited_fragments.unwrap_or_default();
-    let mut grouped_fields = IndexMap::new();
+    let mut grouped_fields: IndexMap<_, Vec<_>> = IndexMap::new();
 
     // Only consider selections that are not skipped and should be included
     let selections: Vec<_> = selection_set
@@ -163,14 +163,9 @@ where
                 // Obtain the response key for the field
                 let response_key = qast::get_response_key(field);
 
-                // Create a field group for this response key on demand
-                if !grouped_fields.contains_key(response_key) {
-                    grouped_fields.insert(response_key, vec![]);
-                }
-
-                // Append the selection field to this group
-                let mut group = grouped_fields.get_mut(response_key).unwrap();
-                group.push(field);
+                // Create a field group for this response key on demand and
+                // append the selection field to this group.
+                grouped_fields.entry(response_key).or_default().push(field);
             }
 
             q::Selection::FragmentSpread(spread) => {
@@ -212,11 +207,10 @@ where
                         // Add all items from each fragments group to the field group
                         // with the corresponding response key
                         for (response_key, mut fragment_group) in grouped_field_set {
-                            if !grouped_fields.contains_key(response_key) {
-                                grouped_fields.insert(response_key, vec![]);
-                            }
-                            let mut group = grouped_fields.get_mut(response_key).unwrap();
-                            group.append(&mut fragment_group);
+                            grouped_fields
+                                .entry(response_key)
+                                .or_default()
+                                .append(&mut fragment_group);
                         }
                     }
                 }
@@ -741,17 +735,16 @@ where
             } else if sast::is_non_null_type(&argument_def.value_type)
                 && (value.is_none() || value == Some(&q::Value::Null))
             {
-                if value.is_none() {
-                    errors.push(QueryExecutionError::MissingArgumentError(
+                match value {
+                    Some(value) => errors.push(QueryExecutionError::InvalidArgumentError(
                         field.position,
                         argument_def.name.to_owned(),
-                    ));
-                } else {
-                    errors.push(QueryExecutionError::InvalidArgumentError(
+                        value.to_owned(),
+                    )),
+                    None => errors.push(QueryExecutionError::MissingArgumentError(
                         field.position,
                         argument_def.name.to_owned(),
-                        value.unwrap().to_owned(),
-                    ));
+                    )),
                 }
             } else if let Some(val) = value {
                 if val == &q::Value::Null || is_variable {
