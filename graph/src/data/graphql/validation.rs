@@ -1,7 +1,7 @@
 use graphql_parser::schema::*;
 use std::fmt;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Strings(Vec<String>);
 
 impl fmt::Display for Strings {
@@ -11,8 +11,11 @@ impl fmt::Display for Strings {
     }
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Fail, PartialEq, Eq)]
 pub enum SchemaValidationError {
+    #[fail(display = "Interface {} not defined", _0)]
+    UndefinedInterface(String),
+
     #[fail(display = "@entity directive missing on the following types: {}", _0)]
     EntityDirectivesMissing(Strings),
 }

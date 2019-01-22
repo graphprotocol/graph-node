@@ -41,16 +41,6 @@ fn type_object(schema: &Schema, type_objects: &mut TypeObjectsMap, t: &s::Type) 
     }
 }
 
-fn named_type_object(
-    schema: &Schema,
-    type_objects: &mut TypeObjectsMap,
-    name: &s::Name,
-) -> q::Value {
-    sast::get_named_type(&schema.document, name)
-        .map(|typedef| type_definition_object(schema, type_objects, typedef))
-        .unwrap_or_else(|| panic!("Failed to resolve named type in GraphQL schema: {}", name))
-}
-
 fn list_type_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
@@ -180,7 +170,7 @@ fn interface_type_object(
             "possibleTypes",
             q::Value::List(
                 schema
-                    .type_for_interface(&interface_type.name)
+                    .types_for_interface(&interface_type.name)
                     .map(|types| {
                         types
                             .iter()
@@ -263,10 +253,11 @@ fn object_interfaces(
     object_type: &s::ObjectType,
 ) -> q::Value {
     q::Value::List(
-        object_type
-            .implements_interfaces
+        schema
+            .interfaces_for_type(&object_type.name)
+            .unwrap_or(&vec![])
             .iter()
-            .map(|name| named_type_object(schema, type_objects, name))
+            .map(|typedef| interface_type_object(schema, type_objects, typedef))
             .collect(),
     )
 }
