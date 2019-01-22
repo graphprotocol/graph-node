@@ -172,6 +172,7 @@ where
 
     fn start_assigned_subgraphs(&self) -> impl Future<Item = (), Error = Error> {
         let provider = self.provider.clone();
+        let logger = self.logger.clone();
 
         // Create a query to find all assignments with this node ID
         let assignment_query = SubgraphDeploymentAssignmentEntity::query()
@@ -194,7 +195,9 @@ where
             })
             .and_then(move |subgraph_ids| {
                 let provider = provider.clone();
-                stream::iter_ok(subgraph_ids).for_each(move |id| provider.start(id).from_err())
+                stream::iter_ok(subgraph_ids).for_each(move |id| {
+                    start_subgraph(id, &*provider, logger.clone()).map_err(|()| unreachable!())
+                })
             })
     }
 }
@@ -300,30 +303,7 @@ where
         AssignmentEvent::Add {
             subgraph_id,
             node_id: _,
-        } => {
-            Box::new(
-                provider
-                    .start(subgraph_id.clone())
-                    .then(move |result| -> Result<(), _> {
-                        match result {
-                            Ok(()) => Ok(()),
-                            Err(SubgraphAssignmentProviderError::AlreadyRunning(_)) => Ok(()),
-                            Err(e) => {
-                                // Errors here are likely an issue with the subgraph.
-                                // These will be recorded eventually so that they can be displayed
-                                // in a UI.
-                                error!(
-                                    logger,
-                                    "Subgraph instance failed to start";
-                                    "error" => e.to_string(),
-                                    "subgraph_id" => subgraph_id.to_string()
-                                );
-                                Ok(())
-                            }
-                        }
-                    }),
-            )
-        }
+        } => Box::new(start_subgraph(subgraph_id, &*provider, logger).map_err(|()| unreachable!())),
         AssignmentEvent::Remove {
             subgraph_id,
             node_id: _,
@@ -338,6 +318,34 @@ where
                 .map_err(CancelableError::Error),
         ),
     }
+}
+
+// Never errors.
+fn start_subgraph<P: SubgraphAssignmentProviderTrait>(
+    subgraph_id: SubgraphDeploymentId,
+    provider: &P,
+    logger: Logger,
+) -> impl Future<Item = (), Error = ()> + 'static {
+    provider
+        .start(subgraph_id.clone())
+        .then(move |result| -> Result<(), _> {
+            match result {
+                Ok(()) => Ok(()),
+                Err(SubgraphAssignmentProviderError::AlreadyRunning(_)) => Ok(()),
+                Err(e) => {
+                    // Errors here are likely an issue with the subgraph.
+                    // These will be recorded eventually so that they can be displayed
+                    // in a UI.
+                    error!(
+                        logger,
+                        "Subgraph instance failed to start";
+                        "error" => e.to_string(),
+                        "subgraph_id" => subgraph_id.to_string()
+                    );
+                    Ok(())
+                }
+            }
+        })
 }
 
 fn create_subgraph(
