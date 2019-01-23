@@ -26,6 +26,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     let mut schema = input_schema.clone();
     add_builtin_scalar_types(&mut schema)?;
     add_order_direction_enum(&mut schema);
+    add_field_arguments(&mut schema, &input_schema)?;
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_query_type(&mut schema, &object_types, &interface_types)?;
@@ -381,34 +382,109 @@ fn query_fields_for_type(_schema: &Document, type_name: &Name) -> Vec<Field> {
             position: Pos::default(),
             description: None,
             name: type_name.to_plural().to_camel_case(),
-            arguments: vec![
-                input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string())),
-                input_value(&"first".to_string(), "", Type::NamedType("Int".to_string())),
-                input_value(&"last".to_string(), "", Type::NamedType("Int".to_string())),
-                input_value(&"after".to_string(), "", Type::NamedType("ID".to_string())),
-                input_value(&"before".to_string(), "", Type::NamedType("ID".to_string())),
-                input_value(
-                    &"orderBy".to_string(),
-                    "",
-                    Type::NamedType(format!("{}_orderBy", type_name)),
-                ),
-                input_value(
-                    &"orderDirection".to_string(),
-                    "",
-                    Type::NamedType("OrderDirection".to_string()),
-                ),
-                input_value(
-                    &"where".to_string(),
-                    "",
-                    Type::NamedType(format!("{}_filter", type_name)),
-                ),
-            ],
+            arguments: collection_arguments_for_named_type(type_name),
             field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
                 Box::new(Type::NamedType(type_name.to_owned())),
             ))))),
             directives: vec![],
         },
     ]
+}
+
+/// Generates arguments for collection queries of a named type (e.g. User).
+fn collection_arguments_for_named_type(type_name: &Name) -> Vec<InputValue> {
+    vec![
+        input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string())),
+        input_value(&"first".to_string(), "", Type::NamedType("Int".to_string())),
+        input_value(&"last".to_string(), "", Type::NamedType("Int".to_string())),
+        input_value(&"after".to_string(), "", Type::NamedType("ID".to_string())),
+        input_value(&"before".to_string(), "", Type::NamedType("ID".to_string())),
+        input_value(
+            &"orderBy".to_string(),
+            "",
+            Type::NamedType(format!("{}_orderBy", type_name)),
+        ),
+        input_value(
+            &"orderDirection".to_string(),
+            "",
+            Type::NamedType("OrderDirection".to_string()),
+        ),
+        input_value(
+            &"where".to_string(),
+            "",
+            Type::NamedType(format!("{}_filter", type_name)),
+        ),
+    ]
+}
+
+fn add_field_arguments(
+    schema: &mut Document,
+    input_schema: &Document,
+) -> Result<(), APISchemaError> {
+    for input_object_type in ast::get_object_type_definitions(input_schema) {
+        for input_field in &input_object_type.fields {
+            if let Some(input_reference_type) =
+                ast::get_referenced_entity_type(input_schema, &input_field)
+            {
+                if ast::is_list_or_non_null_list_field(&input_field) {
+                    // Get corresponding object type and field in the output schema
+                    let mut object_type = ast::get_object_type_mut(schema, &input_object_type.name)
+                        .expect("object type from input schema is missing in API schema");
+                    let mut field = object_type
+                        .fields
+                        .iter_mut()
+                        .find(|field| field.name == input_field.name)
+                        .expect("field from input schema is missing in API schema");
+
+                    match input_reference_type {
+                        TypeDefinition::Object(ot) => {
+                            field.arguments = collection_arguments_for_named_type(&ot.name);
+                        }
+                        TypeDefinition::Interface(it) => {
+                            field.arguments = collection_arguments_for_named_type(&it.name);
+                        }
+                        _ => unreachable!(
+                            "referenced entity types can only be object or interface types"
+                        ),
+                    }
+                }
+            }
+        }
+    }
+
+    for input_interface_type in ast::get_interface_type_definitions(input_schema) {
+        for input_field in &input_interface_type.fields {
+            if let Some(input_reference_type) =
+                ast::get_referenced_entity_type(input_schema, &input_field)
+            {
+                if ast::is_list_or_non_null_list_field(&input_field) {
+                    // Get corresponding interface type and field in the output schema
+                    let mut interface_type =
+                        ast::get_interface_type_mut(schema, &input_interface_type.name)
+                            .expect("interface type from input schema is missing in API schema");
+                    let mut field = interface_type
+                        .fields
+                        .iter_mut()
+                        .find(|field| field.name == input_field.name)
+                        .expect("field from input schema is missing in API schema");
+
+                    match input_reference_type {
+                        TypeDefinition::Object(ot) => {
+                            field.arguments = collection_arguments_for_named_type(&ot.name);
+                        }
+                        TypeDefinition::Interface(it) => {
+                            field.arguments = collection_arguments_for_named_type(&it.name);
+                        }
+                        _ => unreachable!(
+                            "referenced entity types can only be object or interface types"
+                        ),
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

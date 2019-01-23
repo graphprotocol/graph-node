@@ -2,6 +2,7 @@ use failure::Error;
 use graphql_parser::schema::*;
 use graphql_parser::Pos;
 use lazy_static::lazy_static;
+use std::ops::Deref;
 use std::str::FromStr;
 
 use graph::prelude::ValueType;
@@ -110,6 +111,19 @@ pub fn get_object_type_definitions_mut(schema: &mut Document) -> Vec<&mut Object
         .collect()
 }
 
+/// Returns the object type with the given name.
+pub fn get_object_type_mut<'a>(
+    schema: &'a mut Document,
+    name: &Name,
+) -> Option<&'a mut ObjectType> {
+    use self::TypeDefinition::*;
+
+    get_named_type_definition_mut(schema, name).and_then(|type_def| match type_def {
+        Object(object_type) => Some(object_type),
+        _ => None,
+    })
+}
+
 /// Returns all interface definitions in the schema.
 pub fn get_interface_type_definitions(schema: &Document) -> Vec<&InterfaceType> {
     schema
@@ -132,6 +146,19 @@ pub fn get_interface_type_definitions_mut(schema: &mut Document) -> Vec<&mut Int
             _ => None,
         })
         .collect()
+}
+
+/// Returns the interface type with the given name.
+pub fn get_interface_type_mut<'a>(
+    schema: &'a mut Document,
+    name: &Name,
+) -> Option<&'a mut InterfaceType> {
+    use self::TypeDefinition::*;
+
+    get_named_type_definition_mut(schema, name).and_then(|type_def| match type_def {
+        Interface(interface_type) => Some(interface_type),
+        _ => None,
+    })
 }
 
 /// Returns the type of a field of an object type.
@@ -175,6 +202,28 @@ pub fn get_named_type<'a>(schema: &'a Document, name: &Name) -> Option<&'a TypeD
     schema
         .definitions
         .iter()
+        .filter_map(|def| match def {
+            Definition::TypeDefinition(typedef) => Some(typedef),
+            _ => None,
+        })
+        .find(|typedef| match typedef {
+            TypeDefinition::Object(t) => &t.name == name,
+            TypeDefinition::Enum(t) => &t.name == name,
+            TypeDefinition::InputObject(t) => &t.name == name,
+            TypeDefinition::Interface(t) => &t.name == name,
+            TypeDefinition::Scalar(t) => &t.name == name,
+            TypeDefinition::Union(t) => &t.name == name,
+        })
+}
+
+/// Returns a mutable version of the type with the given name.
+pub fn get_named_type_definition_mut<'a>(
+    schema: &'a mut Document,
+    name: &Name,
+) -> Option<&'a mut TypeDefinition> {
+    schema
+        .definitions
+        .iter_mut()
         .filter_map(|def| match def {
             Definition::TypeDefinition(typedef) => Some(typedef),
             _ => None,
@@ -291,4 +340,74 @@ pub fn is_input_type(schema: &Document, t: &Type) -> bool {
         Type::ListType(inner) => is_input_type(schema, inner),
         Type::NonNullType(inner) => is_input_type(schema, inner),
     }
+}
+
+/// Returns true if the given field is an entity relationship field.
+pub fn is_entity_relationship_field(schema: &Document, field: &Field) -> bool {
+    is_entity_type(schema, &field.field_type)
+}
+
+pub fn is_entity_type(schema: &Document, t: &Type) -> bool {
+    use self::Type::*;
+
+    match t {
+        NamedType(name) => get_named_type(schema, &name).map_or(false, is_entity_type_definition),
+        ListType(inner_type) => is_entity_type(schema, inner_type),
+        NonNullType(inner_type) => is_entity_type(schema, inner_type),
+    }
+}
+
+pub fn is_entity_type_definition(type_def: &TypeDefinition) -> bool {
+    use self::TypeDefinition::*;
+
+    match type_def {
+        // Entity types are obvious
+        Object(object_type) => {
+            get_object_type_directive(object_type, Name::from("entity")).is_some()
+        }
+
+        // For now, we'll assume that only entities can implement interfaces;
+        // thus, any interface type definition is automatically an entity type
+        Interface(_) => true,
+
+        // Everything else (unions, scalars, enums) are not considered entity
+        // types for now
+        _ => false,
+    }
+}
+
+pub fn is_list_or_non_null_list_field(field: &Field) -> bool {
+    use self::Type::*;
+
+    match &field.field_type {
+        ListType(_) => true,
+        NonNullType(inner_type) => match inner_type.deref() {
+            ListType(_) => true,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+pub fn unpack_type<'a>(schema: &'a Document, t: &Type) -> Option<&'a TypeDefinition> {
+    use self::Type::*;
+
+    match t {
+        NamedType(name) => get_named_type(schema, &name),
+        ListType(inner_type) => unpack_type(schema, inner_type),
+        NonNullType(inner_type) => unpack_type(schema, inner_type),
+    }
+}
+
+pub fn get_referenced_entity_type<'a>(
+    schema: &'a Document,
+    field: &Field,
+) -> Option<&'a TypeDefinition> {
+    unpack_type(schema, &field.field_type).and_then(|type_def| {
+        if is_entity_type_definition(type_def) {
+            Some(type_def)
+        } else {
+            None
+        }
+    })
 }
