@@ -59,7 +59,7 @@ pub struct WasmiModuleConfig<T, L, S> {
     pub store: Arc<S>,
 }
 
-/// A WASM module based on wasmi that powers a subgraph runtime.
+/// A pre-processed and valid WASM module, ready to be started as a WasmiModule.
 pub(crate) struct ValidModule<T, L, S, U> {
     pub logger: Logger,
     pub module: Module,
