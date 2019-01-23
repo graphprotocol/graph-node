@@ -161,6 +161,11 @@ impl RuntimeHost {
             })?
             .clone();
 
+        // Spawn a dedicated thread for the runtime.
+        //
+        // In case of failure, this thread may panic or simply terminate,
+        // dropping the `handle_event_receiver` which ultimately causes the
+        // subgraph to fail the next time it tries to handle an event.
         let conf = thread::Builder::new().name(format!(
             "{}-{}-{}",
             util::log::MAPPING_THREAD_PREFIX,
