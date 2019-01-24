@@ -19,9 +19,11 @@ impl LinkResolver for ipfs_api::IpfsClient {
     fn cat(&self, link: &Link) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send> {
         // Discard the `/ipfs/` prefix (if present) to get the hash.
         let path = link.link.trim_left_matches("/ipfs/").to_owned();
-        let max_file_bytes = env::var(MAX_IPFS_FILE_BYTES_ENV_VAR)
-            .ok()
-            .and_then(|s| u64::from_str(&s).ok());
+        let max_file_bytes = env::var(MAX_IPFS_FILE_BYTES_ENV_VAR).ok().map(|s| {
+            u64::from_str(&s).unwrap_or_else(|_| {
+                panic!("failed to parse env var {}", MAX_IPFS_FILE_BYTES_ENV_VAR)
+            })
+        });
 
         let cat = self
             .cat(&path)
@@ -37,7 +39,7 @@ impl LinkResolver for ipfs_api::IpfsClient {
                     .map_err(|e| failure::err_msg(e.to_string()))
                     .and_then(move |stat| match stat.cumulative_size > max_bytes {
                         false => Ok(()),
-                        true => Err(format_err!("Ipfs file {} is too large", path)),
+                        true => Err(format_err!("IPFS file {} is too large", path)),
                     })
                     .and_then(|()| cat),
             ),
@@ -58,5 +60,5 @@ fn max_file_size() {
         .block_on(LinkResolver::cat(&client, &Link { link: link.clone() }))
         .unwrap_err();
     env::remove_var(MAX_IPFS_FILE_BYTES_ENV_VAR);
-    assert_eq!(err.to_string(), format!("Ipfs file {} is too large", link));
+    assert_eq!(err.to_string(), format!("IPFS file {} is too large", link));
 }
