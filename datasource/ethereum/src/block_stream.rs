@@ -1,6 +1,7 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std;
+use std::cmp;
 use std::collections::HashSet;
 use std::env;
 use std::mem;
@@ -314,7 +315,11 @@ where
 
                         // End just prior to reorg threshold.
                         // It isn't safe to go any farther due to race conditions.
-                        let to = head_ptr.number - REORG_THRESHOLD;
+                        let to_limit = head_ptr.number - REORG_THRESHOLD;
+
+                        // But also avoid having too large a range to ensure subgraph block ptr is
+                        // updated frequently.
+                        let to = cmp::min(from + (100_000 - 1), to_limit);
 
                         debug!(ctx.logger, "Finding next blocks with relevant events...");
                         Box::new(
