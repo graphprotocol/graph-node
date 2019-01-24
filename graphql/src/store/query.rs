@@ -522,12 +522,15 @@ mod tests {
     }
 
     #[test]
-    fn build_query_yields_no_range_if_none_is_present() {
+    fn build_query_yields_default_range_if_none_is_present() {
         assert_eq!(
             build_query(&default_object(), &HashMap::new())
                 .unwrap()
                 .range,
-            None,
+            Some(EntityRange {
+                first: 100,
+                skip: 0
+            }),
         );
     }
 
