@@ -126,8 +126,16 @@ impl fmt::Display for QueryExecutionError {
             SubgraphDeploymentIdError(s) => {
                 write!(f, "Failed to get subgraph ID from type: {}", s)
             }
-            RangeArgumentsError(s) => {
-                write!(f, "Range arguments must be properly formed integer: {:}", s.join(", "))
+            RangeArgumentsError(args) => {
+                let msg = args.iter().map(|arg| {
+                    match arg.as_str() {
+                        "first" => format!("Value of \"first\" must be between 1 and 100"),
+                        "last" => format!("Value of \"last\" must be between 1 and 100"),
+                        "skip" => format!("Value of \"skip\" must be greater than 0"),
+                        _ => format!("Value of \"{}\" is must be an integer", arg),
+                    }
+                }).collect::<Vec<_>>().join(", ");
+                write!(f, "{}", msg)
             }
             InvalidFilterError => write!(f, "Filter must by an object"),
             EntityFieldError(e, a) => {

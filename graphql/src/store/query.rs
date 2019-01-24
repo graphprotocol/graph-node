@@ -28,15 +28,15 @@ fn build_range(
         .map_or(Ok(None), |value| {
             if let q::Value::Int(n) = value {
                 match n.as_i64() {
-                    Some(n) => Ok(Some(n)),
-                    None => Err("first".to_string()),
+                    Some(n) if n > 0 && n <= 100 => Ok(Some(n)),
+                    _ => Err("first".to_string()),
                 }
             } else {
                 Err("first".to_string())
             }
         })
         .map(|n| match n {
-            Some(n) if n >= 0 => Some(n as usize),
+            Some(n) => Some(n as usize),
             _ => None,
         });
 
@@ -45,15 +45,15 @@ fn build_range(
         .map_or(Ok(None), |value| {
             if let q::Value::Int(n) = value {
                 match n.as_i64() {
-                    Some(n) => Ok(Some(n)),
-                    None => Err("first".to_string()),
+                    Some(n) if n > 0 => Ok(Some(n)),
+                    _ => Err("skip".to_string()),
                 }
             } else {
                 Err("skip".to_string())
             }
         })
         .map(|n| match n {
-            Some(n) if n >= 0 => Some(n as usize),
+            Some(n) => Some(n as usize),
             _ => None,
         });
 
