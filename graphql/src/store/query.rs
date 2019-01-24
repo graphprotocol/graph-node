@@ -67,7 +67,10 @@ fn build_range(
     }
 
     Ok(match (first.unwrap(), skip.unwrap()) {
-        (None, None) => None,
+        (None, None) => Some(EntityRange {
+            first: 100,
+            skip: 0,
+        }),
         (Some(first), None) => Some(EntityRange { first, skip: 0 }),
         (Some(first), Some(skip)) => Some(EntityRange { first, skip }),
         (None, Some(skip)) => Some(EntityRange { first: 100, skip }),
