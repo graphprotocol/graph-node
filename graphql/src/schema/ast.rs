@@ -342,11 +342,6 @@ pub fn is_input_type(schema: &Document, t: &Type) -> bool {
     }
 }
 
-/// Returns true if the given field is an entity relationship field.
-pub fn is_entity_relationship_field(schema: &Document, field: &Field) -> bool {
-    is_entity_type(schema, &field.field_type)
-}
-
 pub fn is_entity_type(schema: &Document, t: &Type) -> bool {
     use self::Type::*;
 
