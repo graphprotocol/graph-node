@@ -20,9 +20,11 @@ pub enum APISchemaError {
 /// with all its fields and their input arguments, based on the existing
 /// types.
 pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
+    // Refactor: Take `input_schema` by value.
     let object_types = ast::get_object_type_definitions(input_schema);
     let interface_types = ast::get_interface_type_definitions(input_schema);
 
+    // Refactor: Don't clone the schema.
     let mut schema = input_schema.clone();
     add_builtin_scalar_types(&mut schema)?;
     add_order_direction_enum(&mut schema);
@@ -421,6 +423,9 @@ fn add_field_arguments(
     schema: &mut Document,
     input_schema: &Document,
 ) -> Result<(), APISchemaError> {
+    // Refactor: Remove the `input_schema` argument and do a mutable iteration
+    // over the definitions in `schema`. Also the duplication between this and
+    // the loop for interfaces below.
     for input_object_type in ast::get_object_type_definitions(input_schema) {
         for input_field in &input_object_type.fields {
             if let Some(input_reference_type) =
