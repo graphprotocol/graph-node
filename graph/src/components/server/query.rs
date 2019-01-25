@@ -41,10 +41,18 @@ impl From<String> for GraphQLServerError {
 impl fmt::Display for GraphQLServerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            GraphQLServerError::Canceled(_) => write!(f, "Query was canceled"),
-            GraphQLServerError::ClientError(ref s) => write!(f, "{}", s),
-            GraphQLServerError::QueryError(ref e) => write!(f, "{}", e),
-            GraphQLServerError::InternalError(ref s) => write!(f, "{}", s),
+            GraphQLServerError::Canceled(_) => {
+                write!(f, "GraphQL server error (query was canceled)")
+            }
+            GraphQLServerError::ClientError(ref s) => {
+                write!(f, "GraphQL server error (client error): {}", s)
+            }
+            GraphQLServerError::QueryError(ref e) => {
+                write!(f, "GraphQL server error (query error): {}", e)
+            }
+            GraphQLServerError::InternalError(ref s) => {
+                write!(f, "GraphQL server error (internal error): {}", s)
+            }
         }
     }
 }

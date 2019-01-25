@@ -81,11 +81,13 @@ where
 
         // On every incoming request, launch a new GraphQL service that writes
         // incoming queries to the query sink.
+        let logger_for_service = self.logger.clone();
         let graphql_runner = self.graphql_runner.clone();
         let store = self.store.clone();
         let node_id = self.node_id.clone();
         let new_service = move || {
             let service = GraphQLService::new(
+                logger_for_service.clone(),
                 graphql_runner.clone(),
                 store.clone(),
                 ws_port,

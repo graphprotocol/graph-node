@@ -144,7 +144,7 @@ mod test {
                             .expect("Error contains no message")
                             .as_str()
                             .expect("Error message is not a string");
-                        assert_eq!(message, "The \"query\" field missing in request data");
+                        assert_eq!(message, "GraphQL server error (client error): The \"query\" field missing in request data");
                         Ok(())
                     })
             }))

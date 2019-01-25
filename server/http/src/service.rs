@@ -15,6 +15,7 @@ pub type GraphQLServiceResponse =
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
 pub struct GraphQLService<Q, S> {
+    logger: Logger,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
     ws_port: u16,
@@ -24,6 +25,7 @@ pub struct GraphQLService<Q, S> {
 impl<Q, S> Clone for GraphQLService<Q, S> {
     fn clone(&self) -> Self {
         Self {
+            logger: self.logger.clone(),
             graphql_runner: self.graphql_runner.clone(),
             store: self.store.clone(),
             ws_port: self.ws_port,
@@ -38,8 +40,15 @@ where
     S: SubgraphDeploymentStore + Store,
 {
     /// Creates a new GraphQL service.
-    pub fn new(graphql_runner: Arc<Q>, store: Arc<S>, ws_port: u16, node_id: NodeId) -> Self {
+    pub fn new(
+        logger: Logger,
+        graphql_runner: Arc<Q>,
+        store: Arc<S>,
+        ws_port: u16,
+        node_id: NodeId,
+    ) -> Self {
         GraphQLService {
+            logger,
             graphql_runner,
             store,
             ws_port,
@@ -325,31 +334,47 @@ where
     type Future = GraphQLServiceResponse;
 
     fn call(&mut self, req: Request<Self::ReqBody>) -> Self::Future {
+        let logger = self.logger.clone();
+
         // Returning Err here will prevent the client from receiving any response.
         // Instead, we generate a Response with an error code and return Ok
-        Box::new(self.handle_call(req).then(|result| {
-            match result {
-                Ok(response) => Ok(response),
-                Err(GraphQLServerError::Canceled(_)) => Ok(Response::builder()
+        Box::new(self.handle_call(req).then(move |result| match result {
+            Ok(response) => Ok(response),
+            Err(err @ GraphQLServerError::Canceled(_)) => {
+                error!(logger, "GraphQLService call failed: {}", err);
+
+                Ok(Response::builder()
                     .status(500)
                     .header("Content-Type", "text/plain")
                     .body(Body::from("Internal server error (operation canceled)"))
-                    .unwrap()),
-                Err(GraphQLServerError::ClientError(msg)) => Ok(Response::builder()
+                    .unwrap())
+            }
+            Err(err @ GraphQLServerError::ClientError(_)) => {
+                debug!(logger, "GraphQLService call failed: {}", err);
+
+                Ok(Response::builder()
                     .status(400)
                     .header("Content-Type", "text/plain")
-                    .body(Body::from(format!("Invalid request: {}", msg)))
-                    .unwrap()),
-                Err(GraphQLServerError::QueryError(e)) => Ok(Response::builder()
+                    .body(Body::from(format!("Invalid request: {}", err)))
+                    .unwrap())
+            }
+            Err(err @ GraphQLServerError::QueryError(_)) => {
+                error!(logger, "GraphQLService call failed: {}", err);
+
+                Ok(Response::builder()
                     .status(500)
                     .header("Content-Type", "text/plain")
-                    .body(Body::from(format!("Query error: {}", e)))
-                    .unwrap()),
-                Err(GraphQLServerError::InternalError(msg)) => Ok(Response::builder()
+                    .body(Body::from(format!("Query error: {}", err)))
+                    .unwrap())
+            }
+            Err(err @ GraphQLServerError::InternalError(_)) => {
+                error!(logger, "GraphQLService call failed: {}", err);
+
+                Ok(Response::builder()
                     .status(500)
                     .header("Content-Type", "text/plain")
-                    .body(Body::from(format!("Internal server error: {}", msg)))
-                    .unwrap()),
+                    .body(Body::from(format!("Internal server error: {}", err)))
+                    .unwrap())
             }
         }))
     }
@@ -395,6 +420,7 @@ mod tests {
 
     #[test]
     fn posting_invalid_query_yields_error_response() {
+        let logger = Logger::root(slog::Discard, o!());
         let id = SubgraphDeploymentId::new("testschema").unwrap();
         let schema = Schema::parse(
             "\
@@ -434,7 +460,7 @@ mod tests {
             .unwrap();
 
         let node_id = NodeId::new("test").unwrap();
-        let mut service = GraphQLService::new(graphql_runner, store, 8001, node_id);
+        let mut service = GraphQLService::new(logger, graphql_runner, store, 8001, node_id);
 
         let request = Request::builder()
             .method(Method::POST)
@@ -456,11 +482,15 @@ mod tests {
             .as_str()
             .expect("Error message is not a string");
 
-        assert_eq!(message, "The \"query\" field missing in request data");
+        assert_eq!(
+            message,
+            "GraphQL server error (client error): The \"query\" field missing in request data"
+        );
     }
 
     #[test]
     fn posting_valid_queries_yields_result_response() {
+        let logger = Logger::root(slog::Discard, o!());
         let id = SubgraphDeploymentId::new("testschema").unwrap();
         let schema = Schema::parse(
             "\
@@ -504,7 +534,8 @@ mod tests {
                         .unwrap();
 
                     let node_id = NodeId::new("test").unwrap();
-                    let mut service = GraphQLService::new(graphql_runner, store, 8001, node_id);
+                    let mut service =
+                        GraphQLService::new(logger, graphql_runner, store, 8001, node_id);
 
                     let request = Request::builder()
                         .method(Method::POST)

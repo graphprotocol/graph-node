@@ -143,7 +143,7 @@ mod tests {
             .as_str()
             .expect("Error message is not a string");
 
-        assert_eq!(message, "Query was canceled");
+        assert_eq!(message, "GraphQL server error (query was canceled)");
     }
 
     #[test]
@@ -162,7 +162,10 @@ mod tests {
             .as_str()
             .expect("Error message is not a string");
 
-        assert_eq!(message, "Something went wrong");
+        assert_eq!(
+            message,
+            "GraphQL server error (client error): Something went wrong"
+        );
     }
 
     #[test]
@@ -236,6 +239,9 @@ mod tests {
             .as_str()
             .expect("Error message is not a string");
 
-        assert_eq!(message, "Something went wrong");
+        assert_eq!(
+            message,
+            "GraphQL server error (internal error): Something went wrong"
+        );
     }
 }
