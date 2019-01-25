@@ -30,34 +30,34 @@ where
         }
     }
 
-    fn subgraph_id_from_url_path(store: Arc<S>, path: &str) -> Result<SubgraphDeploymentId, ()> {
+    fn subgraph_id_from_url_path(
+        store: Arc<S>,
+        path: &str,
+    ) -> Result<Option<SubgraphDeploymentId>, Error> {
         let path_segments = {
             let mut segments = path.split("/");
 
             // Remove leading '/'
             let first_segment = segments.next();
             if first_segment != Some("") {
-                return Err(());
+                return Ok(None);
             }
 
             segments.collect::<Vec<_>>()
         };
 
         match path_segments.as_slice() {
-            &["subgraphs"] => Ok(SUBGRAPHS_ID.clone()),
-            &["subgraphs", "id", subgraph_id] => SubgraphDeploymentId::new(subgraph_id),
+            &["subgraphs"] => Ok(Some(SUBGRAPHS_ID.clone())),
+            &["subgraphs", "id", subgraph_id] => Ok(SubgraphDeploymentId::new(subgraph_id).ok()),
             &["subgraphs", "name", _] | &["subgraphs", "name", _, _] => {
                 let subgraph_name = path_segments[2..].join("/");
 
-                SubgraphName::new(subgraph_name)
-                    .map(|subgraph_name| {
-                        store
-                            .resolve_subgraph_name_to_id(subgraph_name)
-                            .expect("failed to resolve subgraph name to ID")
-                    })
-                    .and_then(|assignment_opt| assignment_opt.ok_or(()))
+                match SubgraphName::new(subgraph_name) {
+                    Err(()) => Ok(None),
+                    Ok(subgraph_name) => store.resolve_subgraph_name_to_id(subgraph_name),
+                }
             }
-            _ => return Err(()),
+            _ => Ok(None),
         }
     }
 }
@@ -128,7 +128,17 @@ where
                         .path().to_owned();
 
                     let subgraph_id = Self::subgraph_id_from_url_path(store.clone(), path.as_ref())
-                        .map_err(|()| WsError::Http(404))?;
+                        .map_err(|e| {
+                            error!(
+                                logger,
+                                "Error resolving subgraph ID from URL path";
+                                "error" => e.to_string()
+                            );
+
+                            WsError::Http(500)
+                        }).and_then(|subgraph_id_opt| {
+                            subgraph_id_opt.ok_or_else(|| WsError::Http(404))
+                        })?;
 
                     // Check if the subgraph is deployed
                     match store.is_deployed(&subgraph_id) {
