@@ -253,19 +253,8 @@ where
                 .unwrap(),
         ))
     }
-}
 
-impl<Q, S> Service for GraphQLService<Q, S>
-where
-    Q: GraphQlRunner,
-    S: SubgraphDeploymentStore + Store,
-{
-    type ReqBody = Body;
-    type ResBody = Body;
-    type Error = GraphQLServerError;
-    type Future = GraphQLServiceResponse;
-
-    fn call(&mut self, req: Request<Self::ReqBody>) -> Self::Future {
+    fn handle_call(&mut self, req: Request<Body>) -> GraphQLServiceResponse {
         let method = req.method().clone();
 
         let path = req.uri().path().to_owned();
@@ -322,6 +311,47 @@ where
 
             _ => self.handle_not_found(),
         }
+    }
+}
+
+impl<Q, S> Service for GraphQLService<Q, S>
+where
+    Q: GraphQlRunner,
+    S: SubgraphDeploymentStore + Store,
+{
+    type ReqBody = Body;
+    type ResBody = Body;
+    type Error = GraphQLServerError;
+    type Future = GraphQLServiceResponse;
+
+    fn call(&mut self, req: Request<Self::ReqBody>) -> Self::Future {
+        // Returning Err here will prevent the client from receiving any response.
+        // Instead, we generate a Response with an error code and return Ok
+        Box::new(self.handle_call(req).then(|result| {
+            match result {
+                Ok(response) => Ok(response),
+                Err(GraphQLServerError::Canceled(_)) => Ok(Response::builder()
+                    .status(500)
+                    .header("Content-Type", "text/plain")
+                    .body(Body::from("Internal server error (operation canceled)"))
+                    .unwrap()),
+                Err(GraphQLServerError::ClientError(msg)) => Ok(Response::builder()
+                    .status(400)
+                    .header("Content-Type", "text/plain")
+                    .body(Body::from(format!("Invalid request: {}", msg)))
+                    .unwrap()),
+                Err(GraphQLServerError::QueryError(e)) => Ok(Response::builder()
+                    .status(500)
+                    .header("Content-Type", "text/plain")
+                    .body(Body::from(format!("Query error: {}", e)))
+                    .unwrap()),
+                Err(GraphQLServerError::InternalError(msg)) => Ok(Response::builder()
+                    .status(500)
+                    .header("Content-Type", "text/plain")
+                    .body(Body::from(format!("Internal server error: {}", msg)))
+                    .unwrap()),
+            }
+        }))
     }
 }
 
