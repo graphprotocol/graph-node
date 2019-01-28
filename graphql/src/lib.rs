@@ -31,7 +31,7 @@ mod store;
 
 /// Prelude that exports the most important traits and types.
 pub mod prelude {
-    pub use super::execution::{ExecutionContext, Resolver};
+    pub use super::execution::{ExecutionContext, ObjectOrInterface, Resolver};
     pub use super::introspection::{introspection_schema, IntrospectionResolver};
     pub use super::query::{execute_query, QueryExecutionOptions};
     pub use super::schema::{api_schema, APISchemaError};

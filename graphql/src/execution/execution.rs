@@ -490,7 +490,7 @@ where
                         object_value,
                         &field.name,
                         field_definition,
-                        &t,
+                        t,
                         argument_values,
                     )
                 } else {
@@ -498,7 +498,7 @@ where
                         object_value,
                         &field.name,
                         field_definition,
-                        &t,
+                        t,
                         argument_values,
                     )
                 }

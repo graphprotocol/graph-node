@@ -1,3 +1,4 @@
+use execution::ObjectOrInterface;
 use graph::prelude::*;
 use graphql_parser::{query as q, schema as s};
 use schema::ast as sast;
@@ -5,13 +6,14 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
 
 /// Builds a EntityQuery from GraphQL arguments.
-pub fn build_query(
-    entity: &s::ObjectType,
+pub fn build_query<'a>(
+    entity: impl Into<ObjectOrInterface<'a>>,
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<EntityQuery, QueryExecutionError> {
+    let entity = entity.into();
     Ok(EntityQuery {
         subgraph_id: parse_subgraph_id(entity)?,
-        entity_type: entity.name.to_owned(),
+        entity_type: entity.name().to_owned(),
         range: build_range(arguments)?,
         filter: build_filter(entity, arguments)?,
         order_by: build_order_by(entity, arguments)?,
@@ -79,7 +81,7 @@ fn build_range(
 
 /// Parses GraphQL arguments into a EntityFilter, if present.
 fn build_filter(
-    entity: &s::ObjectType,
+    entity: ObjectOrInterface,
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     match arguments.get(&"where".to_string()) {
@@ -94,7 +96,7 @@ fn build_filter(
 
 /// Parses a GraphQL input object into a EntityFilter, if present.
 fn build_filter_from_object(
-    entity: &s::ObjectType,
+    entity: ObjectOrInterface,
     object: &BTreeMap<q::Name, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     Ok(Some(EntityFilter::And({
@@ -106,7 +108,10 @@ fn build_filter_from_object(
                 let (field_name, op) = sast::parse_field_as_filter(key);
 
                 let field = sast::get_field_type(entity, &field_name).ok_or_else(|| {
-                    QueryExecutionError::EntityFieldError(entity.name.clone(), field_name.clone())
+                    QueryExecutionError::EntityFieldError(
+                        entity.name().to_owned(),
+                        field_name.clone(),
+                    )
                 })?;
 
                 let ty = &field.field_type;
@@ -163,7 +168,7 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
 
 /// Parses GraphQL arguments into an field name to order by, if present.
 fn build_order_by(
-    entity: &s::ObjectType,
+    entity: ObjectOrInterface,
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     arguments
@@ -171,13 +176,13 @@ fn build_order_by(
         .map_or(Ok(None), |value| match value {
             q::Value::Enum(name) => {
                 let field = sast::get_field_type(entity, &name).ok_or_else(|| {
-                    QueryExecutionError::EntityFieldError(entity.name.clone(), name.clone())
+                    QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
                 })?;
                 sast::get_field_value_type(&field.field_type)
                     .map(|value_type| Some((name.to_owned(), value_type)))
                     .map_err(|_| {
                         QueryExecutionError::OrderByNotSupportedError(
-                            entity.name.clone(),
+                            entity.name().to_owned(),
                             name.clone(),
                         )
                     })
@@ -200,12 +205,13 @@ fn build_order_direction(
 }
 
 /// Parses the subgraph ID from the ObjectType directives.
-pub fn parse_subgraph_id(
-    entity: &s::ObjectType,
+pub fn parse_subgraph_id<'a>(
+    entity: impl Into<ObjectOrInterface<'a>>,
 ) -> Result<SubgraphDeploymentId, QueryExecutionError> {
-    let entity_name = entity.name.clone();
+    let entity = entity.into();
+    let entity_name = entity.name().clone();
     entity
-        .directives
+        .directives()
         .iter()
         .find(|directive| directive.name == "subgraphId")
         .and_then(|directive| {
@@ -220,7 +226,7 @@ pub fn parse_subgraph_id(
         })
         .ok_or(())
         .and_then(|id| SubgraphDeploymentId::new(id))
-        .map_err(|()| QueryExecutionError::SubgraphDeploymentIdError(entity_name))
+        .map_err(|()| QueryExecutionError::SubgraphDeploymentIdError(entity_name.to_owned()))
 }
 
 /// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.
@@ -251,7 +257,7 @@ pub fn collect_entities_from_query_field(
                         .is_some()
                     {
                         // Obtain the subgraph ID from the object type
-                        if let Ok(subgraph_id) = parse_subgraph_id(&object_type) {
+                        if let Ok(subgraph_id) = parse_subgraph_id(object_type) {
                             // Add the (subgraph_id, entity_name) tuple to the result set
                             entities.insert((subgraph_id, object_type.name.to_owned()));
                         }
