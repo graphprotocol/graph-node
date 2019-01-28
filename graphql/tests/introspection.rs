@@ -16,22 +16,22 @@ use graph_graphql::prelude::*;
 pub struct MockResolver;
 
 impl Resolver for MockResolver {
-    fn resolve_objects(
+    fn resolve_objects<'a>(
         &self,
         _parent: &Option<q::Value>,
         _field: &q::Name,
         _field_definition: &s::Field,
-        _object_type: &s::ObjectType,
+        _object_type: impl Into<ObjectOrInterface<'a>>,
         _arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }
 
-    fn resolve_object(
+    fn resolve_object<'a>(
         &self,
         _parent: &Option<q::Value>,
         _field: &q::Name,
-        _object_type: &s::ObjectType,
+        _object_type: impl Into<ObjectOrInterface<'a>>,
         _arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)

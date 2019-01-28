@@ -5,4 +5,4 @@ mod execution;
 mod resolver;
 
 pub use self::execution::*;
-pub use self::resolver::Resolver;
+pub use self::resolver::{ObjectOrInterface, Resolver};

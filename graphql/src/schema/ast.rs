@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 use std::ops::Deref;
 use std::str::FromStr;
 
+use execution::ObjectOrInterface;
 use graph::prelude::ValueType;
 
 pub(crate) enum FilterOp {
@@ -162,8 +163,15 @@ pub fn get_interface_type_mut<'a>(
 }
 
 /// Returns the type of a field of an object type.
-pub fn get_field_type<'a>(object_type: &'a ObjectType, name: &Name) -> Option<&'a Field> {
-    object_type.fields.iter().find(|field| &field.name == name)
+pub fn get_field_type<'a>(
+    object_type: impl Into<ObjectOrInterface<'a>>,
+    name: &Name,
+) -> Option<&'a Field> {
+    object_type
+        .into()
+        .fields()
+        .iter()
+        .find(|field| &field.name == name)
 }
 
 /// Returns the type of a field of an interface type.

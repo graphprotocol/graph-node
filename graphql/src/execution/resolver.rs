@@ -4,24 +4,65 @@ use std::collections::HashMap;
 use graph::prelude::{QueryExecutionError, StoreEventStreamBox};
 use prelude::*;
 
+#[derive(Copy, Clone)]
+pub enum ObjectOrInterface<'a> {
+    Object(&'a s::ObjectType),
+    Interface(&'a s::InterfaceType),
+}
+
+impl<'a> From<&'a s::ObjectType> for ObjectOrInterface<'a> {
+    fn from(object: &'a s::ObjectType) -> Self {
+        ObjectOrInterface::Object(object)
+    }
+}
+
+impl<'a> From<&'a s::InterfaceType> for ObjectOrInterface<'a> {
+    fn from(interface: &'a s::InterfaceType) -> Self {
+        ObjectOrInterface::Interface(interface)
+    }
+}
+
+impl<'a> ObjectOrInterface<'a> {
+    pub fn name(self) -> &'a str {
+        match self {
+            ObjectOrInterface::Object(object) => &object.name,
+            ObjectOrInterface::Interface(interface) => &interface.name,
+        }
+    }
+
+    pub fn directives(self) -> &'a Vec<s::Directive> {
+        match self {
+            ObjectOrInterface::Object(object) => &object.directives,
+            ObjectOrInterface::Interface(interface) => &interface.directives,
+        }
+    }
+
+    pub fn fields(self) -> &'a Vec<s::Field> {
+        match self {
+            ObjectOrInterface::Object(object) => &object.fields,
+            ObjectOrInterface::Interface(interface) => &interface.fields,
+        }
+    }
+}
+
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
 pub trait Resolver: Clone + Send + Sync {
     /// Resolves entities referenced by a parent object.
-    fn resolve_objects(
+    fn resolve_objects<'a>(
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
         field_definition: &s::Field,
-        object_type: &s::ObjectType,
+        object_type: impl Into<ObjectOrInterface<'a>>,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an entity referenced by a parent object.
-    fn resolve_object(
+    fn resolve_object<'a>(
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
-        object_type: &s::ObjectType,
+        object_type: impl Into<ObjectOrInterface<'a>>,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError>;
 

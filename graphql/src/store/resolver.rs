@@ -59,7 +59,7 @@ where
         query: &mut EntityQuery,
         parent: &Option<q::Value>,
         field_definition: &s::Field,
-        object_type: &s::ObjectType,
+        object_type: ObjectOrInterface,
     ) -> bool {
         let derived_from_field = Self::get_derived_from_directive(field_definition)
             .and_then(|directive| {
@@ -134,7 +134,7 @@ where
         query: &mut EntityQuery,
         parent: &Option<q::Value>,
         field_definition: &s::Field,
-        _object_type: &s::ObjectType,
+        _object_type: ObjectOrInterface,
     ) {
         if let Some(q::Value::Object(object)) = parent {
             // Create an `Or(Equals("id", ref_id1), ...)` filter that includes
@@ -197,11 +197,13 @@ where
     fn add_computed_fields(
         &self,
         mut entity: Entity,
-        object_type: &s::ObjectType,
+        object_type: ObjectOrInterface,
     ) -> Result<Entity, QueryExecutionError> {
         let subgraph_deployment_entity_pair = SubgraphDeploymentEntity::subgraph_entity_pair();
-        if (parse_subgraph_id(object_type)?, object_type.name.clone())
-            == subgraph_deployment_entity_pair
+        if (
+            parse_subgraph_id(object_type)?,
+            object_type.name().to_owned(),
+        ) == subgraph_deployment_entity_pair
         {
             let id = entity
                 .id()
@@ -223,15 +225,16 @@ impl<S> Resolver for StoreResolver<S>
 where
     S: Store,
 {
-    fn resolve_objects(
+    fn resolve_objects<'a>(
         &self,
         parent: &Option<q::Value>,
         _field: &q::Name,
         field_definition: &s::Field,
-        object_type: &s::ObjectType,
+        object_type: impl Into<ObjectOrInterface<'a>>,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        let mut query = build_query(&object_type, arguments)?;
+        let object_type = object_type.into();
+        let mut query = build_query(object_type, arguments)?;
 
         // Add matching filter for derived fields
         let is_derived =
@@ -259,32 +262,33 @@ where
         Ok(q::Value::List(entity_values))
     }
 
-    fn resolve_object(
+    fn resolve_object<'a>(
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
-        object_type: &s::ObjectType,
+        object_type: impl Into<ObjectOrInterface<'a>>,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
+        let object_type = object_type.into();
         let id = arguments.get(&"id".to_string()).and_then(|id| match id {
             q::Value::String(s) => Some(s),
             _ => None,
         });
 
+        // subgraph_id directive is injected in all types.
+        let subgraph_id = parse_subgraph_id(object_type).unwrap();
         let entity = if let Some(id) = id {
             self.store.get(EntityKey {
-                subgraph_id: parse_subgraph_id(object_type).unwrap_or_else(|_| {
-                    panic!("Failed to get subgraph ID from type: {}", object_type.name)
-                }),
-                entity_type: object_type.name.to_owned(),
+                subgraph_id: subgraph_id.clone(),
+                entity_type: object_type.name().to_owned(),
                 entity_id: id.to_owned(),
             })?
         } else {
             match parent {
                 Some(q::Value::Object(parent_object)) => match parent_object.get(field) {
                     Some(q::Value::String(id)) => self.store.get(EntityKey {
-                        subgraph_id: parse_subgraph_id(object_type)?,
-                        entity_type: object_type.name.to_owned(),
+                        subgraph_id: subgraph_id.clone(),
+                        entity_type: object_type.name().to_owned(),
                         entity_id: id.to_owned(),
                     })?,
                     _ => None,
