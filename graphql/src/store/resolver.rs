@@ -1,5 +1,5 @@
 use graphql_parser::{query as q, schema as s};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ops::Deref;
 use std::result;
 use std::sync::Arc;
@@ -232,9 +232,10 @@ where
         field_definition: &s::Field,
         object_type: impl Into<ObjectOrInterface<'a>>,
         arguments: &HashMap<&q::Name, q::Value>,
+        types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
         let object_type = object_type.into();
-        let mut query = build_query(object_type, arguments)?;
+        let mut query = build_query(object_type, arguments, types_for_interface)?;
 
         // Add matching filter for derived fields
         let is_derived =

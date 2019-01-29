@@ -10,6 +10,7 @@ use graphql_parser::{
     Pos,
 };
 use std::collections::BTreeMap;
+use std::iter::FromIterator;
 
 /// A validated and preprocessed GraphQL schema for a subgraph.
 #[derive(Clone, Debug, PartialEq)]
@@ -29,8 +30,17 @@ impl Schema {
         let document = graphql_parser::parse_schema(&raw)?;
         validate_schema(&document)?;
 
+        // Initialize with an empty vec for each interface, so we don't
+        // miss interfaces that have no implementors.
+        let mut types_for_interface =
+            BTreeMap::from_iter(document.definitions.iter().filter_map(|d| match d {
+                schema::Definition::TypeDefinition(TypeDefinition::Interface(t)) => {
+                    Some((t.name.clone(), vec![]))
+                }
+                _ => None,
+            }));
         let mut interfaces_for_type = BTreeMap::<_, Vec<_>>::new();
-        let mut types_for_interface = BTreeMap::<_, Vec<_>>::new();
+
         for object_type in get_object_type_definitions(&document) {
             for implemented_interface in object_type.implements_interfaces.clone() {
                 let interface_type = document
@@ -53,8 +63,8 @@ impl Schema {
                     .or_default()
                     .push(interface_type);
                 types_for_interface
-                    .entry(implemented_interface)
-                    .or_default()
+                    .get_mut(&implemented_interface)
+                    .unwrap()
                     .push(object_type.clone());
             }
         }
@@ -70,10 +80,12 @@ impl Schema {
         Ok(schema)
     }
 
-    pub fn types_for_interface(&self, interface_name: &Name) -> Option<&Vec<ObjectType>> {
-        self.types_for_interface.get(interface_name)
+    /// Returned map has one an entry for each interface in the schema.
+    pub fn types_for_interface(&self) -> &BTreeMap<Name, Vec<ObjectType>> {
+        &self.types_for_interface
     }
 
+    /// Returns `None` if the type implements no interfaces.
     pub fn interfaces_for_type(&self, type_name: &Name) -> Option<&Vec<InterfaceType>> {
         self.interfaces_for_type.get(type_name)
     }

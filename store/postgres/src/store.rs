@@ -1,5 +1,5 @@
 use diesel::debug_query;
-use diesel::dsl::sql;
+use diesel::dsl::{any, sql};
 use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
@@ -321,7 +321,7 @@ impl Store {
         // Create base boxed query; this will be added to based on the
         // query parameters provided
         let mut diesel_query = entities
-            .filter(entity.eq(query.entity_type))
+            .filter(entity.eq(any(query.entity_types)))
             .filter(subgraph.eq(query.subgraph_id.to_string()))
             .select(data)
             .into_boxed::<Pg>();

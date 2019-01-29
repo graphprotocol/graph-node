@@ -492,6 +492,7 @@ where
                         field_definition,
                         t,
                         argument_values,
+                        &BTreeMap::new(), // The introspection schema has no interfaces.
                     )
                 } else {
                     ctx.resolver.resolve_objects(
@@ -500,6 +501,7 @@ where
                         field_definition,
                         t,
                         argument_values,
+                        ctx.schema.types_for_interface(),
                     )
                 }
                 .map_err(|e| vec![e]),

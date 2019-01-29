@@ -1,6 +1,6 @@
 use futures::Stream;
 use graphql_parser::{query as q, schema as s};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use graph::prelude::{QueryExecutionError, StoreEvent};
 use prelude::*;
@@ -56,6 +56,7 @@ pub trait Resolver: Clone + Send + Sync {
         field_definition: &s::Field,
         object_type: impl Into<ObjectOrInterface<'a>>,
         arguments: &HashMap<&q::Name, q::Value>,
+        types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an entity referenced by a parent object.

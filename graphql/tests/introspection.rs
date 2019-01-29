@@ -6,7 +6,7 @@ extern crate graph_graphql;
 extern crate graphql_parser;
 
 use graphql_parser::{query as q, schema as s};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use graph::prelude::*;
 use graph_graphql::prelude::*;
@@ -23,6 +23,7 @@ impl Resolver for MockResolver {
         _field_definition: &s::Field,
         _object_type: impl Into<ObjectOrInterface<'a>>,
         _arguments: &HashMap<&q::Name, q::Value>,
+        _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }

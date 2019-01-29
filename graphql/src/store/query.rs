@@ -1,19 +1,29 @@
 use execution::ObjectOrInterface;
 use graph::prelude::*;
-use graphql_parser::{query as q, schema as s};
+use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
 use schema::ast as sast;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
 
 /// Builds a EntityQuery from GraphQL arguments.
+///
+/// Panics if `entity` is not present in `schema`.
 pub fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     arguments: &HashMap<&q::Name, q::Value>,
+    types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
+    let entity_types = match &entity {
+        ObjectOrInterface::Object(object) => vec![object.name.clone()],
+        ObjectOrInterface::Interface(interface) => types_for_interface[&interface.name]
+            .iter()
+            .map(|o| o.name.clone())
+            .collect(),
+    };
     Ok(EntityQuery {
         subgraph_id: parse_subgraph_id(entity)?,
-        entity_type: entity.name().to_owned(),
+        entity_types,
         range: build_range(arguments)?,
         filter: build_filter(entity, arguments)?,
         order_by: build_order_by(entity, arguments)?,
@@ -358,29 +368,29 @@ mod tests {
     #[test]
     fn build_query_uses_the_entity_name() {
         assert_eq!(
-            build_query(&object("Entity1"), &HashMap::new())
+            build_query(&object("Entity1"), &HashMap::new(), &BTreeMap::new())
                 .unwrap()
-                .entity_type,
-            "Entity1".to_string()
+                .entity_types,
+            vec!["Entity1".to_string()]
         );
         assert_eq!(
-            build_query(&object("Entity2"), &HashMap::new())
+            build_query(&object("Entity2"), &HashMap::new(), &BTreeMap::new())
                 .unwrap()
-                .entity_type,
-            "Entity2".to_string()
+                .entity_types,
+            vec!["Entity2".to_string()]
         );
     }
 
     #[test]
     fn build_query_yields_no_order_if_order_arguments_are_missing() {
         assert_eq!(
-            build_query(&default_object(), &HashMap::new())
+            build_query(&default_object(), &HashMap::new(), &BTreeMap::new())
                 .unwrap()
                 .order_by,
             None,
         );
         assert_eq!(
-            build_query(&default_object(), &HashMap::new())
+            build_query(&default_object(), &HashMap::new(), &BTreeMap::new())
                 .unwrap()
                 .order_direction,
             None,
@@ -394,7 +404,8 @@ mod tests {
                 &default_object(),
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
-                )
+                ),
+                &BTreeMap::new(),
             )
             .unwrap()
             .order_by,
@@ -405,7 +416,8 @@ mod tests {
                 &default_object(),
                 &HashMap::from_iter(
                     vec![(&"orderBy".to_string(), q::Value::Enum("email".to_string()))].into_iter()
-                )
+                ),
+                &BTreeMap::new(),
             )
             .unwrap()
             .order_by,
@@ -422,6 +434,7 @@ mod tests {
                     vec![(&"orderBy".to_string(), q::Value::String("name".to_string()))]
                         .into_iter()
                 ),
+                &BTreeMap::new(),
             )
             .unwrap()
             .order_by,
@@ -436,7 +449,8 @@ mod tests {
                         q::Value::String("email".to_string()),
                     )]
                     .into_iter(),
-                )
+                ),
+                &BTreeMap::new(),
             )
             .unwrap()
             .order_by,
@@ -455,7 +469,8 @@ mod tests {
                         q::Value::Enum("asc".to_string()),
                     )]
                     .into_iter(),
-                )
+                ),
+                &BTreeMap::new(),
             )
             .unwrap()
             .order_direction,
@@ -470,7 +485,8 @@ mod tests {
                         q::Value::Enum("desc".to_string()),
                     )]
                     .into_iter()
-                )
+                ),
+                &BTreeMap::new(),
             )
             .unwrap()
             .order_direction,
@@ -485,7 +501,8 @@ mod tests {
                         q::Value::Enum("ascending...".to_string()),
                     )]
                     .into_iter()
-                )
+                ),
+                &BTreeMap::new(),
             )
             .unwrap()
             .order_direction,
@@ -505,6 +522,7 @@ mod tests {
                     )]
                     .into_iter()
                 ),
+                &BTreeMap::new(),
             )
             .unwrap()
             .order_direction,
@@ -519,7 +537,8 @@ mod tests {
                         q::Value::String("desc".to_string()),
                     )]
                     .into_iter(),
-                )
+                ),
+                &BTreeMap::new()
             )
             .unwrap()
             .order_direction,
@@ -530,7 +549,7 @@ mod tests {
     #[test]
     fn build_query_yields_default_range_if_none_is_present() {
         assert_eq!(
-            build_query(&default_object(), &HashMap::new())
+            build_query(&default_object(), &HashMap::new(), &BTreeMap::new())
                 .unwrap()
                 .range,
             Some(EntityRange {
@@ -547,7 +566,8 @@ mod tests {
                 &default_object(),
                 &HashMap::from_iter(
                     vec![(&"skip".to_string(), q::Value::Int(q::Number::from(50)))].into_iter()
-                )
+                ),
+                &BTreeMap::new(),
             )
             .unwrap()
             .range,
@@ -565,7 +585,8 @@ mod tests {
                 &default_object(),
                 &HashMap::from_iter(
                     vec![(&"first".to_string(), q::Value::Int(q::Number::from(70)))].into_iter()
-                )
+                ),
+                &BTreeMap::new(),
             )
             .unwrap()
             .range,
@@ -590,7 +611,8 @@ mod tests {
                         )])),
                     )]
                     .into_iter(),
-                )
+                ),
+                &BTreeMap::new()
             )
             .unwrap()
             .filter,

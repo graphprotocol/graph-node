@@ -72,7 +72,7 @@ impl MockStore {
 
         let EntityQuery {
             subgraph_id,
-            entity_type,
+            entity_types,
             filter,
             order_by,
             order_direction,
@@ -85,7 +85,7 @@ impl MockStore {
         let entities_of_type = entities
             .get(&subgraph_id)
             .unwrap_or(&empty1)
-            .get(&entity_type)
+            .get(&entity_types[0]) // This does not support querying interfaces.
             .unwrap_or(&empty2)
             .values();
 
