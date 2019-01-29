@@ -39,7 +39,7 @@ pub trait TypedEntity {
     type IdType: ToString;
 
     fn query() -> EntityQuery {
-        EntityQuery::new(SUBGRAPHS_ID.clone(), Self::TYPENAME)
+        EntityQuery::new(SUBGRAPHS_ID.clone(), vec![Self::TYPENAME.to_owned()])
     }
 
     fn subgraph_entity_pair() -> SubgraphEntityPair {

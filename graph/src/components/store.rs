@@ -103,8 +103,8 @@ pub struct EntityQuery {
     /// ID of the subgraph.
     pub subgraph_id: SubgraphDeploymentId,
 
-    /// The name of the entity type.
-    pub entity_type: String,
+    /// The name of the entity types being queried.
+    pub entity_types: Vec<String>,
 
     /// Filter to filter entities by.
     pub filter: Option<EntityFilter>,
@@ -120,10 +120,10 @@ pub struct EntityQuery {
 }
 
 impl EntityQuery {
-    pub fn new(subgraph_id: SubgraphDeploymentId, entity_type: impl Into<String>) -> Self {
+    pub fn new(subgraph_id: SubgraphDeploymentId, entity_types: Vec<String>) -> Self {
         EntityQuery {
             subgraph_id,
-            entity_type: entity_type.into(),
+            entity_types,
             filter: None,
             order_by: None,
             order_direction: None,

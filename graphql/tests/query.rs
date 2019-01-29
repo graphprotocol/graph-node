@@ -200,7 +200,7 @@ impl Store for TestStore {
     }
 
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
-        let entity_name = Value::String(query.entity_type.clone());
+        let entity_name = Value::String(query.entity_types[0].clone());
 
         let entities = self
             .entities

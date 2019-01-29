@@ -169,15 +169,10 @@ fn interface_type_object(
         (
             "possibleTypes",
             q::Value::List(
-                schema
-                    .types_for_interface(&interface_type.name)
-                    .map(|types| {
-                        types
-                            .iter()
-                            .map(|object_type| q::Value::String(object_type.name.to_owned()))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
+                schema.types_for_interface()[&interface_type.name]
+                    .iter()
+                    .map(|object_type| q::Value::String(object_type.name.to_owned()))
+                    .collect(),
             ),
         ),
     ])
@@ -466,6 +461,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         _field_definition: &s::Field,
         _object_type: impl Into<ObjectOrInterface<'b>>,
         _arguments: &HashMap<&q::Name, q::Value>,
+        _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
         match field.as_str() {
             "possibleTypes" => {

@@ -39,5 +39,8 @@ pub mod prelude {
     pub use super::subscription::{execute_subscription, SubscriptionExecutionOptions};
     pub use super::values::{object_value, MaybeCoercible};
 
-    pub use super::graphql_parser::schema;
+    pub use super::graphql_parser::{
+        query::Name,
+        schema::{self, ObjectType},
+    };
 }
