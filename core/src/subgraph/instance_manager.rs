@@ -7,7 +7,6 @@ use std::time::Duration;
 
 use super::SubgraphInstance;
 use elastic_logger;
-use split_logger;
 use ElasticDrainConfig;
 use ElasticLoggingConfig;
 

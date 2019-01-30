@@ -99,5 +99,6 @@ pub mod prelude {
         CancelGuard, CancelHandle, CancelableError, FutureExtension, SharedCancelGuard,
         StreamExtension,
     };
+    pub use ext::slog::split_logger;
     pub use util::futures::retry;
 }
