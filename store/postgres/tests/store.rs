@@ -252,13 +252,19 @@ fn create_test_entity(
 
 /// Removes test data from the database behind the store.
 fn remove_test_data() {
-    use db_schema::entities;
+    use db_schema::{entities, entity_history, event_meta_data};
 
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
     delete(entities::table)
         .execute(&conn)
         .expect("Failed to remove entity test data");
+    delete(entity_history::table)
+        .execute(&conn)
+        .expect("Failed to remove entity history test data");
+    delete(event_meta_data::table)
+        .execute(&conn)
+        .expect("Failed to remove entity change event test data");
 }
 
 #[test]
