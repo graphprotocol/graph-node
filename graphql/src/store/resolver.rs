@@ -225,12 +225,12 @@ impl<S> Resolver for StoreResolver<S>
 where
     S: Store,
 {
-    fn resolve_objects<'a>(
+    fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
         _field: &q::Name,
         field_definition: &s::Field,
-        object_type: impl Into<ObjectOrInterface<'a>>,
+        object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
@@ -263,14 +263,13 @@ where
         Ok(q::Value::List(entity_values))
     }
 
-    fn resolve_object<'a>(
+    fn resolve_object(
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
-        object_type: impl Into<ObjectOrInterface<'a>>,
+        object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        let object_type = object_type.into();
         let id = arguments.get(&"id".to_string()).and_then(|id| match id {
             q::Value::String(s) => Some(s),
             _ => None,
