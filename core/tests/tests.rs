@@ -154,7 +154,10 @@ fn multiple_data_sources_per_subgraph() {
                 // Send the new subgraph to the manager.
                 manager
                     .event_sink()
-                    .send(SubgraphAssignmentProviderEvent::SubgraphStart(subgraph))
+                    .send(SubgraphAssignmentProviderEvent::SubgraphStart(
+                        SubgraphName::new("test-subgraph").unwrap(),
+                        subgraph,
+                    ))
             })
             .and_then(move |_| {
                 // If we created a RuntimeHost for each data source,
@@ -191,10 +194,13 @@ fn multiple_data_sources_per_subgraph() {
 
 fn added_subgraph_id_eq(
     event: &SubgraphAssignmentProviderEvent,
+    subgraph_name: &SubgraphName,
     id: &SubgraphDeploymentId,
 ) -> bool {
     match event {
-        SubgraphAssignmentProviderEvent::SubgraphStart(manifest) => &manifest.id == id,
+        SubgraphAssignmentProviderEvent::SubgraphStart(name, manifest) => {
+            name.to_string() == subgraph_name.to_string() && &manifest.id == id
+        }
         _ => false,
     }
 }
@@ -238,7 +244,7 @@ fn subgraph_provider_events() {
                     let subgraph2_id =
                         SubgraphDeploymentId::new(subgraph2_link.trim_left_matches("/ipfs/"))
                             .unwrap();
-                    let subgraph_name = SubgraphName::new("subgraph").unwrap();
+                    let subgraph_name = SubgraphName::new("test-subgraph").unwrap();
 
                     // Prepare the clones
                     let registrar_clone1 = registrar;
@@ -256,6 +262,8 @@ fn subgraph_provider_events() {
                     let subgraph_name_clone3 = subgraph_name_clone1.clone();
                     let subgraph_name_clone4 = subgraph_name_clone1.clone();
                     let subgraph_name_clone5 = subgraph_name_clone1.clone();
+                    let subgraph_name_clone6 = subgraph_name_clone1.clone();
+                    let subgraph_name_clone7 = subgraph_name_clone1.clone();
                     let node_id_clone1 = node_id;
                     let node_id_clone2 = node_id_clone1.clone();
 
@@ -325,12 +333,16 @@ fn subgraph_provider_events() {
 
                             // Assert that the expected events were sent.
                             assert_eq!(provider_events.len(), 4);
-                            assert!(provider_events
-                                .iter()
-                                .any(|event| added_subgraph_id_eq(event, &subgraph1_id_clone2)));
-                            assert!(provider_events
-                                .iter()
-                                .any(|event| added_subgraph_id_eq(event, &subgraph2_id_clone2)));
+                            assert!(provider_events.iter().any(|event| added_subgraph_id_eq(
+                                event,
+                                &subgraph_name_clone6,
+                                &subgraph1_id_clone2
+                            )));
+                            assert!(provider_events.iter().any(|event| added_subgraph_id_eq(
+                                event,
+                                &subgraph_name_clone7,
+                                &subgraph2_id_clone2
+                            )));
                             assert!(provider_events.iter().any(|event| event
                                 == &SubgraphAssignmentProviderEvent::SubgraphStop(
                                     subgraph1_id_clone2.clone()
