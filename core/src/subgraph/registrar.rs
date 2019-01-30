@@ -136,8 +136,21 @@ where
                                     if let Some(entity) = entity_opt {
                                         if entity.get("nodeId") == Some(&node_id.to_string().into())
                                         {
+                                            // Look up the subgraph for this deployment
+                                            let subgraph = get_subgraph_for_deployment_id(
+                                                store.clone(),
+                                                &subgraph_hash,
+                                            );
+
+                                            // Fail if we can't load the subgraph
+                                            let subgraph = match subgraph {
+                                                Ok(subgraph) => subgraph,
+                                                Err(e) => return Box::new(stream::once(Err(e))),
+                                            };
+
                                             // Start subgraph on this node
                                             Box::new(stream::once(Ok(AssignmentEvent::Add {
+                                                subgraph_name: subgraph.name,
                                                 subgraph_id: subgraph_hash,
                                                 node_id: node_id.clone(),
                                             })))
@@ -173,6 +186,7 @@ where
     fn start_assigned_subgraphs(&self) -> impl Future<Item = (), Error = Error> {
         let provider = self.provider.clone();
         let logger = self.logger.clone();
+        let store = self.store.clone();
 
         // Create a query to find all assignments with this node ID
         let assignment_query = SubgraphDeploymentAssignmentEntity::query()
@@ -195,8 +209,15 @@ where
             })
             .and_then(move |subgraph_ids| {
                 let provider = provider.clone();
+                let store = store.clone();
+
                 stream::iter_ok(subgraph_ids).for_each(move |id| {
-                    start_subgraph(id, &*provider, logger.clone()).map_err(|()| unreachable!())
+                    // Look up the subgraph for this deployment (we need its name)
+                    let subgraph = get_subgraph_for_deployment_id(store.clone(), &id)
+                        .expect("failed to resolve subgraph for deployment");
+
+                    start_subgraph(subgraph.name, id, &*provider, logger.clone())
+                        .map_err(|()| unreachable!())
                 })
             })
     }
@@ -301,9 +322,13 @@ where
 
     match event {
         AssignmentEvent::Add {
+            subgraph_name,
             subgraph_id,
             node_id: _,
-        } => Box::new(start_subgraph(subgraph_id, &*provider, logger).map_err(|()| unreachable!())),
+        } => Box::new(
+            start_subgraph(subgraph_name, subgraph_id, &*provider, logger)
+                .map_err(|()| unreachable!()),
+        ),
         AssignmentEvent::Remove {
             subgraph_id,
             node_id: _,
@@ -320,14 +345,15 @@ where
     }
 }
 
-// Never errors.
+/// Never errors.
 fn start_subgraph<P: SubgraphAssignmentProviderTrait>(
+    subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
     provider: &P,
     logger: Logger,
 ) -> impl Future<Item = (), Error = ()> + 'static {
     provider
-        .start(subgraph_id.clone())
+        .start(subgraph_name.clone(), subgraph_id.clone())
         .then(move |result| -> Result<(), _> {
             match result {
                 Ok(()) => Ok(()),
@@ -340,6 +366,7 @@ fn start_subgraph<P: SubgraphAssignmentProviderTrait>(
                         logger,
                         "Subgraph instance failed to start";
                         "error" => e.to_string(),
+                        "subgraph_name" => subgraph_name.to_string(),
                         "subgraph_id" => subgraph_id.to_string()
                     );
                     Ok(())
@@ -655,6 +682,30 @@ fn get_subgraph_version_deployment_id(
             .unwrap(),
     )
     .unwrap())
+}
+
+/// Performs a reverse lookup from a deployment to a subgraph.
+fn get_subgraph_for_deployment_id(
+    store: Arc<impl Store>,
+    deployment_id: &SubgraphDeploymentId,
+) -> Result<SubgraphEntity, Error> {
+    // Resolve the deployment into the version it belongs to
+    let version = SubgraphVersionEntity::try_from_entity(
+        store
+            .find_one(SubgraphVersionEntity::query_from_deployment(deployment_id))?
+            .ok_or_else(|| {
+                format_err!("Missing subgraph version for deployment {}", deployment_id)
+            })?,
+    )?;
+
+    // Resolve the version into the subgraph the version (and thus,
+    // the deployment) belongs to
+    store
+        .get_typed(SubgraphEntity::key_from_version(&version))
+        .map_err(Error::from)
+        .and_then(|subgraph| {
+            subgraph.ok_or_else(|| format_err!("Missing subgraph for deployment {}", deployment_id))
+        })
 }
 
 fn remove_subgraph(

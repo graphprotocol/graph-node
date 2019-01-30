@@ -53,6 +53,7 @@ where
 {
     fn start(
         &self,
+        name: SubgraphName,
         id: SubgraphDeploymentId,
     ) -> Box<Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static> {
         let self_clone = self.clone();
@@ -97,7 +98,9 @@ where
                         self_clone
                             .event_sink
                             .clone()
-                            .send(SubgraphAssignmentProviderEvent::SubgraphStart(subgraph))
+                            .send(SubgraphAssignmentProviderEvent::SubgraphStart(
+                                name, subgraph,
+                            ))
                             .map_err(|e| panic!("failed to forward subgraph: {}", e))
                             .map(|_| ()),
                     )
