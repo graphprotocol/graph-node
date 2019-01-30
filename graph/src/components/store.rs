@@ -356,7 +356,15 @@ pub trait Store: Send + Sync + 'static {
     /// Looks up an entity using the given store key and converts it to the output type.
     fn get_typed<T>(&self, key: EntityKey) -> Result<Option<T>, QueryExecutionError>
     where
-        T: TryFromEntity;
+        T: TryFromEntity,
+    {
+        match self.get(key)? {
+            Some(entity) => Ok(Some(
+                T::try_from_entity(entity).map_err(QueryExecutionError::StoreError)?,
+            )),
+            None => Ok(None),
+        }
+    }
 
     /// Queries the store for entities that match the store query.
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError>;

@@ -703,18 +703,6 @@ impl StoreTrait for Store {
         self.get_entity(&*conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
     }
 
-    fn get_typed<T>(&self, key: EntityKey) -> Result<Option<T>, QueryExecutionError>
-    where
-        T: TryFromEntity,
-    {
-        match self.get(key)? {
-            Some(entity) => Ok(Some(
-                T::try_from_entity(entity).map_err(QueryExecutionError::StoreError)?,
-            )),
-            None => Ok(None),
-        }
-    }
-
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
         let conn = self
             .conn
