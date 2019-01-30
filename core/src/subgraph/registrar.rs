@@ -118,6 +118,8 @@ where
                 SubgraphDeploymentAssignmentEntity::subgraph_entity_pair(),
             ])
             .map_err(|()| format_err!("Entity change stream failed"))
+            .map(|event| stream::iter_ok(event.changes))
+            .flatten()
             .and_then(
                 move |entity_change| -> Result<Box<Stream<Item = _, Error = _> + Send>, _> {
                     let subgraph_hash = SubgraphDeploymentId::new(entity_change.entity_id.clone())

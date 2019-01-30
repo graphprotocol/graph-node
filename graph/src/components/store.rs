@@ -144,7 +144,7 @@ pub enum EntityChangeOperation {
 }
 
 /// Entity change events emitted by [Store](trait.Store.html) implementations.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EntityChange {
     /// ID of the subgraph the changed entity belongs to.
     pub subgraph_id: SubgraphDeploymentId,
@@ -166,6 +166,25 @@ impl EntityChange {
         }
     }
 
+    /// Convert an `EntityOperation` into an `EntityChange`. A `Set` operation
+    /// gets mapped to an `Updated` change, and a `Remove` operation gets mapped
+    /// to a `Removed` change. `AbortUnless` operations are mapped to `None`, as
+    /// they do not represent a change to any entity.
+    pub fn from_entity_operation(operation: EntityOperation) -> Option<Self> {
+        use self::EntityOperation::*;
+
+        match operation {
+            Set { key, .. } => {
+                // FIXME: we do not know if this should be Added or
+                // Updated. Right now, the distinction doesn't matter
+                Some(Self::from_key(key, EntityChangeOperation::Updated))
+            }
+            Remove { key } => Some(Self::from_key(key, EntityChangeOperation::Removed)),
+            // AbortUnless is uninteresting for when we need an EntityChange
+            AbortUnless { .. } => None,
+        }
+    }
+
     pub fn subgraph_entity_pair(&self) -> SubgraphEntityPair {
         (self.subgraph_id.clone(), self.entity_type.clone())
     }
@@ -173,6 +192,77 @@ impl EntityChange {
 
 /// A stream of entity change events.
 pub type EntityChangeStream = Box<Stream<Item = EntityChange, Error = ()> + Send>;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+/// The store emits `StoreEvents` to indicate that some entities have changed.
+/// `StoreEvents` are scoped to a specific subgraph, and for each subgraph
+/// at most one `StoreEvent` is emitted for each block that is processed. The
+/// `changes` vector contains the details of what changes were made, and to which
+/// entity.
+/// Since the 'subgraph of subgraphs' is special, and not directly related to
+/// any specific blocks, `StoreEvents` for it are generated as soon as they are
+/// written to the store.
+pub struct StoreEvent {
+    pub source: EventSource,
+    pub subgraph_id: SubgraphDeploymentId,
+    // We only use EntityChangeOperation::Updated and ::Removed here
+    // FIXME: Change the EntityChangeOperation enum and remove ::Added as the
+    // distinction between ::Added and ::Updated plays no role in the code.
+    // That change though requires that we adapt the database triggers first
+    // so we can still deserialize EntityChange coming from the DB
+    pub changes: Vec<EntityChange>,
+}
+
+/// A boxed `StoreEventStream`
+pub type StoreEventStreamBox = Box<Stream<Item = StoreEvent, Error = ()> + Send>;
+
+/// A `StoreEventStream` produces the `StoreEvents`. Various filters can be applied
+/// to it to reduce which and how many events are delivered by the stream.
+pub struct StoreEventStream<S> {
+    source: S,
+}
+
+impl<S> Stream for StoreEventStream<S>
+where
+    S: Stream<Item = StoreEvent, Error = ()> + Send,
+{
+    type Item = StoreEvent;
+    type Error = ();
+
+    fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
+        self.source.poll()
+    }
+}
+
+impl<S> StoreEventStream<S>
+where
+    S: Stream<Item = StoreEvent, Error = ()> + Send,
+{
+    // Create a new `StoreEventStream` from another such stream
+    pub fn new(source: S) -> Self {
+        StoreEventStream { source }
+    }
+
+    /// Filter a `StoreEventStream` by subgraph and entity. Only events that have
+    /// at least one change to one of the given (subgraph, entity) combinations
+    /// will be delivered by the filtered stream.
+    pub fn filter_by_entities(
+        self,
+        entities: Vec<SubgraphEntityPair>,
+    ) -> StoreEventStream<impl Stream<Item = StoreEvent, Error = ()> + Send> {
+        let source = self.source.filter(move |event| {
+            event.changes.iter().any({
+                |change| {
+                    entities.iter().any(|(subgraph_id, entity_type)| {
+                        subgraph_id == &change.subgraph_id && entity_type == &change.entity_type
+                    })
+                }
+            })
+        });
+
+        StoreEventStream { source }
+    }
+}
 
 /// An entity operation that can be transacted into the store.
 #[derive(Clone, Debug, PartialEq)]
@@ -280,7 +370,7 @@ impl EntityOperation {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum EventSource {
     None,
     EthereumBlock(EthereumBlockPointer),
@@ -327,6 +417,12 @@ impl From<::diesel::result::Error> for StoreError {
 impl From<Error> for StoreError {
     fn from(e: Error) -> Self {
         StoreError::Unknown(e)
+    }
+}
+
+impl From<serde_json::Error> for StoreError {
+    fn from(e: serde_json::Error) -> Self {
+        StoreError::Unknown(e.into())
     }
 }
 
@@ -408,10 +504,10 @@ pub trait Store: Send + Sync + 'static {
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError>;
 
-    /// Subscribe to entity changes for specific subgraphs and entities.
+    /// Subscribe to changes for specific subgraphs and entities.
     ///
-    /// Returns a stream of entity changes that match the input arguments.
-    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream;
+    /// Returns a stream of store events that match the input arguments.
+    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox;
 
     /// Counts the total number of entities in a subgraph.
     fn count_entities(&self, subgraph: SubgraphDeploymentId) -> Result<u64, Error>;

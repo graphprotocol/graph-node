@@ -2,16 +2,16 @@ use graph::prelude::*;
 use graph::serde_json;
 use notification_listener::{NotificationListener, SafeChannelName};
 
-pub struct EntityChangeListener {
+pub struct StoreEventListener {
     notification_listener: NotificationListener,
 }
 
-impl EntityChangeListener {
+impl StoreEventListener {
     pub fn new(postgres_url: String) -> Self {
-        EntityChangeListener {
+        StoreEventListener {
             notification_listener: NotificationListener::new(
                 postgres_url,
-                SafeChannelName::i_promise_this_is_safe("entity_changes"),
+                SafeChannelName::i_promise_this_is_safe("store_events"),
             ),
         }
     }
@@ -21,19 +21,22 @@ impl EntityChangeListener {
     }
 }
 
-impl EventProducer<EntityChange> for EntityChangeListener {
-    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = EntityChange, Error = ()> + Send>> {
+impl EventProducer<StoreEvent> for StoreEventListener {
+    fn take_event_stream(&mut self) -> Option<StoreEventStreamBox> {
         self.notification_listener.take_event_stream().map(
             |stream| -> Box<Stream<Item = _, Error = _> + Send> {
                 Box::new(stream.map(|notification| {
                     // Parse notification as JSON
                     let value: serde_json::Value = serde_json::from_str(&notification.payload)
-                        .expect("invalid JSON entity change received from database");
+                        .expect(&format!(
+                            "invalid JSON store event received from database: '{}'",
+                            &notification.payload
+                        ));
 
-                    // Create EntityChange from JSON
-                    let change: EntityChange = serde_json::from_value(value.clone())
-                        .unwrap_or_else(|_| {
-                            panic!("invalid entity change received from database: {:?}", value)
+                    // Create StoreEvent from JSON
+                    let change: StoreEvent =
+                        serde_json::from_value(value.clone()).unwrap_or_else(|_| {
+                            panic!("invalid store event received from database: {:?}", value)
                         });
 
                     change

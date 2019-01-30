@@ -304,7 +304,7 @@ where
         schema: &'a s::Document,
         object_type: &'a s::ObjectType,
         field: &'b q::Field,
-    ) -> result::Result<EntityChangeStream, QueryExecutionError> {
+    ) -> result::Result<StoreEventStreamBox, QueryExecutionError> {
         // Fail if the field does not exist on the object type
         if sast::get_field_type(object_type, &field.name).is_none() {
             return Err(QueryExecutionError::UnknownField(

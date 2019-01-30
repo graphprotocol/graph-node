@@ -1588,9 +1588,9 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             )
             .unwrap();
 
-        // We're expecting four events to be written to the subscription stream
+        // We're expecting two events to be written to the subscription stream
         subscription
-            .take(4)
+            .take(2)
             .collect()
             .timeout(Duration::from_secs(3))
             .and_then(move |changes| {
@@ -1598,37 +1598,49 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 // it would be dropped too early and its entity change listener would
                 // be terminated as well
                 let _store = store;
-
+                let event_source1 = EventSource::EthereumBlock(*TEST_BLOCK_1_PTR);
+                let event_source2 = EventSource::EthereumBlock(*TEST_BLOCK_2_PTR);
                 assert_eq!(
                     changes,
                     vec![
-                        EntityChange {
+                        StoreEvent {
+                            source: event_source1,
                             subgraph_id: subgraph_id.clone(),
-                            entity_type: "User".to_owned(),
-                            entity_id: added_entities[0].clone().0,
-                            operation: EntityChangeOperation::Added,
+                            changes: vec![
+                                EntityChange {
+                                    subgraph_id: subgraph_id.clone(),
+                                    entity_type: "User".to_owned(),
+                                    entity_id: added_entities[0].clone().0,
+                                    operation: EntityChangeOperation::Updated,
+                                },
+                                EntityChange {
+                                    subgraph_id: subgraph_id.clone(),
+                                    entity_type: "User".to_owned(),
+                                    entity_id: added_entities[1].clone().0,
+                                    operation: EntityChangeOperation::Updated,
+                                }
+                            ]
                         },
-                        EntityChange {
+                        StoreEvent {
+                            source: event_source2,
                             subgraph_id: subgraph_id.clone(),
-                            entity_type: "User".to_owned(),
-                            entity_id: added_entities[1].clone().0,
-                            operation: EntityChangeOperation::Added,
-                        },
-                        EntityChange {
-                            subgraph_id: subgraph_id.clone(),
-                            entity_type: "User".to_owned(),
-                            entity_id: "1".to_owned(),
-                            operation: EntityChangeOperation::Updated,
-                        },
-                        EntityChange {
-                            subgraph_id: subgraph_id.clone(),
-                            entity_type: "User".to_owned(),
-                            entity_id: added_entities[1].clone().0,
-                            operation: EntityChangeOperation::Removed,
-                        },
+                            changes: vec![
+                                EntityChange {
+                                    subgraph_id: subgraph_id.clone(),
+                                    entity_type: "User".to_owned(),
+                                    entity_id: "1".to_owned(),
+                                    operation: EntityChangeOperation::Updated,
+                                },
+                                EntityChange {
+                                    subgraph_id: subgraph_id.clone(),
+                                    entity_type: "User".to_owned(),
+                                    entity_id: added_entities[1].clone().0,
+                                    operation: EntityChangeOperation::Removed,
+                                }
+                            ]
+                        }
                     ]
                 );
-
                 Ok(())
             })
             .and_then(|_| Ok(()))

@@ -30,7 +30,7 @@ pub struct MockStore {
     // Entities by (subgraph ID, entity type, entity ID)
     entities: Mutex<HashMap<SubgraphDeploymentId, HashMap<String, HashMap<String, Entity>>>>,
 
-    subscriptions: Mutex<Vec<(HashSet<SubgraphEntityPair>, mpsc::Sender<EntityChange>)>>,
+    subscriptions: Mutex<Vec<(HashSet<SubgraphEntityPair>, mpsc::Sender<StoreEvent>)>>,
 }
 
 impl MockStore {
@@ -252,10 +252,16 @@ impl Store for MockStore {
                 if entity_types_set.contains(&entity_type) {
                     let entity_change = entity_change.clone();
                     let sender = sender.clone();
+                    let subgraph_id = entity_type.0.clone();
 
                     tokio::spawn(future::lazy(move || {
+                        let event = StoreEvent {
+                            source: EventSource::None,
+                            subgraph_id: subgraph_id,
+                            changes: vec![entity_change],
+                        };
                         sender
-                            .send(entity_change)
+                            .send(event)
                             .map(|_| ())
                             .map_err(|e| panic!("subscription send error: {}", e))
                     }));
@@ -282,7 +288,7 @@ impl Store for MockStore {
         unimplemented!();
     }
 
-    fn subscribe(&self, entity_types: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn subscribe(&self, entity_types: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
         let (sender, receiver) = mpsc::channel(100);
 
         self.subscriptions
@@ -409,7 +415,7 @@ impl Store for FakeStore {
         unimplemented!();
     }
 
-    fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
         unimplemented!();
     }
 

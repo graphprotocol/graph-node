@@ -79,7 +79,7 @@ where
 fn create_source_event_stream<'a, R1, R2>(
     ctx: &'a ExecutionContext<'a, R1, R2>,
     operation: &q::Subscription,
-) -> Result<EntityChangeStream, SubscriptionError>
+) -> Result<StoreEventStreamBox, SubscriptionError>
 where
     R1: Resolver,
     R2: Resolver,
@@ -114,7 +114,7 @@ fn resolve_field_stream<'a, R1, R2>(
     object_type: &'a s::ObjectType,
     field: &'a q::Field,
     _argument_values: HashMap<&q::Name, q::Value>,
-) -> Result<EntityChangeStream, SubscriptionError>
+) -> Result<StoreEventStreamBox, SubscriptionError>
 where
     R1: Resolver,
     R2: Resolver,
@@ -127,7 +127,7 @@ where
 fn map_source_to_response_stream<'a, R1, R2>(
     ctx: &ExecutionContext<'a, R1, R2>,
     subscription: &'a q::Subscription,
-    source_stream: EntityChangeStream,
+    source_stream: StoreEventStreamBox,
 ) -> Result<QueryResultStream, SubscriptionError>
 where
     R1: Resolver + 'static,
@@ -160,7 +160,7 @@ fn execute_subscription_event<R1>(
     document: q::Document,
     subscription: q::Subscription,
     variable_values: Arc<HashMap<q::Name, q::Value>>,
-    event: EntityChange,
+    event: StoreEvent,
 ) -> QueryResult
 where
     R1: Resolver + 'static,

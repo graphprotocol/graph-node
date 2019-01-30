@@ -176,7 +176,7 @@ impl Store for TestStore {
         unimplemented!()
     }
 
-    fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
         unimplemented!()
     }
 

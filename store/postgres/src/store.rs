@@ -9,6 +9,7 @@ use diesel::{delete, insert_into, select, update};
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -23,19 +24,13 @@ use graph::{tokio, tokio::timer::Interval};
 use graph_graphql::prelude::api_schema;
 
 use chain_head_listener::ChainHeadUpdateListener;
-use entity_changes::EntityChangeListener;
 use functions::{
-    attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, revert_block,
-    set_config,
+    attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, pg_notify,
+    revert_block, set_config,
 };
+use store_events::StoreEventListener;
 
 embed_migrations!("./migrations");
-
-/// Internal representation of a Store subscription.
-struct Subscription {
-    pub entities: Vec<SubgraphEntityPair>,
-    pub sender: Sender<EntityChange>,
-}
 
 /// Run all initial schema migrations.
 ///
@@ -70,8 +65,9 @@ pub struct StoreConfig {
 /// A Store based on Diesel and Postgres.
 pub struct Store {
     logger: Logger,
-    subscriptions: Arc<RwLock<HashMap<String, Subscription>>>,
-    change_listener: EntityChangeListener,
+    subscriptions: Arc<RwLock<HashMap<String, Sender<StoreEvent>>>>,
+    // listen to StoreEvents emitted by emit_store_events
+    listener: StoreEventListener,
     postgres_url: String,
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
@@ -109,8 +105,8 @@ impl Store {
         initiate_schema(&logger, &pool.get().unwrap());
 
         // Listen to entity changes in Postgres
-        let mut change_listener = EntityChangeListener::new(config.postgres_url.clone());
-        let entity_changes = change_listener
+        let mut listener = StoreEventListener::new(config.postgres_url.clone());
+        let store_events = listener
             .take_event_stream()
             .expect("Failed to listen to entity change events in Postgres");
 
@@ -118,7 +114,7 @@ impl Store {
         let mut store = Store {
             logger: logger.clone(),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
-            change_listener,
+            listener,
             postgres_url: config.postgres_url.clone(),
             network_name: config.network_name.clone(),
             genesis_block_ptr: (net_identifiers.genesis_block_hash, 0u64).into(),
@@ -130,11 +126,11 @@ impl Store {
         store.add_network_if_missing(net_identifiers).unwrap();
 
         // Deal with store subscriptions
-        store.handle_entity_changes(entity_changes);
+        store.handle_store_events(store_events);
         store.periodically_clean_up_stale_subscriptions();
 
         // We're ready for processing entity changes
-        store.change_listener.start();
+        store.listener.start();
 
         // Return the store
         store
@@ -209,42 +205,31 @@ impl Store {
         Ok(())
     }
 
-    /// Handles entity changes emitted by Postgres.
-    fn handle_entity_changes(
-        &self,
-        entity_changes: Box<Stream<Item = EntityChange, Error = ()> + Send>,
-    ) {
+    /// Receive store events from Postgres and send them to all active
+    /// subscriptions. Detect stale subscriptions in the process and
+    /// close them.
+    fn handle_store_events(&self, store_events: StoreEventStreamBox) {
         let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
 
-        tokio::spawn(entity_changes.for_each(move |change| {
-            trace!(logger, "Received entity change event";
-                           "subgraph_id" => change.subgraph_id.to_string(),
-                           "entity_type" => &change.entity_type,
-                           "entity_id" => &change.entity_id);
+        tokio::spawn(store_events.for_each(move |event| {
+            trace!(logger, "Received store event";
+                "source" => event.source.to_string(),
+                "subgraph_id" => event.subgraph_id.to_string(),
+                "changes" => event.changes.len(),
+            );
 
-            // Obtain IDs and senders of subscriptions matching the entity change
-            let matches = subscriptions
-                .read()
-                .unwrap()
-                .iter()
-                .filter(|(_, subscription)| {
-                    subscription
-                        .entities
-                        .contains(&(change.subgraph_id.clone(), change.entity_type.clone()))
-                })
-                .map(|(id, subscription)| (id.clone(), subscription.sender.clone()))
-                .collect::<Vec<_>>();
-
-            let subscriptions = subscriptions.clone();
+            let senders = subscriptions.read().unwrap().clone();
             let logger = logger.clone();
+            let subscriptions = subscriptions.clone();
 
             // Write change to all matching subscription streams; remove subscriptions
             // whose receiving end has been dropped
-            stream::iter_ok::<_, ()>(matches).for_each(move |(id, sender)| {
+            stream::iter_ok::<_, ()>(senders).for_each(move |(id, sender)| {
                 let logger = logger.clone();
                 let subscriptions = subscriptions.clone();
-                sender.send(change.clone()).then(move |result| {
+
+                sender.send(event.clone()).then(move |result| {
                     match result {
                         Err(_send_error) => {
                             // Receiver was dropped
@@ -272,12 +257,10 @@ impl Store {
                     // Obtain IDs of subscriptions whose receiving end has gone
                     let stale_ids = subscriptions
                         .iter_mut()
-                        .filter_map(
-                            |(id, subscription)| match subscription.sender.poll_ready() {
-                                Err(_) => Some(id.clone()),
-                                _ => None,
-                            },
-                        )
+                        .filter_map(|(id, sender)| match sender.poll_ready() {
+                            Err(_) => Some(id.clone()),
+                            _ => None,
+                        })
                         .collect::<Vec<_>>();
 
                     // Remove all stale subscriptions
@@ -657,6 +640,52 @@ impl Store {
         }
         Ok(())
     }
+
+    fn emit_store_events(
+        &self,
+        conn: &PgConnection,
+        operations: &[EntityOperation],
+        event_source: &EventSource,
+    ) -> Result<(), StoreError> {
+        // We turn the operations into a vector of EntityChanges (ignoring
+        // AbortUnless operations, which we don't care about), and then
+        // group them by subgraph_id into StoreEvents so that we can guarantee
+        // that all EntityChanges in a StoreEvent belong to the same subgraph.
+        // This is necessary because transact_block_operations adds operations
+        // on the 'subgraphs' subgraph to the operations affecting an actual
+        // subgraph.
+        for event in operations
+            .iter()
+            .filter_map(|op| EntityChange::from_entity_operation(op.clone()))
+            .fold(
+                HashMap::new(),
+                |mut map: HashMap<SubgraphDeploymentId, StoreEvent>, change| {
+                    match map.entry(change.subgraph_id.clone()) {
+                        Entry::Occupied(mut e) => e.get_mut().changes.push(change),
+                        Entry::Vacant(e) => {
+                            let subgraph_id = change.subgraph_id.clone();
+                            let event = StoreEvent {
+                                source: event_source.clone(),
+                                subgraph_id: subgraph_id.clone(),
+                                changes: vec![change],
+                            };
+                            e.insert(event);
+                        }
+                    };
+                    map
+                },
+            )
+            .values()
+        {
+            trace!(self.logger, "Emit store event"; 
+                "block" => event_source.to_string(), 
+                "subgraph" => event.subgraph_id.to_string(),
+                "changes" => event.changes.len());
+            let v = serde_json::to_value(event)?;
+            select(pg_notify("store_events", v.to_string())).execute(conn)?;
+        }
+        Ok(())
+    }
 }
 
 impl StoreTrait for Store {
@@ -787,7 +816,10 @@ impl StoreTrait for Store {
         event_source: EventSource,
     ) -> Result<(), StoreError> {
         let conn = self.conn.get().map_err(Error::from)?;
-        conn.transaction(|| self.apply_entity_operations_with_conn(&conn, operations, event_source))
+        conn.transaction(|| {
+            self.emit_store_events(&conn, &operations, &event_source)?;
+            self.apply_entity_operations_with_conn(&conn, operations, event_source)
+        })
     }
 
     fn build_entity_attribute_indexes(
@@ -830,7 +862,7 @@ impl StoreTrait for Store {
         })
     }
 
-    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> EntityChangeStream {
+    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
         let subscriptions = self.subscriptions.clone();
 
         // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions
@@ -845,11 +877,12 @@ impl StoreTrait for Store {
 
         // Prepare the new subscription by creating a channel and a subscription object
         let (sender, receiver) = channel(100);
-        let subscription = Subscription { entities, sender };
 
         // Add the new subscription
         let mut subscriptions = subscriptions.write().unwrap();
-        subscriptions.insert(id, subscription);
+        subscriptions.insert(id, sender);
+
+        let receiver = StoreEventStream::new(receiver).filter_by_entities(entities);
 
         // Return the subscription ID and entity change stream
         Box::new(receiver)

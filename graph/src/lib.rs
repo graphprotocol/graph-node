@@ -69,8 +69,8 @@ pub mod prelude {
     pub use components::store::{
         AttributeIndexDefinition, ChainStore, EntityChange, EntityChangeOperation,
         EntityChangeStream, EntityFilter, EntityKey, EntityOperation, EntityOrder, EntityQuery,
-        EntityRange, EventSource, Store, StoreError, SubgraphDeploymentStore,
-        TransactionAbortError,
+        EntityRange, EventSource, Store, StoreError, StoreEvent, StoreEventStream,
+        StoreEventStreamBox, SubgraphDeploymentStore, TransactionAbortError,
     };
     pub use components::subgraph::{
         RuntimeHost, RuntimeHostBuilder, SubgraphAssignmentProvider, SubgraphInstance,
