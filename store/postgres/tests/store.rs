@@ -28,7 +28,24 @@ fn postgres_test_url() -> String {
 }
 
 lazy_static! {
-    static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
+    static ref STORE_MUTEX: Mutex<Arc<DieselStore>> = {
+        let logger = Logger::root(slog::Discard, o!());
+        let postgres_url = postgres_test_url();
+        let net_identifiers = EthereumNetworkIdentifier {
+            net_version: "graph test suite".to_owned(),
+            genesis_block_hash: TEST_BLOCK_0_PTR.hash,
+        };
+        let network_name = "fake_network".to_owned();
+
+        Mutex::new(Arc::new(DieselStore::new(
+            StoreConfig {
+                postgres_url,
+                network_name,
+            },
+            &logger,
+            net_identifiers,
+        )))
+    };
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId =
         SubgraphDeploymentId::new("testsubgraph").unwrap();
     static ref TEST_BLOCK_0_PTR: EthereumBlockPointer = (
@@ -82,40 +99,23 @@ where
     R::Error: Send + Debug,
     R::Future: Send,
 {
-    // Lock regardless of poisoning.
-    let _test_lock = match TEST_MUTEX.lock() {
-        Ok(guard) => guard,
-        Err(err) => err.into_inner(),
-    };
-
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     runtime
         .block_on(future::lazy(move || {
-            // Set up Store
-            let logger = Logger::root(slog::Discard, o!());
-            let postgres_url = postgres_test_url();
-            let net_identifiers = EthereumNetworkIdentifier {
-                net_version: "graph test suite".to_owned(),
-                genesis_block_hash: TEST_BLOCK_0_PTR.hash,
+            // Lock regardless of poisoning.
+            let store_ref = match STORE_MUTEX.lock() {
+                Ok(guard) => guard,
+                Err(err) => err.into_inner(),
             };
-            let network_name = "fake_network".to_owned();
-            let store = Arc::new(DieselStore::new(
-                StoreConfig {
-                    postgres_url,
-                    network_name,
-                },
-                &logger,
-                net_identifiers,
-            ));
 
             // Reset state before starting
             remove_test_data();
 
             // Seed database with test data
-            insert_test_data(store.clone());
+            insert_test_data(store_ref.clone());
 
             // Run test
-            test(store.clone())
+            test(store_ref.clone())
         }))
         .expect("Failed to run Store test");
 }
