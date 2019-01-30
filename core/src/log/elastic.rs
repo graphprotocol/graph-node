@@ -55,6 +55,7 @@ struct ElasticLogMeta {
 #[serde(rename_all = "camelCase")]
 struct ElasticLog {
     id: String,
+    subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
     timestamp: String,
     text: String,
@@ -101,6 +102,8 @@ pub struct ElasticDrainConfig {
     pub index: String,
     /// The Elasticsearch type to use for logs.
     pub document_type: String,
+    /// The subgraph name that the drain is for.
+    pub subgraph_name: SubgraphName,
     /// The subgraph ID that the drain is for.
     pub subgraph_id: SubgraphDeploymentId,
     /// The batching interval.
@@ -118,6 +121,7 @@ pub struct ElasticDrainConfig {
 ///   "_source": {
 ///     "level": "debug",
 ///     "timestamp": "2018-11-08T00:54:52.589258000Z",
+///     "subgraphName": "dharma/dharma",
 ///     "subgraphId": "Qmb31zcpzqga7ERaUTp83gVdYcuBasz4rXUHFufikFTJGU",
 ///     "meta": {
 ///       "module": "graph_datasource_ethereum::block_stream",
@@ -281,6 +285,7 @@ impl Drain for ElasticDrain {
         // Prepare log document
         let log = ElasticLog {
             id: id.clone(),
+            subgraph_name: self.config.subgraph_name.clone(),
             subgraph_id: self.config.subgraph_id.clone(),
             timestamp,
             text,

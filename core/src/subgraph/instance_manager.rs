@@ -88,6 +88,7 @@ impl SubgraphInstanceManager {
                                         general: elastic_config,
                                         index: String::from("subgraph-logs"),
                                         document_type: String::from("log"),
+                                        subgraph_name: name,
                                         subgraph_id: manifest.id.clone(),
                                         flush_interval: Duration::from_secs(5),
                                     },
