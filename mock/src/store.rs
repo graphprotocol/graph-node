@@ -130,6 +130,10 @@ impl Store for MockStore {
             .map(|entity| entity.to_owned()))
     }
 
+    fn get_typed<T>(&self, key: EntityKey) -> Result<Option<T>, QueryExecutionError> {
+        unimplemented!()
+    }
+
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
         self.execute_query(&self.entities.lock().unwrap(), query)
     }
@@ -352,6 +356,10 @@ pub struct FakeStore;
 impl Store for FakeStore {
     fn get(&self, _: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
         unimplemented!();
+    }
+
+    fn get_typed<T>(&self, _key: EntityKey) -> Result<Option<T>, QueryExecutionError> {
+        unimplemented!()
     }
 
     fn find(&self, _: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
