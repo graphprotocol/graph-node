@@ -454,12 +454,12 @@ impl<'a> IntrospectionResolver<'a> {
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
 impl<'a> Resolver for IntrospectionResolver<'a> {
-    fn resolve_objects<'b>(
+    fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
         _field_definition: &s::Field,
-        _object_type: impl Into<ObjectOrInterface<'b>>,
+        _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
@@ -492,11 +492,11 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         }
     }
 
-    fn resolve_object<'b>(
+    fn resolve_object(
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
-        _object_type: impl Into<ObjectOrInterface<'b>>,
+        _object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         let object = match field.as_str() {

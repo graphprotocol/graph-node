@@ -21,18 +21,18 @@ impl Resolver for MockResolver {
         _parent: &Option<q::Value>,
         _field: &q::Name,
         _field_definition: &s::Field,
-        _object_type: impl Into<ObjectOrInterface<'a>>,
+        _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }
 
-    fn resolve_object<'a>(
+    fn resolve_object(
         &self,
         _parent: &Option<q::Value>,
         _field: &q::Name,
-        _object_type: impl Into<ObjectOrInterface<'a>>,
+        _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)

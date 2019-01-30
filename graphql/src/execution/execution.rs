@@ -393,12 +393,12 @@ where
                 ctx.introspection_resolver.resolve_object(
                     object_value,
                     &field.name,
-                    t,
+                    t.into(),
                     argument_values,
                 )
             } else {
                 ctx.resolver
-                    .resolve_object(object_value, &field.name, t, argument_values)
+                    .resolve_object(object_value, &field.name, t.into(), argument_values)
             }
         }
 
@@ -490,7 +490,7 @@ where
                         object_value,
                         &field.name,
                         field_definition,
-                        t,
+                        t.into(),
                         argument_values,
                         &BTreeMap::new(), // The introspection schema has no interfaces.
                     )
@@ -499,7 +499,7 @@ where
                         object_value,
                         &field.name,
                         field_definition,
-                        t,
+                        t.into(),
                         argument_values,
                         ctx.schema.types_for_interface(),
                     )

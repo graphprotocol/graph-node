@@ -48,22 +48,22 @@ impl<'a> ObjectOrInterface<'a> {
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
 pub trait Resolver: Clone + Send + Sync {
     /// Resolves entities referenced by a parent object.
-    fn resolve_objects<'a>(
+    fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
         field_definition: &s::Field,
-        object_type: impl Into<ObjectOrInterface<'a>>,
+        object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an entity referenced by a parent object.
-    fn resolve_object<'a>(
+    fn resolve_object(
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
-        object_type: impl Into<ObjectOrInterface<'a>>,
+        object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError>;
 
