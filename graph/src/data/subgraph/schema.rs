@@ -58,15 +58,46 @@ pub trait TypedEntity {
 
 #[derive(Debug)]
 pub struct SubgraphEntity {
-    name: SubgraphName,
-    current_version_id: Option<String>,
-    pending_version_id: Option<String>,
-    created_at: u64,
+    pub name: SubgraphName,
+    pub current_version_id: Option<String>,
+    pub pending_version_id: Option<String>,
+    pub created_at: u64,
 }
 
 impl TypedEntity for SubgraphEntity {
     const TYPENAME: &'static str = "Subgraph";
     type IdType = String;
+}
+
+impl TryFromEntity for SubgraphEntity {
+    const ENTITY_TYPE: &'static str = "Subgraph";
+
+    fn try_from_entity(mut entity: Entity) -> Result<Self, Error> {
+        Ok(SubgraphEntity {
+            name: SubgraphName::new(Self::extract(&mut entity, "name", "String", |value| {
+                value.as_string()
+            })?)
+            .map_err(|()| format_err!("Invalid subgraph name"))?,
+
+            current_version_id: Self::extract_optional(
+                &mut entity,
+                "currentVersion",
+                "String",
+                |value| value.as_string(),
+            )?,
+
+            pending_version_id: Self::extract_optional(
+                &mut entity,
+                "pendingVersion",
+                "String",
+                |value| value.as_string(),
+            )?,
+
+            created_at: Self::extract(&mut entity, "createdAt", "BigInt", |value| {
+                value.as_bigint().map(|n| n.to_u64())
+            })?,
+        })
+    }
 }
 
 impl SubgraphEntity {
@@ -163,6 +194,29 @@ impl SubgraphVersionEntity {
         entity.set("deployment", self.deployment_id.to_string());
         entity.set("createdAt", self.created_at);
         vec![set_entity_operation(Self::TYPENAME, id, entity)]
+    }
+
+impl TryFromEntity for SubgraphVersionEntity {
+    const ENTITY_TYPE: &'static str = "SubgraphVersion";
+
+    fn try_from_entity(mut entity: Entity) -> Result<Self, Error> {
+        Ok(SubgraphVersionEntity {
+            subgraph_id: Self::extract(&mut entity, "subgraph", "String", |value| {
+                value.as_string()
+            })?,
+
+            deployment_id: SubgraphDeploymentId::new(Self::extract(
+                &mut entity,
+                "deployment",
+                "String",
+                |value| value.as_string(),
+            )?)
+            .map_err(|()| format_err!("Invalid subgraph deployment ID"))?,
+
+            created_at: Self::extract(&mut entity, "createdAt", "BigInt", |value| {
+                value.as_bigint().map(|n| n.to_u64())
+            })?,
+        })
     }
 }
 

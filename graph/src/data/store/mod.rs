@@ -7,7 +7,7 @@ use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
-use data::subgraph::SubgraphDeploymentId;
+use data::subgraph::{SubgraphDeploymentId, SubgraphName};
 use graphql_parser::query;
 use graphql_parser::schema;
 use prelude::QueryExecutionError;
