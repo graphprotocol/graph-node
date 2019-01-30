@@ -164,6 +164,14 @@ impl SubgraphEntity {
 
         ops
     }
+
+    pub fn key_from_version(version: &SubgraphVersionEntity) -> EntityKey {
+        EntityKey {
+            subgraph_id: SUBGRAPHS_ID.to_owned(),
+            entity_type: Self::TYPENAME.to_owned(),
+            entity_id: version.subgraph_id.clone(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -195,6 +203,12 @@ impl SubgraphVersionEntity {
         entity.set("createdAt", self.created_at);
         vec![set_entity_operation(Self::TYPENAME, id, entity)]
     }
+
+    pub fn query_from_deployment(id: &SubgraphDeploymentId) -> EntityQuery {
+        EntityQuery::new(SUBGRAPHS_ID.to_owned(), Self::TYPENAME)
+            .filter(EntityFilter::new_equal("deployment", id.to_string()))
+    }
+}
 
 impl TryFromEntity for SubgraphVersionEntity {
     const ENTITY_TYPE: &'static str = "SubgraphVersion";
