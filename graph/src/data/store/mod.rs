@@ -439,6 +439,75 @@ impl<'a> From<Vec<(&'a str, Value)>> for Entity {
     }
 }
 
+pub trait TryFromEntity: Sized {
+    const ENTITY_TYPE: &'static str;
+
+    fn attribute_missing(attr: impl Into<String>) -> Error {
+        format_err!(
+            "{} attribute \"{}\" is missing",
+            Self::ENTITY_TYPE,
+            attr.into(),
+        )
+    }
+
+    fn attribute_invalid(
+        attr: impl Into<String>,
+        expected_type: impl Into<String>,
+        value: &Value,
+    ) -> Error {
+        format_err!(
+            "{} attribute \"{}\" is not a {}: {:?}",
+            Self::ENTITY_TYPE,
+            attr.into(),
+            expected_type.into(),
+            value
+        )
+    }
+
+    fn extract_optional<T, F>(
+        entity: &mut Entity,
+        name: impl Into<String>,
+        type_name: impl Into<String>,
+        f: F,
+    ) -> Result<Option<T>, Error>
+    where
+        F: FnOnce(Value) -> Option<T>,
+        T: Sized,
+    {
+        let name = name.into();
+        match entity.remove(&name) {
+            Some(value) => match f(value.clone()) {
+                Some(converted_value) => Ok(Some(converted_value)),
+                None => Err(Self::attribute_invalid(name, type_name, &value)),
+            },
+            None => Ok(None),
+        }
+    }
+
+    fn extract<T, F>(
+        entity: &mut Entity,
+        name: impl Into<String>,
+        type_name: impl Into<String>,
+        f: F,
+    ) -> Result<T, Error>
+    where
+        F: FnOnce(Value) -> Option<T>,
+        T: Sized,
+    {
+        let name = name.into();
+        let missing_name = name.clone();
+        entity
+            .remove(&name)
+            .ok_or_else(|| Self::attribute_missing(missing_name))
+            .and_then(|value| match f(value.clone()) {
+                Some(converted_value) => Ok(converted_value),
+                None => Err(Self::attribute_invalid(name, type_name, &value)),
+            })
+    }
+
+    fn try_from_entity(entity: Entity) -> Result<Self, Error>;
+}
+
 #[test]
 fn value_bytes() {
     let graphql_value = query::Value::String("0x8f494c66afc1d3f8ac1b45df21f02a46".to_owned());

@@ -84,7 +84,7 @@ pub mod prelude {
     pub use data::store::scalar::{BigInt, BigIntSign};
     pub use data::store::{
         AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, SubgraphVersionSummary,
-        Value, ValueType,
+        TryFromEntity, Value, ValueType,
     };
     pub use data::subgraph::schema::TypedEntity;
     pub use data::subgraph::{

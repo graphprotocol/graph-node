@@ -24,7 +24,7 @@ use components::ethereum::EthereumBlockPointer;
 use components::store::{
     AttributeIndexDefinition, EntityFilter, EntityKey, EntityOperation, EntityQuery,
 };
-use data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
+use data::store::{Entity, NodeId, SubgraphEntityPair, TryFromEntity, Value, ValueType};
 use data::subgraph::{SubgraphManifest, SubgraphName};
 
 /// ID of the subgraph of subgraphs.
