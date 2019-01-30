@@ -9,6 +9,29 @@ table! {
 }
 
 table! {
+    entity_history (id) {
+        id -> Integer,
+        event_id -> BigInt,
+        entity_id -> Varchar,
+        subgraph -> Varchar,
+        entity -> Varchar,
+        data_before -> Nullable<Jsonb>,
+        data_after -> Nullable<Jsonb>,
+        reversion -> Bool,
+    }
+}
+
+table! {
+    event_meta_data (id) {
+        id -> Integer,
+        db_transaction_id -> BigInt,
+        db_transaction_time -> Timestamp,
+        op_id -> SmallInt,
+        source -> Nullable<Varchar>,
+    }
+}
+
+table! {
     ethereum_networks (name) {
         name -> Varchar,
         head_block_hash -> Nullable<Varchar>,
