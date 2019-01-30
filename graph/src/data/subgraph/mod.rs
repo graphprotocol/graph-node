@@ -266,7 +266,7 @@ impl From<::diesel::result::Error> for SubgraphAssignmentProviderError {
 #[derive(Debug, PartialEq)]
 pub enum SubgraphAssignmentProviderEvent {
     /// A subgraph with the given manifest should start processing.
-    SubgraphStart(SubgraphManifest),
+    SubgraphStart(SubgraphName, SubgraphManifest),
     /// The subgraph with the given ID should stop processing.
     SubgraphStop(SubgraphDeploymentId),
 }

@@ -71,6 +71,7 @@ impl<'de> de::Deserialize<'de> for NodeId {
 #[serde(tag = "type")]
 pub enum AssignmentEvent {
     Add {
+        subgraph_name: SubgraphName,
         subgraph_id: SubgraphDeploymentId,
         node_id: NodeId,
     },
