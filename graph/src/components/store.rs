@@ -686,9 +686,8 @@ pub trait Store: Send + Sync + 'static {
 
     /// Return true if the deployment with the given id is fully synced,
     /// and return false otherwise. Errors from the store are passed back up
-    fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
-        let filter = EntityFilter::new_equal("id", id.to_string());
-        let entity = self.find_one(SubgraphDeploymentEntity::query().filter(filter))?;
+    fn is_deployment_synced(&self, id: SubgraphDeploymentId) -> Result<bool, Error> {
+        let entity = self.get(SubgraphDeploymentEntity::key(id))?;
         entity
             .map(|entity| match entity.get("synced") {
                 Some(Value::Bool(true)) => Ok(true),

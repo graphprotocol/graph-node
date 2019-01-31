@@ -455,6 +455,12 @@ fn create_subgraph_version(
         None => None,
     };
 
+    // See if current version is fully synced
+    let current_is_synced = match &current_version_hash_opt {
+        Some(hash) => store.is_deployment_synced(hash.to_owned())?,
+        None => false,
+    };
+
     // Find all subgraph version entities that point to this hash or a hash
     let (version_summaries_before, read_summaries_ops) = store.read_subgraph_version_summaries(
         iter::once(manifest.id.clone())
@@ -507,9 +513,12 @@ fn create_subgraph_version(
             version_summaries_after
         }
         SubgraphVersionSwitchingMode::Synced => {
-            // Just set the new version is pending, unless there is no current versions yet
+            // There is a current version. Depending on whether it is synced
+            // or not, make the new version the pending or the current version
             if current_version_id_opt.is_some() {
                 // Previous pending version (if there was one) is no longer pending
+                // Previous current version if it's not fully synced is no
+                // longer the current version
                 let mut version_summaries_after = version_summaries_before
                     .clone()
                     .into_iter()
@@ -517,18 +526,35 @@ fn create_subgraph_version(
                         if Some(&version_summary.id) == pending_version_id_opt.as_ref() {
                             version_summary.pending = false;
                         }
+                        if !current_is_synced
+                            && Some(&version_summary.id) == current_version_id_opt.as_ref()
+                        {
+                            // We will make the new version the current version
+                            version_summary.current = false;
+                        }
 
                         version_summary
                     })
                     .collect::<Vec<_>>();
 
-                // Add new version, which will be pending but not current
+                // Determine if this new version should be the pending or
+                // current version. When we add a version to a subgraph that
+                // already has a current version, the new version becomes the
+                // pending version if the current version is synced,
+                // and replaces the current version if the current version is still syncing
+                let (pending, current) = if current_is_synced {
+                    (true, false)
+                } else {
+                    (false, true)
+                };
+
+                // Add new version, setting pending and current appropriately
                 version_summaries_after.push(SubgraphVersionSummary {
                     id: version_entity_id.clone(),
                     subgraph_id: subgraph_entity_id.clone(),
                     deployment_id: manifest.id.clone(),
-                    pending: true,
-                    current: false,
+                    pending,
+                    current,
                 });
 
                 version_summaries_after
@@ -605,8 +631,9 @@ fn create_subgraph_version(
             ));
         }
         SubgraphVersionSwitchingMode::Synced => {
-            // Just set the new version is pending, unless there is no current versions yet
-            if current_version_id_opt.is_some() {
+            // Set the new version as pending, unless there is no fully synced
+            // current versions
+            if current_is_synced {
                 ops.extend(SubgraphEntity::update_pending_version_operations(
                     &subgraph_entity_id,
                     Some(version_entity_id),
