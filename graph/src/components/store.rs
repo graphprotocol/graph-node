@@ -683,6 +683,19 @@ pub trait Store: Send + Sync + 'static {
             .map_err(|e| format_err!("Failed to query SubgraphDeployment entities: {}", e))
             .map(|entity_opt| entity_opt.is_some())
     }
+
+    /// Return true if the deployment with the given id is fully synced,
+    /// and return false otherwise. Errors from the store are passed back up
+    fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
+        let filter = EntityFilter::new_equal("id", id.to_string());
+        let entity = self.find_one(SubgraphDeploymentEntity::query().filter(filter))?;
+        entity
+            .map(|entity| match entity.get("synced") {
+                Some(Value::Bool(true)) => Ok(true),
+                _ => Ok(false),
+            })
+            .unwrap_or(Ok(false))
+    }
 }
 
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {
