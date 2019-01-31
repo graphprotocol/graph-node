@@ -11,6 +11,8 @@ use diesel::*;
 use std::fmt::Debug;
 use std::str::FromStr;
 use std::sync::Mutex;
+use std::time::Duration;
+use tokio::runtime::Runtime;
 
 use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityRange};
 use graph::data::store::scalar;
@@ -28,24 +30,32 @@ fn postgres_test_url() -> String {
 }
 
 lazy_static! {
-    static ref STORE_MUTEX: Mutex<Arc<DieselStore>> = {
-        let logger = Logger::root(slog::Discard, o!());
-        let postgres_url = postgres_test_url();
-        let net_identifiers = EthereumNetworkIdentifier {
-            net_version: "graph test suite".to_owned(),
-            genesis_block_hash: TEST_BLOCK_0_PTR.hash,
-        };
-        let network_name = "fake_network".to_owned();
+    // Create Store instance once for use with each of the tests
+    static ref STORE_MUTEX: Mutex<(Arc<DieselStore>, Runtime)> = {
+        let mut runtime = Runtime::new().unwrap();
+        let store = runtime.block_on(future::lazy(|| -> Result<_, ()> {
+            let logger = Logger::root(slog::Discard, o!());
+            let postgres_url = postgres_test_url();
+            let net_identifiers = EthereumNetworkIdentifier {
+                net_version: "graph test suite".to_owned(),
+                genesis_block_hash: TEST_BLOCK_0_PTR.hash,
+            };
+            let network_name = "fake_network".to_owned();
 
-        Mutex::new(Arc::new(DieselStore::new(
-            StoreConfig {
-                postgres_url,
-                network_name,
-            },
-            &logger,
-            net_identifiers,
-        )))
+            Ok(Arc::new(DieselStore::new(
+                StoreConfig {
+                    postgres_url,
+                    network_name,
+                },
+                &logger,
+                net_identifiers,
+            )))
+        })).expect("could not create Diesel Store instance for test suite");
+
+        // Also return the tokio Runtime that should be used when interacting with this Store
+        Mutex::new((store, runtime))
     };
+
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId =
         SubgraphDeploymentId::new("testsubgraph").unwrap();
     static ref TEST_BLOCK_0_PTR: EthereumBlockPointer = (
@@ -94,28 +104,28 @@ lazy_static! {
 fn run_test<R, F>(test: F)
 where
     F: FnOnce(Arc<DieselStore>) -> R + Send + 'static,
-    R: IntoFuture + Send + 'static,
-    R::Item: Send,
+    R: IntoFuture<Item = ()> + Send + 'static,
     R::Error: Send + Debug,
     R::Future: Send,
 {
-    let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    runtime
-        .block_on(future::lazy(move || {
-            // Lock regardless of poisoning.
-            let store_ref = match STORE_MUTEX.lock() {
-                Ok(guard) => guard,
-                Err(err) => err.into_inner(),
-            };
+    // Lock regardless of poisoning.
+    let mut guard = match STORE_MUTEX.lock() {
+        Ok(guard) => guard,
+        Err(err) => err.into_inner(),
+    };
+    let (ref store_ref, ref mut runtime_ref) = *guard;
+    let store = store_ref.clone();
 
+    runtime_ref
+        .block_on(future::lazy(move || {
             // Reset state before starting
             remove_test_data();
 
             // Seed database with test data
-            insert_test_data(store_ref.clone());
+            insert_test_data(store.clone());
 
             // Run test
-            test(store_ref.clone())
+            test(store)
         }))
         .expect("Failed to run Store test");
 }
@@ -1576,6 +1586,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         subscription
             .take(4)
             .collect()
+            .timeout(Duration::from_secs(3))
             .and_then(move |changes| {
                 // Keep the store around until we're done reading from it; otherwise
                 // it would be dropped too early and its entity change listener would
