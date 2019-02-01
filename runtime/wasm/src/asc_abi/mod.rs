@@ -72,9 +72,9 @@ pub trait FromAscObj<C: AscType> {
 /// should be documented in a comment.
 ///
 /// The default impl will memcopy the value as bytes, which is suitable for
-/// structs that are `#[repr(C)]` and whose fields are all `AscValue`,
-/// or Rust enums that are `#[repr(u32)]`.
-/// Special classes like `ArrayBuffer` use custom impls.
+/// structs that are `#[repr(C)]` and whose fields are all `AscValue`.
+///
+/// Enums and special classes like `ArrayBuffer` use custom impls.
 pub trait AscType: Sized {
     /// Transform the Rust representation of this instance into an sequence of
     /// bytes that is precisely the memory layout of a corresponding Asc instance.
@@ -111,20 +111,114 @@ pub trait AscType: Sized {
 /// be equal to alignment.
 pub trait AscValue: AscType + Copy + Default {}
 
-impl<T> AscType for AscPtr<T> {}
-impl AscType for bool {}
-impl AscType for i8 {}
-impl AscType for i16 {}
-impl AscType for i32 {}
-impl AscType for i64 {}
-impl AscType for u8 {}
-impl AscType for u16 {}
-impl AscType for u32 {}
-impl AscType for u64 {}
+impl AscType for bool {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        vec![*self as u8]
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        assert_eq!(asc_obj.len(), size_of::<Self>());
+        asc_obj[0] != 0
+    }
+}
+
+impl AscType for i8 {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        vec![*self as u8]
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        assert_eq!(asc_obj.len(), size_of::<Self>());
+        asc_obj[0] as i8
+    }
+}
+
+impl AscType for i16 {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        self.to_le_bytes().to_vec()
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        assert_eq!(asc_obj.len(), size_of::<Self>());
+        Self::from_le_bytes([asc_obj[0], asc_obj[1]])
+    }
+}
+
+impl AscType for i32 {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        self.to_le_bytes().to_vec()
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        assert_eq!(asc_obj.len(), size_of::<Self>());
+        Self::from_le_bytes([asc_obj[0], asc_obj[1], asc_obj[2], asc_obj[3]])
+    }
+}
+
+impl AscType for i64 {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        self.to_le_bytes().to_vec()
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        assert_eq!(asc_obj.len(), size_of::<Self>());
+        Self::from_le_bytes([
+            asc_obj[0], asc_obj[1], asc_obj[2], asc_obj[3], asc_obj[4], asc_obj[5], asc_obj[6],
+            asc_obj[7],
+        ])
+    }
+}
+
+impl AscType for u8 {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        vec![*self]
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        assert_eq!(asc_obj.len(), size_of::<Self>());
+        asc_obj[0]
+    }
+}
+
+impl AscType for u16 {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        self.to_le_bytes().to_vec()
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        assert_eq!(asc_obj.len(), size_of::<Self>());
+        Self::from_le_bytes([asc_obj[0], asc_obj[1]])
+    }
+}
+
+impl AscType for u32 {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        self.to_le_bytes().to_vec()
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        assert_eq!(asc_obj.len(), size_of::<Self>());
+        Self::from_le_bytes([asc_obj[0], asc_obj[1], asc_obj[2], asc_obj[3]])
+    }
+}
+
+impl AscType for u64 {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        self.to_le_bytes().to_vec()
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        assert_eq!(asc_obj.len(), size_of::<Self>());
+        Self::from_le_bytes([
+            asc_obj[0], asc_obj[1], asc_obj[2], asc_obj[3], asc_obj[4], asc_obj[5], asc_obj[6],
+            asc_obj[7],
+        ])
+    }
+}
+
 impl AscType for f32 {}
 impl AscType for f64 {}
 
-impl<T> AscValue for AscPtr<T> {}
 impl AscValue for bool {}
 impl AscValue for i8 {}
 impl AscValue for i16 {}
