@@ -17,8 +17,6 @@ use graph::prelude::{
 use graph::util::ethereum::string_to_h256;
 use graph::web3::types::*;
 
-const REORG_THRESHOLD: u64 = 50;
-
 enum BlockStreamState {
     /// The BlockStream is new and has not yet been polled.
     ///
@@ -98,6 +96,7 @@ struct BlockStreamContext<S, C, E> {
     eth_adapter: Arc<E>,
     node_id: NodeId,
     subgraph_id: SubgraphDeploymentId,
+    reorg_threshold: u64,
     logger: Logger,
 }
 
@@ -109,6 +108,7 @@ impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
             eth_adapter: self.eth_adapter.clone(),
             node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
+            reorg_threshold: self.reorg_threshold,
             logger: self.logger.clone(),
         }
     }
@@ -136,6 +136,7 @@ where
         node_id: NodeId,
         subgraph_id: SubgraphDeploymentId,
         log_filter: EthereumLogFilter,
+        reorg_threshold: u64,
         logger: Logger,
     ) -> Self {
         let logger = logger.new(o!(
@@ -156,6 +157,7 @@ where
                 eth_adapter,
                 node_id,
                 subgraph_id,
+                reorg_threshold,
                 logger,
             },
         }
@@ -215,6 +217,7 @@ where
         log_filter: EthereumLogFilter,
     ) -> impl Future<Item = ReconciliationStep, Error = Error> + Send {
         let ctx = self.clone();
+        let reorg_threshold = ctx.reorg_threshold;
 
         debug!(ctx.logger, "Identify next step");
 
@@ -277,16 +280,16 @@ where
         // Accordingly, if the subgraph ptr is really far behind the head ptr, then we can
         // trust that the Ethereum node knows what the real, permanent block is for that block
         // number.
-        // We'll define "really far" to mean "greater than REORG_THRESHOLD blocks".
+        // We'll define "really far" to mean "greater than reorg_threshold blocks".
         //
         // If the subgraph ptr is not too far behind the head ptr (i.e. less than
-        // REORG_THRESHOLD blocks behind), then we have to allow for the possibility that the
+        // reorg_threshold blocks behind), then we have to allow for the possibility that the
         // block might be on the main chain now, but might become uncled in the future.
         //
         // Most importantly: Our ability to make this assumption (or not) will determine what
         // Ethereum RPC calls can give us accurate data without race conditions.
         // (This is mostly due to some unfortunate API design decisions on the Ethereum side)
-        if (head_ptr.number - subgraph_ptr.number) > REORG_THRESHOLD {
+        if (head_ptr.number - subgraph_ptr.number) > reorg_threshold {
             // Since we are beyond the reorg threshold, the Ethereum node knows what block has
             // been permanently assigned this block number.
             // This allows us to ask the node: does subgraph_ptr point to a block that was
@@ -315,7 +318,7 @@ where
 
                         // End just prior to reorg threshold.
                         // It isn't safe to go any farther due to race conditions.
-                        let to_limit = head_ptr.number - REORG_THRESHOLD;
+                        let to_limit = head_ptr.number - reorg_threshold;
 
                         // But also avoid having too large a range to ensure subgraph block ptr is
                         // updated frequently.
@@ -395,7 +398,7 @@ where
             // change under our feet at any time.
             //
             // Second, due to how the BlockIngestor is designed, we get a helpful guarantee:
-            // the head block and at least its REORG_THRESHOLD most recent ancestors will be
+            // the head block and at least its reorg_threshold most recent ancestors will be
             // present in the block store.
             // This allows us to work locally in the block store instead of relying on
             // Ethereum RPC calls, so that we are not subject to the limitations of the RPC
@@ -990,6 +993,7 @@ pub struct BlockStreamBuilder<S, C, E> {
     chain_store: Arc<C>,
     eth_adapter: Arc<E>,
     node_id: NodeId,
+    reorg_threshold: u64,
 }
 
 impl<S, C, E> Clone for BlockStreamBuilder<S, C, E> {
@@ -999,6 +1003,7 @@ impl<S, C, E> Clone for BlockStreamBuilder<S, C, E> {
             chain_store: self.chain_store.clone(),
             eth_adapter: self.eth_adapter.clone(),
             node_id: self.node_id.clone(),
+            reorg_threshold: self.reorg_threshold,
         }
     }
 }
@@ -1014,12 +1019,14 @@ where
         chain_store: Arc<C>,
         eth_adapter: Arc<E>,
         node_id: NodeId,
+        reorg_threshold: u64,
     ) -> Self {
         BlockStreamBuilder {
             subgraph_store,
             chain_store,
             eth_adapter,
             node_id,
+            reorg_threshold,
         }
     }
 }
@@ -1045,6 +1052,7 @@ where
             self.node_id.clone(),
             manifest.id.clone(),
             log_filter,
+            self.reorg_threshold,
             logger,
         );
 
