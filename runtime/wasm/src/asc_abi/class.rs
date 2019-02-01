@@ -2,6 +2,7 @@ use super::{AscHeap, AscPtr, AscType, AscValue};
 use ethabi;
 use graph::data::store;
 use graph::serde_json;
+use graph_runtime_derive::AscType;
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
 
@@ -108,6 +109,7 @@ impl<T> AscType for ArrayBuffer<T> {
 /// `Uint8Array` is `TypedArray<u8>`.
 ///  See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
 #[repr(C)]
+#[derive(AscType)]
 pub(crate) struct TypedArray<T> {
     pub buffer: AscPtr<ArrayBuffer<T>>,
     /// Byte position in `buffer` of the array start.
@@ -131,8 +133,6 @@ impl<T: AscValue> TypedArray<T> {
             .get(self.byte_offset, self.byte_length / size_of::<T>() as u32)
     }
 }
-
-impl<T> AscType for TypedArray<T> {}
 
 pub(crate) type Uint8Array = TypedArray<u8>;
 
@@ -207,6 +207,7 @@ impl AscType for AscString {
 /// Growable array backed by an `ArrayBuffer`.
 /// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
 #[repr(C)]
+#[derive(AscType)]
 pub(crate) struct Array<T> {
     buffer: AscPtr<ArrayBuffer<T>>,
     length: u32,
@@ -225,8 +226,6 @@ impl<T: AscValue> Array<T> {
         self.buffer.read_ptr(heap).get(0, self.length)
     }
 }
-
-impl<T> AscType for Array<T> {}
 
 /// Represents any `AscValue` since they all fit in 64 bits.
 #[repr(C)]
@@ -282,12 +281,12 @@ impl From<i64> for EnumPayload {
 /// Asc enum so in Rust it's a `#[repr(u32)]` enum, plus an arbitrary `AscValue`
 /// payload.
 #[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscEnum<D: AscValue> {
     pub kind: D,
+    pub _padding: u32, // Make padding explicit.
     pub payload: EnumPayload,
 }
-
-impl<D: AscValue> AscType for AscEnum<D> {}
 
 pub(crate) type AscEnumArray<D> = AscPtr<Array<AscPtr<AscEnum<D>>>>;
 
@@ -370,12 +369,11 @@ impl AscType for StoreValueKind {}
 impl AscValue for StoreValueKind {}
 
 #[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscLogParam {
     pub name: AscPtr<AscString>,
     pub value: AscPtr<AscEnum<EthereumValueKind>>,
 }
-
-impl AscType for AscLogParam {}
 
 pub(crate) type Bytes = Uint8Array;
 
@@ -392,6 +390,7 @@ pub(crate) type AscH256 = Uint8Array;
 pub(crate) type AscLogParamArray = Array<AscPtr<AscLogParam>>;
 
 #[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscEthereumBlock {
     pub hash: AscPtr<AscH256>,
     pub parent_hash: AscPtr<AscH256>,
@@ -409,9 +408,8 @@ pub(crate) struct AscEthereumBlock {
     pub size: AscPtr<AscBigInt>,
 }
 
-impl AscType for AscEthereumBlock {}
-
 #[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscEthereumTransaction {
     pub hash: AscPtr<AscH256>,
     pub index: AscPtr<AscBigInt>,
@@ -422,9 +420,8 @@ pub(crate) struct AscEthereumTransaction {
     pub gas_price: AscPtr<AscBigInt>,
 }
 
-impl AscType for AscEthereumTransaction {}
-
 #[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscEthereumEvent {
     pub address: AscPtr<AscAddress>,
     pub log_index: AscPtr<AscBigInt>,
@@ -435,37 +432,32 @@ pub(crate) struct AscEthereumEvent {
     pub params: AscPtr<AscLogParamArray>,
 }
 
-impl AscType for AscEthereumEvent {}
-
 #[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscTypedMapEntry<K, V> {
     pub key: AscPtr<K>,
     pub value: AscPtr<V>,
 }
 
-impl<K, V> AscType for AscTypedMapEntry<K, V> {}
-
 pub(crate) type AscTypedMapEntryArray<K, V> = Array<AscPtr<AscTypedMapEntry<K, V>>>;
 
 #[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscTypedMap<K, V> {
     pub entries: AscPtr<AscTypedMapEntryArray<K, V>>,
 }
-
-impl<K, V> AscType for AscTypedMap<K, V> {}
 
 pub(crate) type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
 pub(crate) type AscJson = AscTypedMap<AscString, AscEnum<JsonValueKind>>;
 
 #[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscUnresolvedContractCall {
     pub contract_name: AscPtr<AscString>,
     pub contract_address: AscPtr<AscAddress>,
     pub function_name: AscPtr<AscString>,
     pub function_args: AscPtr<Array<AscPtr<AscEnum<EthereumValueKind>>>>,
 }
-
-impl AscType for AscUnresolvedContractCall {}
 
 #[repr(u32)]
 #[derive(Copy, Clone)]

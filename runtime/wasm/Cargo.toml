@@ -12,6 +12,7 @@ tiny-keccak = "1.4.2"
 wasmi = "0.4"
 pwasm-utils = "0.6.1"
 bs58 = "0.2.2"
+graph-runtime-derive = { path = "../derive" }
 
 [dev-dependencies]
 graphql-parser = "0.2.0"

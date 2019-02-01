@@ -89,3 +89,11 @@ export function value_from_array(array: Array<string>): Value {
     value.data = array as u64
     return value
   }
+
+// Test that this does not cause undefined behaviour in Rust.
+export function invalid_discriminant(): Value {  
+    let token = new Value();
+    token.kind = 70;
+    token.data = "blebers" as u64;
+    return token
+}
