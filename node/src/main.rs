@@ -43,6 +43,9 @@ use graph_server_json_rpc::JsonRpcServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
+const REORG_THRESHOLD: u64 = 50;
+const ANCESTOR_COUNT: u64 = 50;
+
 fn main() {
     let (shutdown_sender, shutdown_receiver) = oneshot::channel();
     // Register guarded panic logger which ensures logs flush on shutdown
@@ -398,11 +401,17 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), store.clone());
 
     if env::var_os("DISABLE_BLOCK_INGESTOR").unwrap_or("".into()) != "true" {
+        // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
+        // otherwise BlockStream will not work properly.
+        // BlockStream expects the blocks after the reorg threshold to be present in the
+        // database.
+        assert!(ANCESTOR_COUNT >= REORG_THRESHOLD);
+
         // Create Ethereum block ingestor
         let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
             store.clone(),
             transport.clone(),
-            50, // ancestor count, which we could make configuable
+            ANCESTOR_COUNT,
             logger.clone(),
             block_polling_interval,
         )
@@ -418,6 +427,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         store.clone(),
         ethereum.clone(),
         node_id.clone(),
+        REORG_THRESHOLD,
     );
 
     // Optionally, identify the Elasticsearch logging configuration
