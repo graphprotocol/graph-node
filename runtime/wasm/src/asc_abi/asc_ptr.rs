@@ -1,4 +1,4 @@
-use super::{class::EnumPayload, AscHeap, AscType};
+use super::{class::EnumPayload, AscHeap, AscType, AscValue};
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -86,3 +86,15 @@ impl<C> From<AscPtr<C>> for EnumPayload {
         EnumPayload(x.0 as u64)
     }
 }
+
+impl<T> AscType for AscPtr<T> {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        self.0.to_asc_bytes()
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        AscPtr(u32::from_asc_bytes(asc_obj), PhantomData)
+    }
+}
+
+impl<T> AscValue for AscPtr<T> {}
