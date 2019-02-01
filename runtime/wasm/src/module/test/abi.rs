@@ -365,3 +365,20 @@ fn abi_big_int() {
     let new_uint_from_u256 = BigInt::from_signed_u256(&new_uint.to_signed_u256());
     assert_eq!(new_uint, new_uint_from_u256);
 }
+
+// This should panic rather than exhibiting UB. It's hard to test for UB, but
+// when reproducing a SIGILL was observed which would be caught by this.
+/*#[test]
+#[should_panic]
+fn invalid_discriminant() {
+    let mut module = test_module(mock_data_source("wasm_test/abi_store_value.wasm"));
+    let value_ptr = module
+        .module
+        .clone()
+        .invoke_export("invalid_discriminant", &[], &mut module)
+        .expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return ptr");
+    let value: Value = module.asc_get(value_ptr);
+}*/

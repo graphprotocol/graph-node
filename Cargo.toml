@@ -6,6 +6,7 @@ members = [
     "mock",
     "node",
     "runtime/wasm",
+    "runtime/derive",
     "server/http",
     "server/json-rpc",
     "store/postgres",

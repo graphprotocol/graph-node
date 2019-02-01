@@ -83,6 +83,7 @@ impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
 
         AscEnum {
             kind,
+            _padding: 0,
             payload: EnumPayload(payload),
         }
     }
@@ -188,6 +189,7 @@ impl ToAscObj<AscEnum<StoreValueKind>> for store::Value {
 
         AscEnum {
             kind: StoreValueKind::get_kind(self),
+            _padding: 0,
             payload,
         }
     }
@@ -241,6 +243,7 @@ impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
 
         AscEnum {
             kind: JsonValueKind::get_kind(self),
+            _padding: 0,
             payload,
         }
     }
