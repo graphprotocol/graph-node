@@ -9,7 +9,7 @@ use graph::components::ethereum::*;
 use graph::components::store::*;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
-use graph::web3::types::{Address, H160, H256};
+use graph::web3::types::{Address, Block, Transaction, H160, H256};
 use hex;
 use std::io::Cursor;
 use std::str::FromStr;
@@ -32,11 +32,26 @@ impl EthereumAdapter for MockEthereumAdapter {
         unimplemented!();
     }
 
+    fn latest_block(
+        &self,
+        _: &Logger,
+    ) -> Box<Future<Item = Block<Transaction>, Error = EthereumAdapterError> + Send> {
+        unimplemented!();
+    }
+
     fn block_by_hash(
         &self,
         _: &Logger,
         _: H256,
-    ) -> Box<Future<Item = Option<EthereumBlock>, Error = Error> + Send> {
+    ) -> Box<Future<Item = Option<Block<Transaction>>, Error = Error> + Send> {
+        unimplemented!();
+    }
+
+    fn load_full_block(
+        &self,
+        _: &Logger,
+        _: Block<Transaction>,
+    ) -> Box<Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
         unimplemented!();
     }
 

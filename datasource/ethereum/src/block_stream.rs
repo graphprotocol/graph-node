@@ -763,10 +763,14 @@ where
                 if let Some(local_block) = local_block_opt {
                     Box::new(future::ok(local_block))
                 } else {
+                    let ctx_clone1 = ctx;
+                    let ctx_clone2 = ctx_clone1.clone();
+
                     // Request from Ethereum node instead
                     Box::new(
-                        ctx.eth_adapter
-                            .block_by_hash(&ctx.logger, block_hash)
+                        ctx_clone1
+                            .eth_adapter
+                            .block_by_hash(&ctx_clone1.logger, block_hash)
                             .and_then(move |block_opt| {
                                 block_opt.ok_or_else(move || {
                                     format_err!(
@@ -776,8 +780,15 @@ where
                                 })
                             })
                             .and_then(move |block| {
+                                ctx_clone1
+                                    .eth_adapter
+                                    .load_full_block(&ctx_clone1.logger, block)
+                                    .map_err(|e| format_err!("Error loading full block: {}", e))
+                            })
+                            .and_then(move |block| {
                                 // Cache in store for later
-                                ctx.chain_store
+                                ctx_clone2
+                                    .chain_store
                                     .upsert_blocks(stream::once(Ok(block.clone())))
                                     .map(move |()| block)
                             }),
