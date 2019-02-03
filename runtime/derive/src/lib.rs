@@ -4,14 +4,14 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Fields, Item, ItemStruct};
+use syn::{Fields, Item, ItemEnum, ItemStruct};
 
 #[proc_macro_derive(AscType)]
 pub fn asc_type_derive(input: TokenStream) -> TokenStream {
     let item: Item = syn::parse(input).unwrap();
     match item {
         Item::Struct(item_struct) => asc_type_derive_struct(item_struct),
-        //Item::Enum(enum)
+        Item::Enum(item_enum) => asc_type_derive_enum(item_enum),
         _ => panic!("AscType can only be derived for structs and enums"),
     }
 }
@@ -59,7 +59,46 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                 Self {
                     #(#field_names3,)*
                 }
+            }
         }
-    }
+    })
+}
+
+fn asc_type_derive_enum(item_enum: ItemEnum) -> TokenStream {
+    let enum_name = &item_enum.ident;
+    let enum_name_iter = std::iter::repeat(enum_name);
+    let enum_name_iter2 = enum_name_iter.clone();
+    let (impl_generics, ty_generics, where_clause) = item_enum.generics.split_for_impl();
+    let variant_paths: Vec<_> = item_enum
+        .variants
+        .iter()
+        .map(|v| {
+            assert!(v.discriminant.is_none());
+            &v.ident
+        })
+        .collect();
+    let variant_paths2 = variant_paths.clone();
+    let variant_discriminant = 0..(variant_paths.len() as u32);
+    let variant_discriminant2 = variant_discriminant.clone();
+
+    TokenStream::from(quote! {
+        impl#impl_generics AscType for #enum_name#ty_generics #where_clause {
+            fn to_asc_bytes(&self) -> Vec<u8> {
+                let discriminant: u32 = match *self {
+                    #(#enum_name_iter::#variant_paths => #variant_discriminant,)*
+                };
+                discriminant.to_asc_bytes()
+            }
+
+            fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+                let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
+                u32_bytes.copy_from_slice(&asc_obj);
+                let discr = u32::from_le_bytes(u32_bytes);
+                match discr {
+                    #(#variant_discriminant2 =>#enum_name_iter2::#variant_paths2,)*
+                    _ => panic!("value {} is out of range for {}", discr, stringify!(#enum_name))
+                }
+            }
+        }
     })
 }

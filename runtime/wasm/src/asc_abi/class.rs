@@ -232,7 +232,16 @@ impl<T: AscValue> Array<T> {
 #[derive(Copy, Clone, Default)]
 pub(crate) struct EnumPayload(pub u64);
 
-impl AscType for EnumPayload {}
+impl AscType for EnumPayload {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        self.0.to_asc_bytes()
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        EnumPayload(u64::from_asc_bytes(asc_obj))
+    }
+}
+
 impl AscValue for EnumPayload {}
 
 impl From<EnumPayload> for i32 {
@@ -291,7 +300,7 @@ pub(crate) struct AscEnum<D: AscValue> {
 pub(crate) type AscEnumArray<D> = AscPtr<Array<AscPtr<AscEnum<D>>>>;
 
 #[repr(u32)]
-#[derive(Copy, Clone)]
+#[derive(AscType, Copy, Clone)]
 pub(crate) enum EthereumValueKind {
     Address,
     FixedBytes,
@@ -326,11 +335,10 @@ impl Default for EthereumValueKind {
     }
 }
 
-impl AscType for EthereumValueKind {}
 impl AscValue for EthereumValueKind {}
 
 #[repr(u32)]
-#[derive(Copy, Clone)]
+#[derive(AscType, Copy, Clone)]
 pub enum StoreValueKind {
     String,
     Int,
@@ -365,7 +373,6 @@ impl Default for StoreValueKind {
     }
 }
 
-impl AscType for StoreValueKind {}
 impl AscValue for StoreValueKind {}
 
 #[repr(C)]
@@ -460,7 +467,7 @@ pub(crate) struct AscUnresolvedContractCall {
 }
 
 #[repr(u32)]
-#[derive(Copy, Clone)]
+#[derive(AscType, Copy, Clone)]
 pub(crate) enum JsonValueKind {
     Null,
     Bool,
@@ -476,7 +483,6 @@ impl Default for JsonValueKind {
     }
 }
 
-impl AscType for JsonValueKind {}
 impl AscValue for JsonValueKind {}
 
 impl JsonValueKind {

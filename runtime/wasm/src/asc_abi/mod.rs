@@ -1,6 +1,5 @@
 pub use self::asc_ptr::AscPtr;
 use std::mem::size_of;
-use std::slice;
 use wasmi;
 
 pub mod asc_ptr;
@@ -68,34 +67,21 @@ pub trait FromAscObj<C: AscType> {
 
 // `AscType` is not really public, implementors should live inside the `class` module.
 
-/// A type that has a direct corespondence to an Asc type, which
-/// should be documented in a comment.
+/// A type that has a direct corespondence to an Asc type.
 ///
-/// The default impl will memcopy the value as bytes, which is suitable for
-/// structs that are `#[repr(C)]` and whose fields are all `AscValue`.
+/// This can be derived for structs that are `#[repr(C)]`, contain no padding
+/// and whose fields are all `AscValue`. Enums can derive if they are `#[repr(u32)]`.
 ///
-/// Enums and special classes like `ArrayBuffer` use custom impls.
+/// Special classes like `ArrayBuffer` use custom impls.
+///
+/// See https://github.com/graphprotocol/graph-node/issues/607 for more considerations.
 pub trait AscType: Sized {
     /// Transform the Rust representation of this instance into an sequence of
     /// bytes that is precisely the memory layout of a corresponding Asc instance.
-    fn to_asc_bytes(&self) -> Vec<u8> {
-        let erased_self = (self as *const Self) as *const u8;
-        let self_size = size_of::<Self>();
-
-        // Cast the byte array as a reference to self, and copy it to a `Vec`.
-        // While technically unspecified, this is almost just a memcopy and is
-        // expected be specified as safe behaviour, see rust-lang/rust#30500.
-        unsafe { slice::from_raw_parts(erased_self, self_size) }.to_vec()
-    }
+    fn to_asc_bytes(&self) -> Vec<u8>;
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        assert_eq!(asc_obj.len(), size_of::<Self>());
-        let asc_obj_as_self = asc_obj.as_ptr() as *const Self;
-
-        // Safe because `u8` is `Copy`. Also see notes on `to_asc_bytes`.
-        unsafe { ::std::ptr::read_unaligned(asc_obj_as_self) }
-    }
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self;
 
     /// Size of the corresponding Asc instance in bytes.
     fn asc_size<H: AscHeap>(_ptr: AscPtr<Self>, _heap: &H) -> u32 {
@@ -216,8 +202,25 @@ impl AscType for u64 {
     }
 }
 
-impl AscType for f32 {}
-impl AscType for f64 {}
+impl AscType for f32 {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        self.to_bits().to_asc_bytes()
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        Self::from_bits(u32::from_asc_bytes(asc_obj))
+    }
+}
+
+impl AscType for f64 {
+    fn to_asc_bytes(&self) -> Vec<u8> {
+        self.to_bits().to_asc_bytes()
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+        Self::from_bits(u64::from_asc_bytes(asc_obj))
+    }
+}
 
 impl AscValue for bool {}
 impl AscValue for i8 {}
