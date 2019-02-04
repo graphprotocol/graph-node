@@ -371,7 +371,7 @@ fn abi_big_int() {
 #[test]
 #[should_panic]
 fn invalid_discriminant() {
-    let mut valid_module = test_valid_module(mock_data_source("wasm_test/abi_store_value.wasm"));
+    let valid_module = test_valid_module(mock_data_source("wasm_test/abi_store_value.wasm"));
     let mut module =
         WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
 
@@ -383,5 +383,5 @@ fn invalid_discriminant() {
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return ptr");
-    let value: Value = module.asc_get(value_ptr);
+    let _value: Value = module.asc_get(value_ptr);
 }
