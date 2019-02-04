@@ -1611,13 +1611,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                                     subgraph_id: subgraph_id.clone(),
                                     entity_type: "User".to_owned(),
                                     entity_id: added_entities[0].clone().0,
-                                    operation: EntityChangeOperation::Updated,
+                                    operation: EntityChangeOperation::Set,
                                 },
                                 EntityChange {
                                     subgraph_id: subgraph_id.clone(),
                                     entity_type: "User".to_owned(),
                                     entity_id: added_entities[1].clone().0,
-                                    operation: EntityChangeOperation::Updated,
+                                    operation: EntityChangeOperation::Set,
                                 }
                             ]
                         },
@@ -1629,7 +1629,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                                     subgraph_id: subgraph_id.clone(),
                                     entity_type: "User".to_owned(),
                                     entity_id: "1".to_owned(),
-                                    operation: EntityChangeOperation::Updated,
+                                    operation: EntityChangeOperation::Set,
                                 },
                                 EntityChange {
                                     subgraph_id: subgraph_id.clone(),

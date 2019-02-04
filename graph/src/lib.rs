@@ -67,10 +67,10 @@ pub mod prelude {
     pub use components::server::query::GraphQLServer;
     pub use components::server::subscription::SubscriptionServer;
     pub use components::store::{
-        AttributeIndexDefinition, ChainStore, EntityChange, EntityChangeOperation,
-        EntityChangeStream, EntityFilter, EntityKey, EntityOperation, EntityOrder, EntityQuery,
-        EntityRange, EventSource, Store, StoreError, StoreEvent, StoreEventStream,
-        StoreEventStreamBox, SubgraphDeploymentStore, TransactionAbortError,
+        AttributeIndexDefinition, ChainStore, EntityChange, EntityChangeOperation, EntityFilter,
+        EntityKey, EntityOperation, EntityOrder, EntityQuery, EntityRange, EventSource, Store,
+        StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, SubgraphDeploymentStore,
+        TransactionAbortError,
     };
     pub use components::subgraph::{
         RuntimeHost, RuntimeHostBuilder, SubgraphAssignmentProvider, SubgraphInstance,

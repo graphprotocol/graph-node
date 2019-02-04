@@ -126,7 +126,7 @@ where
                         .map_err(|()| format_err!("Invalid subgraph hash in assignment entity"))?;
 
                     match entity_change.operation {
-                        EntityChangeOperation::Added | EntityChangeOperation::Updated => {
+                        EntityChangeOperation::Set => {
                             store
                                 .get(SubgraphDeploymentAssignmentEntity::key(
                                     subgraph_hash.clone(),

@@ -135,10 +135,8 @@ impl EntityQuery {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum EntityChangeOperation {
-    /// A new entity was added.
-    Added,
-    /// An existing entity was updated.
-    Updated,
+    /// An entity was added or updated
+    Set,
     /// An existing entity was removed.
     Removed,
 }
@@ -166,19 +164,15 @@ impl EntityChange {
         }
     }
 
-    /// Convert an `EntityOperation` into an `EntityChange`. A `Set` operation
-    /// gets mapped to an `Updated` change, and a `Remove` operation gets mapped
-    /// to a `Removed` change. `AbortUnless` operations are mapped to `None`, as
-    /// they do not represent a change to any entity.
+    /// Convert an `EntityOperation` into the corresponding `EntityChange`.
+    /// `Set` and `Update` operations are mapped to that `EntityChange`.
+    /// `AbortUnless` operations are mapped to `None`, as they do not represent
+    ///  a change to any entity.
     pub fn from_entity_operation(operation: EntityOperation) -> Option<Self> {
         use self::EntityOperation::*;
 
         match operation {
-            Set { key, .. } => {
-                // FIXME: we do not know if this should be Added or
-                // Updated. Right now, the distinction doesn't matter
-                Some(Self::from_key(key, EntityChangeOperation::Updated))
-            }
+            Set { key, .. } => Some(Self::from_key(key, EntityChangeOperation::Set)),
             Remove { key } => Some(Self::from_key(key, EntityChangeOperation::Removed)),
             // AbortUnless is uninteresting for when we need an EntityChange
             AbortUnless { .. } => None,
@@ -189,9 +183,6 @@ impl EntityChange {
         (self.subgraph_id.clone(), self.entity_type.clone())
     }
 }
-
-/// A stream of entity change events.
-pub type EntityChangeStream = Box<Stream<Item = EntityChange, Error = ()> + Send>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 /// The store emits `StoreEvents` to indicate that some entities have changed.
@@ -205,11 +196,6 @@ pub type EntityChangeStream = Box<Stream<Item = EntityChange, Error = ()> + Send
 pub struct StoreEvent {
     pub source: EventSource,
     pub subgraph_id: SubgraphDeploymentId,
-    // We only use EntityChangeOperation::Updated and ::Removed here
-    // FIXME: Change the EntityChangeOperation enum and remove ::Added as the
-    // distinction between ::Added and ::Updated plays no role in the code.
-    // That change though requires that we adapt the database triggers first
-    // so we can still deserialize EntityChange coming from the DB
     pub changes: Vec<EntityChange>,
 }
 

@@ -184,7 +184,7 @@ impl Store for MockStore {
                         existing_entity.merge(data);
 
                         entity_changes
-                            .push(EntityChange::from_key(key, EntityChangeOperation::Updated));
+                            .push(EntityChange::from_key(key, EntityChangeOperation::Set));
                     } else {
                         let mut new_entity = data;
                         new_entity.insert("id".to_owned(), key.entity_id.clone().into());
@@ -192,7 +192,7 @@ impl Store for MockStore {
                         entities_of_type.insert(key.entity_id.clone(), new_entity);
 
                         entity_changes
-                            .push(EntityChange::from_key(key, EntityChangeOperation::Added));
+                            .push(EntityChange::from_key(key, EntityChangeOperation::Set));
                     }
                 }
                 EntityOperation::Remove { key } => {
