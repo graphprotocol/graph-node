@@ -433,7 +433,19 @@ where
         },
 
         // We will implement these later
-        s::TypeDefinition::Interface(_) => unimplemented!(),
+        s::TypeDefinition::Interface(i) => {
+            if ctx.introspecting {
+                ctx.introspection_resolver.resolve_object(
+                    object_value,
+                    &field.name,
+                    i.into(),
+                    argument_values,
+                )
+            } else {
+                ctx.resolver
+                    .resolve_object(object_value, &field.name, i.into(), argument_values)
+            }
+        }
         s::TypeDefinition::Union(_) => unimplemented!(),
 
         _ => unimplemented!(),
@@ -537,7 +549,26 @@ where
                 },
 
                 // We will implement these later
-                s::TypeDefinition::Interface(_) => unimplemented!(),
+                s::TypeDefinition::Interface(t) => if ctx.introspecting {
+                    ctx.introspection_resolver.resolve_objects(
+                        object_value,
+                        &field.name,
+                        field_definition,
+                        t.into(),
+                        argument_values,
+                        &BTreeMap::new(), // The introspection schema has no interfaces.
+                    )
+                } else {
+                    ctx.resolver.resolve_objects(
+                        object_value,
+                        &field.name,
+                        field_definition,
+                        t.into(),
+                        argument_values,
+                        ctx.schema.types_for_interface(),
+                    )
+                }
+                .map_err(|e| vec![e]),
                 s::TypeDefinition::Union(_) => unimplemented!(),
 
                 _ => unimplemented!(),
