@@ -3,7 +3,8 @@ name = "graph-runtime-wasm"
 version = "0.5.0"
 
 [dependencies]
-ethabi = "6.0"
+# Switch to upstream master once https://github.com/paritytech/ethabi/pull/145 is merged.
+ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "leo/event-overloading" }
 futures = "0.1.21"
 hex = "0.3.2"
 graph = { path = "../../graph" }
