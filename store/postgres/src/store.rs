@@ -9,7 +9,6 @@ use diesel::{delete, insert_into, select, update};
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -215,7 +214,6 @@ impl Store {
         tokio::spawn(store_events.for_each(move |event| {
             trace!(logger, "Received store event";
                 "source" => event.source.to_string(),
-                "subgraph_id" => event.subgraph_id.to_string(),
                 "changes" => event.changes.len(),
             );
 
@@ -647,43 +645,21 @@ impl Store {
         operations: &[EntityOperation],
         event_source: &EventSource,
     ) -> Result<(), StoreError> {
-        // We turn the operations into a vector of EntityChanges (ignoring
-        // AbortUnless operations, which we don't care about), and then
-        // group them by subgraph_id into StoreEvents so that we can guarantee
-        // that all EntityChanges in a StoreEvent belong to the same subgraph.
-        // This is necessary because transact_block_operations adds operations
-        // on the 'subgraphs' subgraph to the operations affecting an actual
-        // subgraph.
-        for event in operations
+        let changes: Vec<_> = operations
             .iter()
             .filter_map(|op| EntityChange::from_entity_operation(op.clone()))
-            .fold(
-                HashMap::new(),
-                |mut map: HashMap<SubgraphDeploymentId, StoreEvent>, change| {
-                    match map.entry(change.subgraph_id.clone()) {
-                        Entry::Occupied(mut e) => e.get_mut().changes.push(change),
-                        Entry::Vacant(e) => {
-                            let subgraph_id = change.subgraph_id.clone();
-                            let event = StoreEvent {
-                                source: event_source.clone(),
-                                subgraph_id: subgraph_id.clone(),
-                                changes: vec![change],
-                            };
-                            e.insert(event);
-                        }
-                    };
-                    map
-                },
-            )
-            .values()
-        {
-            trace!(self.logger, "Emit store event"; 
+            .collect();
+        let event = StoreEvent {
+            source: event_source.clone(),
+            changes,
+        };
+
+        trace!(self.logger, "Emit store event"; 
                 "block" => event_source.to_string(), 
-                "subgraph" => event.subgraph_id.to_string(),
                 "changes" => event.changes.len());
-            let v = serde_json::to_value(event)?;
-            select(pg_notify("store_events", v.to_string())).execute(conn)?;
-        }
+
+        let v = serde_json::to_value(event)?;
+        select(pg_notify("store_events", v.to_string())).execute(conn)?;
         Ok(())
     }
 }

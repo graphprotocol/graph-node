@@ -252,12 +252,10 @@ impl Store for MockStore {
                 if entity_types_set.contains(&entity_type) {
                     let entity_change = entity_change.clone();
                     let sender = sender.clone();
-                    let subgraph_id = entity_type.0.clone();
 
                     tokio::spawn(future::lazy(move || {
                         let event = StoreEvent {
                             source: EventSource::None,
-                            subgraph_id: subgraph_id,
                             changes: vec![entity_change],
                         };
                         sender

@@ -186,16 +186,15 @@ impl EntityChange {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 /// The store emits `StoreEvents` to indicate that some entities have changed.
-/// `StoreEvents` are scoped to a specific subgraph, and for each subgraph
-/// at most one `StoreEvent` is emitted for each block that is processed. The
-/// `changes` vector contains the details of what changes were made, and to which
-/// entity.
+/// For block-related data, at most one `StoreEvent` is emitted for each block
+/// that is processed. The `changes` vector contains the details of what changes
+/// were made, and to which entity.
+///
 /// Since the 'subgraph of subgraphs' is special, and not directly related to
 /// any specific blocks, `StoreEvents` for it are generated as soon as they are
 /// written to the store.
 pub struct StoreEvent {
     pub source: EventSource,
-    pub subgraph_id: SubgraphDeploymentId,
     pub changes: Vec<EntityChange>,
 }
 

@@ -1605,7 +1605,6 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                     vec![
                         StoreEvent {
                             source: event_source1,
-                            subgraph_id: subgraph_id.clone(),
                             changes: vec![
                                 EntityChange {
                                     subgraph_id: subgraph_id.clone(),
@@ -1618,12 +1617,17 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                                     entity_type: "User".to_owned(),
                                     entity_id: added_entities[1].clone().0,
                                     operation: EntityChangeOperation::Set,
+                                },
+                                EntityChange {
+                                    subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
+                                    entity_type: "SubgraphDeployment".to_owned(),
+                                    entity_id: "EntityChangeTestSubgraph".to_owned(),
+                                    operation: EntityChangeOperation::Set
                                 }
                             ]
                         },
                         StoreEvent {
                             source: event_source2,
-                            subgraph_id: subgraph_id.clone(),
                             changes: vec![
                                 EntityChange {
                                     subgraph_id: subgraph_id.clone(),
@@ -1636,6 +1640,12 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                                     entity_type: "User".to_owned(),
                                     entity_id: added_entities[1].clone().0,
                                     operation: EntityChangeOperation::Removed,
+                                },
+                                EntityChange {
+                                    subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
+                                    entity_type: "SubgraphDeployment".to_owned(),
+                                    entity_id: "EntityChangeTestSubgraph".to_owned(),
+                                    operation: EntityChangeOperation::Set
                                 }
                             ]
                         }
