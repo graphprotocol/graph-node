@@ -274,7 +274,7 @@ impl Store {
         );
     }
 
-    /// Gets an entity from Postgres, returns an entity with just an ID if none is found.
+    /// Gets an entity from Postgres.
     fn get_entity(
         &self,
         conn: &PgConnection,
@@ -286,8 +286,8 @@ impl Store {
 
         match entities
             .find((op_id, op_subgraph.to_string(), op_entity))
-            .select(data)
-            .first::<serde_json::Value>(conn)
+            .select((data, entity))
+            .first::<(serde_json::Value, String)>(conn)
             .optional()
             .map_err(|e| {
                 QueryExecutionError::ResolveEntityError(
@@ -297,16 +297,18 @@ impl Store {
                     format!("{}", e),
                 )
             })? {
-            Some(json) => serde_json::from_value::<Entity>(json)
-                .map(Some)
-                .map_err(|e| {
+            Some((json, entity_type)) => {
+                let mut value = serde_json::from_value::<Entity>(json).map_err(|e| {
                     QueryExecutionError::ResolveEntityError(
                         op_subgraph.clone(),
                         op_entity.clone(),
                         op_id.clone(),
                         format!("Invalid entity: {}", e),
                     )
-                }),
+                })?;
+                value.set("__typename", entity_type);
+                Ok(Some(value))
+            }
             None => Ok(None),
         }
     }
@@ -323,7 +325,6 @@ impl Store {
         let mut diesel_query = entities
             .filter(entity.eq(any(query.entity_types)))
             .filter(subgraph.eq(query.subgraph_id.to_string()))
-            .select(data)
             .into_boxed::<Pg>();
 
         // Add specified filter to query
@@ -374,18 +375,24 @@ impl Store {
                 .offset(range.skip as i64);
         }
 
+        // Finally add the selected columns
+        let diesel_query = diesel_query.select((data, entity));
+
         // Record debug info in case of error
         let diesel_query_debug_info = debug_query(&diesel_query).to_string();
 
         // Process results; deserialize JSON data
         diesel_query
-            .load::<serde_json::Value>(conn)
+            .load::<(serde_json::Value, String)>(conn)
             .map(|values| {
                 values
                     .into_iter()
-                    .map(|value| {
-                        let parse_error_msg = format!("Error parsing entity JSON: {:?}", value);
-                        serde_json::from_value::<Entity>(value).expect(&parse_error_msg)
+                    .map(|(value, entity_type)| {
+                        let parse_error_msg = format!("Error parsing entity JSON: {:?}", data);
+                        let mut value =
+                            serde_json::from_value::<Entity>(value).expect(&parse_error_msg);
+                        value.set("__typename", entity_type);
+                        value
                     })
                     .collect()
             })
