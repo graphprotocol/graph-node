@@ -104,15 +104,6 @@ where
 
     // Process all field groups in order
     for (response_key, fields) in grouped_field_set {
-        // `__typename` is not in the schema but can be queried in all types.
-        if fields[0].name == "__typename" {
-            result_map.insert(
-                response_key.to_owned(),
-                q::Value::String(object_type.name.to_owned().into()),
-            );
-            continue;
-        }
-
         match ctx.deadline {
             Some(deadline) if deadline < Instant::now() => {
                 errors.push(QueryExecutionError::Timeout);

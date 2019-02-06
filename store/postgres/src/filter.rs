@@ -4,7 +4,7 @@ use diesel::pg::Pg;
 use diesel::prelude::*;
 use diesel::query_builder::BoxedSelectStatement;
 use diesel::serialize::ToSql;
-use diesel::sql_types::{Array, Bool, Double, HasSqlType, Integer, Jsonb, Numeric, Text};
+use diesel::sql_types::{Array, Bool, Double, HasSqlType, Integer, Numeric, Text};
 use std::str::FromStr;
 
 use graph::components::store::EntityFilter;
@@ -120,11 +120,11 @@ impl IntoArrayFilter<SqlValue> for Vec<SqlValue> {
     }
 }
 
-/// Adds `filter` to a `SELECT data FROM entities` statement.
-pub(crate) fn store_filter(
-    query: BoxedSelectStatement<Jsonb, entities::table, Pg>,
+/// Adds `filter` to a SELECT statement.
+pub(crate) fn store_filter<T>(
+    query: BoxedSelectStatement<T, entities::table, Pg>,
     filter: EntityFilter,
-) -> Result<BoxedSelectStatement<Jsonb, entities::table, Pg>, UnsupportedFilter> {
+) -> Result<BoxedSelectStatement<T, entities::table, Pg>, UnsupportedFilter> {
     Ok(query.filter(build_filter(filter)?))
 }
 
