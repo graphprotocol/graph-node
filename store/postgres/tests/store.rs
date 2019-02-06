@@ -326,6 +326,7 @@ fn get_entity_1() {
 
         let mut expected_entity = Entity::new();
 
+        expected_entity.insert("__typename".to_owned(), "user".into());
         expected_entity.insert("id".to_owned(), "1".into());
         expected_entity.insert("name".to_owned(), "Johnton".into());
         expected_entity.insert(
@@ -358,6 +359,7 @@ fn get_entity_3() {
 
         let mut expected_entity = Entity::new();
 
+        expected_entity.insert("__typename".to_owned(), "user".into());
         expected_entity.insert("id".to_owned(), "3".into());
         expected_entity.insert("name".to_owned(), "Shaqueeena".into());
         expected_entity.insert(
@@ -453,6 +455,8 @@ fn update_existing() {
             Some(Value::Bytes(bytes)) => bytes.clone(),
             _ => unreachable!(),
         };
+
+        new_data.insert("__typename".to_owned(), "user".into());
         new_data.insert("bin_name".to_owned(), Value::Bytes(bin_name));
         assert_eq!(store.get(entity_key).unwrap(), Some(new_data));
 

@@ -114,7 +114,26 @@ fn one_interface_one_entity() {
     assert!(res.errors.is_none());
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
-        "Object({\"animals\": List([Object({\"legs\": Int(Number(3))})])})"
+        "Object({\"leggeds\": List([Object({\"legs\": Int(Number(3))})])})"
+    )
+}
+
+#[test]
+fn one_interface_one_entity_typename() {
+    let subgraph_id = "oneInterfaceOneEntityTypename";
+    let schema = "interface Legged { legs: Int }
+                  type Animal implements Legged @entity { id: ID!, legs: Int }";
+
+    let entity = Entity::from(vec![("id", Value::from("1")), ("legs", Value::from(3))]);
+
+    let query = "query { leggeds { __typename } }";
+
+    let res = insert_and_query(subgraph_id, schema, vec![entity], query);
+    dbg!(&res);
+    assert!(res.errors.is_none());
+    assert_eq!(
+        format!("{:?}", res.data.unwrap()),
+        "Object({\"leggeds\": List([Object({\"__typename\": String(\"Animal\")})])})"
     )
 }
 
