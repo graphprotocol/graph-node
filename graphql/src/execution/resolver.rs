@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use graph::prelude::{QueryExecutionError, StoreEventStreamBox};
 use prelude::*;
+use schema::ast::get_named_type;
 
 #[derive(Copy, Clone)]
 pub enum ObjectOrInterface<'a> {
@@ -136,11 +137,24 @@ pub trait Resolver: Clone + Send + Sync {
     // Resolves an abstract type into the specific type of an object.
     fn resolve_abstract_type<'a>(
         &self,
-        _schema: &'a s::Document,
+        schema: &'a s::Document,
         _abstract_type: &s::TypeDefinition,
-        _object_value: &q::Value,
+        object_value: &q::Value,
     ) -> Option<&'a s::ObjectType> {
-        None
+        let concrete_type_name = match object_value {
+            // All objects contain `__typename`
+            q::Value::Object(data) => match &data["__typename"] {
+                q::Value::String(name) => name.clone(),
+                _ => unreachable!("__typename must be a string"),
+            },
+            _ => unreachable!("abstract type value must be an object"),
+        };
+
+        // A name returned in a `__typename` must exist in the schema.
+        match get_named_type(schema, &concrete_type_name).unwrap() {
+            s::TypeDefinition::Object(object) => Some(object),
+            _ => unreachable!("only objects may implement interfaces"),
+        }
     }
 
     // Resolves a change stream for a given field.

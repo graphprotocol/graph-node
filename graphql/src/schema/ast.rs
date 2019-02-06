@@ -167,11 +167,26 @@ pub fn get_field_type<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
     name: &Name,
 ) -> Option<&'a Field> {
-    object_type
-        .into()
-        .fields()
-        .iter()
-        .find(|field| &field.name == name)
+    lazy_static! {
+        pub static ref TYPENAME_FIELD: Field = Field {
+            position: Pos::default(),
+            description: None,
+            name: "__typename".to_owned(),
+            field_type: Type::NonNullType(Box::new(Type::NamedType("String".to_owned()))),
+            arguments: vec![],
+            directives: vec![],
+        };
+    }
+
+    if name == &TYPENAME_FIELD.name {
+        Some(&TYPENAME_FIELD)
+    } else {
+        object_type
+            .into()
+            .fields()
+            .iter()
+            .find(|field| &field.name == name)
+    }
 }
 
 /// Returns the type of a field of an interface type.
