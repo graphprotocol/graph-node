@@ -27,7 +27,7 @@ use functions::{
     attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, pg_notify,
     revert_block, set_config,
 };
-use store_events::StoreEventListener;
+use store_events::{get_revert_event, StoreEventListener};
 
 embed_migrations!("./migrations");
 
@@ -662,6 +662,24 @@ impl Store {
         select(pg_notify("store_events", v.to_string())).execute(conn)?;
         Ok(())
     }
+
+    fn emit_revert_event(
+        &self,
+        conn: &PgConnection,
+        subgraph_id: &SubgraphDeploymentId,
+        block_ptr_from: &EthereumBlockPointer,
+        block_ptr_to: EthereumBlockPointer,
+    ) -> Result<(), StoreError> {
+        let event = get_revert_event(conn, subgraph_id, block_ptr_from, block_ptr_to)?;
+
+        trace!(self.logger, "Emit store event for revert"; 
+                "block" => event.source.to_string(), 
+                "changes" => event.changes.len());
+
+        let v = serde_json::to_value(event)?;
+        select(pg_notify("store_events", v.to_string())).execute(conn)?;
+        Ok(())
+    }
 }
 
 impl StoreTrait for Store {
@@ -825,6 +843,8 @@ impl StoreTrait for Store {
                 block_ptr_to,
             );
             self.apply_entity_operations_with_conn(&conn, ops, EventSource::None)?;
+
+            self.emit_revert_event(&conn, &subgraph_id, &block_ptr_from, block_ptr_to)?;
 
             select(revert_block(
                 &block_ptr_from.hash_hex(),
