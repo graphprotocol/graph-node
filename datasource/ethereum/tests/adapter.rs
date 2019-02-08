@@ -66,13 +66,10 @@ impl Transport for TestTransport {
         (self.requests.lock().unwrap().len(), request)
     }
 
-    fn send(&self, id: RequestId, request: jsonrpc_core::Call) -> Result<jsonrpc_core::Value> {
+    fn send(&self, _: RequestId, _: jsonrpc_core::Call) -> Result<jsonrpc_core::Value> {
         match self.response.lock().unwrap().pop_front() {
             Some(response) => Box::new(finished(response)),
-            None => {
-                println!("Unexpected request (id: {:?}): {:?}", id, request);
-                Box::new(failed(ErrorKind::Unreachable.into()))
-            }
+            None => Box::new(failed(ErrorKind::Unreachable.into())),
         }
     }
 }

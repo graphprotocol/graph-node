@@ -142,6 +142,11 @@ where
     if errors.is_empty() && !result_map.is_empty() {
         Ok(q::Value::Object(result_map))
     } else {
+        if errors.is_empty() {
+            errors.push(QueryExecutionError::EmptySelectionSet(
+                object_type.name.clone(),
+            ));
+        }
         Err(errors)
     }
 }
