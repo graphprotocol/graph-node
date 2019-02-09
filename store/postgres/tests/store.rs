@@ -32,15 +32,16 @@ fn postgres_test_url() -> String {
 }
 
 lazy_static! {
+    static ref LOGGER:Logger = match env::var_os("GRAPH_LOG") {
+        Some(_) => log::logger(false),
+        None => Logger::root(slog::Discard, o!()),
+    };
     // Create Store instance once for use with each of the tests
     static ref STORE_MUTEX: Mutex<(Arc<DieselStore>, Runtime)> = {
         let mut runtime = Runtime::new().unwrap();
         let store = runtime.block_on(future::lazy(|| -> Result<_, ()> {
             // Set up Store
-            let logger = match env::var_os("GRAPH_LOG") {
-                Some(_) => log::logger(false),
-                None => Logger::root(slog::Discard, o!()),
-            };
+            let logger = &*LOGGER;
             let postgres_url = postgres_test_url();
             let net_identifiers = EthereumNetworkIdentifier {
                 net_version: "graph test suite".to_owned(),
@@ -1363,7 +1364,7 @@ fn make_deployment_change(entity_id: &str, op: EntityChangeOperation) -> EntityC
 // Get as many events as expected contains from stream and check that they
 // are equal to the expected events
 fn check_events(
-    stream: StoreEventStreamBox,
+    stream: StoreEventStream<impl Stream<Item = StoreEvent, Error = ()> + Send>,
     expected: Vec<StoreEvent>,
 ) -> impl Future<Item = (), Error = graph::tokio_timer::timeout::Error<()>> {
     stream
@@ -1385,8 +1386,9 @@ fn subscribe_and_consume(
     store: Arc<DieselStore>,
     subgraph: &SubgraphDeploymentId,
     entity_type: &str,
-) -> StoreEventStreamBox {
+) -> StoreEventStream<impl Stream<Item = StoreEvent, Error = ()> + Send> {
     static MARKER_ID: &str = "fake marker";
+
     let subscription = store.subscribe(vec![(subgraph.clone(), entity_type.to_owned())]);
 
     // Generate fake activity on the stream by removing a nonexistent entity and
@@ -1416,19 +1418,18 @@ fn subscribe_and_consume(
         .apply_entity_operations(vec![op], source.clone())
         .expect("Failed to apply marker operation");
 
-    Box::new(
-        subscription
-            .skip_while(move |event| {
-                // Skip events until we see the fake event we generated above
-                future::ok(
-                    event
-                        .changes
-                        .iter()
-                        .all(|change| change.entity_id != MARKER_ID),
-                )
-            })
-            .skip(1),
-    )
+    let source = subscription
+        .skip_while(move |event| {
+            // Skip events until we see the fake event we generated above
+            future::ok(
+                event
+                    .changes
+                    .iter()
+                    .all(|change| change.entity_id != MARKER_ID),
+            )
+        })
+        .skip(1);
+    StoreEventStream::new(source)
 }
 
 #[test]
@@ -1752,4 +1753,94 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 
         check_events(subscription, expected)
     })
+}
+
+#[test]
+fn throttle_subscription_delivers() {
+    run_test(|store| {
+        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user");
+        let subscription = subscription.throttle_while_syncing(
+            &*LOGGER,
+            store.clone(),
+            TEST_SUBGRAPH_ID.clone(),
+            Duration::from_millis(500),
+        );
+
+        let user4 = create_test_entity(
+            "4",
+            "user",
+            "Steve",
+            "nieve@email.com",
+            72 as i32,
+            120.7,
+            false,
+            None,
+        );
+
+        store
+            .transact_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_4_PTR,
+                vec![user4],
+            )
+            .unwrap();
+
+        let expected = StoreEvent::new(vec![
+            make_entity_change("user", "4", EntityChangeOperation::Set),
+            make_deployment_change("testsubgraph", EntityChangeOperation::Set),
+        ]);
+
+        check_events(subscription, vec![expected])
+    })
+}
+
+#[test]
+fn throttle_subscription_throttles() {
+    run_test(
+        |store| -> Box<Future<Item = (), Error = graph::tokio_timer::timeout::Error<()>> + Send> {
+            let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user");
+            // Throttle subscriptions for a very long time
+            let subscription = subscription.throttle_while_syncing(
+                &*LOGGER,
+                store.clone(),
+                TEST_SUBGRAPH_ID.clone(),
+                Duration::from_secs(30),
+            );
+
+            let user4 = create_test_entity(
+                "4",
+                "user",
+                "Steve",
+                "nieve@email.com",
+                72 as i32,
+                120.7,
+                false,
+                None,
+            );
+
+            store
+                .transact_block_operations(
+                    TEST_SUBGRAPH_ID.clone(),
+                    *TEST_BLOCK_3_PTR,
+                    *TEST_BLOCK_4_PTR,
+                    vec![user4],
+                )
+                .unwrap();
+
+            // Make sure we time out waiting for the subscription
+            Box::new(
+                subscription
+                    .take(1)
+                    .collect()
+                    .timeout(Duration::from_millis(500))
+                    .then(|res| {
+                        assert!(res.is_err());
+                        let err = res.err().unwrap();
+                        assert!(err.is_elapsed());
+                        future::ok(())
+                    }),
+            )
+        },
+    )
 }

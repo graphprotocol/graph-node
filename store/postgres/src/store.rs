@@ -208,7 +208,7 @@ impl Store {
     /// Receive store events from Postgres and send them to all active
     /// subscriptions. Detect stale subscriptions in the process and
     /// close them.
-    fn handle_store_events(&self, store_events: StoreEventStreamBox) {
+    fn handle_store_events(&self, store_events: Box<Stream<Item = StoreEvent, Error = ()> + Send>) {
         let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
 
@@ -873,10 +873,8 @@ impl StoreTrait for Store {
         let mut subscriptions = subscriptions.write().unwrap();
         subscriptions.insert(id, sender);
 
-        let receiver = StoreEventStream::new(receiver).filter_by_entities(entities);
-
         // Return the subscription ID and entity change stream
-        Box::new(receiver)
+        StoreEventStream::new(Box::new(receiver)).filter_by_entities(entities)
     }
 
     fn count_entities(&self, subgraph_id: SubgraphDeploymentId) -> Result<u64, Error> {

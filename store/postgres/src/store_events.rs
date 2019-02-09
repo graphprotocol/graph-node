@@ -28,7 +28,7 @@ impl StoreEventListener {
 }
 
 impl EventProducer<StoreEvent> for StoreEventListener {
-    fn take_event_stream(&mut self) -> Option<StoreEventStreamBox> {
+    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = StoreEvent, Error = ()> + Send>> {
         self.notification_listener.take_event_stream().map(
             |stream| -> Box<Stream<Item = _, Error = _> + Send> {
                 Box::new(stream.map(|notification| {

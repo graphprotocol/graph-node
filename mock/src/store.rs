@@ -291,7 +291,7 @@ impl Store for MockStore {
             .unwrap()
             .push((entity_types.into_iter().collect(), sender));
 
-        Box::new(receiver)
+        StoreEventStream::new(Box::new(receiver))
     }
 
     fn count_entities(&self, _: SubgraphDeploymentId) -> Result<u64, Error> {
