@@ -508,6 +508,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         field: &q::Name,
         _object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
+        _: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
         let object = match field.as_str() {
             "__schema" => self.schema_object(),

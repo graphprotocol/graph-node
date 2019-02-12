@@ -34,6 +34,7 @@ impl Resolver for MockResolver {
         _field: &q::Name,
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
+        _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }

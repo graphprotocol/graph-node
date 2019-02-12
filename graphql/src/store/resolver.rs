@@ -269,6 +269,7 @@ where
         field: &q::Name,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
+        types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
         let id = arguments.get(&"id".to_string()).and_then(|id| match id {
             q::Value::String(s) => Some(s),
@@ -278,16 +279,27 @@ where
         // subgraph_id directive is injected in all types.
         let subgraph_id = parse_subgraph_id(object_type).unwrap();
         let entity = if let Some(id) = id {
-            self.store.get(EntityKey {
-                subgraph_id: subgraph_id.clone(),
-                entity_type: object_type.name().to_owned(),
-                entity_id: id.to_owned(),
-            })?
+            match object_type {
+                ObjectOrInterface::Object(_) => self.store.get(EntityKey {
+                    subgraph_id,
+                    entity_type: object_type.name().to_owned(),
+                    entity_id: id.to_owned(),
+                })?,
+                ObjectOrInterface::Interface(interface) => {
+                    let entity_types = types_for_interface[&interface.name]
+                        .iter()
+                        .map(|o| o.name.clone())
+                        .collect();
+                    let mut query = EntityQuery::new(subgraph_id, entity_types);
+                    query.range = Some(EntityRange { first: 1, skip: 0 });
+                    self.store.find(query)?.into_iter().next()
+                }
+            }
         } else {
             match parent {
                 Some(q::Value::Object(parent_object)) => match parent_object.get(field) {
                     Some(q::Value::String(id)) => self.store.get(EntityKey {
-                        subgraph_id: subgraph_id.clone(),
+                        subgraph_id,
                         entity_type: object_type.name().to_owned(),
                         entity_id: id.to_owned(),
                     })?,
