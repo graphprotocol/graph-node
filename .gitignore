@@ -6,3 +6,8 @@
 **/*.rs.bk
 **/*.idea
 **/*.DS_STORE
+
+# Ignore data files created by running the Docker Compose setup locally
+/docker/data/
+/docker/parity/chains/
+/docker/parity/network/
