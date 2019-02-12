@@ -391,10 +391,16 @@ where
                     &field.name,
                     t.into(),
                     argument_values,
+                    &BTreeMap::new(), // The introspection schema has no interfaces.
                 )
             } else {
-                ctx.resolver
-                    .resolve_object(object_value, &field.name, t.into(), argument_values)
+                ctx.resolver.resolve_object(
+                    object_value,
+                    &field.name,
+                    t.into(),
+                    argument_values,
+                    ctx.schema.types_for_interface(),
+                )
             }
         }
 
@@ -428,7 +434,6 @@ where
             _ => Ok(q::Value::Null),
         },
 
-        // We will implement these later
         s::TypeDefinition::Interface(i) => {
             if ctx.introspecting {
                 ctx.introspection_resolver.resolve_object(
@@ -436,12 +441,19 @@ where
                     &field.name,
                     i.into(),
                     argument_values,
+                    &BTreeMap::new(), // The introspection schema has no interfaces.
                 )
             } else {
-                ctx.resolver
-                    .resolve_object(object_value, &field.name, i.into(), argument_values)
+                ctx.resolver.resolve_object(
+                    object_value,
+                    &field.name,
+                    i.into(),
+                    argument_values,
+                    ctx.schema.types_for_interface(),
+                )
             }
         }
+
         s::TypeDefinition::Union(_) => unimplemented!(),
 
         _ => unimplemented!(),

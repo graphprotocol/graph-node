@@ -117,15 +117,23 @@ fn one_interface_one_entity() {
         "Animal",
     );
 
+    // Collection query.
     let query = "query { leggeds { legs } }";
-
     let res = insert_and_query(subgraph_id, schema, vec![entity], query);
-
     assert!(res.errors.is_none());
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
         "Object({\"leggeds\": List([Object({\"legs\": Int(Number(3))})])})"
-    )
+    );
+
+    // Query by ID.
+    let query = "query { legged(id: \"1\") { legs } }";
+    let res = insert_and_query(subgraph_id, schema, vec![], query);
+    assert!(res.errors.is_none());
+    assert_eq!(
+        format!("{:?}", res.data.unwrap()),
+        "Object({\"legged\": Object({\"legs\": Int(Number(3))})})",
+    );
 }
 
 #[test]

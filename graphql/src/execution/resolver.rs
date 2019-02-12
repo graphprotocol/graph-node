@@ -66,6 +66,7 @@ pub trait Resolver: Clone + Send + Sync {
         field: &q::Name,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
+        types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an enum value for a given enum type.
