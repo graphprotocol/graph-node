@@ -130,6 +130,7 @@ fn input_object_type_object(
     type_objects: &mut TypeObjectsMap,
     input_object_type: &s::InputObjectType,
 ) -> q::Value {
+    let input_values = input_values(schema, type_objects, &input_object_type.fields);
     object_value(vec![
         ("name", q::Value::String(input_object_type.name.to_owned())),
         ("kind", q::Value::Enum(String::from("INPUT_OBJECT"))),
@@ -140,9 +141,17 @@ fn input_object_type_object(
                 .as_ref()
                 .map_or(q::Value::Null, |s| q::Value::String(s.to_owned())),
         ),
+        // The JS graphql library that graphiql uses does not like an empty
+        // "inputFields" and will refuse to load the schema if it finds one. So make
+        // sure to please it by using `null` if empty. graphql could be more
+        // flexible here, looks like an upstream bug.
         (
             "inputFields",
-            input_values(schema, type_objects, &input_object_type.fields),
+            if input_values.is_empty() {
+                q::Value::Null
+            } else {
+                q::Value::List(input_values)
+            },
         ),
     ])
 }
@@ -235,7 +244,10 @@ fn field_object(schema: &Schema, type_objects: &mut TypeObjectsMap, field: &s::F
                 .as_ref()
                 .map_or(q::Value::Null, |s| q::Value::String(s.to_owned())),
         ),
-        ("args", input_values(schema, type_objects, &field.arguments)),
+        (
+            "args",
+            q::Value::List(input_values(schema, type_objects, &field.arguments)),
+        ),
         ("type", type_object(schema, type_objects, &field.field_type)),
         ("isDeprecated", q::Value::Boolean(false)),
         ("deprecationReason", q::Value::Null),
@@ -334,7 +346,7 @@ fn directive_object(
         ("locations", directive_locations(directive)),
         (
             "args",
-            input_values(schema, type_objects, &directive.arguments),
+            q::Value::List(input_values(schema, type_objects, &directive.arguments)),
         ),
     ])
 }
@@ -354,13 +366,11 @@ fn input_values(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
     input_values: &[s::InputValue],
-) -> q::Value {
-    q::Value::List(
-        input_values
-            .iter()
-            .map(|value| input_value(schema, type_objects, value))
-            .collect(),
-    )
+) -> Vec<q::Value> {
+    input_values
+        .iter()
+        .map(|value| input_value(schema, type_objects, value))
+        .collect()
 }
 
 fn input_value(
