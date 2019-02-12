@@ -4,7 +4,7 @@ version = "0.5.0"
 
 [dependencies]
 # Switch to upstream master once https://github.com/paritytech/ethabi/pull/145 is merged.
-ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "leo/event-overloading" }
+ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "graph-patches" }
 futures = "0.1.21"
 hex = "0.3.2"
 graph = { path = "../../graph" }
