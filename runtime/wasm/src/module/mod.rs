@@ -210,23 +210,43 @@ where
     ) -> Result<Vec<EntityOperation>, FailureError> {
         self.start_time = Instant::now();
 
+        let block = self.ctx.block.block.clone();
+        let transaction = self.ctx.transaction.clone();
+
         // Prepare an EthereumEvent for the WASM runtime
-        let event = EthereumEventData {
-            block: EthereumBlockData::from(&self.ctx.block.block),
-            transaction: EthereumTransactionData::from(self.ctx.transaction.deref()),
-            address: log.address,
-            log_index: log.log_index.unwrap_or(U256::zero()),
-            transaction_log_index: log.transaction_log_index.unwrap_or(U256::zero()),
-            log_type: log.log_type.clone(),
-            params,
+        // Decide on the destination type using the version provided
+        // in the subgraph manifest (SpecVersion)
+        let event = if self.host_exports.spec_version > Version::parse("0.0.1").unwrap() {
+            RuntimeValue::from(
+                self.asc_new::<AscEthereumEvent<AscEthereumTransactionV2>, _>(&EthereumEventData {
+                    block: EthereumBlockData::from(&block),
+                    transaction: EthereumTransactionData::from(transaction.deref()),
+                    address: log.address,
+                    log_index: log.log_index.unwrap_or(U256::zero()),
+                    transaction_log_index: log.transaction_log_index.unwrap_or(U256::zero()),
+                    log_type: log.log_type.clone(),
+                    params,
+                }),
+            )
+        } else {
+            RuntimeValue::from(
+                self.asc_new::<AscEthereumEvent<AscEthereumTransactionV1>, _>(&EthereumEventData {
+                    block: EthereumBlockData::from(&block),
+                    transaction: EthereumTransactionData::from(transaction.deref()),
+                    address: log.address,
+                    log_index: log.log_index.unwrap_or(U256::zero()),
+                    transaction_log_index: log.transaction_log_index.unwrap_or(U256::zero()),
+                    log_type: log.log_type.clone(),
+                    params,
+                }),
+            )
         };
 
         // Invoke the event handler
-        let result = self.module.clone().invoke_export(
-            handler_name,
-            &[RuntimeValue::from(self.asc_new(&event))],
-            &mut self,
-        );
+        let result = self
+            .module
+            .clone()
+            .invoke_export(handler_name, &[event], &mut self);
 
         // Return either the collected entity operations or an error
         result.map(|_| self.ctx.entity_operations).map_err(|e| {
