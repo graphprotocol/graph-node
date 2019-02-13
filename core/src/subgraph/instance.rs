@@ -1,5 +1,6 @@
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::web3::types::{Log, Transaction};
+use semver::Version;
 
 pub struct SubgraphInstance<T>
 where
@@ -26,10 +27,11 @@ where
         // we use the same order here as in the subgraph manifest to make the
         // event processing behavior predictable
         let manifest_id = manifest.id;
+        let spec_version = Version::parse(&manifest.spec_version)?;
         let (hosts, errors): (_, Vec<_>) = manifest
             .data_sources
             .into_iter()
-            .map(|d| host_builder.build(&logger, manifest_id.clone(), d))
+            .map(|d| host_builder.build(&logger, manifest_id.clone(), spec_version.clone(), d))
             .partition(|res| res.is_ok());
 
         if !errors.is_empty() {

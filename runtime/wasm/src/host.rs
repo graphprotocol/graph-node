@@ -1,5 +1,6 @@
 use futures::sync::mpsc::{channel, Sender};
 use futures::sync::oneshot;
+use semver::Version;
 use std::thread;
 use std::time::Instant;
 
@@ -19,6 +20,7 @@ use crate::module::{ValidModule, WasmiModule, WasmiModuleConfig};
 
 pub struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
+    spec_version: Version,
     data_source: DataSource,
 }
 
@@ -70,6 +72,7 @@ where
         &self,
         logger: &Logger,
         subgraph_id: SubgraphDeploymentId,
+        spec_version: Version,
         data_source: DataSource,
     ) -> Result<Self::Host, Error> {
         RuntimeHost::new(
@@ -79,6 +82,7 @@ where
             self.store.clone(),
             RuntimeHostConfig {
                 subgraph_id,
+                spec_version,
                 data_source,
             },
         )
@@ -178,6 +182,7 @@ impl RuntimeHost {
             // Load the mapping of the data source as a WASM module
             let wasmi_config = WasmiModuleConfig {
                 subgraph_id: config.subgraph_id,
+                spec_version: config.spec_version,
                 data_source: config.data_source,
                 ethereum_adapter: ethereum_adapter.clone(),
                 link_resolver: link_resolver.clone(),

@@ -17,6 +17,7 @@ pub extern crate failure;
 extern crate ipfs_api;
 extern crate parity_wasm;
 extern crate rand;
+extern crate semver;
 pub extern crate serde_json;
 pub extern crate slog_async;
 extern crate slog_envlogger;
