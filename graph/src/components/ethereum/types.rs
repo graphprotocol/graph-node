@@ -95,6 +95,7 @@ pub struct EthereumTransactionData {
     pub value: U256,
     pub gas_used: U256,
     pub gas_price: U256,
+    pub input: Bytes,
 }
 
 impl<'a> From<&'a Transaction> for EthereumTransactionData {
@@ -107,6 +108,7 @@ impl<'a> From<&'a Transaction> for EthereumTransactionData {
             value: tx.value,
             gas_used: tx.gas,
             gas_price: tx.gas_price,
+            input: tx.input.clone(),
         }
     }
 }
