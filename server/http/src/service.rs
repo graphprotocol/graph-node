@@ -414,7 +414,7 @@ mod tests {
         }
 
         fn run_subscription(&self, _subscription: Subscription) -> SubscriptionResultFuture {
-            unimplemented!();
+            unreachable!();
         }
     }
 

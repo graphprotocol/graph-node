@@ -58,7 +58,7 @@ impl GraphQlRunner for TestGraphQlRunner {
     }
 
     fn run_subscription(&self, _subscription: Subscription) -> SubscriptionResultFuture {
-        unimplemented!();
+        unreachable!();
     }
 }
 

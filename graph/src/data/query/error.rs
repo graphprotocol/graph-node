@@ -47,6 +47,7 @@ pub enum QueryExecutionError {
     StoreError(failure::Error),
     Timeout,
     EmptySelectionSet(String),
+    Unimplemented(String),
 }
 
 impl Error for QueryExecutionError {
@@ -168,6 +169,9 @@ impl fmt::Display for QueryExecutionError {
             Timeout => write!(f, "Query timed out"),
             EmptySelectionSet(entity_type) => {
                 write!(f, "Selection set for type {} is empty", entity_type)
+            }
+            Unimplemented(feature) => {
+                write!(f, "Feature `{}` is not yet implemented", feature)
             }
         }
     }

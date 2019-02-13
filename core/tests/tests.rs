@@ -81,7 +81,7 @@ fn multiple_data_sources_per_subgraph() {
             _: Arc<Log>,
             _: Vec<EntityOperation>,
         ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send> {
-            unimplemented!();
+            unreachable!();
         }
     }
 
