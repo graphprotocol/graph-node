@@ -300,8 +300,8 @@ impl Store for MockStore {
 }
 
 impl SubgraphDeploymentStore for MockStore {
-    fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Schema, Error> {
-        Ok(self.schemas.get(&subgraph_id).unwrap().clone())
+    fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+        Ok(Arc::new(self.schemas.get(&subgraph_id).unwrap().clone()))
     }
 }
 

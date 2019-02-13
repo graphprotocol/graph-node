@@ -254,7 +254,7 @@ fn execute_query_document_with_variables(
     variables: Option<QueryVariables>,
 ) -> QueryResult {
     let query = Query {
-        schema: test_schema(),
+        schema: Arc::new(test_schema()),
         document: query,
         variables,
     };

@@ -72,7 +72,7 @@ pub struct Store {
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
-    schema_cache: Mutex<LruCache<SubgraphDeploymentId, Schema>>,
+    schema_cache: Mutex<LruCache<SubgraphDeploymentId, Arc<Schema>>>,
 }
 
 impl Store {
@@ -896,7 +896,7 @@ impl StoreTrait for Store {
 }
 
 impl SubgraphDeploymentStore for Store {
-    fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Schema, Error> {
+    fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
         if let Some(schema) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
             trace!(self.logger, "schema cache hit"; "id" => subgraph_id.to_string());
             return Ok(schema.clone());
@@ -927,13 +927,13 @@ impl SubgraphDeploymentStore for Store {
         };
         let mut schema = Schema::parse(&raw_schema, subgraph_id.clone())?;
         schema.document = api_schema(&schema.document)?;
+        let schema = Arc::new(schema);
 
-        if !self.schema_cache.lock().unwrap().contains_key(&subgraph_id) {
-            self.schema_cache
-                .lock()
-                .unwrap()
-                .insert(subgraph_id, schema.clone());
-        }
+        // Insert the schema into the cache.
+        self.schema_cache
+            .lock()
+            .unwrap()
+            .insert(subgraph_id, schema.clone());
 
         Ok(schema)
     }

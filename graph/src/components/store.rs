@@ -936,7 +936,7 @@ pub trait Store: Send + Sync + 'static {
 }
 
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {
-    fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Schema, Error>;
+    fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
 }
 
 /// Common trait for blockchain store implementations.
