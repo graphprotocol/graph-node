@@ -151,7 +151,7 @@ pub struct GraphQlConnection<Q, S> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     stream: WebSocketStream<S>,
-    schema: Schema,
+    schema: Arc<Schema>,
 }
 
 impl<Q, S> GraphQlConnection<Q, S>
@@ -162,7 +162,7 @@ where
     /// Creates a new GraphQL subscription service.
     pub(crate) fn new(
         logger: &Logger,
-        schema: Schema,
+        schema: Arc<Schema>,
         stream: WebSocketStream<S>,
         graphql_runner: Arc<Q>,
     ) -> Self {
@@ -180,7 +180,7 @@ where
         mut msg_sink: mpsc::UnboundedSender<WsMessage>,
         logger: Logger,
         connection_id: String,
-        schema: Schema,
+        schema: Arc<Schema>,
         graphql_runner: Arc<Q>,
     ) -> impl Future<Item = (), Error = WsError> {
         let mut operations = Operations::new(msg_sink.clone());

@@ -480,7 +480,7 @@ fn expected_mock_schema_introspection() -> q::Value {
 fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     // Create the query
     let query = Query {
-        schema: schema,
+        schema: Arc::new(schema),
         document: graphql_parser::parse_query(query).unwrap(),
         variables: None,
     };

@@ -2,6 +2,7 @@ use graphql_parser::query as q;
 use serde::de::{Deserialize, Deserializer};
 use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 use data::schema::Schema;
 
@@ -88,7 +89,7 @@ impl DerefMut for QueryVariables {
 /// A GraphQL query as submitted by a client, either directly or through a subscription.
 #[derive(Clone, Debug)]
 pub struct Query {
-    pub schema: Schema,
+    pub schema: Arc<Schema>,
     pub document: q::Document,
     pub variables: Option<QueryVariables>,
 }

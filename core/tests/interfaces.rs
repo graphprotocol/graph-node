@@ -82,7 +82,7 @@ fn insert_and_query(
     let options = QueryExecutionOptions { logger, resolver };
     let document = graphql_parser::parse_query(query).unwrap();
     let query = Query {
-        schema,
+        schema: Arc::new(schema),
         document,
         variables: None,
     };

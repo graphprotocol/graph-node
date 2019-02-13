@@ -62,7 +62,7 @@ where
             .map(|_| {
                 let schema = schema.lock().unwrap();
                 Query {
-                    schema: schema.clone().unwrap(),
+                    schema: Arc::new(schema.clone().unwrap()),
                     document: graphql_parser::parse_query("{ allUsers { name }}").unwrap(),
                     variables: None,
                 }

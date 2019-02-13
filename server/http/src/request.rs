@@ -8,12 +8,12 @@ use graph::prelude::*;
 /// Future for a query parsed from an HTTP request.
 pub struct GraphQLRequest {
     body: Chunk,
-    schema: Schema,
+    schema: Arc<Schema>,
 }
 
 impl GraphQLRequest {
     /// Creates a new GraphQLRequest future based on an HTTP request and a result sender.
-    pub fn new(body: Chunk, schema: Schema) -> Self {
+    pub fn new(body: Chunk, schema: Arc<Schema>) -> Self {
         GraphQLRequest { body, schema }
     }
 }
@@ -90,7 +90,7 @@ mod tests {
     fn rejects_invalid_json() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(hyper::Chunk::from("!@#)%"), schema);
+        let request = GraphQLRequest::new(hyper::Chunk::from("!@#)%"), Arc::new(schema));
         request.wait().expect_err("Should reject invalid JSON");
     }
 
@@ -98,7 +98,7 @@ mod tests {
     fn rejects_json_without_query_field() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(hyper::Chunk::from("{}"), schema);
+        let request = GraphQLRequest::new(hyper::Chunk::from("{}"), Arc::new(schema));
         request
             .wait()
             .expect_err("Should reject JSON without query field");
@@ -108,7 +108,7 @@ mod tests {
     fn rejects_json_with_non_string_query_field() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": 5}"), schema);
+        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": 5}"), Arc::new(schema));
         request
             .wait()
             .expect_err("Should reject JSON with a non-string query field");
@@ -118,7 +118,8 @@ mod tests {
     fn rejects_broken_queries() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(hyper::Chunk::from("{\"query\": \"foo\"}"), schema);
+        let request =
+            GraphQLRequest::new(hyper::Chunk::from("{\"query\": \"foo\"}"), Arc::new(schema));
         request.wait().expect_err("Should reject broken queries");
     }
 
@@ -128,7 +129,7 @@ mod tests {
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = GraphQLRequest::new(
             hyper::Chunk::from("{\"query\": \"{ user { name } }\"}"),
-            schema,
+            Arc::new(schema),
         );
         let query = request.wait().expect("Should accept valid queries");
         assert_eq!(
@@ -149,7 +150,7 @@ mod tests {
                  \"variables\": null \
                  }",
             ),
-            schema,
+            Arc::new(schema),
         );
         let query = request.wait().expect("Should accept null variables");
 
@@ -170,7 +171,7 @@ mod tests {
                  \"variables\": 5 \
                  }",
             ),
-            schema,
+            Arc::new(schema),
         );
         request.wait().expect_err("Should reject non-map variables");
     }
@@ -189,7 +190,7 @@ mod tests {
                  } \
                  }",
             ),
-            schema,
+            Arc::new(schema),
         );
         let query = request.wait().expect("Should accept valid queries");
 
