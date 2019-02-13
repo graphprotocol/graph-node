@@ -5,6 +5,7 @@ extern crate graph;
 extern crate graph_runtime_derive;
 extern crate hex;
 extern crate pwasm_utils;
+extern crate semver;
 extern crate tiny_keccak;
 extern crate wasmi;
 

@@ -3,6 +3,7 @@ extern crate graph_core;
 extern crate graph_mock;
 extern crate graph_runtime_wasm;
 extern crate ipfs_api;
+extern crate semver;
 extern crate walkdir;
 
 use ipfs_api::IpfsClient;
@@ -14,6 +15,7 @@ use graph::prelude::*;
 use graph::web3::types::*;
 use graph_core::SubgraphInstanceManager;
 use graph_mock::{FakeStore, MockBlockStreamBuilder, MockStore};
+use semver::Version;
 use std::collections::HashSet;
 use std::fs::read_to_string;
 use std::io::Cursor;
@@ -111,6 +113,7 @@ fn multiple_data_sources_per_subgraph() {
             &self,
             _: &Logger,
             _: SubgraphDeploymentId,
+            _: Version,
             data_source: DataSource,
         ) -> Result<Self::Host, Error> {
             self.data_sources_received.lock().unwrap().push(data_source);

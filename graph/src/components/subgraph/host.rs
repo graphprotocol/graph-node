@@ -1,5 +1,6 @@
 use failure::Error;
 use futures::prelude::*;
+use semver::Version;
 use std::sync::Arc;
 
 use crate::prelude::*;
@@ -29,6 +30,7 @@ pub trait RuntimeHostBuilder: Clone + Send + 'static {
         &self,
         logger: &Logger,
         subgraph_id: SubgraphDeploymentId,
+        spec_version: Version,
         data_source: DataSource,
     ) -> Result<Self::Host, Error>;
 }

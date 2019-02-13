@@ -2,6 +2,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::time::Instant;
 
+use semver::Version;
 use wasmi::{
     nan_preserving_float::F64, Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder,
     MemoryRef, Module, ModuleImportResolver, ModuleInstance, ModuleRef, RuntimeArgs, RuntimeValue,
@@ -53,6 +54,7 @@ const TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX: usize = 25;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
+    pub spec_version: Version,
     pub data_source: DataSource,
     pub ethereum_adapter: Arc<T>,
     pub link_resolver: Arc<L>,
@@ -115,6 +117,7 @@ where
         // Create new instance of externally hosted functions invoker
         let host_exports = HostExports::new(
             config.subgraph_id,
+            config.spec_version,
             config.data_source.mapping.abis,
             config.ethereum_adapter.clone(),
             config.link_resolver.clone(),
