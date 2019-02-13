@@ -30,7 +30,7 @@ impl<'a> Serialize for SerializableValue<'a> {
                 }
                 map.end()
             }
-            _ => unimplemented!(),
+            Value::Variable(_) => unreachable!("output cannot contain variables"),
         }
     }
 }

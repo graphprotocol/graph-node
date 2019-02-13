@@ -232,7 +232,9 @@ where
                 }
             }
 
-            q::Selection::InlineFragment(_) => unimplemented!(),
+            q::Selection::InlineFragment(_) => {
+                warn!(ctx.logger, "Inline fragments are not yet implemented")
+            }
         };
     }
 
@@ -454,9 +456,9 @@ where
             }
         }
 
-        s::TypeDefinition::Union(_) => unimplemented!(),
+        s::TypeDefinition::Union(_) => Err(QueryExecutionError::Unimplemented("unions".to_owned())),
 
-        _ => unimplemented!(),
+        s::TypeDefinition::InputObject(_) => unreachable!("input objects are never resolved"),
     }
     .map_err(|e| {
         vec![
@@ -577,14 +579,21 @@ where
                     )
                 }
                 .map_err(|e| vec![e]),
-                s::TypeDefinition::Union(_) => unimplemented!(),
 
-                _ => unimplemented!(),
+                s::TypeDefinition::Union(_) => Err(vec![QueryExecutionError::Unimplemented(
+                    "unions".to_owned(),
+                )]),
+
+                s::TypeDefinition::InputObject(_) => {
+                    unreachable!("input objects are never resolved")
+                }
             }
         }
 
         // We don't support nested lists yet
-        s::Type::ListType(_) => unimplemented!(),
+        s::Type::ListType(_) => Err(vec![QueryExecutionError::Unimplemented(
+            "nested list types".to_owned(),
+        )]),
     }
 }
 
@@ -600,52 +609,52 @@ where
     R1: Resolver,
     R2: Resolver,
 {
-    // Fail if the field type is non-null but the value is null
-    if let s::Type::NonNullType(inner_type) = field_type {
-        return match complete_value(ctx.clone(), field, inner_type, fields, resolved_value)? {
-            q::Value::Null => Err(vec![QueryExecutionError::NonNullError(
-                field.position,
-                field.name.to_string(),
-            )]),
+    match field_type {
+        // Fail if the field type is non-null but the value is null
+        s::Type::NonNullType(inner_type) => {
+            return match complete_value(ctx.clone(), field, inner_type, fields, resolved_value)? {
+                q::Value::Null => Err(vec![QueryExecutionError::NonNullError(
+                    field.position,
+                    field.name.to_string(),
+                )]),
 
-            v => Ok(v),
-        };
-    }
+                v => Ok(v),
+            };
+        }
 
-    // If the resolved value is null, return null
-    if resolved_value == q::Value::Null {
-        return Ok(resolved_value);
-    }
+        // If the resolved value is null, return null
+        _ if resolved_value == q::Value::Null => {
+            return Ok(resolved_value);
+        }
 
-    // Complete list values
-    if let s::Type::ListType(inner_type) = field_type {
-        return match resolved_value {
-            // Complete list values individually
-            q::Value::List(values) => {
-                let mut out = Vec::with_capacity(values.len());
-                for value in values.into_iter() {
-                    out.push(complete_value(
-                        ctx.clone(),
-                        field,
-                        inner_type,
-                        fields.clone(),
-                        value,
-                    )?);
+        // Complete list values
+        s::Type::ListType(inner_type) => {
+            return match resolved_value {
+                // Complete list values individually
+                q::Value::List(values) => {
+                    let mut out = Vec::with_capacity(values.len());
+                    for value in values.into_iter() {
+                        out.push(complete_value(
+                            ctx.clone(),
+                            field,
+                            inner_type,
+                            fields.clone(),
+                            value,
+                        )?);
+                    }
+                    Ok(q::Value::List(out))
                 }
-                Ok(q::Value::List(out))
-            }
 
-            // Return field error if the resolved value for the list is not a list
-            _ => Err(vec![QueryExecutionError::ListValueError(
-                field.position,
-                field.name.to_string(),
-            )]),
-        };
-    }
+                // Return field error if the resolved value for the list is not a list
+                _ => Err(vec![QueryExecutionError::ListValueError(
+                    field.position,
+                    field.name.to_string(),
+                )]),
+            };
+        }
 
-    let named_type = if let s::Type::NamedType(name) = field_type {
-        Some(
-            sast::get_named_type(
+        s::Type::NamedType(name) => {
+            let named_type = sast::get_named_type(
                 if ctx.introspecting {
                     ctx.introspection_schema
                 } else {
@@ -653,56 +662,56 @@ where
                 },
                 name,
             )
-            .unwrap(),
-        )
-    } else {
-        None
-    };
+            .unwrap();
 
-    match named_type {
-        // Complete scalar values; we're assuming that the resolver has
-        // already returned a valid value for the scalar type
-        Some(s::TypeDefinition::Scalar(_)) => Ok(resolved_value),
+            match named_type {
+                // Complete scalar values; we're assuming that the resolver has
+                // already returned a valid value for the scalar type
+                s::TypeDefinition::Scalar(_) => Ok(resolved_value),
 
-        // Complete enum values; we're assuming that the resolver has
-        // already returned a valid value for the enum type
-        Some(s::TypeDefinition::Enum(_)) => Ok(resolved_value),
+                // Complete enum values; we're assuming that the resolver has
+                // already returned a valid value for the enum type
+                s::TypeDefinition::Enum(_) => Ok(resolved_value),
 
-        // Complete object types recursively
-        Some(s::TypeDefinition::Object(object_type)) => execute_selection_set(
-            ctx.clone(),
-            &merge_selection_sets(fields),
-            object_type,
-            &Some(resolved_value),
-        ),
+                // Complete object types recursively
+                s::TypeDefinition::Object(object_type) => execute_selection_set(
+                    ctx.clone(),
+                    &merge_selection_sets(fields),
+                    object_type,
+                    &Some(resolved_value),
+                ),
 
-        // Resolve interface types using the resolved value and complete the value recursively
-        Some(s::TypeDefinition::Interface(_)) => {
-            let object_type =
-                resolve_abstract_type(ctx.clone(), named_type.unwrap(), &resolved_value)?;
+                // Resolve interface types using the resolved value and complete the value recursively
+                s::TypeDefinition::Interface(_) => {
+                    let object_type =
+                        resolve_abstract_type(ctx.clone(), named_type, &resolved_value)?;
 
-            execute_selection_set(
-                ctx.clone(),
-                &merge_selection_sets(fields),
-                object_type,
-                &Some(resolved_value),
-            )
+                    execute_selection_set(
+                        ctx.clone(),
+                        &merge_selection_sets(fields),
+                        object_type,
+                        &Some(resolved_value),
+                    )
+                }
+
+                // Resolve union types using the resolved value and complete the value recursively
+                s::TypeDefinition::Union(_) => {
+                    let object_type =
+                        resolve_abstract_type(ctx.clone(), named_type, &resolved_value)?;
+
+                    execute_selection_set(
+                        ctx.clone(),
+                        &merge_selection_sets(fields),
+                        object_type,
+                        &Some(resolved_value),
+                    )
+                }
+
+                s::TypeDefinition::InputObject(_) => {
+                    unreachable!("input objects are never resolved")
+                }
+            }
         }
-
-        // Resolve union types using the resolved value and complete the value recursively
-        Some(s::TypeDefinition::Union(_)) => {
-            let object_type =
-                resolve_abstract_type(ctx.clone(), named_type.unwrap(), &resolved_value)?;
-
-            execute_selection_set(
-                ctx.clone(),
-                &merge_selection_sets(fields),
-                object_type,
-                &Some(resolved_value),
-            )
-        }
-
-        _ => unimplemented!(),
     }
 }
 
