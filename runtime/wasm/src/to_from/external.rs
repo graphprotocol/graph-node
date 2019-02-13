@@ -273,9 +273,9 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
     }
 }
 
-impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumTransaction {
-        AscEthereumTransaction {
+impl ToAscObj<AscEthereumTransactionV1> for EthereumTransactionData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumTransactionV1 {
+        AscEthereumTransactionV1 {
             hash: heap.asc_new(&self.hash),
             index: heap.asc_new(&BigInt::from(self.index)),
             from: heap.asc_new(&self.from),
@@ -290,8 +290,45 @@ impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
     }
 }
 
-impl ToAscObj<AscEthereumEvent> for EthereumEventData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumEvent {
+impl ToAscObj<AscEthereumTransactionV2> for EthereumTransactionData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumTransactionV2 {
+        AscEthereumTransactionV2 {
+            hash: heap.asc_new(&self.hash),
+            index: heap.asc_new(&BigInt::from(self.index)),
+            from: heap.asc_new(&self.from),
+            to: self
+                .to
+                .map(|to| heap.asc_new(&to))
+                .unwrap_or_else(|| AscPtr::null()),
+            value: heap.asc_new(&BigInt::from_unsigned_u256(&self.value)),
+            gas_used: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_used)),
+            gas_price: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_price)),
+            input: heap.asc_new(&*self.input.0),
+        }
+    }
+}
+
+impl ToAscObj<AscEthereumEvent<AscEthereumTransactionV1>> for EthereumEventData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumEvent<AscEthereumTransactionV1> {
+        AscEthereumEvent {
+            address: heap.asc_new(&self.address),
+            log_index: heap.asc_new(&BigInt::from_unsigned_u256(&self.log_index)),
+            transaction_log_index: heap
+                .asc_new(&BigInt::from_unsigned_u256(&self.transaction_log_index)),
+            log_type: self
+                .log_type
+                .clone()
+                .map(|log_type| heap.asc_new(&log_type))
+                .unwrap_or_else(|| AscPtr::null()),
+            block: heap.asc_new(&self.block),
+            transaction: heap.asc_new(&self.transaction),
+            params: heap.asc_new(self.params.as_slice()),
+        }
+    }
+}
+
+impl ToAscObj<AscEthereumEvent<AscEthereumTransactionV2>> for EthereumEventData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumEvent<AscEthereumTransactionV2> {
         AscEthereumEvent {
             address: heap.asc_new(&self.address),
             log_index: heap.asc_new(&BigInt::from_unsigned_u256(&self.log_index)),
