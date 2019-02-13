@@ -10,6 +10,10 @@ declare namespace ipfs {
     function cat(hash: String): Uint8Array
 }
 
-export function ipfsCat(hash: string): string {
+export function ipfsCatString(hash: string): string {
     return typeConversion.bytesToString(ipfs.cat(hash))
+}
+
+export function ipfsCat(hash: string): Uint8Array {
+    return ipfs.cat(hash)
 }

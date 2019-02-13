@@ -447,9 +447,22 @@ where
 
     /// function ipfs.cat(link: String): Bytes
     fn ipfs_cat(&mut self, link_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
-        let bytes = self.host_exports.ipfs_cat(self.asc_get(link_ptr))?;
-        let bytes_obj: AscPtr<Uint8Array> = self.asc_new(&*bytes);
-        Ok(Some(RuntimeValue::from(bytes_obj)))
+        let link = self.asc_get(link_ptr);
+        let ipfs_res = self.host_exports.ipfs_cat(link);
+        match ipfs_res {
+            Ok(bytes) => {
+                let bytes_obj: AscPtr<Uint8Array> = self.asc_new(&*bytes);
+                Ok(Some(RuntimeValue::from(bytes_obj)))
+            }
+
+            // Return null in case of error.
+            Err(e) => {
+                info!(self.logger, "Failed ipfs.cat, returning `null`";
+                                    "link" => self.asc_get::<String, _>(link_ptr),
+                                    "error" => e.to_string());
+                Ok(Some(RuntimeValue::from(0)))
+            }
+        }
     }
 
     /// Expects a decimal string.

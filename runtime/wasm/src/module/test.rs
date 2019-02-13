@@ -280,7 +280,7 @@ fn ipfs_cat() {
         .module
         .clone()
         .invoke_export(
-            "ipfsCat",
+            "ipfsCatString",
             &[RuntimeValue::from(module.asc_new(&hash))],
             &mut module,
         )
@@ -290,6 +290,18 @@ fn ipfs_cat() {
         .expect("call did not return pointer");
     let data: String = module.asc_get(converted);
     assert_eq!(data, "42");
+}
+
+#[test]
+fn ipfs_fail() {
+    let valid_module = test_valid_module(mock_data_source("wasm_test/ipfs_cat.wasm"));
+    let mut module =
+        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+
+    let hash = module.asc_new("invalid hash");
+    assert!(module
+        .takes_ptr_returns_ptr::<_, AscString>("ipfsCat", hash,)
+        .is_null());
 }
 
 #[test]
