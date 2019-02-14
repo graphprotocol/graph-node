@@ -489,6 +489,7 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         QueryExecutionOptions {
             logger: Logger::root(slog::Discard, o!()),
             resolver: MockResolver,
+            deadline: None,
         },
     )
 }

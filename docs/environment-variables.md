@@ -37,3 +37,4 @@ described [here](https://docs.rs/env_logger/0.6.0/env_logger/)
 * `THEGRAPH_STORE_POSTGRES_DIESEL_URL`: postgres instance used when running
    tests. Set to
    `postgresql://<DBUSER>:<DBPASSWORD>@<DBHOST>:<DBPORT>/<DBNAME>`
+* `GRAPH_GRAPHQL_QUERY_TIMEOUT`: maximum execution time for a graphql query, in seconds. Default is unlimited.

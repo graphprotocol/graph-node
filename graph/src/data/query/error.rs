@@ -45,6 +45,7 @@ pub enum QueryExecutionError {
     AttributeTypeError(String, String),
     EntityParseError(String),
     StoreError(failure::Error),
+    Timeout,
 }
 
 impl Error for QueryExecutionError {
@@ -163,6 +164,7 @@ impl fmt::Display for QueryExecutionError {
             StoreError(e) => {
                 write!(f, "Store error: {}", e)
             }
+            Timeout => write!(f, "Query timed out"),
         }
     }
 }

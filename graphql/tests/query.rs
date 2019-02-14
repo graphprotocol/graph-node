@@ -7,12 +7,12 @@ extern crate graph;
 extern crate graph_core;
 extern crate graph_graphql;
 
+use graph::prelude::*;
+use graph_graphql::prelude::*;
 use graphql_parser::query as q;
 use std::collections::HashMap;
 use std::iter::FromIterator;
-
-use graph::prelude::*;
-use graph_graphql::prelude::*;
+use std::time::Instant;
 
 fn test_schema() -> Schema {
     let mut schema = Schema::parse(
@@ -266,6 +266,7 @@ fn execute_query_document_with_variables(
     let options = QueryExecutionOptions {
         logger: logger,
         resolver: store_resolver,
+        deadline: None,
     };
 
     execute_query(&query, options)
@@ -690,4 +691,27 @@ fn include_directive_works_with_query_variables() {
             ],)
         )]))
     );
+}
+
+#[test]
+fn instant_timeout() {
+    let query = Query {
+        schema: test_schema(),
+        document: graphql_parser::parse_query("query { musicians { name } }").unwrap(),
+        variables: None,
+    };
+    let logger = Logger::root(slog::Discard, o!());
+    let store = Arc::new(TestStore::new());
+    let store_resolver = StoreResolver::new(&logger, store);
+
+    let options = QueryExecutionOptions {
+        logger: logger,
+        resolver: store_resolver,
+        deadline: Some(Instant::now()),
+    };
+
+    match execute_query(&query, options).errors.unwrap()[0] {
+        QueryError::ExecutionError(QueryExecutionError::Timeout) => (), // Expected
+        _ => panic!("did not timeout"),
+    };
 }

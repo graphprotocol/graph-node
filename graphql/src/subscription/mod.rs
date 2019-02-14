@@ -59,6 +59,7 @@ where
         document: &subscription.query.document,
         fields: vec![],
         variable_values: Arc::new(coerced_variable_values),
+        deadline: None,
     };
 
     match *operation {
@@ -182,6 +183,7 @@ where
         document: &document,
         fields: vec![],
         variable_values,
+        deadline: None,
     };
 
     // We have established that this exists earlier in the subscription execution
