@@ -1,6 +1,6 @@
-use graphql_parser::query as q;
-
 use graph::prelude::*;
+use graphql_parser::query as q;
+use std::time::Instant;
 
 use execution::*;
 use prelude::*;
@@ -16,8 +16,12 @@ where
 {
     /// The logger to use during query execution.
     pub logger: Logger,
+
     /// The resolver to use.
     pub resolver: R,
+
+    /// Time at which the query times out.
+    pub deadline: Option<Instant>,
 }
 
 /// Executes a query and returns a result.
@@ -55,6 +59,7 @@ where
         document: &query.document,
         fields: vec![],
         variable_values: Arc::new(coerced_variable_values),
+        deadline: options.deadline,
     };
 
     let result = match *operation {

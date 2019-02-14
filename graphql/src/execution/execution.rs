@@ -4,6 +4,7 @@ use indexmap::IndexMap;
 use std::cmp;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::Deref;
+use std::time::Instant;
 
 use graph::prelude::*;
 
@@ -20,22 +21,33 @@ where
 {
     /// The logger to use.
     pub logger: Logger,
+
     /// The schema to execute the query against.
     pub schema: &'a Schema,
+
     /// Introspection data that corresponds to the schema.
     pub introspection_schema: &'a s::Document,
+
     /// The query to execute.
     pub document: &'a q::Document,
+
     /// The resolver to use.
     pub resolver: Arc<R1>,
+
     /// The introspection resolver to use.
     pub introspection_resolver: Arc<R2>,
+
     /// The current field stack (e.g. allUsers > friends > name).
     pub fields: Vec<&'a q::Field>,
+
     /// Whether or not we're executing an introspection query
     pub introspecting: bool,
+
     /// Variable values.
     pub variable_values: Arc<HashMap<q::Name, q::Value>>,
+
+    /// Time at which the query times out.
+    pub deadline: Option<Instant>,
 }
 
 impl<'a, R1, R2> ExecutionContext<'a, R1, R2>
@@ -99,6 +111,14 @@ where
                 q::Value::String(object_type.name.to_owned().into()),
             );
             continue;
+        }
+
+        match ctx.deadline {
+            Some(deadline) if deadline < Instant::now() => {
+                errors.push(QueryExecutionError::Timeout);
+                break;
+            }
+            _ => (),
         }
 
         // If the field exists on the object, execute it and add its result to the result map
