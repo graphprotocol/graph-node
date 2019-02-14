@@ -3,7 +3,11 @@ name = "graph-runtime-wasm"
 version = "0.5.0"
 
 [dependencies]
-# Switch to upstream master once https://github.com/paritytech/ethabi/pull/145 is merged.
+# We would like to switch to upstream master once https://github.com/paritytech/ethabi/pull/145
+# is merged.
+# But, graph-patches also contains Jannis' https://github.com/paritytech/ethabi/pull/140 PR
+# to ethabi. Which we believe will not get merged. For now, we shall deviate from ethabi,
+# but long term we want to avoid forking off ethabi if possible
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "graph-patches" }
 futures = "0.1.21"
 hex = "0.3.2"
