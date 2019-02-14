@@ -1,6 +1,6 @@
 use backtrace::Backtrace;
 use futures::sync::oneshot;
-use slog::{crit, info, o, Drain, FilterLevel, Logger};
+use slog::{crit, debug, info, o, Drain, FilterLevel, Logger};
 use slog_async;
 use slog_envlogger;
 use slog_term;
@@ -97,7 +97,7 @@ pub fn register_panic_hook(panic_logger: Logger, shutdown_sender: oneshot::Sende
                     ()
                 })
                 .unwrap_or(()),
-            None => info!(panic_logger, "Shutdown signal already sent"),
+            None => debug!(panic_logger, "Shutdown signal already sent"),
         }
         thread::sleep(Duration::from_millis(3000));
         process::exit(1);

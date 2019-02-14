@@ -362,7 +362,7 @@ impl RuntimeHostTrait for RuntimeHost {
                     })
                 })
                 .and_then(move |result| {
-                    debug!(
+                    info!(
                         logger, "Done processing Ethereum event";
                         "signature" => &event_handler.event,
                         "handler" => &event_handler.handler,

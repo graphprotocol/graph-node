@@ -994,7 +994,7 @@ where
         let logger = self.ctx.logger.clone();
 
         Box::new(self.chain_head_update_sink.clone().sink_map_err(move |_| {
-            info!(logger, "Terminating chain head updates");
+            debug!(logger, "Terminating chain head updates");
         }))
     }
 }
