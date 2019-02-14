@@ -169,8 +169,6 @@ impl SubgraphInstanceManager {
                         "block_hash" => format!("{:?}", block.block.hash.unwrap())
                     ));
 
-                    info!(logger, "Processing events from block");
-
                     // Extract logs relevant to the subgraph
                     let logs: Vec<_> = block
                         .transaction_receipts
@@ -182,7 +180,7 @@ impl SubgraphInstanceManager {
                         .collect();
 
                     if logs.len() == 0 {
-                        info!(logger, "No events found in this block for this subgraph");
+                        debug!(logger, "No events found in this block for this subgraph");
                     } else if logs.len() == 1 {
                         info!(logger, "1 event found in this block for this subgraph");
                     } else {
