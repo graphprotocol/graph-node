@@ -84,11 +84,14 @@ The subgraph is defined by a YAML file known as the **subgraph manifest**. This 
 Let's go through an example to display what a subgraph manifest looks like. In this case, we use the common ERC721 contract and look at the `Transfer` event because it is familiar to many developers. Below, we define a subgraph manifest with one contract under `dataSources`, which is a smart contract implementing the ERC721 interface:
 ```yaml
 specVersion: 0.0.1
+description: ERC-721 Example
+repository: https://github.com/<YOUR_GITHUB_NAME>/erc721-example
 schema:
   file: ./schema.graphql
 dataSources:
 - kind: ethereum/contract
   name: MyERC721Contract
+  network: mainnet
   source:
     address: "0x06012c8cf97BEaD5deAe237070F9587f8E7A266d"
     abi: ERC721
@@ -404,7 +407,8 @@ If you want to sync using a public testnet such as Kovan, Rinkeby, or Ropsten, j
 
 When you deploy the subgraph to the Graph Node, it will start ingesting all the subgraph events from the blockchain, transforming that data with the subgraph mappings and storing it in the Graph Node. Note that a running subgraph can safely be stopped and restarted, picking up where it left off.
 
-Now that the infrastructure is set up, you can run `yarn deploy --verbosity debug --watch` in the subgraph directory. `yarn deploy` should have been added to `package.json` in section 1.3 when we took a moment to go through the set up for [Graph CLI documentation](https://github.com/graphprotocol/graph-cli). This builds the subgraph and creates the WASM files in the `/dist` folder. Next, it uploads the `/dist` files to IPFS and deploys it to the Graph Node. The subgraph is now fully running.
+Now that the infrastructure is set up, you can run `yarn create-subgraph` and then `yarn deploy` in the subgraph directory. These commands should have been added to `package.json` in section 1.3 when we took a moment to go through the set up for [Graph CLI documentation](https://github.com/graphprotocol/graph-cli). This builds the subgraph and creates the WASM files in the `dist/` folder. Next, it uploads the `dist/
+` files to IPFS and deploys it to the Graph Node. The subgraph is now fully running.
 
 The `watch` flag allows the subgraph to continually restart every time you save an update to the `manifest`, `schema`, or `mappings`. If you are making many edits or have a subgraph that has been syncing for a few hours, leave this flag off.
 
@@ -479,3 +483,4 @@ Here is a list of current subgraphs that we have open sourced:
 ## Contributions
 
 All feedback and contributions in the form of issues and pull requests are welcome!
+
