@@ -41,7 +41,7 @@ This is a quick example to show a working Graph Node. It is a [subgraph for the 
 4. In the terminal, clone https://github.com/graphprotocol/ens-subgraph, and install dependencies and generate types for contract ABIs:
 
 ```
-yarn install
+yarn
 yarn codegen
 ```
 
@@ -60,10 +60,16 @@ Try your OS username as `USERNAME` and `PASSWORD`. The password might be optiona
 
 This will also spin up a GraphiQL interface at `http://127.0.0.1:8000/`.
 
-6.  Back in the terminal of the subgraph directory, run
+6.  With this ENS example, to get the subgraph working locally run:
 
 ```
-yarn deploy --verbosity debug
+yarn create-subgraph
+```
+
+Then you can deploy the subgraph:
+
+```
+yarn deploy --debug
 ```
 
 This will build and deploy the subgraph to the Graph Node. It should start indexing the subgraph immediately.
