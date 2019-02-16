@@ -318,6 +318,12 @@ where
         let entities = collect_entities_from_query_field(schema, object_type, field);
 
         // Subscribe to the store and return the entity change stream
-        Ok(self.store.subscribe(entities))
+        let deployment_id = parse_subgraph_id(object_type)?;
+        Ok(self.store.subscribe(entities).throttle_while_syncing(
+            &self.logger,
+            self.store.clone(),
+            deployment_id,
+            *SUBSCRIPTION_THROTTLE_INTERVAL,
+        ))
     }
 }

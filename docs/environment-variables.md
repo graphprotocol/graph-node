@@ -38,3 +38,6 @@ described [here](https://docs.rs/env_logger/0.6.0/env_logger/)
    tests. Set to
    `postgresql://<DBUSER>:<DBPASSWORD>@<DBHOST>:<DBPORT>/<DBNAME>`
 * `GRAPH_GRAPHQL_QUERY_TIMEOUT`: maximum execution time for a graphql query, in seconds. Default is unlimited.
+* `SUBSCRIPTION_THROTTLE_INTERVAL`: while a subgraph is syncing,
+  subscriptions to that subgraph get updated at most this often, in
+  ms. Default is 1000ms.

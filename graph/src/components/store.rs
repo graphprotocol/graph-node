@@ -4,7 +4,9 @@ use futures::Future;
 use futures::Stream;
 use futures::{Async, Poll};
 use std::collections::HashSet;
+use std::env;
 use std::fmt;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use web3::types::H256;
@@ -12,6 +14,17 @@ use web3::types::H256;
 use data::store::*;
 use data::subgraph::schema::*;
 use prelude::*;
+
+lazy_static! {
+    pub static ref SUBSCRIPTION_THROTTLE_INTERVAL: Duration =
+        env::var("SUBSCRIPTION_THROTTLE_INTERVAL")
+            .ok()
+            .map(|s| u64::from_str(&s).unwrap_or_else(|_| panic!(
+                "failed to parse env var SUBSCRIPTION_THROTTLE_INTERVAL"
+            )))
+            .map(|millis| Duration::from_millis(millis))
+            .unwrap_or(Duration::from_millis(1000));
+}
 
 /// Key by which an individual entity in the store can be accessed.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
