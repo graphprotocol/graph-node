@@ -712,6 +712,6 @@ fn instant_timeout() {
 
     match execute_query(&query, options).errors.unwrap()[0] {
         QueryError::ExecutionError(QueryExecutionError::Timeout) => (), // Expected
-        _ => panic!("did not timeout"),
+        _ => panic!("did not time out"),
     };
 }

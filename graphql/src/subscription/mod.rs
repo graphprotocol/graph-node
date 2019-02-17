@@ -1,7 +1,7 @@
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::result::Result;
-use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use graph::prelude::*;
 
@@ -17,8 +17,12 @@ where
 {
     /// The logger to use during subscription execution.
     pub logger: Logger,
+
     /// The resolver to use.
     pub resolver: R,
+
+    /// Individual timeout for each subscription query.
+    pub timeout: Option<Duration>,
 }
 
 pub fn execute_subscription<R>(
@@ -66,7 +70,8 @@ where
         // Execute top-level `subscription { ... }` expressions
         q::OperationDefinition::Subscription(ref subscription) => {
             let source_stream = create_source_event_stream(&ctx, subscription)?;
-            let response_stream = map_source_to_response_stream(&ctx, subscription, source_stream)?;
+            let response_stream =
+                map_source_to_response_stream(&ctx, subscription, source_stream, options.timeout)?;
             Ok(response_stream)
         }
 
@@ -129,6 +134,7 @@ fn map_source_to_response_stream<'a, R1, R2>(
     ctx: &ExecutionContext<'a, R1, R2>,
     subscription: &'a q::Subscription,
     source_stream: StoreEventStreamBox,
+    timeout: Option<Duration>,
 ) -> Result<QueryResultStream, SubscriptionError>
 where
     R1: Resolver + 'static,
@@ -150,6 +156,7 @@ where
             subscription.clone(),
             variable_values.clone(),
             event,
+            timeout.clone(),
         )
     })))
 }
@@ -162,6 +169,7 @@ fn execute_subscription_event<R1>(
     subscription: q::Subscription,
     variable_values: Arc<HashMap<q::Name, q::Value>>,
     event: StoreEvent,
+    timeout: Option<Duration>,
 ) -> QueryResult
 where
     R1: Resolver + 'static,
@@ -172,7 +180,7 @@ where
     let introspection_schema = introspection_schema();
     let introspection_resolver = IntrospectionResolver::new(&logger, &schema);
 
-    // Create a fresh execution context
+    // Create a fresh execution context with deadline.
     let ctx = ExecutionContext {
         logger: logger,
         resolver: resolver,
@@ -183,7 +191,7 @@ where
         document: &document,
         fields: vec![],
         variable_values,
-        deadline: None,
+        deadline: timeout.map(|t| Instant::now() + t),
     };
 
     // We have established that this exists earlier in the subscription execution
