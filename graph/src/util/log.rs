@@ -1,6 +1,6 @@
 use backtrace::Backtrace;
 use futures::sync::oneshot;
-use slog::{crit, debug, info, o, Drain, FilterLevel, Logger};
+use slog::{crit, debug, o, Drain, FilterLevel, Logger};
 use slog_async;
 use slog_envlogger;
 use slog_term;
