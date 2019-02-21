@@ -3,7 +3,6 @@ use futures::stream::SplitStream;
 use futures::sync::mpsc;
 use graphql_parser::parse_query;
 use std::collections::HashMap;
-use std::iter::FromIterator;
 use tokio_tungstenite::tungstenite::{Error as WsError, Message as WsMessage};
 use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;

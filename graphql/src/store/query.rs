@@ -296,7 +296,6 @@ mod tests {
         Pos,
     };
     use std::collections::{BTreeMap, HashMap};
-    use std::iter::FromIterator;
 
     use graph::prelude::*;
 

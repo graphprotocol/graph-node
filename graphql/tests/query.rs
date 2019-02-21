@@ -11,8 +11,10 @@ use graph::prelude::*;
 use graph_graphql::prelude::*;
 use graphql_parser::query as q;
 use std::collections::HashMap;
-use std::iter::FromIterator;
 use std::time::Instant;
+
+use graph::prelude::*;
+use graph_graphql::prelude::*;
 
 fn test_schema() -> Schema {
     let mut schema = Schema::parse(
