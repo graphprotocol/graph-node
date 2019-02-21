@@ -11,7 +11,6 @@ use graphql_parser::query as q;
 use http::StatusCode;
 use hyper::{Body, Client, Request};
 use std::collections::BTreeMap;
-use std::iter::FromIterator;
 use std::time::{Duration, Instant};
 
 use graph::prelude::*;

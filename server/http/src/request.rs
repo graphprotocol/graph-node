@@ -78,7 +78,6 @@ mod tests {
     use graphql_parser::query as q;
     use hyper;
     use std::collections::{BTreeMap, HashMap};
-    use std::iter::FromIterator;
 
     use graph::prelude::*;
 

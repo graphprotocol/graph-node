@@ -168,7 +168,6 @@ fn multiple_data_sources_per_subgraph() {
                         .iter()
                         .map(|data_source| data_source.name.as_str())
                         .collect::<HashSet<&str>>();
-                    use std::iter::FromIterator;
                     let expected_data_source_names =
                         HashSet::from_iter(vec!["ExampleDataSource", "ExampleDataSource2"]);
 
