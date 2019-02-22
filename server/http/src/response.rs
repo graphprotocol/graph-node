@@ -21,17 +21,13 @@ impl GraphQLResponse {
 
     fn status_code_from_result(&self) -> StatusCode {
         match self.result {
-            Ok(ref result) => {
-                if result.errors.is_some() {
-                    StatusCode::BAD_REQUEST
-                } else {
-                    StatusCode::OK
-                }
-            }
+            Ok(_) => StatusCode::OK,
             Err(GraphQLServerError::ClientError(_)) | Err(GraphQLServerError::QueryError(_)) => {
                 StatusCode::BAD_REQUEST
             }
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
+            Err(GraphQLServerError::Canceled(_)) | Err(GraphQLServerError::InternalError(_)) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         }
     }
 }
