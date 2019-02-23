@@ -716,8 +716,8 @@ pub trait Store: Send + Sync + 'static {
             debug!(
                 logger,
                 "Adding subgraph node assignments for {} subgraph deployment ID(s) ({})",
-                removed_assignments.len(),
-                removed_assignments
+                added_assignments.len(),
+                added_assignments
                     .iter()
                     .map(ToString::to_string)
                     .collect::<Vec<_>>()
