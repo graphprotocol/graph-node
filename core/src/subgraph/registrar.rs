@@ -99,8 +99,8 @@ where
                     .map_err(move |e| match e {
                         CancelableError::Cancel => {}
                         CancelableError::Error(e) => {
-                            error!(logger_clone2, "assignment event stream failed: {}", e);
-                            panic!("assignment event stream error: {}", e);
+                            error!(logger_clone2, "Assignment event stream failed: {}", e);
+                            panic!("assignment event stream failed: {}", e);
                         }
                     })
             }));
@@ -118,12 +118,26 @@ where
                 SubgraphDeploymentAssignmentEntity::subgraph_entity_pair(),
             ])
             .map_err(|()| format_err!("Entity change stream failed"))
-            .map(|event| stream::iter_ok(event.changes))
+            .map(|event| {
+                // We're only interested in the SubgraphDeploymentAssignment change; we
+                // know that there is at least one, as that is what we subscribed to
+                stream::iter_ok(
+                    event
+                        .changes
+                        .into_iter()
+                        .filter(|change| change.entity_type == "SubgraphDeploymentAssignment"),
+                )
+            })
             .flatten()
             .and_then(
                 move |entity_change| -> Result<Box<Stream<Item = _, Error = _> + Send>, _> {
                     let subgraph_hash = SubgraphDeploymentId::new(entity_change.entity_id.clone())
-                        .map_err(|()| format_err!("Invalid subgraph hash in assignment entity"))?;
+                        .map_err(|()| {
+                            format_err!(
+                                "Invalid subgraph hash in assignment entity: {:#?}",
+                                entity_change.clone(),
+                            )
+                        })?;
 
                     match entity_change.operation {
                         EntityChangeOperation::Set => {
