@@ -14,7 +14,7 @@ use tokio::runtime::Runtime;
 
 use graph::prelude::{Store as StoreTrait, *};
 use graph::web3::types::H256;
-use graph_graphql::prelude::{api_schema, execute_query, QueryExecutionOptions, StoreResolver};
+use graph_graphql::prelude::{execute_query, QueryExecutionOptions, StoreResolver};
 use graph_store_postgres::{Store, StoreConfig};
 
 /// Helper function to ensure and obtain the Postgres URL to use for testing.
@@ -57,10 +57,27 @@ fn insert_and_query(
     schema: &str,
     entities: Vec<(Entity, &str)>,
     query: &str,
-) -> QueryResult {
+) -> Result<QueryResult, StoreError> {
     let subgraph_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
-    let mut schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
-    schema.document = api_schema(&schema.document).unwrap();
+    let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
+
+    let manifest = SubgraphManifest {
+        id: subgraph_id.clone(),
+        location: String::new(),
+        spec_version: "1".to_owned(),
+        description: None,
+        repository: None,
+        schema: schema.clone(),
+        data_sources: vec![],
+    };
+
+    STORE
+        .apply_entity_operations(
+            SubgraphDeploymentEntity::new(&manifest, false, false, Default::default(), 1)
+                .create_operations_force(&subgraph_id),
+            EventSource::None,
+        )
+        .unwrap();
 
     let insert_ops = entities
         .into_iter()
@@ -68,25 +85,28 @@ fn insert_and_query(
             key: EntityKey {
                 subgraph_id: subgraph_id.clone(),
                 entity_type: entity_type.to_owned(),
-                entity_id: "1".to_owned(),
+                entity_id: data["id"].clone().as_string().unwrap(),
             },
             data,
         });
-    STORE
-        .apply_entity_operations(insert_ops.collect(), EventSource::None)
-        .unwrap();
+
+    STORE.apply_entity_operations(insert_ops.collect(), EventSource::None)?;
 
     let logger = Logger::root(slog::Discard, o!());
     let resolver = StoreResolver::new(&logger, STORE.clone());
 
-    let options = QueryExecutionOptions { logger, resolver };
+    let options = QueryExecutionOptions {
+        logger,
+        resolver,
+        deadline: None,
+    };
     let document = graphql_parser::parse_query(query).unwrap();
     let query = Query {
-        schema: Arc::new(schema),
+        schema: STORE.subgraph_schema(&subgraph_id).unwrap(),
         document,
         variables: None,
     };
-    execute_query(&query, options)
+    Ok(execute_query(&query, options))
 }
 
 #[test]
@@ -97,7 +117,7 @@ fn one_interface_zero_entities() {
 
     let query = "query { leggeds { legs } }";
 
-    let res = insert_and_query(subgraph_id, schema, vec![], query);
+    let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
 
     assert!(res.errors.is_none());
     assert_eq!(
@@ -119,7 +139,7 @@ fn one_interface_one_entity() {
 
     // Collection query.
     let query = "query { leggeds { legs } }";
-    let res = insert_and_query(subgraph_id, schema, vec![entity], query);
+    let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
@@ -128,7 +148,7 @@ fn one_interface_one_entity() {
 
     // Query by ID.
     let query = "query { legged(id: \"1\") { legs } }";
-    let res = insert_and_query(subgraph_id, schema, vec![], query);
+    let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
@@ -149,7 +169,7 @@ fn one_interface_one_entity_typename() {
 
     let query = "query { leggeds { __typename } }";
 
-    let res = insert_and_query(subgraph_id, schema, vec![entity], query);
+    let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
@@ -159,7 +179,7 @@ fn one_interface_one_entity_typename() {
 
 #[test]
 fn one_interface_multiple_entities() {
-    let subgraph_id = "oneInterfaceOneEntity";
+    let subgraph_id = "oneInterfaceMultipleEntities";
     let schema = "interface Legged { legs: Int }
                   type Animal implements Legged @entity { id: ID!, legs: Int }
                   type Furniture implements Legged @entity { id: ID!, legs: Int }
@@ -170,17 +190,17 @@ fn one_interface_multiple_entities() {
         "Animal",
     );
     let furniture = (
-        Entity::from(vec![("id", Value::from("1")), ("legs", Value::from(3))]),
+        Entity::from(vec![("id", Value::from("2")), ("legs", Value::from(3))]),
         "Furniture",
     );
 
-    let query = "query { animals { legs } }";
+    let query = "query { leggeds { legs } }";
 
-    let res = insert_and_query(subgraph_id, schema, vec![animal, furniture], query);
+    let res = insert_and_query(subgraph_id, schema, vec![animal, furniture], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
-        "Object({\"animals\": List([Object({\"legs\": Int(Number(3))})])})"
+        "Object({\"leggeds\": List([Object({\"legs\": Int(Number(3))}), Object({\"legs\": Int(Number(3))})])})"
     )
 }
 
@@ -199,11 +219,38 @@ fn reference_interface() {
         "Animal",
     );
 
-    let res = insert_and_query(subgraph_id, schema, vec![leg, animal], query);
+    let res = insert_and_query(subgraph_id, schema, vec![leg, animal], query).unwrap();
 
     assert!(res.errors.is_none());
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
         "Object({\"leggeds\": List([Object({\"leg\": Object({\"id\": String(\"1\")})})])})"
     )
+}
+
+#[test]
+fn conflicting_implementors_id() {
+    let subgraph_id = "ConflictingImplementorsId";
+    let schema = "interface Legged { legs: Int }
+                  type Animal implements Legged @entity { id: ID!, legs: Int }
+                  type Furniture implements Legged @entity { id: ID!, legs: Int }
+                  ";
+
+    let animal = (
+        Entity::from(vec![("id", Value::from("1")), ("legs", Value::from(3))]),
+        "Animal",
+    );
+    let furniture = (
+        Entity::from(vec![("id", Value::from("1")), ("legs", Value::from(3))]),
+        "Furniture",
+    );
+
+    let query = "query { leggeds { legs } }";
+
+    let res = insert_and_query(subgraph_id, schema, vec![animal, furniture], query);
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        "tried to set entity of type `Furniture` with ID `1` but an entity of type `Animal`, \
+         which has an interface in common with `Furniture`, exists with the same ID"
+    );
 }

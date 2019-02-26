@@ -199,6 +199,12 @@ impl SubgraphDeploymentEntity {
         }
     }
 
+    // Overwrite entity if it exists. Only in debug builds so it's not used outside tests.
+    #[cfg(debug_assertions)]
+    pub fn create_operations_force(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
+        self.private_create_operations(id)
+    }
+
     pub fn create_operations(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
         let mut ops = vec![];
 
@@ -208,6 +214,13 @@ impl SubgraphDeploymentEntity {
             query: Self::query().filter(EntityFilter::new_equal("id", id.to_string())),
             entity_ids: vec![],
         });
+
+        ops.extend(self.private_create_operations(id));
+        ops
+    }
+
+    fn private_create_operations(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
+        let mut ops = vec![];
 
         let manifest_id = SubgraphManifestEntity::id(&id);
         ops.extend(self.manifest.write_operations(&manifest_id));

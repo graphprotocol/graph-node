@@ -87,7 +87,7 @@ pub mod prelude {
         AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, SubgraphVersionSummary,
         Value, ValueType,
     };
-    pub use data::subgraph::schema::TypedEntity;
+    pub use data::subgraph::schema::{SubgraphDeploymentEntity, TypedEntity};
     pub use data::subgraph::{
         CreateSubgraphResult, DataSource, Link, MappingABI, MappingEventHandler,
         SubgraphAssignmentProviderError, SubgraphAssignmentProviderEvent, SubgraphDeploymentId,

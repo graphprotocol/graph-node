@@ -542,6 +542,12 @@ pub enum StoreError {
     Aborted(TransactionAbortError),
     #[fail(display = "store error: {}", _0)]
     Unknown(Error),
+    #[fail(
+        display = "tried to set entity of type `{}` with ID `{}` but an entity of type `{}`, \
+                   which has an interface in common with `{}`, exists with the same ID",
+        _0, _1, _2, _0
+    )]
+    ConflictingId(String, String, String), // (entity, id, conflicting_entity)
 }
 
 impl From<TransactionAbortError> for StoreError {
@@ -568,7 +574,7 @@ impl From<serde_json::Error> for StoreError {
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(Fail, PartialEq, Eq, Debug)]
 pub enum TransactionAbortError {
     #[fail(
         display = "AbortUnless triggered abort, expected {:?} but got {:?}: {}",
@@ -936,7 +942,7 @@ pub trait Store: Send + Sync + 'static {
 }
 
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {
-    fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
+    fn subgraph_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
 }
 
 /// Common trait for blockchain store implementations.

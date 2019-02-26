@@ -412,7 +412,45 @@ impl Store {
         data: Entity,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
-        use db_schema::entities;
+        use db_schema::entities::{self, dsl};
+
+        // Collect all types that share an interface implementation with this
+        // entity type, and make sure there are no conflicting IDs.
+        //
+        // To understand why this is necessary, suppose that `Dog` and `Cat` are
+        // types and both implement an interface `Pet`, and both have instances
+        // with `id: "Fred"`. If a type `PetOwner` has a field `pets: [Pet]`
+        // then with the value `pets: ["Fred"]`, there's no way to disambiguate
+        // if that's Fred the Dog, Fred the Cat or both.
+        let schema = self.subgraph_schema(&key.subgraph_id)?;
+        let types_for_interface = schema.types_for_interface();
+        let types_with_shared_interface = Vec::from_iter(
+            schema
+                .interfaces_for_type(&key.entity_type)
+                .into_iter()
+                .flatten()
+                .map(|interface| &types_for_interface[&interface.name])
+                .flatten()
+                .map(|object_type| &object_type.name)
+                .filter(|type_name| **type_name != key.entity_type),
+        );
+
+        if !types_with_shared_interface.is_empty() {
+            if let Some(conflicting_entity) = dsl::entities
+                .select(entities::entity)
+                .filter(entities::subgraph.eq(key.subgraph_id.to_string()))
+                .filter(entities::entity.eq(any(types_with_shared_interface)))
+                .filter(entities::id.eq(&key.entity_id))
+                .first(conn)
+                .optional()?
+            {
+                return Err(StoreError::ConflictingId(
+                    key.entity_type,
+                    key.entity_id,
+                    conflicting_entity,
+                ));
+            }
+        }
 
         // Load the entity if exists
         let existing_entity = self
@@ -896,14 +934,14 @@ impl StoreTrait for Store {
 }
 
 impl SubgraphDeploymentStore for Store {
-    fn subgraph_schema(&self, subgraph_id: SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+    fn subgraph_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
         if let Some(schema) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
             trace!(self.logger, "schema cache hit"; "id" => subgraph_id.to_string());
             return Ok(schema.clone());
         }
         trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
 
-        let raw_schema = if subgraph_id == *SUBGRAPHS_ID {
+        let raw_schema = if *subgraph_id == *SUBGRAPHS_ID {
             // The subgraph of subgraphs schema is built-in.
             include_str!("subgraphs.graphql").to_owned()
         } else {
@@ -933,7 +971,7 @@ impl SubgraphDeploymentStore for Store {
         self.schema_cache
             .lock()
             .unwrap()
-            .insert(subgraph_id, schema.clone());
+            .insert(subgraph_id.clone(), schema.clone());
 
         Ok(schema)
     }
