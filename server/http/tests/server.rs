@@ -64,7 +64,6 @@ impl GraphQlRunner for TestGraphQlRunner {
 #[cfg(test)]
 mod test {
     use super::*;
-    use graph::data::subgraph::schema::*;
     use graph::web3::types::H256;
     use graph_mock::MockStore;
 

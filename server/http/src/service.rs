@@ -162,7 +162,7 @@ where
                     ))
                 })
                 .and_then(move |subgraph_id| {
-                    service.handle_graphql_query(subgraph_id, request.into_body())
+                    service.handle_graphql_query(&subgraph_id, request.into_body())
                 }),
         )
     }
@@ -174,18 +174,18 @@ where
     ) -> GraphQLServiceResponse {
         match SubgraphDeploymentId::new(id) {
             Err(()) => self.handle_not_found(),
-            Ok(id) => self.handle_graphql_query(id, request.into_body()),
+            Ok(id) => self.handle_graphql_query(&id, request.into_body()),
         }
     }
 
     fn handle_graphql_query(
         &self,
-        id: SubgraphDeploymentId,
+        id: &SubgraphDeploymentId,
         request_body: Body,
     ) -> GraphQLServiceResponse {
         let service = self.clone();
 
-        match self.store.is_deployed(&id) {
+        match self.store.is_deployed(id) {
             Err(e) => {
                 return Box::new(future::err(GraphQLServerError::InternalError(
                     e.to_string(),
@@ -389,7 +389,6 @@ mod tests {
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
     use std::collections::BTreeMap;
-    use std::iter::FromIterator;
 
     use graph::data::subgraph::schema::*;
     use graph::prelude::*;

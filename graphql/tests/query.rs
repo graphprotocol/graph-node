@@ -13,9 +13,6 @@ use graphql_parser::query as q;
 use std::collections::HashMap;
 use std::time::Instant;
 
-use graph::prelude::*;
-use graph_graphql::prelude::*;
-
 fn test_schema() -> Schema {
     let mut schema = Schema::parse(
         "
@@ -698,7 +695,7 @@ fn include_directive_works_with_query_variables() {
 #[test]
 fn instant_timeout() {
     let query = Query {
-        schema: test_schema(),
+        schema: Arc::new(test_schema()),
         document: graphql_parser::parse_query("query { musicians { name } }").unwrap(),
         variables: None,
     };
