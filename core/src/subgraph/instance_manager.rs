@@ -156,6 +156,13 @@ impl SubgraphInstanceManager {
         let block_logger = logger.clone();
         let error_logger = logger.clone();
 
+        // Clear the 'failed' state of the subgraph. We were told explicitly
+        // to start, which implies we assume the subgraph has not failed (yet)
+        // If we can't even clear the 'failed' flag, don't try to start
+        // the subgraph.
+        let status_ops = SubgraphDeploymentEntity::update_failed_operations(&id_for_err, false);
+        store_for_errors.apply_entity_operations(status_ops, EventSource::None)?;
+
         // Forward block stream events to the subgraph for processing
         tokio::spawn(
             block_stream
