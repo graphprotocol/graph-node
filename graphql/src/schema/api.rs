@@ -143,6 +143,15 @@ fn add_filter_type(
     let filter_type_name = format!("{}_filter", type_name).to_string();
     match ast::get_named_type(schema, &filter_type_name) {
         None => {
+            let input_values = field_input_values(schema, fields)?;
+
+            // Don't generate an input object with no fields, this makes the JS
+            // graphql library, which graphiql uses, very confused and graphiql
+            // is unable to load the schema. This happens for example with the
+            // definition `interface Foo { x: OtherEntity }`.
+            if input_values.is_empty() {
+                return Ok(());
+            }
             let typedef = TypeDefinition::InputObject(InputObjectType {
                 position: Pos::default(),
                 description: None,
@@ -363,7 +372,8 @@ fn add_subscription_type(
 }
 
 /// Generates `Query` fields for the given type name (e.g. `users` and `user`).
-fn query_fields_for_type(_schema: &Document, type_name: &Name) -> Vec<Field> {
+fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
+    let input_objects = ast::get_input_object_definitions(schema);
     vec![
         Field {
             position: Pos::default(),
@@ -384,7 +394,7 @@ fn query_fields_for_type(_schema: &Document, type_name: &Name) -> Vec<Field> {
             position: Pos::default(),
             description: None,
             name: type_name.to_plural().to_camel_case(),
-            arguments: collection_arguments_for_named_type(type_name),
+            arguments: collection_arguments_for_named_type(&input_objects, type_name),
             field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
                 Box::new(Type::NamedType(type_name.to_owned())),
             ))))),
@@ -394,8 +404,11 @@ fn query_fields_for_type(_schema: &Document, type_name: &Name) -> Vec<Field> {
 }
 
 /// Generates arguments for collection queries of a named type (e.g. User).
-fn collection_arguments_for_named_type(type_name: &Name) -> Vec<InputValue> {
-    vec![
+fn collection_arguments_for_named_type(
+    input_objects: &[InputObjectType],
+    type_name: &Name,
+) -> Vec<InputValue> {
+    let mut args = vec![
         input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string())),
         input_value(&"first".to_string(), "", Type::NamedType("Int".to_string())),
         input_value(&"last".to_string(), "", Type::NamedType("Int".to_string())),
@@ -411,18 +424,27 @@ fn collection_arguments_for_named_type(type_name: &Name) -> Vec<InputValue> {
             "",
             Type::NamedType("OrderDirection".to_string()),
         ),
-        input_value(
+    ];
+
+    // Not all types have filter types, see comment in `add_filter_type`.
+    let filter_name = format!("{}_filter", type_name);
+    if input_objects.iter().any(|o| o.name == filter_name) {
+        args.push(input_value(
             &"where".to_string(),
             "",
-            Type::NamedType(format!("{}_filter", type_name)),
-        ),
-    ]
+            Type::NamedType(filter_name),
+        ));
+    }
+
+    args
 }
 
 fn add_field_arguments(
     schema: &mut Document,
     input_schema: &Document,
 ) -> Result<(), APISchemaError> {
+    let input_objects = ast::get_input_object_definitions(schema);
+
     // Refactor: Remove the `input_schema` argument and do a mutable iteration
     // over the definitions in `schema`. Also the duplication between this and
     // the loop for interfaces below.
@@ -443,10 +465,12 @@ fn add_field_arguments(
 
                     match input_reference_type {
                         TypeDefinition::Object(ot) => {
-                            field.arguments = collection_arguments_for_named_type(&ot.name);
+                            field.arguments =
+                                collection_arguments_for_named_type(&input_objects, &ot.name);
                         }
                         TypeDefinition::Interface(it) => {
-                            field.arguments = collection_arguments_for_named_type(&it.name);
+                            field.arguments =
+                                collection_arguments_for_named_type(&input_objects, &it.name);
                         }
                         _ => unreachable!(
                             "referenced entity types can only be object or interface types"
@@ -475,10 +499,12 @@ fn add_field_arguments(
 
                     match input_reference_type {
                         TypeDefinition::Object(ot) => {
-                            field.arguments = collection_arguments_for_named_type(&ot.name);
+                            field.arguments =
+                                collection_arguments_for_named_type(&input_objects, &ot.name);
                         }
                         TypeDefinition::Interface(it) => {
-                            field.arguments = collection_arguments_for_named_type(&it.name);
+                            field.arguments =
+                                collection_arguments_for_named_type(&input_objects, &it.name);
                         }
                         _ => unreachable!(
                             "referenced entity types can only be object or interface types"

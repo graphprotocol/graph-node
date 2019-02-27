@@ -421,11 +421,16 @@ pub fn get_referenced_entity_type<'a>(
     schema: &'a Document,
     field: &Field,
 ) -> Option<&'a TypeDefinition> {
-    unpack_type(schema, &field.field_type).and_then(|type_def| {
-        if is_entity_type_definition(type_def) {
-            Some(type_def)
-        } else {
-            None
-        }
-    })
+    unpack_type(schema, &field.field_type).filter(|ty| is_entity_type_definition(ty))
+}
+
+pub fn get_input_object_definitions(schema: &Document) -> Vec<InputObjectType> {
+    schema
+        .definitions
+        .iter()
+        .filter_map(|d| match d {
+            Definition::TypeDefinition(TypeDefinition::InputObject(t)) => Some(t.clone()),
+            _ => None,
+        })
+        .collect()
 }
