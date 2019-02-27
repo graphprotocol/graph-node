@@ -1,4 +1,7 @@
+use diesel::pg::PgConnection;
+use diesel::select;
 use fallible_iterator::FallibleIterator;
+use functions::pg_notify;
 use postgres::notification::Notification;
 use postgres::{Connection, TlsMode};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -112,10 +115,30 @@ impl NotificationListener {
                         break;
                     }
 
+                    let sent = if notification.payload.starts_with(LARGE_NOTIFICATION_MARKER) {
+                        // FIXME: These error messages need to contain more detail
+                        // of what we were given, like the rest and the pid
+                        let (_, rest) = notification.payload.split_at(1);
+                        let pid: i32 = rest.parse().expect("Invalid id for large_notification");
+                        let rows = conn
+                            .query(
+                                "select payload from large_notifications where id = $1",
+                                &[&pid],
+                            )
+                            .expect("Failed to load large_notification");
+                        let notification = Notification {
+                            process_id: notification.process_id,
+                            payload: rows.get(0).get(0),
+                            channel: notification.channel,
+                        };
+                        sender.clone().send(notification)
+                    } else {
+                        sender.clone().send(notification)
+                    };
                     // We'll assume here that if sending fails, this means that the
                     // listener has already been dropped, the receiving
                     // end is gone and we should terminate the listener loop
-                    if sender.clone().send(notification).wait().is_err() {
+                    if sent.wait().is_err() {
                         break;
                     }
                 }
@@ -144,5 +167,48 @@ impl EventProducer<Notification> for NotificationListener {
         self.output
             .take()
             .map(|s| Box::new(s) as Box<Stream<Item = Notification, Error = ()> + Send>)
+    }
+}
+
+// A utility to send notifications larger than 8000 bytes through Postgres
+// by putting notifications that are bigger than that into the
+// large_notifications table.
+//
+// We do not need to map the structure of the large_notifications table
+pub struct LargeNotification {}
+
+// Any payload bigger than this is considered large.
+static LARGE_NOTIFICATION_THRESHOLD: usize = 7800;
+
+// When we need to send a large payload, we stick it into the
+// large_notifications table and send a message containing the id of the payload
+// prefixed with '<'. We choose this marker as it is likely to freak out any JSON
+// parser that unwittingly runs across this payload before it got unpacked
+// by the NotificationListener
+static LARGE_NOTIFICATION_MARKER: &str = "<";
+
+impl LargeNotification {
+    pub fn send_json(channel: &str, msg: &str, conn: &PgConnection) -> Result<(), StoreError> {
+        use db_schema::large_notifications::dsl::*;
+        use diesel::ExpressionMethods;
+        use diesel::RunQueryDsl;
+
+        if msg.len() <= LARGE_NOTIFICATION_THRESHOLD {
+            select(pg_notify(channel, msg)).execute(conn)?;
+        } else {
+            let row: i32 = diesel::insert_into(large_notifications)
+                .values(payload.eq(&msg))
+                .returning(id)
+                .get_result(conn)?;
+            let msg = format!("{}{}", LARGE_NOTIFICATION_MARKER, row);
+            select(pg_notify(channel, msg)).execute(conn)?;
+            // Delete any notifications older than 5 minutes
+            diesel::sql_query(
+                "delete from large_notifications
+                where created_at < current_timestamp() - interval '300s'",
+            )
+            .execute(conn)?;
+        }
+        Ok(())
     }
 }

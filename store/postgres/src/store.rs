@@ -21,11 +21,12 @@ use graph::serde_json;
 use graph::web3::types::H256;
 use graph::{tokio, tokio::timer::Interval};
 use graph_graphql::prelude::api_schema;
+use notification_listener::LargeNotification;
 
 use chain_head_listener::ChainHeadUpdateListener;
 use functions::{
-    attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, pg_notify,
-    revert_block, set_config,
+    attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, revert_block,
+    set_config,
 };
 use store_events::{get_revert_event, StoreEventListener};
 
@@ -659,7 +660,7 @@ impl Store {
                 "changes" => event.changes.len());
 
         let v = serde_json::to_value(event)?;
-        select(pg_notify("store_events", v.to_string())).execute(conn)?;
+        LargeNotification::send_json("store_events", &v.to_string(), conn)?;
         Ok(())
     }
 
@@ -677,7 +678,7 @@ impl Store {
                 "changes" => event.changes.len());
 
         let v = serde_json::to_value(event)?;
-        select(pg_notify("store_events", v.to_string())).execute(conn)?;
+        LargeNotification::send_json("store_events", &v.to_string(), conn)?;
         Ok(())
     }
 }

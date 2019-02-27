@@ -50,3 +50,11 @@ table! {
         data -> Jsonb,
     }
 }
+
+table! {
+    large_notifications(id) {
+        id -> Integer,
+        payload -> Text,
+        created_at -> Timestamp,
+    }
+}
