@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use futures::sync::mpsc::{channel, Receiver};
 use graph::prelude::*;
+use graph::serde_json;
 
 /// This newtype exists to make it hard to misuse the `NotificationListener` API in a way that
 /// could impact security.
@@ -32,7 +33,7 @@ impl SafeChannelName {
 }
 
 pub struct NotificationListener {
-    output: Option<Receiver<Notification>>,
+    output: Option<Receiver<JsonNotification>>,
     worker_handle: Option<thread::JoinHandle<()>>,
     terminate_worker: Arc<AtomicBool>,
     worker_barrier: Arc<Barrier>,
@@ -44,10 +45,10 @@ impl NotificationListener {
     /// channel.
     ///
     /// Must call `.start()` to begin receiving notifications.
-    pub fn new(postgres_url: String, channel_name: SafeChannelName) -> Self {
+    pub fn new(logger: &Logger, postgres_url: String, channel_name: SafeChannelName) -> Self {
         // Listen to Postgres notifications in a worker thread
         let (receiver, worker_handle, terminate_worker, worker_barrier) =
-            Self::listen(postgres_url, channel_name);
+            Self::listen(logger, postgres_url, channel_name);
 
         NotificationListener {
             output: Some(receiver),
@@ -68,14 +69,17 @@ impl NotificationListener {
     }
 
     fn listen(
+        logger: &Logger,
         postgres_url: String,
         channel_name: SafeChannelName,
     ) -> (
-        Receiver<Notification>,
+        Receiver<JsonNotification>,
         thread::JoinHandle<()>,
         Arc<AtomicBool>,
         Arc<Barrier>,
     ) {
+        let logger = logger.new(o!("component" => "NotificationListener"));
+
         // Create two ends of a boolean variable for signalling when the worker
         // thread should be terminated
         let terminate = Arc::new(AtomicBool::new(false));
@@ -115,31 +119,24 @@ impl NotificationListener {
                         break;
                     }
 
-                    let sent = if notification.payload.starts_with(LARGE_NOTIFICATION_MARKER) {
-                        // FIXME: These error messages need to contain more detail
-                        // of what we were given, like the rest and the pid
-                        let (_, rest) = notification.payload.split_at(1);
-                        let pid: i32 = rest.parse().expect("Invalid id for large_notification");
-                        let rows = conn
-                            .query(
-                                "select payload from large_notifications where id = $1",
-                                &[&pid],
-                            )
-                            .expect("Failed to load large_notification");
-                        let notification = Notification {
-                            process_id: notification.process_id,
-                            payload: rows.get(0).get(0),
-                            channel: notification.channel,
-                        };
-                        sender.clone().send(notification)
-                    } else {
-                        sender.clone().send(notification)
-                    };
-                    // We'll assume here that if sending fails, this means that the
-                    // listener has already been dropped, the receiving
-                    // end is gone and we should terminate the listener loop
-                    if sent.wait().is_err() {
-                        break;
+                    match JsonNotification::parse(&notification, &conn) {
+                        Ok(json_notification) => {
+                            // We'll assume here that if sending fails, this means that the
+                            // listener has already been dropped, the receiving
+                            // end is gone and we should terminate the listener loop
+                            if sender.clone().send(json_notification).wait().is_err() {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            crit!(
+                                logger,
+                                "Failed to parse database notification: {:?}: {}",
+                                notification,
+                                e
+                            );
+                            continue;
+                        }
                     }
                 }
             }
@@ -162,50 +159,105 @@ impl Drop for NotificationListener {
     }
 }
 
-impl EventProducer<Notification> for NotificationListener {
-    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = Notification, Error = ()> + Send>> {
+impl EventProducer<JsonNotification> for NotificationListener {
+    fn take_event_stream(
+        &mut self,
+    ) -> Option<Box<Stream<Item = JsonNotification, Error = ()> + Send>> {
         self.output
             .take()
-            .map(|s| Box::new(s) as Box<Stream<Item = Notification, Error = ()> + Send>)
+            .map(|s| Box::new(s) as Box<Stream<Item = JsonNotification, Error = ()> + Send>)
     }
 }
 
-// A utility to send notifications larger than 8000 bytes through Postgres
-// by putting notifications that are bigger than that into the
-// large_notifications table.
-//
-// We do not need to map the structure of the large_notifications table
-pub struct LargeNotification {}
+// A utility to send JSON notifications that may be larger than the
+// 8000 bytes limit for Postgres NOTIFY payloads. Large notifications
+// are written to the `large_notifications` table and their ID is sent
+// via NOTIFY in place of the actual payload. Consumers of large
+// notifications are then responsible to fetch the actual payload from
+// the `large_notifications` table.
+#[derive(Debug)]
+pub struct JsonNotification {
+    pub process_id: i32,
+    pub channel: String,
+    pub payload: serde_json::Value,
+}
 
 // Any payload bigger than this is considered large.
 static LARGE_NOTIFICATION_THRESHOLD: usize = 7800;
 
-// When we need to send a large payload, we stick it into the
-// large_notifications table and send a message containing the id of the payload
-// prefixed with '<'. We choose this marker as it is likely to freak out any JSON
-// parser that unwittingly runs across this payload before it got unpacked
-// by the NotificationListener
-static LARGE_NOTIFICATION_MARKER: &str = "<";
+impl JsonNotification {
+    pub fn parse(
+        notification: &Notification,
+        conn: &Connection,
+    ) -> Result<JsonNotification, StoreError> {
+        let value = serde_json::from_str(&notification.payload)?;
 
-impl LargeNotification {
-    pub fn send_json(channel: &str, msg: &str, conn: &PgConnection) -> Result<(), StoreError> {
+        match value {
+            serde_json::Value::Number(n) => {
+                let payload_id: i64 = n.as_i64().ok_or_else(|| {
+                    format_err!("Invalid notification ID, not compatible with i64: {}", n)
+                })?;
+
+                if payload_id < (i32::min_value() as i64) || payload_id > (i32::max_value() as i64)
+                {
+                    Err(format_err!(
+                        "Invalid notification ID, value exceeds i32: {}",
+                        payload_id
+                    ))?;
+                }
+
+                let payload_rows = conn
+                    .query(
+                        "SELECT payload FROM large_notifications WHERE id = $1",
+                        &[&(payload_id as i32)],
+                    )
+                    .map_err(|_| format_err!("No payload found for notification {}", payload_id))?;
+
+                let payload: String = payload_rows.get(0).get(0);
+
+                Ok(JsonNotification {
+                    process_id: notification.process_id,
+                    channel: notification.channel.clone(),
+                    payload: serde_json::from_str(&payload)?,
+                })
+            }
+            serde_json::Value::Object(_) => Ok(JsonNotification {
+                process_id: notification.process_id,
+                channel: notification.channel.clone(),
+                payload: value,
+            }),
+            _ => Err(format_err!("JSON notifications must be numbers or objects"))?,
+        }
+    }
+
+    pub fn send(
+        channel: &str,
+        data: &serde_json::Value,
+        conn: &PgConnection,
+    ) -> Result<(), StoreError> {
         use db_schema::large_notifications::dsl::*;
         use diesel::ExpressionMethods;
         use diesel::RunQueryDsl;
 
+        let msg = data.to_string();
+
         if msg.len() <= LARGE_NOTIFICATION_THRESHOLD {
-            select(pg_notify(channel, msg)).execute(conn)?;
+            select(pg_notify(channel, &msg)).execute(conn)?;
         } else {
-            let row: i32 = diesel::insert_into(large_notifications)
+            // Write the notification payload to the large_notifications table
+            let payload_id: i32 = diesel::insert_into(large_notifications)
                 .values(payload.eq(&msg))
                 .returning(id)
                 .get_result(conn)?;
-            let msg = format!("{}{}", LARGE_NOTIFICATION_MARKER, row);
-            select(pg_notify(channel, msg)).execute(conn)?;
-            // Delete any notifications older than 5 minutes
+
+            // Use the large_notifications row ID as the payload for NOTIFY
+            select(pg_notify(channel, &payload_id.to_string())).execute(conn)?;
+
+            // Delete any notifications older than 5 minutes; this serves
+            // as a regular cleanup so the table doesn't grow in size indefinitely
             diesel::sql_query(
-                "delete from large_notifications
-                where created_at < current_timestamp() - interval '300s'",
+                "DELETE FROM large_notifications
+                 WHERE created_at < current_timestamp - interval '300s'",
             )
             .execute(conn)?;
         }
