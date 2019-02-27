@@ -254,3 +254,29 @@ fn conflicting_implementors_id() {
          which has an interface in common with `Furniture`, exists with the same ID"
     );
 }
+
+#[test]
+fn derived_interface_relationship() {
+    let subgraph_id = "DerivedInterfaceRelationship";
+    let schema = "interface ForestDweller { id: ID!, forest: Forest }
+                  type Animal implements ForestDweller @entity { id: ID!, forest: Forest }
+                  type Forest @entity { id: ID!, dwellers: [ForestDweller]! @derivedFrom(field: \"forest\") }
+                  ";
+
+    let forest = (Entity::from(vec![("id", Value::from("1"))]), "Forest");
+    let animal = (
+        Entity::from(vec![
+            ("id", Value::from("1")),
+            ("forest", Value::from("1")),
+        ]),
+        "Animal",
+    );
+
+    let query = "query { forests { dwellers { id } } }";
+
+    let res = insert_and_query(subgraph_id, schema, vec![forest, animal], query);
+    assert_eq!(
+        res.unwrap().data.unwrap().to_string(),
+        "{forests: [{dwellers: [{id: \"1\"}]}]}"
+    );
+}
