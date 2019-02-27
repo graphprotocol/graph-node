@@ -114,13 +114,11 @@ where
             // Add the `Contains`/`Equal` filter to the top-level `And` filter, creating one
             // if necessary
             let top_level_filter = query.filter.get_or_insert(EntityFilter::And(vec![]));
-            *top_level_filter = match top_level_filter {
+            match top_level_filter {
                 EntityFilter::And(ref mut filters) => {
-                    let mut filters = filters.clone();
                     filters.push(filter);
-                    EntityFilter::And(filters)
                 }
-                _ => top_level_filter.clone(),
+                _ => unreachable!("top level filter is always `And`"),
             };
 
             true
@@ -157,8 +155,8 @@ where
                     _ => None,
                 })
                 .unwrap_or_else(|| {
-                    // Unreachable, caught by `UnknownField` error.
-                    panic!(
+                    // Caught by `UnknownField` error.
+                    unreachable!(
                         "Field \"{}\" missing in parent object",
                         field_definition.name
                     )
@@ -166,13 +164,11 @@ where
 
             // Add the `Or` filter to the top-level `And` filter, creating one if necessary
             let top_level_filter = query.filter.get_or_insert(EntityFilter::And(vec![]));
-            *top_level_filter = match top_level_filter {
+            match top_level_filter {
                 EntityFilter::And(ref mut filters) => {
-                    let mut filters = filters.clone();
                     filters.push(filter);
-                    EntityFilter::And(filters)
                 }
-                _ => top_level_filter.clone(),
+                _ => unreachable!("top level filter is always `And`"),
             };
         }
     }
