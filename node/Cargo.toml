@@ -11,7 +11,7 @@ http = "0.1"
 ipfs-api = "0.5.0-alpha2"
 itertools = "0.7"
 lazy_static = "1.2.0"
-sentry = "0.3.1"
+sentry = "0.15.1"
 url = "1.7.1"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
