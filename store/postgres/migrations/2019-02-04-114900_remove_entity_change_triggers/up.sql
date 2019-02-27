@@ -10,6 +10,6 @@ DROP TRIGGER IF EXISTS entity_removed ON entities;
  * DROP FUNCTIONS
  **************************************************************/
 
-DROP FUNCTION IF EXISTS notify_entity_added;
-DROP FUNCTION IF EXISTS notify_entity_updated;
-DROP FUNCTION IF EXISTS notify_entity_removed;
+DROP FUNCTION IF EXISTS notify_entity_added();
+DROP FUNCTION IF EXISTS notify_entity_updated();
+DROP FUNCTION IF EXISTS notify_entity_removed();
