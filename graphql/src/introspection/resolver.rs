@@ -141,18 +141,7 @@ fn input_object_type_object(
                 .as_ref()
                 .map_or(q::Value::Null, |s| q::Value::String(s.to_owned())),
         ),
-        // The JS graphql library that graphiql uses does not like an empty
-        // "inputFields" and will refuse to load the schema if it finds one. So make
-        // sure to please it by using `null` if empty. graphql could be more
-        // flexible here, looks like an upstream bug.
-        (
-            "inputFields",
-            if input_values.is_empty() {
-                q::Value::Null
-            } else {
-                q::Value::List(input_values)
-            },
-        ),
+        ("inputFields", q::Value::List(input_values)),
     ])
 }
 
