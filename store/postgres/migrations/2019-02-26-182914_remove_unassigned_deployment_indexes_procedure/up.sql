@@ -35,7 +35,7 @@ BEGIN
               assigments.id is null)
     -- Iterate over indexes and drop each
     LOOP
-        DROP INDEX index_to_drop.name;
+        EXECUTE 'DROP INDEX ' || index_to_drop.name;
         counter := counter + 1;
     END LOOP;
     RAISE NOTICE 'Successfully dropped % indexes', counter;
