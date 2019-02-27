@@ -131,9 +131,9 @@ impl NotificationListener {
                         Err(e) => {
                             crit!(
                                 logger,
-                                "Failed to parse database notification: {:?}: {}",
-                                notification,
-                                e
+                                "Failed to parse database notification";
+                                "notification" => format!("{:?}", notification),
+                                "error" => format!("{}", e),
                             );
                             continue;
                         }

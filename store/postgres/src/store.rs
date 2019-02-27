@@ -21,7 +21,7 @@ use graph::serde_json;
 use graph::web3::types::H256;
 use graph::{tokio, tokio::timer::Interval};
 use graph_graphql::prelude::api_schema;
-use notification_listener::LargeNotification;
+use notification_listener::JsonNotification;
 
 use chain_head_listener::ChainHeadUpdateListener;
 use functions::{
@@ -105,7 +105,7 @@ impl Store {
         initiate_schema(&logger, &pool.get().unwrap());
 
         // Listen to entity changes in Postgres
-        let mut listener = StoreEventListener::new(config.postgres_url.clone());
+        let mut listener = StoreEventListener::new(&logger, config.postgres_url.clone());
         let store_events = listener
             .take_event_stream()
             .expect("Failed to listen to entity change events in Postgres");
@@ -655,13 +655,12 @@ impl Store {
             changes,
         };
 
-        trace!(self.logger, "Emit store event"; 
-                "block" => event_source.to_string(), 
+        trace!(self.logger, "Emit store event";
+                "block" => event_source.to_string(),
                 "changes" => event.changes.len());
 
         let v = serde_json::to_value(event)?;
-        LargeNotification::send_json("store_events", &v.to_string(), conn)?;
-        Ok(())
+        JsonNotification::send("store_events", &v, conn)
     }
 
     fn emit_revert_event(
@@ -673,13 +672,12 @@ impl Store {
     ) -> Result<(), StoreError> {
         let event = get_revert_event(conn, subgraph_id, block_ptr_from, block_ptr_to)?;
 
-        trace!(self.logger, "Emit store event for revert"; 
-                "block" => event.source.to_string(), 
+        trace!(self.logger, "Emit store event for revert";
+                "block" => event.source.to_string(),
                 "changes" => event.changes.len());
 
         let v = serde_json::to_value(event)?;
-        LargeNotification::send_json("store_events", &v.to_string(), conn)?;
-        Ok(())
+        JsonNotification::send("store_events", &v, conn)
     }
 }
 
@@ -1007,7 +1005,11 @@ impl ChainStore for Store {
     }
 
     fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener {
-        Self::ChainHeadUpdateListener::new(self.postgres_url.clone(), self.network_name.clone())
+        Self::ChainHeadUpdateListener::new(
+            &self.logger,
+            self.postgres_url.clone(),
+            self.network_name.clone(),
+        )
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {

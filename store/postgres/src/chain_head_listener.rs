@@ -8,9 +8,10 @@ pub struct ChainHeadUpdateListener {
 }
 
 impl ChainHeadUpdateListener {
-    pub fn new(postgres_url: String, network_name: String) -> Self {
+    pub fn new(logger: &Logger, postgres_url: String, network_name: String) -> Self {
         ChainHeadUpdateListener {
             notification_listener: NotificationListener::new(
+                logger,
                 postgres_url,
                 SafeChannelName::i_promise_this_is_safe("chain_head_updates"),
             ),
@@ -34,16 +35,12 @@ impl EventProducer<ChainHeadUpdate> for ChainHeadUpdateListener {
         self.notification_listener.take_event_stream().map(
             move |stream| -> Box<Stream<Item = _, Error = _> + Send> {
                 Box::new(stream.filter_map(move |notification| {
-                    // Parse notification as JSON
-                    let value: serde_json::Value = serde_json::from_str(&notification.payload)
-                        .expect("invalid JSON chain head update received from database");
-
                     // Create ChainHeadUpdate from JSON
-                    let update: ChainHeadUpdate = serde_json::from_value(value.clone())
-                        .unwrap_or_else(|_| {
+                    let update: ChainHeadUpdate =
+                        serde_json::from_value(notification.payload.clone()).unwrap_or_else(|_| {
                             panic!(
                                 "invalid chain head update received from database: {:?}",
-                                value
+                                notification.payload
                             )
                         });
 
