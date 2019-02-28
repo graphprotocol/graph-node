@@ -14,6 +14,7 @@ extern crate graph_server_websocket;
 extern crate graph_store_postgres;
 extern crate http;
 extern crate ipfs_api;
+extern crate lazy_static;
 extern crate url;
 
 use clap::{App, Arg};
@@ -21,8 +22,10 @@ use futures::sync::oneshot;
 use ipfs_api::IpfsClient;
 use itertools::FoldWhile::{Continue, Done};
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use std::env;
 use std::net::ToSocketAddrs;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -43,8 +46,21 @@ use graph_server_json_rpc::JsonRpcServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
-const REORG_THRESHOLD: u64 = 50;
-const ANCESTOR_COUNT: u64 = 50;
+lazy_static! {
+    // Default to an Ethereum reorg threshold to 50 blocks
+    static ref REORG_THRESHOLD: u64 = env::var("ETHEREUM_REORG_THRESHOLD")
+        .ok()
+        .map(|s| u64::from_str(&s)
+            .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_REORG_THRESHOLD")))
+        .unwrap_or(50);
+
+    // Default to an ancestor count of 50 blocks
+    static ref ANCESTOR_COUNT: u64 = env::var("ETHEREUM_ANCESTOR_COUNT")
+        .ok()
+        .map(|s| u64::from_str(&s)
+             .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_ANCESTOR_COUNT")))
+        .unwrap_or(50);
+}
 
 fn main() {
     let (shutdown_sender, shutdown_receiver) = oneshot::channel();
@@ -403,13 +419,13 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         // otherwise BlockStream will not work properly.
         // BlockStream expects the blocks after the reorg threshold to be present in the
         // database.
-        assert!(ANCESTOR_COUNT >= REORG_THRESHOLD);
+        assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
 
         // Create Ethereum block ingestor
         let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
             store.clone(),
             eth_adapter.clone(),
-            ANCESTOR_COUNT,
+            *ANCESTOR_COUNT,
             logger.clone(),
             block_polling_interval,
         )
@@ -425,7 +441,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         store.clone(),
         eth_adapter.clone(),
         node_id.clone(),
-        REORG_THRESHOLD,
+        *REORG_THRESHOLD,
     );
 
     // Optionally, identify the Elasticsearch logging configuration
