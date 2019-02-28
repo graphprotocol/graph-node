@@ -13,7 +13,7 @@ use graph::web3::types::{Address, Block, Transaction, H160, H256};
 use hex;
 use std::io::Cursor;
 use std::str::FromStr;
-use wasmi::nan_preserving_float::F32;
+use wasmi::nan_preserving_float::F64;
 
 use std::env;
 

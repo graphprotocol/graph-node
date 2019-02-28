@@ -145,7 +145,7 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
                 Value::String(heap.asc_get(ptr))
             }
             StoreValueKind::Int => Value::Int(i32::from(payload)),
-            StoreValueKind::Float => Value::Float(f32::from(payload)),
+            StoreValueKind::Float => Value::Float(f64::from(payload)),
             StoreValueKind::Bool => Value::Bool(bool::from(payload)),
             StoreValueKind::Array => {
                 let ptr: AscEnumArray<StoreValueKind> = AscPtr::from(payload);

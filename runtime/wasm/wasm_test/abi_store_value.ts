@@ -24,7 +24,7 @@ export class Value {
     data: Payload
 }
 
-export function value_from_string(str: string): Value {  
+export function value_from_string(str: string): Value {
     let token = new Value();
     token.kind = ValueKind.STRING;
     token.data = str as u64;
@@ -37,8 +37,8 @@ export function value_from_int(int: i32): Value {
     value.data = int as u64
     return value
 }
-  
-export function value_from_float(float: f32): Value {
+
+export function value_from_float(float: f64): Value {
     let value = new Value();
     value.kind = ValueKind.FLOAT;
     value.data = reinterpret<u64>(float as f64)
@@ -51,8 +51,8 @@ export function value_from_bool(bool: boolean): Value {
     value.data = bool ? 1 : 0;
     return value
 }
-  
-export function array_from_values(str: string, float: f32): Value {
+
+export function array_from_values(str: string, float: f64): Value {
     let array = new Array<Value>();
     array.push(value_from_string(str));
     array.push(value_from_float(float));
@@ -62,7 +62,7 @@ export function array_from_values(str: string, float: f32): Value {
     value.data = array as u64;
     return value
 }
-  
+
 export function value_null(): Value {
     let value = new Value();
     value.kind = ValueKind.NULL;
@@ -88,10 +88,10 @@ export function value_from_array(array: Array<string>): Value {
     value.kind = ValueKind.ARRAY
     value.data = array as u64
     return value
-  }
+}
 
 // Test that this does not cause undefined behaviour in Rust.
-export function invalid_discriminant(): Value {  
+export function invalid_discriminant(): Value {
     let token = new Value();
     token.kind = 70;
     token.data = "blebers" as u64;

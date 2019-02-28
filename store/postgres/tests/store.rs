@@ -166,7 +166,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         "Johnton",
         "tonofjohn@email.com",
         67 as i32,
-        184.4 as f32,
+        184.4,
         false,
         None,
     );
@@ -185,7 +185,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         "Cindini",
         "dinici@email.com",
         43 as i32,
-        159.1 as f32,
+        159.1,
         true,
         Some("red"),
     );
@@ -195,7 +195,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         "Shaqueeena",
         "queensha@email.com",
         28 as i32,
-        111.7 as f32,
+        111.7,
         false,
         Some("blue"),
     );
@@ -214,7 +214,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         "Shaqueeena",
         "teeko@email.com",
         28 as i32,
-        111.7 as f32,
+        111.7,
         false,
         None,
     );
@@ -235,7 +235,7 @@ fn create_test_entity(
     name: &str,
     email: &str,
     age: i32,
-    weight: f32,
+    weight: f64,
     coffee: bool,
     favorite_color: Option<&str>,
 ) -> EntityOperation {
@@ -334,7 +334,7 @@ fn get_entity_1() {
         );
         expected_entity.insert("email".to_owned(), "tonofjohn@email.com".into());
         expected_entity.insert("age".to_owned(), Value::Int(67 as i32));
-        expected_entity.insert("weight".to_owned(), Value::Float(184.4 as f32));
+        expected_entity.insert("weight".to_owned(), Value::Float(184.4));
         expected_entity.insert("coffee".to_owned(), Value::Bool(false));
         // favorite_color was null, so we expect the property to be omitted
 
@@ -366,7 +366,7 @@ fn get_entity_3() {
         );
         expected_entity.insert("email".to_owned(), "teeko@email.com".into());
         expected_entity.insert("age".to_owned(), Value::Int(28 as i32));
-        expected_entity.insert("weight".to_owned(), Value::Float(111.7 as f32));
+        expected_entity.insert("weight".to_owned(), Value::Float(111.7));
         expected_entity.insert("coffee".to_owned(), Value::Bool(false));
         // favorite_color was later set to null, so we expect the property to be omitted
 
@@ -391,7 +391,7 @@ fn insert_entity() {
             "Wanjon",
             "wanawana@email.com",
             76 as i32,
-            111.7 as f32,
+            111.7,
             true,
             Some("green"),
         );
@@ -426,7 +426,7 @@ fn update_existing() {
             "Wanjon",
             "wanawana@email.com",
             76 as i32,
-            111.7 as f32,
+            111.7,
             true,
             Some("green"),
         );
@@ -760,7 +760,7 @@ fn find_float_equal() {
             entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "weight".to_owned(),
-                Value::Float(184.4 as f32),
+                Value::Float(184.4),
             )])),
             order_by: None,
             order_direction: None,
@@ -778,7 +778,7 @@ fn find_float_not_equal() {
             entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 "weight".to_owned(),
-                Value::Float(184.4 as f32),
+                Value::Float(184.4),
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
@@ -796,7 +796,7 @@ fn find_float_greater_than() {
             entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
                 "weight".to_owned(),
-                Value::Float(160 as f32),
+                Value::Float(160.0),
             )])),
             order_by: None,
             order_direction: None,
@@ -814,7 +814,7 @@ fn find_float_less_than() {
             entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "weight".to_owned(),
-                Value::Float(160 as f32),
+                Value::Float(160.0),
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
@@ -832,7 +832,7 @@ fn find_float_less_than_order_by_desc() {
             entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "weight".to_owned(),
-                Value::Float(160 as f32),
+                Value::Float(160.0),
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
@@ -850,7 +850,7 @@ fn find_float_less_than_range() {
             entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "weight".to_owned(),
-                Value::Float(161 as f32),
+                Value::Float(161.0),
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
@@ -868,7 +868,7 @@ fn find_float_in() {
             entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 "weight".to_owned(),
-                vec![Value::Float(184.4 as f32), Value::Float(111.7 as f32)],
+                vec![Value::Float(184.4), Value::Float(111.7)],
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
@@ -886,7 +886,7 @@ fn find_float_not_in() {
             entity_type: "user".to_owned(),
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 "weight".to_owned(),
-                vec![Value::Float(184.4 as f32), Value::Float(111.7 as f32)],
+                vec![Value::Float(184.4), Value::Float(111.7)],
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),

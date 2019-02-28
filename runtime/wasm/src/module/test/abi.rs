@@ -240,8 +240,8 @@ fn abi_store_value() {
     assert_eq!(new_value, Value::Int(int));
 
     // Value::Float
-    let float: f32 = 3.14159001;
-    let float_runtime = RuntimeValue::F32(F32::from_float(float));
+    let float: f64 = 3.14159001;
+    let float_runtime = RuntimeValue::F64(F64::from_float(float));
     let new_value_ptr = module.takes_val_returns_ptr("value_from_float", float_runtime);
     let new_value: Value = module.asc_get(new_value_ptr);
     assert_eq!(new_value, Value::Float(float));

@@ -4,7 +4,7 @@ use diesel::pg::Pg;
 use diesel::prelude::*;
 use diesel::query_builder::BoxedSelectStatement;
 use diesel::serialize::ToSql;
-use diesel::sql_types::{Array, Bool, Float, HasSqlType, Integer, Jsonb, Numeric, Text};
+use diesel::sql_types::{Array, Bool, Double, HasSqlType, Integer, Jsonb, Numeric, Text};
 use std::str::FromStr;
 
 use graph::components::store::EntityFilter;
@@ -38,14 +38,14 @@ impl IntoFilter for String {
     }
 }
 
-impl IntoFilter for f32 {
+impl IntoFilter for f64 {
     fn into_filter(self, attribute: String, op: &str) -> FilterExpression {
         Box::new(
             sql("(data -> ")
                 .bind::<Text, _>(attribute)
                 .sql("->> 'data')::float")
                 .sql(op)
-                .bind::<Float, _>(self),
+                .bind::<Double, _>(self),
         ) as FilterExpression
     }
 }
@@ -271,7 +271,7 @@ fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFil
                     Ok(SqlValue::new_array(values).into_array_filter::<Text>(attribute, op, ""))
                 }
                 Value::Float(_) => Ok(SqlValue::new_array(values)
-                    .into_array_filter::<Float>(attribute, op, "::float")),
+                    .into_array_filter::<Double>(attribute, op, "::float8")),
                 Value::Int(_) => Ok(SqlValue::new_array(values)
                     .into_array_filter::<Integer>(attribute, op, "::int")),
                 Value::String(_) => {

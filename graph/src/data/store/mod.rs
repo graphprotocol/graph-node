@@ -132,7 +132,7 @@ impl FromStr for ValueType {
 pub enum Value {
     String(String),
     Int(i32),
-    Float(f32),
+    Float(f64),
     Bool(bool),
     List(Vec<Value>),
     Null,
@@ -189,7 +189,7 @@ impl Value {
                     as i32,
             ),
             (query::Value::Variable(var), _) => Value::String(var.to_owned()),
-            (query::Value::Float(f), _) => Value::Float(f.to_owned() as f32),
+            (query::Value::Float(f), _) => Value::Float(f.to_owned()),
             (query::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
             (query::Value::Null, _) => Value::Null,
             _ => {
@@ -217,7 +217,7 @@ impl Value {
         }
     }
 
-    pub fn as_float(self) -> Option<f32> {
+    pub fn as_float(self) -> Option<f64> {
         if let Value::Float(f) = self {
             Some(f)
         } else {
@@ -327,8 +327,8 @@ impl From<i32> for Value {
     }
 }
 
-impl From<f32> for Value {
-    fn from(value: f32) -> Value {
+impl From<f64> for Value {
+    fn from(value: f64) -> Value {
         Value::Float(value)
     }
 }

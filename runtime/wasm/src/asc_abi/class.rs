@@ -250,9 +250,9 @@ impl From<EnumPayload> for i32 {
     }
 }
 
-impl From<EnumPayload> for f32 {
-    fn from(payload: EnumPayload) -> f32 {
-        f64::from_bits(payload.0) as f32
+impl From<EnumPayload> for f64 {
+    fn from(payload: EnumPayload) -> f64 {
+        f64::from_bits(payload.0)
     }
 }
 
@@ -268,9 +268,9 @@ impl From<i32> for EnumPayload {
     }
 }
 
-impl From<f32> for EnumPayload {
-    fn from(x: f32) -> EnumPayload {
-        EnumPayload((x as f64).to_bits())
+impl From<f64> for EnumPayload {
+    fn from(x: f64) -> EnumPayload {
+        EnumPayload(x.to_bits())
     }
 }
 
