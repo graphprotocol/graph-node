@@ -18,11 +18,18 @@ pub enum SchemaValidationError {
 
     #[fail(display = "@entity directive missing on the following types: {}", _0)]
     EntityDirectivesMissing(Strings),
+
+    #[fail(
+        display = "Type `{}` cannot implement `{}` because it is missing \
+                   the required fields {:?}",
+        _0, _1, _2
+    )]
+    CannotImplement(String, String, Vec<String>), // (type, interface, missing_fields)
 }
 
 /// Validates whether a GraphQL schema is compatible with The Graph.
 pub(crate) fn validate_schema(schema: &Document) -> Result<(), SchemaValidationError> {
-    validate_schema_types(&schema)
+    validate_schema_types(schema)
 }
 
 /// Validates whether all object types in the schema are declared with an @entity directive.
@@ -41,6 +48,34 @@ fn validate_schema_types(schema: &Document) -> Result<(), SchemaValidationError>
         Err(EntityDirectivesMissing(Strings(
             types_without_entity_directive,
         )))
+    }
+}
+
+/// Validate `interfaceethat `object` implements `interface`.
+pub(crate) fn validate_interface_implementation(
+    object: &ObjectType,
+    interface: &InterfaceType,
+) -> Result<(), SchemaValidationError> {
+    // Check that all fields in the interface exist in the object with same name and type.
+    let mut missing_fields = vec![];
+    for i in &interface.fields {
+        if object
+            .fields
+            .iter()
+            .find(|o| o.name == i.name && o.field_type == i.field_type)
+            .is_none()
+        {
+            missing_fields.push(i.to_string().trim().to_owned());
+        }
+    }
+    if !missing_fields.is_empty() {
+        Err(SchemaValidationError::CannotImplement(
+            object.name.clone(),
+            interface.name.clone(),
+            missing_fields,
+        ))
+    } else {
+        Ok(())
     }
 }
 
