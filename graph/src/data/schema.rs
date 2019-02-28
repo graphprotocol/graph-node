@@ -1,5 +1,6 @@
 use data::graphql::validation::{
-    get_object_type_definitions, validate_schema, SchemaValidationError,
+    get_object_type_definitions, validate_interface_implementation, validate_schema,
+    SchemaValidationError,
 };
 use data::subgraph::SubgraphDeploymentId;
 use failure::Error;
@@ -57,6 +58,8 @@ impl Schema {
                     .ok_or_else(|| {
                         SchemaValidationError::UndefinedInterface(implemented_interface.clone())
                     })?;
+
+                validate_interface_implementation(object_type, &interface_type)?;
 
                 interfaces_for_type
                     .entry(object_type.name.clone())
@@ -135,5 +138,25 @@ fn non_existing_interface() {
     assert_eq!(
         error,
         SchemaValidationError::UndefinedInterface("Bar".to_owned())
+    );
+}
+
+#[test]
+fn invalid_interface_implementation() {
+    let schema = "
+        interface Foo {
+            x: Int,
+            y: Int
+        }
+
+        type Bar implements Foo @entity {
+            x: Boolean
+        }
+    ";
+    let res = Schema::parse(schema, SubgraphDeploymentId::new("dummy").unwrap());
+    assert_eq!(
+        res.unwrap_err().to_string(),
+        "Type `Bar` cannot implement `Foo` because it is missing the \
+         required fields [\"x: Int\", \"y: Int\"]"
     );
 }

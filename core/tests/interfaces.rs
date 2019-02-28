@@ -265,10 +265,7 @@ fn derived_interface_relationship() {
 
     let forest = (Entity::from(vec![("id", Value::from("1"))]), "Forest");
     let animal = (
-        Entity::from(vec![
-            ("id", Value::from("1")),
-            ("forest", Value::from("1")),
-        ]),
+        Entity::from(vec![("id", Value::from("1")), ("forest", Value::from("1"))]),
         "Animal",
     );
 
