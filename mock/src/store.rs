@@ -254,10 +254,7 @@ impl Store for MockStore {
                     let sender = sender.clone();
 
                     tokio::spawn(future::lazy(move || {
-                        let event = StoreEvent {
-                            source: EventSource::None,
-                            changes: vec![entity_change],
-                        };
+                        let event = StoreEvent::new(vec![entity_change]);
                         sender
                             .send(event)
                             .map(|_| ())

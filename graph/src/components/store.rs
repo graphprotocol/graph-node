@@ -3,6 +3,7 @@ use futures::Future;
 use futures::Stream;
 use std::collections::HashSet;
 use std::fmt;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use web3::types::H256;
 
 use data::store::*;
@@ -184,7 +185,7 @@ impl EntityChange {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 /// The store emits `StoreEvents` to indicate that some entities have changed.
 /// For block-related data, at most one `StoreEvent` is emitted for each block
 /// that is processed. The `changes` vector contains the details of what changes
@@ -194,8 +195,37 @@ impl EntityChange {
 /// any specific blocks, `StoreEvents` for it are generated as soon as they are
 /// written to the store.
 pub struct StoreEvent {
-    pub source: EventSource,
+    // The tag is only there to make it easier to track StoreEvents in the
+    // logs as they flow through the system
+    pub tag: usize,
     pub changes: Vec<EntityChange>,
+}
+
+impl StoreEvent {
+    pub fn new(changes: Vec<EntityChange>) -> StoreEvent {
+        static NEXT_TAG: AtomicUsize = AtomicUsize::new(0);
+
+        let tag = NEXT_TAG.fetch_add(1, Ordering::Relaxed);
+        StoreEvent { tag, changes }
+    }
+}
+
+impl fmt::Display for StoreEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "StoreEvent[{}](changes: {})",
+            self.tag,
+            self.changes.len()
+        )
+    }
+}
+
+impl PartialEq for StoreEvent {
+    fn eq(&self, other: &StoreEvent) -> bool {
+        // Ignore tag for equality
+        self.changes == other.changes
+    }
 }
 
 /// A boxed `StoreEventStream`

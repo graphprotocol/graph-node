@@ -214,7 +214,7 @@ impl Store {
 
         tokio::spawn(store_events.for_each(move |event| {
             trace!(logger, "Received store event";
-                "source" => event.source.to_string(),
+                "tag" => event.tag,
                 "changes" => event.changes.len(),
             );
 
@@ -644,19 +644,15 @@ impl Store {
         &self,
         conn: &PgConnection,
         operations: &[EntityOperation],
-        event_source: &EventSource,
     ) -> Result<(), StoreError> {
         let changes: Vec<_> = operations
             .iter()
             .filter_map(|op| EntityChange::from_entity_operation(op.clone()))
             .collect();
-        let event = StoreEvent {
-            source: event_source.clone(),
-            changes,
-        };
+        let event = StoreEvent::new(changes);
 
         trace!(self.logger, "Emit store event";
-                "block" => event_source.to_string(),
+                "tag" => event.tag,
                 "changes" => event.changes.len());
 
         let v = serde_json::to_value(event)?;
@@ -673,7 +669,7 @@ impl Store {
         let event = get_revert_event(conn, subgraph_id, block_ptr_from, block_ptr_to)?;
 
         trace!(self.logger, "Emit store event for revert";
-                "block" => event.source.to_string(),
+                "tag" => event.tag,
                 "changes" => event.changes.len());
 
         let v = serde_json::to_value(event)?;
@@ -810,7 +806,7 @@ impl StoreTrait for Store {
     ) -> Result<(), StoreError> {
         let conn = self.conn.get().map_err(Error::from)?;
         conn.transaction(|| {
-            self.emit_store_events(&conn, &operations, &event_source)?;
+            self.emit_store_events(&conn, &operations)?;
             self.apply_entity_operations_with_conn(&conn, operations, event_source)
         })
     }

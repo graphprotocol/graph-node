@@ -1386,6 +1386,7 @@ fn subscribe_and_consume(
     subgraph: &SubgraphDeploymentId,
     entity_type: &str,
 ) -> StoreEventStreamBox {
+    static MARKER_ID: &str = "fake marker";
     let subscription = store.subscribe(vec![(subgraph.clone(), entity_type.to_owned())]);
 
     // Generate fake activity on the stream by removing a nonexistent entity and
@@ -1401,7 +1402,7 @@ fn subscribe_and_consume(
     let key = EntityKey {
         subgraph_id: subgraph.clone(),
         entity_type: entity_type.to_owned(),
-        entity_id: "mark".to_owned(),
+        entity_id: MARKER_ID.to_owned(),
     };
     let op = EntityOperation::Remove { key };
 
@@ -1417,7 +1418,15 @@ fn subscribe_and_consume(
 
     Box::new(
         subscription
-            .skip_while(move |event| future::ok(event.source != source))
+            .skip_while(move |event| {
+                // Skip events until we see the fake event we generated above
+                future::ok(
+                    event
+                        .changes
+                        .iter()
+                        .all(|change| change.entity_id != MARKER_ID),
+                )
+            })
             .skip(1),
     )
 }
@@ -1462,14 +1471,10 @@ fn revert_block_basic() {
         assert_eq!(&test_value, returned_name.unwrap());
 
         // Check that the subscription notified us of the changes
-        let event_source2 = EventSource::EthereumBlock(*TEST_BLOCK_2_PTR);
-        let expected = StoreEvent {
-            source: event_source2,
-            changes: vec![
-                make_entity_change("user", "3", EntityChangeOperation::Set),
-                make_deployment_change("testsubgraph", EntityChangeOperation::Set),
-            ],
-        };
+        let expected = StoreEvent::new(vec![
+            make_entity_change("user", "3", EntityChangeOperation::Set),
+            make_deployment_change("testsubgraph", EntityChangeOperation::Set),
+        ]);
         // The last event is the one for the reversion
         check_events(subscription, vec![expected])
     })
@@ -1533,14 +1538,10 @@ fn revert_block_with_delete() {
         assert_eq!(&test_value, returned_name.unwrap());
 
         // Check that the subscription notified us of the changes
-        let event_source3 = EventSource::EthereumBlock(*TEST_BLOCK_3_PTR);
-        let expected = StoreEvent {
-            source: event_source3,
-            changes: vec![
-                make_entity_change("user", "2", EntityChangeOperation::Set),
-                make_deployment_change("testsubgraph", EntityChangeOperation::Set),
-            ],
-        };
+        let expected = StoreEvent::new(vec![
+            make_entity_change("user", "2", EntityChangeOperation::Set),
+            make_deployment_change("testsubgraph", EntityChangeOperation::Set),
+        ]);
 
         // The last event is the one for the reversion
         check_events(subscription, vec![expected])
@@ -1601,14 +1602,10 @@ fn revert_block_with_partial_update() {
         assert_eq!(reverted_entity, original_entity);
 
         // Check that the subscription notified us of the changes
-        let event_source3 = EventSource::EthereumBlock(*TEST_BLOCK_3_PTR);
-        let expected = StoreEvent {
-            source: event_source3,
-            changes: vec![
-                make_entity_change("user", "1", EntityChangeOperation::Set),
-                make_deployment_change("testsubgraph", EntityChangeOperation::Set),
-            ],
-        };
+        let expected = StoreEvent::new(vec![
+            make_entity_change("user", "1", EntityChangeOperation::Set),
+            make_deployment_change("testsubgraph", EntityChangeOperation::Set),
+        ]);
 
         check_events(subscription, vec![expected])
     })
@@ -1710,55 +1707,47 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             .unwrap();
 
         // We're expecting two events to be written to the subscription stream
-        let event_source1 = EventSource::EthereumBlock(*TEST_BLOCK_1_PTR);
-        let event_source2 = EventSource::EthereumBlock(*TEST_BLOCK_2_PTR);
         let expected = vec![
-            StoreEvent {
-                source: event_source1,
-                changes: vec![
-                    EntityChange {
-                        subgraph_id: subgraph_id.clone(),
-                        entity_type: "User".to_owned(),
-                        entity_id: added_entities[0].clone().0,
-                        operation: EntityChangeOperation::Set,
-                    },
-                    EntityChange {
-                        subgraph_id: subgraph_id.clone(),
-                        entity_type: "User".to_owned(),
-                        entity_id: added_entities[1].clone().0,
-                        operation: EntityChangeOperation::Set,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "SubgraphDeployment".to_owned(),
-                        entity_id: "EntityChangeTestSubgraph".to_owned(),
-                        operation: EntityChangeOperation::Set,
-                    },
-                ],
-            },
-            StoreEvent {
-                source: event_source2,
-                changes: vec![
-                    EntityChange {
-                        subgraph_id: subgraph_id.clone(),
-                        entity_type: "User".to_owned(),
-                        entity_id: "1".to_owned(),
-                        operation: EntityChangeOperation::Set,
-                    },
-                    EntityChange {
-                        subgraph_id: subgraph_id.clone(),
-                        entity_type: "User".to_owned(),
-                        entity_id: added_entities[1].clone().0,
-                        operation: EntityChangeOperation::Removed,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "SubgraphDeployment".to_owned(),
-                        entity_id: "EntityChangeTestSubgraph".to_owned(),
-                        operation: EntityChangeOperation::Set,
-                    },
-                ],
-            },
+            StoreEvent::new(vec![
+                EntityChange {
+                    subgraph_id: subgraph_id.clone(),
+                    entity_type: "User".to_owned(),
+                    entity_id: added_entities[0].clone().0,
+                    operation: EntityChangeOperation::Set,
+                },
+                EntityChange {
+                    subgraph_id: subgraph_id.clone(),
+                    entity_type: "User".to_owned(),
+                    entity_id: added_entities[1].clone().0,
+                    operation: EntityChangeOperation::Set,
+                },
+                EntityChange {
+                    subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
+                    entity_type: "SubgraphDeployment".to_owned(),
+                    entity_id: "EntityChangeTestSubgraph".to_owned(),
+                    operation: EntityChangeOperation::Set,
+                },
+            ]),
+            StoreEvent::new(vec![
+                EntityChange {
+                    subgraph_id: subgraph_id.clone(),
+                    entity_type: "User".to_owned(),
+                    entity_id: "1".to_owned(),
+                    operation: EntityChangeOperation::Set,
+                },
+                EntityChange {
+                    subgraph_id: subgraph_id.clone(),
+                    entity_type: "User".to_owned(),
+                    entity_id: added_entities[1].clone().0,
+                    operation: EntityChangeOperation::Removed,
+                },
+                EntityChange {
+                    subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
+                    entity_type: "SubgraphDeployment".to_owned(),
+                    entity_id: "EntityChangeTestSubgraph".to_owned(),
+                    operation: EntityChangeOperation::Set,
+                },
+            ]),
         ];
 
         check_events(subscription, expected)

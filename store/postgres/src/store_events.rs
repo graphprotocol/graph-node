@@ -133,7 +133,6 @@ ORDER BY h.event_id desc";
         .bind::<Text, _>(subgraph_id.to_string());
     let changes: Vec<EntityChangeQBN> = query.get_results(conn)?;
     let changes = changes.into_iter().map(|qbn| qbn.0).collect();
-    let source = EventSource::EthereumBlock(block_ptr_to);
 
-    Ok(StoreEvent { source, changes })
+    Ok(StoreEvent::new(changes))
 }
