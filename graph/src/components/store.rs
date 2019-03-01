@@ -317,6 +317,13 @@ where
         deployment: SubgraphDeploymentId,
         interval: Duration,
     ) -> StoreEventStreamBox {
+        // We refresh the synced flag every SYNC_REFRESH_FREQ*interval to
+        // avoid hitting the database too often to see if the subgraph has
+        // been synced in the meantime. The only downside of this approach is
+        // that we might continue throttling subscription updates for a little
+        // bit longer than we really should
+        static SYNC_REFRESH_FREQ: u32 = 4;
+
         // Check whether a deployment is marked as synced in the store. The
         // special 'subgraphs' subgraph is never considered synced so that
         // we always throttle it
@@ -327,6 +334,8 @@ where
                     .unwrap_or(false)
         };
         let mut synced = check_synced(&*store, &deployment);
+        let synced_check_interval = interval.checked_mul(SYNC_REFRESH_FREQ).unwrap();
+        let mut synced_last_refreshed = Instant::now();
 
         let mut pending_event: Option<StoreEvent> = None;
         let mut source = self.source.fuse();
@@ -342,8 +351,9 @@ where
                 return Err(());
             }
 
-            if !synced {
+            if !synced && synced_last_refreshed.elapsed() > synced_check_interval {
                 synced = check_synced(&*store, &deployment);
+                synced_last_refreshed = Instant::now();
             }
 
             if synced {
