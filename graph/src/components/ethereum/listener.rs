@@ -10,7 +10,7 @@ where
     D: Deserializer<'de>,
 {
     let s: String = Deserialize::deserialize(deserializer)?;
-    let block_hash = s.trim_left_matches("0x");
+    let block_hash = s.trim_start_matches("0x");
     H256::from_str(block_hash).map_err(D::Error::custom)
 }
 

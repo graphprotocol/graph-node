@@ -29,7 +29,7 @@ impl LinkResolver for ipfs_api::IpfsClient {
         });
 
         // Discard the `/ipfs/` prefix (if present) to get the hash.
-        let path = link.link.trim_left_matches("/ipfs/").to_owned();
+        let path = link.link.trim_start_matches("/ipfs/").to_owned();
 
         let ipfs_timeout = Duration::from_secs(ipfs_timeout.unwrap_or(30));
         let cat = self

@@ -44,7 +44,7 @@ pub(crate) fn parse_field_as_filter(key: &Name) -> (Name, FilterOp) {
     };
 
     // Strip the operator suffix to get the attribute.
-    (key.trim_right_matches(suffix).to_owned(), op)
+    (key.trim_end_matches(suffix).to_owned(), op)
 }
 
 /// Returns the root query type (if there is one).

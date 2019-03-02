@@ -29,7 +29,7 @@ where
     use serde::de::Error;
 
     let s: String = de::Deserialize::deserialize(deserializer)?;
-    let address = s.trim_left_matches("0x");
+    let address = s.trim_start_matches("0x");
     Address::from_str(address).map_err(D::Error::custom)
 }
 
@@ -499,7 +499,7 @@ impl SubgraphManifest {
                     // into the definition.
                     raw_mapping.insert(
                         serde_yaml::Value::from("id"),
-                        serde_yaml::Value::from(link.link.trim_left_matches("/ipfs/")),
+                        serde_yaml::Value::from(link.link.trim_start_matches("/ipfs/")),
                     );
 
                     // Inject the IPFS link as the location of the data

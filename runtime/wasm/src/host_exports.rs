@@ -250,7 +250,7 @@ where
         // The string may have been encoded in a fixed length
         // buffer and padded with null characters, so trim
         // trailing nulls.
-        Ok(s.trim_right_matches('\u{0000}').to_string())
+        Ok(s.trim_end_matches('\u{0000}').to_string())
     }
 
     /// Converts bytes to a hex string.
@@ -278,7 +278,7 @@ where
         }
 
         let bytes = n.to_bytes_be().1;
-        format!("0x{}", ::hex::encode(bytes).trim_left_matches('0'))
+        format!("0x{}", ::hex::encode(bytes).trim_start_matches('0'))
     }
 
     pub(crate) fn big_int_to_i32(
@@ -418,7 +418,7 @@ where
 
 pub(crate) fn string_to_h160(string: &str) -> Result<H160, HostExportError<impl ExportError>> {
     // `H160::from_str` takes a hex string with no leading `0x`.
-    let string = string.trim_left_matches("0x");
+    let string = string.trim_start_matches("0x");
     H160::from_str(string)
         .map_err(|e| HostExportError(format!("Failed to convert string to Address/H160: {}", e)))
 }

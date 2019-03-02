@@ -213,7 +213,7 @@ impl FromStr for Bytes {
     type Err = hex::FromHexError;
 
     fn from_str(s: &str) -> Result<Bytes, Self::Err> {
-        hex::decode(s.trim_left_matches("0x")).map(|x| Bytes(x.into()))
+        hex::decode(s.trim_start_matches("0x")).map(|x| Bytes(x.into()))
     }
 }
 
