@@ -149,7 +149,7 @@ impl EntityQuery {
 }
 
 /// Operation types that lead to entity changes.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum EntityChangeOperation {
     /// An entity was added or updated
@@ -159,7 +159,7 @@ pub enum EntityChangeOperation {
 }
 
 /// Entity change events emitted by [Store](trait.Store.html) implementations.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct EntityChange {
     /// ID of the subgraph the changed entity belongs to.
     pub subgraph_id: SubgraphDeploymentId,
@@ -214,7 +214,7 @@ pub struct StoreEvent {
     // The tag is only there to make it easier to track StoreEvents in the
     // logs as they flow through the system
     pub tag: usize,
-    pub changes: Vec<EntityChange>,
+    pub changes: HashSet<EntityChange>,
 }
 
 impl StoreEvent {
@@ -222,6 +222,7 @@ impl StoreEvent {
         static NEXT_TAG: AtomicUsize = AtomicUsize::new(0);
 
         let tag = NEXT_TAG.fetch_add(1, Ordering::Relaxed);
+        let changes = changes.into_iter().collect();
         StoreEvent { tag, changes }
     }
 
