@@ -43,7 +43,9 @@ matrix:
           - mv target/release/graph-node target/release/graph-node-$TRAVIS_OS_NAME
 
 # Cache dependencies
-cache: cargo
+cache:
+  cargo: true
+  timeout: 1000
 
 env:
   global:
