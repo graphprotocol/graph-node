@@ -46,6 +46,8 @@ matrix:
 cache:
   cargo: true
   timeout: 1000
+before_cache:
+  - $TRAVIS_BUILD_DIR/.travis/before_cache.sh
 
 env:
   global:
