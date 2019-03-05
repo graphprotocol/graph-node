@@ -966,6 +966,16 @@ pub trait Store: Send + Sync + 'static {
             })
             .unwrap_or(Ok(false))
     }
+
+    /// Create a new subgraph deployment. The deployment must not exist yet. `ops`
+    /// needs to contain all the operations on subgraphs and subgraph deployments to
+    /// create the deployment, including any assignments as a current or pending
+    /// version
+    fn create_subgraph_deployment(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+        ops: Vec<EntityOperation>,
+    ) -> Result<(), StoreError>;
 }
 
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {

@@ -334,6 +334,14 @@ impl Store for MockStore {
     fn count_entities(&self, _: SubgraphDeploymentId) -> Result<u64, Error> {
         unimplemented!();
     }
+
+    fn create_subgraph_deployment(
+        &self,
+        _subgraph_id: &SubgraphDeploymentId,
+        ops: Vec<EntityOperation>,
+    ) -> Result<(), StoreError> {
+        self.apply_entity_operations(ops, EventSource::None)
+    }
 }
 
 impl SubgraphDeploymentStore for MockStore {
@@ -466,6 +474,14 @@ impl Store for FakeStore {
 
     fn count_entities(&self, _: SubgraphDeploymentId) -> Result<u64, Error> {
         unimplemented!();
+    }
+
+    fn create_subgraph_deployment(
+        &self,
+        _subgraph_id: &SubgraphDeploymentId,
+        _ops: Vec<EntityOperation>,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
     }
 }
 

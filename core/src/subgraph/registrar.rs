@@ -591,12 +591,15 @@ fn create_subgraph_version(
     };
 
     // Check if subgraph deployment already exists for this hash
-    let deployment_entity_opt = store.get(SubgraphDeploymentEntity::key(manifest.id.clone()))?;
+    let deployment_exists = store
+        .get(SubgraphDeploymentEntity::key(manifest.id.clone()))?
+        .is_some();
+
     ops.push(EntityOperation::AbortUnless {
         description: "Subgraph deployment entity must continue to exist/not exist".to_owned(),
         query: SubgraphDeploymentEntity::query()
             .filter(EntityFilter::new_equal("id", manifest.id.to_string())),
-        entity_ids: if deployment_entity_opt.is_some() {
+        entity_ids: if deployment_exists {
             vec![manifest.id.to_string()]
         } else {
             vec![]
@@ -604,7 +607,7 @@ fn create_subgraph_version(
     });
 
     // Create deployment only if it does not exist already
-    if deployment_entity_opt.is_none() {
+    if !deployment_exists {
         let chain_head_ptr_opt = chain_store.chain_head_ptr()?;
         let chain_head_block_number = match chain_head_ptr_opt {
             Some(chain_head_ptr) => chain_head_ptr.number,
@@ -666,13 +669,18 @@ fn create_subgraph_version(
     }
 
     // Commit entity ops
-    store.apply_entity_operations(ops, EventSource::None)?;
+    let manifest_id = manifest.id.to_string();
+    if deployment_exists {
+        store.apply_entity_operations(ops, EventSource::None)?
+    } else {
+        store.create_subgraph_deployment(&manifest.id, ops)?;
+    }
 
     debug!(
         logger,
         "Wrote new subgraph version to store";
         "subgraph_name" => name.to_string(),
-        "subgraph_hash" => manifest.id.to_string()
+        "subgraph_hash" => manifest_id
     );
 
     Ok(())

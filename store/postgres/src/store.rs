@@ -999,6 +999,14 @@ impl StoreTrait for Store {
             .get_result(&*self.conn.get()?)?;
         Ok(count as u64)
     }
+
+    fn create_subgraph_deployment(
+        &self,
+        _subgraph_id: &SubgraphDeploymentId,
+        ops: Vec<EntityOperation>,
+    ) -> Result<(), StoreError> {
+        self.apply_entity_operations(ops, EventSource::None)
+    }
 }
 
 impl SubgraphDeploymentStore for Store {
