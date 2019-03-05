@@ -1,6 +1,6 @@
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::web3::types::{Log, Transaction};
-use semver::Version;
+use semver::{Version, VersionReq};
 
 pub struct SubgraphInstance<T>
 where
@@ -28,6 +28,13 @@ where
         // event processing behavior predictable
         let manifest_id = manifest.id;
         let spec_version = Version::parse(&manifest.spec_version)?;
+        if let false = VersionReq::parse("<= 0.0.2")?.matches(&spec_version) {
+            return Err(format_err!(
+                "Subgraph spec version {} not supported by this Graph Node (v0.0.2)",
+                spec_version
+            ));
+        }
+
         let (hosts, errors): (_, Vec<_>) = manifest
             .data_sources
             .into_iter()
