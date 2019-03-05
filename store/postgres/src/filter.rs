@@ -12,7 +12,7 @@ use graph::prelude::{BigDecimal, BigInt};
 use graph::serde_json;
 
 use crate::db_schema::entities;
-use crate::models::SqlValue;
+use crate::sql_value::SqlValue;
 
 pub(crate) struct UnsupportedFilter {
     pub filter: String,

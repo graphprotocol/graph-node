@@ -17,8 +17,8 @@ pub mod db_schema;
 mod filter;
 pub mod functions;
 pub mod jsonb;
-pub mod models;
 mod notification_listener;
+pub mod sql_value;
 pub mod store;
 mod store_events;
 

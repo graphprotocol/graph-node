@@ -1,26 +1,9 @@
 use diesel::pg::Pg;
 use diesel::serialize::{self, Output, ToSql};
-use diesel::sql_types::{Bool, Integer, Jsonb, Numeric, Text, VarChar};
-use graph::serde_json;
+use diesel::sql_types::{Bool, Integer, Numeric, Text};
 use std::io::Write;
 
 use graph::data::store::Value;
-
-pub type EntityJSON = serde_json::Value;
-
-#[derive(Queryable, QueryableByName, Debug)]
-pub struct EntityTable {
-    #[sql_type = "VarChar"]
-    pub id: String,
-    #[sql_type = "VarChar"]
-    pub subgraph: String,
-    #[sql_type = "VarChar"]
-    pub entity: String,
-    #[sql_type = "Jsonb"]
-    pub data: EntityJSON,
-    #[sql_type = "VarChar"]
-    pub event_source: String,
-}
 
 #[derive(Clone, Debug, PartialEq, AsExpression)]
 pub struct SqlValue(Value);
