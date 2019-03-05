@@ -216,7 +216,7 @@ where
         // Prepare an EthereumEvent for the WASM runtime
         // Decide on the destination type using the version provided
         // in the subgraph manifest (SpecVersion)
-        let event = if self.host_exports.spec_version > Version::parse("0.0.1").unwrap() {
+        let event = if self.host_exports.spec_version >= Version::new(0, 0, 2) {
             RuntimeValue::from(
                 self.asc_new::<AscEthereumEvent<AscEthereumTransactionV2>, _>(&EthereumEventData {
                     block: EthereumBlockData::from(&block),

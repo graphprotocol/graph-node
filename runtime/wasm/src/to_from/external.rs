@@ -8,7 +8,7 @@ use graph::serde_json;
 use graph::web3::types as web3;
 
 use crate::asc_abi::class::*;
-use crate::asc_abi::{AscHeap, AscPtr, FromAscObj, ToAscObj};
+use crate::asc_abi::{AscHeap, AscPtr, AscType, FromAscObj, ToAscObj};
 
 use crate::UnresolvedContractCall;
 
@@ -308,8 +308,11 @@ impl ToAscObj<AscEthereumTransactionV2> for EthereumTransactionData {
     }
 }
 
-impl ToAscObj<AscEthereumEvent<AscEthereumTransactionV1>> for EthereumEventData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumEvent<AscEthereumTransactionV1> {
+impl<T: AscType> ToAscObj<AscEthereumEvent<T>> for EthereumEventData
+where
+    EthereumTransactionData: ToAscObj<T>,
+{
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumEvent<T> {
         AscEthereumEvent {
             address: heap.asc_new(&self.address),
             log_index: heap.asc_new(&BigInt::from_unsigned_u256(&self.log_index)),
@@ -321,26 +324,7 @@ impl ToAscObj<AscEthereumEvent<AscEthereumTransactionV1>> for EthereumEventData 
                 .map(|log_type| heap.asc_new(&log_type))
                 .unwrap_or_else(|| AscPtr::null()),
             block: heap.asc_new(&self.block),
-            transaction: heap.asc_new(&self.transaction),
-            params: heap.asc_new(self.params.as_slice()),
-        }
-    }
-}
-
-impl ToAscObj<AscEthereumEvent<AscEthereumTransactionV2>> for EthereumEventData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumEvent<AscEthereumTransactionV2> {
-        AscEthereumEvent {
-            address: heap.asc_new(&self.address),
-            log_index: heap.asc_new(&BigInt::from_unsigned_u256(&self.log_index)),
-            transaction_log_index: heap
-                .asc_new(&BigInt::from_unsigned_u256(&self.transaction_log_index)),
-            log_type: self
-                .log_type
-                .clone()
-                .map(|log_type| heap.asc_new(&log_type))
-                .unwrap_or_else(|| AscPtr::null()),
-            block: heap.asc_new(&self.block),
-            transaction: heap.asc_new(&self.transaction),
+            transaction: heap.asc_new::<T, EthereumTransactionData>(&self.transaction),
             params: heap.asc_new(self.params.as_slice()),
         }
     }
