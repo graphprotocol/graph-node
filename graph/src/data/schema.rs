@@ -156,7 +156,7 @@ fn invalid_interface_implementation() {
     let res = Schema::parse(schema, SubgraphDeploymentId::new("dummy").unwrap());
     assert_eq!(
         res.unwrap_err().to_string(),
-        "Type `Bar` cannot implement `Foo` because it is missing the \
-         required fields [\"x: Int\", \"y: Int\"]"
+        "Entity type `Bar` cannot implement `Foo` because it is missing the \
+         required fields: x: Int, y: Int"
     );
 }

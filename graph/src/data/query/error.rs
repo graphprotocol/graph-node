@@ -67,7 +67,7 @@ impl fmt::Display for QueryExecutionError {
         match self {
             OperationNameRequired => write!(f, "Operation name required"),
             OperationNotFound(s) => {
-                write!(f, "Operation name not found: {}", s)
+                write!(f, "Operation name not found `{}`", s)
             }
             NotSupported(s) => write!(f, "Not supported: {}", s),
             NoRootQueryObjectType => {
@@ -77,49 +77,49 @@ impl fmt::Display for QueryExecutionError {
                 write!(f, "No root Subscription type defined in the schema")
             }
             NonNullError(_, s) => {
-                write!(f, "Null value resolved for non-null field: {}", s)
+                write!(f, "Null value resolved for non-null field `{}`", s)
             }
             ListValueError(_, s) => {
-                write!(f, "Non-list value resolved for list field: {}", s)
+                write!(f, "Non-list value resolved for list field `{}`", s)
             }
             NamedTypeError(s) => {
-                write!(f, "Failed to resolve named type: {}", s)
+                write!(f, "Failed to resolve named type `{}`", s)
             }
             AbstractTypeError(s) => {
-                write!(f, "Failed to resolve abstract type: {}", s)
+                write!(f, "Failed to resolve abstract type `{}`", s)
             }
             InvalidArgumentError(_, s, v) => {
-                write!(f, "Invalid value provided for argument \"{}\": {:?}", s, v)
+                write!(f, "Invalid value provided for argument `{}`: {:?}", s, v)
             }
             MissingArgumentError(_, s) => {
-                write!(f, "No value provided for required argument: {}", s)
+                write!(f, "No value provided for required argument: `{}`", s)
             }
             InvalidVariableTypeError(_, s) => {
-                write!(f, "Variable \"{}\" must have an input type", s)
+                write!(f, "Variable `{}` must have an input type", s)
             }
             InvalidVariableError(_, s, v) => {
-                write!(f, "Invalid value provided for variable \"{}\": {:?}", s, v)
+                write!(f, "Invalid value provided for variable `{}`: {:?}", s, v)
             }
             MissingVariableError(_, s) => {
-                write!(f, "No value provided for required variable: {}", s)
+                write!(f, "No value provided for required variable `{}`", s)
             }
             ResolveEntityError(_, entity, id, e) => {
-                write!(f, "Failed to get {} entity with ID \"{}\" from store: {}", entity, id, e)
+                write!(f, "Failed to get `{}` entity with ID `{}` from store: {}", entity, id, e)
             }
             ResolveEntitiesError(e) => {
                 write!(f, "Failed to get entities from store: {}", e)
             }
             OrderByNotSupportedError(entity, field) => {
-                write!(f, "Ordering by \"{}\" is not supported for type \"{}\"", field, entity)
+                write!(f, "Ordering by `{}` is not supported for type `{}`", field, entity)
             }
             OrderByNotSupportedForType(field_type) => {
-                write!(f, "Ordering by \"{}\" fields is not supported", field_type)
+                write!(f, "Ordering by `{}` fields is not supported", field_type)
             }
             FilterNotSupportedError(value, filter) => {
-                write!(f, "Filter not supported by value {} : {}", value, filter)
+                write!(f, "Filter not supported by value `{}`: `{}`", value, filter)
             }
             UnknownField(_, t, s) => {
-                write!(f, "Type \"{}\" has no field \"{}\"", t, s)
+                write!(f, "Type `{}` has no field `{}`", t, s)
             }
             EmptyQuery => write!(f, "The query is empty"),
             MultipleSubscriptionFields => write!(
@@ -127,7 +127,7 @@ impl fmt::Display for QueryExecutionError {
                 "Only a single top-level field is allowed in subscriptions"
             ),
             SubgraphDeploymentIdError(s) => {
-                write!(f, "Failed to get subgraph ID from type: {}", s)
+                write!(f, "Failed to get subgraph ID from type: `{}`", s)
             }
             RangeArgumentsError(args) => {
                 let msg = args.iter().map(|arg| {
@@ -142,23 +142,23 @@ impl fmt::Display for QueryExecutionError {
             }
             InvalidFilterError => write!(f, "Filter must by an object"),
             EntityFieldError(e, a) => {
-                write!(f, "Entity {} has no attribute {}", e, a)
+                write!(f, "Entity `{}` has no attribute `{}`", e, a)
             }
 
             ListTypesError(s, v) => write!(
                 f,
-                "Values passed to filter {} must be of the same type but are of different types: {}",
+                "Values passed to filter `{}` must be of the same type but are of different types: {}",
                 s,
                 v.join(", ")
             ),
             ListFilterError(s) => {
-                write!(f, "Non-list value passed to {} filter", s)
+                write!(f, "Non-list value passed to `{}` filter", s)
             }
             ValueParseError(t, e) => {
-                write!(f, "Failed to decode {} value: {}", t, e)
+                write!(f, "Failed to decode `{}` value: `{}`", t, e)
             }
             AttributeTypeError(value, ty) => {
-                write!(f, "Query contains value with invalid type {} : {}", ty, value)
+                write!(f, "Query contains value with invalid type `{}`: `{}`", ty, value)
             }
             EntityParseError(s) => {
                 write!(f, "Broken entity found in store: {}", s)
@@ -168,7 +168,7 @@ impl fmt::Display for QueryExecutionError {
             }
             Timeout => write!(f, "Query timed out"),
             EmptySelectionSet(entity_type) => {
-                write!(f, "Selection set for type {} is empty", entity_type)
+                write!(f, "Selection set for type `{}` is empty", entity_type)
             }
             Unimplemented(feature) => {
                 write!(f, "Feature `{}` is not yet implemented", feature)

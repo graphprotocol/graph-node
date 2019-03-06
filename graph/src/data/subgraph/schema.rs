@@ -201,7 +201,7 @@ impl SubgraphDeploymentEntity {
 
     // Overwrite entity if it exists. Only in debug builds so it's not used outside tests.
     #[cfg(debug_assertions)]
-    pub fn create_operations_force(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
+    pub fn create_operations_replace(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
         self.private_create_operations(id)
     }
 
