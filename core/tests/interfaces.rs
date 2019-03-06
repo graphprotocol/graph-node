@@ -190,7 +190,7 @@ fn one_interface_multiple_entities() {
         "Animal",
     );
     let furniture = (
-        Entity::from(vec![("id", Value::from("2")), ("legs", Value::from(3))]),
+        Entity::from(vec![("id", Value::from("2")), ("legs", Value::from(4))]),
         "Furniture",
     );
 
@@ -200,7 +200,7 @@ fn one_interface_multiple_entities() {
     assert!(res.errors.is_none());
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
-        "Object({\"leggeds\": List([Object({\"legs\": Int(Number(3))}), Object({\"legs\": Int(Number(3))})])})"
+        "Object({\"leggeds\": List([Object({\"legs\": Int(Number(3))}), Object({\"legs\": Int(Number(4))})])})"
     )
 }
 
@@ -275,5 +275,44 @@ fn derived_interface_relationship() {
     assert_eq!(
         res.unwrap().data.unwrap().to_string(),
         "{forests: [{dwellers: [{id: \"1\"}]}]}"
+    );
+}
+
+#[test]
+fn two_interfaces() {
+    let subgraph_id = "TwoInterfaces";
+    let schema = "interface IFoo { foo: String! }
+                  interface IBar { bar: Int! }
+
+                  type A implements IFoo @entity { id: ID!, foo: String! }
+                  type B implements IBar @entity { id: ID!, bar: Int! }
+
+                  type AB implements IFoo & IBar @entity { id: ID!, foo: String!, bar: Int! }
+                  ";
+
+    let a = (
+        Entity::from(vec![("id", Value::from("1")), ("foo", Value::from("bla"))]),
+        "A",
+    );
+    let b = (
+        Entity::from(vec![("id", Value::from("1")), ("bar", Value::from(100))]),
+        "B",
+    );
+    let ab = (
+        Entity::from(vec![
+            ("id", Value::from("2")),
+            ("foo", Value::from("ble")),
+            ("bar", Value::from(200)),
+        ]),
+        "AB",
+    );
+
+    let query = "query { ibars { bar } ifoos { foo } }";
+    let res = insert_and_query(subgraph_id, schema, vec![a, b, ab], query).unwrap();
+    assert!(res.errors.is_none());
+    assert_eq!(
+        format!("{:?}", res.data.unwrap()),
+        "Object({\"ibars\": List([Object({\"bar\": Int(Number(200))}), Object({\"bar\": Int(Number(100))})]), \
+                 \"ifoos\": List([Object({\"foo\": String(\"bla\")}), Object({\"foo\": String(\"ble\")})])})"
     );
 }
