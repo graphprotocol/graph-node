@@ -28,7 +28,10 @@ where
         // event processing behavior predictable
         let manifest_id = manifest.id;
         let spec_version = Version::parse(&manifest.spec_version)?;
-        if let false = VersionReq::parse("<= 0.0.2")?.matches(&spec_version) {
+        if !VersionReq::parse("<= 0.0.2")
+            .unwrap()
+            .matches(&spec_version)
+        {
             return Err(format_err!(
                 "Subgraph spec version {} not supported by this Graph Node (v0.0.2)",
                 spec_version
