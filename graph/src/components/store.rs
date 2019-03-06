@@ -103,7 +103,8 @@ pub struct EntityQuery {
     /// ID of the subgraph.
     pub subgraph_id: SubgraphDeploymentId,
 
-    /// The name of the entity types being queried.
+    /// The names of the entity types being queried. The result is the union
+    /// (with repetition) of the query for each entity.
     pub entity_types: Vec<String>,
 
     /// Filter to filter entities by.
