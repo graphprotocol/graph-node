@@ -286,8 +286,8 @@ impl Store {
 
         match entities
             .find((op_id, op_subgraph.to_string(), op_entity))
-            .select((data, entity))
-            .first::<(serde_json::Value, String)>(conn)
+            .select(data)
+            .first::<serde_json::Value>(conn)
             .optional()
             .map_err(|e| {
                 QueryExecutionError::ResolveEntityError(
@@ -297,7 +297,7 @@ impl Store {
                     format!("{}", e),
                 )
             })? {
-            Some((json, entity_type)) => {
+            Some(json) => {
                 let mut value = serde_json::from_value::<Entity>(json).map_err(|e| {
                     QueryExecutionError::ResolveEntityError(
                         op_subgraph.clone(),
@@ -306,7 +306,7 @@ impl Store {
                         format!("Invalid entity: {}", e),
                     )
                 })?;
-                value.set("__typename", entity_type);
+                value.set("__typename", op_entity);
                 Ok(Some(value))
             }
             None => Ok(None),
@@ -422,6 +422,8 @@ impl Store {
         // with `id: "Fred"`. If a type `PetOwner` has a field `pets: [Pet]`
         // then with the value `pets: ["Fred"]`, there's no way to disambiguate
         // if that's Fred the Dog, Fred the Cat or both.
+        //
+        // This assumes that there are no concurrent writes to a subgraph.
         let schema = self.subgraph_schema(&key.subgraph_id)?;
         let types_for_interface = schema.types_for_interface();
         let types_with_shared_interface = Vec::from_iter(
