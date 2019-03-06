@@ -543,7 +543,7 @@ pub enum StoreError {
     #[fail(display = "store error: {}", _0)]
     Unknown(Error),
     #[fail(
-        display = "tried to set entity of type `{}` with ID `{}` but an entity of type `{}`, \
+        display = "tried to set entity of type `{}` with ID \"{}\" but an entity of type `{}`, \
                    which has an interface in common with `{}`, exists with the same ID",
         _0, _1, _2, _0
     )]

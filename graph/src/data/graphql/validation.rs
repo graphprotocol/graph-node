@@ -20,11 +20,11 @@ pub enum SchemaValidationError {
     EntityDirectivesMissing(Strings),
 
     #[fail(
-        display = "Type `{}` cannot implement `{}` because it is missing \
-                   the required fields {:?}",
+        display = "Entity type `{}` cannot implement `{}` because it is missing \
+                   the required fields: {}",
         _0, _1, _2
     )]
-    CannotImplement(String, String, Vec<String>), // (type, interface, missing_fields)
+    CannotImplement(String, String, Strings), // (type, interface, missing_fields)
 }
 
 /// Validates whether a GraphQL schema is compatible with The Graph.
@@ -72,7 +72,7 @@ pub(crate) fn validate_interface_implementation(
         Err(SchemaValidationError::CannotImplement(
             object.name.clone(),
             interface.name.clone(),
-            missing_fields,
+            Strings(missing_fields),
         ))
     } else {
         Ok(())

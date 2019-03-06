@@ -74,7 +74,7 @@ fn insert_and_query(
     STORE
         .apply_entity_operations(
             SubgraphDeploymentEntity::new(&manifest, false, false, Default::default(), 1)
-                .create_operations_force(&subgraph_id),
+                .create_operations_replace(&subgraph_id),
             EventSource::None,
         )
         .unwrap();
@@ -250,7 +250,7 @@ fn conflicting_implementors_id() {
     let res = insert_and_query(subgraph_id, schema, vec![animal, furniture], query);
     assert_eq!(
         res.unwrap_err().to_string(),
-        "tried to set entity of type `Furniture` with ID `1` but an entity of type `Animal`, \
+        "tried to set entity of type `Furniture` with ID \"1\" but an entity of type `Animal`, \
          which has an interface in common with `Furniture`, exists with the same ID"
     );
 }
@@ -307,12 +307,12 @@ fn two_interfaces() {
         "AB",
     );
 
-    let query = "query { ibars { bar } ifoos { foo } }";
+    let query = "query { ibars(orderBy: bar) { bar } ifoos(orderBy: foo) { foo } }";
     let res = insert_and_query(subgraph_id, schema, vec![a, b, ab], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
-        "Object({\"ibars\": List([Object({\"bar\": Int(Number(200))}), Object({\"bar\": Int(Number(100))})]), \
+        "Object({\"ibars\": List([Object({\"bar\": Int(Number(100))}), Object({\"bar\": Int(Number(200))})]), \
                  \"ifoos\": List([Object({\"foo\": String(\"bla\")}), Object({\"foo\": String(\"ble\")})])})"
     );
 }
