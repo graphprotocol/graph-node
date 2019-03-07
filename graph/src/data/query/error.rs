@@ -133,7 +133,6 @@ impl fmt::Display for QueryExecutionError {
                 let msg = args.iter().map(|arg| {
                     match arg.as_str() {
                         "first" => format!("Value of \"first\" must be between 1 and 100"),
-                        "last" => format!("Value of \"last\" must be between 1 and 100"),
                         "skip" => format!("Value of \"skip\" must be greater than 0"),
                         _ => format!("Value of \"{}\" is must be an integer", arg),
                     }

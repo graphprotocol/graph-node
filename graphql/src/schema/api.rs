@@ -411,9 +411,6 @@ fn collection_arguments_for_named_type(
     let mut args = vec![
         input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string())),
         input_value(&"first".to_string(), "", Type::NamedType("Int".to_string())),
-        input_value(&"last".to_string(), "", Type::NamedType("Int".to_string())),
-        input_value(&"after".to_string(), "", Type::NamedType("ID".to_string())),
-        input_value(&"before".to_string(), "", Type::NamedType("ID".to_string())),
         input_value(
             &"orderBy".to_string(),
             "",
@@ -693,19 +690,10 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            [
-                "skip",
-                "first",
-                "last",
-                "after",
-                "before",
-                "orderBy",
-                "orderDirection",
-                "where",
-            ]
-            .into_iter()
-            .map(|name| name.to_string())
-            .collect::<Vec<String>>()
+            ["skip", "first", "orderBy", "orderDirection", "where",]
+                .into_iter()
+                .map(|name| name.to_string())
+                .collect::<Vec<String>>()
         );
 
         let user_profile_singular_field = match query_type {
@@ -786,19 +774,10 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            [
-                "skip",
-                "first",
-                "last",
-                "after",
-                "before",
-                "orderBy",
-                "orderDirection",
-                "where",
-            ]
-            .into_iter()
-            .map(|name| name.to_string())
-            .collect::<Vec<String>>()
+            ["skip", "first", "orderBy", "orderDirection", "where",]
+                .into_iter()
+                .map(|name| name.to_string())
+                .collect::<Vec<String>>()
         );
     }
 }
