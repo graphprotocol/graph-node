@@ -217,19 +217,21 @@ where
         // api version provided in the subgraph manifest
         let event = if self.host_exports.api_version >= Version::new(0, 0, 2) {
             RuntimeValue::from(
-                self.asc_new::<AscEthereumEvent<AscEthereumTransactionV2>, _>(&EthereumEventData {
-                    block: EthereumBlockData::from(&block),
-                    transaction: EthereumTransactionData::from(transaction.deref()),
-                    address: log.address,
-                    log_index: log.log_index.unwrap_or(U256::zero()),
-                    transaction_log_index: log.transaction_log_index.unwrap_or(U256::zero()),
-                    log_type: log.log_type.clone(),
-                    params,
-                }),
+                self.asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _>(
+                    &EthereumEventData {
+                        block: EthereumBlockData::from(&block),
+                        transaction: EthereumTransactionData::from(transaction.deref()),
+                        address: log.address,
+                        log_index: log.log_index.unwrap_or(U256::zero()),
+                        transaction_log_index: log.transaction_log_index.unwrap_or(U256::zero()),
+                        log_type: log.log_type.clone(),
+                        params,
+                    },
+                ),
             )
         } else {
-            RuntimeValue::from(
-                self.asc_new::<AscEthereumEvent<AscEthereumTransactionV1>, _>(&EthereumEventData {
+            RuntimeValue::from(self.asc_new::<AscEthereumEvent<AscEthereumTransaction>, _>(
+                &EthereumEventData {
                     block: EthereumBlockData::from(&block),
                     transaction: EthereumTransactionData::from(transaction.deref()),
                     address: log.address,
@@ -237,8 +239,8 @@ where
                     transaction_log_index: log.transaction_log_index.unwrap_or(U256::zero()),
                     log_type: log.log_type.clone(),
                     params,
-                }),
-            )
+                },
+            ))
         };
 
         // Invoke the event handler

@@ -1,6 +1,6 @@
 use futures::sync::mpsc::{channel, Sender};
 use futures::sync::oneshot;
-use semver::{ Version, VersionReq };
+use semver::{Version, VersionReq};
 use std::thread;
 use std::time::Instant;
 
