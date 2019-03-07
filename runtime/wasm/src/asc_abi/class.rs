@@ -417,7 +417,7 @@ pub(crate) struct AscEthereumBlock {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEthereumTransactionV1 {
+pub(crate) struct AscEthereumTransaction {
     pub hash: AscPtr<AscH256>,
     pub index: AscPtr<AscBigInt>,
     pub from: AscPtr<AscH160>,
@@ -429,7 +429,7 @@ pub(crate) struct AscEthereumTransactionV1 {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEthereumTransactionV2 {
+pub(crate) struct AscEthereumTransaction_0_0_2 {
     pub hash: AscPtr<AscH256>,
     pub index: AscPtr<AscBigInt>,
     pub from: AscPtr<AscH160>,

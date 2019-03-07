@@ -273,9 +273,9 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
     }
 }
 
-impl ToAscObj<AscEthereumTransactionV1> for EthereumTransactionData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumTransactionV1 {
-        AscEthereumTransactionV1 {
+impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumTransaction {
+        AscEthereumTransaction {
             hash: heap.asc_new(&self.hash),
             index: heap.asc_new(&BigInt::from(self.index)),
             from: heap.asc_new(&self.from),
@@ -290,9 +290,9 @@ impl ToAscObj<AscEthereumTransactionV1> for EthereumTransactionData {
     }
 }
 
-impl ToAscObj<AscEthereumTransactionV2> for EthereumTransactionData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumTransactionV2 {
-        AscEthereumTransactionV2 {
+impl ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumTransaction_0_0_2 {
+        AscEthereumTransaction_0_0_2 {
             hash: heap.asc_new(&self.hash),
             index: heap.asc_new(&BigInt::from(self.index)),
             from: heap.asc_new(&self.from),
