@@ -419,22 +419,22 @@ With the subgraph deployed to the locally running Graph Node, visit http://127.0
 
 We provide a few simple examples below, but please see the [Query API](graphql-api.md#1-queries) for a complete reference on how to query the subgraph's entities.
 
-Query all `Token` entities:
+Query the `Token` entities:
 ```graphql
 {
-  tokens {
+  tokens(first: 100) {
     id
     currentOwner
   }
 }
 ```
-Notice that `tokens` is plural and that it will return all the entites in The Graph.
+Notice that `tokens` is plural and that it will return at most 100 entities.
 
 Later, when you have deployed the subgraph with this entity, you can query for a specific value, such as the token ID:
 
 ```graphql
 {
-  token(id: "c2dac230ed4ced84ad0ca5dfb3ff8592d59cef7ff2983450113d74a47a12") {
+  token(first: 100, id: "c2dac230ed4ced84ad0ca5dfb3ff8592d59cef7ff2983450113d74a47a12") {
     currentOwner
   }
 }
@@ -444,7 +444,7 @@ You can also sort, filter, or paginate query results. The query below would orga
 
 ```graphql
 {
-  tokens(orderBy: id) {
+  tokens(first: 100, orderBy: id) {
     currentOwner
   }
 }
