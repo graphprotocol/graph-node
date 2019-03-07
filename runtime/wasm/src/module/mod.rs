@@ -54,7 +54,6 @@ const TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX: usize = 25;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
-    pub spec_version: Version,
     pub data_source: DataSource,
     pub ethereum_adapter: Arc<T>,
     pub link_resolver: Arc<L>,
@@ -117,7 +116,7 @@ where
         // Create new instance of externally hosted functions invoker
         let host_exports = HostExports::new(
             config.subgraph_id,
-            config.spec_version,
+            Version::parse(&config.data_source.mapping.api_version)?,
             config.data_source.mapping.abis,
             config.ethereum_adapter.clone(),
             config.link_resolver.clone(),
@@ -214,9 +213,9 @@ where
         let transaction = self.ctx.transaction.clone();
 
         // Prepare an EthereumEvent for the WASM runtime
-        // Decide on the destination type using the version provided
-        // in the subgraph manifest (SpecVersion)
-        let event = if self.host_exports.spec_version >= Version::new(0, 0, 2) {
+        // Decide on the destination type using the mapping
+        // api version provided in the subgraph manifest
+        let event = if self.host_exports.api_version >= Version::new(0, 0, 2) {
             RuntimeValue::from(
                 self.asc_new::<AscEthereumEvent<AscEthereumTransactionV2>, _>(&EthereumEventData {
                     block: EthereumBlockData::from(&block),

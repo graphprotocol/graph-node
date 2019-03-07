@@ -1,6 +1,6 @@
 use futures::sync::mpsc::{channel, Sender};
 use futures::sync::oneshot;
-use semver::Version;
+use semver::{ Version, VersionReq };
 use std::thread;
 use std::time::Instant;
 
@@ -20,7 +20,6 @@ use crate::module::{ValidModule, WasmiModule, WasmiModuleConfig};
 
 pub struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
-    spec_version: Version,
     data_source: DataSource,
 }
 
@@ -72,7 +71,6 @@ where
         &self,
         logger: &Logger,
         subgraph_id: SubgraphDeploymentId,
-        spec_version: Version,
         data_source: DataSource,
     ) -> Result<Self::Host, Error> {
         RuntimeHost::new(
@@ -82,7 +80,6 @@ where
             self.store.clone(),
             RuntimeHostConfig {
                 subgraph_id,
-                spec_version,
                 data_source,
             },
         )
@@ -130,6 +127,15 @@ impl RuntimeHost {
             "component" => "RuntimeHost",
             "data_source" => config.data_source.name.clone(),
         ));
+
+        let api_version = Version::parse(&config.data_source.mapping.api_version)?;
+        if !VersionReq::parse("<= 0.0.2").unwrap().matches(&api_version) {
+            return Err(format_err!(
+                "This Graph Node only supports subgraph manifest specs <= 0.0.2, but subgraph `{}` uses `{}`",
+                config.subgraph_id,
+                api_version
+            ));
+        }
 
         // Create channel for canceling the module
         let (cancel_sender, cancel_receiver) = oneshot::channel();
@@ -182,7 +188,6 @@ impl RuntimeHost {
             // Load the mapping of the data source as a WASM module
             let wasmi_config = WasmiModuleConfig {
                 subgraph_id: config.subgraph_id,
-                spec_version: config.spec_version,
                 data_source: config.data_source,
                 ethereum_adapter: ethereum_adapter.clone(),
                 link_resolver: link_resolver.clone(),
