@@ -277,7 +277,7 @@ fn can_query_one_to_one_relationship() {
         graphql_parser::parse_query(
             "
             query {
-                musicians {
+                musicians(first: 100) {
                     name
                     mainBand {
                         name
@@ -344,9 +344,9 @@ fn can_query_one_to_many_relationships_in_both_directions() {
         graphql_parser::parse_query(
             "
         query {
-            musicians {
+            musicians(first: 100) {
                 name
-                writtenSongs {
+                writtenSongs(first: 100) {
                     title
                     writtenBy { name }
                 }
@@ -439,11 +439,11 @@ fn can_query_many_to_many_relationship() {
         graphql_parser::parse_query(
             "
             query {
-                musicians {
+                musicians(first: 100) {
                     name
-                    bands {
+                    bands(first: 100) {
                         name
-                        members {
+                        members(first: 100) {
                             name
                         }
                     }
@@ -519,7 +519,7 @@ fn query_variables_are_used() {
     let query = graphql_parser::parse_query(
         "
         query musicians($where: Musician_filter!) {
-          musicians(where: $where) {
+          musicians(first: 100, where: $where) {
             name
           }
         }
@@ -555,7 +555,7 @@ fn skip_directive_works_with_query_variables() {
     let query = graphql_parser::parse_query(
         "
         query musicians($skip: Boolean!) {
-          musicians {
+          musicians(first: 100) {
             id @skip(if: $skip)
             name
           }
@@ -626,7 +626,7 @@ fn include_directive_works_with_query_variables() {
     let query = graphql_parser::parse_query(
         "
         query musicians($include: Boolean!) {
-          musicians {
+          musicians(first: 100) {
             id @include(if: $include)
             name
           }
@@ -696,7 +696,7 @@ fn include_directive_works_with_query_variables() {
 fn instant_timeout() {
     let query = Query {
         schema: Arc::new(test_schema()),
-        document: graphql_parser::parse_query("query { musicians { name } }").unwrap(),
+        document: graphql_parser::parse_query("query { musicians(first: 100) { name } }").unwrap(),
         variables: None,
     };
     let logger = Logger::root(slog::Discard, o!());

@@ -115,7 +115,7 @@ fn one_interface_zero_entities() {
     let schema = "interface Legged { legs: Int }
                   type Animal implements Legged @entity { id: ID!, legs: Int }";
 
-    let query = "query { leggeds { legs } }";
+    let query = "query { leggeds(first: 100) { legs } }";
 
     let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
 
@@ -138,7 +138,7 @@ fn one_interface_one_entity() {
     );
 
     // Collection query.
-    let query = "query { leggeds { legs } }";
+    let query = "query { leggeds(first: 100) { legs } }";
     let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
@@ -167,7 +167,7 @@ fn one_interface_one_entity_typename() {
         "Animal",
     );
 
-    let query = "query { leggeds { __typename } }";
+    let query = "query { leggeds(first: 100) { __typename } }";
 
     let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
     assert!(res.errors.is_none());
@@ -194,7 +194,7 @@ fn one_interface_multiple_entities() {
         "Furniture",
     );
 
-    let query = "query { leggeds { legs } }";
+    let query = "query { leggeds(first: 100) { legs } }";
 
     let res = insert_and_query(subgraph_id, schema, vec![animal, furniture], query).unwrap();
     assert!(res.errors.is_none());
@@ -211,7 +211,7 @@ fn reference_interface() {
                   interface Legged { leg: Leg }
                   type Animal implements Legged @entity { id: ID!, leg: Leg }";
 
-    let query = "query { leggeds { leg { id } } }";
+    let query = "query { leggeds(first: 100) { leg { id } } }";
 
     let leg = (Entity::from(vec![("id", Value::from("1"))]), "Leg");
     let animal = (
@@ -245,7 +245,7 @@ fn conflicting_implementors_id() {
         "Furniture",
     );
 
-    let query = "query { leggeds { legs } }";
+    let query = "query { leggeds(first: 100) { legs } }";
 
     let res = insert_and_query(subgraph_id, schema, vec![animal, furniture], query);
     assert_eq!(
@@ -269,7 +269,7 @@ fn derived_interface_relationship() {
         "Animal",
     );
 
-    let query = "query { forests { dwellers { id } } }";
+    let query = "query { forests(first: 100) { dwellers(first: 100) { id } } }";
 
     let res = insert_and_query(subgraph_id, schema, vec![forest, animal], query);
     assert_eq!(
@@ -307,7 +307,10 @@ fn two_interfaces() {
         "AB",
     );
 
-    let query = "query { ibars(orderBy: bar) { bar } ifoos(orderBy: foo) { foo } }";
+    let query = "query {
+                    ibars(first: 100, orderBy: bar) { bar }
+                    ifoos(first: 100, orderBy: foo) { foo }
+                }";
     let res = insert_and_query(subgraph_id, schema, vec![a, b, ab], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
