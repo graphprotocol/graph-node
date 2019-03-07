@@ -410,7 +410,11 @@ fn collection_arguments_for_named_type(
 ) -> Vec<InputValue> {
     let mut args = vec![
         input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string())),
-        input_value(&"first".to_string(), "", Type::NamedType("Int".to_string())),
+        input_value(
+            &"first".to_string(),
+            "",
+            Type::NonNullType(Box::new(Type::NamedType("Int".to_string()))),
+        ),
         input_value(
             &"orderBy".to_string(),
             "",
