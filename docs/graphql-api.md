@@ -17,10 +17,10 @@ Query for a single `Token` entity defined in your schema:
 When querying for a single entity, the `id` field is required.
 
 #### Example
-Query all `Token` entities:
+Collection query for `Token` entities:
 ```graphql
 {
-  tokens {
+  tokens(first: 100) {
     id
     owner
   }
@@ -32,7 +32,7 @@ When querying a collection, the `orderBy` parameter may be used to sort by a spe
 #### Example
 ```graphql
 {
-  tokens(orderBy: price, orderDirection: asc) {
+  tokens(first: 100, orderBy: price, orderDirection: asc) {
     id
     owner
   }
@@ -40,50 +40,15 @@ When querying a collection, the `orderBy` parameter may be used to sort by a spe
 ```
 
 ### 1.3 Pagination
-When querying a collection, the `first` or `last` parameters can be used to paginate from the beginning or the end of the collection, respectively.
+When querying a collection, the `first` parameter must be used to paginate from the beginning of the collection.
+
+To query for groups of entities in the middle of a collection, the `skip` parameter may be used to skip a specified number of entities starting at the beginning of the collection.
 
 #### Example
-Query the first 10 tokens:
+Query 10 `Token` entities, offset by 10:
 ```graphql
 {
-  tokens(first: 10) {
-    id
-    owner
-  }
-}
-```
-
-To query for groups of entities in the middle of a collection, the `skip` parameter may be used in conjunction with either the `first` or `last` parameters to skip a specified number of entities starting at the beginning or end of the collection.
-
-#### Example
-Query 10 `Token` entities, offset by 10 places from the end of the collection:
-```graphql
-{
-  tokens(last: 10, skip: 10) {
-    id
-    owner
-  }
-}
-```
-
-Additionally, the `before` or `after` parameters may be used to fetch a group of entities starting at an entity with a specified `id`. The `before` parameter is used in conjunction with `last`, while the `after` parameter is used in conjunction with `first`.
-
-#### Example
-Query the 10 `Token` entities located before the `Token` with an `id` of `A1234` in the collection:
-```graphql
-{
-  tokens(last: 10, before: "A1234") {
-    id
-    owner
-  }
-}
-```
-
-#### Example
-Query the 10 `Token` entities located after the `Token` with an `id` of `A1234` in the collection:
-```graphql
-{
-  tokens(first: 10, after: "A1234") {
+  tokens(first: 10, skip: 10) {
     id
     owner
   }
@@ -99,10 +64,10 @@ Query challenges with `failed` outcome:
 
 ```graphql
 {
-  challenges(where: {outcome: "failed"}) {
+  challenges(first: 100, where: {outcome: "failed"}) {
     challenger
     outcome
-    application {
+    application(first: 100) {
       id
     }
   }
@@ -114,7 +79,7 @@ You can use suffixes like `_gt`, `_lte` for value comparison:
 #### Example
 ```graphql
 {
-  applications(where: {deposit_gt:"10000000000"}) {
+  applications(first: 100, where: {deposit_gt:"10000000000"}) {
     id
     whitelisted
     deposit
@@ -148,11 +113,11 @@ Graph Protocol subscriptions are GraphQL spec-compliant subscriptions. Unlike qu
 The root Subscription type for subscription operations mimics the root Query type used for query operations to minimize the cognitive overhead for writing subscriptions.
 
 #### Example
-Query all `Token` entities along with their `id` and `owner` attributes:
+Query the first 100 `Token` entities along with their `id` and `owner` attributes:
 
 ```graphql
 query {
-  tokens {
+  tokens(first: 100) {
     id
     owner
   }
@@ -163,7 +128,7 @@ Subscribe to all `Token` entity changes and fetch the values of the `id` and `ow
 
 ```graphql
 subscription {
-  tokens {
+  tokens(first: 100) {
     id
     owner
   }
