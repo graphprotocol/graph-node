@@ -32,7 +32,7 @@ impl<E: fmt::Display> fmt::Display for HostExportError<E> {
 
 pub(crate) struct HostExports<E, L, S, U> {
     subgraph_id: SubgraphDeploymentId,
-    pub spec_version: Version,
+    pub api_version: Version,
     abis: Vec<MappingABI>,
     ethereum_adapter: Arc<E>,
     link_resolver: Arc<L>,
@@ -49,7 +49,7 @@ where
 {
     pub(crate) fn new(
         subgraph_id: SubgraphDeploymentId,
-        spec_version: Version,
+        api_version: Version,
         abis: Vec<MappingABI>,
         ethereum_adapter: Arc<E>,
         link_resolver: Arc<L>,
@@ -58,7 +58,7 @@ where
     ) -> Self {
         HostExports {
             subgraph_id,
-            spec_version,
+            api_version,
             abis,
             ethereum_adapter,
             link_resolver,
