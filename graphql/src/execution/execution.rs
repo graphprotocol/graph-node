@@ -558,7 +558,6 @@ where
                     _ => Ok(q::Value::Null),
                 },
 
-                // We will implement these later
                 s::TypeDefinition::Interface(t) => if ctx.introspecting {
                     ctx.introspection_resolver.resolve_objects(
                         object_value,
