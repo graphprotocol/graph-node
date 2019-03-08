@@ -131,7 +131,7 @@ impl RuntimeHost {
         let api_version = Version::parse(&config.data_source.mapping.api_version)?;
         if !VersionReq::parse("<= 0.0.2").unwrap().matches(&api_version) {
             return Err(format_err!(
-                "This Graph Node only supports subgraph manifest specs <= 0.0.2, but subgraph `{}` uses `{}`",
+                "This Graph Node only supports mapping API versions <= 0.0.2, but subgraph `{}` uses `{}`",
                 config.subgraph_id,
                 api_version
             ));
