@@ -22,7 +22,7 @@ use web3::types::*;
 use super::SubgraphDeploymentId;
 use components::ethereum::EthereumBlockPointer;
 use components::store::{
-    AttributeIndexDefinition, EntityFilter, EntityKey, EntityOperation, EntityQuery,
+    AttributeIndexDefinition, EntityFilter, EntityKey, EntityOperation, EntityQuery, EntityRange,
 };
 use data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
 use data::subgraph::{SubgraphManifest, SubgraphName};
@@ -39,7 +39,11 @@ pub trait TypedEntity {
     type IdType: ToString;
 
     fn query() -> EntityQuery {
-        EntityQuery::new(SUBGRAPHS_ID.clone(), vec![Self::TYPENAME.to_owned()])
+        let range = EntityRange {
+            first: None,
+            skip: 0,
+        };
+        EntityQuery::new(SUBGRAPHS_ID.clone(), vec![Self::TYPENAME.to_owned()], range)
     }
 
     fn subgraph_entity_pair() -> SubgraphEntityPair {

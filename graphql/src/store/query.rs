@@ -60,7 +60,10 @@ fn build_range(
     };
 
     match (first, skip) {
-        (Ok(first), Ok(skip)) => Ok(EntityRange { first, skip }),
+        (Ok(first), Ok(skip)) => Ok(EntityRange {
+            first: Some(first),
+            skip,
+        }),
         _ => {
             let errors: Vec<_> = vec![first, skip]
                 .into_iter()
@@ -491,10 +494,7 @@ mod tests {
             build_query(&default_object(), &default_arguments(), &BTreeMap::new())
                 .unwrap()
                 .range,
-            EntityRange {
-                first: 100,
-                skip: 0
-            },
+            EntityRange::first(100)
         );
     }
 
@@ -508,7 +508,7 @@ mod tests {
                 .unwrap()
                 .range,
             EntityRange {
-                first: 100,
+                first: Some(100),
                 skip: 50,
             },
         );

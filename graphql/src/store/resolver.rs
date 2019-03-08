@@ -286,8 +286,8 @@ where
                         .iter()
                         .map(|o| o.name.clone())
                         .collect();
-                    let mut query = EntityQuery::new(subgraph_id, entity_types);
-                    query.range = EntityRange { first: 1, skip: 0 };
+                    let range = EntityRange::first(1);
+                    let mut query = EntityQuery::new(subgraph_id, entity_types, range);
                     self.store.find(query)?.into_iter().next()
                 }
             }
