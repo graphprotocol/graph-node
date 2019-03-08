@@ -29,11 +29,20 @@ impl MaybeCoercible<ScalarType> for Value {
         match (using_type.name.as_str(), self) {
             ("Boolean", v @ Value::Boolean(_)) => Some(v.clone()),
             ("Float", v @ Value::Float(_)) => Some(v.clone()),
-            ("Int", v @ Value::Int(_)) => Some(v.clone()),
+            ("Int", Value::Int(num)) => {
+                let num = num.as_i64()?;
+                if i32::min_value() as i64 <= num && num <= i32::max_value() as i64 {
+                    Some(Value::Int((num as i32).into()))
+                } else {
+                    None
+                }
+            }
             ("String", v @ Value::String(_)) => Some(v.clone()),
             ("ID", v @ Value::String(_)) => Some(v.clone()),
+            ("ID", Value::Int(num)) => Some(Value::String(num.as_i64()?.to_string())),
             ("Bytes", v @ Value::String(_)) => Some(v.clone()),
             ("BigInt", v @ Value::String(_)) => Some(v.clone()),
+            ("BigInt", Value::Int(num)) => Some(Value::String(num.as_i64()?.to_string())),
             _ => None,
         }
     }
@@ -245,6 +254,12 @@ mod tests {
             Some(Value::String("bar".to_string()))
         );
 
+        // And also from Value::Int
+        assert_eq!(
+            Value::Int(1234.into()).coerce(&string_type),
+            Some(Value::String("1234".to_string()))
+        );
+
         // We don't support going from Value::Boolean -> TypeDefinition::Scalar(ID)
         assert_eq!(Value::Boolean(true).coerce(&string_type), None,);
         assert_eq!(Value::Boolean(false).coerce(&string_type), None,);
@@ -300,6 +315,16 @@ mod tests {
             Value::String("1234".to_string()).coerce(&big_int_type),
             Some(Value::String("1234".to_string()))
         );
+
+        // And also from Value::Int
+        assert_eq!(
+            Value::Int(1234.into()).coerce(&big_int_type),
+            Some(Value::String("1234".to_string()))
+        );
+        assert_eq!(
+            Value::Int((-1234 as i32).into()).coerce(&big_int_type),
+            Some(Value::String("-1234".to_string()))
+        );
     }
 
     #[test]
@@ -310,6 +335,20 @@ mod tests {
         assert_eq!(
             Value::String("0x21f".to_string()).coerce(&bytes_type),
             Some(Value::String("0x21f".to_string()))
+        );
+    }
+
+    #[test]
+    fn coerce_int_scalar() {
+        let int_type = TypeDefinition::Scalar(ScalarType::new("Int".to_string()));
+
+        assert_eq!(
+            Value::Int(13289123.into()).coerce(&int_type),
+            Some(Value::Int(13289123.into()))
+        );
+        assert_eq!(
+            Value::Int((-13289123 as i32).into()).coerce(&int_type),
+            Some(Value::Int((-13289123 as i32).into()))
         );
     }
 }
