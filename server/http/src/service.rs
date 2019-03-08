@@ -64,10 +64,8 @@ where
     fn index(&self) -> GraphQLServiceResponse {
         let service = self.clone();
 
-        let entity_query = SubgraphEntity::query().range(EntityRange {
-            first: 2, // Ask for two to find out if there is more than one
-            skip: 0,
-        });
+        // Ask for two to find out if there is more than one
+        let entity_query = SubgraphEntity::query().range(EntityRange::first(2));
 
         Box::new(
             future::result(self.store.find(entity_query))

@@ -90,11 +90,21 @@ pub enum EntityOrder {
 /// How many entities to return, how many to skip etc.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EntityRange {
-    /// How many entities to return.
-    pub first: u32,
+    /// Limit on how many entities to return.
+    pub first: Option<u32>,
 
     /// How many entities to skip.
     pub skip: u32,
+}
+
+impl EntityRange {
+    /// Query for the first `n` entities.
+    pub fn first(n: u32) -> Self {
+        Self {
+            first: Some(n),
+            skip: 0,
+        }
+    }
 }
 
 /// A query for entities in a store.
@@ -121,17 +131,18 @@ pub struct EntityQuery {
 }
 
 impl EntityQuery {
-    pub fn new(subgraph_id: SubgraphDeploymentId, entity_types: Vec<String>) -> Self {
+    pub fn new(
+        subgraph_id: SubgraphDeploymentId,
+        entity_types: Vec<String>,
+        range: EntityRange,
+    ) -> Self {
         EntityQuery {
             subgraph_id,
             entity_types,
             filter: None,
             order_by: None,
             order_direction: None,
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range,
         }
     }
 

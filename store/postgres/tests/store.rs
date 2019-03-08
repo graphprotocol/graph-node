@@ -552,10 +552,7 @@ fn find_string_contains() {
             )])),
             order_by: None,
             order_direction: None,
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -573,10 +570,7 @@ fn find_string_equal() {
             )])),
             order_by: None,
             order_direction: None,
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -594,10 +588,7 @@ fn find_string_not_equal() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -615,10 +606,7 @@ fn find_string_greater_than() {
             )])),
             order_by: None,
             order_direction: None,
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -636,10 +624,7 @@ fn find_string_less_than_order_by_asc() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -657,10 +642,7 @@ fn find_string_less_than_order_by_desc() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -678,7 +660,10 @@ fn find_string_less_than_range() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange { first: 1, skip: 1 },
+            range: EntityRange {
+                first: Some(1),
+                skip: 1,
+            },
         },
     )
 }
@@ -696,10 +681,7 @@ fn find_string_multiple_and() {
             ])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -717,10 +699,7 @@ fn find_string_ends_with() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -738,10 +717,7 @@ fn find_string_not_ends_with() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -759,10 +735,7 @@ fn find_string_in() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -780,10 +753,7 @@ fn find_string_not_in() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -801,10 +771,7 @@ fn find_float_equal() {
             )])),
             order_by: None,
             order_direction: None,
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -822,10 +789,7 @@ fn find_float_not_equal() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -843,10 +807,7 @@ fn find_float_greater_than() {
             )])),
             order_by: None,
             order_direction: None,
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -864,10 +825,7 @@ fn find_float_less_than() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -885,10 +843,7 @@ fn find_float_less_than_order_by_desc() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -906,7 +861,10 @@ fn find_float_less_than_range() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange { first: 1, skip: 1 },
+            range: EntityRange {
+                first: Some(1),
+                skip: 1,
+            },
         },
     )
 }
@@ -924,7 +882,7 @@ fn find_float_in() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange { first: 5, skip: 0 },
+            range: EntityRange::first(5),
         },
     )
 }
@@ -942,7 +900,7 @@ fn find_float_not_in() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange { first: 5, skip: 0 },
+            range: EntityRange::first(5),
         },
     )
 }
@@ -960,10 +918,7 @@ fn find_int_equal() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -981,10 +936,7 @@ fn find_int_not_equal() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1002,10 +954,7 @@ fn find_int_greater_than() {
             )])),
             order_by: None,
             order_direction: None,
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1023,10 +972,7 @@ fn find_int_greater_or_equal() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1044,10 +990,7 @@ fn find_int_less_than() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1065,10 +1008,7 @@ fn find_int_less_or_equal() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1086,10 +1026,7 @@ fn find_int_less_than_order_by_desc() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1107,7 +1044,10 @@ fn find_int_less_than_range() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange { first: 1, skip: 1 },
+            range: EntityRange {
+                first: Some(1),
+                skip: 1,
+            },
         },
     )
 }
@@ -1125,7 +1065,7 @@ fn find_int_in() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange { first: 5, skip: 0 },
+            range: EntityRange::first(5),
         },
     )
 }
@@ -1143,7 +1083,7 @@ fn find_int_not_in() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange { first: 5, skip: 0 },
+            range: EntityRange::first(5),
         },
     )
 }
@@ -1161,10 +1101,7 @@ fn find_bool_equal() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1182,10 +1119,7 @@ fn find_bool_not_equal() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1203,7 +1137,7 @@ fn find_bool_in() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange { first: 5, skip: 0 },
+            range: EntityRange::first(5),
         },
     )
 }
@@ -1221,7 +1155,7 @@ fn find_bool_not_in() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange { first: 5, skip: 0 },
+            range: EntityRange::first(5),
         },
     )
 }
@@ -1239,10 +1173,7 @@ fn find_bytes_equal() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1260,10 +1191,7 @@ fn find_null_equal() {
             )),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1278,10 +1206,7 @@ fn find_null_not_equal() {
             filter: Some(EntityFilter::Not("favorite_color".to_owned(), Value::Null)),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1299,10 +1224,7 @@ fn find_null_not_in() {
             )),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1317,10 +1239,7 @@ fn find_order_by_float() {
             filter: None,
             order_by: Some(("weight".to_owned(), ValueType::Float)),
             order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     );
     test_find(
@@ -1331,10 +1250,7 @@ fn find_order_by_float() {
             filter: None,
             order_by: Some(("weight".to_owned(), ValueType::Float)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     );
 }
@@ -1349,10 +1265,7 @@ fn find_order_by_id() {
             filter: None,
             order_by: Some(("id".to_owned(), ValueType::ID)),
             order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     );
     test_find(
@@ -1363,10 +1276,7 @@ fn find_order_by_id() {
             filter: None,
             order_by: Some(("id".to_owned(), ValueType::ID)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     );
 }
@@ -1381,10 +1291,7 @@ fn find_order_by_int() {
             filter: None,
             order_by: Some(("age".to_owned(), ValueType::Int)),
             order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     );
     test_find(
@@ -1395,10 +1302,7 @@ fn find_order_by_int() {
             filter: None,
             order_by: Some(("age".to_owned(), ValueType::Int)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     );
 }
@@ -1413,10 +1317,7 @@ fn find_order_by_string() {
             filter: None,
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     );
     test_find(
@@ -1427,10 +1328,7 @@ fn find_order_by_string() {
             filter: None,
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     );
 }
@@ -1448,10 +1346,7 @@ fn find_where_nested_and_or() {
             ])])),
             order_by: Some(("id".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         },
     )
 }
@@ -1561,10 +1456,7 @@ fn revert_block_basic() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         };
 
         let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user");
@@ -1613,10 +1505,7 @@ fn revert_block_with_delete() {
             )])),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
-                first: 100,
-                skip: 0,
-            },
+            range: EntityRange::first(100),
         };
 
         // Delete entity with id=2

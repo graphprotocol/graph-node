@@ -369,9 +369,10 @@ impl Store {
         }
 
         // Add range filter to query
-        diesel_query = diesel_query
-            .limit(query.range.first as i64)
-            .offset(query.range.skip as i64);
+        if let Some(limit) = query.range.first {
+            diesel_query = diesel_query.limit(limit as i64);
+        }
+        diesel_query = diesel_query.offset(query.range.skip as i64);
 
         // Finally add the selected columns
         let diesel_query = diesel_query.select((data, entity));
@@ -769,7 +770,7 @@ impl StoreTrait for Store {
     }
 
     fn find_one(&self, mut query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
-        query.range.first = 1;
+        query.range = EntityRange::first(1);
 
         let conn = self
             .conn
