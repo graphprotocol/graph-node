@@ -390,9 +390,9 @@ mod tests {
 
     #[test]
     fn build_query_parses_order_by_from_enum_values_correctly() {
-        let orderBy = "orderBy".to_string();
+        let order_by = "orderBy".to_string();
         let mut args = default_arguments();
-        args.insert(&orderBy, q::Value::Enum("name".to_string()));
+        args.insert(&order_by, q::Value::Enum("name".to_string()));
         assert_eq!(
             build_query(&default_object(), &args, &BTreeMap::new(),)
                 .unwrap()
@@ -401,7 +401,7 @@ mod tests {
         );
 
         let mut args = default_arguments();
-        args.insert(&orderBy, q::Value::Enum("email".to_string()));
+        args.insert(&order_by, q::Value::Enum("email".to_string()));
         assert_eq!(
             build_query(&default_object(), &args, &BTreeMap::new(),)
                 .unwrap()
@@ -412,9 +412,9 @@ mod tests {
 
     #[test]
     fn build_query_ignores_order_by_from_non_enum_values() {
-        let orderBy = "orderBy".to_string();
+        let order_by = "orderBy".to_string();
         let mut args = default_arguments();
-        args.insert(&orderBy, q::Value::String("name".to_string()));
+        args.insert(&order_by, q::Value::String("name".to_string()));
         assert_eq!(
             build_query(&default_object(), &args, &BTreeMap::new(),)
                 .unwrap()
@@ -423,7 +423,7 @@ mod tests {
         );
 
         let mut args = default_arguments();
-        args.insert(&orderBy, q::Value::String("email".to_string()));
+        args.insert(&order_by, q::Value::String("email".to_string()));
         assert_eq!(
             build_query(&default_object(), &args, &BTreeMap::new(),)
                 .unwrap()
@@ -434,9 +434,9 @@ mod tests {
 
     #[test]
     fn build_query_parses_order_direction_from_enum_values_correctly() {
-        let orderDirection = "orderDirection".to_string();
+        let order_direction = "orderDirection".to_string();
         let mut args = default_arguments();
-        args.insert(&orderDirection, q::Value::Enum("asc".to_string()));
+        args.insert(&order_direction, q::Value::Enum("asc".to_string()));
         assert_eq!(
             build_query(&default_object(), &args, &BTreeMap::new(),)
                 .unwrap()
@@ -445,7 +445,7 @@ mod tests {
         );
 
         let mut args = default_arguments();
-        args.insert(&orderDirection, q::Value::Enum("desc".to_string()));
+        args.insert(&order_direction, q::Value::Enum("desc".to_string()));
         assert_eq!(
             build_query(&default_object(), &args, &BTreeMap::new(),)
                 .unwrap()
@@ -454,7 +454,7 @@ mod tests {
         );
 
         let mut args = default_arguments();
-        args.insert(&orderDirection, q::Value::Enum("ascending...".to_string()));
+        args.insert(&order_direction, q::Value::Enum("ascending...".to_string()));
         assert_eq!(
             build_query(&default_object(), &args, &BTreeMap::new(),)
                 .unwrap()
@@ -465,9 +465,9 @@ mod tests {
 
     #[test]
     fn build_query_ignores_order_direction_from_non_enum_values() {
-        let orderDirection = "orderDirection".to_string();
+        let order_direction = "orderDirection".to_string();
         let mut args = default_arguments();
-        args.insert(&orderDirection, q::Value::String("asc".to_string()));
+        args.insert(&order_direction, q::Value::String("asc".to_string()));
         assert_eq!(
             build_query(&default_object(), &args, &BTreeMap::new(),)
                 .unwrap()
@@ -476,7 +476,7 @@ mod tests {
         );
 
         let mut args = default_arguments();
-        args.insert(&orderDirection, q::Value::String("desc".to_string()));
+        args.insert(&order_direction, q::Value::String("desc".to_string()));
         assert_eq!(
             build_query(&default_object(), &args, &BTreeMap::new())
                 .unwrap()
