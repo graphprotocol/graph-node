@@ -372,7 +372,9 @@ impl Store {
         if let Some(limit) = query.range.first {
             diesel_query = diesel_query.limit(limit as i64);
         }
-        diesel_query = diesel_query.offset(query.range.skip as i64);
+        if query.range.skip > 0 {
+            diesel_query = diesel_query.offset(query.range.skip as i64);
+        }
 
         // Finally add the selected columns
         let diesel_query = diesel_query.select((data, entity));
