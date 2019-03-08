@@ -870,14 +870,13 @@ impl StoreTrait for Store {
                 block_ptr_from,
                 block_ptr_to,
             );
+            self.emit_store_events(&conn, &ops)?;
             self.apply_entity_operations_with_conn(&conn, ops, EventSource::None)?;
 
             self.emit_revert_event(&conn, &subgraph_id, &block_ptr_from, block_ptr_to)?;
 
             select(revert_block(
                 &block_ptr_from.hash_hex(),
-                block_ptr_from.number as i64,
-                &block_ptr_to.hash_hex(),
                 subgraph_id.to_string(),
             ))
             .execute(&*conn)

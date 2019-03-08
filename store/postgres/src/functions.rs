@@ -4,7 +4,7 @@ use diesel::sql_types::*;
 sql_function! {
     revert_block,
     RevertBlock,
-    (block_to_revert_hash: Text, block_to_revert_number: BigInt, target_block_hash: Text, subgraph_id: Text)
+    (block_to_revert_hash: Text, subgraph_id: Text)
 }
 sql_function! {
     current_setting,

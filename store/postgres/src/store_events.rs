@@ -110,13 +110,6 @@ pub fn get_revert_event(
     // and the outer query returns the data we need to construct EntityChanges
     // for those history events
     let query = "
-WITH
-  events_for_block_and_subgraph AS
-    (SELECT distinct h.event_id
-       FROM entity_history h, event_meta_data m
-      WHERE h.event_id = m.id
-        AND m.source = $1
-        AND h.subgraph = $2)
 SELECT
   h.subgraph,
   h.entity,
@@ -125,9 +118,9 @@ SELECT
      WHEN h.op_id = 0 THEN 'removed'
      WHEN h.op_id in (1,2) THEN 'set'
    END) as change
-FROM entity_history h
-WHERE h.event_id in (select event_id from events_for_block_and_subgraph)
-ORDER BY h.event_id desc";
+FROM entity_history_with_source h
+WHERE h.source = $1
+  AND h.subgraph = $2";
     let query = diesel::sql_query(query)
         .bind::<Text, _>(block_ptr_from.hash_hex())
         .bind::<Text, _>(subgraph_id.to_string());

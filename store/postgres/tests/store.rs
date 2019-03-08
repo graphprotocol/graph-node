@@ -1444,52 +1444,74 @@ fn subscribe_and_consume(
     StoreEventStream::new(source)
 }
 
+fn check_basic_revert(
+    store: Arc<graph_store_postgres::Store>,
+    expected: StoreEvent,
+    subgraph_id: &SubgraphDeploymentId,
+    entity_type: &str,
+) -> impl Future<Item = (), Error = graph::tokio_timer::timeout::Error<()>> {
+    let this_query = EntityQuery {
+        subgraph_id: TEST_SUBGRAPH_ID.clone(),
+        entity_types: vec!["user".to_owned()],
+        filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
+            "name".to_owned(),
+            Value::String("Shaqueeena".to_owned()),
+        )])),
+        order_by: Some(("name".to_owned(), ValueType::String)),
+        order_direction: Some(EntityOrder::Descending),
+        range: EntityRange::first(100),
+    };
+
+    let subscription = subscribe_and_consume(store.clone(), subgraph_id, entity_type);
+
+    // Revert block 3
+    store
+        .revert_block_operations(
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            *TEST_BLOCK_2_PTR,
+        )
+        .unwrap();
+
+    let returned_entities = store
+        .find(this_query.clone())
+        .expect("store.find operation failed");
+
+    // There should be 1 user returned in results
+    assert_eq!(1, returned_entities.len());
+
+    // Check if the first user in the result vector has email "queensha@email.com"
+    let returned_name = returned_entities[0].get(&"email".to_owned());
+    let test_value = Value::String("queensha@email.com".to_owned());
+    assert!(returned_name.is_some());
+    assert_eq!(&test_value, returned_name.unwrap());
+
+    check_events(subscription, vec![expected])
+}
+
 #[test]
-fn revert_block_basic() {
+fn revert_block_basic_user() {
     run_test(|store| {
-        let this_query = EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
-                "name".to_owned(),
-                Value::String("Shaqueeena".to_owned()),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-        };
+        let expected = StoreEvent::new(vec![make_entity_change(
+            "user",
+            "3",
+            EntityChangeOperation::Set,
+        )]);
 
-        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user");
+        check_basic_revert(store.clone(), expected, &TEST_SUBGRAPH_ID, "user")
+    })
+}
 
-        // Revert block 3
-        store
-            .revert_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_2_PTR,
-            )
-            .unwrap();
+#[test]
+fn revert_block_basic_subgraphs() {
+    run_test(|store| {
+        let expected = StoreEvent::new(vec![make_deployment_change(
+            "testsubgraph",
+            EntityChangeOperation::Set,
+        )]);
+        let subgraphs = SubgraphDeploymentId::new("subgraphs").unwrap();
 
-        let returned_entities = store
-            .find(this_query.clone())
-            .expect("store.find operation failed");
-
-        // There should be 1 user returned in results
-        assert_eq!(1, returned_entities.len());
-
-        // Check if the first user in the result vector has email "queensha@email.com"
-        let returned_name = returned_entities[0].get(&"email".to_owned());
-        let test_value = Value::String("queensha@email.com".to_owned());
-        assert!(returned_name.is_some());
-        assert_eq!(&test_value, returned_name.unwrap());
-
-        // Check that the subscription notified us of the changes
-        let expected = StoreEvent::new(vec![
-            make_entity_change("user", "3", EntityChangeOperation::Set),
-            make_deployment_change("testsubgraph", EntityChangeOperation::Set),
-        ]);
-        // The last event is the one for the reversion
-        check_events(subscription, vec![expected])
+        check_basic_revert(store.clone(), expected, &subgraphs, "SubgraphDeployment")
     })
 }
 
@@ -1551,10 +1573,11 @@ fn revert_block_with_delete() {
         assert_eq!(&test_value, returned_name.unwrap());
 
         // Check that the subscription notified us of the changes
-        let expected = StoreEvent::new(vec![
-            make_entity_change("user", "2", EntityChangeOperation::Set),
-            make_deployment_change("testsubgraph", EntityChangeOperation::Set),
-        ]);
+        let expected = StoreEvent::new(vec![make_entity_change(
+            "user",
+            "2",
+            EntityChangeOperation::Set,
+        )]);
 
         // The last event is the one for the reversion
         check_events(subscription, vec![expected])
@@ -1615,10 +1638,11 @@ fn revert_block_with_partial_update() {
         assert_eq!(reverted_entity, original_entity);
 
         // Check that the subscription notified us of the changes
-        let expected = StoreEvent::new(vec![
-            make_entity_change("user", "1", EntityChangeOperation::Set),
-            make_deployment_change("testsubgraph", EntityChangeOperation::Set),
-        ]);
+        let expected = StoreEvent::new(vec![make_entity_change(
+            "user",
+            "1",
+            EntityChangeOperation::Set,
+        )]);
 
         check_events(subscription, vec![expected])
     })
