@@ -91,10 +91,10 @@ pub enum EntityOrder {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EntityRange {
     /// How many entities to return.
-    pub first: usize,
+    pub first: u32,
 
     /// How many entities to skip.
-    pub skip: usize,
+    pub skip: u32,
 }
 
 /// A query for entities in a store.
@@ -116,8 +116,8 @@ pub struct EntityQuery {
     /// The direction to order entities in.
     pub order_direction: Option<EntityOrder>,
 
-    /// An optional range to limit the size of the result.
-    pub range: Option<EntityRange>,
+    /// A range to limit the size of the result.
+    pub range: EntityRange,
 }
 
 impl EntityQuery {
@@ -128,7 +128,10 @@ impl EntityQuery {
             filter: None,
             order_by: None,
             order_direction: None,
-            range: None,
+            range: EntityRange {
+                first: 100,
+                skip: 0,
+            },
         }
     }
 
@@ -144,7 +147,7 @@ impl EntityQuery {
     }
 
     pub fn range(mut self, range: EntityRange) -> Self {
-        self.range = Some(range);
+        self.range = range;
         self
     }
 }

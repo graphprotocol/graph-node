@@ -76,7 +76,7 @@ impl MockStore {
             filter,
             order_by,
             order_direction,
-            range,
+            range: _,
         } = query;
 
         // List all entities with correct type
@@ -109,10 +109,6 @@ impl MockStore {
             sorted_entities.shuffle(&mut OsRng::new().unwrap());
             sorted_entities
         };
-
-        if range.is_some() {
-            unimplemented!();
-        }
 
         Ok(sorted_entities.into_iter().cloned().collect())
     }
@@ -212,10 +208,6 @@ impl Store for MockStore {
                     query,
                     entity_ids: mut expected_entity_ids,
                 } => {
-                    if query.range.is_some() && query.order_by.is_none() {
-                        panic!("AbortUnless query cannot have a range without order_by");
-                    }
-
                     let query_results = self.execute_query(&entities, query.clone()).unwrap();
                     let mut actual_entity_ids = query_results
                         .into_iter()
