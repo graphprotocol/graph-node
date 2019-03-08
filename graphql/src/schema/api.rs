@@ -305,7 +305,7 @@ fn input_value(name: &Name, suffix: &'static str, value_type: Type) -> InputValu
         } else {
             format!("{}_{}", name, suffix)
         },
-        value_type: value_type,
+        value_type,
         default_value: None,
         directives: vec![],
     }
@@ -408,8 +408,11 @@ fn collection_arguments_for_named_type(
     input_objects: &[InputObjectType],
     type_name: &Name,
 ) -> Vec<InputValue> {
+    let mut skip = input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string()));
+    skip.default_value = Some(Value::Int(0.into()));
+
     let mut args = vec![
-        input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string())),
+        skip,
         input_value(
             &"first".to_string(),
             "",

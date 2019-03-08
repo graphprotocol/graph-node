@@ -369,11 +369,9 @@ impl Store {
         }
 
         // Add range filter to query
-        if let Some(range) = query.range {
-            diesel_query = diesel_query
-                .limit(range.first as i64)
-                .offset(range.skip as i64);
-        }
+        diesel_query = diesel_query
+            .limit(query.range.first as i64)
+            .offset(query.range.skip as i64);
 
         // Finally add the selected columns
         let diesel_query = diesel_query.select((data, entity));
@@ -554,12 +552,6 @@ impl Store {
         mut expected_entity_ids: Vec<String>,
         _event_source: EventSource,
     ) -> Result<(), StoreError> {
-        if query.range.is_some() && query.order_by.is_none() {
-            // Queries with a range but no sort key can vary non-deterministically in what they
-            // return, and so are not suitable for use with AbortUnless.
-            panic!("Cannot use range in an AbortUnless query without order_by");
-        }
-
         // Execute query
         let actual_entities = self.execute_query(conn, query.clone()).map_err(|e| {
             format_err!(
@@ -777,16 +769,7 @@ impl StoreTrait for Store {
     }
 
     fn find_one(&self, mut query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
-        if let Some(mut range) = query.range.clone() {
-            if range.first == 0 {
-                return Ok(None);
-            }
-
-            range.first = 1;
-            query.range = Some(range);
-        } else {
-            query.range = Some(EntityRange { first: 1, skip: 0 })
-        }
+        query.range.first = 1;
 
         let conn = self
             .conn

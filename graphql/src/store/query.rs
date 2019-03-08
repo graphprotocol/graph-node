@@ -34,59 +34,42 @@ pub fn build_query<'a>(
 /// Parses GraphQL arguments into a EntityRange, if present.
 fn build_range(
     arguments: &HashMap<&q::Name, q::Value>,
-) -> Result<Option<EntityRange>, QueryExecutionError> {
-    let first = arguments
-        .get(&"first".to_string())
-        .map_or(Ok(None), |value| {
-            if let q::Value::Int(n) = value {
-                match n.as_i64() {
-                    Some(n) if n > 0 && n <= 100 => Ok(Some(n)),
-                    _ => Err("first".to_string()),
-                }
+) -> Result<EntityRange, QueryExecutionError> {
+    let first = match arguments.get(&"first".to_string()) {
+        Some(q::Value::Int(n)) => {
+            let n = n.as_i64().expect("first is Int");
+            if n > 0 && n <= 100 {
+                Ok(n as u32)
             } else {
-                Err("first".to_string())
+                Err("first")
             }
-        })
-        .map(|n| match n {
-            Some(n) => Some(n as usize),
-            _ => None,
-        });
+        }
+        _ => unreachable!("first is a non-null Int"),
+    };
 
-    let skip = arguments
-        .get(&"skip".to_string())
-        .map_or(Ok(None), |value| {
-            if let q::Value::Int(n) = value {
-                match n.as_i64() {
-                    Some(n) if n > 0 => Ok(Some(n)),
-                    _ => Err("skip".to_string()),
-                }
+    let skip = match arguments.get(&"skip".to_string()) {
+        Some(q::Value::Int(n)) => {
+            let n = n.as_i64().expect("skip is Int");
+            if n >= 0 {
+                Ok(n as u32)
             } else {
-                Err("skip".to_string())
+                Err("skip")
             }
-        })
-        .map(|n| match n {
-            Some(n) => Some(n as usize),
-            _ => None,
-        });
+        }
+        _ => unreachable!("skip is an Int with a default value"),
+    };
 
-    if first.is_err() || skip.is_err() {
-        let errors: Vec<String> = vec![first.clone(), skip.clone()]
-            .into_iter()
-            .filter(|r| r.is_err())
-            .map(|e| e.unwrap_err())
-            .collect();
-        return Err(QueryExecutionError::RangeArgumentsError(errors));
+    match (first, skip) {
+        (Ok(first), Ok(skip)) => Ok(EntityRange { first, skip }),
+        _ => {
+            let errors: Vec<_> = vec![first, skip]
+                .into_iter()
+                .filter(|r| r.is_err())
+                .map(|e| e.unwrap_err())
+                .collect();
+            Err(QueryExecutionError::RangeArgumentsError(errors))
+        }
     }
-
-    Ok(match (first.unwrap(), skip.unwrap()) {
-        (None, None) => Some(EntityRange {
-            first: 100,
-            skip: 0,
-        }),
-        (Some(first), None) => Some(EntityRange { first, skip: 0 }),
-        (Some(first), Some(skip)) => Some(EntityRange { first, skip }),
-        (None, Some(skip)) => Some(EntityRange { first: 100, skip }),
-    })
 }
 
 /// Parses GraphQL arguments into a EntityFilter, if present.
@@ -364,16 +347,25 @@ mod tests {
         }
     }
 
+    fn default_arguments<'a>() -> HashMap<&'a String, q::Value> {
+        let mut map = HashMap::new();
+        let first: &String = Box::leak(Box::new("first".to_owned()));
+        let skip: &String = Box::leak(Box::new("skip".to_owned()));
+        map.insert(first, q::Value::Int(100.into()));
+        map.insert(skip, q::Value::Int(0.into()));
+        map
+    }
+
     #[test]
     fn build_query_uses_the_entity_name() {
         assert_eq!(
-            build_query(&object("Entity1"), &HashMap::new(), &BTreeMap::new())
+            build_query(&object("Entity1"), &default_arguments(), &BTreeMap::new())
                 .unwrap()
                 .entity_types,
             vec!["Entity1".to_string()]
         );
         assert_eq!(
-            build_query(&object("Entity2"), &HashMap::new(), &BTreeMap::new())
+            build_query(&object("Entity2"), &default_arguments(), &BTreeMap::new())
                 .unwrap()
                 .entity_types,
             vec!["Entity2".to_string()]
@@ -383,13 +375,13 @@ mod tests {
     #[test]
     fn build_query_yields_no_order_if_order_arguments_are_missing() {
         assert_eq!(
-            build_query(&default_object(), &HashMap::new(), &BTreeMap::new())
+            build_query(&default_object(), &default_arguments(), &BTreeMap::new())
                 .unwrap()
                 .order_by,
             None,
         );
         assert_eq!(
-            build_query(&default_object(), &HashMap::new(), &BTreeMap::new())
+            build_query(&default_object(), &default_arguments(), &BTreeMap::new())
                 .unwrap()
                 .order_direction,
             None,
@@ -398,149 +390,97 @@ mod tests {
 
     #[test]
     fn build_query_parses_order_by_from_enum_values_correctly() {
+        let orderBy = "orderBy".to_string();
+        let mut args = default_arguments();
+        args.insert(&orderBy, q::Value::Enum("name".to_string()));
         assert_eq!(
-            build_query(
-                &default_object(),
-                &HashMap::from_iter(
-                    vec![(&"orderBy".to_string(), q::Value::Enum("name".to_string()))].into_iter(),
-                ),
-                &BTreeMap::new(),
-            )
-            .unwrap()
-            .order_by,
+            build_query(&default_object(), &args, &BTreeMap::new(),)
+                .unwrap()
+                .order_by,
             Some(("name".to_string(), ValueType::String))
         );
+
+        let mut args = default_arguments();
+        args.insert(&orderBy, q::Value::Enum("email".to_string()));
         assert_eq!(
-            build_query(
-                &default_object(),
-                &HashMap::from_iter(
-                    vec![(&"orderBy".to_string(), q::Value::Enum("email".to_string()))].into_iter()
-                ),
-                &BTreeMap::new(),
-            )
-            .unwrap()
-            .order_by,
+            build_query(&default_object(), &args, &BTreeMap::new(),)
+                .unwrap()
+                .order_by,
             Some(("email".to_string(), ValueType::String))
         );
     }
 
     #[test]
     fn build_query_ignores_order_by_from_non_enum_values() {
+        let orderBy = "orderBy".to_string();
+        let mut args = default_arguments();
+        args.insert(&orderBy, q::Value::String("name".to_string()));
         assert_eq!(
-            build_query(
-                &default_object(),
-                &HashMap::from_iter(
-                    vec![(&"orderBy".to_string(), q::Value::String("name".to_string()))]
-                        .into_iter()
-                ),
-                &BTreeMap::new(),
-            )
-            .unwrap()
-            .order_by,
+            build_query(&default_object(), &args, &BTreeMap::new(),)
+                .unwrap()
+                .order_by,
             None,
         );
+
+        let mut args = default_arguments();
+        args.insert(&orderBy, q::Value::String("email".to_string()));
         assert_eq!(
-            build_query(
-                &default_object(),
-                &HashMap::from_iter(
-                    vec![(
-                        &"orderBy".to_string(),
-                        q::Value::String("email".to_string()),
-                    )]
-                    .into_iter(),
-                ),
-                &BTreeMap::new(),
-            )
-            .unwrap()
-            .order_by,
+            build_query(&default_object(), &args, &BTreeMap::new(),)
+                .unwrap()
+                .order_by,
             None,
         );
     }
 
     #[test]
     fn build_query_parses_order_direction_from_enum_values_correctly() {
+        let orderDirection = "orderDirection".to_string();
+        let mut args = default_arguments();
+        args.insert(&orderDirection, q::Value::Enum("asc".to_string()));
         assert_eq!(
-            build_query(
-                &default_object(),
-                &HashMap::from_iter(
-                    vec![(
-                        &"orderDirection".to_string(),
-                        q::Value::Enum("asc".to_string()),
-                    )]
-                    .into_iter(),
-                ),
-                &BTreeMap::new(),
-            )
-            .unwrap()
-            .order_direction,
+            build_query(&default_object(), &args, &BTreeMap::new(),)
+                .unwrap()
+                .order_direction,
             Some(EntityOrder::Ascending)
         );
+
+        let mut args = default_arguments();
+        args.insert(&orderDirection, q::Value::Enum("desc".to_string()));
         assert_eq!(
-            build_query(
-                &default_object(),
-                &HashMap::from_iter(
-                    vec![(
-                        &"orderDirection".to_string(),
-                        q::Value::Enum("desc".to_string()),
-                    )]
-                    .into_iter()
-                ),
-                &BTreeMap::new(),
-            )
-            .unwrap()
-            .order_direction,
+            build_query(&default_object(), &args, &BTreeMap::new(),)
+                .unwrap()
+                .order_direction,
             Some(EntityOrder::Descending)
         );
+
+        let mut args = default_arguments();
+        args.insert(&orderDirection, q::Value::Enum("ascending...".to_string()));
         assert_eq!(
-            build_query(
-                &default_object(),
-                &HashMap::from_iter(
-                    vec![(
-                        &"orderDirection".to_string(),
-                        q::Value::Enum("ascending...".to_string()),
-                    )]
-                    .into_iter()
-                ),
-                &BTreeMap::new(),
-            )
-            .unwrap()
-            .order_direction,
+            build_query(&default_object(), &args, &BTreeMap::new(),)
+                .unwrap()
+                .order_direction,
             None,
         );
     }
 
     #[test]
     fn build_query_ignores_order_direction_from_non_enum_values() {
+        let orderDirection = "orderDirection".to_string();
+        let mut args = default_arguments();
+        args.insert(&orderDirection, q::Value::String("asc".to_string()));
         assert_eq!(
-            build_query(
-                &default_object(),
-                &HashMap::from_iter(
-                    vec![(
-                        &"orderDirection".to_string(),
-                        q::Value::String("asc".to_string()),
-                    )]
-                    .into_iter()
-                ),
-                &BTreeMap::new(),
-            )
-            .unwrap()
-            .order_direction,
+            build_query(&default_object(), &args, &BTreeMap::new(),)
+                .unwrap()
+                .order_direction,
             None,
         );
+
+        let mut args = default_arguments();
+        args.insert(&orderDirection, q::Value::String("desc".to_string()));
         assert_eq!(
-            build_query(
-                &default_object(),
-                &HashMap::from_iter(
-                    vec![(
-                        &"orderDirection".to_string(),
-                        q::Value::String("desc".to_string()),
-                    )]
-                    .into_iter(),
-                ),
-                &BTreeMap::new()
-            )
-            .unwrap()
-            .order_direction,
+            build_query(&default_object(), &args, &BTreeMap::new())
+                .unwrap()
+                .order_direction,
             None,
         );
     }
@@ -548,69 +488,50 @@ mod tests {
     #[test]
     fn build_query_yields_default_range_if_none_is_present() {
         assert_eq!(
-            build_query(&default_object(), &HashMap::new(), &BTreeMap::new())
+            build_query(&default_object(), &default_arguments(), &BTreeMap::new())
                 .unwrap()
                 .range,
-            Some(EntityRange {
+            EntityRange {
                 first: 100,
                 skip: 0
-            }),
+            },
         );
     }
 
     #[test]
     fn build_query_yields_default_first_if_only_skip_is_present() {
+        let skip = "skip".to_string();
+        let mut args = default_arguments();
+        args.insert(&skip, q::Value::Int(q::Number::from(50)));
         assert_eq!(
-            build_query(
-                &default_object(),
-                &HashMap::from_iter(
-                    vec![(&"skip".to_string(), q::Value::Int(q::Number::from(50)))].into_iter()
-                ),
-                &BTreeMap::new(),
-            )
-            .unwrap()
-            .range,
-            Some(EntityRange {
+            build_query(&default_object(), &args, &BTreeMap::new(),)
+                .unwrap()
+                .range,
+            EntityRange {
                 first: 100,
                 skip: 50,
-            }),
-        );
-    }
-
-    #[test]
-    fn build_query_yields_default_skip_if_only_first_is_present() {
-        assert_eq!(
-            build_query(
-                &default_object(),
-                &HashMap::from_iter(
-                    vec![(&"first".to_string(), q::Value::Int(q::Number::from(70)))].into_iter()
-                ),
-                &BTreeMap::new(),
-            )
-            .unwrap()
-            .range,
-            Some(EntityRange { first: 70, skip: 0 }),
+            },
         );
     }
 
     #[test]
     fn build_query_yields_filters() {
+        let whre = "where".to_string();
+        let mut args = default_arguments();
+        args.insert(
+            &whre,
+            q::Value::Object(BTreeMap::from_iter(vec![(
+                "name_ends_with".to_string(),
+                q::Value::String("ello".to_string()),
+            )])),
+        );
         assert_eq!(
             build_query(
                 &ObjectType {
                     fields: vec![field("name", Type::NamedType("string".to_owned()))],
                     ..default_object()
                 },
-                &HashMap::from_iter(
-                    vec![(
-                        &"where".to_string(),
-                        q::Value::Object(BTreeMap::from_iter(vec![(
-                            "name_ends_with".to_string(),
-                            q::Value::String("ello".to_string()),
-                        )])),
-                    )]
-                    .into_iter(),
-                ),
+                &args,
                 &BTreeMap::new()
             )
             .unwrap()
