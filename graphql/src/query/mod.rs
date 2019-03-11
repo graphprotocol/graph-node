@@ -2,9 +2,9 @@ use graph::prelude::*;
 use graphql_parser::query as q;
 use std::time::Instant;
 
-use execution::*;
-use prelude::*;
-use query::ast as qast;
+use crate::execution::*;
+use crate::prelude::*;
+use crate::query::ast as qast;
 
 /// Utilities for working with GraphQL query ASTs.
 pub mod ast;

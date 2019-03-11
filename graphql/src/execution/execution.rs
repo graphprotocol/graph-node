@@ -8,9 +8,9 @@ use std::time::Instant;
 
 use graph::prelude::*;
 
-use prelude::*;
-use query::ast as qast;
-use schema::ast as sast;
+use crate::prelude::*;
+use crate::query::ast as qast;
+use crate::schema::ast as sast;
 
 /// Contextual information passed around during query execution.
 #[derive(Clone)]
@@ -844,8 +844,8 @@ where
     R1: Resolver,
     R2: Resolver,
 {
+    use crate::values::coercion::coerce_value;
     use graphql_parser::schema::Name;
-    use values::coercion::coerce_value;
 
     let resolver = |name: &Name| {
         sast::get_named_type(
@@ -961,8 +961,8 @@ fn coerce_variable_value(
     variable_def: &q::VariableDefinition,
     value: &q::Value,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
+    use crate::values::coercion::coerce_value;
     use graphql_parser::schema::Name;
-    use values::coercion::coerce_value;
 
     let resolver = |name: &Name| sast::get_named_type(&schema.document, name);
 

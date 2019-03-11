@@ -5,10 +5,10 @@ use std::time::{Duration, Instant};
 
 use graph::prelude::*;
 
-use execution::*;
-use prelude::*;
-use query::ast as qast;
-use schema::ast as sast;
+use crate::execution::*;
+use crate::prelude::*;
+use crate::query::ast as qast;
+use crate::schema::ast as sast;
 
 /// Options available for subscription execution.
 pub struct SubscriptionExecutionOptions<R>

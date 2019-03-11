@@ -1,9 +1,9 @@
 use graphql_parser::{query as q, schema as s};
 use std::collections::{BTreeMap, HashMap};
 
+use crate::prelude::*;
+use crate::schema::ast::get_named_type;
 use graph::prelude::{QueryExecutionError, StoreEventStreamBox};
-use prelude::*;
-use schema::ast::get_named_type;
 
 #[derive(Copy, Clone)]
 pub enum ObjectOrInterface<'a> {
