@@ -3,7 +3,7 @@ use graphql_parser::Pos;
 use inflector::Inflector;
 use std::iter::IntoIterator;
 
-use schema::ast;
+use crate::schema::ast;
 
 #[derive(Fail, Debug)]
 pub enum APISchemaError {
@@ -459,7 +459,7 @@ fn add_field_arguments(
             {
                 if ast::is_list_or_non_null_list_field(&input_field) {
                     // Get corresponding object type and field in the output schema
-                    let mut object_type = ast::get_object_type_mut(schema, &input_object_type.name)
+                    let object_type = ast::get_object_type_mut(schema, &input_object_type.name)
                         .expect("object type from input schema is missing in API schema");
                     let mut field = object_type
                         .fields
@@ -492,7 +492,7 @@ fn add_field_arguments(
             {
                 if ast::is_list_or_non_null_list_field(&input_field) {
                     // Get corresponding interface type and field in the output schema
-                    let mut interface_type =
+                    let interface_type =
                         ast::get_interface_type_mut(schema, &input_interface_type.name)
                             .expect("interface type from input schema is missing in API schema");
                     let mut field = interface_type
@@ -527,7 +527,7 @@ mod tests {
     use graphql_parser::schema::*;
 
     use super::api_schema;
-    use schema::ast;
+    use crate::schema::ast;
 
     #[test]
     fn api_schema_contains_built_in_scalar_types() {

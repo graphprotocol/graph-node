@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, HashMap};
 
 use graph::prelude::*;
 
-use prelude::*;
-use schema::ast as sast;
+use crate::prelude::*;
+use crate::schema::ast as sast;
 
 type TypeObjectsMap = BTreeMap<String, q::Value>;
 

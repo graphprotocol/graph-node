@@ -1,7 +1,7 @@
-use execution::ObjectOrInterface;
+use crate::execution::ObjectOrInterface;
+use crate::schema::ast as sast;
 use graph::prelude::*;
 use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
-use schema::ast as sast;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
 

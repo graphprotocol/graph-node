@@ -8,10 +8,10 @@ use graph::components::store::*;
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::*;
 
-use prelude::*;
-use query::ast as qast;
-use schema::ast as sast;
-use store::query::{collect_entities_from_query_field, parse_subgraph_id};
+use crate::prelude::*;
+use crate::query::ast as qast;
+use crate::schema::ast as sast;
+use crate::store::query::{collect_entities_from_query_field, parse_subgraph_id};
 
 /// A resolver that fetches entities from a `Store`.
 pub struct StoreResolver<S> {
@@ -287,7 +287,7 @@ where
                         .map(|o| o.name.clone())
                         .collect();
                     let range = EntityRange::first(1);
-                    let mut query = EntityQuery::new(subgraph_id, entity_types, range);
+                    let query = EntityQuery::new(subgraph_id, entity_types, range);
                     self.store.find(query)?.into_iter().next()
                 }
             }

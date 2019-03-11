@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 use std::ops::Deref;
 use std::str::FromStr;
 
-use execution::ObjectOrInterface;
+use crate::execution::ObjectOrInterface;
 use graph::prelude::ValueType;
 
 pub(crate) enum FilterOp {
