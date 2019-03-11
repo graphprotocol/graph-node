@@ -12,8 +12,8 @@ use graph::data::store::*;
 use graph::prelude::BigInt;
 use graph::serde_json;
 
-use db_schema::entities;
-use models::SqlValue;
+use crate::db_schema::entities;
+use crate::models::SqlValue;
 
 pub(crate) struct UnsupportedFilter {
     pub filter: String,

@@ -1,7 +1,7 @@
 use diesel::pg::PgConnection;
 use diesel::select;
 use fallible_iterator::FallibleIterator;
-use functions::pg_notify;
+use crate::functions::pg_notify;
 use postgres::notification::Notification;
 use postgres::{Connection, TlsMode};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -235,7 +235,7 @@ impl JsonNotification {
         data: &serde_json::Value,
         conn: &PgConnection,
     ) -> Result<(), StoreError> {
-        use db_schema::large_notifications::dsl::*;
+        use crate::db_schema::large_notifications::dsl::*;
         use diesel::ExpressionMethods;
         use diesel::RunQueryDsl;
 

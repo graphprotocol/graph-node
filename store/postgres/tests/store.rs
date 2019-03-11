@@ -12,7 +12,7 @@ use std::env;
 use std::str::FromStr;
 use std::sync::Mutex;
 use std::time::Duration;
-use tokio::runtime::Runtime;
+use crate::tokio::runtime::Runtime;
 
 use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityRange};
 use graph::data::store::scalar;
@@ -268,7 +268,7 @@ fn create_test_entity(
 
 /// Removes test data from the database behind the store.
 fn remove_test_data() {
-    use db_schema::{entities, entity_history, event_meta_data};
+    use crate::db_schema::{entities, entity_history, event_meta_data};
 
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
