@@ -16,7 +16,6 @@ table! {
         subgraph -> Varchar,
         entity -> Varchar,
         data_before -> Nullable<Jsonb>,
-        data_after -> Nullable<Jsonb>,
         reversion -> Bool,
     }
 }
