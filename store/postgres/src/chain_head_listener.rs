@@ -1,6 +1,6 @@
+use crate::notification_listener::{NotificationListener, SafeChannelName};
 use graph::prelude::{ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, *};
 use graph::serde_json;
-use crate::notification_listener::{NotificationListener, SafeChannelName};
 
 pub struct ChainHeadUpdateListener {
     notification_listener: NotificationListener,

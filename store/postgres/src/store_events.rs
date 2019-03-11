@@ -1,3 +1,4 @@
+use crate::notification_listener::{NotificationListener, SafeChannelName};
 use diesel::deserialize::QueryableByName;
 use diesel::pg::Pg;
 use diesel::pg::PgConnection;
@@ -5,7 +6,6 @@ use diesel::sql_types::Text;
 use diesel::RunQueryDsl;
 use graph::prelude::*;
 use graph::serde_json;
-use crate::notification_listener::{NotificationListener, SafeChannelName};
 
 pub struct StoreEventListener {
     notification_listener: NotificationListener,

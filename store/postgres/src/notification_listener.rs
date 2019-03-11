@@ -1,7 +1,7 @@
+use crate::functions::pg_notify;
 use diesel::pg::PgConnection;
 use diesel::select;
 use fallible_iterator::FallibleIterator;
-use crate::functions::pg_notify;
 use postgres::notification::Notification;
 use postgres::{Connection, TlsMode};
 use std::sync::atomic::{AtomicBool, Ordering};

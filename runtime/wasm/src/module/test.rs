@@ -2,8 +2,8 @@ extern crate graph_mock;
 extern crate ipfs_api;
 
 use self::graph_mock::FakeStore;
-use ethabi::Token;
 use crate::failure::Error;
+use ethabi::Token;
 use futures::sync::mpsc::{channel, Sender};
 use graph::components::ethereum::*;
 use graph::components::store::*;
