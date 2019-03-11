@@ -13,12 +13,12 @@ use graph::data::subgraph::DataSource;
 use graph::ethabi::LogParam;
 use graph::prelude::{Error as FailureError, *};
 use graph::web3::types::{Log, U256};
-use host_exports::{self, HostExportError, HostExports};
-use EventHandlerContext;
+use crate::host_exports::{self, HostExportError, HostExports};
+use crate::EventHandlerContext;
 
-use asc_abi::asc_ptr::*;
-use asc_abi::class::*;
-use asc_abi::*;
+use crate::asc_abi::asc_ptr::*;
+use crate::asc_abi::class::*;
+use crate::asc_abi::*;
 
 #[cfg(test)]
 mod test;

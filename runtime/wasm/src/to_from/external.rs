@@ -7,10 +7,10 @@ use graph::prelude::BigInt;
 use graph::serde_json;
 use graph::web3::types as web3;
 
-use asc_abi::class::*;
-use asc_abi::{AscHeap, AscPtr, FromAscObj, ToAscObj};
+use crate::asc_abi::class::*;
+use crate::asc_abi::{AscHeap, AscPtr, FromAscObj, ToAscObj};
 
-use UnresolvedContractCall;
+use crate::UnresolvedContractCall;
 
 impl ToAscObj<Uint8Array> for web3::H160 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> Uint8Array {
