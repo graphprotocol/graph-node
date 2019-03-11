@@ -20,6 +20,7 @@ mod chain_head_listener;
 pub mod db_schema;
 mod filter;
 pub mod functions;
+pub mod jsonb;
 pub mod models;
 mod notification_listener;
 pub mod store;
