@@ -17,7 +17,7 @@ mod graphql;
 mod log;
 mod subgraph;
 
-pub use graphql::GraphQlRunner;
-pub use log::elastic::{elastic_logger, ElasticDrainConfig, ElasticLoggingConfig};
-pub use log::split::split_logger;
-pub use subgraph::{SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar};
+pub use crate::graphql::GraphQlRunner;
+pub use crate::log::elastic::{elastic_logger, ElasticDrainConfig, ElasticLoggingConfig};
+pub use crate::log::split::split_logger;
+pub use crate::subgraph::{SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar};
