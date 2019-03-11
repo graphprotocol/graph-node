@@ -20,12 +20,12 @@ use std::str::FromStr;
 use web3::types::*;
 
 use super::SubgraphDeploymentId;
-use components::ethereum::EthereumBlockPointer;
-use components::store::{
+use crate::components::ethereum::EthereumBlockPointer;
+use crate::components::store::{
     AttributeIndexDefinition, EntityFilter, EntityKey, EntityOperation, EntityQuery, EntityRange,
 };
-use data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
-use data::subgraph::{SubgraphManifest, SubgraphName};
+use crate::data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
+use crate::data::subgraph::{SubgraphManifest, SubgraphName};
 
 /// ID of the subgraph of subgraphs.
 lazy_static! {

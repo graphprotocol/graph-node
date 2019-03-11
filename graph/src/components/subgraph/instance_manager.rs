@@ -1,4 +1,4 @@
-use components::EventConsumer;
+use crate::components::EventConsumer;
 
 use crate::data::subgraph::SubgraphAssignmentProviderEvent;
 

@@ -11,9 +11,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use web3::types::H256;
 
-use data::store::*;
-use data::subgraph::schema::*;
-use prelude::*;
+use crate::data::store::*;
+use crate::data::subgraph::schema::*;
+use crate::prelude::*;
 
 lazy_static! {
     pub static ref SUBSCRIPTION_THROTTLE_INTERVAL: Duration =

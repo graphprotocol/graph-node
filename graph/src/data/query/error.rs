@@ -1,4 +1,4 @@
-use data::subgraph::*;
+use crate::data::subgraph::*;
 use graphql_parser::{query as q, Pos};
 
 use failure;

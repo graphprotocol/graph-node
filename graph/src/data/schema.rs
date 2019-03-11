@@ -1,8 +1,8 @@
-use data::graphql::validation::{
+use crate::data::graphql::validation::{
     get_object_type_definitions, validate_interface_implementation, validate_schema,
     SchemaValidationError,
 };
-use data::subgraph::SubgraphDeploymentId;
+use crate::data::subgraph::SubgraphDeploymentId;
 use failure::Error;
 use graphql_parser;
 use graphql_parser::{

@@ -1,4 +1,4 @@
-use prelude::*;
+use crate::prelude::*;
 
 #[derive(Clone, Copy, Debug)]
 pub enum SubgraphVersionSwitchingMode {

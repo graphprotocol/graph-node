@@ -2,7 +2,7 @@ use serde::de::{Deserialize, Deserializer, Error as DeserializerError};
 use std::str::FromStr;
 use web3::types::H256;
 
-use components::EventProducer;
+use crate::components::EventProducer;
 
 /// Deserialize an H256 hash (with or without '0x' prefix).
 fn deserialize_h256<'de, D>(deserializer: D) -> Result<H256, D::Error>

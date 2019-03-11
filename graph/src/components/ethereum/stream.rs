@@ -1,7 +1,7 @@
 use failure::Error;
 use futures::Stream;
 
-use prelude::*;
+use crate::prelude::*;
 
 pub trait BlockStream:
     Stream<Item = EthereumBlock, Error = Error> + EventConsumer<ChainHeadUpdate>

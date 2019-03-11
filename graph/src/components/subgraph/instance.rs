@@ -1,4 +1,4 @@
-use prelude::*;
+use crate::prelude::*;
 use web3::types::{Log, Transaction};
 
 /// Represents a loaded instance of a subgraph.

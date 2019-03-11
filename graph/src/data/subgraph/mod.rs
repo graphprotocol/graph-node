@@ -13,10 +13,10 @@ use std::sync::Arc;
 use tokio::prelude::*;
 use web3::types::Address;
 
-use components::link_resolver::LinkResolver;
-use components::store::StoreError;
-use data::query::QueryExecutionError;
-use data::schema::Schema;
+use crate::components::link_resolver::LinkResolver;
+use crate::components::store::StoreError;
+use crate::data::query::QueryExecutionError;
+use crate::data::schema::Schema;
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
 pub mod schema;

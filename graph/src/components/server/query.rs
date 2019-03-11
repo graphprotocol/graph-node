@@ -1,4 +1,4 @@
-use data::query::QueryError;
+use crate::data::query::QueryError;
 use futures::prelude::*;
 use futures::sync::oneshot::Canceled;
 use serde::ser::*;

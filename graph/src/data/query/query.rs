@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-use data::schema::Schema;
+use crate::data::schema::Schema;
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<q::Number, D::Error>
 where
