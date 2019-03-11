@@ -128,7 +128,7 @@ pub(crate) fn store_filter<T>(
     Ok(query.filter(build_filter(filter)?))
 }
 
-fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFilter> {
+pub(crate) fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFilter> {
     use self::EntityFilter::*;
 
     let false_expr = Box::new(false.into_sql::<Bool>()) as FilterExpression;

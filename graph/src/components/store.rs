@@ -204,7 +204,9 @@ impl EntityChange {
         use self::EntityOperation::*;
 
         match operation {
-            Set { key, .. } => Some(Self::from_key(key, EntityChangeOperation::Set)),
+            Set { key, .. } | Update { key, .. } => {
+                Some(Self::from_key(key, EntityChangeOperation::Set))
+            }
             Remove { key } => Some(Self::from_key(key, EntityChangeOperation::Removed)),
             // AbortUnless is uninteresting for when we need an EntityChange
             AbortUnless { .. } => None,
@@ -439,6 +441,16 @@ pub enum EntityOperation {
         query: EntityQuery,  // The query to run
         entity_ids: Vec<String>, // What entities the query should return
     },
+
+    /// Update an entity. The `data` should only contain the attributes that
+    /// need to be changed, not the entire entity. The update will only happen
+    /// if the given entity matches `guard` when the update is made. `Update`
+    /// provides a way to atomically do a check-and-set change to an entity.
+    Update {
+        key: EntityKey,
+        data: Entity,
+        guard: Option<EntityFilter>,
+    },
 }
 
 impl EntityOperation {
@@ -466,7 +478,7 @@ impl EntityOperation {
         use self::EntityOperation::*;
 
         match self {
-            Set { ref key, .. } => key,
+            Set { ref key, .. } | Update { ref key, .. } => key,
             Remove { ref key } => key,
             AbortUnless { .. } => panic!("cannot get entity key from AbortUnless entity operation"),
         }
@@ -490,7 +502,7 @@ impl EntityOperation {
         use self::EntityOperation::*;
 
         match self {
-            Set { data, .. } => {
+            Set { data, .. } | Update { data, .. } => {
                 let mut entity = entity.unwrap_or(Entity::new());
                 entity.merge(data.clone());
                 Ok(Some(entity))
@@ -512,7 +524,7 @@ impl EntityOperation {
 
         // Only continue if all operations are Set/Remove.
         ops.iter().try_for_each(|op| match op {
-            Set { .. } | Remove { .. } => Ok(()),
+            Set { .. } | Remove { .. } | Update { .. } => Ok(()),
             AbortUnless { .. } => Err(format_err!("Cannot apply {:?} to an Entity", op)),
         })?;
 

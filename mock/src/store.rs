@@ -33,6 +33,28 @@ pub struct MockStore {
     subscriptions: Mutex<Vec<(HashSet<SubgraphEntityPair>, mpsc::Sender<StoreEvent>)>>,
 }
 
+fn entity_matches_filter(entity: &Entity, filter: &EntityFilter) -> bool {
+    match filter {
+        EntityFilter::And(subfilters) => subfilters
+            .iter()
+            .all(|subfilter| entity_matches_filter(entity, subfilter)),
+        EntityFilter::Or(subfilters) => subfilters
+            .iter()
+            .any(|subfilter| entity_matches_filter(entity, subfilter)),
+        EntityFilter::Equal(attr_name, attr_value) => {
+            entity.get(attr_name).unwrap_or(&Value::Null) == attr_value
+        }
+        EntityFilter::In(attr_name, allowed_attr_values) => {
+            let attr_value = entity.get(attr_name).unwrap_or(&Value::Null);
+
+            allowed_attr_values
+                .iter()
+                .any(|allowed_attr_value| attr_value == allowed_attr_value)
+        }
+        _ => unimplemented!(),
+    }
+}
+
 impl MockStore {
     /// Creates a new mock `Store`.
     pub fn new(schemas: Vec<(SubgraphDeploymentId, Schema)>) -> Self {
@@ -48,28 +70,6 @@ impl MockStore {
         entities: &HashMap<SubgraphDeploymentId, HashMap<String, HashMap<String, Entity>>>,
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        fn entity_matches_filter(entity: &Entity, filter: &EntityFilter) -> bool {
-            match filter {
-                EntityFilter::And(subfilters) => subfilters
-                    .iter()
-                    .all(|subfilter| entity_matches_filter(entity, subfilter)),
-                EntityFilter::Or(subfilters) => subfilters
-                    .iter()
-                    .any(|subfilter| entity_matches_filter(entity, subfilter)),
-                EntityFilter::Equal(attr_name, attr_value) => {
-                    entity.get(attr_name).unwrap_or(&Value::Null) == attr_value
-                }
-                EntityFilter::In(attr_name, allowed_attr_values) => {
-                    let attr_value = entity.get(attr_name).unwrap_or(&Value::Null);
-
-                    allowed_attr_values
-                        .iter()
-                        .any(|allowed_attr_value| attr_value == allowed_attr_value)
-                }
-                _ => unimplemented!(),
-            }
-        }
-
         let EntityQuery {
             subgraph_id,
             entity_types,
@@ -189,6 +189,40 @@ impl Store for MockStore {
 
                         entity_changes
                             .push(EntityChange::from_key(key, EntityChangeOperation::Set));
+                    }
+                }
+                EntityOperation::Update { key, data, guard } => {
+                    let entities_of_type = entities
+                        .entry(key.subgraph_id.clone())
+                        .or_default()
+                        .entry(key.entity_type.clone())
+                        .or_default();
+
+                    if entities_of_type.contains_key(&key.entity_id) {
+                        let existing_entity = entities_of_type.get_mut(&key.entity_id).unwrap();
+                        if let Some(filter) = guard {
+                            if !entity_matches_filter(existing_entity, &filter) {
+                                return Err(TransactionAbortError::AbortUnless {
+                                    expected_entity_ids: vec![key.entity_id],
+                                    actual_entity_ids: vec![],
+                                    description:
+                                        "update failed because entity does not match guard"
+                                            .to_owned(),
+                                }
+                                .into());
+                            }
+                        }
+                        existing_entity.merge(data);
+
+                        entity_changes
+                            .push(EntityChange::from_key(key, EntityChangeOperation::Set));
+                    } else {
+                        return Err(TransactionAbortError::AbortUnless {
+                            expected_entity_ids: vec![key.entity_id],
+                            actual_entity_ids: vec![],
+                            description: "update failed because entity does not exist".to_owned(),
+                        }
+                        .into());
                     }
                 }
                 EntityOperation::Remove { key } => {
