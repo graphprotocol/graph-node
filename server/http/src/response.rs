@@ -78,7 +78,7 @@ mod tests {
     use http::status::StatusCode;
     use std::collections::BTreeMap;
 
-    use test_utils;
+    use crate::test_utils;
 
     #[test]
     fn generates_500_for_internal_errors() {
