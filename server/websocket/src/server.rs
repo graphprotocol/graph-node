@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::{handshake::server::Request, Error as WsError};
 
-use connection::GraphQlConnection;
+use crate::connection::GraphQlConnection;
 
 /// A GraphQL subscription server based on Hyper / Websockets.
 pub struct SubscriptionServer<Q, S> {

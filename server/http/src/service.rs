@@ -5,8 +5,8 @@ use http::header;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 
-use request::GraphQLRequest;
-use response::GraphQLResponse;
+use crate::request::GraphQLRequest;
+use crate::response::GraphQLResponse;
 
 /// An asynchronous response to a GraphQL request.
 pub type GraphQLServiceResponse =
@@ -392,7 +392,7 @@ mod tests {
     use graph::prelude::*;
 
     use super::GraphQLService;
-    use test_utils;
+    use crate::test_utils;
 
     /// A simple stupid query runner for testing.
     pub struct TestGraphQlRunner;
