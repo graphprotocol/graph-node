@@ -6,7 +6,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool};
 use diesel::sql_types::Text;
 use diesel::{delete, insert_into, select, update};
-use filter::store_filter;
+use crate::filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
 use std::collections::HashMap;
@@ -21,14 +21,14 @@ use graph::serde_json;
 use graph::web3::types::H256;
 use graph::{tokio, tokio::timer::Interval};
 use graph_graphql::prelude::api_schema;
-use notification_listener::JsonNotification;
+use crate::notification_listener::JsonNotification;
 
-use chain_head_listener::ChainHeadUpdateListener;
-use functions::{
+use crate::chain_head_listener::ChainHeadUpdateListener;
+use crate::functions::{
     attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, revert_block,
     set_config,
 };
-use store_events::{get_revert_event, StoreEventListener};
+use crate::store_events::{get_revert_event, StoreEventListener};
 
 embed_migrations!("./migrations");
 
@@ -140,7 +140,7 @@ impl Store {
         &self,
         new_net_identifiers: EthereumNetworkIdentifier,
     ) -> Result<(), Error> {
-        use db_schema::ethereum_networks::dsl::*;
+        use crate::db_schema::ethereum_networks::dsl::*;
 
         let new_genesis_block_hash = new_net_identifiers.genesis_block_hash;
         let new_net_version = new_net_identifiers.net_version;
@@ -282,7 +282,7 @@ impl Store {
         op_entity: &String,
         op_id: &String,
     ) -> Result<Option<Entity>, QueryExecutionError> {
-        use db_schema::entities::dsl::*;
+        use crate::db_schema::entities::dsl::*;
 
         match entities
             .find((op_id, op_subgraph.to_string(), op_entity))
@@ -318,7 +318,7 @@ impl Store {
         conn: &PgConnection,
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        use db_schema::entities::dsl::*;
+        use crate::db_schema::entities::dsl::*;
 
         // Create base boxed query; this will be added to based on the
         // query parameters provided
@@ -413,7 +413,7 @@ impl Store {
         data: Entity,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
-        use db_schema::entities::{self, dsl};
+        use crate::db_schema::entities::{self, dsl};
 
         // Collect all types that share an interface implementation with this
         // entity type, and make sure there are no conflicting IDs.
@@ -516,7 +516,7 @@ impl Store {
         key: EntityKey,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
-        use db_schema::entities;
+        use crate::db_schema::entities;
 
         select(set_config(
             "vars.current_event_source",
@@ -911,7 +911,7 @@ impl StoreTrait for Store {
     }
 
     fn count_entities(&self, subgraph_id: SubgraphDeploymentId) -> Result<u64, Error> {
-        use db_schema::entities::dsl::*;
+        use crate::db_schema::entities::dsl::*;
 
         let count: i64 = entities
             .filter(subgraph.eq(subgraph_id.to_string()))
@@ -977,7 +977,7 @@ impl ChainStore for Store {
         B: Stream<Item = EthereumBlock, Error = E> + Send + 'a,
         E: From<Error> + Send + 'a,
     {
-        use db_schema::ethereum_blocks::dsl::*;
+        use crate::db_schema::ethereum_blocks::dsl::*;
 
         let conn = self.conn.clone();
         let net_name = self.network_name.clone();
@@ -1040,7 +1040,7 @@ impl ChainStore for Store {
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
-        use db_schema::ethereum_networks::dsl::*;
+        use crate::db_schema::ethereum_networks::dsl::*;
 
         ethereum_networks
             .select((head_block_hash, head_block_number))
@@ -1059,7 +1059,7 @@ impl ChainStore for Store {
     }
 
     fn block(&self, block_hash: H256) -> Result<Option<EthereumBlock>, Error> {
-        use db_schema::ethereum_blocks::dsl::*;
+        use crate::db_schema::ethereum_blocks::dsl::*;
 
         ethereum_blocks
             .select(data)

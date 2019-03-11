@@ -5,7 +5,7 @@ use diesel::sql_types::Text;
 use diesel::RunQueryDsl;
 use graph::prelude::*;
 use graph::serde_json;
-use notification_listener::{NotificationListener, SafeChannelName};
+use crate::notification_listener::{NotificationListener, SafeChannelName};
 
 pub struct StoreEventListener {
     notification_listener: NotificationListener,
