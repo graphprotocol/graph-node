@@ -10,7 +10,7 @@ extern crate graph_store_postgres;
 extern crate graphql_parser;
 extern crate hex;
 
-use tokio::runtime::Runtime;
+use crate::tokio::runtime::Runtime;
 
 use graph::prelude::{Store as StoreTrait, *};
 use graph::web3::types::H256;

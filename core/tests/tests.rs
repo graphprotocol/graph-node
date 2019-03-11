@@ -8,6 +8,7 @@ extern crate walkdir;
 use ipfs_api::IpfsClient;
 use walkdir::WalkDir;
 
+use crate::tokio::timer::Delay;
 use graph::components::ethereum::*;
 use graph::prelude::*;
 use graph::web3::types::*;
@@ -19,7 +20,6 @@ use std::io::Cursor;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
-use tokio::timer::Delay;
 
 /// Adds subgraph located in `test/subgraphs/`, replacing "link to" placeholders
 /// in the subgraph manifest with links to files just added into a local IPFS

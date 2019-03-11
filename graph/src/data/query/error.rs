@@ -259,7 +259,7 @@ impl Serialize for QueryError {
             // graphql_parser team makes improvements to their error reporting
             QueryError::ParseError(_) => {
                 // Split the inner message into (first line, rest)
-                let mut msg = format!("{}", self);
+                let msg = format!("{}", self);
                 let inner_msg = msg.replace("query parse error:", "");
                 let inner_msg = inner_msg.trim();
                 let parts: Vec<&str> = inner_msg.splitn(2, '\n').collect();

@@ -6,10 +6,10 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use super::SubgraphInstance;
-use elastic_logger;
-use split_logger;
-use ElasticDrainConfig;
-use ElasticLoggingConfig;
+use crate::elastic_logger;
+use crate::split_logger;
+use crate::ElasticDrainConfig;
+use crate::ElasticLoggingConfig;
 
 type InstanceShutdownMap = Arc<RwLock<HashMap<SubgraphDeploymentId, CancelGuard>>>;
 
