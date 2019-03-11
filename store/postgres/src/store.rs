@@ -1,4 +1,4 @@
-use crate::filter::store_filter;
+use crate::filter::{build_filter, store_filter};
 use diesel::debug_query;
 use diesel::dsl::{any, sql};
 use diesel::pg::Pg;
@@ -28,6 +28,7 @@ use crate::functions::{
     attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, revert_block,
     set_config,
 };
+use crate::jsonb::PgJsonbExpressionMethods;
 use crate::store_events::{get_revert_event, StoreEventListener};
 
 embed_migrations!("./migrations");
@@ -405,13 +406,10 @@ impl Store {
             })
     }
 
-    /// Applies a set operation in Postgres.
-    fn apply_set_operation(
+    fn check_interface_entity_uniqueness(
         &self,
         conn: &PgConnection,
-        key: EntityKey,
-        data: Entity,
-        event_source: EventSource,
+        key: &EntityKey,
     ) -> Result<(), StoreError> {
         use crate::db_schema::entities::{self, dsl};
 
@@ -448,12 +446,26 @@ impl Store {
                 .optional()?
             {
                 return Err(StoreError::ConflictingId(
-                    key.entity_type,
-                    key.entity_id,
+                    key.entity_type.clone(),
+                    key.entity_id.clone(),
                     conflicting_entity,
                 ));
             }
         }
+        Ok(())
+    }
+
+    /// Applies a set operation in Postgres.
+    fn apply_set_operation(
+        &self,
+        conn: &PgConnection,
+        key: EntityKey,
+        data: Entity,
+        event_source: EventSource,
+    ) -> Result<(), StoreError> {
+        use db_schema::entities;
+
+        self.check_interface_entity_uniqueness(conn, &key)?;
 
         // Load the entity if exists
         let existing_entity = self
@@ -507,6 +519,70 @@ impl Store {
                 )
                 .into()
             })
+    }
+
+    /// Applies an update operation to an existing entity
+    fn apply_update_operation(
+        &self,
+        conn: &PgConnection,
+        key: EntityKey,
+        data: Entity,
+        guard: Option<EntityFilter>,
+        event_source: EventSource,
+    ) -> Result<(), StoreError> {
+        use db_schema::entities;
+
+        self.check_interface_entity_uniqueness(conn, &key)?;
+
+        let json: serde_json::Value = serde_json::to_value(&data).map_err(|e| {
+            format_err!(
+                "Failed to update entity ({}, {}, {}) as updating it would break it: {}",
+                key.subgraph_id,
+                key.entity_type,
+                key.entity_id,
+                e
+            )
+        })?;
+
+        // Update the entity in Postgres
+        let target = entities::table
+            .filter(entities::subgraph.eq(key.subgraph_id.to_string()))
+            .filter(entities::entity.eq(&key.entity_type))
+            .filter(entities::id.eq(&key.entity_id));
+
+        let query = diesel::update(target).set((
+            entities::data.eq(entities::data.merge(&json)),
+            entities::event_source.eq(event_source.to_string()),
+        ));
+
+        let res = match guard {
+            Some(filter) => {
+                let filter = build_filter(filter).map_err(|e| {
+                    TransactionAbortError::Other(format!(
+                        "invalid filter '{}' for value '{}'",
+                        e.filter, e.value
+                    ))
+                })?;
+                query.filter(filter).execute(conn)?
+            }
+            None => query.execute(conn)?,
+        };
+
+        match res {
+            0 => Err(TransactionAbortError::AbortUnless {
+                expected_entity_ids: vec![key.entity_id.clone()],
+                actual_entity_ids: vec![],
+                description: "update did not change any rows".to_owned(),
+            }
+            .into()),
+            1 => Ok(()),
+            _ => Err(TransactionAbortError::AbortUnless {
+                expected_entity_ids: vec![key.entity_id.clone()],
+                actual_entity_ids: vec![],
+                description: format!("update changed {} rows instead of just one", res),
+            }
+            .into()),
+        }
     }
 
     /// Applies a remove operation by deleting the entity from Postgres.
@@ -603,6 +679,9 @@ impl Store {
         match operation {
             EntityOperation::Set { key, data } => {
                 self.apply_set_operation(conn, key, data, event_source)
+            }
+            EntityOperation::Update { key, data, guard } => {
+                self.apply_update_operation(conn, key, data, guard, event_source)
             }
             EntityOperation::Remove { key } => self.apply_remove_operation(conn, key, event_source),
             EntityOperation::AbortUnless {
