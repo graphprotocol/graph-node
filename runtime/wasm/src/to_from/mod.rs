@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
 
-use asc_abi::class::*;
-use asc_abi::{AscHeap, AscPtr, AscType, AscValue, FromAscObj, ToAscObj};
+use crate::asc_abi::class::*;
+use crate::asc_abi::{AscHeap, AscPtr, AscType, AscValue, FromAscObj, ToAscObj};
 
 ///! Implementations of `ToAscObj` and `FromAscObj` for Rust types.
 ///! Standard Rust types go in `mod.rs` and external types in `external.rs`.

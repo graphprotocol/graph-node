@@ -1,6 +1,7 @@
 [package]
 name = "graph-runtime-wasm"
 version = "0.5.0"
+edition = "2018"
 
 [dependencies]
 # We would like to switch to upstream master once https://github.com/paritytech/ethabi/pull/145

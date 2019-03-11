@@ -15,7 +15,7 @@ use graph::util;
 use graph::web3::types::{Log, Transaction};
 
 use super::EventHandlerContext;
-use module::{ValidModule, WasmiModule, WasmiModuleConfig};
+use crate::module::{ValidModule, WasmiModule, WasmiModuleConfig};
 
 pub struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
