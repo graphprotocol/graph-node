@@ -1,4 +1,4 @@
-use prelude::Query;
+use crate::prelude::Query;
 
 /// A GraphQL subscription made by a client.
 ///

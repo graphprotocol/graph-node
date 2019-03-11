@@ -1,6 +1,6 @@
 use futures::prelude::*;
 
-use prelude::QueryResult;
+use crate::prelude::QueryResult;
 
 /// A stream of query results for a subscription.
 pub type QueryResultStream = Box<Stream<Item = QueryResult, Error = ()> + Send>;

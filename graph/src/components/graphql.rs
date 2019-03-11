@@ -1,7 +1,7 @@
 use futures::prelude::*;
 
-use data::query::{Query, QueryError, QueryResult};
-use data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
+use crate::data::query::{Query, QueryError, QueryResult};
+use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
 
 /// Future for query results.
 pub type QueryResultFuture = Box<Future<Item = QueryResult, Error = QueryError> + Send>;

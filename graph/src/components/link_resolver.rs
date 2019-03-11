@@ -1,4 +1,4 @@
-use data::subgraph::Link;
+use crate::data::subgraph::Link;
 use failure;
 use ipfs_api;
 use std::env;

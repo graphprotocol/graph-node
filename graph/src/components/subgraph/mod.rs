@@ -4,7 +4,7 @@ mod instance_manager;
 mod provider;
 mod registrar;
 
-pub use prelude::Entity;
+pub use crate::prelude::Entity;
 
 pub use self::host::{RuntimeHost, RuntimeHostBuilder};
 pub use self::instance::SubgraphInstance;

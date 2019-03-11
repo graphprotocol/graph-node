@@ -1,4 +1,4 @@
-use prelude::*;
+use crate::prelude::*;
 
 /// Common trait for subgraph providers.
 pub trait SubgraphAssignmentProvider:

@@ -7,10 +7,10 @@ use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
-use data::subgraph::SubgraphDeploymentId;
+use crate::data::subgraph::SubgraphDeploymentId;
+use crate::prelude::QueryExecutionError;
 use graphql_parser::query;
 use graphql_parser::schema;
-use prelude::QueryExecutionError;
 
 /// Custom scalars in GraphQL.
 pub mod scalar;

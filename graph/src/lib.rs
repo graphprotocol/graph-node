@@ -57,48 +57,52 @@ pub mod prelude {
     pub use tokio;
     pub use tokio::prelude::*;
 
-    pub use components::ethereum::{
+    pub use crate::components::ethereum::{
         BlockStream, BlockStreamBuilder, ChainHeadUpdate, ChainHeadUpdateListener, EthereumAdapter,
         EthereumAdapterError, EthereumBlock, EthereumBlockData, EthereumBlockPointer,
         EthereumEventData, EthereumLogFilter, EthereumNetworkIdentifier, EthereumTransactionData,
     };
-    pub use components::graphql::{GraphQlRunner, QueryResultFuture, SubscriptionResultFuture};
-    pub use components::link_resolver::LinkResolver;
-    pub use components::server::admin::JsonRpcServer;
-    pub use components::server::query::GraphQLServer;
-    pub use components::server::subscription::SubscriptionServer;
-    pub use components::store::{
+    pub use crate::components::graphql::{
+        GraphQlRunner, QueryResultFuture, SubscriptionResultFuture,
+    };
+    pub use crate::components::link_resolver::LinkResolver;
+    pub use crate::components::server::admin::JsonRpcServer;
+    pub use crate::components::server::query::GraphQLServer;
+    pub use crate::components::server::subscription::SubscriptionServer;
+    pub use crate::components::store::{
         AttributeIndexDefinition, ChainStore, EntityChange, EntityChangeOperation, EntityFilter,
         EntityKey, EntityOperation, EntityOrder, EntityQuery, EntityRange, EventSource, Store,
         StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, SubgraphDeploymentStore,
         TransactionAbortError, SUBSCRIPTION_THROTTLE_INTERVAL,
     };
-    pub use components::subgraph::{
+    pub use crate::components::subgraph::{
         RuntimeHost, RuntimeHostBuilder, SubgraphAssignmentProvider, SubgraphInstance,
         SubgraphInstanceManager, SubgraphRegistrar, SubgraphVersionSwitchingMode,
     };
-    pub use components::{EventConsumer, EventProducer};
+    pub use crate::components::{EventConsumer, EventProducer};
 
-    pub use data::graphql::SerializableValue;
-    pub use data::query::{Query, QueryError, QueryExecutionError, QueryResult, QueryVariables};
-    pub use data::schema::Schema;
-    pub use data::store::scalar::{BigInt, BigIntSign};
-    pub use data::store::{
+    pub use crate::data::graphql::SerializableValue;
+    pub use crate::data::query::{
+        Query, QueryError, QueryExecutionError, QueryResult, QueryVariables,
+    };
+    pub use crate::data::schema::Schema;
+    pub use crate::data::store::scalar::{BigInt, BigIntSign};
+    pub use crate::data::store::{
         AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, SubgraphVersionSummary,
         Value, ValueType,
     };
-    pub use data::subgraph::schema::{SubgraphDeploymentEntity, TypedEntity};
-    pub use data::subgraph::{
+    pub use crate::data::subgraph::schema::{SubgraphDeploymentEntity, TypedEntity};
+    pub use crate::data::subgraph::{
         CreateSubgraphResult, DataSource, Link, MappingABI, MappingEventHandler,
         SubgraphAssignmentProviderError, SubgraphAssignmentProviderEvent, SubgraphDeploymentId,
         SubgraphManifest, SubgraphManifestResolveError, SubgraphName, SubgraphRegistrarError,
     };
-    pub use data::subscription::{
+    pub use crate::data::subscription::{
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
     };
-    pub use ext::futures::{
+    pub use crate::ext::futures::{
         CancelGuard, CancelHandle, CancelableError, FutureExtension, SharedCancelGuard,
         StreamExtension,
     };
-    pub use util::futures::retry;
+    pub use crate::util::futures::retry;
 }
