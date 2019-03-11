@@ -5,8 +5,8 @@ use std::error::Error;
 use std::fmt;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
-use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
 use crate::service::GraphQLService;
+use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
 
 /// Errors that may occur when starting the server.
 #[derive(Debug)]

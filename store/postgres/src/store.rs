@@ -1,3 +1,4 @@
+use crate::filter::store_filter;
 use diesel::debug_query;
 use diesel::dsl::{any, sql};
 use diesel::pg::Pg;
@@ -6,7 +7,6 @@ use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool};
 use diesel::sql_types::Text;
 use diesel::{delete, insert_into, select, update};
-use crate::filter::store_filter;
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
 use std::collections::HashMap;
@@ -14,6 +14,7 @@ use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
+use crate::notification_listener::JsonNotification;
 use graph::components::store::Store as StoreTrait;
 use graph::data::subgraph::schema::*;
 use graph::prelude::*;
@@ -21,7 +22,6 @@ use graph::serde_json;
 use graph::web3::types::H256;
 use graph::{tokio, tokio::timer::Interval};
 use graph_graphql::prelude::api_schema;
-use crate::notification_listener::JsonNotification;
 
 use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::functions::{

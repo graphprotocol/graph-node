@@ -8,13 +8,13 @@ use wasmi::{
     Signature, Trap,
 };
 
+use crate::host_exports::{self, HostExportError, HostExports};
+use crate::EventHandlerContext;
 use graph::components::ethereum::*;
 use graph::data::subgraph::DataSource;
 use graph::ethabi::LogParam;
 use graph::prelude::{Error as FailureError, *};
 use graph::web3::types::{Log, U256};
-use crate::host_exports::{self, HostExportError, HostExports};
-use crate::EventHandlerContext;
 
 use crate::asc_abi::asc_ptr::*;
 use crate::asc_abi::class::*;

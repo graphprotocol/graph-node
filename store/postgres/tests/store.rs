@@ -6,13 +6,13 @@ extern crate graph;
 extern crate graph_store_postgres;
 extern crate hex;
 
+use crate::tokio::runtime::Runtime;
 use diesel::pg::PgConnection;
 use diesel::*;
 use std::env;
 use std::str::FromStr;
 use std::sync::Mutex;
 use std::time::Duration;
-use crate::tokio::runtime::Runtime;
 
 use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityRange};
 use graph::data::store::scalar;

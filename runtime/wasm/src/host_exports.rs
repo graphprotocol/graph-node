@@ -1,3 +1,5 @@
+use crate::EventHandlerContext;
+use crate::UnresolvedContractCall;
 use ethabi::Token;
 use futures::sync::oneshot;
 use graph::components::ethereum::*;
@@ -11,8 +13,6 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
-use crate::EventHandlerContext;
-use crate::UnresolvedContractCall;
 
 pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_EVENT_HANDLER_TIMEOUT";
 
