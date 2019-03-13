@@ -250,7 +250,15 @@ where
         &self,
         bytes: Vec<u8>,
     ) -> Result<String, HostExportError<impl ExportError>> {
-        let s = String::from_utf8(bytes).map_err(HostExportError)?;
+        let s = String::from_utf8(bytes).map_err(|e| {
+            HostExportError(format!(
+                "Failed to parse Byte array using `toString()`. This may be caused by attempting \
+                 to convert a value such as an address that cannot be parsed to a unicode string. \
+                 Try 'toHexString()' instead. error: {error},  bytes:`{bytes:?}`",
+                error = e.utf8_error(),
+                bytes = e.into_bytes(),
+            ))
+        })?;
         // The string may have been encoded in a fixed length
         // buffer and padded with null characters, so trim
         // trailing nulls.
