@@ -784,47 +784,36 @@ where
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
-    if let Some(argument_definitions) = sast::get_argument_definitions(object_type, &field.name) {
-        for argument_def in argument_definitions {
-            // Look up the argument value, resolve it if it is a variable
-            let mut value: Option<&q::Value> =
-                qast::get_argument_value(&field.arguments, &argument_def.name);
-            let mut is_variable = false;
-
-            if let Some(q::Value::Variable(name)) = value {
-                value = ctx.variable_values.get(name);
-                is_variable = true
-            }
-
-            if value.is_none() && argument_def.default_value.is_some() {
-                coerced_values.insert(
-                    &argument_def.name,
-                    argument_def.default_value.to_owned().unwrap(),
-                );
-            } else if sast::is_non_null_type(&argument_def.value_type)
-                && (value.is_none() || value == Some(&q::Value::Null))
-            {
-                match value {
-                    Some(value) => errors.push(QueryExecutionError::InvalidArgumentError(
-                        field.position,
-                        argument_def.name.to_owned(),
-                        value.to_owned(),
-                    )),
-                    None => errors.push(QueryExecutionError::MissingArgumentError(
-                        field.position,
-                        argument_def.name.to_owned(),
-                    )),
-                }
-            } else if let Some(val) = value {
-                if val == &q::Value::Null || is_variable {
-                    coerced_values.insert(&argument_def.name, val.to_owned());
-                } else {
-                    let value = coerce_argument_value(ctx.clone(), field, &argument_def, val)?;
-                    coerced_values.insert(&argument_def.name, value);
-                }
-            }
+    for argument_def in sast::get_argument_definitions(object_type, &field.name)
+        .into_iter()
+        .flatten()
+    {
+        // Look up the argument value, resolve it if it is a variable
+        let mut value: Option<&q::Value> =
+            qast::get_argument_value(&field.arguments, &argument_def.name);
+        if let Some(q::Value::Variable(name)) = value {
+            value = ctx.variable_values.get(name);
         }
-    };
+
+        // Use the default value if necessary and present.
+        let value = value.or(argument_def.default_value.as_ref());
+
+        let value = match value {
+            None => {
+                if sast::is_non_null_type(&argument_def.value_type) {
+                    errors.push(QueryExecutionError::MissingArgumentError(
+                        field.position,
+                        argument_def.name.to_owned(),
+                    ));
+                };
+                continue;
+            }
+            Some(value) => value,
+        };
+
+        let value = coerce_argument_value(ctx.clone(), field, &argument_def, value)?;
+        coerced_values.insert(&argument_def.name, value);
+    }
 
     if errors.is_empty() {
         Ok(coerced_values)
@@ -894,59 +883,43 @@ pub fn coerce_variable_values(
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
-    if let Some(variable_definitions) = qast::get_variable_definitions(operation) {
-        for variable_def in variable_definitions.iter() {
-            // Skip variable if it has an invalid type
-            if !sast::is_input_type(&schema.document, &variable_def.var_type) {
-                errors.push(QueryExecutionError::InvalidVariableTypeError(
-                    variable_def.position,
-                    variable_def.name.to_owned(),
-                ));
+    for variable_def in qast::get_variable_definitions(operation)
+        .into_iter()
+        .flatten()
+    {
+        // Skip variable if it has an invalid type
+        if !sast::is_input_type(&schema.document, &variable_def.var_type) {
+            errors.push(QueryExecutionError::InvalidVariableTypeError(
+                variable_def.position,
+                variable_def.name.to_owned(),
+            ));
+            continue;
+        }
+
+        let value = variables
+            .as_ref()
+            .and_then(|vars| vars.get(&variable_def.name));
+
+        let value = match value.or(variable_def.default_value.as_ref()) {
+            // No variable value provided and no default for non-null type, fail
+            None => {
+                if sast::is_non_null_type(&variable_def.var_type) {
+                    errors.push(QueryExecutionError::MissingVariableError(
+                        variable_def.position,
+                        variable_def.name.to_owned(),
+                    ));
+                };
                 continue;
             }
+            Some(value) => value,
+        };
 
-            let value = match variables {
-                None => None,
-                Some(vars) => vars.get(&variable_def.name),
-            };
-
-            match value.map(|val| val.deref().to_owned()) {
-                // No variable value provided, either use the default or fail
-                None => {
-                    if let Some(ref default_value) = variable_def.default_value {
-                        coerced_values
-                            .insert(variable_def.name.to_owned(), default_value.to_owned());
-                    } else if let s::Type::NonNullType(_) = variable_def.var_type {
-                        errors.push(QueryExecutionError::MissingVariableError(
-                            variable_def.position,
-                            variable_def.name.to_owned(),
-                        ));
-                    }
-                }
-
-                // A null value was provided, either use it or fail
-                Some(q::Value::Null) => {
-                    if let s::Type::NonNullType(_) = variable_def.var_type {
-                        errors.push(QueryExecutionError::InvalidVariableError(
-                            variable_def.position,
-                            variable_def.name.to_owned(),
-                            q::Value::Null,
-                        ));
-                    } else {
-                        coerced_values.insert(variable_def.name.to_owned(), q::Value::Null);
-                    }
-                }
-
-                // We have a variable value, attempt to coerce it to the value type
-                // of the variable definition
-                Some(value) => {
-                    coerced_values.insert(
-                        variable_def.name.to_owned(),
-                        coerce_variable_value(schema, variable_def, &value)?,
-                    );
-                }
-            }
-        }
+        // We have a variable value, attempt to coerce it to the value type
+        // of the variable definition
+        coerced_values.insert(
+            variable_def.name.to_owned(),
+            coerce_variable_value(schema, variable_def, &value)?,
+        );
     }
 
     if errors.is_empty() {

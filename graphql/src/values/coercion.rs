@@ -78,39 +78,38 @@ pub(crate) fn coerce_value<'a>(
     resolver: &impl Fn(&Name) -> Option<&'a TypeDefinition>,
 ) -> Option<Value> {
     match (ty, value) {
-        // Null values cannot be coerced into non-null types
+        // Null values cannot be coerced into non-null types.
         (Type::NonNullType(_), Value::Null) => None,
 
         // Non-null values may be coercible into non-null types
         (Type::NonNullType(t), _) => coerce_value(value, t, resolver),
 
+        // Nullable types can be null.
+        (_, Value::Null) => Some(Value::Null),
+
         // Resolve named types, then try to coerce the value into the resolved type
         (Type::NamedType(name), _) => coerce_to_definition(value, name, resolver),
 
-        // List values may be coercible if they are empty or their values are coercible
-        // into the inner type
+        // List values are coercible if their values are coercible into the
+        // inner type.
         (Type::ListType(t), Value::List(ref values)) => {
-            if values.is_empty() {
-                Some(Value::List(values.clone()))
-            } else {
-                let mut coerced_values = vec![];
+            let mut coerced_values = vec![];
 
-                // Coerce the list values individually
-                for value in values {
-                    if let Some(v) = coerce_value(value, t, resolver) {
-                        coerced_values.push(v);
-                    } else {
-                        // Fail if not all values could be coerced
-                        return None;
-                    }
+            // Coerce the list values individually
+            for value in values {
+                if let Some(v) = coerce_value(value, t, resolver) {
+                    coerced_values.push(v);
+                } else {
+                    // Fail if not all values could be coerced
+                    return None;
                 }
-
-                Some(Value::List(coerced_values))
             }
+
+            Some(Value::List(coerced_values))
         }
 
-        // Everything else is unsupported for now
-        _ => None,
+        // Otherwise the list type is not coercible.
+        (Type::ListType(_), _) => None,
     }
 }
 

@@ -83,13 +83,10 @@ fn build_filter(
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     match arguments.get(&"where".to_string()) {
-        Some(value) => match value {
-            q::Value::Object(object) => Ok(object),
-            _ => return Err(QueryExecutionError::InvalidFilterError),
-        },
-        None => return Ok(None),
+        Some(q::Value::Object(object)) => build_filter_from_object(entity, object),
+        None | Some(q::Value::Null) => Ok(None),
+        _ => Err(QueryExecutionError::InvalidFilterError),
     }
-    .and_then(|object| build_filter_from_object(entity, &object))
 }
 
 /// Parses a GraphQL input object into a EntityFilter, if present.
