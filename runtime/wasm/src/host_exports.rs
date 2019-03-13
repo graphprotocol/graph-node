@@ -315,7 +315,13 @@ where
         &self,
         bytes: Vec<u8>,
     ) -> Result<serde_json::Value, HostExportError<impl ExportError>> {
-        serde_json::from_reader(&*bytes).map_err(HostExportError)
+        serde_json::from_reader(&*bytes).map_err(|e| {
+            HostExportError(format!(
+                "Failed to parse byte array to JSON. error: {error}, bytes: `{bytes:?}`",
+                error = e,
+                bytes = bytes,
+            ))
+        })
     }
 
     pub(crate) fn ipfs_cat(
