@@ -97,11 +97,11 @@ end;
 $$ language plpgsql;
 
 -- remove unused stored procs
-drop function if exists revert_transaction;
-drop function if exists revert_entity_event;
+drop function if exists revert_transaction();
+drop function if exists revert_entity_event();
 
 -- remove some old, never used procs while we are at it
-drop function if exists revert_block_group;
-drop function if exists revert_transaction_group;
-drop function if exists rerun_entity;
-drop function if exists rerun_entity_history_event;
+drop function if exists revert_block_group();
+drop function if exists revert_transaction_group();
+drop function if exists rerun_entity();
+drop function if exists rerun_entity_history_event();
