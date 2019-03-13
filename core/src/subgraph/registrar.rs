@@ -350,8 +350,6 @@ fn start_subgraph<P: SubgraphAssignmentProviderTrait>(
                 Err(SubgraphAssignmentProviderError::AlreadyRunning(_)) => Ok(()),
                 Err(e) => {
                     // Errors here are likely an issue with the subgraph.
-                    // These will be recorded eventually so that they can be displayed
-                    // in a UI.
                     error!(
                         logger,
                         "Subgraph instance failed to start";
