@@ -56,6 +56,8 @@ where
         id: SubgraphDeploymentId,
     ) -> Box<Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static> {
         let self_clone = self.clone();
+        let store = self.store.clone();
+        let subgraph_id = id.clone();
 
         let link = format!("/ipfs/{}", id);
 
@@ -101,6 +103,13 @@ where
                             .map_err(|e| panic!("failed to forward subgraph: {}", e))
                             .map(|_| ()),
                     )
+                })
+                .map_err(move |e| {
+                    let _ = store.apply_entity_operations(
+                        SubgraphDeploymentEntity::update_failed_operations(&subgraph_id, true),
+                        EventSource::None,
+                    );
+                    e
                 }),
         )
     }
