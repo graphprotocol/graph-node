@@ -620,13 +620,15 @@ impl TryFromValue for EthereumContractSourceEntity {
 }
 
 #[derive(Debug)]
-pub struct EthereumContractMappingEntity {
+struct EthereumContractMappingEntity {
     pub kind: String,
     pub api_version: String,
     pub language: String,
     pub file: String,
     pub entities: Vec<String>,
     pub abis: Vec<EthereumContractAbiEntity>,
+    pub block_handler: Option<EthereumBlockHandlerEntity>,
+    pub transaction_handlers: Vec<EthereumTransactionHandlerEntity>,
     pub event_handlers: Vec<EthereumContractEventHandlerEntity>,
 }
 
@@ -683,6 +685,16 @@ impl<'a> From<&'a super::Mapping> for EthereumContractMappingEntity {
             file: mapping.link.link.clone(),
             entities: mapping.entities.clone(),
             abis: mapping.abis.iter().map(Into::into).collect(),
+            block_handler: mapping
+                .block_handler
+                .clone()
+                .map(|block_handler| block_handler.into()),
+            transaction_handlers: mapping
+                .transaction_handlers
+                .clone()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             event_handlers: mapping
                 .event_handlers
                 .clone()
@@ -759,6 +771,43 @@ impl TryFromValue for EthereumContractAbiEntity {
             name: map.get_required("name")?,
             file: map.get_required("file")?,
         })
+    }
+}
+
+pub struct EthereumBlockHandlerEntity {
+    handler: String,
+}
+
+impl TypedEntity for EthereumBlockHandlerEntity {
+    const TYPENAME: &'static str = "EthereumBlockHandlerEntity";
+    type IdType = String;
+}
+
+impl From<super::MappingBlockHandler> for EthereumBlockHandlerEntity {
+    fn from(block_handler: super::MappingBlockHandler) -> Self {
+        Self {
+            handler: block_handler.handler,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct EthereumTransactionHandlerEntity {
+    function: String,
+    handler: String,
+}
+
+impl TypedEntity for EthereumTransactionHandlerEntity {
+    const TYPENAME: &'static str = "EthereumTransactionHandlerEntity";
+    type IdType = String;
+}
+
+impl From<super::MappingTransactionHandler> for EthereumTransactionHandlerEntity {
+    fn from(transaction_handler: super::MappingTransactionHandler) -> Self {
+        Self {
+            function: transaction_handler.function,
+            handler: transaction_handler.handler,
+        }
     }
 }
 
