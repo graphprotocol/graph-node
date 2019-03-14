@@ -6,62 +6,20 @@ extern crate graph;
 extern crate graph_store_postgres;
 extern crate hex;
 
-use crate::tokio::runtime::Runtime;
 use diesel::pg::PgConnection;
 use diesel::*;
-use std::env;
 use std::str::FromStr;
-use std::sync::Mutex;
 use std::time::Duration;
+use test_store::*;
 
 use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityRange};
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::*;
-use graph::util::log;
 use graph::web3::types::H256;
-use graph_store_postgres::{db_schema, Store as DieselStore, StoreConfig};
-
-/// Helper function to ensure and obtain the Postgres URL to use for testing.
-fn postgres_test_url() -> String {
-    std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL")
-        .expect("The THEGRAPH_STORE_POSTGRES_DIESEL_URL environment variable is not set")
-        .into_string()
-        .unwrap()
-}
+use graph_store_postgres::{db_schema, Store as DieselStore};
 
 lazy_static! {
-    static ref LOGGER:Logger = match env::var_os("GRAPH_LOG") {
-        Some(_) => log::logger(false),
-        None => Logger::root(slog::Discard, o!()),
-    };
-    // Create Store instance once for use with each of the tests
-    static ref STORE_MUTEX: Mutex<(Arc<DieselStore>, Runtime)> = {
-        let mut runtime = Runtime::new().unwrap();
-        let store = runtime.block_on(future::lazy(|| -> Result<_, ()> {
-            // Set up Store
-            let logger = &*LOGGER;
-            let postgres_url = postgres_test_url();
-            let net_identifiers = EthereumNetworkIdentifier {
-                net_version: "graph test suite".to_owned(),
-                genesis_block_hash: TEST_BLOCK_0_PTR.hash,
-            };
-            let network_name = "fake_network".to_owned();
-
-            Ok(Arc::new(DieselStore::new(
-                StoreConfig {
-                    postgres_url,
-                    network_name,
-                },
-                &logger,
-                net_identifiers,
-            )))
-        })).expect("could not create Diesel Store instance for test suite");
-
-        // Also return the tokio Runtime that should be used when interacting with this Store
-        Mutex::new((store, runtime))
-    };
-
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId =
         SubgraphDeploymentId::new("testsubgraph").unwrap();
     static ref TEST_BLOCK_0_PTR: EthereumBlockPointer = (
@@ -114,15 +72,15 @@ where
     R::Error: Send + Debug,
     R::Future: Send,
 {
-    // Lock regardless of poisoning.
-    let mut guard = match STORE_MUTEX.lock() {
+    let store = STORE.clone();
+
+    // Lock regardless of poisoning. This also forces sequential test execution.
+    let mut runtime = match STORE_RUNTIME.lock() {
         Ok(guard) => guard,
         Err(err) => err.into_inner(),
     };
-    let (ref store_ref, ref mut runtime_ref) = *guard;
-    let store = store_ref.clone();
 
-    runtime_ref
+    runtime
         .block_on(future::lazy(move || {
             // Reset state before starting
             remove_test_data();

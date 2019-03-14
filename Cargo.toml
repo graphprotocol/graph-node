@@ -10,5 +10,6 @@ members = [
     "server/http",
     "server/json-rpc",
     "store/postgres",
+    "store/test-store",
     "graph",
 ]

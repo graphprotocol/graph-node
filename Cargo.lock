@@ -783,13 +783,11 @@ name = "graph-core"
 version = "0.5.0"
 dependencies = [
  "chrono 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "diesel 1.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.5.0",
  "graph-graphql 0.5.0",
  "graph-mock 0.5.0",
  "graph-runtime-wasm 0.5.0",
- "graph-store-postgres 0.5.0",
  "graphql-parser 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "ipfs-api 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -800,6 +798,7 @@ dependencies = [
  "serde 1.0.88 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.38 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_yaml 0.7.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "test-store 0.1.0",
  "walkdir 2.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -954,6 +953,7 @@ dependencies = [
  "lru_time_cache 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "postgres 0.15.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.88 (registry+https://github.com/rust-lang/crates.io-index)",
+ "test-store 0.1.0",
  "uuid 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -2447,6 +2447,15 @@ dependencies = [
  "libc 0.2.49 (registry+https://github.com/rust-lang/crates.io-index)",
  "redox_syscall 0.1.51 (registry+https://github.com/rust-lang/crates.io-index)",
  "redox_termios 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "test-store"
+version = "0.1.0"
+dependencies = [
+ "graph 0.5.0",
+ "graph-store-postgres 0.5.0",
+ "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

@@ -1,55 +1,8 @@
 // Tests for graphql interfaces.
 
-extern crate diesel;
-extern crate graph;
-extern crate graph_core;
-#[macro_use]
-extern crate lazy_static;
-extern crate graph_graphql;
-extern crate graph_store_postgres;
-extern crate graphql_parser;
-extern crate hex;
-
-use crate::tokio::runtime::Runtime;
-
-use graph::prelude::{Store as StoreTrait, *};
-use graph::web3::types::H256;
+use graph::prelude::*;
 use graph_graphql::prelude::{execute_query, QueryExecutionOptions, StoreResolver};
-use graph_store_postgres::{Store, StoreConfig};
-
-/// Helper function to ensure and obtain the Postgres URL to use for testing.
-fn postgres_test_url() -> String {
-    std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL")
-        .expect("The THEGRAPH_STORE_POSTGRES_DIESEL_URL environment variable is not set")
-        .into_string()
-        .unwrap()
-}
-
-lazy_static! {
-    // Create Store instance once for use with each of the tests
-    static ref STORE: Arc<Store> = {
-            let mut runtime = Runtime::new().unwrap();
-            let store = runtime.block_on(future::lazy(|| -> Result<_, ()> {
-                let logger = Logger::root(slog::Discard, o!());
-                let postgres_url = postgres_test_url();
-                let net_identifiers = EthereumNetworkIdentifier {
-                    net_version: "graph test suite".to_owned(),
-                    genesis_block_hash: H256::from("0xbd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"),
-                };
-                let network_name = "fake_network".to_owned();
-
-                Ok(Arc::new(Store::new(
-                    StoreConfig {
-                        postgres_url,
-                        network_name,
-                    },
-                    &logger,
-                    net_identifiers,
-                )))
-                })).unwrap();
-            store
-    };
-}
+use test_store::*;
 
 // `entities` is `(entity, type)`.
 fn insert_and_query(
