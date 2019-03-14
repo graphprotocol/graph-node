@@ -79,8 +79,8 @@ where
             // a `bands` or `band` field in a `Musician` type.
             //
             // Our goal here is to identify the ID of the parent entity (e.g. the ID of
-            // a band) and add a `Contains("bands", <id>)` or `Equal("band", <id>)` filter
-            // to the arguments
+            // a band) and add a `Contains("bands", [<id>])` or `Equal("band", <id>)`
+            // filter to the arguments.
 
             let field_name = derived_from_field.name.clone();
 
@@ -103,9 +103,13 @@ where
             // single value type, we either create a `Contains` or `Equal`
             // filter argument
             let filter = match derived_from_field.field_type {
-                s::Type::ListType(_) => EntityFilter::Contains(field_name, parent_id),
+                s::Type::ListType(_) => {
+                    EntityFilter::Contains(field_name, Value::List(vec![parent_id]))
+                }
                 s::Type::NonNullType(ref inner) => match inner.deref() {
-                    s::Type::ListType(_) => EntityFilter::Contains(field_name, parent_id),
+                    s::Type::ListType(_) => {
+                        EntityFilter::Contains(field_name, Value::List(vec![parent_id]))
+                    }
                     _ => EntityFilter::Equal(field_name, parent_id),
                 },
                 _ => EntityFilter::Equal(field_name, parent_id),
