@@ -363,11 +363,11 @@ impl RuntimeHostTrait for RuntimeHost {
                     )
                 })
                 .and_then(|_| {
-                    result_receiver.map_err(move |_| {
+                    result_receiver.map_err(move |e| {
                         format_err!(
-                            "Mapping terminated before finishing to handle \
-                             Ethereum event: {}",
+                            "Mapping terminated with error when handling event `{}`: {}",
                             event_signature,
+                            e
                         )
                     })
                 })
