@@ -252,9 +252,9 @@ where
     ) -> Result<String, HostExportError<impl ExportError>> {
         let s = String::from_utf8(bytes).map_err(|e| {
             HostExportError(format!(
-                "Failed to parse Byte array using `toString()`. This may be caused by attempting \
+                "Failed to parse byte array using `toString()`. This may be caused by attempting \
                  to convert a value such as an address that cannot be parsed to a unicode string. \
-                 Try 'toHexString()' instead. error: {error},  bytes:`{bytes:?}`",
+                 Try 'toHexString()' instead. Bytes: `{bytes:?}`. Error: {error}",
                 error = e.utf8_error(),
                 bytes = e.into_bytes(),
             ))
@@ -317,9 +317,9 @@ where
     ) -> Result<serde_json::Value, HostExportError<impl ExportError>> {
         serde_json::from_reader(&*bytes).map_err(|e| {
             HostExportError(format!(
-                "Failed to parse byte array to JSON. error: {error}, bytes: `{bytes:?}`",
-                error = e,
+                "Failed to parse JSON from byte array. Bytes: `{bytes:?}`. Error: {error}",
                 bytes = bytes,
+                error = e,
             ))
         })
     }
