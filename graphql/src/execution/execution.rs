@@ -788,37 +788,53 @@ where
         .into_iter()
         .flatten()
     {
-        // Look up the argument value, resolve it if it is a variable
-        let mut value: Option<&q::Value> =
-            qast::get_argument_value(&field.arguments, &argument_def.name);
-        if let Some(q::Value::Variable(name)) = value {
-            value = ctx.variable_values.get(name);
-        }
-
-        // Use the default value if necessary and present.
-        let value = value.or(argument_def.default_value.as_ref());
-
-        let value = match value {
-            None => {
-                if sast::is_non_null_type(&argument_def.value_type) {
-                    errors.push(QueryExecutionError::MissingArgumentError(
-                        field.position,
-                        argument_def.name.to_owned(),
-                    ));
-                };
-                continue;
+        match resolve_argument(&ctx, field, &argument_def) {
+            Err(e) => errors.push(e),
+            Ok(Some(value)) => {
+                match coerce_argument_value(ctx.clone(), field, &argument_def, value) {
+                    Err(e) => errors.extend(e),
+                    Ok(value) => {
+                        coerced_values.insert(&argument_def.name, value);
+                    }
+                }
             }
-            Some(value) => value,
-        };
-
-        let value = coerce_argument_value(ctx.clone(), field, &argument_def, value)?;
-        coerced_values.insert(&argument_def.name, value);
+            Ok(None) => {}
+        }
     }
 
     if errors.is_empty() {
         Ok(coerced_values)
     } else {
         Err(errors)
+    }
+}
+
+fn resolve_argument<'a>(
+    ctx: &'a ExecutionContext<'_, impl Resolver, impl Resolver>,
+    field: &'a q::Field,
+    argument: &'a s::InputValue,
+) -> Result<Option<&'a q::Value>, QueryExecutionError> {
+    // Look up the argument value, resolve it if it is a variable
+    let mut value: Option<&q::Value> = qast::get_argument_value(&field.arguments, &argument.name);
+    if let Some(q::Value::Variable(name)) = value {
+        value = ctx.variable_values.get(name);
+    }
+
+    // Use the default value if necessary and present.
+    let value = value.or(argument.default_value.as_ref());
+
+    match value {
+        None => {
+            if sast::is_non_null_type(&argument.value_type) {
+                Err(QueryExecutionError::MissingArgumentError(
+                    field.position,
+                    argument.name.to_owned(),
+                ))
+            } else {
+                Ok(None)
+            }
+        }
+        Some(_) => Ok(value),
     }
 }
 
