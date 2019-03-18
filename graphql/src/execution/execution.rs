@@ -8,6 +8,7 @@ use std::time::Instant;
 
 use graph::prelude::*;
 
+use crate::values::coercion;
 use crate::prelude::*;
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
@@ -791,7 +792,7 @@ where
         match resolve_argument(&ctx, field, &argument_def) {
             Err(e) => errors.push(e),
             Ok(Some(value)) => {
-                match coerce_argument_value(ctx.clone(), field, &argument_def, value) {
+                match coercion::coerce_argument_value(ctx.clone(), field, &argument_def, value) {
                     Err(e) => errors.extend(e),
                     Ok(value) => {
                         coerced_values.insert(&argument_def.name, value);
@@ -836,40 +837,6 @@ fn resolve_argument<'a>(
         }
         Some(_) => Ok(value),
     }
-}
-
-/// Coerces a single argument value into a GraphQL value.
-fn coerce_argument_value<'a, R1, R2>(
-    ctx: ExecutionContext<'a, R1, R2>,
-    field: &q::Field,
-    argument: &s::InputValue,
-    value: &q::Value,
-) -> Result<q::Value, Vec<QueryExecutionError>>
-where
-    R1: Resolver,
-    R2: Resolver,
-{
-    use crate::values::coercion::coerce_value;
-    use graphql_parser::schema::Name;
-
-    let resolver = |name: &Name| {
-        sast::get_named_type(
-            if ctx.introspecting {
-                ctx.introspection_schema
-            } else {
-                &ctx.schema.document
-            },
-            name,
-        )
-    };
-
-    coerce_value(&value, &argument.value_type, &resolver).ok_or_else(|| {
-        vec![QueryExecutionError::InvalidArgumentError(
-            field.position,
-            argument.name.to_owned(),
-            value.clone(),
-        )]
-    })
 }
 
 fn get_field_type<'a, R1, R2>(

@@ -1,5 +1,8 @@
-use graphql_parser::query::Value;
-use graphql_parser::schema::{EnumType, Name, ScalarType, Type, TypeDefinition};
+use graphql_parser::query::{Field, Value};
+use graphql_parser::schema::{EnumType, Name, ScalarType, Type, TypeDefinition, InputValue};
+use crate::prelude::*;
+use graph::prelude::QueryExecutionError;
+use crate::schema;
 
 /// A GraphQL value that can be coerced according to a type.
 pub trait MaybeCoercible<T> {
@@ -69,6 +72,33 @@ fn coerce_to_definition<'a>(
         // Everything else remains unimplemented
         _ => None,
     }
+}
+
+/// Coerces a single argument value into a GraphQL value.
+pub(crate) fn coerce_argument_value(
+    ctx: ExecutionContext<'_, impl Resolver, impl Resolver>,
+    field: &Field,
+    argument: &InputValue,
+    value: &Value,
+) -> Result<Value, Vec<QueryExecutionError>> {
+    let resolver = |name: &Name| {
+        schema::ast::get_named_type(
+            if ctx.introspecting {
+                ctx.introspection_schema
+            } else {
+                &ctx.schema.document
+            },
+            name,
+        )
+    };
+
+    coerce_value(&value, &argument.value_type, &resolver).ok_or_else(|| {
+        vec![QueryExecutionError::InvalidArgumentError(
+            field.position,
+            argument.name.to_owned(),
+            value.clone(),
+        )]
+    })
 }
 
 /// `R` is a name resolver.
