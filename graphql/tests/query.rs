@@ -1,20 +1,25 @@
-extern crate failure;
-extern crate futures;
-extern crate graphql_parser;
 #[macro_use]
 extern crate pretty_assertions;
-extern crate graph;
-extern crate graph_core;
-extern crate graph_graphql;
 
 use graph::prelude::*;
 use graph_graphql::prelude::*;
 use graphql_parser::query as q;
+use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::time::Instant;
+use test_store::STORE;
 
-fn test_schema() -> Schema {
-    let mut schema = Schema::parse(
+lazy_static! {
+    static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId = {
+        // Also populate the store when the ID is first accessed.
+        let id = SubgraphDeploymentId::new("graphqlTestsQuery").unwrap();
+        insert_test_entities(&**STORE, id.clone());
+        id
+    };
+}
+
+fn test_schema(id: SubgraphDeploymentId) -> Schema {
+    Schema::parse(
         "
             type Musician @entity {
                 id: ID!
@@ -36,212 +41,120 @@ fn test_schema() -> Schema {
                 writtenBy: Musician!
             }
             ",
-        SubgraphDeploymentId::new("testschema").unwrap(),
+        id,
     )
-    .expect("Test schema invalid");
+    .expect("Test schema invalid")
+}
 
-    schema.document =
-        api_schema(&schema.document).expect("Failed to derive API schema from test schema");
+fn api_test_schema() -> Schema {
+    let mut schema = test_schema(TEST_SUBGRAPH_ID.clone());
+    schema.document = api_schema(&schema.document).expect("Failed to derive API schema");
     schema
 }
 
-#[derive(Clone)]
-struct TestStore {
-    entities: Vec<Entity>,
-}
+fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
+    // First insert the manifest.
+    let manifest = SubgraphManifest {
+        id: id.clone(),
+        location: String::new(),
+        spec_version: "1".to_owned(),
+        description: None,
+        repository: None,
+        schema: test_schema(id.clone()),
+        data_sources: vec![],
+    };
 
-impl TestStore {
-    pub fn new() -> Self {
-        TestStore {
-            entities: vec![
-                Entity::from(vec![
-                    ("__typename", Value::from("Musician")),
-                    ("id", Value::from("m1")),
-                    ("name", Value::from("John")),
-                    ("mainBand", Value::from("b1")),
-                    (
-                        "bands",
-                        Value::List(vec![Value::from("b1"), Value::from("b2")]),
-                    ),
-                ]),
-                Entity::from(vec![
-                    ("__typename", Value::from("Musician")),
-                    ("id", Value::from("m2")),
-                    ("name", Value::from("Lisa")),
-                    ("mainBand", Value::from("b1")),
-                    ("bands", Value::List(vec![Value::from("b1")])),
-                ]),
-                Entity::from(vec![
-                    ("__typename", Value::from("Musician")),
-                    ("id", Value::from("m3")),
-                    ("name", Value::from("Tom")),
-                    ("mainBand", Value::from("b2")),
-                    (
-                        "bands",
-                        Value::List(vec![Value::from("b1"), Value::from("b2")]),
-                    ),
-                ]),
-                Entity::from(vec![
-                    ("__typename", Value::from("Musician")),
-                    ("id", Value::from("m4")),
-                    ("name", Value::from("Valerie")),
-                    ("bands", Value::List(vec![])),
-                    ("writtenSongs", Value::List(vec![Value::from("s2")])),
-                ]),
-                Entity::from(vec![
-                    ("__typename", Value::from("Band")),
-                    ("id", Value::from("b1")),
-                    ("name", Value::from("The Musicians")),
-                ]),
-                Entity::from(vec![
-                    ("__typename", Value::from("Band")),
-                    ("id", Value::from("b2")),
-                    ("name", Value::from("The Amateurs")),
-                ]),
-                Entity::from(vec![
-                    ("__typename", Value::from("Song")),
-                    ("id", Value::from("s1")),
-                    ("title", Value::from("Cheesy Tune")),
-                    ("writtenBy", Value::from("m1")),
-                ]),
-                Entity::from(vec![
-                    ("__typename", Value::from("Song")),
-                    ("id", Value::from("s2")),
-                    ("title", Value::from("Rock Tune")),
-                    ("writtenBy", Value::from("m2")),
-                ]),
-                Entity::from(vec![
-                    ("__typename", Value::from("Song")),
-                    ("id", Value::from("s3")),
-                    ("title", Value::from("Pop Tune")),
-                    ("writtenBy", Value::from("m1")),
-                ]),
-                Entity::from(vec![
-                    ("__typename", Value::from("Song")),
-                    ("id", Value::from("s4")),
-                    ("title", Value::from("Folk Tune")),
-                    ("writtenBy", Value::from("m3")),
-                ]),
-            ],
-        }
-    }
-}
+    store
+        .apply_entity_operations(
+            SubgraphDeploymentEntity::new(&manifest, false, false, Default::default(), 1)
+                .create_operations_replace(&id),
+            EventSource::None,
+        )
+        .unwrap();
 
-impl Store for TestStore {
-    fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
-        unimplemented!()
-    }
+    let entities = vec![
+        Entity::from(vec![
+            ("__typename", Value::from("Musician")),
+            ("id", Value::from("m1")),
+            ("name", Value::from("John")),
+            ("mainBand", Value::from("b1")),
+            (
+                "bands",
+                Value::List(vec![Value::from("b1"), Value::from("b2")]),
+            ),
+        ]),
+        Entity::from(vec![
+            ("__typename", Value::from("Musician")),
+            ("id", Value::from("m2")),
+            ("name", Value::from("Lisa")),
+            ("mainBand", Value::from("b1")),
+            ("bands", Value::List(vec![Value::from("b1")])),
+        ]),
+        Entity::from(vec![
+            ("__typename", Value::from("Musician")),
+            ("id", Value::from("m3")),
+            ("name", Value::from("Tom")),
+            ("mainBand", Value::from("b2")),
+            (
+                "bands",
+                Value::List(vec![Value::from("b1"), Value::from("b2")]),
+            ),
+        ]),
+        Entity::from(vec![
+            ("__typename", Value::from("Musician")),
+            ("id", Value::from("m4")),
+            ("name", Value::from("Valerie")),
+            ("bands", Value::List(vec![])),
+            ("writtenSongs", Value::List(vec![Value::from("s2")])),
+        ]),
+        Entity::from(vec![
+            ("__typename", Value::from("Band")),
+            ("id", Value::from("b1")),
+            ("name", Value::from("The Musicians")),
+        ]),
+        Entity::from(vec![
+            ("__typename", Value::from("Band")),
+            ("id", Value::from("b2")),
+            ("name", Value::from("The Amateurs")),
+        ]),
+        Entity::from(vec![
+            ("__typename", Value::from("Song")),
+            ("id", Value::from("s1")),
+            ("title", Value::from("Cheesy Tune")),
+            ("writtenBy", Value::from("m1")),
+        ]),
+        Entity::from(vec![
+            ("__typename", Value::from("Song")),
+            ("id", Value::from("s2")),
+            ("title", Value::from("Rock Tune")),
+            ("writtenBy", Value::from("m2")),
+        ]),
+        Entity::from(vec![
+            ("__typename", Value::from("Song")),
+            ("id", Value::from("s3")),
+            ("title", Value::from("Pop Tune")),
+            ("writtenBy", Value::from("m1")),
+        ]),
+        Entity::from(vec![
+            ("__typename", Value::from("Song")),
+            ("id", Value::from("s4")),
+            ("title", Value::from("Folk Tune")),
+            ("writtenBy", Value::from("m3")),
+        ]),
+    ];
 
-    fn set_block_ptr_with_no_changes(
-        &self,
-        _: SubgraphDeploymentId,
-        _: EthereumBlockPointer,
-        _: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
+    let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
+        key: EntityKey {
+            subgraph_id: id.clone(),
+            entity_type: data["__typename"].clone().as_string().unwrap(),
+            entity_id: data["id"].clone().as_string().unwrap(),
+        },
+        data,
+    });
 
-    fn apply_entity_operations(
-        &self,
-        _: Vec<EntityOperation>,
-        _: EventSource,
-    ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn build_entity_attribute_indexes(
-        &self,
-        _: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), SubgraphAssignmentProviderError> {
-        unimplemented!()
-    }
-
-    fn transact_block_operations(
-        &self,
-        _: SubgraphDeploymentId,
-        _: EthereumBlockPointer,
-        _: EthereumBlockPointer,
-        _: Vec<EntityOperation>,
-    ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn revert_block_operations(
-        &self,
-        _: SubgraphDeploymentId,
-        _: EthereumBlockPointer,
-        _: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
-        unimplemented!()
-    }
-
-    fn count_entities(&self, _: SubgraphDeploymentId) -> Result<u64, Error> {
-        Ok(1)
-    }
-
-    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
-        self.entities
-            .iter()
-            .find(|entity| {
-                entity.get("id") == Some(&Value::String(key.entity_id.clone()))
-                    && entity.get("__typename") == Some(&Value::String(key.entity_type.clone()))
-            })
-            .map_or(
-                Err(QueryExecutionError::ResolveEntitiesError(String::from(
-                    "Mock get query error",
-                ))),
-                |entity| Ok(Some(entity.clone())),
-            )
-    }
-
-    fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
-        let entity_name = Value::String(query.entity_types[0].clone());
-
-        let entities = self
-            .entities
-            .iter()
-            .filter(|entity| entity.get("__typename") == Some(&entity_name))
-            // We're only supporting the following filters here to to test
-            // the filters generated for reference fields and @derivedFrom fields:
-            //
-            // - And(Contains(...))
-            // - And(Equal(...))
-            // - And(Or([Equal(...), ...]))
-            .filter(|entity| {
-                query
-                    .filter
-                    .as_ref()
-                    .and_then(|filter| match filter {
-                        EntityFilter::And(filters) => filters.get(0),
-                        _ => None,
-                    })
-                    .map(|filter| match filter {
-                        EntityFilter::Equal(k, v) => entity.get(k) == Some(&v),
-                        EntityFilter::Contains(k, v) => match entity.get(k) {
-                            Some(Value::List(values)) => values.contains(v),
-                            _ => false,
-                        },
-                        EntityFilter::Or(filters) => filters.iter().any(|filter| match filter {
-                            EntityFilter::Equal(k, v) => entity.get(k) == Some(&v),
-                            _ => unimplemented!(),
-                        }),
-                        _ => unimplemented!(),
-                    })
-                    .unwrap_or(true)
-            })
-            .map(|entity| entity.clone())
-            .collect();
-
-        Ok(entities)
-    }
-
-    fn find_one(&self, query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
-        Ok(self.find(query)?.pop())
-    }
+    store
+        .apply_entity_operations(insert_ops.collect(), EventSource::None)
+        .unwrap();
 }
 
 fn execute_query_document(query: q::Document) -> QueryResult {
@@ -253,14 +166,13 @@ fn execute_query_document_with_variables(
     variables: Option<QueryVariables>,
 ) -> QueryResult {
     let query = Query {
-        schema: Arc::new(test_schema()),
+        schema: Arc::new(api_test_schema()),
         document: query,
         variables,
     };
 
     let logger = Logger::root(slog::Discard, o!());
-    let store = Arc::new(TestStore::new());
-    let store_resolver = StoreResolver::new(&logger, store);
+    let store_resolver = StoreResolver::new(&logger, STORE.clone());
 
     let options = QueryExecutionOptions {
         logger: logger,
@@ -277,7 +189,7 @@ fn can_query_one_to_one_relationship() {
         graphql_parser::parse_query(
             "
             query {
-                musicians {
+                musicians(first: 100) {
                     name
                     mainBand {
                         name
@@ -695,13 +607,12 @@ fn include_directive_works_with_query_variables() {
 #[test]
 fn instant_timeout() {
     let query = Query {
-        schema: Arc::new(test_schema()),
+        schema: Arc::new(api_test_schema()),
         document: graphql_parser::parse_query("query { musicians(first: 100) { name } }").unwrap(),
         variables: None,
     };
     let logger = Logger::root(slog::Discard, o!());
-    let store = Arc::new(TestStore::new());
-    let store_resolver = StoreResolver::new(&logger, store);
+    let store_resolver = StoreResolver::new(&logger, STORE.clone());
 
     let options = QueryExecutionOptions {
         logger: logger,
@@ -713,6 +624,56 @@ fn instant_timeout() {
         QueryError::ExecutionError(QueryExecutionError::Timeout) => (), // Expected
         _ => panic!("did not time out"),
     };
+}
+
+#[test]
+fn variable_defaults() {
+    let query = graphql_parser::parse_query(
+        "
+        query musicians($orderDir: OrderDirection = desc) {
+          bands(first: 2, orderBy: id, orderDirection: $orderDir) {
+            id
+          }
+        }
+    ",
+    )
+    .expect("invalid test query");
+
+    // Assert that missing variables are defaulted.
+    let result =
+        execute_query_document_with_variables(query.clone(), Some(QueryVariables::default()));
+
+    assert!(result.errors.is_none());
+    assert_eq!(
+        result.data,
+        Some(object_value(vec![(
+            "bands",
+            q::Value::List(vec![
+                object_value(vec![("id", q::Value::String(String::from("b2")))]),
+                object_value(vec![("id", q::Value::String(String::from("b1")))])
+            ],)
+        )]))
+    );
+
+    // Assert that null variables are not defaulted.
+    let result = execute_query_document_with_variables(
+        query,
+        Some(QueryVariables::new(HashMap::from_iter(
+            vec![(String::from("orderDir"), q::Value::Null)].into_iter(),
+        ))),
+    );
+
+    assert!(result.errors.is_none());
+    assert_eq!(
+        result.data,
+        Some(object_value(vec![(
+            "bands",
+            q::Value::List(vec![
+                object_value(vec![("id", q::Value::String(String::from("b1")))]),
+                object_value(vec![("id", q::Value::String(String::from("b2")))])
+            ],)
+        )]))
+    );
 }
 
 #[test]
