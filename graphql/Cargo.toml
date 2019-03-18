@@ -17,3 +17,4 @@ lazy_static = "1.2.0"
 pretty_assertions = "0.5.1"
 graph-mock = { path = "../mock" }
 graph-core = { path = "../core" }
+test-store = { path = "../store/test-store" }
