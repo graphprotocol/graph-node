@@ -110,7 +110,7 @@ where
 
     let fields = grouped_field_set.get_index(0).unwrap();
     let field = fields.1[0];
-    let argument_values = coerce_argument_values(ctx.clone(), subscription_type, field)?;
+    let argument_values = coerce_argument_values(&ctx, subscription_type, field)?;
 
     resolve_field_stream(ctx, subscription_type, field, argument_values)
 }

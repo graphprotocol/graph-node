@@ -305,7 +305,7 @@ where
     R1: Resolver,
     R2: Resolver,
 {
-    coerce_argument_values(ctx.clone(), object_type, field)
+    coerce_argument_values(&ctx, object_type, field)
         .and_then(|argument_values| {
             resolve_field_value(
                 ctx.clone(),
@@ -774,7 +774,7 @@ fn merge_selection_sets(fields: Vec<&q::Field>) -> q::SelectionSet {
 
 /// Coerces argument values into GraphQL values.
 pub fn coerce_argument_values<'a, R1, R2>(
-    ctx: ExecutionContext<'_, R1, R2>,
+    ctx: &ExecutionContext<'_, R1, R2>,
     object_type: &'a s::ObjectType,
     field: &q::Field,
 ) -> Result<HashMap<&'a q::Name, q::Value>, Vec<QueryExecutionError>>
@@ -785,11 +785,29 @@ where
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
+    let resolver = |name: &Name| {
+        sast::get_named_type(
+            if ctx.introspecting {
+                ctx.introspection_schema
+            } else {
+                &ctx.schema.document
+            },
+            name,
+        )
+    };
+
     for argument_def in sast::get_argument_definitions(object_type, &field.name)
         .into_iter()
         .flatten()
     {
-        match coercion::coerce_argument_value(ctx.clone(), field, &argument_def) {
+        let value = qast::get_argument_value(&field.arguments, &argument_def.name).cloned();
+        match coercion::coerce_input_value(
+            field.position.clone(),
+            value,
+            &argument_def,
+            &resolver,
+            &ctx.variable_values,
+        ) {
             Ok(Some(value)) => {
                 coerced_values.insert(&argument_def.name, value);
             }
