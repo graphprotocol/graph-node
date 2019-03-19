@@ -174,12 +174,9 @@ pub(crate) fn coerce_value<'a>(
 #[cfg(test)]
 mod tests {
     use graphql_parser::query::Value;
-    use graphql_parser::schema::{
-        EnumType, EnumValue, InputObjectType, ScalarType, TypeDefinition,
-    };
+    use graphql_parser::schema::{EnumType, EnumValue, ScalarType, TypeDefinition};
     use graphql_parser::Pos;
-    use std::collections::{BTreeMap, HashMap};
-    use std::iter::FromIterator;
+    use std::collections::HashMap;
 
     use super::coerce_to_definition;
 

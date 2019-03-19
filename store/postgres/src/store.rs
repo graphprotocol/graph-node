@@ -28,7 +28,7 @@ use crate::functions::{
     attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, revert_block,
     set_config,
 };
-use crate::jsonb::PgJsonbExpressionMethods;
+use crate::jsonb::PgJsonbExpressionMethods as _;
 use crate::store_events::{get_revert_event, StoreEventListener};
 
 embed_migrations!("./migrations");
@@ -463,7 +463,7 @@ impl Store {
         data: Entity,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
-        use db_schema::entities;
+        use crate::db_schema::entities;
 
         self.check_interface_entity_uniqueness(conn, &key)?;
 
@@ -530,7 +530,7 @@ impl Store {
         guard: Option<EntityFilter>,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
-        use db_schema::entities;
+        use crate::db_schema::entities;
 
         self.check_interface_entity_uniqueness(conn, &key)?;
 
