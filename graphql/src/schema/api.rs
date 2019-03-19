@@ -411,13 +411,16 @@ fn collection_arguments_for_named_type(
     let mut skip = input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string()));
     skip.default_value = Some(Value::Int(0.into()));
 
+    let mut first = input_value(
+        &"first".to_string(),
+        "",
+        Type::NonNullType(Box::new(Type::NamedType("Int".to_string()))),
+    );
+    first.default_value = Some(Value::Int(100.into()));
+
     let mut args = vec![
         skip,
-        input_value(
-            &"first".to_string(),
-            "",
-            Type::NonNullType(Box::new(Type::NamedType("Int".to_string()))),
-        ),
+        first,
         input_value(
             &"orderBy".to_string(),
             "",
