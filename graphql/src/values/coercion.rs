@@ -1,8 +1,8 @@
-use crate::prelude::*;
-use crate::{query, schema};
+use crate::schema;
 use graph::prelude::QueryExecutionError;
-use graphql_parser::query::{Field, Value};
-use graphql_parser::schema::{EnumType, InputValue, Name, ScalarType, Type, TypeDefinition};
+use graphql_parser::schema::{EnumType, InputValue, Name, ScalarType, Type, TypeDefinition, Value};
+use graphql_parser::{query as q, Pos};
+use std::collections::HashMap;
 
 /// A GraphQL value that can be coerced according to a type.
 pub trait MaybeCoercible<T> {
@@ -77,26 +77,26 @@ fn coerce_to_definition<'a>(
 /// Coerces an argument into a GraphQL value.
 ///
 /// `Ok(None)` happens when no value is found for a nullabe type.
-pub(crate) fn coerce_argument_value(
-    ctx: ExecutionContext<'_, impl Resolver, impl Resolver>,
-    field: &Field,
+pub(crate) fn coerce_input_value<'a>(
+    pos: Pos,
+    mut value: Option<Value>,
     argument: &InputValue,
+    resolver: &impl Fn(&Name) -> Option<&'a TypeDefinition>,
+    variable_values: &HashMap<q::Name, q::Value>,
 ) -> Result<Option<Value>, QueryExecutionError> {
-    // Look up the argument value, resolve it if it is a variable
-    let mut value = query::ast::get_argument_value(&field.arguments, &argument.name).cloned();
     if let Some(Value::Variable(name)) = value {
-        value = ctx.variable_values.get(&name).cloned();
-    }
+        value = variable_values.get(&name).cloned();
+    };
 
     // Use the default value if necessary and present.
-    let value = value.or(argument.default_value.clone());
+    value = value.or(argument.default_value.clone());
 
     // Extract value, checking for null or missing.
     let value = match value {
         None => {
             return if schema::ast::is_non_null_type(&argument.value_type) {
                 Err(QueryExecutionError::MissingArgumentError(
-                    field.position,
+                    pos,
                     argument.name.to_owned(),
                 ))
             } else {
@@ -106,24 +106,9 @@ pub(crate) fn coerce_argument_value(
         Some(value) => value,
     };
 
-    let resolver = |name: &Name| {
-        schema::ast::get_named_type(
-            if ctx.introspecting {
-                ctx.introspection_schema
-            } else {
-                &ctx.schema.document
-            },
-            name,
-        )
-    };
-
     Ok(Some(
-        coerce_value(&value, &argument.value_type, &resolver).ok_or_else(|| {
-            QueryExecutionError::InvalidArgumentError(
-                field.position,
-                argument.name.to_owned(),
-                value.clone(),
-            )
+        coerce_value(&value, &argument.value_type, resolver).ok_or_else(|| {
+            QueryExecutionError::InvalidArgumentError(pos, argument.name.to_owned(), value.clone())
         })?,
     ))
 }
