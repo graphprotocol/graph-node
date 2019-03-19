@@ -8,10 +8,10 @@ use std::time::Instant;
 
 use graph::prelude::*;
 
-use crate::values::coercion;
 use crate::prelude::*;
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
+use crate::values::coercion;
 
 /// Contextual information passed around during query execution.
 #[derive(Clone)]
@@ -789,17 +789,12 @@ where
         .into_iter()
         .flatten()
     {
-        match resolve_argument(&ctx, field, &argument_def) {
-            Err(e) => errors.push(e),
+        match coercion::coerce_argument_value(ctx.clone(), field, &argument_def) {
             Ok(Some(value)) => {
-                match coercion::coerce_argument_value(ctx.clone(), field, &argument_def, value) {
-                    Err(e) => errors.extend(e),
-                    Ok(value) => {
-                        coerced_values.insert(&argument_def.name, value);
-                    }
-                }
+                coerced_values.insert(&argument_def.name, value);
             }
             Ok(None) => {}
+            Err(e) => errors.push(e),
         }
     }
 
@@ -807,35 +802,6 @@ where
         Ok(coerced_values)
     } else {
         Err(errors)
-    }
-}
-
-fn resolve_argument<'a>(
-    ctx: &'a ExecutionContext<'_, impl Resolver, impl Resolver>,
-    field: &'a q::Field,
-    argument: &'a s::InputValue,
-) -> Result<Option<&'a q::Value>, QueryExecutionError> {
-    // Look up the argument value, resolve it if it is a variable
-    let mut value: Option<&q::Value> = qast::get_argument_value(&field.arguments, &argument.name);
-    if let Some(q::Value::Variable(name)) = value {
-        value = ctx.variable_values.get(name);
-    }
-
-    // Use the default value if necessary and present.
-    let value = value.or(argument.default_value.as_ref());
-
-    match value {
-        None => {
-            if sast::is_non_null_type(&argument.value_type) {
-                Err(QueryExecutionError::MissingArgumentError(
-                    field.position,
-                    argument.name.to_owned(),
-                ))
-            } else {
-                Ok(None)
-            }
-        }
-        Some(_) => Ok(value),
     }
 }
 
