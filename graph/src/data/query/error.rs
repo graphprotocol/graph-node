@@ -25,7 +25,6 @@ pub enum QueryExecutionError {
     InvalidArgumentError(Pos, String, q::Value),
     MissingArgumentError(Pos, String),
     InvalidVariableTypeError(Pos, String),
-    InvalidVariableError(Pos, String, q::Value),
     MissingVariableError(Pos, String),
     ResolveEntityError(SubgraphDeploymentId, String, String, String),
     ResolveEntitiesError(String),
@@ -96,9 +95,6 @@ impl fmt::Display for QueryExecutionError {
             }
             InvalidVariableTypeError(_, s) => {
                 write!(f, "Variable `{}` must have an input type", s)
-            }
-            InvalidVariableError(_, s, v) => {
-                write!(f, "Invalid value provided for variable `{}`: {:?}", s, v)
             }
             MissingVariableError(_, s) => {
                 write!(f, "No value provided for required variable `{}`", s)
@@ -296,7 +292,6 @@ impl Serialize for QueryError {
             | QueryError::ExecutionError(InvalidArgumentError(pos, _, _))
             | QueryError::ExecutionError(MissingArgumentError(pos, _))
             | QueryError::ExecutionError(InvalidVariableTypeError(pos, _))
-            | QueryError::ExecutionError(InvalidVariableError(pos, _, _))
             | QueryError::ExecutionError(MissingVariableError(pos, _)) => {
                 let mut location = HashMap::new();
                 location.insert("line", pos.line);
