@@ -408,14 +408,13 @@ fn collection_arguments_for_named_type(
     input_objects: &[InputObjectType],
     type_name: &Name,
 ) -> Vec<InputValue> {
+    // `first` and `skip` should be non-nullable, but the Apollo graphql client
+    // exhibts non-conforming behaviour by erroing if no value is provided for a
+    // non-nullable field, regardless of the presence of a default.
     let mut skip = input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string()));
     skip.default_value = Some(Value::Int(0.into()));
 
-    let mut first = input_value(
-        &"first".to_string(),
-        "",
-        Type::NonNullType(Box::new(Type::NamedType("Int".to_string()))),
-    );
+    let mut first = input_value(&"first".to_string(), "", Type::NamedType("Int".to_string()));
     first.default_value = Some(Value::Int(100.into()));
 
     let mut args = vec![

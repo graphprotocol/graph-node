@@ -44,7 +44,8 @@ fn build_range(
                 Err("first")
             }
         }
-        _ => unreachable!("first is a non-null Int"),
+        Some(q::Value::Null) => Ok(100),
+        _ => unreachable!("first is an Int with a default value"),
     };
 
     let skip = match arguments.get(&"skip".to_string()) {
@@ -56,6 +57,7 @@ fn build_range(
                 Err("skip")
             }
         }
+        Some(q::Value::Null) => Ok(0),
         _ => unreachable!("skip is an Int with a default value"),
     };
 
