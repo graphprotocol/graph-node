@@ -714,3 +714,61 @@ fn instant_timeout() {
         _ => panic!("did not time out"),
     };
 }
+
+#[test]
+fn skip_is_nullable() {
+    let query = graphql_parser::parse_query(
+        "
+        query musicians {
+          musicians(orderBy: id, skip: null) {
+            name
+          }
+        }
+    ",
+    )
+    .expect("invalid test query");
+
+    let result = execute_query_document_with_variables(query, None);
+
+    assert_eq!(
+        result.data,
+        Some(object_value(vec![(
+            "musicians",
+            q::Value::List(vec![
+                object_value(vec![("name", q::Value::String(String::from("John")))]),
+                object_value(vec![("name", q::Value::String(String::from("Lisa")))]),
+                object_value(vec![("name", q::Value::String(String::from("Tom")))]),
+                object_value(vec![("name", q::Value::String(String::from("Valerie")))]),
+            ],)
+        )]))
+    );
+}
+
+#[test]
+fn first_is_nullable() {
+    let query = graphql_parser::parse_query(
+        "
+        query musicians {
+          musicians(first: null, orderBy: id) {
+            name
+          }
+        }
+    ",
+    )
+    .expect("invalid test query");
+
+    let result = execute_query_document_with_variables(query, None);
+
+    assert_eq!(
+        result.data,
+        Some(object_value(vec![(
+            "musicians",
+            q::Value::List(vec![
+                object_value(vec![("name", q::Value::String(String::from("John")))]),
+                object_value(vec![("name", q::Value::String(String::from("Lisa")))]),
+                object_value(vec![("name", q::Value::String(String::from("Tom")))]),
+                object_value(vec![("name", q::Value::String(String::from("Valerie")))]),
+            ],)
+        )]))
+    );
+}
