@@ -189,7 +189,7 @@ fn can_query_one_to_one_relationship() {
         graphql_parser::parse_query(
             "
             query {
-                musicians(first: 100) {
+                musicians(first: 100, orderBy: id) {
                     name
                     mainBand {
                         name
@@ -256,7 +256,7 @@ fn can_query_one_to_many_relationships_in_both_directions() {
         graphql_parser::parse_query(
             "
         query {
-            musicians(first: 100) {
+            musicians(first: 100, orderBy: id) {
                 name
                 writtenSongs(first: 100) {
                     title
@@ -351,11 +351,11 @@ fn can_query_many_to_many_relationship() {
         graphql_parser::parse_query(
             "
             query {
-                musicians(first: 100) {
+                musicians(first: 100, orderBy: id) {
                     name
-                    bands(first: 100) {
+                    bands(first: 100, orderBy: id) {
                         name
-                        members(first: 100) {
+                        members(first: 100, orderBy: id) {
                             name
                         }
                     }
@@ -467,7 +467,7 @@ fn skip_directive_works_with_query_variables() {
     let query = graphql_parser::parse_query(
         "
         query musicians($skip: Boolean!) {
-          musicians(first: 100) {
+          musicians(first: 100, orderBy: id) {
             id @skip(if: $skip)
             name
           }
@@ -538,7 +538,7 @@ fn include_directive_works_with_query_variables() {
     let query = graphql_parser::parse_query(
         "
         query musicians($include: Boolean!) {
-          musicians(first: 100) {
+          musicians(first: 100, orderBy: id) {
             id @include(if: $include)
             name
           }
@@ -730,6 +730,39 @@ fn first_is_nullable() {
                 object_value(vec![("name", q::Value::String(String::from("Tom")))]),
                 object_value(vec![("name", q::Value::String(String::from("Valerie")))]),
             ],)
+        )]))
+    );
+}
+
+#[test]
+fn nested_variable() {
+    let query = graphql_parser::parse_query(
+        "
+        query musicians($name: String) {
+          musicians(first: 100, where: { name: $name }) {
+            name
+          }
+        }
+    ",
+    )
+    .expect("invalid test query");
+
+    let result = execute_query_document_with_variables(
+        query,
+        Some(QueryVariables::new(HashMap::from_iter(
+            vec![(String::from("name"), q::Value::String("Lisa".to_string()))].into_iter(),
+        ))),
+    );
+
+    assert!(result.errors.is_none());
+    assert_eq!(
+        result.data,
+        Some(object_value(vec![(
+            "musicians",
+            q::Value::List(vec![object_value(vec![(
+                "name",
+                q::Value::String(String::from("Lisa"))
+            )]),],)
         )]))
     );
 }

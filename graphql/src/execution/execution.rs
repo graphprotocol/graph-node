@@ -801,13 +801,7 @@ where
         .flatten()
     {
         let value = qast::get_argument_value(&field.arguments, &argument_def.name).cloned();
-        match coercion::coerce_input_value(
-            field.position.clone(),
-            value,
-            &argument_def,
-            &resolver,
-            &ctx.variable_values,
-        ) {
+        match coercion::coerce_input_value(value, &argument_def, &resolver, &ctx.variable_values) {
             Ok(Some(value)) => {
                 coerced_values.insert(&argument_def.name, value);
             }
@@ -906,7 +900,7 @@ fn coerce_variable_value(
 
     let resolver = |name: &Name| sast::get_named_type(&schema.document, name);
 
-    coerce_value(&value, &variable_def.var_type, &resolver).ok_or_else(|| {
+    coerce_value(&value, &variable_def.var_type, &resolver, &HashMap::new()).ok_or_else(|| {
         vec![QueryExecutionError::InvalidArgumentError(
             variable_def.position,
             variable_def.name.to_owned(),
