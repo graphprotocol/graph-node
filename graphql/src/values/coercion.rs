@@ -524,44 +524,6 @@ mod tests {
         );
     }
 
-    /* #[test]
-    fn coercion_using_input_object_type_definitions_is_correct() {
-        let input_object_type =
-            TypeDefinition::InputObject(InputObjectType::new("InputObject".to_owned()));
-        let resolver = |_: &String| Some(&input_object_type);
-
-        // We can coerce from Value::Object -> TypeDefinition::InputObject
-        let example_object = BTreeMap::from_iter(
-            vec![
-                ("Foo".to_string(), Value::Boolean(false)),
-                ("Bar".to_string(), Value::Float(15.2)),
-            ]
-            .into_iter(),
-        );
-        assert_eq!(
-            Value::Object(example_object.clone()).coerce(&input_object_type),
-            Some(Value::Object(example_object))
-        );
-
-        // We don't support going from Value::String -> TypeDefinition::InputObject
-        assert_eq!(
-            Value::String("foo".to_string()).coerce(&input_object_type),
-            None,
-        );
-        assert_eq!(
-            Value::String("bar".to_string()).coerce(&input_object_type),
-            None,
-        );
-
-        // We don't support going from Value::Boolean -> TypeDefinition::InputObject
-        assert_eq!(Value::Boolean(true).coerce(&input_object_type), None,);
-        assert_eq!(Value::Boolean(false).coerce(&input_object_type), None,);
-
-        // We don't spport going from Value::Float -> TypeDefinition::InputObject
-        assert_eq!(Value::Float(23.7).coerce(&input_object_type), None,);
-        assert_eq!(Value::Float(-5.879).coerce(&input_object_type), None,);
-    }*/
-
     #[test]
     fn coerce_big_int_scalar() {
         let big_int_type = TypeDefinition::Scalar(ScalarType::new("BigInt".to_string()));
