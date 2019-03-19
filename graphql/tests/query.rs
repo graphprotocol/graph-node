@@ -277,7 +277,7 @@ fn can_query_one_to_one_relationship() {
         graphql_parser::parse_query(
             "
             query {
-                musicians(first: 100) {
+                musicians {
                     name
                     mainBand {
                         name
