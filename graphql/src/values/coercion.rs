@@ -1,8 +1,8 @@
-use graphql_parser::query::{Field, Value};
-use graphql_parser::schema::{EnumType, Name, ScalarType, Type, TypeDefinition, InputValue};
 use crate::prelude::*;
+use crate::{query, schema};
 use graph::prelude::QueryExecutionError;
-use crate::schema;
+use graphql_parser::query::{Field, Value};
+use graphql_parser::schema::{EnumType, InputValue, Name, ScalarType, Type, TypeDefinition};
 
 /// A GraphQL value that can be coerced according to a type.
 pub trait MaybeCoercible<T> {
@@ -74,13 +74,38 @@ fn coerce_to_definition<'a>(
     }
 }
 
-/// Coerces a single argument value into a GraphQL value.
+/// Coerces an argument into a GraphQL value.
+///
+/// `Ok(None)` happens when no value is found for a nullabe type.
 pub(crate) fn coerce_argument_value(
     ctx: ExecutionContext<'_, impl Resolver, impl Resolver>,
     field: &Field,
     argument: &InputValue,
-    value: &Value,
-) -> Result<Value, Vec<QueryExecutionError>> {
+) -> Result<Option<Value>, QueryExecutionError> {
+    // Look up the argument value, resolve it if it is a variable
+    let mut value = query::ast::get_argument_value(&field.arguments, &argument.name).cloned();
+    if let Some(Value::Variable(name)) = value {
+        value = ctx.variable_values.get(&name).cloned();
+    }
+
+    // Use the default value if necessary and present.
+    let value = value.or(argument.default_value.clone());
+
+    // Extract value, checking for null or missing.
+    let value = match value {
+        None => {
+            return if schema::ast::is_non_null_type(&argument.value_type) {
+                Err(QueryExecutionError::MissingArgumentError(
+                    field.position,
+                    argument.name.to_owned(),
+                ))
+            } else {
+                Ok(None)
+            };
+        }
+        Some(value) => value,
+    };
+
     let resolver = |name: &Name| {
         schema::ast::get_named_type(
             if ctx.introspecting {
@@ -92,13 +117,15 @@ pub(crate) fn coerce_argument_value(
         )
     };
 
-    coerce_value(&value, &argument.value_type, &resolver).ok_or_else(|| {
-        vec![QueryExecutionError::InvalidArgumentError(
-            field.position,
-            argument.name.to_owned(),
-            value.clone(),
-        )]
-    })
+    Ok(Some(
+        coerce_value(&value, &argument.value_type, &resolver).ok_or_else(|| {
+            QueryExecutionError::InvalidArgumentError(
+                field.position,
+                argument.name.to_owned(),
+                value.clone(),
+            )
+        })?,
+    ))
 }
 
 /// `R` is a name resolver.
