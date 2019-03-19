@@ -107,7 +107,7 @@ fn test_valid_module(
     ValidModule::new(
         &logger,
         WasmiModuleConfig {
-            subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
+            subgraph_id: SubgraphDeploymentId::new("wasmModuleTest").unwrap(),
             data_source,
             ethereum_adapter: mock_ethereum_adapter,
             link_resolver: Arc::new(ipfs_api::IpfsClient::default()),
