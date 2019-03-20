@@ -332,6 +332,11 @@ pub struct Source {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct TemplateSource {
+    pub abi: String,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct UnresolvedMappingABI {
     pub name: String,
     pub file: Link,
@@ -431,16 +436,17 @@ impl UnresolvedMapping {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct BaseDataSource<M> {
+pub struct BaseDataSource<M, T> {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
     pub source: Source,
     pub mapping: M,
+    pub templates: Option<Vec<T>>,
 }
 
-pub type UnresolvedDataSource = BaseDataSource<UnresolvedMapping>;
-pub type DataSource = BaseDataSource<Mapping>;
+pub type UnresolvedDataSource = BaseDataSource<UnresolvedMapping, UnresolvedDataSourceTemplate>;
+pub type DataSource = BaseDataSource<Mapping, DataSourceTemplate>;
 
 impl UnresolvedDataSource {
     pub fn resolve(
@@ -453,8 +459,55 @@ impl UnresolvedDataSource {
             name,
             source,
             mapping,
+            templates,
         } = self;
-        mapping.resolve(resolver).map(|mapping| DataSource {
+
+        mapping
+            .resolve(resolver)
+            .join(templates.map(|templates| {
+                stream::futures_ordered(
+                    templates
+                        .into_iter()
+                        .map(|template| template.resolve(resolver)),
+                )
+                .collect()
+            }))
+            .map(|(mapping, templates)| DataSource {
+                kind,
+                network,
+                name,
+                source,
+                mapping,
+                templates,
+            })
+    }
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct BaseDataSourceTemplate<M> {
+    pub kind: String,
+    pub network: Option<String>,
+    pub name: String,
+    pub source: TemplateSource,
+    pub mapping: M,
+}
+
+pub type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping>;
+pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
+
+impl UnresolvedDataSourceTemplate {
+    pub fn resolve(
+        self,
+        resolver: &impl LinkResolver,
+    ) -> impl Future<Item = DataSourceTemplate, Error = failure::Error> {
+        let UnresolvedDataSourceTemplate {
+            kind,
+            network,
+            name,
+            source,
+            mapping,
+        } = self;
+        mapping.resolve(resolver).map(|mapping| DataSourceTemplate {
             kind,
             network,
             name,
@@ -548,21 +601,24 @@ impl UnresolvedSubgraphManifest {
         } = self;
 
         // resolve each data set
-        stream::futures_ordered(
-            data_sources
-                .into_iter()
-                .map(|data_set| data_set.resolve(resolver)),
-        )
-        .collect()
-        .join(schema.resolve(id.clone(), resolver))
-        .map(|(data_sources, schema)| SubgraphManifest {
-            id,
-            location,
-            spec_version,
-            description,
-            repository,
-            schema,
-            data_sources,
-        })
+        schema
+            .resolve(id.clone(), resolver)
+            .join(
+                stream::futures_ordered(
+                    data_sources
+                        .into_iter()
+                        .map(|data_set| data_set.resolve(resolver)),
+                )
+                .collect(),
+            )
+            .map(|(schema, data_sources)| SubgraphManifest {
+                id,
+                location,
+                spec_version,
+                description,
+                repository,
+                schema,
+                data_sources,
+            })
     }
 }
