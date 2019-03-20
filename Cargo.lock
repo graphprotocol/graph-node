@@ -168,6 +168,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bigdecimal"
+version = "0.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "num-bigint 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "num-integer 0.1.39 (registry+https://github.com/rust-lang/crates.io-index)",
+ "num-traits 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.88 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "bitflags"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -750,6 +761,7 @@ name = "graph"
 version = "0.5.0"
 dependencies = [
  "backtrace 0.3.14 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bigdecimal 0.0.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "diesel 1.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ethabi 6.1.0 (git+https://github.com/graphprotocol/ethabi.git?branch=graph-patches)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3122,6 +3134,7 @@ dependencies = [
 "checksum base64 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)" = "96434f987501f0ed4eb336a411e0631ecd1afa11574fe148587adc4ff96143c9"
 "checksum base64 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)" = "489d6c0ed21b11d038c31b6ceccca973e65d73ba3bd8ecb9a2babf5546164643"
 "checksum bigdecimal 0.0.14 (registry+https://github.com/rust-lang/crates.io-index)" = "679e21a6734fdfc63378aea80c2bf31e6ac8ced21ed33e1ee37f8f7bf33c2056"
+"checksum bigdecimal 0.0.15 (registry+https://github.com/rust-lang/crates.io-index)" = "f73d2953c59932d4a0ac941bb5ccca17e324ddae9aa487353dc22f0aade2c4b4"
 "checksum bitflags 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)" = "4efd02e230a02e18f92fc2735f44597385ed02ad8f831e7c1c1156ee5e1ab3a5"
 "checksum bitflags 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)" = "228047a76f468627ca71776ecdebd732a3423081fcf5125585bcd7c49886ce12"
 "checksum blake2-rfc 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)" = "5d6d530bdd2d52966a6d03b7a964add7ae1a288d25214066fd4b600f0f796400"
