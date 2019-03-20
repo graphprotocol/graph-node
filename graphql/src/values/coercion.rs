@@ -13,16 +13,11 @@ impl MaybeCoercible<EnumType> for Value {
     fn coerce(&self, using_type: &EnumType) -> Option<Value> {
         match self {
             Value::Null => Some(Value::Null),
-            Value::String(name) => using_type
+            Value::String(name) | Value::Enum(name) => using_type
                 .values
                 .iter()
                 .find(|value| &value.name == name)
                 .map(|_| Value::Enum(name.clone())),
-            Value::Enum(name) => using_type
-                .values
-                .iter()
-                .find(|value| &value.name == name)
-                .map(|_| self.clone()),
             _ => None,
         }
     }
