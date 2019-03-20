@@ -325,7 +325,7 @@ fn can_query_one_to_many_relationships_in_both_directions() {
         query {
             musicians(first: 100, orderBy: id) {
                 name
-                writtenSongs(first: 100) {
+                writtenSongs(first: 100, orderBy: id) {
                     title
                     writtenBy { name }
                 }
