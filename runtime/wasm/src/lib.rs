@@ -39,15 +39,15 @@ pub(crate) struct EventHandlerContext {
 }
 
 /// Cloning an `EventHandlerContext` clones all its fields,
-/// except the `entity_operations`, since they are an output
-/// accumulator and are therefore initialized with an empty `Vec`
+/// except the `state_operations`, since they are an output
+/// accumulator and are therefore initialized with an empty state.
 impl Clone for EventHandlerContext {
     fn clone(&self) -> Self {
         EventHandlerContext {
             logger: self.logger.clone(),
             block: self.block.clone(),
             transaction: self.transaction.clone(),
-            entity_operations: Vec::new(),
+            state: ProcessingState::default(),
         }
     }
 }

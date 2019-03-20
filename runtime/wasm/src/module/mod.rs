@@ -61,6 +61,7 @@ const BIG_DECIMAL_EQUALS: usize = 31;
 const BIG_DECIMAL_TO_STRING: usize = 32;
 const BIG_DECIMAL_FROM_STRING: usize = 33;
 const IPFS_MAP_FUNC_INDEX: usize = 34;
+const DATA_SOURCE_CREATE_INDEX: usize = 35;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
@@ -93,7 +94,8 @@ where
     ) -> Result<Self, FailureError> {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
-        let parsed_module = config.data_source.mapping.runtime;
+        // FIXME: Cloning this may be expensive.
+        let parsed_module = config.data_source.mapping.runtime.clone();
 
         // Inject metering calls, which are used for checking timeouts.
         let parsed_module = pwasm_utils::inject_gas_counter(parsed_module, &Default::default())
@@ -119,7 +121,7 @@ where
             _ => return Err(err_msg("WASM module has multiple import sections")),
         };
 
-        let name = config.data_source.name;
+        let name = config.data_source.name.clone();
         let module = Module::from_parity_wasm_module(parsed_module)
             .map_err(|e| format_err!("Invalid module of data source `{}`: {}", name, e))?;
 
@@ -127,7 +129,7 @@ where
         let host_exports = HostExports::new(
             config.subgraph_id,
             Version::parse(&config.data_source.mapping.api_version)?,
-            config.data_source.mapping.abis,
+            config.data_source,
             config.ethereum_adapter.clone(),
             config.link_resolver.clone(),
             config.store.clone(),
@@ -289,13 +291,15 @@ where
                 .invoke_export(handler_name, &[value, user_data], &mut self);
 
         // Return either the collected entity operations or an error
-        result.map(|_| self.ctx.entity_operations).map_err(|e| {
-            format_err!(
-                "Failed to handle callback with handler \"{}\": {}",
-                handler_name,
-                e
-            )
-        })
+        result
+            .map(|_| self.ctx.state.entity_operations)
+            .map_err(|e| {
+                format_err!(
+                    "Failed to handle callback with handler \"{}\": {}",
+                    handler_name,
+                    e
+                )
+            })
     }
 }
 
@@ -566,7 +570,7 @@ where
                         "entity_operations" => ops.len(),
                         "time" => format!("{}ms", start_time.elapsed().as_millis())
                     );
-                    self.ctx.entity_operations.extend(ops);
+                    self.ctx.state.entity_operations.extend(ops);
                     Ok(None)
                 }
                 Err(e) => Err(e.into()),
@@ -703,6 +707,7 @@ where
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
 
+    /// function typeConversion.bytesToBase58(bytes: Bytes): string
     fn bytes_to_base58(
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
@@ -793,6 +798,21 @@ where
             .big_decimal_equals(self.asc_get(x_ptr), self.asc_get(y_ptr));
         Ok(Some(RuntimeValue::I32(if equals { 1 } else { 0 })))
     }
+
+    /// function dataSource.create(name: string, params: Array<string>): void
+    fn data_source_create(
+        &mut self,
+        name_ptr: AscPtr<AscString>,
+        params_ptr: AscPtr<Array<AscPtr<AscString>>>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let name: String = self.asc_get(name_ptr);
+        let params: Vec<String> = self.asc_get(params_ptr);
+        let result =
+            self.valid_module
+                .host_exports
+                .data_source_create(&mut self.ctx, name, params)?;
+        Ok(Some(RuntimeValue::from(result as u32)))
+    }
 }
 
 impl<T, L, S, U> Externals for WasmiModule<T, L, S, U>
@@ -871,6 +891,9 @@ where
                 args.nth_checked(2)?,
                 args.nth_checked(3)?,
             ),
+            DATA_SOURCE_CREATE_INDEX => {
+                self.data_source_create(args.nth_checked(0)?, args.nth_checked(1)?)
+            }
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -967,6 +990,10 @@ impl ModuleImportResolver for ModuleResolver {
             "bigDecimal.toString" => FuncInstance::alloc_host(signature, BIG_DECIMAL_TO_STRING),
             "bigDecimal.fromString" => FuncInstance::alloc_host(signature, BIG_DECIMAL_FROM_STRING),
 
+            // dataSource
+            "dataSource.create" => FuncInstance::alloc_host(signature, DATA_SOURCE_CREATE_INDEX),
+
+            // Unknown export
             _ => {
                 return Err(Error::Instantiation(format!(
                     "Export '{}' not found",
