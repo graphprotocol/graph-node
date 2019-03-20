@@ -23,6 +23,7 @@ type SubgraphDeployment @entity {
     latestEthereumBlockNumber: BigInt!
     totalEthereumBlocksCount: BigInt!
     entityCount: BigInt! # Computed field, not stored.
+    dynamicDataSources: [DynamicEthereumContractDataSource!] @derivedFrom(field: "deployment")
 }
 
 type SubgraphDeploymentAssignment @entity {
@@ -47,6 +48,19 @@ type EthereumContractDataSource @entity {
     network: String
     source: EthereumContractSource!
     mapping: EthereumContractMapping!
+    templates: [EthereumContractDataSourceTemplate!]
+}
+
+type DynamicEthereumContractDataSource @entity {
+    # TODO: Add created time and block here
+    id: ID!
+    deployment: SubgraphDeployment!
+    kind: String!
+    name: String!
+    network: String
+    source: EthereumContractSource!
+    mapping: EthereumContractMapping!
+    templates: [EthereumContractDataSourceTemplate!]
 }
 
 type EthereumContractSource @entity {
@@ -76,4 +90,18 @@ type EthereumContractEventHandler @entity {
     id: ID!
     event: String!
     handler: String!
+}
+
+type EthereumContractDataSourceTemplate @entity {
+    id: ID!
+    kind: String!
+    name: String!
+    network: String
+    source: EthereumContractDataSourceTemplateSource!
+    mapping: EthereumContractMapping!
+}
+
+type EthereumContractDataSourceTemplateSource @entity {
+    id: ID!
+    abi: String!
 }
