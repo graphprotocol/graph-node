@@ -28,7 +28,9 @@ impl MaybeCoercible<ScalarType> for Value {
         match (using_type.name.as_str(), self) {
             (_, v @ Value::Null) => Some(v.clone()),
             ("Boolean", v @ Value::Boolean(_)) => Some(v.clone()),
-            ("Float", v @ Value::Float(_)) => Some(v.clone()),
+            ("BigDecimal", Value::Float(f)) => Some(Value::String(f.to_string())),
+            ("BigDecimal", Value::Int(i)) => Some(Value::String(i.as_i64()?.to_string())),
+            ("BigDecimal", v @ Value::String(_)) => Some(v.clone()),
             ("Int", Value::Int(num)) => {
                 let num = num.as_i64()?;
                 if i32::min_value() as i64 <= num && num <= i32::max_value() as i64 {
@@ -310,11 +312,11 @@ mod tests {
     }
 
     #[test]
-    fn coercion_using_float_type_definitions_is_correct() {
-        let float_type = TypeDefinition::Scalar(ScalarType::new("Float".to_string()));
-        let resolver = |_: &String| Some(&float_type);
+    fn coercion_using_big_decimal_type_definitions_is_correct() {
+        let big_decimal_type = TypeDefinition::Scalar(ScalarType::new("BigDecimal".to_string()));
+        let resolver = |_: &String| Some(&big_decimal_type);
 
-        // We can coerce from Value::Float -> TypeDefinition::Scalar(Float)
+        // We can coerce from Value::Float -> TypeDefinition::Scalar(BigDecimal)
         assert_eq!(
             coerce_to_definition(
                 &Value::Float(23.7),
@@ -322,7 +324,7 @@ mod tests {
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::Float(23.7))
+            Some(Value::String("23.7".to_string()))
         );
         assert_eq!(
             coerce_to_definition(
@@ -331,10 +333,10 @@ mod tests {
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::Float(-5.879))
+            Some(Value::String("-5.879".to_string()))
         );
 
-        // We don't support going from Value::String -> TypeDefinition::Scalar(Float)
+        // We can coerce from Value::String -> TypeDefinition::Scalar(BigDecimal)
         assert_eq!(
             coerce_to_definition(
                 &Value::String("23.7".to_string()),
@@ -342,7 +344,7 @@ mod tests {
                 &resolver,
                 &HashMap::new()
             ),
-            None,
+            Some(Value::String("23.7".to_string()))
         );
         assert_eq!(
             coerce_to_definition(
@@ -351,7 +353,27 @@ mod tests {
                 &resolver,
                 &HashMap::new()
             ),
-            None,
+            Some(Value::String("-5.879".to_string())),
+        );
+
+        // We can coerce from Value::Int -> TypeDefinition::Scalar(BigDecimal)
+        assert_eq!(
+            coerce_to_definition(
+                &Value::Int(23.into()),
+                &String::new(),
+                &resolver,
+                &HashMap::new()
+            ),
+            Some(Value::String("23".to_string()))
+        );
+        assert_eq!(
+            coerce_to_definition(
+                &Value::Int((-5 as i32).into()),
+                &String::new(),
+                &resolver,
+                &HashMap::new()
+            ),
+            Some(Value::String("-5".to_string())),
         );
 
         // We don't spport going from Value::Boolean -> TypeDefinition::Scalar(Boolean)
