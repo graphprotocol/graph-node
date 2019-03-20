@@ -41,7 +41,7 @@ impl From<graph::prelude::Error> for HostExportError<String> {
 pub(crate) struct HostExports<E, L, S, U> {
     subgraph_id: SubgraphDeploymentId,
     pub api_version: Version,
-    abis: Vec<MappingABI>,
+    data_source: DataSource,
     ethereum_adapter: Arc<E>,
     link_resolver: Arc<L>,
     store: Arc<S>,
@@ -58,7 +58,7 @@ where
     pub(crate) fn new(
         subgraph_id: SubgraphDeploymentId,
         api_version: Version,
-        abis: Vec<MappingABI>,
+        data_source: DataSource,
         ethereum_adapter: Arc<E>,
         link_resolver: Arc<L>,
         store: Arc<S>,
@@ -67,7 +67,7 @@ where
         HostExports {
             subgraph_id,
             api_version,
-            abis,
+            data_source,
             ethereum_adapter,
             link_resolver,
             store,
@@ -213,6 +213,8 @@ where
 
         // Obtain the path to the contract ABI
         let contract = self
+            .data_source
+            .mapping
             .abis
             .iter()
             .find(|abi| abi.name == unresolved_call.contract_name)
@@ -549,6 +551,53 @@ where
     ) -> Result<BigDecimal, HostExportError<impl ExportError>> {
         BigDecimal::from_str(&s)
             .map_err(|e| HostExportError(format!("failed to parse BigDecimal: {}", e)))
+    }
+
+    pub(crate) fn data_source_create(
+        &self,
+        ctx: &mut EventHandlerContext,
+        name: String,
+        params: Vec<String>,
+    ) -> Result<bool, HostExportError<impl ExportError>> {
+        // Resolve the name into the right template
+        self.data_source
+            .templates
+            .as_ref()
+            .ok_or_else(|| {
+                HostExportError(format!(
+                    "Failed to create data source from name `{}`. \
+                     Parent data source `{}` contains no templates",
+                    name, self.data_source.name
+                ))
+            })?
+            .iter()
+            .find(|template| template.name == name)
+            .ok_or_else(|| {
+                HostExportError(format!(
+                    "Failed to create data source from name `{}`: \
+                     No template with this name in parent data source `{}`. \
+                     Available names: {}.",
+                    name,
+                    self.data_source.name,
+                    self.data_source
+                        .templates
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .map(|template| template.name.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))
+            })?;
+
+        // Remember that we need to create this data source
+        ctx.state.created_data_sources.push(DataSourceTemplateInfo {
+            data_source: self.data_source.name.clone(),
+            template: name,
+            params,
+        });
+
+        Ok(true)
     }
 }
 
