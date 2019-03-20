@@ -142,12 +142,12 @@ where
 }
 
 /// A WASM module based on wasmi that powers a subgraph runtime.
-pub(crate) struct WasmiModule<'a, T, L, S, U> {
+pub(crate) struct WasmiModule<T, L, S, U> {
     pub logger: Logger,
     pub module: ModuleRef,
     memory: MemoryRef,
-    host_exports: &'a HostExports<T, L, S, U>,
     ctx: EventHandlerContext,
+    valid_module: Arc<ValidModule<T, L, S, U>>,
 
     // Time when the current handler began processing.
     start_time: Instant,
@@ -157,7 +157,7 @@ pub(crate) struct WasmiModule<'a, T, L, S, U> {
     running_start: bool,
 }
 
-impl<'a, T, L, S, U> WasmiModule<'a, T, L, S, U>
+impl<T, L, S, U> WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
@@ -166,7 +166,7 @@ where
 {
     /// Creates a new wasmi module
     pub fn from_valid_module_with_ctx(
-        valid_module: &'a ValidModule<T, L, S, U>,
+        valid_module: Arc<ValidModule<T, L, S, U>>,
         ctx: EventHandlerContext,
     ) -> Result<Self, FailureError> {
         let logger = valid_module.logger.new(o!("component" => "WasmiModule"));
@@ -195,8 +195,8 @@ where
             logger,
             module: not_started_module,
             memory,
-            host_exports: &valid_module.host_exports,
             ctx,
+            valid_module: valid_module.clone(),
             start_time: Instant::now(),
             running_start: true,
         };
@@ -207,6 +207,10 @@ where
         this.running_start = false;
 
         Ok(this)
+    }
+
+    pub(crate) fn host_exports(&self) -> &HostExports<T, L, S, U> {
+        &self.valid_module.host_exports
     }
 
     pub(crate) fn handle_ethereum_event(
@@ -223,7 +227,7 @@ where
         // Prepare an EthereumEvent for the WASM runtime
         // Decide on the destination type using the mapping
         // api version provided in the subgraph manifest
-        let event = if self.host_exports.api_version >= Version::new(0, 0, 2) {
+        let event = if self.valid_module.host_exports.api_version >= Version::new(0, 0, 2) {
             RuntimeValue::from(
                 self.asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _>(
                     &EthereumEventData {
@@ -268,7 +272,7 @@ where
     }
 }
 
-impl<'a, T, L, S, U> AscHeap for WasmiModule<'a, T, L, S, U>
+impl<T, L, S, U> AscHeap for WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
@@ -302,7 +306,7 @@ where
 impl<E> HostError for HostExportError<E> where E: fmt::Debug + fmt::Display + Send + Sync + 'static {}
 
 // Implementation of externals.
-impl<'a, T, L, S, U> WasmiModule<'a, T, L, S, U>
+impl<T, L, S, U> WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
@@ -310,7 +314,7 @@ where
     U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + 'static,
 {
     fn gas(&mut self, _gas_spent: u32) -> Result<Option<RuntimeValue>, Trap> {
-        self.host_exports.check_timeout(self.start_time)?;
+        self.host_exports().check_timeout(self.start_time)?;
         Ok(None)
     }
 
@@ -340,7 +344,7 @@ where
             _ => Some(column_number),
         };
         Err(self
-            .host_exports
+            .host_exports()
             .abort(message, file_name, line_number, column_number)
             .unwrap_err()
             .into())
@@ -359,7 +363,8 @@ where
         let entity = self.asc_get(entity_ptr);
         let id = self.asc_get(id_ptr);
         let data = self.asc_get(data_ptr);
-        self.host_exports
+        self.valid_module
+            .host_exports
             .store_set(&mut self.ctx, entity, id, data)?;
         Ok(None)
     }
@@ -375,7 +380,9 @@ where
         }
         let entity = self.asc_get(entity_ptr);
         let id = self.asc_get(id_ptr);
-        self.host_exports.store_remove(&mut self.ctx, entity, id);
+        self.valid_module
+            .host_exports
+            .store_remove(&mut self.ctx, entity, id);
         Ok(None)
     }
 
@@ -385,7 +392,7 @@ where
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let entity_option = self.host_exports.store_get(
+        let entity_option = self.host_exports().store_get(
             &self.ctx,
             self.asc_get(entity_ptr),
             self.asc_get(id_ptr),
@@ -403,7 +410,10 @@ where
         call_ptr: AscPtr<AscUnresolvedContractCall>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let call = self.asc_get(call_ptr);
-        let result = self.host_exports.ethereum_call(&mut self.ctx, call)?;
+        let result = self
+            .valid_module
+            .host_exports
+            .ethereum_call(&mut self.ctx, call)?;
         Ok(Some(RuntimeValue::from(self.asc_new(&*result))))
     }
 
@@ -412,7 +422,9 @@ where
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let string = self.host_exports.bytes_to_string(self.asc_get(bytes_ptr))?;
+        let string = self
+            .host_exports()
+            .bytes_to_string(self.asc_get(bytes_ptr))?;
         Ok(Some(RuntimeValue::from(self.asc_new(&string))))
     }
 
@@ -422,7 +434,7 @@ where
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self.host_exports.bytes_to_hex(self.asc_get(bytes_ptr));
+        let result = self.host_exports().bytes_to_hex(self.asc_get(bytes_ptr));
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -433,7 +445,7 @@ where
     ) -> Result<Option<RuntimeValue>, Trap> {
         let bytes: Vec<u8> = self.asc_get(big_int_ptr);
         let n = BigInt::from_signed_bytes_le(&*bytes);
-        let result = self.host_exports.big_int_to_string(n);
+        let result = self.host_exports().big_int_to_string(n);
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -443,7 +455,7 @@ where
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let n: BigInt = self.asc_get(big_int_ptr);
-        let result = self.host_exports.big_int_to_hex(n);
+        let result = self.host_exports().big_int_to_hex(n);
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -464,7 +476,7 @@ where
     /// function typeConversion.i32ToBigInt(i: i32): Uint64Array
     fn big_int_to_i32(&mut self, n_ptr: AscPtr<AscBigInt>) -> Result<Option<RuntimeValue>, Trap> {
         let n: BigInt = self.asc_get(n_ptr);
-        let i = self.host_exports.big_int_to_i32(n)?;
+        let i = self.host_exports().big_int_to_i32(n)?;
         Ok(Some(RuntimeValue::from(i)))
     }
 
@@ -473,14 +485,16 @@ where
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self.host_exports.json_from_bytes(self.asc_get(bytes_ptr))?;
+        let result = self
+            .host_exports()
+            .json_from_bytes(self.asc_get(bytes_ptr))?;
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
     /// function ipfs.cat(link: String): Bytes
     fn ipfs_cat(&mut self, link_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
         let link = self.asc_get(link_ptr);
-        let ipfs_res = self.host_exports.ipfs_cat(link);
+        let ipfs_res = self.host_exports().ipfs_cat(link);
         match ipfs_res {
             Ok(bytes) => {
                 let bytes_obj: AscPtr<Uint8Array> = self.asc_new(&*bytes);
@@ -500,21 +514,21 @@ where
     /// Expects a decimal string.
     /// function json.toI64(json: String): i64
     fn json_to_i64(&mut self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.json_to_i64(self.asc_get(json_ptr))?;
+        let number = self.host_exports().json_to_i64(self.asc_get(json_ptr))?;
         Ok(Some(RuntimeValue::from(number)))
     }
 
     /// Expects a decimal string.
     /// function json.toU64(json: String): u64
     fn json_to_u64(&mut self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.json_to_u64(self.asc_get(json_ptr))?;
+        let number = self.host_exports().json_to_u64(self.asc_get(json_ptr))?;
         Ok(Some(RuntimeValue::from(number)))
     }
 
     /// Expects a decimal string.
     /// function json.toF64(json: String): f64
     fn json_to_f64(&mut self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
-        let number = self.host_exports.json_to_f64(self.asc_get(json_ptr))?;
+        let number = self.host_exports().json_to_f64(self.asc_get(json_ptr))?;
         Ok(Some(RuntimeValue::from(F64::from(number))))
     }
 
@@ -524,7 +538,9 @@ where
         &mut self,
         json_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let big_int = self.host_exports.json_to_big_int(self.asc_get(json_ptr))?;
+        let big_int = self
+            .host_exports()
+            .json_to_big_int(self.asc_get(json_ptr))?;
         let big_int_ptr: AscPtr<AscBigInt> = self.asc_new(&*big_int);
         Ok(Some(RuntimeValue::from(big_int_ptr)))
     }
@@ -534,7 +550,9 @@ where
         &mut self,
         input_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let input = self.host_exports.crypto_keccak_256(self.asc_get(input_ptr));
+        let input = self
+            .host_exports()
+            .crypto_keccak_256(self.asc_get(input_ptr));
         let hash_ptr: AscPtr<Uint8Array> = self.asc_new(input.as_ref());
         Ok(Some(RuntimeValue::from(hash_ptr)))
     }
@@ -546,7 +564,7 @@ where
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
-            .host_exports
+            .host_exports()
             .big_int_plus(self.asc_get(x_ptr), self.asc_get(y_ptr));
         let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
@@ -559,7 +577,7 @@ where
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
-            .host_exports
+            .host_exports()
             .big_int_minus(self.asc_get(x_ptr), self.asc_get(y_ptr));
         let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
@@ -572,7 +590,7 @@ where
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
-            .host_exports
+            .host_exports()
             .big_int_times(self.asc_get(x_ptr), self.asc_get(y_ptr));
         let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
@@ -585,7 +603,7 @@ where
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
-            .host_exports
+            .host_exports()
             .big_int_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr));
         let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
@@ -611,7 +629,7 @@ where
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
-            .host_exports
+            .host_exports()
             .big_int_mod(self.asc_get(x_ptr), self.asc_get(y_ptr));
         let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
@@ -621,7 +639,7 @@ where
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self.host_exports.bytes_to_base58(self.asc_get(bytes_ptr));
+        let result = self.host_exports().bytes_to_base58(self.asc_get(bytes_ptr));
         let result_ptr: AscPtr<AscString> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
@@ -709,7 +727,7 @@ where
     }
 }
 
-impl<'a, T, L, S, U> Externals for WasmiModule<'a, T, L, S, U>
+impl<T, L, S, U> Externals for WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,

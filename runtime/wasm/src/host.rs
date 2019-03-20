@@ -197,6 +197,7 @@ impl RuntimeHost {
             // Validate the mapping's WASM module
             let valid_module = ValidModule::new(&module_logger, wasmi_config, task_sender)
                 .expect("Failed to validate module");
+            let valid_module = Arc::new(valid_module);
 
             // Pass incoming events to the WASM module and send entity changes back;
             // stop when cancelled from the outside.
@@ -223,8 +224,9 @@ impl RuntimeHost {
                         entity_operations,
                     };
 
-                    let result = WasmiModule::from_valid_module_with_ctx(&valid_module, ctx)?
-                        .handle_ethereum_event(handler.handler.as_str(), log, params);
+                    let result =
+                        WasmiModule::from_valid_module_with_ctx(valid_module.clone(), ctx)?
+                            .handle_ethereum_event(handler.handler.as_str(), log, params);
                     result_sender
                         .send(result)
                         .map_err(|_| err_msg("receiver dropped"))
