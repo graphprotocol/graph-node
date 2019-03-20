@@ -1,6 +1,9 @@
 use crate::data::subgraph::Link;
+use bytes::BytesMut;
 use failure;
+use futures::{stream::poll_fn, try_ready};
 use ipfs_api;
+use serde_json::Value;
 use std::env;
 use std::str::FromStr;
 use std::time::Duration;
@@ -12,6 +15,15 @@ const MAX_IPFS_FILE_BYTES_ENV_VAR: &str = "GRAPH_MAX_IPFS_FILE_BYTES";
 pub trait LinkResolver: Send + Sync + 'static {
     /// Fetches the link contents as bytes.
     fn cat(&self, link: &Link) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send>;
+
+    /// Read the contents of `link` and deserialize them into a stream of JSON
+    /// values. The values must each be on a single line; newlines are significant
+    /// as they are used to split the file contents and each line is deserialized
+    /// separately.
+    fn json_stream(
+        &self,
+        link: &Link,
+    ) -> Box<Stream<Item = Value, Error = failure::Error> + Send + 'static>;
 }
 
 impl LinkResolver for ipfs_api::IpfsClient {
@@ -53,19 +65,109 @@ impl LinkResolver for ipfs_api::IpfsClient {
             None => Box::new(cat),
         }
     }
+
+    fn json_stream(
+        &self,
+        link: &Link,
+    ) -> Box<Stream<Item = Value, Error = failure::Error> + Send + 'static> {
+        // Discard the `/ipfs/` prefix (if present) to get the hash.
+        let path = link.link.trim_start_matches("/ipfs/").to_owned();
+        let mut stream = self.cat(&path).fuse();
+        let mut buf = BytesMut::with_capacity(1024);
+        // Count the number of lines we've already successfully deserialized.
+        // We need that to adjust the line number in error messages from serde_json
+        // to translate from line numbers in the snippet we are deserializing
+        // to the line number in the overall file
+        let mut count = 0;
+
+        Box::new(poll_fn(move || -> Poll<Option<Value>, failure::Error> {
+            loop {
+                if let Some(offset) = buf.iter().position(|b| *b == b'\n') {
+                    let line_bytes = buf.split_to(offset + 1);
+                    count += 1;
+                    if line_bytes.len() > 1 {
+                        let line = std::str::from_utf8(&line_bytes)?;
+                        let res = match serde_json::from_str::<Value>(line) {
+                            Ok(v) => Ok(Async::Ready(Some(v))),
+                            Err(e) => {
+                                // Adjust the line number in the serde error. This
+                                // is fun because we can only get at the full error
+                                // message, and not the error message without line number
+                                let msg = e.to_string();
+                                let msg = msg.split(" at line ").next().unwrap();
+                                Err(format_err!(
+                                    "{} at line {} column {}: '{}'",
+                                    msg,
+                                    e.line() + count - 1,
+                                    e.column(),
+                                    line
+                                ))
+                            }
+                        };
+                        return res;
+                    }
+                } else {
+                    // We only get here if there is no complete line in buf, and
+                    // it is therefore ok to immediately pass an Async::NotReady
+                    // from stream through.
+                    // If we get a None from poll, but still have something in buf,
+                    // that means the input was not terminated with a newline. We
+                    // add that so that the last line gets picked up in the next
+                    // run through the loop.
+                    match try_ready!(stream.poll()) {
+                        Some(b) => buf.extend_from_slice(&b),
+                        None if buf.len() > 0 => buf.extend_from_slice(&[b'\n']),
+                        None => return Ok(Async::Ready(None)),
+                    }
+                }
+            }
+        }))
+    }
 }
 
-#[test]
-fn max_file_size() {
-    env::set_var(MAX_IPFS_FILE_BYTES_ENV_VAR, "200");
-    let file: &[u8] = &[0u8; 201];
-    let client = ipfs_api::IpfsClient::default();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
 
-    let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    let link = runtime.block_on(client.add(file)).unwrap().hash;
-    let err = runtime
-        .block_on(LinkResolver::cat(&client, &Link { link: link.clone() }))
-        .unwrap_err();
-    env::remove_var(MAX_IPFS_FILE_BYTES_ENV_VAR);
-    assert_eq!(err.to_string(), format!("IPFS file {} is too large", link));
+    #[test]
+    fn max_file_size() {
+        env::set_var(MAX_IPFS_FILE_BYTES_ENV_VAR, "200");
+        let file: &[u8] = &[0u8; 201];
+        let client = ipfs_api::IpfsClient::default();
+
+        let mut runtime = tokio::runtime::Runtime::new().unwrap();
+        let link = runtime.block_on(client.add(file)).unwrap().hash;
+        let err = runtime
+            .block_on(LinkResolver::cat(&client, &Link { link: link.clone() }))
+            .unwrap_err();
+        env::remove_var(MAX_IPFS_FILE_BYTES_ENV_VAR);
+        assert_eq!(err.to_string(), format!("IPFS file {} is too large", link));
+    }
+
+    fn json_round_trip(text: &'static str) -> Result<Vec<Value>, failure::Error> {
+        let client = ipfs_api::IpfsClient::default();
+
+        let mut runtime = tokio::runtime::Runtime::new().unwrap();
+        let link = runtime.block_on(client.add(text.as_bytes())).unwrap().hash;
+        runtime.block_on(LinkResolver::json_stream(&client, &Link { link: link.clone() }).collect())
+    }
+
+    #[test]
+    fn read_json_stream() {
+        let values = json_round_trip("\"with newline\"\n");
+        assert_eq!(vec![json!("with newline")], values.unwrap());
+
+        let values = json_round_trip("\"without newline\"");
+        assert_eq!(vec![json!("without newline")], values.unwrap());
+
+        let values = json_round_trip("\"two\" \n \"things\"");
+        assert_eq!(vec![json!("two"), json!("things")], values.unwrap());
+
+        let values = json_round_trip("\"one\"\n  \"two\" \n [\"bad\" \n \"split\"]");
+        assert_eq!(
+            "EOF while parsing a list at line 4 column 0: ' [\"bad\" \n'",
+            values.unwrap_err().to_string()
+        );
+    }
 }
