@@ -164,15 +164,7 @@ impl Value {
                     .map(|value| Self::from_query_value(value, &NamedType(n.to_string())))
                     .collect::<Result<Vec<_>, _>>()?,
             ),
-            (query::Value::Enum(e), NamedType(n)) => {
-                // Check if `ty` is a custom scalar type, otherwise assume it's
-                // just a string.
-                match n.as_str() {
-                    BYTES_SCALAR => Value::Bytes(scalar::Bytes::from_str(e)?),
-                    BIG_INT_SCALAR => Value::BigInt(scalar::BigInt::from_str(e)?),
-                    _ => Value::String(e.clone()),
-                }
-            }
+            (query::Value::Enum(e), NamedType(_)) => Value::String(e.clone()),
             (query::Value::String(s), NamedType(n)) => {
                 // Check if `ty` is a custom scalar type, otherwise assume it's
                 // just a string.
