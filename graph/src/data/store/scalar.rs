@@ -9,6 +9,8 @@ use std::str::FromStr;
 
 pub use num_bigint::Sign as BigIntSign;
 
+pub type BigDecimal = bigdecimal::BigDecimal;
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BigInt(num_bigint::BigInt);
 

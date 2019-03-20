@@ -1,4 +1,5 @@
 extern crate backtrace;
+pub extern crate bigdecimal;
 extern crate diesel;
 pub extern crate ethabi;
 extern crate futures;
