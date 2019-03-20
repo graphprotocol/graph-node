@@ -385,6 +385,7 @@ struct EthereumContractDataSourceEntity {
     name: String,
     source: EthereumContractSourceEntity,
     mapping: EthereumContractMappingEntity,
+    templates: Option<Vec<EthereumContractDataSourceTemplateEntity>>,
 }
 
 impl TypedEntity for EthereumContractDataSourceEntity {
@@ -402,6 +403,18 @@ impl EthereumContractDataSourceEntity {
         let mapping_id = format!("{}-mapping", id);
         ops.extend(self.mapping.write_operations(&mapping_id));
 
+        let template_ids: Option<Vec<Value>> = self.templates.map(|templates| {
+            templates
+                .into_iter()
+                .enumerate()
+                .map(|(i, template)| {
+                    let template_id = format!("{}-templates-{}", id, i);
+                    ops.extend(template.write_operations(&template_id));
+                    template_id.into()
+                })
+                .collect()
+        });
+
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("kind", self.kind);
@@ -409,6 +422,12 @@ impl EthereumContractDataSourceEntity {
         entity.set("name", self.name);
         entity.set("source", source_id);
         entity.set("mapping", mapping_id);
+        match template_ids {
+            Some(ids) => {
+                entity.set("templates", ids);
+            }
+            None => {}
+        }
         ops.push(set_entity_operation(Self::TYPENAME, id, entity));
 
         ops
@@ -423,6 +442,12 @@ impl<'a> From<&'a super::DataSource> for EthereumContractDataSourceEntity {
             network: data_source.network.clone(),
             source: data_source.source.clone().into(),
             mapping: EthereumContractMappingEntity::from(&data_source.mapping),
+            templates: data_source.templates.as_ref().map(|templates| {
+                templates
+                    .iter()
+                    .map(|template| EthereumContractDataSourceTemplateEntity::from(template))
+                    .collect()
+            }),
         }
     }
 }
@@ -588,6 +613,80 @@ impl From<super::MappingEventHandler> for EthereumContractEventHandlerEntity {
             event: event_handler.event,
             handler: event_handler.handler,
         }
+    }
+}
+
+#[derive(Debug)]
+struct EthereumContractDataSourceTemplateEntity {
+    kind: String,
+    network: Option<String>,
+    name: String,
+    source: EthereumContractDataSourceTemplateSourceEntity,
+    mapping: EthereumContractMappingEntity,
+}
+
+impl TypedEntity for EthereumContractDataSourceTemplateEntity {
+    const TYPENAME: &'static str = "EthereumContractDataSourceTemplate";
+    type IdType = String;
+}
+
+impl EthereumContractDataSourceTemplateEntity {
+    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+        let mut ops = vec![];
+
+        let source_id = format!("{}-source", id);
+        ops.extend(self.source.write_operations(&source_id));
+
+        let mapping_id = format!("{}-mapping", id);
+        ops.extend(self.mapping.write_operations(&mapping_id));
+
+        let mut entity = Entity::new();
+        entity.set("id", id);
+        entity.set("kind", self.kind);
+        entity.set("network", self.network);
+        entity.set("name", self.name);
+        entity.set("source", source_id);
+        entity.set("mapping", mapping_id);
+        ops.push(set_entity_operation(Self::TYPENAME, id, entity));
+
+        ops
+    }
+}
+
+impl From<&super::DataSourceTemplate> for EthereumContractDataSourceTemplateEntity {
+    fn from(template: &super::DataSourceTemplate) -> Self {
+        Self {
+            kind: template.kind.clone(),
+            name: template.name.clone(),
+            network: template.network.clone(),
+            source: template.source.clone().into(),
+            mapping: EthereumContractMappingEntity::from(&template.mapping),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+struct EthereumContractDataSourceTemplateSourceEntity {
+    abi: String,
+}
+
+impl TypedEntity for EthereumContractDataSourceTemplateSourceEntity {
+    const TYPENAME: &'static str = "EthereumContractDataSourceTemplateSource";
+    type IdType = String;
+}
+
+impl EthereumContractDataSourceTemplateSourceEntity {
+    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+        let mut entity = Entity::new();
+        entity.set("id", id);
+        entity.set("abi", self.abi);
+        vec![set_entity_operation(Self::TYPENAME, id, entity)]
+    }
+}
+
+impl From<super::TemplateSource> for EthereumContractDataSourceTemplateSourceEntity {
+    fn from(source: super::TemplateSource) -> Self {
+        Self { abi: source.abi }
     }
 }
 
