@@ -1,6 +1,11 @@
 use crate::prelude::*;
 use web3::types::{Log, Transaction};
 
+#[derive(Debug, Default)]
+pub struct ProcessingState {
+    pub entity_operations: Vec<EntityOperation>,
+}
+
 /// Represents a loaded instance of a subgraph.
 pub trait SubgraphInstance<T>: Sized
 where
@@ -23,6 +28,6 @@ where
         block: Arc<EthereumBlock>,
         transaction: Arc<Transaction>,
         log: Log,
-        entity_operations: Vec<EntityOperation>,
-    ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send>;
+        state: ProcessingState,
+    ) -> Box<Future<Item = ProcessingState, Error = Error> + Send>;
 }

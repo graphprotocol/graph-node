@@ -66,8 +66,8 @@ where
         block: Arc<EthereumBlock>,
         transaction: Arc<Transaction>,
         log: Log,
-        entity_operations: Vec<EntityOperation>,
-    ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send> {
+        state: ProcessingState,
+    ) -> Box<Future<Item = ProcessingState, Error = Error> + Send> {
         let logger = logger.to_owned();
 
         // Identify runtime hosts that will handle this event
@@ -82,17 +82,16 @@ where
 
         // Process the log in each host in the same order the corresponding
         // data sources appear in the subgraph manifest
-        Box::new(stream::iter_ok(matching_hosts).fold(
-            entity_operations,
-            move |entity_operations, host| {
+        Box::new(
+            stream::iter_ok(matching_hosts).fold(state, move |state, host| {
                 host.process_log(
                     logger.clone(),
                     block.clone(),
                     transaction.clone(),
                     log.clone(),
-                    entity_operations,
+                    state,
                 )
-            },
-        ))
+            }),
+        )
     }
 }

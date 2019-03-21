@@ -220,7 +220,7 @@ where
         handler_name: &str,
         log: Arc<Log>,
         params: Vec<LogParam>,
-    ) -> Result<Vec<EntityOperation>, FailureError> {
+    ) -> Result<ProcessingState, FailureError> {
         self.start_time = Instant::now();
 
         let block = self.ctx.block.block.clone();
@@ -263,8 +263,8 @@ where
             .clone()
             .invoke_export(handler_name, &[event], &mut self);
 
-        // Return either the collected entity operations or an error
-        result.map(|_| self.ctx.entity_operations).map_err(|e| {
+        // Return either the output state (collected entity operations etc.) or an error
+        result.map(|_| self.ctx.state).map_err(|e| {
             format_err!(
                 "Failed to handle Ethereum event with handler \"{}\": {}",
                 handler_name,
