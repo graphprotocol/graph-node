@@ -44,7 +44,7 @@ where
     E: EthereumAdapter,
     L: LinkResolver,
     S: Store + Send + Sync,
-    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone,
+    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + Send + Sync + 'static,
 {
     pub(crate) fn new(
         subgraph_id: SubgraphDeploymentId,
