@@ -86,7 +86,7 @@ where
     }
 }
 
-type HandleEventResponse = Result<Vec<EntityOperation>, Error>;
+type HandleEventResponse = Result<ProcessingState, Error>;
 
 #[derive(Debug)]
 struct HandleEventRequest {
@@ -96,7 +96,7 @@ struct HandleEventRequest {
     transaction: Arc<Transaction>,
     log: Arc<Log>,
     params: Vec<LogParam>,
-    entity_operations: Vec<EntityOperation>,
+    state: ProcessingState,
     result_sender: oneshot::Sender<HandleEventResponse>,
 }
 
@@ -213,7 +213,7 @@ impl RuntimeHost {
                         transaction,
                         log,
                         params,
-                        entity_operations,
+                        state,
                         result_sender,
                     } = request;
 
@@ -221,7 +221,7 @@ impl RuntimeHost {
                         logger,
                         block,
                         transaction,
-                        entity_operations,
+                        state,
                     };
 
                     let result =
@@ -300,8 +300,8 @@ impl RuntimeHostTrait for RuntimeHost {
         block: Arc<EthereumBlock>,
         transaction: Arc<Transaction>,
         log: Arc<Log>,
-        entity_operations: Vec<EntityOperation>,
-    ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send> {
+        state: ProcessingState,
+    ) -> Box<Future<Item = ProcessingState, Error = Error> + Send> {
         // Identify event handler for this log
         let event_handler = match self.event_handler_for_log(&log) {
             Ok(handler) => handler,
@@ -363,7 +363,7 @@ impl RuntimeHostTrait for RuntimeHost {
                     transaction: transaction.clone(),
                     log: log.clone(),
                     params,
-                    entity_operations,
+                    state,
                     result_sender,
                 })
                 .map_err(move |_| {

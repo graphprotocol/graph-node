@@ -17,8 +17,8 @@ pub trait RuntimeHost: Send + Sync + Debug {
         block: Arc<EthereumBlock>,
         transaction: Arc<Transaction>,
         log: Arc<Log>,
-        entity_operations: Vec<EntityOperation>,
-    ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send>;
+        state: ProcessingState,
+    ) -> Box<Future<Item = ProcessingState, Error = Error> + Send>;
 }
 
 pub trait RuntimeHostBuilder: Clone + Send + 'static {

@@ -122,7 +122,7 @@ where
             _ => (),
         }
 
-        ctx.entity_operations.push(EntityOperation::Set {
+        ctx.state.entity_operations.push(EntityOperation::Set {
             key: EntityKey {
                 subgraph_id: self.subgraph_id.clone(),
                 entity_type,
@@ -140,7 +140,7 @@ where
         entity_type: String,
         entity_id: String,
     ) {
-        ctx.entity_operations.push(EntityOperation::Remove {
+        ctx.state.entity_operations.push(EntityOperation::Remove {
             key: EntityKey {
                 subgraph_id: self.subgraph_id.clone(),
                 entity_type,
@@ -163,6 +163,7 @@ where
 
         // Get all operations for this entity
         let matching_operations: Vec<_> = ctx
+            .state
             .entity_operations
             .iter()
             .filter(|op| op.matches_entity(&store_key))

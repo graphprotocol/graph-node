@@ -35,7 +35,7 @@ pub(crate) struct EventHandlerContext {
     logger: Logger,
     block: Arc<EthereumBlock>,
     transaction: Arc<Transaction>,
-    entity_operations: Vec<EntityOperation>,
+    state: ProcessingState,
 }
 
 /// Cloning an `EventHandlerContext` clones all its fields,

@@ -204,8 +204,9 @@ impl SubgraphInstanceManager {
                     let block_for_transact = block_for_process.clone();
                     let logger_for_process = logger;
                     let logger_for_transact = logger_for_process.clone();
+                    let initial_state = ProcessingState::default();
                     stream::iter_ok::<_, CancelableError<Error>>(logs)
-                        .fold(vec![], move |entity_operations, log| {
+                        .fold(initial_state, move |state, log| {
                             let logger = logger_for_process.clone();
                             let instance = instance.clone();
                             let block = block_for_process.clone();
@@ -217,17 +218,11 @@ impl SubgraphInstanceManager {
 
                             future::result(transaction).and_then(move |transaction| {
                                 instance
-                                    .process_log(
-                                        &logger,
-                                        block,
-                                        transaction,
-                                        log,
-                                        entity_operations,
-                                    )
+                                    .process_log(&logger, block, transaction, log, state)
                                     .map_err(|e| format_err!("Failed to process event: {}", e))
                             })
                         })
-                        .and_then(move |entity_operations| {
+                        .and_then(move |state| {
                             let block = block_for_transact.clone();
                             let logger = logger_for_transact.clone();
 
@@ -242,7 +237,7 @@ impl SubgraphInstanceManager {
                             info!(
                                 logger,
                                 "Applying {} entity operation(s)",
-                                entity_operations.len()
+                                state.entity_operations.len()
                             );
 
                             // Transact entity operations into the store and update the
@@ -252,7 +247,7 @@ impl SubgraphInstanceManager {
                                     id.clone(),
                                     block_ptr_now,
                                     block_ptr_after,
-                                    entity_operations,
+                                    state.entity_operations,
                                 )
                                 .map_err(|e| {
                                     format_err!(
