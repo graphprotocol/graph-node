@@ -5,8 +5,7 @@ fn unbounded_loop() {
     // Set handler timeout to 3 seconds.
     env::set_var(host_exports::TIMEOUT_ENV_VAR, "3");
     let valid_module = test_valid_module(mock_data_source("wasm_test/non_terminating.wasm"));
-    let mut module =
-        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
     module.start_time = Instant::now();
     let err = module
         .module
@@ -22,8 +21,7 @@ fn unbounded_loop() {
 #[test]
 fn unbounded_recursion() {
     let valid_module = test_valid_module(mock_data_source("wasm_test/non_terminating.wasm"));
-    let mut module =
-        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
     let err = module
         .module
         .clone()
@@ -35,8 +33,7 @@ fn unbounded_recursion() {
 #[test]
 fn abi_array() {
     let valid_module = test_valid_module(mock_data_source("wasm_test/abi_classes.wasm"));
-    let mut module =
-        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
 
     let vec = vec![
         "1".to_owned(),
@@ -65,8 +62,7 @@ fn abi_array() {
 #[test]
 fn abi_subarray() {
     let valid_module = test_valid_module(mock_data_source("wasm_test/abi_classes.wasm"));
-    let mut module =
-        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
 
     let vec: Vec<u8> = vec![1, 2, 3, 4];
     let vec_obj: AscPtr<TypedArray<u8>> = module.asc_new(&*vec);
@@ -81,8 +77,7 @@ fn abi_subarray() {
 #[test]
 fn abi_bytes_and_fixed_bytes() {
     let valid_module = test_valid_module(mock_data_source("wasm_test/abi_classes.wasm"));
-    let mut module =
-        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
     let bytes1: Vec<u8> = vec![42, 45, 7, 245, 45];
     let bytes2: Vec<u8> = vec![3, 12, 0, 1, 255];
 
@@ -104,8 +99,7 @@ fn abi_bytes_and_fixed_bytes() {
 #[test]
 fn abi_ethabi_token_identity() {
     let valid_module = test_valid_module(mock_data_source("wasm_test/abi_token.wasm"));
-    let mut module =
-        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
 
     // Token::Address
     let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
@@ -211,8 +205,7 @@ fn abi_store_value() {
     use graph::data::store::Value;
 
     let valid_module = test_valid_module(mock_data_source("wasm_test/abi_store_value.wasm"));
-    let mut module =
-        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
 
     // Value::Null
     let null_value_ptr: AscPtr<AscEnum<StoreValueKind>> = module
@@ -319,8 +312,7 @@ fn abi_store_value() {
 #[test]
 fn abi_h160() {
     let valid_module = test_valid_module(mock_data_source("wasm_test/abi_classes.wasm"));
-    let mut module =
-        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
     let address = H160::zero();
 
     // As an `Uint8Array`
@@ -340,8 +332,7 @@ fn abi_h160() {
 #[test]
 fn string() {
     let valid_module = test_valid_module(mock_data_source("wasm_test/abi_classes.wasm"));
-    let mut module =
-        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
     let string = "    漢字Double_Me🇧🇷  ";
     let trimmed_string_ptr = module.asc_new(string);
     let trimmed_string_obj: AscPtr<AscString> =
@@ -353,8 +344,7 @@ fn string() {
 #[test]
 fn abi_big_int() {
     let valid_module = test_valid_module(mock_data_source("wasm_test/abi_classes.wasm"));
-    let mut module =
-        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
 
     // Test passing in 0 and increment it by 1
     let old_uint = U256::zero();
@@ -395,8 +385,7 @@ fn big_int_to_string() {
 #[should_panic]
 fn invalid_discriminant() {
     let valid_module = test_valid_module(mock_data_source("wasm_test/abi_store_value.wasm"));
-    let mut module =
-        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
 
     let value_ptr = module
         .module
