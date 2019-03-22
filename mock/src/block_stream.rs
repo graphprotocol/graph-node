@@ -47,7 +47,19 @@ impl MockBlockStreamBuilder {
 impl BlockStreamBuilder for MockBlockStreamBuilder {
     type Stream = MockBlockStream;
 
-    fn from_subgraph(&self, _manifest: &SubgraphManifest, _logger: Logger) -> Self::Stream {
+    fn with_subgraph(self, _manifest: &SubgraphManifest) -> Self {
+        self
+    }
+
+    fn with_data_sources(self, _data_sources: &Vec<DataSource>) -> Self {
+        self
+    }
+
+    fn with_logger(self, _logger: Logger) -> Self {
+        self
+    }
+
+    fn build(&self) -> Self::Stream {
         MockBlockStream::new()
     }
 }

@@ -1005,6 +1005,10 @@ pub struct BlockStreamBuilder<S, C, E> {
     eth_adapter: Arc<E>,
     node_id: NodeId,
     reorg_threshold: u64,
+    deployment_id: Option<SubgraphDeploymentId>,
+    manifest_log_filter: Option<EthereumLogFilter>,
+    data_sources_log_filter: Option<EthereumLogFilter>,
+    logger: Option<Logger>,
 }
 
 impl<S, C, E> Clone for BlockStreamBuilder<S, C, E> {
@@ -1015,6 +1019,10 @@ impl<S, C, E> Clone for BlockStreamBuilder<S, C, E> {
             eth_adapter: self.eth_adapter.clone(),
             node_id: self.node_id.clone(),
             reorg_threshold: self.reorg_threshold,
+            deployment_id: self.deployment_id.clone(),
+            manifest_log_filter: self.manifest_log_filter.clone(),
+            data_sources_log_filter: self.data_sources_log_filter.clone(),
+            logger: self.logger.clone(),
         }
     }
 }
@@ -1038,6 +1046,10 @@ where
             eth_adapter,
             node_id,
             reorg_threshold,
+            deployment_id: None,
+            manifest_log_filter: None,
+            data_sources_log_filter: None,
+            logger: None,
         }
     }
 }
@@ -1050,19 +1062,49 @@ where
 {
     type Stream = BlockStream<S, C, E>;
 
-    fn from_subgraph(&self, manifest: &SubgraphManifest, logger: Logger) -> Self::Stream {
+    fn with_subgraph(mut self, manifest: &SubgraphManifest) -> Self {
+        // Remember the parts of the manifest that we need for the stream
+        self.deployment_id = Some(manifest.id.clone());
+        self.manifest_log_filter = Some(create_log_filter_from_subgraph(manifest));
+        self
+    }
+
+    fn with_data_sources(mut self, data_sources: &Vec<DataSource>) -> Self {
+        self.data_sources_log_filter = None;
+        self
+    }
+
+    fn with_logger(mut self, logger: Logger) -> Self {
+        self.logger = Some(logger);
+        self
+    }
+
+    fn build(&self) -> Self::Stream {
+        // FIXME: Find better solutions for this, ideally guaranteed by the compiler
+        let logger = self
+            .logger
+            .to_owned()
+            .expect("Block stream built without logger");
+        let deployment_id = self
+            .deployment_id
+            .to_owned()
+            .expect("Block stream built without subgraph");
+        let manifest_log_filter = self
+            .manifest_log_filter
+            .to_owned()
+            .expect("Block stream built without subgraph");
+
         // Listen for chain head block updates
         let mut chain_head_update_listener = self.chain_store.chain_head_updates();
 
         // Create the actual subgraph-specific block stream
-        let log_filter = create_log_filter_from_subgraph(manifest);
         let block_stream = BlockStream::new(
             self.subgraph_store.clone(),
             self.chain_store.clone(),
             self.eth_adapter.clone(),
             self.node_id.clone(),
-            manifest.id.clone(),
-            log_filter,
+            deployment_id.clone(),
+            manifest_log_filter.clone(),
             self.reorg_threshold,
             logger,
         );
