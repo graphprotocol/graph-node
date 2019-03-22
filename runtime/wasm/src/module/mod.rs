@@ -277,8 +277,6 @@ where
         handler_name: &str,
         value: &graph::serde_json::Value,
     ) -> Result<Vec<EntityOperation>, FailureError> {
-        self.start_time = Instant::now();
-
         let value = RuntimeValue::from(self.asc_new(value));
 
         // Invoke the callback
@@ -547,13 +545,20 @@ where
         let link = self.asc_get(link_ptr);
         let callback: String = self.asc_get(callback);
         let flags = self.asc_get(flags);
-        match self.host_exports().ipfs_map(&self, link, &*callback, flags) {
+        let start_time = Instant::now();
+        let result = match self.host_exports().ipfs_map(&self, link, &*callback, flags) {
             Ok(ops) => {
                 self.ctx.entity_operations.extend(ops);
                 Ok(None)
             }
             Err(e) => Err(e.into()),
-        }
+        };
+
+        // Advance this module's start time by the time it took to run the entire
+        // ipfs_map. This has the effect of not charging this module for the time
+        // spent running the callback on every JSON object in the IPFS file
+        self.start_time += start_time.elapsed();
+        result
     }
 
     /// Expects a decimal string.
