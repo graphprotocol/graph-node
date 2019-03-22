@@ -368,8 +368,7 @@ fn abi_big_int() {
 #[test]
 fn big_int_to_string() {
     let valid_module = test_valid_module(mock_data_source("wasm_test/big_int_to_string.wasm"));
-    let mut module =
-        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
 
     let big_int_str = "30145144166666665000000000000000000";
     let big_int = BigInt::from_str(big_int_str).unwrap();

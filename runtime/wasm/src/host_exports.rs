@@ -14,6 +14,8 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
+use crate::module::WasmiModule;
+
 pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_EVENT_HANDLER_TIMEOUT";
 
 pub(crate) trait ExportError: fmt::Debug + fmt::Display + Send + Sync + 'static {}
@@ -26,6 +28,12 @@ pub(crate) struct HostExportError<E>(pub(crate) E);
 impl<E: fmt::Display> fmt::Display for HostExportError<E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl From<graph::prelude::Error> for HostExportError<String> {
+    fn from(e: graph::prelude::Error) -> Self {
+        HostExportError(e.to_string())
     }
 }
 
@@ -332,6 +340,47 @@ where
                 .cat(&Link { link })
                 .map_err(HostExportError),
         )
+    }
+
+    // Read the IPFS file `link`, split it into JSON objects, and invoke
+    // the exported function `callback` on each JSON object. The successful
+    // return value contains all entity operations that were produced by the
+    // callback invocations. Each invocation of `callback` happens in its own
+    // instance of a WASM module, which is identical to `module` when it was
+    // first started.
+    pub(crate) fn ipfs_map(
+        &self,
+        module: &WasmiModule<E, L, S, U>,
+        link: String,
+        callback: &str,
+        flags: Vec<String>,
+    ) -> Result<Vec<EntityOperation>, HostExportError<impl ExportError>> {
+        const JSON_FLAG: &str = "json";
+        if !flags.contains(&JSON_FLAG.to_string()) {
+            return Err(HostExportError(format!("Flags must contain 'json'")));
+        }
+
+        let valid_module = module.valid_module.clone();
+        let ctx = module.ctx.clone();
+        let callback = callback.to_owned();
+        // Create a base error message to avoid borrowing headaches
+        let errmsg = format!(
+            "ipfs_map: callback '{}' failed when processing file '{}'",
+            &*callback, &link
+        );
+
+        let operations = self.block_on(
+            self.link_resolver
+                .json_stream(&Link { link })
+                .and_then(move |v| {
+                    let module =
+                        WasmiModule::from_valid_module_with_ctx(valid_module.clone(), ctx.clone())?;
+                    module.handle_json_callback(&*callback, &v)
+                })
+                .map_err(move |e| HostExportError(format!("{}: {}", errmsg, e.to_string()))).collect(),
+        )?;
+        // Collect all results into one Vec
+        Ok(operations.into_iter().flatten().collect())
     }
 
     /// Expects a decimal string.
