@@ -95,6 +95,7 @@ pub type Attribute = String;
 pub const ID: &str = "ID";
 pub const BYTES_SCALAR: &str = "Bytes";
 pub const BIG_INT_SCALAR: &str = "BigInt";
+pub const BIG_DECIMAL_SCALAR: &str = "BigDecimal";
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ValueType {
@@ -132,7 +133,7 @@ impl FromStr for ValueType {
 pub enum Value {
     String(String),
     Int(i32),
-    Float(f64),
+    BigDecimal(scalar::BigDecimal),
     Bool(bool),
     List(Vec<Value>),
     Null,
@@ -171,6 +172,7 @@ impl Value {
                 match n.as_str() {
                     BYTES_SCALAR => Value::Bytes(scalar::Bytes::from_str(s)?),
                     BIG_INT_SCALAR => Value::BigInt(scalar::BigInt::from_str(s)?),
+                    BIG_DECIMAL_SCALAR => Value::BigDecimal(scalar::BigDecimal::from_str(s)?),
                     _ => Value::String(s.clone()),
                 }
             }
@@ -207,9 +209,9 @@ impl Value {
         }
     }
 
-    pub fn as_float(self) -> Option<f64> {
-        if let Value::Float(f) = self {
-            Some(f)
+    pub fn as_big_decimal(self) -> Option<scalar::BigDecimal> {
+        if let Value::BigDecimal(d) = self {
+            Some(d)
         } else {
             None
         }
@@ -256,7 +258,7 @@ impl fmt::Display for Value {
             match self {
                 Value::String(s) => s.to_string(),
                 Value::Int(i) => i.to_string(),
-                Value::Float(f) => f.to_string(),
+                Value::BigDecimal(d) => d.to_string(),
                 Value::Bool(b) => b.to_string(),
                 Value::Null => "null".to_string(),
                 Value::List(ref values) => values
@@ -275,7 +277,7 @@ impl From<Value> for query::Value {
         match value {
             Value::String(s) => query::Value::String(s.to_string()),
             Value::Int(i) => query::Value::Int(query::Number::from(i)),
-            Value::Float(f) => query::Value::Float(f.into()),
+            Value::BigDecimal(d) => query::Value::String(d.to_string()),
             Value::Bool(b) => query::Value::Boolean(b),
             Value::Null => query::Value::Null,
             Value::List(values) => {
@@ -317,9 +319,9 @@ impl From<i32> for Value {
     }
 }
 
-impl From<f64> for Value {
-    fn from(value: f64) -> Value {
-        Value::Float(value)
+impl From<scalar::BigDecimal> for Value {
+    fn from(value: scalar::BigDecimal) -> Value {
+        Value::BigDecimal(value)
     }
 }
 
