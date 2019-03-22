@@ -204,6 +204,12 @@ impl From<num_bigint::ParseBigIntError> for QueryExecutionError {
     }
 }
 
+impl From<bigdecimal::ParseBigDecimalError> for QueryExecutionError {
+    fn from(e: bigdecimal::ParseBigDecimalError) -> Self {
+        QueryExecutionError::ValueParseError("BigDecimal".to_string(), format!("{}", e))
+    }
+}
+
 /// Error caused while processing a [Query](struct.Query.html) request.
 #[derive(Debug)]
 pub enum QueryError {

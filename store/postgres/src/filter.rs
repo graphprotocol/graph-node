@@ -41,18 +41,6 @@ impl IntoFilter for String {
     }
 }
 
-impl IntoFilter for f64 {
-    fn into_filter(self, attribute: String, op: &str) -> FilterExpression {
-        Box::new(
-            sql("(data -> ")
-                .bind::<Text, _>(attribute)
-                .sql("->> 'data')::float")
-                .sql(op)
-                .bind::<Double, _>(self),
-        ) as FilterExpression
-    }
-}
-
 impl IntoFilter for i32 {
     fn into_filter(self, attribute: String, op: &str) -> FilterExpression {
         Box::new(
@@ -88,6 +76,18 @@ impl IntoFilter for BigInt {
                 // mismatch of `bignum` versions, go through the string
                 // representation to work around that.
                 .bind::<Numeric, _>(BigDecimal::from_str(&self.to_string()).unwrap()),
+        ) as FilterExpression
+    }
+}
+
+impl IntoFilter for BigDecimal {
+    fn into_filter(self, attribute: String, op: &str) -> FilterExpression {
+        Box::new(
+            sql("(data -> ")
+                .bind::<Text, _>(attribute)
+                .sql("->> 'data')::numeric")
+                .sql(op)
+                .bind::<Numeric, _>(self),
         ) as FilterExpression
     }
 }
@@ -172,7 +172,7 @@ pub(crate) fn build_filter(filter: EntityFilter) -> Result<FilterExpression, Uns
                     }
                 }
                 Value::Null
-                | Value::Float(_)
+                | Value::BigDecimal(_)
                 | Value::Int(_)
                 | Value::Bool(_)
                 | Value::BigInt(_) => {
@@ -195,7 +195,7 @@ pub(crate) fn build_filter(filter: EntityFilter) -> Result<FilterExpression, Uns
                 Value::BigInt(n) => Ok(n.into_filter(attribute, op)),
                 Value::Bool(b) => Ok(b.into_filter(attribute, op)),
                 Value::Bytes(b) => Ok(b.to_string().into_filter(attribute, op)),
-                Value::Float(n) => Ok(n.into_filter(attribute, op)),
+                Value::BigDecimal(n) => Ok(n.into_filter(attribute, op)),
                 Value::Int(n) => Ok(n.into_filter(attribute, op)),
                 Value::List(lst) => {
                     let s = serde_json::to_string(&lst).expect("failed to serialize list value");
@@ -241,7 +241,7 @@ pub(crate) fn build_filter(filter: EntityFilter) -> Result<FilterExpression, Uns
 
             match value {
                 Value::BigInt(n) => Ok(n.into_filter(attribute, op)),
-                Value::Float(n) => Ok(n.into_filter(attribute, op)),
+                Value::BigDecimal(n) => Ok(n.into_filter(attribute, op)),
                 Value::Int(n) => Ok(n.into_filter(attribute, op)),
                 Value::String(s) => Ok(s.into_filter(attribute, op)),
                 Value::Bool(_) | Value::Bytes(_) | Value::List(_) | Value::Null => {
@@ -260,11 +260,8 @@ pub(crate) fn build_filter(filter: EntityFilter) -> Result<FilterExpression, Uns
             let op = " = ANY ";
 
             match values[0] {
-                Value::BigInt(_) => Ok(SqlValue::new_array(values).into_array_filter::<Numeric>(
-                    attribute,
-                    op,
-                    "::numeric",
-                )),
+                Value::BigInt(_) | Value::BigDecimal(_) => Ok(SqlValue::new_array(values)
+                    .into_array_filter::<Numeric>(attribute, op, "::numeric")),
                 Value::Bool(_) => Ok(SqlValue::new_array(values).into_array_filter::<Bool>(
                     attribute,
                     op,
@@ -273,8 +270,6 @@ pub(crate) fn build_filter(filter: EntityFilter) -> Result<FilterExpression, Uns
                 Value::Bytes(_) => {
                     Ok(SqlValue::new_array(values).into_array_filter::<Text>(attribute, op, ""))
                 }
-                Value::Float(_) => Ok(SqlValue::new_array(values)
-                    .into_array_filter::<Double>(attribute, op, "::float8")),
                 Value::Int(_) => Ok(SqlValue::new_array(values)
                     .into_array_filter::<Integer>(attribute, op, "::int")),
                 Value::String(_) => {
@@ -312,7 +307,7 @@ pub(crate) fn build_filter(filter: EntityFilter) -> Result<FilterExpression, Uns
                 Value::Bool(_)
                 | Value::BigInt(_)
                 | Value::Bytes(_)
-                | Value::Float(_)
+                | Value::BigDecimal(_)
                 | Value::Int(_)
                 | Value::List(_)
                 | Value::Null => {
@@ -341,7 +336,7 @@ pub(crate) fn build_filter(filter: EntityFilter) -> Result<FilterExpression, Uns
                 Value::Bool(_)
                 | Value::BigInt(_)
                 | Value::Bytes(_)
-                | Value::Float(_)
+                | Value::BigDecimal(_)
                 | Value::Int(_)
                 | Value::List(_)
                 | Value::Null => {

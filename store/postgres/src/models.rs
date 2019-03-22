@@ -42,15 +42,6 @@ impl ToSql<Bool, Pg> for SqlValue {
     }
 }
 
-impl ToSql<Double, Pg> for SqlValue {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
-        match self.0 {
-            Value::Float(ref f) => <f64 as ToSql<Double, Pg>>::to_sql(&f, out),
-            _ => panic!("Failed to convert non-float attribute value to float in SQL"),
-        }
-    }
-}
-
 impl ToSql<Integer, Pg> for SqlValue {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
         match self.0 {
@@ -62,13 +53,15 @@ impl ToSql<Integer, Pg> for SqlValue {
 
 impl ToSql<Numeric, Pg> for SqlValue {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
-        match self.0 {
-            Value::BigInt(ref number) => <BigDecimal as ToSql<Numeric, Pg>>::to_sql(
-                &BigDecimal::from_str(&number.to_string()).unwrap(),
-                out,
-            ),
+        let big_decimal = match self.0 {
+            Value::BigDecimal(d) => d,
+            // TODO: init the bigdecimal directly
+            Value::BigInt(number) => BigDecimal::from_str(&number.to_string()).unwrap(),
             _ => panic!("Failed to convert attribute value to bigint in SQL"),
-        }
+        };
+
+        // TODO: maybe unclutter this?
+        <BigDecimal as ToSql<Numeric, Pg>>::to_sql(&big_decimal, out)
     }
 }
 

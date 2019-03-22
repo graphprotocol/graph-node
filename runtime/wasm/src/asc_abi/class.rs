@@ -342,7 +342,7 @@ impl AscValue for EthereumValueKind {}
 pub enum StoreValueKind {
     String,
     Int,
-    Float,
+    BigDecimal,
     Bool,
     Array,
     Null,
@@ -357,7 +357,7 @@ impl StoreValueKind {
         match value {
             Value::String(_) => StoreValueKind::String,
             Value::Int(_) => StoreValueKind::Int,
-            Value::Float(_) => StoreValueKind::Float,
+            Value::BigDecimal(_) => StoreValueKind::BigDecimal,
             Value::Bool(_) => StoreValueKind::Bool,
             Value::List(_) => StoreValueKind::Array,
             Value::Null => StoreValueKind::Null,
