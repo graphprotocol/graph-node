@@ -59,6 +59,7 @@ const BIG_DECIMAL_DIVIDED_BY: usize = 30;
 const BIG_DECIMAL_EQUALS: usize = 31;
 const BIG_DECIMAL_TO_STRING: usize = 32;
 const BIG_DECIMAL_FROM_STRING: usize = 33;
+const IPFS_MAP_FUNC_INDEX: usize = 34;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
@@ -146,8 +147,8 @@ pub(crate) struct WasmiModule<T, L, S, U> {
     pub logger: Logger,
     pub module: ModuleRef,
     memory: MemoryRef,
-    ctx: EventHandlerContext,
-    valid_module: Arc<ValidModule<T, L, S, U>>,
+    pub ctx: EventHandlerContext,
+    pub valid_module: Arc<ValidModule<T, L, S, U>>,
 
     // Time when the current handler began processing.
     start_time: Instant,
@@ -265,6 +266,31 @@ where
         result.map(|_| self.ctx.entity_operations).map_err(|e| {
             format_err!(
                 "Failed to handle Ethereum event with handler \"{}\": {}",
+                handler_name,
+                e
+            )
+        })
+    }
+
+    pub(crate) fn handle_json_callback(
+        mut self,
+        handler_name: &str,
+        value: &graph::serde_json::Value,
+    ) -> Result<Vec<EntityOperation>, FailureError> {
+        self.start_time = Instant::now();
+
+        let value = RuntimeValue::from(self.asc_new(value));
+
+        // Invoke the callback
+        let result = self
+            .module
+            .clone()
+            .invoke_export(handler_name, &[value], &mut self);
+
+        // Return either the collected entity operations or an error
+        result.map(|_| self.ctx.entity_operations).map_err(|e| {
+            format_err!(
+                "Failed to handle callback with handler \"{}\": {}",
                 handler_name,
                 e
             )
@@ -511,6 +537,25 @@ where
         }
     }
 
+    /// function ipfs.map(link: String, callback: String, flags: String[]): void
+    fn ipfs_map(
+        &mut self,
+        link_ptr: AscPtr<AscString>,
+        callback: AscPtr<AscString>,
+        flags: AscPtr<Array<AscPtr<AscString>>>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let link = self.asc_get(link_ptr);
+        let callback: String = self.asc_get(callback);
+        let flags = self.asc_get(flags);
+        match self.host_exports().ipfs_map(&self, link, &*callback, flags) {
+            Ok(ops) => {
+                self.ctx.entity_operations.extend(ops);
+                Ok(None)
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
     /// Expects a decimal string.
     /// function json.toI64(json: String): i64
     fn json_to_i64(&mut self, json_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
@@ -617,7 +662,7 @@ where
     ) -> Result<Option<RuntimeValue>, Trap> {
         let x = self.asc_get::<BigInt, _>(x_ptr).to_big_decimal(0.into());
         let result = self
-            .host_exports
+            .host_exports()
             .big_decimal_divided_by(x, self.asc_get(y_ptr))?;
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
@@ -650,7 +695,7 @@ where
         big_decimal_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
-            .host_exports
+            .host_exports()
             .big_decimal_to_string(self.asc_get(big_decimal_ptr));
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
@@ -661,7 +706,7 @@ where
         string_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
-            .host_exports
+            .host_exports()
             .big_decimal_from_string(self.asc_get(string_ptr))?;
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
@@ -673,7 +718,7 @@ where
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
-            .host_exports
+            .host_exports()
             .big_decimal_plus(self.asc_get(x_ptr), self.asc_get(y_ptr));
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
@@ -685,7 +730,7 @@ where
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
-            .host_exports
+            .host_exports()
             .big_decimal_minus(self.asc_get(x_ptr), self.asc_get(y_ptr));
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
@@ -697,7 +742,7 @@ where
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
-            .host_exports
+            .host_exports()
             .big_decimal_times(self.asc_get(x_ptr), self.asc_get(y_ptr));
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
@@ -709,7 +754,7 @@ where
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
-            .host_exports
+            .host_exports()
             .big_decimal_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr))?;
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
@@ -721,7 +766,7 @@ where
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let equals = self
-            .host_exports
+            .host_exports()
             .big_decimal_equals(self.asc_get(x_ptr), self.asc_get(y_ptr));
         Ok(Some(RuntimeValue::I32(if equals { 1 } else { 0 })))
     }
@@ -797,6 +842,11 @@ where
             }
             BIG_DECIMAL_TO_STRING => self.big_decimal_to_string(args.nth_checked(0)?),
             BIG_DECIMAL_FROM_STRING => self.big_decimal_from_string(args.nth_checked(0)?),
+            IPFS_MAP_FUNC_INDEX => self.ipfs_map(
+                args.nth_checked(0)?,
+                args.nth_checked(1)?,
+                args.nth_checked(2)?,
+            ),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -869,6 +919,7 @@ impl ModuleImportResolver for ModuleResolver {
 
             // ipfs
             "ipfs.cat" => FuncInstance::alloc_host(signature, IPFS_CAT_FUNC_INDEX),
+            "ipfs.map" => FuncInstance::alloc_host(signature, IPFS_MAP_FUNC_INDEX),
 
             // crypto
             "crypto.keccak256" => FuncInstance::alloc_host(signature, CRYPTO_KECCAK_256_INDEX),

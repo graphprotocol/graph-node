@@ -92,11 +92,13 @@ impl EthereumAdapter for MockEthereumAdapter {
 
 fn test_valid_module(
     data_source: DataSource,
-) -> ValidModule<
-    MockEthereumAdapter,
-    ipfs_api::IpfsClient,
-    FakeStore,
-    Sender<Box<Future<Item = (), Error = ()> + Send>>,
+) -> Arc<
+    ValidModule<
+        MockEthereumAdapter,
+        ipfs_api::IpfsClient,
+        FakeStore,
+        Sender<Box<Future<Item = (), Error = ()> + Send>>,
+    >,
 > {
     let logger = Logger::root(slog::Discard, o!());
     let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
@@ -104,18 +106,20 @@ fn test_valid_module(
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     runtime.spawn(task_receiver.for_each(tokio::spawn));
     ::std::mem::forget(runtime);
-    ValidModule::new(
-        &logger,
-        WasmiModuleConfig {
-            subgraph_id: SubgraphDeploymentId::new("wasmModuleTest").unwrap(),
-            data_source,
-            ethereum_adapter: mock_ethereum_adapter,
-            link_resolver: Arc::new(ipfs_api::IpfsClient::default()),
-            store: Arc::new(FakeStore),
-        },
-        task_sender,
+    Arc::new(
+        ValidModule::new(
+            &logger,
+            WasmiModuleConfig {
+                subgraph_id: SubgraphDeploymentId::new("wasmModuleTest").unwrap(),
+                data_source,
+                ethereum_adapter: mock_ethereum_adapter,
+                link_resolver: Arc::new(ipfs_api::IpfsClient::default()),
+                store: Arc::new(FakeStore),
+            },
+            task_sender,
+        )
+        .unwrap(),
     )
-    .unwrap()
 }
 
 fn mock_data_source(path: &str) -> DataSource {
@@ -288,6 +292,88 @@ fn ipfs_cat() {
         .expect("call did not return pointer");
     let data: String = module.asc_get(converted);
     assert_eq!(data, "42");
+}
+
+fn make_thing(id: &str, value: &str) -> (String, EntityOperation) {
+    let mut data = Entity::new();
+    data.set("id", id);
+    data.set("value", value);
+    let subgraph_id = SubgraphDeploymentId::new("wasmModuleTest").unwrap();
+    let key = EntityKey {
+        subgraph_id,
+        entity_type: "Thing".to_string(),
+        entity_id: id.to_string(),
+    };
+    (
+        format!("{{ \"id\": \"{}\", \"value\": \"{}\" }}", id, value),
+        EntityOperation::Set { key, data },
+    )
+}
+
+#[test]
+fn ipfs_map() {
+    const BAD_IPFS_HASH: &str = "bad-ipfs-hash";
+
+    let valid_module = test_valid_module(mock_data_source("wasm_test/ipfs_map.wasm"));
+    let ipfs = Arc::new(ipfs_api::IpfsClient::default());
+    let mut runtime = tokio::runtime::Runtime::new().unwrap();
+
+    let mut run_ipfs_map = move |json_string| -> Result<Vec<EntityOperation>, Error> {
+        let mut module =
+            WasmiModule::from_valid_module_with_ctx(valid_module.clone(), mock_context()).unwrap();
+        let hash = if json_string == BAD_IPFS_HASH {
+            "Qm".to_string()
+        } else {
+            runtime
+                .block_on(ipfs.add(Cursor::new(json_string)))
+                .unwrap()
+                .hash
+        };
+
+        let converted = module.module.clone().invoke_export(
+            "ipfsMap",
+            &[RuntimeValue::from(module.asc_new(&hash))],
+            &mut module,
+        )?;
+        assert_eq!(None, converted);
+        Ok(module.ctx.entity_operations)
+    };
+
+    // Try it with two valid objects
+    let (str1, thing1) = make_thing("one", "eins");
+    let (str2, thing2) = make_thing("two", "zwei");
+    let ops = run_ipfs_map(format!("{}\n{}", str1, str2)).expect("call failed");
+    let expected = vec![thing1, thing2];
+    assert_eq!(expected, ops);
+
+    // Valid JSON, but not what the callback expected; it will
+    // fail on an assertion
+    let errmsg = run_ipfs_map(format!("{}\n[1,2]", str1))
+        .unwrap_err()
+        .to_string();
+    assert!(errmsg.contains("JSON value is not an object."));
+
+    // Malformed JSON
+    let errmsg = run_ipfs_map(format!("{}\n[", str1))
+        .unwrap_err()
+        .to_string();
+    assert!(errmsg.contains("EOF while parsing a list"));
+
+    // Empty input
+    let ops = run_ipfs_map("".to_string()).expect("call failed for emoty string");
+    assert_eq!(0, ops.len());
+
+    // Missing entry in the JSON object
+    let errmsg = run_ipfs_map("{\"value\": \"drei\"}".to_string())
+        .unwrap_err()
+        .to_string();
+    assert!(errmsg.contains("JSON value is not a string."));
+
+    // Bad IPFS hash.
+    let errmsg = run_ipfs_map(BAD_IPFS_HASH.to_string())
+        .unwrap_err()
+        .to_string();
+    assert!(errmsg.contains("api returned error \\'invalid \\'ipfs ref\\' path\\'"))
 }
 
 #[test]
