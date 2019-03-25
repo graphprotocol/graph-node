@@ -350,6 +350,7 @@ where
             object_type,
             object_value,
             field,
+            field_definition,
             name,
             argument_values,
         ),
@@ -372,6 +373,7 @@ fn resolve_field_value_for_named_type<'a, R1, R2>(
     object_type: &s::ObjectType,
     object_value: &Option<q::Value>,
     field: &q::Field,
+    field_definition: &s::Field,
     type_name: &s::Name,
     argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>>
@@ -398,6 +400,7 @@ where
                 ctx.introspection_resolver.resolve_object(
                     object_value,
                     &field.name,
+                    field_definition,
                     t.into(),
                     argument_values,
                     &BTreeMap::new(), // The introspection schema has no interfaces.
@@ -406,6 +409,7 @@ where
                 ctx.resolver.resolve_object(
                     object_value,
                     &field.name,
+                    field_definition,
                     t.into(),
                     argument_values,
                     ctx.schema.types_for_interface(),
@@ -453,6 +457,7 @@ where
                 ctx.introspection_resolver.resolve_object(
                     object_value,
                     &field.name,
+                    field_definition,
                     i.into(),
                     argument_values,
                     &BTreeMap::new(), // The introspection schema has no interfaces.
@@ -461,6 +466,7 @@ where
                 ctx.resolver.resolve_object(
                     object_value,
                     &field.name,
+                    field_definition,
                     i.into(),
                     argument_values,
                     ctx.schema.types_for_interface(),

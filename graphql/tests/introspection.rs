@@ -32,6 +32,7 @@ impl Resolver for MockResolver {
         &self,
         _parent: &Option<q::Value>,
         _field: &q::Name,
+        _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,

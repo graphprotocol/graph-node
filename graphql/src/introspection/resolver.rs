@@ -497,6 +497,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
+        _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         _: &BTreeMap<Name, Vec<ObjectType>>,
