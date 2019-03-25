@@ -79,6 +79,7 @@ pub trait Resolver: Clone + Send + Sync {
     /// Resolves a scalar value for a given scalar type.
     fn resolve_scalar_value(
         &self,
+        _parent_object_type: &s::ObjectType,
         _parent: &BTreeMap<String, q::Value>,
         _field: &q::Name,
         scalar_type: &s::ScalarType,
