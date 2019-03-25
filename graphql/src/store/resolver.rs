@@ -200,11 +200,14 @@ where
     /// Resolves a scalar value for a given scalar type.
     fn resolve_scalar_value(
         &self,
+        parent_object_type: &s::ObjectType,
         parent: &BTreeMap<String, q::Value>,
         field: &q::Name,
         scalar_type: &s::ScalarType,
         value: Option<&q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
+        let subgraph_id = parse_subgraph_id(parent_object_type).unwrap();
+
         // Extract __typename from the parent object
         let typename = parent
             .get("__typename")
@@ -214,9 +217,13 @@ where
             })
             .expect("GraphQL object must have `__typename`");
 
-        match (typename.as_str(), field.as_str()) {
+        match (
+            subgraph_id.deref().as_str(),
+            typename.as_str(),
+            field.as_str(),
+        ) {
             // Compute `entityCount` on-demand
-            ("SubgraphDeployment", "entityCount") => {
+            ("subgraphs", "SubgraphDeployment", "entityCount") => {
                 // Extract the entity ID
                 let id = parent
                     .get("id")
