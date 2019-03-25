@@ -147,7 +147,7 @@ fn one_interface_multiple_entities() {
         "Furniture",
     );
 
-    let query = "query { leggeds(first: 100) { legs } }";
+    let query = "query { leggeds(first: 100, orderBy: legs) { legs } }";
 
     let res = insert_and_query(subgraph_id, schema, vec![animal, furniture], query).unwrap();
     assert!(res.errors.is_none());
