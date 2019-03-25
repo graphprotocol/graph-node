@@ -8,6 +8,7 @@ use serde::de;
 use serde::ser;
 use serde_yaml;
 use std::fmt;
+use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::prelude::*;
@@ -57,6 +58,14 @@ impl SubgraphDeploymentId {
         Link {
             link: format!("/ipfs/{}", self),
         }
+    }
+}
+
+impl Deref for SubgraphDeploymentId {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
