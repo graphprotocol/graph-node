@@ -40,6 +40,12 @@ fn test_schema(id: SubgraphDeploymentId) -> Schema {
                 title: String!
                 writtenBy: Musician!
             }
+
+            type SongStat @entity {
+                id: ID!
+                song: Song @derivedFrom(field: \"id\")
+                played: Int!
+            }
             ",
         id,
     )
@@ -141,6 +147,16 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
             ("title", Value::from("Folk Tune")),
             ("writtenBy", Value::from("m3")),
         ]),
+        Entity::from(vec![
+            ("__typename", Value::from("SongStat")),
+            ("id", Value::from("s1")),
+            ("played", Value::from(10)),
+        ]),
+        Entity::from(vec![
+            ("__typename", Value::from("SongStat")),
+            ("id", Value::from("s2")),
+            ("played", Value::from(15)),
+        ]),
     ];
 
     let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
@@ -195,6 +211,14 @@ fn can_query_one_to_one_relationship() {
                         name
                     }
                 }
+                songStats(first: 100, orderBy: id) {
+                    id
+                    song {
+                      id
+                      title
+                    }
+                    played
+                }
             }
             ",
         )
@@ -208,45 +232,74 @@ fn can_query_one_to_one_relationship() {
 
     assert_eq!(
         result.data,
-        Some(object_value(vec![(
-            "musicians",
-            q::Value::List(vec![
-                object_value(vec![
-                    ("name", q::Value::String(String::from("John"))),
-                    (
-                        "mainBand",
-                        object_value(vec![(
-                            "name",
-                            q::Value::String(String::from("The Musicians")),
-                        )]),
-                    ),
-                ]),
-                object_value(vec![
-                    ("name", q::Value::String(String::from("Lisa"))),
-                    (
-                        "mainBand",
-                        object_value(vec![(
-                            "name",
-                            q::Value::String(String::from("The Musicians")),
-                        )]),
-                    ),
-                ]),
-                object_value(vec![
-                    ("name", q::Value::String(String::from("Tom"))),
-                    (
-                        "mainBand",
-                        object_value(vec![(
-                            "name",
-                            q::Value::String(String::from("The Amateurs")),
-                        )]),
-                    ),
-                ]),
-                object_value(vec![
-                    ("name", q::Value::String(String::from("Valerie"))),
-                    ("mainBand", q::Value::Null),
-                ]),
-            ]),
-        )])),
+        Some(object_value(vec![
+            (
+                "musicians",
+                q::Value::List(vec![
+                    object_value(vec![
+                        ("name", q::Value::String(String::from("John"))),
+                        (
+                            "mainBand",
+                            object_value(vec![(
+                                "name",
+                                q::Value::String(String::from("The Musicians")),
+                            )]),
+                        ),
+                    ]),
+                    object_value(vec![
+                        ("name", q::Value::String(String::from("Lisa"))),
+                        (
+                            "mainBand",
+                            object_value(vec![(
+                                "name",
+                                q::Value::String(String::from("The Musicians")),
+                            )]),
+                        ),
+                    ]),
+                    object_value(vec![
+                        ("name", q::Value::String(String::from("Tom"))),
+                        (
+                            "mainBand",
+                            object_value(vec![(
+                                "name",
+                                q::Value::String(String::from("The Amateurs")),
+                            )]),
+                        ),
+                    ]),
+                    object_value(vec![
+                        ("name", q::Value::String(String::from("Valerie"))),
+                        ("mainBand", q::Value::Null),
+                    ]),
+                ])
+            ),
+            (
+                "songStats",
+                q::Value::List(vec![
+                    object_value(vec![
+                        ("id", q::Value::String(String::from("s1"))),
+                        ("played", q::Value::Int(q::Number::from(10))),
+                        (
+                            "song",
+                            object_value(vec![
+                                ("id", q::Value::String(String::from("s1"))),
+                                ("title", q::Value::String(String::from("Cheesy Tune")))
+                            ])
+                        ),
+                    ]),
+                    object_value(vec![
+                        ("id", q::Value::String(String::from("s2"))),
+                        ("played", q::Value::Int(q::Number::from(15))),
+                        (
+                            "song",
+                            object_value(vec![
+                                ("id", q::Value::String(String::from("s2"))),
+                                ("title", q::Value::String(String::from("Rock Tune")))
+                            ])
+                        ),
+                    ])
+                ])
+            ),
+        ]))
     )
 }
 
