@@ -427,11 +427,15 @@ where
         s::TypeDefinition::Scalar(t) => match object_value {
             Some(q::Value::Object(o)) => {
                 if ctx.introspecting {
-                    Ok(ctx
-                        .introspection_resolver
-                        .resolve_scalar_value(t, o.get(&field.name)))
+                    ctx.introspection_resolver.resolve_scalar_value(
+                        o,
+                        &field.name,
+                        t,
+                        o.get(&field.name),
+                    )
                 } else {
-                    Ok(ctx.resolver.resolve_scalar_value(t, o.get(&field.name)))
+                    ctx.resolver
+                        .resolve_scalar_value(o, &field.name, t, o.get(&field.name))
                 }
             }
             _ => Ok(q::Value::Null),

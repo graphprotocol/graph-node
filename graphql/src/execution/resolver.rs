@@ -79,12 +79,14 @@ pub trait Resolver: Clone + Send + Sync {
     /// Resolves a scalar value for a given scalar type.
     fn resolve_scalar_value(
         &self,
+        _parent: &BTreeMap<String, q::Value>,
+        _field: &q::Name,
         scalar_type: &s::ScalarType,
         value: Option<&q::Value>,
-    ) -> q::Value {
-        value
+    ) -> Result<q::Value, QueryExecutionError> {
+        Ok(value
             .and_then(|value| value.coerce(scalar_type))
-            .unwrap_or(q::Value::Null)
+            .unwrap_or(q::Value::Null))
     }
 
     /// Resolves a list of enum values for a given enum type.
