@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use graph::components::ethereum::{EthereumBlockData, EthereumEventData, EthereumTransactionData};
 use graph::data::store;
-use graph::prelude::BigInt;
+use graph::prelude::{BigDecimal, BigInt};
 use graph::serde_json;
 use graph::web3::types as web3;
 
@@ -55,6 +55,24 @@ impl FromAscObj<AscBigInt> for BigInt {
     fn from_asc_obj<H: AscHeap>(array_buffer: AscBigInt, heap: &H) -> Self {
         let bytes = <Vec<u8>>::from_asc_obj(array_buffer, heap);
         BigInt::from_signed_bytes_le(&bytes)
+    }
+}
+
+impl ToAscObj<AscBigDecimal> for BigDecimal {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscBigDecimal {
+        // "exponent" here is the opposite of what you'd expect.
+        let (digits, negative_exp) = self.as_bigint_and_exponent();
+        AscBigDecimal {
+            exp: heap.asc_new(&BigInt::from(-negative_exp)),
+            digits: heap.asc_new(&BigInt::from(digits)),
+        }
+    }
+}
+
+impl FromAscObj<AscBigDecimal> for BigDecimal {
+    fn from_asc_obj<H: AscHeap>(big_decimal: AscBigDecimal, heap: &H) -> Self {
+        heap.asc_get::<BigInt, _>(big_decimal.digits)
+            .to_big_decimal(heap.asc_get(big_decimal.exp))
     }
 }
 
@@ -145,7 +163,10 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
                 Value::String(heap.asc_get(ptr))
             }
             StoreValueKind::Int => Value::Int(i32::from(payload)),
-            StoreValueKind::Float => Value::Float(f64::from(payload)),
+            StoreValueKind::BigDecimal => {
+                let ptr: AscPtr<AscBigDecimal> = AscPtr::from(payload);
+                Value::BigDecimal(heap.asc_get(ptr))
+            }
             StoreValueKind::Bool => Value::Bool(bool::from(payload)),
             StoreValueKind::Array => {
                 let ptr: AscEnumArray<StoreValueKind> = AscPtr::from(payload);
@@ -173,7 +194,7 @@ impl ToAscObj<AscEnum<StoreValueKind>> for store::Value {
         let payload = match self {
             Value::String(string) => heap.asc_new(string.as_str()).into(),
             Value::Int(n) => EnumPayload::from(*n),
-            Value::Float(n) => EnumPayload::from(*n),
+            Value::BigDecimal(n) => heap.asc_new(n).into(),
             Value::Bool(b) => EnumPayload::from(*b),
             Value::List(array) => heap.asc_new(array.as_slice()).into(),
             Value::Null => EnumPayload(0),

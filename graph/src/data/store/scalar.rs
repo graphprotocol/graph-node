@@ -97,11 +97,30 @@ impl BigInt {
         );
         U256::from_little_endian(&bytes)
     }
+
+    pub fn to_big_decimal(self, exp: BigInt) -> BigDecimal {
+        let bytes = exp.to_signed_bytes_le();
+
+        // The hope here is that bigdecimal switches to BigInt exponents. Until
+        // then, a panic is fine since this is only used in mappings.
+        if bytes.len() > 8 {
+            panic!("big decimal exponent does not fit in i64")
+        }
+        let mut byte_array = [0; 8];
+        byte_array.copy_from_slice(&bytes);
+        BigDecimal::new(self.0, i64::from_le_bytes(byte_array))
+    }
 }
 
 impl Display for BigInt {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         self.0.fmt(f)
+    }
+}
+
+impl From<num_bigint::BigInt> for BigInt {
+    fn from(big_int: num_bigint::BigInt) -> BigInt {
+        BigInt(big_int)
     }
 }
 
@@ -113,6 +132,12 @@ impl From<i32> for BigInt {
 
 impl From<u64> for BigInt {
     fn from(i: u64) -> BigInt {
+        BigInt(i.into())
+    }
+}
+
+impl From<i64> for BigInt {
+    fn from(i: i64) -> BigInt {
         BigInt(i.into())
     }
 }
