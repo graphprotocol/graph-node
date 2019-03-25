@@ -1,8 +1,7 @@
-use bigdecimal::BigDecimal;
 use diesel::pg::Pg;
 use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::{Bool, Double, Integer, Jsonb, Numeric, Text, VarChar};
-use graph::serde_json;
+use graph::{serde_json, BigDecimal};
 use std::io::Write;
 use std::str::FromStr;
 
