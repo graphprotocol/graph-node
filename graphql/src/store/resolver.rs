@@ -5,7 +5,6 @@ use std::result;
 use std::sync::Arc;
 
 use graph::components::store::*;
-use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::*;
 
 use crate::prelude::*;
@@ -192,39 +191,59 @@ where
             })
             .unwrap_or(true)
     }
-
-    /// Compute special fields that are not stored such as as `entityCount`.
-    fn add_computed_fields(
-        &self,
-        mut entity: Entity,
-        object_type: ObjectOrInterface,
-    ) -> Result<Entity, QueryExecutionError> {
-        let subgraph_deployment_entity_pair = SubgraphDeploymentEntity::subgraph_entity_pair();
-        if (
-            parse_subgraph_id(object_type)?,
-            object_type.name().to_owned(),
-        ) == subgraph_deployment_entity_pair
-        {
-            let id = entity
-                .id()
-                .expect("subgraph deployment entity should have ID");
-            let hash = SubgraphDeploymentId::new(id).expect("invalid subgraph ID in database");
-            entity.insert(
-                "entityCount".to_owned(),
-                self.store
-                    .count_entities(hash)
-                    .map_err(QueryExecutionError::StoreError)?
-                    .into(),
-            );
-        }
-        Ok(entity)
-    }
 }
 
 impl<S> Resolver for StoreResolver<S>
 where
     S: Store,
 {
+    /// Resolves a scalar value for a given scalar type.
+    fn resolve_scalar_value(
+        &self,
+        parent: &BTreeMap<String, q::Value>,
+        field: &q::Name,
+        scalar_type: &s::ScalarType,
+        value: Option<&q::Value>,
+    ) -> Result<q::Value, QueryExecutionError> {
+        // Extract __typename from the parent object
+        let typename = parent
+            .get("__typename")
+            .and_then(|typename| match typename {
+                q::Value::String(typename) => Some(typename),
+                _ => None,
+            })
+            .expect("GraphQL object must have `__typename`");
+
+        match (typename.as_str(), field.as_str()) {
+            // Compute `entityCount` on-demand
+            ("SubgraphDeployment", "entityCount") => {
+                // Extract the entity ID
+                let id = parent
+                    .get("id")
+                    .and_then(|id| match id {
+                        q::Value::String(id) => Some(id),
+                        _ => None,
+                    })
+                    .expect("GraphQL object must have an `id`");
+
+                // Convert the ID to a subgraph deployment ID
+                let hash =
+                    SubgraphDeploymentId::new(id.clone()).expect("invalid subgraph ID in database");
+
+                // Return the entity count of the deployment as a BigInt
+                Ok(Value::from(
+                    self.store
+                        .count_entities(hash)
+                        .map_err(QueryExecutionError::StoreError)?,
+                )
+                .into())
+            }
+            _ => Ok(value
+                .and_then(|value| value.coerce(scalar_type))
+                .unwrap_or(q::Value::Null)),
+        }
+    }
+
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
@@ -258,7 +277,7 @@ where
 
         let mut entity_values = Vec::new();
         for entity in self.store.find(query)? {
-            entity_values.push(self.add_computed_fields(entity, object_type)?.into())
+            entity_values.push(entity.into())
         }
         Ok(q::Value::List(entity_values))
     }
@@ -310,7 +329,7 @@ where
         };
 
         Ok(match entity {
-            Some(entity) => self.add_computed_fields(entity, object_type)?.into(),
+            Some(entity) => entity.into(),
             None => q::Value::Null,
         })
     }
