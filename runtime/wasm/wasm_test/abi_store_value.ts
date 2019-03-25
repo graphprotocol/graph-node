@@ -5,7 +5,7 @@ export { memory };
 enum ValueKind {
     STRING = 0,
     INT = 1,
-    FLOAT = 2,
+    BIG_DECIMAL = 2,
     BOOL = 3,
     ARRAY = 4,
     NULL = 5,
@@ -18,6 +18,11 @@ type Payload = u64
 
 type Bytes = Uint8Array;
 type BigInt = Uint8Array;
+
+export class BigDecimal {
+    exp: BigInt
+    digits: BigInt
+}
 
 export class Value {
     kind: ValueKind
@@ -38,10 +43,10 @@ export function value_from_int(int: i32): Value {
     return value
 }
 
-export function value_from_float(float: f64): Value {
+export function value_from_big_decimal(float: BigInt): Value {
     let value = new Value();
-    value.kind = ValueKind.FLOAT;
-    value.data = reinterpret<u64>(float as f64)
+    value.kind = ValueKind.BIG_DECIMAL;
+    value.data = float as u64;
     return value
 }
 
@@ -52,10 +57,10 @@ export function value_from_bool(bool: boolean): Value {
     return value
 }
 
-export function array_from_values(str: string, float: f64): Value {
+export function array_from_values(str: string, i: i32): Value {
     let array = new Array<Value>();
     array.push(value_from_string(str));
-    array.push(value_from_float(float));
+    array.push(value_from_int(i));
 
     let value = new Value();
     value.kind = ValueKind.ARRAY;
