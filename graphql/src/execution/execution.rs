@@ -345,9 +345,14 @@ where
             argument_values,
         ),
 
-        s::Type::NamedType(ref name) => {
-            resolve_field_value_for_named_type(ctx, object_value, field, name, argument_values)
-        }
+        s::Type::NamedType(ref name) => resolve_field_value_for_named_type(
+            ctx,
+            object_type,
+            object_value,
+            field,
+            name,
+            argument_values,
+        ),
 
         s::Type::ListType(inner_type) => resolve_field_value_for_list_type(
             ctx,
@@ -364,6 +369,7 @@ where
 /// Resolves the value of a field that corresponds to a named type.
 fn resolve_field_value_for_named_type<'a, R1, R2>(
     ctx: ExecutionContext<'a, R1, R2>,
+    object_type: &s::ObjectType,
     object_value: &Option<q::Value>,
     field: &q::Field,
     type_name: &s::Name,
@@ -428,14 +434,20 @@ where
             Some(q::Value::Object(o)) => {
                 if ctx.introspecting {
                     ctx.introspection_resolver.resolve_scalar_value(
+                        object_type,
                         o,
                         &field.name,
                         t,
                         o.get(&field.name),
                     )
                 } else {
-                    ctx.resolver
-                        .resolve_scalar_value(o, &field.name, t, o.get(&field.name))
+                    ctx.resolver.resolve_scalar_value(
+                        object_type,
+                        o,
+                        &field.name,
+                        t,
+                        o.get(&field.name),
+                    )
                 }
             }
             _ => Ok(q::Value::Null),
