@@ -64,6 +64,7 @@ pub trait Resolver: Clone + Send + Sync {
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
+        field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,

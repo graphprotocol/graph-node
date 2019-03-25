@@ -300,6 +300,7 @@ where
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
+        _field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
