@@ -38,7 +38,17 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
 
 /// Adds built-in GraphQL scalar types (`Int`, `String` etc.) to the schema.
 fn add_builtin_scalar_types(schema: &mut Document) -> Result<(), APISchemaError> {
-    for name in ["Boolean", "ID", "Int", "Float", "String", "Bytes", "BigInt"].into_iter() {
+    for name in [
+        "Boolean",
+        "ID",
+        "Int",
+        "BigDecimal",
+        "String",
+        "Bytes",
+        "BigInt",
+    ]
+    .into_iter()
+    {
         match ast::get_named_type(schema, &name.to_string()) {
             None => {
                 let typedef = TypeDefinition::Scalar(ScalarType {
@@ -217,7 +227,7 @@ fn field_scalar_filter_input_values(
         "BigInt" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
         "Boolean" => vec!["", "not", "in", "not_in"],
         "Bytes" => vec!["", "not", "in", "not_in", "contains", "not_contains"],
-        "Float" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
+        "BigDecimal" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
         "ID" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
         "Int" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
         "List" => vec!["", "not", "in", "not_in", "contains", "not_contains"],
@@ -542,8 +552,8 @@ mod tests {
         ast::get_named_type(&schema, &"ID".to_string()).expect("ID type is missing in API schema");
         ast::get_named_type(&schema, &"Int".to_string())
             .expect("Int type is missing in API schema");
-        ast::get_named_type(&schema, &"Float".to_string())
-            .expect("Float type is missing in API schema");
+        ast::get_named_type(&schema, &"BigDecimal".to_string())
+            .expect("BigDecimal type is missing in API schema");
         ast::get_named_type(&schema, &"String".to_string())
             .expect("String type is missing in API schema");
     }
