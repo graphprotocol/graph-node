@@ -12,6 +12,7 @@ pub trait MaybeCoercible<T> {
 impl MaybeCoercible<EnumType> for Value {
     fn coerce(&self, using_type: &EnumType) -> Option<Value> {
         match self {
+            Value::Null => Some(Value::Null),
             Value::String(name) => using_type
                 .values
                 .iter()
@@ -30,6 +31,7 @@ impl MaybeCoercible<EnumType> for Value {
 impl MaybeCoercible<ScalarType> for Value {
     fn coerce(&self, using_type: &ScalarType) -> Option<Value> {
         match (using_type.name.as_str(), self) {
+            (_, v @ Value::Null) => Some(v.clone()),
             ("Boolean", v @ Value::Boolean(_)) => Some(v.clone()),
             ("Float", v @ Value::Float(_)) => Some(v.clone()),
             ("Int", Value::Int(num)) => {
