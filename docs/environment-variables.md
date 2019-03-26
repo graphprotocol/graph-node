@@ -28,7 +28,13 @@ in parallel for block retrieval (defaults to 64)
 * `GRAPH_EVENT_HANDLER_TIMEOUT`: amount of time an event handler is allowed
   to take (in seconds, default is unlimited)
 * `GRAPH_IPFS_TIMEOUT`: timeout for ipfs requests. In seconds, default is 30 seconds.
-* `GRAPH_MAX_IPFS_FILE_BYTES`: maximum size for a file requested from ipfs, in bytes, default is unlimited.
+* `GRAPH_MAX_IPFS_FILE_BYTES`: maximum size for a file that can be
+  retrieved with `ipfs.cat` (in bytes, default is unlimited)
+* `GRAPH_MAX_IPFS_MAP_FILE_SIZE`: maximum size of files that can be
+  processed with `ipfs.map`. When a file is processed through `ipfs.map`,
+  the entities generated from that are kept in memory until the entire file
+  is done processing. This setting therefore limits how much memory a call
+  to `ipfs.map` may use. (in bytes, defaults to 256MB)
 
 ## Miscellaneous
 * `GRAPH_LOG`: control log levels, the same way that `RUST_LOG` is
