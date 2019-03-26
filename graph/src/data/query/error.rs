@@ -46,6 +46,7 @@ pub enum QueryExecutionError {
     StoreError(failure::Error),
     Timeout,
     EmptySelectionSet(String),
+    AmbiguousDerivedFromResult(Pos, String, String, String),
     Unimplemented(String),
     EnumCoercionError(Pos, String, q::Value, String, Vec<String>),
     ScalarCoercionError(Pos, String, q::Value, String),
@@ -166,6 +167,11 @@ impl fmt::Display for QueryExecutionError {
             Timeout => write!(f, "Query timed out"),
             EmptySelectionSet(entity_type) => {
                 write!(f, "Selection set for type `{}` is empty", entity_type)
+            }
+            AmbiguousDerivedFromResult(_, field, target_type, target_field) => {
+                write!(f, "Ambiguous result for derived field `{}`: \
+                           More than one `{}` entity has the same `{}` value",
+                       field, target_type, target_field)
             }
             Unimplemented(feature) => {
                 write!(f, "Feature `{}` is not yet implemented", feature)
@@ -301,6 +307,7 @@ impl Serialize for QueryError {
             | QueryError::ExecutionError(MissingArgumentError(pos, _))
             | QueryError::ExecutionError(InvalidVariableTypeError(pos, _))
             | QueryError::ExecutionError(MissingVariableError(pos, _))
+            | QueryError::ExecutionError(AmbiguousDerivedFromResult(pos, _, _, _))
             | QueryError::ExecutionError(EnumCoercionError(pos, _, _, _, _))
             | QueryError::ExecutionError(ScalarCoercionError(pos, _, _, _)) => {
                 let mut location = HashMap::new();
