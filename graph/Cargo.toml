@@ -5,7 +5,7 @@ edition = "2018"
 
 [dependencies]
 backtrace = "0.3.9"
-bigdecimal = { version = "0.0.15", features = ["serde"] }
+bigdecimal = { version = "0.0.14", features = ["serde"] }
 diesel = { version = "1.3.2", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 
 # We would like to switch to upstream master once https://github.com/paritytech/ethabi/pull/145
