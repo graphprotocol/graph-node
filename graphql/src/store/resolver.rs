@@ -202,7 +202,7 @@ where
         &self,
         parent_object_type: &s::ObjectType,
         parent: &BTreeMap<String, q::Value>,
-        field: &q::Name,
+        field: &q::Field,
         scalar_type: &s::ScalarType,
         value: Option<&q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
@@ -220,7 +220,7 @@ where
         match (
             subgraph_id.deref().as_str(),
             typename.as_str(),
-            field.as_str(),
+            field.name.as_str(),
         ) {
             // Compute `entityCount` on-demand
             ("subgraphs", "SubgraphDeployment", "entityCount") => {
@@ -245,9 +245,16 @@ where
                 )
                 .into())
             }
-            _ => Ok(value
-                .and_then(|value| value.coerce(scalar_type))
-                .unwrap_or(q::Value::Null)),
+            _ => value.map_or(Ok(q::Value::Null), |value| {
+                value.coerce(scalar_type).ok_or_else(|| {
+                    QueryExecutionError::ScalarCoercionError(
+                        field.position.clone(),
+                        field.name.to_owned(),
+                        value.clone(),
+                        scalar_type.name.to_owned(),
+                    )
+                })
+            }),
         }
     }
 

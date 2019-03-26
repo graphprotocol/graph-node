@@ -70,10 +70,27 @@ pub trait Resolver: Clone + Send + Sync {
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an enum value for a given enum type.
-    fn resolve_enum_value(&self, enum_type: &s::EnumType, value: Option<&q::Value>) -> q::Value {
-        value
-            .and_then(|value| value.coerce(enum_type))
-            .unwrap_or(q::Value::Null)
+    fn resolve_enum_value(
+        &self,
+        field: &q::Field,
+        enum_type: &s::EnumType,
+        value: Option<&q::Value>,
+    ) -> Result<q::Value, QueryExecutionError> {
+        value.map_or(Ok(q::Value::Null), |value| {
+            value.coerce(enum_type).ok_or_else(|| {
+                QueryExecutionError::EnumCoercionError(
+                    field.position.clone(),
+                    field.name.to_owned(),
+                    value.clone(),
+                    enum_type.name.to_owned(),
+                    enum_type
+                        .values
+                        .iter()
+                        .map(|value| value.name.to_owned())
+                        .collect(),
+                )
+            })
+        })
     }
 
     /// Resolves a scalar value for a given scalar type.
@@ -81,61 +98,97 @@ pub trait Resolver: Clone + Send + Sync {
         &self,
         _parent_object_type: &s::ObjectType,
         _parent: &BTreeMap<String, q::Value>,
-        _field: &q::Name,
+        field: &q::Field,
         scalar_type: &s::ScalarType,
         value: Option<&q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        Ok(value
-            .and_then(|value| value.coerce(scalar_type))
-            .unwrap_or(q::Value::Null))
+        value.map_or(Ok(q::Value::Null), |value| {
+            value.coerce(scalar_type).ok_or_else(|| {
+                QueryExecutionError::ScalarCoercionError(
+                    field.position.clone(),
+                    field.name.to_owned(),
+                    value.clone(),
+                    scalar_type.name.to_owned(),
+                )
+            })
+        })
     }
 
     /// Resolves a list of enum values for a given enum type.
-    fn resolve_enum_values(&self, enum_type: &s::EnumType, value: Option<&q::Value>) -> q::Value {
+    fn resolve_enum_values(
+        &self,
+        field: &q::Field,
+        enum_type: &s::EnumType,
+        value: Option<&q::Value>,
+    ) -> Result<q::Value, Vec<QueryExecutionError>> {
         value
             .and_then(|value| match value {
                 q::Value::List(values) => Some(values),
                 _ => None,
             })
-            .and_then(|values| {
-                let coerced_values: Vec<q::Value> = values
-                    .iter()
-                    .filter_map(|value| value.coerce(enum_type))
-                    .collect();
+            .map_or(Ok(q::Value::Null), |values| {
+                let mut coerced_values = vec![];
+                let mut errors = vec![];
 
-                if coerced_values.len() == values.len() {
-                    Some(q::Value::List(coerced_values))
+                for value in values.iter() {
+                    match value.coerce(enum_type) {
+                        Some(value) => coerced_values.push(value),
+                        None => errors.push(QueryExecutionError::EnumCoercionError(
+                            field.position.clone(),
+                            field.name.to_owned(),
+                            value.clone(),
+                            enum_type.name.to_owned(),
+                            enum_type
+                                .values
+                                .iter()
+                                .map(|value| value.name.to_owned())
+                                .collect(),
+                        )),
+                    }
+                }
+
+                if !errors.is_empty() {
+                    return Err(errors);
                 } else {
-                    None
+                    return Ok(q::Value::List(coerced_values));
                 }
             })
-            .unwrap_or(q::Value::Null)
     }
 
     /// Resolves a list of scalar values for a given list type.
     fn resolve_scalar_values(
         &self,
+        field: &q::Field,
         scalar_type: &s::ScalarType,
         value: Option<&q::Value>,
-    ) -> q::Value {
+    ) -> Result<q::Value, Vec<QueryExecutionError>> {
         value
             .and_then(|value| match value {
                 q::Value::List(values) => Some(values),
                 _ => None,
             })
-            .and_then(|values| {
-                let coerced_values: Vec<q::Value> = values
-                    .iter()
-                    .filter_map(|value| value.coerce(scalar_type))
-                    .collect();
+            .map_or(Ok(q::Value::Null), |values| {
+                let mut coerced_values = vec![];
+                let mut errors = vec![];
 
-                if coerced_values.len() == values.len() {
-                    Some(q::Value::List(coerced_values))
+                for value in values.iter() {
+                    match value.coerce(scalar_type) {
+                        Some(value) => coerced_values.push(value),
+                        None => errors.push(QueryExecutionError::ScalarCoercionError(
+                            field.position.clone(),
+                            field.name.to_owned(),
+                            value.clone(),
+                            scalar_type.name.to_owned(),
+                        )),
+                    }
+                }
+
+                if !errors.is_empty() {
+                    return Err(errors);
                 } else {
-                    None
+                    return Ok(q::Value::List(coerced_values));
                 }
             })
-            .unwrap_or(q::Value::Null)
     }
 
     // Resolves an abstract type into the specific type of an object.

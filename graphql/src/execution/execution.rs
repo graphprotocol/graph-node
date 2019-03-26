@@ -418,11 +418,11 @@ where
         s::TypeDefinition::Enum(t) => match object_value {
             Some(q::Value::Object(o)) => {
                 if ctx.introspecting {
-                    Ok(ctx
-                        .introspection_resolver
-                        .resolve_enum_value(t, o.get(&field.name)))
+                    ctx.introspection_resolver
+                        .resolve_enum_value(field, t, o.get(&field.name))
                 } else {
-                    Ok(ctx.resolver.resolve_enum_value(t, o.get(&field.name)))
+                    ctx.resolver
+                        .resolve_enum_value(field, t, o.get(&field.name))
                 }
             }
             _ => Ok(q::Value::Null),
@@ -436,18 +436,13 @@ where
                     ctx.introspection_resolver.resolve_scalar_value(
                         object_type,
                         o,
-                        &field.name,
+                        field,
                         t,
                         o.get(&field.name),
                     )
                 } else {
-                    ctx.resolver.resolve_scalar_value(
-                        object_type,
-                        o,
-                        &field.name,
-                        t,
-                        o.get(&field.name),
-                    )
+                    ctx.resolver
+                        .resolve_scalar_value(object_type, o, field, t, o.get(&field.name))
                 }
             }
             _ => Ok(q::Value::Null),
@@ -477,12 +472,7 @@ where
 
         s::TypeDefinition::InputObject(_) => unreachable!("input objects are never resolved"),
     }
-    .map_err(|e| {
-        vec![
-            e,
-            QueryExecutionError::NamedTypeError(type_name.to_string()),
-        ]
-    })
+    .map_err(|e| vec![e])
 }
 
 /// Resolves the value of a field that corresponds to a list type.
@@ -550,11 +540,14 @@ where
                 s::TypeDefinition::Enum(t) => match object_value {
                     Some(q::Value::Object(o)) => {
                         if ctx.introspecting {
-                            Ok(ctx
-                                .introspection_resolver
-                                .resolve_enum_values(&t, o.get(&field.name)))
+                            ctx.introspection_resolver.resolve_enum_values(
+                                field,
+                                &t,
+                                o.get(&field.name),
+                            )
                         } else {
-                            Ok(ctx.resolver.resolve_enum_values(&t, o.get(&field.name)))
+                            ctx.resolver
+                                .resolve_enum_values(field, &t, o.get(&field.name))
                         }
                     }
                     _ => Ok(q::Value::Null),
@@ -565,11 +558,14 @@ where
                 s::TypeDefinition::Scalar(t) => match object_value {
                     Some(q::Value::Object(o)) => {
                         if ctx.introspecting {
-                            Ok(ctx
-                                .introspection_resolver
-                                .resolve_scalar_values(&t, o.get(&field.name)))
+                            ctx.introspection_resolver.resolve_scalar_values(
+                                field,
+                                &t,
+                                o.get(&field.name),
+                            )
                         } else {
-                            Ok(ctx.resolver.resolve_scalar_values(&t, o.get(&field.name)))
+                            ctx.resolver
+                                .resolve_scalar_values(field, &t, o.get(&field.name))
                         }
                     }
                     _ => Ok(q::Value::Null),
