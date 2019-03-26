@@ -1,15 +1,14 @@
-use bigdecimal::BigDecimal;
 use diesel::dsl::{self, sql};
 use diesel::pg::Pg;
 use diesel::prelude::*;
 use diesel::query_builder::BoxedSelectStatement;
 use diesel::serialize::ToSql;
-use diesel::sql_types::{Array, Bool, Double, HasSqlType, Integer, Numeric, Text};
+use diesel::sql_types::{Array, Bool, HasSqlType, Integer, Numeric, Text};
 use std::str::FromStr;
 
 use graph::components::store::EntityFilter;
 use graph::data::store::*;
-use graph::prelude::BigInt;
+use graph::prelude::{BigDecimal, BigInt};
 use graph::serde_json;
 
 use crate::db_schema::entities;

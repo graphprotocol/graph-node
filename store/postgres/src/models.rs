@@ -1,9 +1,8 @@
 use diesel::pg::Pg;
 use diesel::serialize::{self, Output, ToSql};
-use diesel::sql_types::{Bool, Double, Integer, Jsonb, Numeric, Text, VarChar};
-use graph::{serde_json, BigDecimal};
+use diesel::sql_types::{Bool, Integer, Jsonb, Numeric, Text, VarChar};
+use graph::serde_json;
 use std::io::Write;
-use std::str::FromStr;
 
 use graph::data::store::Value;
 
@@ -52,15 +51,13 @@ impl ToSql<Integer, Pg> for SqlValue {
 
 impl ToSql<Numeric, Pg> for SqlValue {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
-        let big_decimal = match self.0 {
-            Value::BigDecimal(d) => d,
-            // TODO: init the bigdecimal directly
-            Value::BigInt(number) => BigDecimal::from_str(&number.to_string()).unwrap(),
+        match &self.0 {
+            Value::BigDecimal(d) => <_ as ToSql<Numeric, Pg>>::to_sql(&d, out),
+            Value::BigInt(number) => {
+                <_ as ToSql<Numeric, Pg>>::to_sql(&number.clone().to_big_decimal(0.into()), out)
+            }
             _ => panic!("Failed to convert attribute value to bigint in SQL"),
-        };
-
-        // TODO: maybe unclutter this?
-        <BigDecimal as ToSql<Numeric, Pg>>::to_sql(&big_decimal, out)
+        }
     }
 }
 

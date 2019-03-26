@@ -1,7 +1,3 @@
-// Warnings will probably be fixed in a future diesel 1.4 release.
-#![allow(proc_macro_derive_resolution_fallback)]
-
-extern crate bigdecimal;
 #[macro_use]
 extern crate diesel;
 #[macro_use]

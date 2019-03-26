@@ -345,10 +345,9 @@ impl Store {
                 })
                 .unwrap_or("ASC");
             let cast_type = match value_type {
-                ValueType::BigInt => "::numeric",
+                ValueType::BigInt | ValueType::BigDecimal => "::numeric",
                 ValueType::Boolean => "::boolean",
                 ValueType::Bytes => "",
-                ValueType::Float => "::float",
                 ValueType::ID => "",
                 ValueType::Int => "::bigint",
                 ValueType::String => "",
@@ -721,7 +720,7 @@ impl Store {
             ValueType::Boolean
             | ValueType::BigInt
             | ValueType::Bytes
-            | ValueType::Float
+            | ValueType::BigDecimal
             | ValueType::ID
             | ValueType::Int => (String::from("btree"), String::from(""), false),
             ValueType::String => (String::from("gin"), String::from("gin_trgm_ops"), false),
