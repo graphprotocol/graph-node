@@ -372,12 +372,18 @@ where
         let operations = self.block_on(
             self.link_resolver
                 .json_stream(&Link { link })
-                .and_then(move |v| {
-                    let module =
-                        WasmiModule::from_valid_module_with_ctx(valid_module.clone(), ctx.clone())?;
-                    module.handle_json_callback(&*callback, &v)
+                .and_then(|stream| {
+                    stream
+                        .and_then(move |v| {
+                            let module = WasmiModule::from_valid_module_with_ctx(
+                                valid_module.clone(),
+                                ctx.clone(),
+                            )?;
+                            module.handle_json_callback(&*callback, &v)
+                        })
+                        .collect()
                 })
-                .map_err(move |e| HostExportError(format!("{}: {}", errmsg, e.to_string()))).collect(),
+                .map_err(move |e| HostExportError(format!("{}: {}", errmsg, e.to_string()))),
         )?;
         // Collect all results into one Vec
         Ok(operations.into_iter().flatten().collect())
