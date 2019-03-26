@@ -496,13 +496,13 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
     fn resolve_object(
         &self,
         parent: &Option<q::Value>,
-        field: &q::Name,
+        field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         _: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
-        let object = match field.as_str() {
+        let object = match field.name.as_str() {
             "__schema" => self.schema_object(),
             "__type" => {
                 let name = arguments.get(&String::from("name")).ok_or_else(|| {
@@ -525,7 +525,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                     _ => Some(value.clone()),
                 })
                 .unwrap_or(q::Value::Null),
-            _ => object_field(parent, field.as_str())
+            _ => object_field(parent, field.name.as_str())
                 .cloned()
                 .unwrap_or(q::Value::Null),
         };

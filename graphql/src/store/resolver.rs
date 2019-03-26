@@ -273,8 +273,8 @@ where
     fn resolve_object(
         &self,
         parent: &Option<q::Value>,
-        field: &q::Name,
-        _field_definition: &s::Field,
+        field: &q::Field,
+        field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
@@ -309,19 +309,35 @@ where
             if let Some(derived_from_field) = derived_from_field {
                 // The field is derived -> build a query for the entity that might be
                 // referencing the parent object
+
                 let mut arguments = arguments.clone();
+
+                // We use first: 2 here to detect and fail if there is more than one
+                // entity that matches the `@derivedFrom`.
                 let first_arg_name = q::Name::from("first");
+                arguments.insert(&first_arg_name, q::Value::Int(q::Number::from(2)));
+
                 let skip_arg_name = q::Name::from("skip");
-                arguments.insert(&first_arg_name, q::Value::Int(q::Number::from(1)));
                 arguments.insert(&skip_arg_name, q::Value::Int(q::Number::from(0)));
                 let mut query = build_query(object_type, &arguments, types_for_interface)?;
                 Self::add_filter_for_derived_field(&mut query, parent, derived_from_field);
 
-                // Find the entity that references the parent entity, if there is one
-                self.store.find(query)?.into_iter().next()
+                // Find the entity or entities that reference the parent entity
+                let entities = self.store.find(query)?;
+
+                if entities.len() > 1 {
+                    return Err(QueryExecutionError::AmbiguousDerivedFromResult(
+                        field.position.clone(),
+                        field.name.to_owned(),
+                        object_type.name().to_owned(),
+                        derived_from_field.name.to_owned(),
+                    ));
+                } else {
+                    entities.into_iter().next()
+                }
             } else {
                 match parent {
-                    Some(q::Value::Object(parent_object)) => match parent_object.get(field) {
+                    Some(q::Value::Object(parent_object)) => match parent_object.get(&field.name) {
                         Some(q::Value::String(id)) => self.store.get(EntityKey {
                             subgraph_id,
                             entity_type: object_type.name().to_owned(),

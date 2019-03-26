@@ -399,7 +399,7 @@ where
             if ctx.introspecting {
                 ctx.introspection_resolver.resolve_object(
                     object_value,
-                    &field.name,
+                    field,
                     field_definition,
                     t.into(),
                     argument_values,
@@ -408,7 +408,7 @@ where
             } else {
                 ctx.resolver.resolve_object(
                     object_value,
-                    &field.name,
+                    field,
                     field_definition,
                     t.into(),
                     argument_values,
@@ -456,7 +456,7 @@ where
             if ctx.introspecting {
                 ctx.introspection_resolver.resolve_object(
                     object_value,
-                    &field.name,
+                    field,
                     field_definition,
                     i.into(),
                     argument_values,
@@ -465,7 +465,7 @@ where
             } else {
                 ctx.resolver.resolve_object(
                     object_value,
-                    &field.name,
+                    field,
                     field_definition,
                     i.into(),
                     argument_values,
