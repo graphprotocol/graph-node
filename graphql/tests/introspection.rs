@@ -449,7 +449,7 @@ fn expected_mock_schema_introspection() -> q::Value {
             q::Value::List(vec![object_value(vec![
                 ("name", q::Value::String("language".to_string())),
                 ("description", q::Value::Null),
-                ("defaultValue", q::Value::String("English".to_string())),
+                ("defaultValue", q::Value::String("\"English\"".to_string())),
                 (
                     "type",
                     object_value(vec![

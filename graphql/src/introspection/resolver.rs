@@ -385,7 +385,9 @@ fn input_value(
             input_value
                 .default_value
                 .as_ref()
-                .map_or(q::Value::Null, |value| value.clone()),
+                .map_or(q::Value::Null, |value| {
+                    q::Value::String(format!("{}", value))
+                }),
         ),
     ])
 }
