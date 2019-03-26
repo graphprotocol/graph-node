@@ -4,7 +4,7 @@ use futures::Stream;
 use crate::prelude::*;
 
 pub trait BlockStream:
-    Stream<Item = EthereumBlock, Error = Error> + EventConsumer<ChainHeadUpdate>
+    Stream<Item = EthereumBlockWithTriggers, Error = Error> + EventConsumer<ChainHeadUpdate>
 {
 }
 

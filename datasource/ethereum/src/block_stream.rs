@@ -26,7 +26,7 @@ enum BlockStreamState {
     Reconciliation(
         Box<
             Future<
-                    Item = Option<Box<Stream<Item = EthereumBlock, Error = Error> + Send>>,
+                    Item = Option<Box<Stream<Item = EthereumBlockWithTriggers, Error = Error> + Send>>,
                     Error = Error,
                 > + Send,
         >,
@@ -36,7 +36,7 @@ enum BlockStreamState {
     /// store up to date with the chain store.
     ///
     /// Valid next states: Reconciliation
-    YieldingBlocks(Box<Stream<Item = EthereumBlock, Error = Error> + Send>),
+    YieldingBlocks(Box<Stream<Item = EthereumBlockWithTriggers, Error = Error> + Send>),
 
     /// The BlockStream has reconciled the subgraph store and chain store states.
     /// No more work is needed until a chain head update.
@@ -60,7 +60,7 @@ enum ReconciliationStep {
         log_filter: Option<EthereumLogFilter>,
         call_filter: Option<EthereumCallFilter>,
         block_filter: Option<EthereumBlockFilter>,
-        descendant_blocks: Box<Stream<Item = EthereumBlock, Error = Error> + Send>,
+        descendant_blocks: Box<Stream<Item = EthereumBlockWithCalls, Error = Error> + Send>,
     },
 
     /// Skip forwards from `from` to `to`, with no processing needed.
@@ -80,7 +80,7 @@ enum ReconciliationStep {
 /// The result of performing a single ReconciliationStep.
 enum ReconciliationStepOutcome {
     /// These blocks must be processed before reconciliation can continue.
-    YieldBlocks(Box<Stream<Item = EthereumBlock, Error = Error> + Send>),
+    YieldBlocks(Box<Stream<Item = EthereumBlockWithTriggers, Error = Error> + Send>),
 
     /// Continue to the next reconciliation step.
     MoreSteps,
@@ -98,6 +98,7 @@ struct BlockStreamContext<S, C, E> {
     subgraph_id: SubgraphDeploymentId,
     reorg_threshold: u64,
     logger: Logger,
+    include_calls_in_blocks: bool,
 }
 
 impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
@@ -110,6 +111,7 @@ impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
             subgraph_id: self.subgraph_id.clone(),
             reorg_threshold: self.reorg_threshold,
             logger: self.logger.clone(),
+            include_calls_in_blocks: self.include_calls_in_blocks.clone(),
         }
     }
 }
@@ -147,6 +149,14 @@ where
     ) -> Self {
         let (chain_head_update_sink, chain_head_update_stream) = channel(100);
 
+        let mut include_calls_in_blocks = false;
+        if call_filter.is_some() {
+            include_calls_in_blocks = true
+        }
+        if block_filter.is_some() && block_filter.clone().unwrap().contract_addresses.len() > 0 {
+            include_calls_in_blocks = true
+        }
+
         BlockStream {
             state: Mutex::new(BlockStreamState::New),
             consecutive_err_count: 0,
@@ -164,6 +174,7 @@ where
                 subgraph_id,
                 reorg_threshold,
                 logger,
+                include_calls_in_blocks,
             },
         }
     }
@@ -183,7 +194,7 @@ where
         block_filter: Option<EthereumBlockFilter>,
     ) -> Box<
         Future<
-                Item = Option<Box<Stream<Item = EthereumBlock, Error = Error> + Send>>,
+                Item = Option<Box<Stream<Item = EthereumBlockWithTriggers, Error = Error> + Send>>,
                 Error = Error,
             > + Send,
     > {
@@ -432,7 +443,14 @@ where
             // Precondition: subgraph_ptr.number < head_ptr.number
             // Walk back to one block short of subgraph_ptr.number
             let offset = head_ptr.number - subgraph_ptr.number - 1;
-            let head_ancestor_opt = ctx.chain_store.ancestor_block(head_ptr, offset).unwrap();
+            let head_ancestor_opt = ctx.chain_store.ancestor_block(head_ptr, offset)
+                .unwrap()
+                .and_then(move |block| {
+                    Some(EthereumBlockWithCalls {
+                        ethereum_block: block,
+                        calls: None,
+                    })
+                });
             match head_ancestor_opt {
                 None => {
                     // Block is missing in the block store.
@@ -445,7 +463,7 @@ where
                 Some(head_ancestor) => {
                     // We stopped one block short, so we'll compare the parent hash to the
                     // subgraph ptr.
-                    if head_ancestor.block.parent_hash == subgraph_ptr.hash {
+                    if head_ancestor.ethereum_block.block.parent_hash == subgraph_ptr.hash {
                         // The subgraph ptr is an ancestor of the head block.
                         // We cannot use an RPC call here to find the first interesting block
                         // due to the race conditions previously mentioned,
@@ -483,18 +501,18 @@ where
             ReconciliationStep::RevertBlock(subgraph_ptr) => {
                 // We would like to move to the parent of the current block.
                 // This means we need to revert this block.
-
+                
                 // First, load the block in order to get the parent hash.
                 Box::new(ctx.load_block(subgraph_ptr.hash).and_then(move |block| {
                     debug!(
                         ctx.logger,
                         "Reverting block to get back to main chain";
-                        "block_number" => format!("{}", block.block.number.unwrap()),
-                        "block_hash" => format!("{}", block.block.hash.unwrap())
+                        "block_number" => format!("{}", block.ethereum_block.block.number.unwrap()),
+                        "block_hash" => format!("{}", block.ethereum_block.block.hash.unwrap())
                     );
 
                     // Produce pointer to parent block (using parent hash).
-                    let parent_ptr = EthereumBlockPointer::to_parent(&block);
+                    let parent_ptr = EthereumBlockPointer::to_parent(&block.ethereum_block);
 
                     // Revert entity changes from this block, and update subgraph ptr.
                     future::result(
@@ -546,8 +564,7 @@ where
                              .and_then(move |descendant_block| {
                                  // First, check if there are blocks between subgraph_ptr and
                                  // descendant_block.
-                                 let descendant_parent_ptr =
-                                     EthereumBlockPointer::to_parent(&descendant_block);
+                                 let descendant_parent_ptr = EthereumBlockPointer::to_parent(&descendant_block.ethereum_block);
                                  if subgraph_ptr != descendant_parent_ptr {
                                      // descendant_block is not a direct child.
                                      // Therefore, there are blocks that are irrelevant to this subgraph
@@ -569,15 +586,19 @@ where
                                  // Update our copy of the subgraph ptr to reflect the
                                  // value it will have after descendant_block is
                                  // processed.
-                                 subgraph_ptr = (&descendant_block).into();
+                                 subgraph_ptr = (&descendant_block.ethereum_block).into();
 
                                  Ok(descendant_block)
+                             })
+                             .map(|descendant_block| {
+                                 // Map the descendant block to an `EthereumBlockWithTriggers`
+                                 // To do this we need to scan the entire block for
+                                 // call triggers and block triggers
+                                 EthereumBlockWithTriggers {
+                                     ethereum_block: descendant_block.ethereum_block,
+                                     triggers: vec![],
+                                 }
                              })) as Box<Stream<Item = _, Error = _> + Send>,
-                             // .map(|descendant_block| {
-                             //     // Map the decendant block to an `EthereumBlockWithTriggers`
-                             //     // To do this we need to scan the entire block for
-                             //     // call triggers and block triggers
-                             // })
                 )))
             }
         }
@@ -749,7 +770,7 @@ where
     fn load_blocks(
         &self,
         block_hashes: Vec<H256>,
-    ) -> impl Stream<Item = EthereumBlock, Error = Error> + Send {
+    ) -> impl Stream<Item = EthereumBlockWithCalls, Error = Error> + Send {
         let ctx = self.clone();
 
         let block_batch_size: usize = env::var_os("ETHEREUM_BLOCK_BATCH_SIZE")
@@ -783,49 +804,64 @@ where
     fn load_block(
         &self,
         block_hash: H256,
-    ) -> impl Future<Item = EthereumBlock, Error = Error> + Send {
+    ) -> impl Future<Item = EthereumBlockWithCalls, Error = Error> + Send {
         let ctx = self.clone();
-
-        // Check store first
-        future::result(ctx.chain_store.block(block_hash)).and_then(
-            move |local_block_opt| -> Box<Future<Item = _, Error = _> + Send> {
-                // If found in store
-                if let Some(local_block) = local_block_opt {
-                    Box::new(future::ok(local_block))
-                } else {
-                    let ctx_clone1 = ctx;
-                    let ctx_clone2 = ctx_clone1.clone();
-
-                    // Request from Ethereum node instead
-                    Box::new(
-                        ctx_clone1
-                            .eth_adapter
-                            .block_by_hash(&ctx_clone1.logger, block_hash)
+        let eth = self.eth_adapter.clone();
+        let logger = self.logger.clone();
+        let include_calls_in_block = self.include_calls_in_blocks;
+        
+        // Search for the block in the store first then use the ethereum adapter as a backup
+        let block = future::result(ctx.chain_store.block(block_hash))
+            .and_then(move |local_block_opt| -> Box<Future<Item = _, Error = _> + Send> {
+                match local_block_opt {
+                    Some(block) => Box::new(future::ok(block)),
+                    None => {
+                        let logger = ctx.logger.clone();
+                        let ctx_1 = ctx.clone();
+                        let ctx_2 = ctx_1.clone();
+                        Box::new(ctx_1.eth_adapter
+                            .block_by_hash(&logger, block_hash)
                             .and_then(move |block_opt| {
                                 block_opt.ok_or_else(move || {
-                                    format_err!(
-                                        "Ethereum node could not find block with hash {}",
-                                        block_hash
-                                    )
+                                    format_err!("Ethereum node could not find block with hash {}", block_hash)
                                 })
                             })
                             .and_then(move |block| {
-                                ctx_clone1
+                                ctx_1
                                     .eth_adapter
-                                    .load_full_block(&ctx_clone1.logger, block)
+                                    .load_full_block(&logger, block)
                                     .map_err(|e| format_err!("Error loading full block: {}", e))
                             })
                             .and_then(move |block| {
                                 // Cache in store for later
-                                ctx_clone2
+                                ctx_2
                                     .chain_store
                                     .upsert_blocks(stream::once(Ok(block.clone())))
                                     .map(move |()| block)
-                            }),
-                    )
+                            }))
+                    }
                 }
-            },
-        )
+            })
+            .and_then(move |block| -> Box<Future<Item = _, Error = _> + Send>{
+                if !include_calls_in_block {
+                    return Box::new(future::ok(EthereumBlockWithCalls {
+                        ethereum_block: block,
+                        calls: None,
+                    }))
+                }
+                let calls = eth.calls_in_block(
+                    &logger,
+                    block.block.number.unwrap().as_u64(),
+                    block.block.hash.unwrap(),
+                ).and_then(move |calls| {
+                    future::ok(EthereumBlockWithCalls {
+                        ethereum_block: block,
+                        calls: Some(calls),
+                    })
+                });
+                Box::new(calls)
+            });
+        Box::new(block)
     }
 }
 
@@ -843,7 +879,7 @@ where
     C: ChainStore,
     E: EthereumAdapter,
 {
-    type Item = EthereumBlock;
+    type Item = EthereumBlockWithTriggers;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {

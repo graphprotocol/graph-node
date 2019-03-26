@@ -683,41 +683,42 @@ where
         logger: &Logger,
         block_number: u64,
         block_hash: H256,
-        call_filter: EthereumCallFilter,
     ) -> Box<Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
         let eth = self.clone();
-        Box::new(
-            eth.call_stream(&logger, block_number, block_number, call_filter)
-                .collect()
-                .map(|call_chunks| match call_chunks.len() {
-                    0 => vec![],
-                    _ => {
-                        call_chunks
-                            .into_iter()
-                            .flatten()
-                            .collect()
+        let call_filter = EthereumCallFilter {
+            contract_addresses_function_signatures: HashMap::new(),
+        };
+        let calls = eth.call_stream(&logger, block_number, block_number, call_filter)
+            .collect()
+            .map(|call_chunks| match call_chunks.len() {
+                0 => vec![],
+                _ => {
+                    call_chunks
+                        .into_iter()
+                        .flatten()
+                        .collect()
+                }
+            })
+            .and_then(move |calls| {
+                // Ensure the `EthereumCall` objects are for the correct Ethereum block
+                // by checking the call's block hash against the desired block hash.
+                // 
+                // DISCLAIMER: If the call stream returns calls for the correct block_number but the
+                // incorrect block_hash we can catch this and error. But if the call streams returns no calls
+                // for the correct block_number but the incorrect block_hash, there is no way to tell.
+                // Since we are asking for all the calls in the block this is not a problem.
+                for call in calls.iter() {
+                    if call.block_hash != block_hash {
+                        return future::err(format_err!(
+                            "Call stream returned calls for an unexpected block: number = {}, hash = {}",
+                            block_number,
+                            block_hash,
+                        ))
                     }
-                })
-                .and_then(move |calls| {
-                    // Ensure the `EthereumCall` objects are for the correct Ethereum block
-                    // by checking the call's block hash against the desired block hash.
-                    // 
-                    // DISCLAIMER: If the call stream returns calls for the correct block_number but the
-                    // incorrect block_hash we can catch this and error. But if the call streams returns no calls
-                    // for the correct block_number but the incorrect block_hash, there is no way to tell.
-                    // This method should only be used when populating triggers before the reorg threshold.
-                    for call in calls.iter() {
-                        if call.block_hash != block_hash {
-                            return future::err(format_err!(
-                                "Call stream returned calls for an unexpected block: number = {}, hash = {}",
-                                block_number,
-                                block_hash,
-                            ))
-                        }
-                    }
-                    future::ok(calls)
-                })
-        )
+                }
+                future::ok(calls)
+            });
+        Box::new(calls)
     }
 
     fn blocks_with_triggers(
