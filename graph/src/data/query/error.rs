@@ -170,7 +170,7 @@ impl fmt::Display for QueryExecutionError {
             }
             AmbiguousDerivedFromResult(_, field, target_type, target_field) => {
                 write!(f, "Ambiguous result for derived field `{}`: \
-                           More than one `{}` entity has the same `{}` value",
+                           Multiple `{}` entities refer back via `{}`",
                        field, target_type, target_field)
             }
             Unimplemented(feature) => {

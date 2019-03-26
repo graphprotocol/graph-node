@@ -3,7 +3,7 @@ extern crate pretty_assertions;
 
 use graph::prelude::*;
 use graph_graphql::prelude::*;
-use graphql_parser::query as q;
+use graphql_parser::{query as q, Pos};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -33,12 +33,14 @@ fn test_schema(id: SubgraphDeploymentId) -> Schema {
                 id: ID!
                 name: String!
                 members: [Musician!]! @derivedFrom(field: \"bands\")
+                originalSongs: [Song!]!
             }
 
             type Song @entity {
                 id: ID!
                 title: String!
                 writtenBy: Musician!
+                band: Band @derivedFrom(field: \"originalSongs\")
             }
 
             type SongStat @entity {
@@ -117,11 +119,23 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
             ("__typename", Value::from("Band")),
             ("id", Value::from("b1")),
             ("name", Value::from("The Musicians")),
+            (
+                "originalSongs",
+                Value::List(vec![Value::from("s1"), Value::from("s2")]),
+            ),
         ]),
         Entity::from(vec![
             ("__typename", Value::from("Band")),
             ("id", Value::from("b2")),
             ("name", Value::from("The Amateurs")),
+            (
+                "originalSongs",
+                Value::List(vec![
+                    Value::from("s1"),
+                    Value::from("s3"),
+                    Value::from("s4"),
+                ]),
+            ),
         ]),
         Entity::from(vec![
             ("__typename", Value::from("Song")),
@@ -818,4 +832,46 @@ fn nested_variable() {
             )]),],)
         )]))
     );
+}
+
+#[test]
+fn ambiguous_derived_from_result() {
+    let query = graphql_parser::parse_query(
+        "
+        {
+          songs(first: 100, orderBy: id) {
+            id
+            band
+          }
+        }
+        ",
+    )
+    .expect("invalid test query");
+
+    let result = execute_query_document_with_variables(query, None);
+
+    assert!(result.errors.is_some());
+    match &result.errors.unwrap()[0] {
+        QueryError::ExecutionError(QueryExecutionError::AmbiguousDerivedFromResult(
+            pos,
+            derived_from_field,
+            target_type,
+            target_field,
+        )) => {
+            assert_eq!(
+                pos,
+                &Pos {
+                    line: 5,
+                    column: 13
+                }
+            );
+            assert_eq!(derived_from_field.as_str(), "band");
+            assert_eq!(target_type.as_str(), "Band");
+            assert_eq!(target_field.as_str(), "originalSongs");
+        }
+        e => panic!(format!(
+            "expected AmbiguousDerivedFromResult error, got {}",
+            e
+        )),
+    }
 }
