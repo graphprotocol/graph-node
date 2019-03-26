@@ -3,8 +3,14 @@ use web3::types::*;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EthereumBlockWithTriggers {
-    pub ethereum_block: Block<Transaction>,
+    pub ethereum_block: EthereumBlock,
     pub triggers: Vec<EthereumTrigger>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct EthereumBlockWithCalls {
+    pub ethereum_block: EthereumBlock,
+    pub calls: Option<Vec<EthereumCall>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
