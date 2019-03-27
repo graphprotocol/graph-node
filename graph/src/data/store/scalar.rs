@@ -106,9 +106,9 @@ impl BigInt {
         if bytes.len() > 8 {
             panic!("big decimal exponent does not fit in i64")
         }
-        let mut byte_array = [0; 8];
-        byte_array.copy_from_slice(&bytes);
-        BigDecimal::new(self.0, i64::from_le_bytes(byte_array))
+        let mut byte_array = if exp >= 0.into() { [0; 8] } else { [255; 8] };
+        byte_array[..bytes.len()].copy_from_slice(&bytes);
+        BigDecimal::new(self.0, -i64::from_le_bytes(byte_array))
     }
 }
 
