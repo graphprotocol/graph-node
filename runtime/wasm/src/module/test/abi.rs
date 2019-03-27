@@ -246,6 +246,12 @@ fn abi_store_value() {
     let new_value: Value = module.asc_get(new_value_ptr);
     assert_eq!(new_value, Value::BigDecimal(big_decimal));
 
+    let big_decimal = BigDecimal::new(10.into(), -5);
+    let big_decimal_ptr = module.asc_new(&big_decimal);
+    let new_value_ptr = module.takes_ptr_returns_ptr("value_from_big_decimal", big_decimal_ptr);
+    let new_value: Value = module.asc_get(new_value_ptr);
+    assert_eq!(new_value, Value::BigDecimal(1_000_000.into()));
+
     // Value::Bool
     let boolean = true;
     let new_value_ptr = module.takes_val_returns_ptr(
