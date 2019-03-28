@@ -627,7 +627,11 @@ pub fn attribute_index_definitions(
     for (entity_number, schema_type) in document.definitions.clone().into_iter().enumerate() {
         if let Definition::TypeDefinition(definition) = schema_type {
             if let TypeDefinition::Object(schema_object) = definition {
-                for (attribute_number, entity_field) in schema_object.fields.into_iter().enumerate()
+                for (attribute_number, entity_field) in schema_object
+                    .fields
+                    .into_iter()
+                    .filter(|f| f.name != "id")
+                    .enumerate()
                 {
                     indexing_ops.push(AttributeIndexDefinition {
                         subgraph_id: subgraph_id.clone(),
