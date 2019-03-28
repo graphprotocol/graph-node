@@ -28,13 +28,16 @@ trait IntoFilter {
 
 impl IntoFilter for String {
     fn into_filter(self, attribute: String, op: &str) -> FilterExpression {
-        Box::new(
-            sql("data -> ")
-                .bind::<Text, _>(attribute)
-                .sql("->> 'data'")
-                .sql(op)
-                .bind::<Text, _>(self),
-        ) as FilterExpression
+        Box::new(match &*attribute {
+            "id" => Box::new(sql("id").sql(op).bind::<Text, _>(self)) as FilterExpression,
+            _ => Box::new(
+                sql("data -> ")
+                    .bind::<Text, _>(attribute)
+                    .sql("->> 'data'")
+                    .sql(op)
+                    .bind::<Text, _>(self),
+            ) as FilterExpression,
+        })
     }
 }
 
