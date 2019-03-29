@@ -94,7 +94,7 @@ impl Schema {
     }
 
     // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the schema.
-    fn add_subgraph_id_directives(&mut self, id: SubgraphDeploymentId) {
+    pub fn add_subgraph_id_directives(&mut self, id: SubgraphDeploymentId) {
         for definition in self.document.definitions.iter_mut() {
             let subgraph_id_argument = (
                 schema::Name::from("id"),
@@ -108,19 +108,23 @@ impl Schema {
             };
 
             if let schema::Definition::TypeDefinition(ref mut type_definition) = definition {
-                match type_definition {
-                    TypeDefinition::Object(ref mut object_type) => {
-                        object_type.directives.push(subgraph_id_directive);
+                let directives = match type_definition {
+                    TypeDefinition::Object(object_type) => &mut object_type.directives,
+                    TypeDefinition::Interface(interface_type) => &mut interface_type.directives,
+                    TypeDefinition::Enum(enum_type) => &mut enum_type.directives,
+                    TypeDefinition::Scalar(scalar_type) => &mut scalar_type.directives,
+                    TypeDefinition::InputObject(input_object_type) => {
+                        &mut input_object_type.directives
                     }
-                    TypeDefinition::Interface(ref mut interface_type) => {
-                        interface_type.directives.push(subgraph_id_directive);
-                    }
-                    TypeDefinition::Enum(ref mut enum_type) => {
-                        enum_type.directives.push(subgraph_id_directive);
-                    }
-                    TypeDefinition::Scalar(_scalar_type) => (),
-                    TypeDefinition::InputObject(_input_object_type) => (),
-                    TypeDefinition::Union(_union_type) => (),
+                    TypeDefinition::Union(union_type) => &mut union_type.directives,
+                };
+
+                if directives
+                    .iter()
+                    .find(|directive| directive.name == "subgraphId")
+                    .is_none()
+                {
+                    directives.push(subgraph_id_directive);
                 }
             };
         }
