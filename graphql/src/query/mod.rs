@@ -31,7 +31,10 @@ where
     R: Resolver,
 {
     let query_id = Uuid::new_v4().to_string();
-    let query_logger = options.logger.new(o!("query_id" => query_id));
+    let query_logger = options.logger.new(o!(
+        "subgraph_id" => (*query.schema.id).clone(),
+        "query_id" => query_id
+    ));
     let start_time = Instant::now();
 
     info!(
