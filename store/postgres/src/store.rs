@@ -1029,8 +1029,15 @@ impl SubgraphDeploymentStore for Store {
                 }
             }
         };
+
+        // Parse the schema and add @subgraphId directives
         let mut schema = Schema::parse(&raw_schema, subgraph_id.clone())?;
+
+        // Generate an API schema for the subgraph and make sure all types in the
+        // API schema have a @subgraphId directive as well
         schema.document = api_schema(&schema.document)?;
+        schema.add_subgraph_id_directives(subgraph_id.clone());
+
         let schema = Arc::new(schema);
 
         // Insert the schema into the cache.
