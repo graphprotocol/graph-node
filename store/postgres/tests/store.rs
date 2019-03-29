@@ -8,6 +8,7 @@ extern crate hex;
 
 use diesel::pg::PgConnection;
 use diesel::*;
+use graphql_parser::schema as s;
 use std::str::FromStr;
 use std::time::Duration;
 use test_store::*;
@@ -20,8 +21,9 @@ use graph::web3::types::H256;
 use graph_store_postgres::{db_schema, Store as DieselStore};
 
 lazy_static! {
+    static ref TEST_SUBGRAPH_ID_STRING: String = String::from("testsubgraph");
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId =
-        SubgraphDeploymentId::new("testsubgraph").unwrap();
+        SubgraphDeploymentId::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
     static ref TEST_BLOCK_0_PTR: EthereumBlockPointer = (
         H256::from("0xbd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"),
         0u64
@@ -1837,4 +1839,45 @@ fn throttle_subscription_throttles() {
             )
         },
     )
+}
+
+#[test]
+fn subgraph_schema_types_have_subgraph_id_directive() {
+    run_test(|store| -> Result<(), ()> {
+        let schema = store
+            .subgraph_schema(&TEST_SUBGRAPH_ID)
+            .expect("test subgraph should have a schema");
+        for typedef in schema
+            .document
+            .definitions
+            .iter()
+            .filter_map(|def| match def {
+                s::Definition::TypeDefinition(typedef) => Some(typedef),
+                _ => None,
+            })
+        {
+            // Verify that all types have a @subgraphId directive on them
+            let directive = match typedef {
+                s::TypeDefinition::Object(t) => &t.directives,
+                s::TypeDefinition::Interface(t) => &t.directives,
+                s::TypeDefinition::Enum(t) => &t.directives,
+                s::TypeDefinition::Scalar(t) => &t.directives,
+                s::TypeDefinition::Union(t) => &t.directives,
+                s::TypeDefinition::InputObject(t) => &t.directives,
+            }
+            .iter()
+            .find(|directive| directive.name == "subgraphId")
+            .expect("all subgraph schema types should have a @subgraphId directive");
+
+            // Verify that all @subgraphId directives match the subgraph
+            assert_eq!(
+                directive.arguments,
+                [(
+                    String::from("id"),
+                    s::Value::String(TEST_SUBGRAPH_ID_STRING.to_string())
+                )]
+            );
+        }
+        Ok(())
+    })
 }
