@@ -311,6 +311,7 @@ pub(crate) enum EthereumValueKind {
     String,
     FixedArray,
     Array,
+    Tuple,
 }
 
 impl EthereumValueKind {
@@ -325,6 +326,7 @@ impl EthereumValueKind {
             ethabi::Token::String(_) => EthereumValueKind::String,
             ethabi::Token::FixedArray(_) => EthereumValueKind::FixedArray,
             ethabi::Token::Array(_) => EthereumValueKind::Array,
+            ethabi::Token::Tuple(_) => EthereumValueKind::Tuple,
         }
     }
 }
