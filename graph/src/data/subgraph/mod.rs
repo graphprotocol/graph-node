@@ -23,7 +23,7 @@ use crate::data::schema::Schema;
 pub mod schema;
 
 /// Deserialize an Address (with or without '0x' prefix).
-fn deserialize_address<'de, D>(deserializer: D) -> Result<Address, D::Error>
+fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
 where
     D: de::Deserializer<'de>,
 {
@@ -31,7 +31,9 @@ where
 
     let s: String = de::Deserialize::deserialize(deserializer)?;
     let address = s.trim_start_matches("0x");
-    Address::from_str(address).map_err(D::Error::custom)
+    Address::from_str(address)
+        .map_err(D::Error::custom)
+        .map(|addr| Some(addr))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -324,8 +326,8 @@ impl SchemaData {
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct Source {
-    #[serde(deserialize_with = "deserialize_address")]
-    pub address: Address,
+    #[serde(default, deserialize_with = "deserialize_address")]
+    pub address: Option<Address>,
     pub abi: String,
 }
 

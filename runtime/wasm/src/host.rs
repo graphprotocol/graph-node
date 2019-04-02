@@ -245,7 +245,8 @@ impl RuntimeHost {
     }
 
     fn matches_log_address(&self, log: &Log) -> bool {
-        self.data_source_contract.address == log.address
+        self.data_source_contract.address.is_none()
+            || self.data_source_contract.address.unwrap() == log.address
     }
 
     fn matches_log_signature(&self, log: &Log) -> bool {

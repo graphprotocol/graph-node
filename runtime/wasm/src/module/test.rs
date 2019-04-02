@@ -126,7 +126,7 @@ fn mock_data_source(path: &str) -> DataSource {
         name: String::from("example data source"),
         network: Some(String::from("mainnet")),
         source: Source {
-            address: Address::from_str("0123123123012312312301231231230123123123").unwrap(),
+            address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
             abi: String::from("123123"),
         },
         mapping: Mapping {

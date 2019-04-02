@@ -429,7 +429,7 @@ impl<'a> From<&'a super::DataSource> for EthereumContractDataSourceEntity {
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 struct EthereumContractSourceEntity {
-    address: super::Address,
+    address: Option<super::Address>,
     abi: String,
 }
 
