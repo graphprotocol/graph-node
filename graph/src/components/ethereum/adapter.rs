@@ -95,7 +95,7 @@ impl From<Error> for EthereumAdapterError {
 
 #[derive(Clone, Debug)]
 pub struct EthereumLogFilter {
-    pub contract_address_and_event_sig_pairs: HashSet<(Address, H256)>,
+    pub contract_address_and_event_sig_pairs: HashSet<(Option<Address>, H256)>,
 }
 
 impl EthereumLogFilter {
@@ -112,17 +112,21 @@ impl EthereumLogFilter {
         // First topic should be event sig
         match log.topics.first() {
             None => false,
-            Some(sig) => self
-                .contract_address_and_event_sig_pairs
-                .contains(&(log.address, *sig)),
+            Some(sig) => {
+                self.contract_address_and_event_sig_pairs
+                    .contains(&(Some(log.address), *sig))
+                    || self
+                        .contract_address_and_event_sig_pairs
+                        .contains(&(None, *sig))
+            }
         }
     }
 }
 
-impl FromIterator<(Address, H256)> for EthereumLogFilter {
+impl FromIterator<(Option<Address>, H256)> for EthereumLogFilter {
     fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = (Address, H256)>,
+        I: IntoIterator<Item = (Option<Address>, H256)>,
     {
         EthereumLogFilter {
             contract_address_and_event_sig_pairs: iter.into_iter().collect(),

@@ -116,14 +116,32 @@ where
             .into_iter()
             .collect::<Vec<H256>>();
 
-        // Collect all contract addresses
-        let addresses = log_filter
+        // Collect all contract addresses; if we have a data source without a contract
+        // address, we can't add addresses to the filter because it would only match
+        // the contracts for which we _have_ addresses; therefor if we have a data source
+        // without a contract address, we perform a broader logs scan and filter out
+        // irrelevant events ourselves
+        let addresses = if log_filter
             .contract_address_and_event_sig_pairs
             .iter()
-            .map(|(addr, _sig)| *addr)
-            .collect::<HashSet<H160>>()
-            .into_iter()
-            .collect::<Vec<H160>>();
+            .any(|(addr, _)| addr.is_none())
+        {
+            vec![]
+        } else {
+            log_filter
+                .contract_address_and_event_sig_pairs
+                .iter()
+                .map(|(addr, _sig)| match addr {
+                    None => unreachable!(
+                        "shouldn't include addresses in Ethereum logs filter \
+                         if there are data sources without a contract address"
+                    ),
+                    Some(addr) => *addr,
+                })
+                .collect::<HashSet<H160>>()
+                .into_iter()
+                .collect::<Vec<H160>>()
+        };
 
         let eth_adapter = self.clone();
         let logger = logger.to_owned();
