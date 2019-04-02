@@ -112,13 +112,19 @@ impl EthereumLogFilter {
         // First topic should be event sig
         match log.topics.first() {
             None => false,
-            Some(sig) => {
-                self.contract_address_and_event_sig_pairs
-                    .contains(&(Some(log.address), *sig))
-                    || self
-                        .contract_address_and_event_sig_pairs
-                        .contains(&(None, *sig))
-            }
+            Some(sig) => self
+                .contract_address_and_event_sig_pairs
+                .iter()
+                .any(|pair| match pair {
+                    // The `Log` matches the filter either if the filter contains
+                    // a (contract address, event signature) pair that matches the
+                    // `Log`...
+                    (Some(addr), s) => addr == &log.address && s == sig,
+
+                    // ...or if the filter contains a pair with no contract address
+                    // but an event signature that matches the event
+                    (None, s) => s == sig,
+                }),
         }
     }
 }

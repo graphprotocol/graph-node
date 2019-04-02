@@ -245,8 +245,12 @@ impl RuntimeHost {
     }
 
     fn matches_log_address(&self, log: &Log) -> bool {
-        self.data_source_contract.address.is_none()
-            || self.data_source_contract.address.unwrap() == log.address
+        // The runtime host matches the contract address of the `Log`
+        // if the data source contains the same contract address or
+        // if the data source doesn't have a contract address at all
+        self.data_source_contract
+            .address
+            .map_or(true, |addr| addr == log.address)
     }
 
     fn matches_log_signature(&self, log: &Log) -> bool {
