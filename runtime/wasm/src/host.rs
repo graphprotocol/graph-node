@@ -230,7 +230,10 @@ impl RuntimeHost {
                         .map_err(|_| err_msg("receiver dropped"))
                 })
                 .wait()
-                .ok();
+                .unwrap_or_else(|e| {
+                    debug!(module_logger, "WASM runtime thread terminating"; 
+                           "reason" => e.to_string())
+                });
         })
         .expect("failed to spawn runtime thread");
 
