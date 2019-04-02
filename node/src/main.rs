@@ -33,6 +33,7 @@ use graph::tokio_executor;
 use graph::tokio_timer;
 use graph::tokio_timer::timer::Timer;
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
+use graph::util::security::SafeDisplay;
 use graph_core::{
     ElasticLoggingConfig, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -315,7 +316,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .unwrap()
         .to_owned();
 
-    info!(logger, "Trying IPFS node at: {}", &ipfs_address);
+    info!(
+        logger,
+        "Trying IPFS node at: {}",
+        SafeDisplay(&ipfs_address)
+    );
 
     // Try to create an IPFS client for this URL
     let ipfs_client = match IpfsClient::new_from_uri(ipfs_address.as_ref()) {
@@ -323,7 +328,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         Err(e) => {
             error!(
                 logger,
-                "Failed to create IPFS client for `{}`: {}", &ipfs_address, e
+                "Failed to create IPFS client for `{}`: {}",
+                SafeDisplay(&ipfs_address),
+                e
             );
             panic!("Could not connect to IPFS");
         }
@@ -340,14 +347,16 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             .map_err(move |e| {
                 error!(
                     ipfs_err_logger,
-                    "Is there an IPFS node running at \"{}\"?", ipfs_address_for_err,
+                    "Is there an IPFS node running at \"{}\"?",
+                    SafeDisplay(ipfs_address_for_err),
                 );
                 panic!("Failed to connect to IPFS: {}", e);
             })
             .map(move |_| {
                 info!(
                     ipfs_ok_logger,
-                    "Successfully connected to IPFS node at: {}", ipfs_address_for_ok
+                    "Successfully connected to IPFS node at: {}",
+                    SafeDisplay(ipfs_address_for_ok)
                 );
             }),
     );
@@ -380,14 +389,14 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     info!(
         logger, "Connecting to Ethereum...";
         "network" => &ethereum_network_name,
-        "node" => &ethereum_node_url,
+        "node" => SafeDisplay(ethereum_node_url),
     );
     let eth_net_identifiers = match eth_adapter.net_identifiers(&logger).wait() {
         Ok(net) => {
             info!(
                 logger, "Connected to Ethereum";
                 "network" => &ethereum_network_name,
-                "node" => &ethereum_node_url,
+                "node" => SafeDisplay(ethereum_node_url),
             );
             net
         }
@@ -398,7 +407,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     };
 
     // Set up Store
-    info!(logger, "Connecting to Postgres"; "url" => &postgres_url);
+    info!(
+        logger,
+        "Connecting to Postgres";
+        "url" => SafeDisplay(postgres_url.as_str())
+    );
     let store = Arc::new(DieselStore::new(
         StoreConfig {
             postgres_url,
