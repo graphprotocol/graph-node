@@ -6,3 +6,6 @@ pub mod log;
 
 /// Utils for working with ethereum data types
 pub mod ethereum;
+
+/// Security utilities.
+pub mod security;

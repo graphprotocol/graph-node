@@ -14,6 +14,7 @@ use graph::components::store::Store as StoreTrait;
 use graph::data::subgraph::schema::*;
 use graph::prelude::{ChainHeadUpdateListener as _, *};
 use graph::serde_json;
+use graph::util::security::SafeDisplay;
 use graph::web3::types::H256;
 use graph::{tokio, tokio::timer::Interval};
 use graph_graphql::prelude::api_schema;
@@ -44,8 +45,11 @@ fn initiate_schema(logger: &Logger, conn: &PgConnection) {
 
     // If there was any migration output, log it now
     if !output.is_empty() {
-        debug!(logger, "Postgres migration output";
-               "output" => String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>")));
+        debug!(
+            logger, "Postgres migration output";
+            "output" => String::from_utf8(output)
+                .unwrap_or_else(|_| String::from("<unreadable>"))
+        );
     }
 }
 
@@ -92,7 +96,11 @@ impl Store {
             .error_handler(error_handler)
             .build(conn_manager)
             .unwrap();
-        info!(logger, "Connected to Postgres"; "url" => &config.postgres_url);
+        info!(
+            logger,
+            "Connected to Postgres";
+            "url" => SafeDisplay(config.postgres_url.as_str())
+        );
 
         // Create the entities table (if necessary)
         initiate_schema(&logger, &pool.get().unwrap());
