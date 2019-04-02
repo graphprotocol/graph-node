@@ -118,9 +118,15 @@ where
 
         // Collect all contract addresses; if we have a data source without a contract
         // address, we can't add addresses to the filter because it would only match
-        // the contracts for which we _have_ addresses; therefor if we have a data source
+        // the contracts for which we _have_ addresses; therefore if we have a data source
         // without a contract address, we perform a broader logs scan and filter out
-        // irrelevant events ourselves
+        // irrelevant events ourselves.
+        //
+        // Our own filtering is performed later when the events are passed to
+        // subgraphs and runtime hosts for processing:
+        // - At the top level in `SubgraphInstanceManager::start_subgraph`
+        // - At the subgraph level in `SubgraphInstance::matches_log`
+        // - At the data source level in `RuntimeHost::matches_log`
         let addresses = if log_filter
             .contract_address_and_event_sig_pairs
             .iter()
