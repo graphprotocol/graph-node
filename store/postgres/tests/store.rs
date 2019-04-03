@@ -207,6 +207,10 @@ fn create_test_entity(
     test_entity.insert("bin_name".to_owned(), Value::Bytes(bin_name));
     test_entity.insert("email".to_owned(), Value::String(email.to_owned()));
     test_entity.insert("age".to_owned(), Value::Int(age));
+    test_entity.insert(
+        "seconds_age".to_owned(),
+        Value::BigInt(BigInt::from(age) * 31557600.into()),
+    );
     test_entity.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
     test_entity.insert("coffee".to_owned(), Value::Bool(coffee));
     test_entity.insert(
@@ -295,6 +299,10 @@ fn get_entity_1() {
         );
         expected_entity.insert("email".to_owned(), "tonofjohn@email.com".into());
         expected_entity.insert("age".to_owned(), Value::Int(67 as i32));
+        expected_entity.insert(
+            "seconds_age".to_owned(),
+            Value::BigInt(BigInt::from(2114359200)),
+        );
         expected_entity.insert("weight".to_owned(), Value::BigDecimal(184.4.into()));
         expected_entity.insert("coffee".to_owned(), Value::Bool(false));
         // favorite_color was null, so we expect the property to be omitted
@@ -328,6 +336,10 @@ fn get_entity_3() {
         );
         expected_entity.insert("email".to_owned(), "teeko@email.com".into());
         expected_entity.insert("age".to_owned(), Value::Int(28 as i32));
+        expected_entity.insert(
+            "seconds_age".to_owned(),
+            Value::BigInt(BigInt::from(883612800)),
+        );
         expected_entity.insert("weight".to_owned(), Value::BigDecimal(111.7.into()));
         expected_entity.insert("coffee".to_owned(), Value::Bool(false));
         // favorite_color was later set to null, so we expect the property to be omitted

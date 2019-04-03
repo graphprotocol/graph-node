@@ -375,6 +375,20 @@ fn abi_big_int() {
     assert_eq!(new_uint, new_uint_from_u256);
 }
 
+#[test]
+fn big_int_to_string() {
+    let valid_module = test_valid_module(mock_data_source("wasm_test/big_int_to_string.wasm"));
+    let mut module =
+        WasmiModule::from_valid_module_with_ctx(&valid_module, mock_context()).unwrap();
+
+    let big_int_str = "30145144166666665000000000000000000";
+    let big_int = BigInt::from_str(big_int_str).unwrap();
+    let ptr: AscPtr<AscBigInt> = module.asc_new(&big_int);
+    let string_obj: AscPtr<AscString> = module.takes_ptr_returns_ptr("big_int_to_string", ptr);
+    let string: String = module.asc_get(string_obj);
+    assert_eq!(string, big_int_str);
+}
+
 // This should panic rather than exhibiting UB. It's hard to test for UB, but
 // when reproducing a SIGILL was observed which would be caught by this.
 #[test]
