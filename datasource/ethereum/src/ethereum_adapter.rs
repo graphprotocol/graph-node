@@ -188,7 +188,7 @@ where
             if start > to {
                 return None
             }
-            let end = (start + 10_000 - 1).min(to);
+            let end = (start + 500 - 1).min(to);
             let new_start = end + 1;
             let call_filter = call_filter.clone();
             debug!(logger, "Starting request for method calls in block range: [{}, {}]", start, end);
@@ -274,7 +274,7 @@ where
                     .min(to)
                     .min(*LOG_STREAM_FAST_SCAN_END)
             } else {
-                (start + 10_000 - 1).min(to)
+                (start + 1_000 - 1).min(to)
             };
             let new_start = end + 1;
             
