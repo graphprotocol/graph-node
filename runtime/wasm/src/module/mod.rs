@@ -52,6 +52,13 @@ const BIG_INT_MOD: usize = 23;
 const GAS_FUNC_INDEX: usize = 24;
 const TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX: usize = 25;
 const BIG_INT_DIVIDED_BY_DECIMAL: usize = 26;
+const BIG_DECIMAL_PLUS: usize = 27;
+const BIG_DECIMAL_MINUS: usize = 28;
+const BIG_DECIMAL_TIMES: usize = 29;
+const BIG_DECIMAL_DIVIDED_BY: usize = 30;
+const BIG_DECIMAL_EQUALS: usize = 31;
+const BIG_DECIMAL_TO_STRING: usize = 32;
+const BIG_DECIMAL_FROM_STRING: usize = 33;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
@@ -619,6 +626,88 @@ where
         let result_ptr: AscPtr<AscString> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
+
+    /// function bigDecimal.toString(x: BigDecimal): string
+    fn big_decimal_to_string(
+        &mut self,
+        big_decimal_ptr: AscPtr<AscBigDecimal>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self
+            .host_exports
+            .big_decimal_to_string(self.asc_get(big_decimal_ptr));
+        Ok(Some(RuntimeValue::from(self.asc_new(&result))))
+    }
+
+    /// function bigDecimal.fromString(x: string): BigDecimal
+    fn big_decimal_from_string(
+        &mut self,
+        string_ptr: AscPtr<AscString>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self
+            .host_exports
+            .big_decimal_from_string(self.asc_get(string_ptr))?;
+        Ok(Some(RuntimeValue::from(self.asc_new(&result))))
+    }
+
+    /// function bigDecimal.plus(x: BigDecimal, y: BigDecimal): BigDecimal
+    fn big_decimal_plus(
+        &mut self,
+        x_ptr: AscPtr<AscBigDecimal>,
+        y_ptr: AscPtr<AscBigDecimal>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self
+            .host_exports
+            .big_decimal_plus(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        Ok(Some(RuntimeValue::from(self.asc_new(&result))))
+    }
+
+    /// function bigDecimal.minus(x: BigDecimal, y: BigDecimal): BigDecimal
+    fn big_decimal_minus(
+        &mut self,
+        x_ptr: AscPtr<AscBigDecimal>,
+        y_ptr: AscPtr<AscBigDecimal>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self
+            .host_exports
+            .big_decimal_minus(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        Ok(Some(RuntimeValue::from(self.asc_new(&result))))
+    }
+
+    /// function bigDecimal.times(x: BigDecimal, y: BigDecimal): BigDecimal
+    fn big_decimal_times(
+        &mut self,
+        x_ptr: AscPtr<AscBigDecimal>,
+        y_ptr: AscPtr<AscBigDecimal>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self
+            .host_exports
+            .big_decimal_times(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        Ok(Some(RuntimeValue::from(self.asc_new(&result))))
+    }
+
+    /// function bigDecimal.dividedBy(x: BigDecimal, y: BigDecimal): BigDecimal
+    fn big_decimal_divided_by(
+        &mut self,
+        x_ptr: AscPtr<AscBigDecimal>,
+        y_ptr: AscPtr<AscBigDecimal>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self
+            .host_exports
+            .big_decimal_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        Ok(Some(RuntimeValue::from(self.asc_new(&result))))
+    }
+
+    /// function bigDecimal.equals(x: BigDecimal, y: BigDecimal): bool
+    fn big_decimal_equals(
+        &mut self,
+        x_ptr: AscPtr<AscBigDecimal>,
+        y_ptr: AscPtr<AscBigDecimal>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let equals = self
+            .host_exports
+            .big_decimal_equals(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        Ok(Some(RuntimeValue::I32(if equals { 1 } else { 0 })))
+    }
 }
 
 impl<'a, T, L, S, U> Externals for WasmiModule<'a, T, L, S, U>
@@ -680,6 +769,17 @@ where
             BIG_INT_MOD => self.big_int_mod(args.nth_checked(0)?, args.nth_checked(1)?),
             GAS_FUNC_INDEX => self.gas(args.nth_checked(0)?),
             TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX => self.bytes_to_base58(args.nth_checked(0)?),
+            BIG_DECIMAL_PLUS => self.big_decimal_plus(args.nth_checked(0)?, args.nth_checked(1)?),
+            BIG_DECIMAL_MINUS => self.big_decimal_minus(args.nth_checked(0)?, args.nth_checked(1)?),
+            BIG_DECIMAL_TIMES => self.big_decimal_times(args.nth_checked(0)?, args.nth_checked(1)?),
+            BIG_DECIMAL_DIVIDED_BY => {
+                self.big_decimal_divided_by(args.nth_checked(0)?, args.nth_checked(1)?)
+            }
+            BIG_DECIMAL_EQUALS => {
+                self.big_decimal_equals(args.nth_checked(0)?, args.nth_checked(1)?)
+            }
+            BIG_DECIMAL_TO_STRING => self.big_decimal_to_string(args.nth_checked(0)?),
+            BIG_DECIMAL_FROM_STRING => self.big_decimal_from_string(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -765,6 +865,16 @@ impl ModuleImportResolver for ModuleResolver {
                 FuncInstance::alloc_host(signature, BIG_INT_DIVIDED_BY_DECIMAL)
             }
             "bigInt.mod" => FuncInstance::alloc_host(signature, BIG_INT_MOD),
+
+            // bigDecimal
+            "bigDecimal.plus" => FuncInstance::alloc_host(signature, BIG_DECIMAL_PLUS),
+            "bigDecimal.minus" => FuncInstance::alloc_host(signature, BIG_DECIMAL_MINUS),
+            "bigDecimal.times" => FuncInstance::alloc_host(signature, BIG_DECIMAL_TIMES),
+            "bigDecimal.dividedBy" => FuncInstance::alloc_host(signature, BIG_DECIMAL_DIVIDED_BY),
+            "bigDecimal.equals" => FuncInstance::alloc_host(signature, BIG_DECIMAL_EQUALS),
+            "bigDecimal.toString" => FuncInstance::alloc_host(signature, BIG_DECIMAL_TO_STRING),
+            "bigDecimal.fromString" => FuncInstance::alloc_host(signature, BIG_DECIMAL_FROM_STRING),
+
             _ => {
                 return Err(Error::Instantiation(format!(
                     "Export '{}' not found",

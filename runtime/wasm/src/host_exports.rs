@@ -446,6 +446,38 @@ where
     pub(crate) fn bytes_to_base58(&self, bytes: Vec<u8>) -> String {
         ::bs58::encode(&bytes).into_string()
     }
+
+    pub(crate) fn big_decimal_plus(&self, x: BigDecimal, y: BigDecimal) -> BigDecimal {
+        x + y
+    }
+
+    pub(crate) fn big_decimal_minus(&self, x: BigDecimal, y: BigDecimal) -> BigDecimal {
+        x - y
+    }
+
+    pub(crate) fn big_decimal_times(&self, x: BigDecimal, y: BigDecimal) -> BigDecimal {
+        x * y
+    }
+
+    pub(crate) fn big_decimal_divided_by(&self, x: BigDecimal, y: BigDecimal) -> BigDecimal {
+        x / y
+    }
+
+    pub(crate) fn big_decimal_equals(&self, x: BigDecimal, y: BigDecimal) -> bool {
+        x == y
+    }
+
+    pub(crate) fn big_decimal_to_string(&self, x: BigDecimal) -> String {
+        x.to_string()
+    }
+
+    pub(crate) fn big_decimal_from_string(
+        &self,
+        s: String,
+    ) -> Result<BigDecimal, HostExportError<impl ExportError>> {
+        BigDecimal::from_str(&s)
+            .map_err(|e| HostExportError(format!("Failed to parse BigDecimal: {}", e)))
+    }
 }
 
 pub(crate) fn string_to_h160(string: &str) -> Result<H160, HostExportError<impl ExportError>> {
