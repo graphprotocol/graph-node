@@ -344,7 +344,7 @@ where
 
                         // But also avoid having too large a range to ensure subgraph block ptr is
                         // updated frequently.
-                        let to = cmp::min(from + (100_000 - 1), to_limit);
+                        let to = cmp::min(from + (10_000 - 1), to_limit);
 
                         debug!(ctx.logger, "Finding next blocks with relevant events...");
                         Box::new(
@@ -536,7 +536,7 @@ where
             ReconciliationStep::AdvanceToDescendantBlock { from, to } => {
                 debug!(
                     ctx.logger,
-                    "Skipping {} block(s) with no relevant events...",
+                    "Skipping {} block(s) with no relevant triggers...",
                     to.number - from.number
                 );
 
@@ -576,7 +576,7 @@ where
                                      // that we can skip.
                                      debug!(
                                          ctx.logger,
-                                         "Skipping {} block(s) with no relevant events...",
+                                         "Skipping {} block(s) with no relevant triggers...",
                                          descendant_parent_ptr.number - subgraph_ptr.number
                                      );
 
