@@ -4,7 +4,6 @@ use ethabi::Token;
 use futures::sync::oneshot;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
-use graph::data::store::scalar;
 use graph::prelude::*;
 use graph::serde_json;
 use graph::web3::types::H160;
@@ -367,7 +366,7 @@ where
         &self,
         json: String,
     ) -> Result<Vec<u8>, HostExportError<impl ExportError>> {
-        let big_int = scalar::BigInt::from_str(&json)
+        let big_int = BigInt::from_str(&json)
             .map_err(|_| HostExportError(format!("JSON `{}` is not a decimal string", json)))?;
         Ok(big_int.to_signed_bytes_le())
     }
@@ -390,6 +389,21 @@ where
 
     pub(crate) fn big_int_divided_by(&self, x: BigInt, y: BigInt) -> BigInt {
         x / y
+    }
+
+    /// Maximum precision of 100 decimal digits.
+    pub(crate) fn big_int_divided_by_decimal(
+        &self,
+        x: BigInt,
+        y: BigInt,
+    ) -> Result<BigDecimal, HostExportError<impl ExportError>> {
+        if y == 0.into() {
+            return Err(HostExportError(format!(
+                "attempted to divide BigInt `{}` by zero",
+                x
+            )));
+        }
+        Ok(x.to_big_decimal(0.into()) / y.to_big_decimal(0.into()))
     }
 
     pub(crate) fn big_int_mod(&self, x: BigInt, y: BigInt) -> BigInt {

@@ -51,6 +51,7 @@ const BIG_INT_DIVIDED_BY: usize = 22;
 const BIG_INT_MOD: usize = 23;
 const GAS_FUNC_INDEX: usize = 24;
 const TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX: usize = 25;
+const BIG_INT_DIVIDED_BY_DECIMAL: usize = 26;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
@@ -571,6 +572,7 @@ where
     }
 
     /// function bigInt.dividedBy(x: BigInt, y: BigInt): BigInt
+    /// Deprecated in favor of `divided_by_decimal`.
     fn big_int_divided_by(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
@@ -580,6 +582,19 @@ where
             .host_exports
             .big_int_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr));
         let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
+        Ok(Some(RuntimeValue::from(result_ptr)))
+    }
+
+    /// function bigInt.dividedByDecimal(x: BigInt, y: BigInt): BigDecimal
+    fn big_int_divided_by_decimal(
+        &mut self,
+        x_ptr: AscPtr<AscBigInt>,
+        y_ptr: AscPtr<AscBigInt>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self
+            .host_exports
+            .big_int_divided_by_decimal(self.asc_get(x_ptr), self.asc_get(y_ptr))?;
+        let result_ptr: AscPtr<AscBigDecimal> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
 
@@ -658,6 +673,9 @@ where
             BIG_INT_TIMES => self.big_int_times(args.nth_checked(0)?, args.nth_checked(1)?),
             BIG_INT_DIVIDED_BY => {
                 self.big_int_divided_by(args.nth_checked(0)?, args.nth_checked(1)?)
+            }
+            BIG_INT_DIVIDED_BY_DECIMAL => {
+                self.big_int_divided_by_decimal(args.nth_checked(0)?, args.nth_checked(1)?)
             }
             BIG_INT_MOD => self.big_int_mod(args.nth_checked(0)?, args.nth_checked(1)?),
             GAS_FUNC_INDEX => self.gas(args.nth_checked(0)?),
@@ -743,6 +761,9 @@ impl ModuleImportResolver for ModuleResolver {
             "bigInt.minus" => FuncInstance::alloc_host(signature, BIG_INT_MINUS),
             "bigInt.times" => FuncInstance::alloc_host(signature, BIG_INT_TIMES),
             "bigInt.dividedBy" => FuncInstance::alloc_host(signature, BIG_INT_DIVIDED_BY),
+            "bigInt.dividedByDecimal" => {
+                FuncInstance::alloc_host(signature, BIG_INT_DIVIDED_BY_DECIMAL)
+            }
             "bigInt.mod" => FuncInstance::alloc_host(signature, BIG_INT_MOD),
             _ => {
                 return Err(Error::Instantiation(format!(
