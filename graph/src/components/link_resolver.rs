@@ -17,7 +17,15 @@ const MAX_IPFS_MAP_FILE_SIZE_ENV_VAR: &str = "GRAPH_MAX_IPFS_MAP_FILE_SIZE";
 // 256MB
 const MAX_IPFS_MAP_FILE_SIZE: u64 = 256 * 1024 * 1024;
 
-type ValueStream = Box<Stream<Item = Value, Error = failure::Error> + Send + 'static>;
+/// The values that `json_stream` returns. The struct contains the deserialized
+/// JSON value from the input stream, together with the line number from which
+/// the value was read.
+pub struct StreamValue {
+    pub value: Value,
+    pub line: usize,
+}
+
+type ValueStream = Box<Stream<Item = StreamValue, Error = failure::Error> + Send + 'static>;
 
 /// Resolves links to subgraph manifests and resources referenced by them.
 pub trait LinkResolver: Send + Sync + 'static {
@@ -90,7 +98,7 @@ impl LinkResolver for ipfs_api::IpfsClient {
     /// Supports links of the form `/ipfs/ipfs_hash` or just `ipfs_hash`.
     fn cat(&self, link: &Link) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send> {
         // Grab env vars.
-        let max_file_bytes = read_u64_env_var(MAX_IPFS_FILE_BYTES_ENV_VAR);
+        let max_file_bytes = read_u64_from_env(MAX_IPFS_FILE_BYTES_ENV_VAR);
 
         // Discard the `/ipfs/` prefix (if present) to get the hash.
         let path = link.link.trim_start_matches("/ipfs/").to_owned();
@@ -120,8 +128,8 @@ impl LinkResolver for ipfs_api::IpfsClient {
         // to the line number in the overall file
         let mut count = 0;
 
-        let stream: ValueStream =
-            Box::new(poll_fn(move || -> Poll<Option<Value>, failure::Error> {
+        let stream: ValueStream = Box::new(poll_fn(
+            move || -> Poll<Option<StreamValue>, failure::Error> {
                 loop {
                     if let Some(offset) = buf.iter().position(|b| *b == b'\n') {
                         let line_bytes = buf.split_to(offset + 1);
@@ -129,7 +137,10 @@ impl LinkResolver for ipfs_api::IpfsClient {
                         if line_bytes.len() > 1 {
                             let line = std::str::from_utf8(&line_bytes)?;
                             let res = match serde_json::from_str::<Value>(line) {
-                                Ok(v) => Ok(Async::Ready(Some(v))),
+                                Ok(v) => Ok(Async::Ready(Some(StreamValue {
+                                    value: v,
+                                    line: count,
+                                }))),
                                 Err(e) => {
                                     // Adjust the line number in the serde error. This
                                     // is fun because we can only get at the full error
@@ -162,7 +173,8 @@ impl LinkResolver for ipfs_api::IpfsClient {
                         }
                     }
                 }
-            }));
+            },
+        ));
         // Check the size of the file
         let max_file_bytes =
             read_u64_from_env(MAX_IPFS_MAP_FILE_SIZE_ENV_VAR).unwrap_or(MAX_IPFS_MAP_FILE_SIZE);
@@ -209,7 +221,7 @@ mod tests {
         let link = runtime.block_on(client.add(text.as_bytes())).unwrap().hash;
         runtime.block_on(
             LinkResolver::json_stream(&client, &Link { link: link.clone() })
-                .and_then(|stream| stream.collect()),
+                .and_then(|stream| stream.map(|sv| sv.value).collect()),
         )
     }
 
