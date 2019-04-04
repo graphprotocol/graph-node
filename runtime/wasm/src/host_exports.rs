@@ -391,21 +391,6 @@ where
         x / y
     }
 
-    /// Maximum precision of 100 decimal digits.
-    pub(crate) fn big_int_divided_by_decimal(
-        &self,
-        x: BigInt,
-        y: BigInt,
-    ) -> Result<BigDecimal, HostExportError<impl ExportError>> {
-        if y == 0.into() {
-            return Err(HostExportError(format!(
-                "attempted to divide BigInt `{}` by zero",
-                x
-            )));
-        }
-        Ok(x.to_big_decimal(0.into()) / y.to_big_decimal(0.into()))
-    }
-
     pub(crate) fn big_int_mod(&self, x: BigInt, y: BigInt) -> BigInt {
         x % y
     }
@@ -459,8 +444,20 @@ where
         x * y
     }
 
-    pub(crate) fn big_decimal_divided_by(&self, x: BigDecimal, y: BigDecimal) -> BigDecimal {
-        x / y
+    /// Maximum precision of 100 decimal digits.
+    pub(crate) fn big_decimal_divided_by(
+        &self,
+        x: BigDecimal,
+        y: BigDecimal,
+    ) -> Result<BigDecimal, HostExportError<impl ExportError>> {
+        if y == 0.into() {
+            return Err(HostExportError(format!(
+                "attempted to divide BigDecimal `{}` by zero",
+                x
+            )));
+        }
+
+        Ok(x / y)
     }
 
     pub(crate) fn big_decimal_equals(&self, x: BigDecimal, y: BigDecimal) -> bool {
