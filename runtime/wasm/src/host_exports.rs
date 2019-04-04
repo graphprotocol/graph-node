@@ -473,7 +473,7 @@ where
         s: String,
     ) -> Result<BigDecimal, HostExportError<impl ExportError>> {
         BigDecimal::from_str(&s)
-            .map_err(|e| HostExportError(format!("Failed to parse BigDecimal: {}", e)))
+            .map_err(|e| HostExportError(format!("failed to parse BigDecimal: {}", e)))
     }
 }
 
