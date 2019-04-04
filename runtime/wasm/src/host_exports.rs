@@ -369,17 +369,31 @@ where
             &*callback, &link
         );
 
+        let start = Instant::now();
+        let mut last_log = Instant::now();
+        let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
         let operations = self.block_on(
             self.link_resolver
                 .json_stream(&Link { link })
-                .and_then(|stream| {
+                .and_then(move |stream| {
                     stream
-                        .and_then(move |v| {
+                        .and_then(move |sv| {
                             let module = WasmiModule::from_valid_module_with_ctx(
                                 valid_module.clone(),
                                 ctx.clone(),
                             )?;
-                            module.handle_json_callback(&*callback, &v)
+                            let result = module.handle_json_callback(&*callback, &sv.value);
+                            // Log progress every 15s
+                            if last_log.elapsed() > Duration::from_secs(15) {
+                                debug!(
+                                    logger,
+                                    "Processed {} lines in {}s so far",
+                                    sv.line,
+                                    start.elapsed().as_secs()
+                                );
+                                last_log = Instant::now();
+                            }
+                            result
                         })
                         .collect()
                 })
