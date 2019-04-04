@@ -542,12 +542,20 @@ where
         callback: AscPtr<AscString>,
         flags: AscPtr<Array<AscPtr<AscString>>>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let link = self.asc_get(link_ptr);
+        let link: String = self.asc_get(link_ptr);
         let callback: String = self.asc_get(callback);
         let flags = self.asc_get(flags);
         let start_time = Instant::now();
-        let result = match self.host_exports().ipfs_map(&self, link, &*callback, flags) {
+        let result = match self
+            .host_exports()
+            .ipfs_map(&self, link.clone(), &*callback, flags)
+        {
             Ok(ops) => {
+                debug!(self.logger, "Successfully processed file with ipfs.map";
+                                     "link" => &link,
+                                     "callback" => &*callback,
+                                     "entity_operations" => ops.len(),
+                                     "time" => start_time.elapsed().as_millis());
                 self.ctx.entity_operations.extend(ops);
                 Ok(None)
             }
