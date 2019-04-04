@@ -9,7 +9,7 @@ use std::str::FromStr;
 
 pub use num_bigint::Sign as BigIntSign;
 
-// Caveat: The expoent is currently an i64 and may overflow.
+// Caveat: The exponent is currently an i64 and may overflow.
 // See https://github.com/akubera/bigdecimal-rs/issues/54.
 pub type BigDecimal = bigdecimal::BigDecimal;
 

@@ -60,7 +60,8 @@ impl FromAscObj<AscBigInt> for BigInt {
 
 impl ToAscObj<AscBigDecimal> for BigDecimal {
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscBigDecimal {
-        // "exponent" here is the opposite of what you'd expect.
+        // From the docs: "Note that a positive exponent indicates a negative power of 10",
+        // so "exponent" is the opposite of what you'd expect.
         let (digits, negative_exp) = self.as_bigint_and_exponent();
         AscBigDecimal {
             exp: heap.asc_new(&BigInt::from(-negative_exp)),
