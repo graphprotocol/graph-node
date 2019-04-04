@@ -519,7 +519,8 @@ impl JsonValueKind {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscBigDecimal {
+    pub digits: AscPtr<AscBigInt>,
+
     // Decimal exponent. This is the opposite of `scale` in rust BigDecimal.
     pub exp: AscPtr<AscBigInt>,
-    pub digits: AscPtr<AscBigInt>,
 }

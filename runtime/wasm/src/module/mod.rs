@@ -579,7 +579,6 @@ where
     }
 
     /// function bigInt.dividedBy(x: BigInt, y: BigInt): BigInt
-    /// Deprecated in favor of `divided_by_decimal`.
     fn big_int_divided_by(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
@@ -592,17 +591,17 @@ where
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
 
-    /// function bigInt.dividedByDecimal(x: BigInt, y: BigInt): BigDecimal
+    /// function bigInt.dividedByDecimal(x: BigInt, y: BigDecimal): BigDecimal
     fn big_int_divided_by_decimal(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
-        y_ptr: AscPtr<AscBigInt>,
+        y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
+        let x = self.asc_get::<BigInt, _>(x_ptr).to_big_decimal(0.into());
         let result = self
             .host_exports
-            .big_int_divided_by_decimal(self.asc_get(x_ptr), self.asc_get(y_ptr))?;
-        let result_ptr: AscPtr<AscBigDecimal> = self.asc_new(&result);
-        Ok(Some(RuntimeValue::from(result_ptr)))
+            .big_decimal_divided_by(x, self.asc_get(y_ptr))?;
+        Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
     /// function bigInt.mod(x: BigInt, y: BigInt): BigInt
@@ -693,7 +692,7 @@ where
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
             .host_exports
-            .big_decimal_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr));
+            .big_decimal_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr))?;
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
