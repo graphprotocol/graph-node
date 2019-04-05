@@ -1,5 +1,4 @@
-use failure::Error;
-use graphql_parser::schema::*;
+use graphql_parser::schema::{Value, *};
 use graphql_parser::Pos;
 use lazy_static::lazy_static;
 use std::ops::Deref;
@@ -7,7 +6,7 @@ use std::str::FromStr;
 
 use crate::execution::ObjectOrInterface;
 use crate::query::ast as qast;
-use graph::prelude::ValueType;
+use graph::prelude::*;
 
 pub(crate) enum FilterOp {
     Not,

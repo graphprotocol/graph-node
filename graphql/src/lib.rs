@@ -1,12 +1,6 @@
-extern crate futures;
-extern crate graph;
 extern crate graphql_parser;
-extern crate indexmap;
-extern crate inflector;
-extern crate serde;
-#[macro_use]
-extern crate failure;
-extern crate lazy_static;
+
+use graph::prelude::failure;
 
 /// Utilities for working with GraphQL schemas.
 pub mod schema;

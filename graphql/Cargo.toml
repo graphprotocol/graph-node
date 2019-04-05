@@ -4,13 +4,10 @@ version = "0.5.0"
 edition = "2018"
 
 [dependencies]
-failure = "0.1"
-futures = "0.1.21"
 graph = { path = "../graph" }
 graphql-parser = "0.2.0"
 indexmap = "1.0"
 Inflector = "0.11.3"
-serde = "1.0"
 lazy_static = "1.2.0"
 uuid = { version = "0.7.2", features = ["v4"] }
 
