@@ -1,9 +1,8 @@
-use graphql_parser::schema::*;
+use crate::schema::ast;
+use graph::prelude::*;
+use graphql_parser::schema::{Value, *};
 use graphql_parser::Pos;
 use inflector::Inflector;
-use std::iter::IntoIterator;
-
-use crate::schema::ast;
 
 #[derive(Fail, Debug)]
 pub enum APISchemaError {
