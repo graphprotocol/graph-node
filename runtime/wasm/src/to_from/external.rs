@@ -150,7 +150,7 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
                 let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
                 Token::Array(heap.asc_get(ptr))
             }
-            EthereumValueKind::Tuple=> {
+            EthereumValueKind::Tuple => {
                 let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
                 Token::Tuple(heap.asc_get(ptr))
             }
