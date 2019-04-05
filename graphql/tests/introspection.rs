@@ -1,9 +1,5 @@
 #[macro_use]
 extern crate pretty_assertions;
-extern crate futures;
-extern crate graph;
-extern crate graph_graphql;
-extern crate graphql_parser;
 
 use graphql_parser::{query as q, schema as s};
 use std::collections::{BTreeMap, HashMap};
