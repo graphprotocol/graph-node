@@ -563,6 +563,13 @@ where
         logger: &Logger,
         block_ptr: EthereumBlockPointer,
     ) -> Box<Future<Item = bool, Error = Error> + Send> {
+        // This block was old when Graph Node came into existence, therefore we
+        // cannot have seen a non-final hash for it.
+        const OBVIOUSLY_FINAL: u64 = 6_000_000;
+        if block_ptr.number <= OBVIOUSLY_FINAL {
+            return Box::new(future::ok(true))
+        }
+
         Box::new(
             self.block_hash_by_block_number(&logger, block_ptr.number)
                 .and_then(move |block_hash_opt| {
