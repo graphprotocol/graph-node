@@ -121,10 +121,10 @@ class JSONValue {
  * Actual setup for the test
  */
 declare namespace ipfs {
-  function map(hash: String, callback: String, flags: String[]): void
+  function map(hash: String, callback: String, userData: Value, flags: String[]): void
 }
 
-export function echoToStore(data: JSONValue): void {
+export function echoToStore(data: JSONValue, userData: Value): void {
   // expect a map of the form { "id": "anId", "value": "aValue" }
   let map = data.toObject();
   let id = map.get("id").toString();
@@ -133,9 +133,10 @@ export function echoToStore(data: JSONValue): void {
   let entity = new Entity();
   entity.set("id", Value.fromString(id));
   entity.set("value", Value.fromString(value));
+  entity.set("extra", userData);
   store.set("Thing", id, entity);
 }
 
-export function ipfsMap(hash: string): void {
-  ipfs.map(hash, "echoToStore", ["json"])
+export function ipfsMap(hash: string, userData: string): void {
+  ipfs.map(hash, "echoToStore", Value.fromString(userData), ["json"])
 }

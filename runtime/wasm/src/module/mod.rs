@@ -12,6 +12,7 @@ use wasmi::{
 use crate::host_exports::{self, HostExportError, HostExports};
 use crate::EventHandlerContext;
 use graph::components::ethereum::*;
+use graph::data::store;
 use graph::data::subgraph::DataSource;
 use graph::ethabi::LogParam;
 use graph::prelude::{Error as FailureError, *};
@@ -276,14 +277,16 @@ where
         mut self,
         handler_name: &str,
         value: &graph::serde_json::Value,
+        user_data: &store::Value,
     ) -> Result<Vec<EntityOperation>, FailureError> {
         let value = RuntimeValue::from(self.asc_new(value));
+        let user_data = RuntimeValue::from(self.asc_new(user_data));
 
         // Invoke the callback
-        let result = self
-            .module
-            .clone()
-            .invoke_export(handler_name, &[value], &mut self);
+        let result =
+            self.module
+                .clone()
+                .invoke_export(handler_name, &[value, user_data], &mut self);
 
         // Return either the collected entity operations or an error
         result.map(|_| self.ctx.entity_operations).map_err(|e| {
@@ -540,27 +543,31 @@ where
         &mut self,
         link_ptr: AscPtr<AscString>,
         callback: AscPtr<AscString>,
+        user_data: AscPtr<AscEnum<StoreValueKind>>,
         flags: AscPtr<Array<AscPtr<AscString>>>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let link: String = self.asc_get(link_ptr);
         let callback: String = self.asc_get(callback);
+        let user_data: store::Value = self.asc_get(user_data);
+
         let flags = self.asc_get(flags);
         let start_time = Instant::now();
-        let result = match self
-            .host_exports()
-            .ipfs_map(&self, link.clone(), &*callback, flags)
-        {
-            Ok(ops) => {
-                debug!(self.logger, "Successfully processed file with ipfs.map";
+        let result =
+            match self
+                .host_exports()
+                .ipfs_map(&self, link.clone(), &*callback, user_data, flags)
+            {
+                Ok(ops) => {
+                    debug!(self.logger, "Successfully processed file with ipfs.map";
                                      "link" => &link,
                                      "callback" => &*callback,
                                      "entity_operations" => ops.len(),
                                      "time" => start_time.elapsed().as_millis());
-                self.ctx.entity_operations.extend(ops);
-                Ok(None)
-            }
-            Err(e) => Err(e.into()),
-        };
+                    self.ctx.entity_operations.extend(ops);
+                    Ok(None)
+                }
+                Err(e) => Err(e.into()),
+            };
 
         // Advance this module's start time by the time it took to run the entire
         // ipfs_map. This has the effect of not charging this module for the time
@@ -859,6 +866,7 @@ where
                 args.nth_checked(0)?,
                 args.nth_checked(1)?,
                 args.nth_checked(2)?,
+                args.nth_checked(3)?,
             ),
             _ => panic!("Unimplemented function at {}", index),
         }

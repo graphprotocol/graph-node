@@ -4,6 +4,7 @@ use ethabi::Token;
 use futures::sync::oneshot;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
+use graph::data::store;
 use graph::prelude::*;
 use graph::serde_json;
 use graph::web3::types::H160;
@@ -347,12 +348,15 @@ where
     // return value contains all entity operations that were produced by the
     // callback invocations. Each invocation of `callback` happens in its own
     // instance of a WASM module, which is identical to `module` when it was
-    // first started.
+    // first started. The signature of the callback must be
+    // `callback(JSONValue, Value)`, and the `userData` parameter is passed
+    // to the callback without any changes
     pub(crate) fn ipfs_map(
         &self,
         module: &WasmiModule<E, L, S, U>,
         link: String,
         callback: &str,
+        user_data: store::Value,
         flags: Vec<String>,
     ) -> Result<Vec<EntityOperation>, HostExportError<impl ExportError>> {
         const JSON_FLAG: &str = "json";
@@ -382,7 +386,8 @@ where
                                 valid_module.clone(),
                                 ctx.clone(),
                             )?;
-                            let result = module.handle_json_callback(&*callback, &sv.value);
+                            let result =
+                                module.handle_json_callback(&*callback, &sv.value, &user_data);
                             // Log progress every 15s
                             if last_log.elapsed() > Duration::from_secs(15) {
                                 debug!(
