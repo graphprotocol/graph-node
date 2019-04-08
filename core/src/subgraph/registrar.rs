@@ -7,6 +7,7 @@ use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
+use super::validation;
 
 pub struct SubgraphRegistrar<L, P, S, CS> {
     logger: Logger,
@@ -251,6 +252,7 @@ where
         Box::new(
             SubgraphManifest::resolve(hash.to_ipfs_link(), self.resolver.clone())
                 .map_err(SubgraphRegistrarError::ResolveError)
+                .and_then(validation::validate_manifest)
                 .and_then(move |manifest| {
                     create_subgraph_version(
                         &logger,
