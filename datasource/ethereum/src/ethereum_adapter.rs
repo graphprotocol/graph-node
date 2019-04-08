@@ -684,6 +684,7 @@ where
                 // incorrect block_hash we can catch this and error. But if the call streams returns no calls
                 // for the correct block_number but the incorrect block_hash, there is no way to tell.
                 // Since we are asking for all the calls in the block this is not a problem.
+                assert!(calls.len() > 0);
                 for call in calls.iter() {
                     if call.block_hash != block_hash {
                         return future::err(format_err!(
