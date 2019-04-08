@@ -294,10 +294,14 @@ fn ipfs_cat() {
     assert_eq!(data, "42");
 }
 
+// The user_data value we use with calls to ipfs_map
+const USER_DATA: &str = "user_data";
+
 fn make_thing(id: &str, value: &str) -> (String, EntityOperation) {
     let mut data = Entity::new();
     data.set("id", id);
     data.set("value", value);
+    data.set("extra", USER_DATA);
     let subgraph_id = SubgraphDeploymentId::new("wasmModuleTest").unwrap();
     let key = EntityKey {
         subgraph_id,
@@ -305,7 +309,7 @@ fn make_thing(id: &str, value: &str) -> (String, EntityOperation) {
         entity_id: id.to_string(),
     };
     (
-        format!("{{ \"id\": \"{}\", \"value\": \"{}\" }}", id, value),
+        format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
         EntityOperation::Set { key, data },
     )
 }
@@ -329,10 +333,10 @@ fn ipfs_map() {
                 .unwrap()
                 .hash
         };
-
+        let user_data = RuntimeValue::from(module.asc_new(USER_DATA));
         let converted = module.module.clone().invoke_export(
             "ipfsMap",
-            &[RuntimeValue::from(module.asc_new(&hash))],
+            &[RuntimeValue::from(module.asc_new(&hash)), user_data],
             &mut module,
         )?;
         assert_eq!(None, converted);
