@@ -558,11 +558,14 @@ where
                 .ipfs_map(&self, link.clone(), &*callback, user_data, flags)
             {
                 Ok(ops) => {
-                    debug!(self.logger, "Successfully processed file with ipfs.map";
-                                     "link" => &link,
-                                     "callback" => &*callback,
-                                     "entity_operations" => ops.len(),
-                                     "time" => start_time.elapsed().as_millis());
+                    debug!(
+                        self.logger,
+                        "Successfully processed file with ipfs.map";
+                        "link" => &link,
+                        "callback" => &*callback,
+                        "entity_operations" => ops.len(),
+                        "time" => format!("{}ms", start_time.elapsed().as_millis())
+                    );
                     self.ctx.entity_operations.extend(ops);
                     Ok(None)
                 }
