@@ -189,17 +189,6 @@ pub fn get_field_type<'a>(
     }
 }
 
-/// Returns the type of a field of an interface type.
-pub fn get_interface_field_type<'a>(
-    interface_type: &'a InterfaceType,
-    name: &Name,
-) -> Option<&'a Field> {
-    interface_type
-        .fields
-        .iter()
-        .find(|field| &field.name == name)
-}
-
 /// Returns the value type for a GraphQL field type.
 pub fn get_field_value_type(field_type: &Type) -> Result<ValueType, Error> {
     match field_type {
