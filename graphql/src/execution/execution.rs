@@ -62,6 +62,145 @@ where
         ctx.fields.push(field);
         ctx
     }
+
+    // Helper functions that decide whether to call underlying functions on the
+    // regular or on the introspection schema. Only these functions should be
+    // making decisions on whether we are introspecting or not
+    fn get_schema(&self) -> &s::Document {
+        if self.introspecting {
+            self.introspection_schema
+        } else {
+            &self.schema.document
+        }
+    }
+
+    fn resolve_object(
+        &self,
+        parent: &Option<q::Value>,
+        field: &q::Field,
+        field_definition: &s::Field,
+        object_type: ObjectOrInterface<'_>,
+        arguments: &HashMap<&q::Name, q::Value>,
+    ) -> Result<q::Value, QueryExecutionError> {
+        if self.introspecting {
+            self.introspection_resolver.resolve_object(
+                parent,
+                field,
+                field_definition,
+                object_type,
+                arguments,
+                &BTreeMap::new(), // The introspection schema has no interfaces.
+            )
+        } else {
+            self.resolver.resolve_object(
+                parent,
+                field,
+                field_definition,
+                object_type,
+                arguments,
+                self.schema.types_for_interface(),
+            )
+        }
+    }
+
+    fn resolve_objects(
+        &self,
+        parent: &Option<q::Value>,
+        field: &q::Name,
+        field_definition: &s::Field,
+        object_type: ObjectOrInterface<'_>,
+        arguments: &HashMap<&q::Name, q::Value>,
+    ) -> Result<q::Value, QueryExecutionError> {
+        if self.introspecting {
+            self.introspection_resolver.resolve_objects(
+                parent,
+                field,
+                field_definition,
+                object_type,
+                arguments,
+                &BTreeMap::new(), // The introspection schema has no interfaces.
+            )
+        } else {
+            self.resolver.resolve_objects(
+                parent,
+                field,
+                field_definition,
+                object_type,
+                arguments,
+                self.schema.types_for_interface(),
+            )
+        }
+    }
+
+    fn resolve_enum_value(
+        &self,
+        field: &q::Field,
+        enum_type: &s::EnumType,
+        value: Option<&q::Value>,
+    ) -> Result<q::Value, QueryExecutionError> {
+        if self.introspecting {
+            self.introspection_resolver
+                .resolve_enum_value(field, enum_type, value)
+        } else {
+            self.resolver.resolve_enum_value(field, enum_type, value)
+        }
+    }
+
+    fn resolve_enum_values(
+        &self,
+        field: &q::Field,
+        enum_type: &s::EnumType,
+        value: Option<&q::Value>,
+    ) -> Result<q::Value, Vec<QueryExecutionError>> {
+        if self.introspecting {
+            self.introspection_resolver
+                .resolve_enum_values(field, enum_type, value)
+        } else {
+            self.resolver.resolve_enum_values(field, enum_type, value)
+        }
+    }
+
+    fn resolve_scalar_value(
+        &self,
+        parent_object_type: &s::ObjectType,
+        parent: &BTreeMap<String, q::Value>,
+        field: &q::Field,
+        scalar_type: &s::ScalarType,
+        value: Option<&q::Value>,
+    ) -> Result<q::Value, QueryExecutionError> {
+        if self.introspecting {
+            self.introspection_resolver.resolve_scalar_value(
+                parent_object_type,
+                parent,
+                field,
+                scalar_type,
+                value,
+            )
+        } else {
+            self.resolver.resolve_scalar_value(
+                parent_object_type,
+                parent,
+                field,
+                scalar_type,
+                value,
+            )
+        }
+    }
+
+    fn resolve_scalar_values(
+        &self,
+        field: &q::Field,
+        scalar_type: &s::ScalarType,
+        value: Option<&q::Value>,
+    ) -> Result<q::Value, Vec<QueryExecutionError>> {
+        if self.introspecting {
+            self.introspection_resolver
+                .resolve_scalar_values(field, scalar_type, value)
+        } else {
+            self.resolver
+                .resolve_scalar_values(field, scalar_type, value)
+        }
+    }
 }
 
 /// Executes the root selection set of a query.
@@ -256,14 +395,7 @@ where
     let q::TypeCondition::On(ref name) = fragment_type;
 
     // Resolve the type the fragment applies to based on its name
-    let named_type = sast::get_named_type(
-        if ctx.introspecting {
-            ctx.introspection_schema
-        } else {
-            &ctx.schema.document
-        },
-        name,
-    );
+    let named_type = sast::get_named_type(ctx.get_schema(), name);
 
     match named_type {
         // The fragment applies to the object type if its type is the same object type
@@ -382,53 +514,24 @@ where
     R2: Resolver,
 {
     // Try to resolve the type name into the actual type
-    let named_type = sast::get_named_type(
-        if ctx.introspecting {
-            ctx.introspection_schema
-        } else {
-            &ctx.schema.document
-        },
-        type_name,
-    )
-    .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
+    let named_type = sast::get_named_type(ctx.get_schema(), type_name)
+        .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
 
     match named_type {
         // Let the resolver decide how the field (with the given object type)
         // is resolved into an entity based on the (potential) parent object
-        s::TypeDefinition::Object(t) => {
-            if ctx.introspecting {
-                ctx.introspection_resolver.resolve_object(
-                    object_value,
-                    field,
-                    field_definition,
-                    t.into(),
-                    argument_values,
-                    &BTreeMap::new(), // The introspection schema has no interfaces.
-                )
-            } else {
-                ctx.resolver.resolve_object(
-                    object_value,
-                    field,
-                    field_definition,
-                    t.into(),
-                    argument_values,
-                    ctx.schema.types_for_interface(),
-                )
-            }
-        }
+        s::TypeDefinition::Object(t) => ctx.resolve_object(
+            object_value,
+            field,
+            field_definition,
+            t.into(),
+            argument_values,
+        ),
 
         // Let the resolver decide how values in the resolved object value
         // map to values of GraphQL enums
         s::TypeDefinition::Enum(t) => match object_value {
-            Some(q::Value::Object(o)) => {
-                if ctx.introspecting {
-                    ctx.introspection_resolver
-                        .resolve_enum_value(field, t, o.get(&field.name))
-                } else {
-                    ctx.resolver
-                        .resolve_enum_value(field, t, o.get(&field.name))
-                }
-            }
+            Some(q::Value::Object(o)) => ctx.resolve_enum_value(field, t, o.get(&field.name)),
             _ => Ok(q::Value::Null),
         },
 
@@ -436,43 +539,18 @@ where
         // map to values of GraphQL scalars
         s::TypeDefinition::Scalar(t) => match object_value {
             Some(q::Value::Object(o)) => {
-                if ctx.introspecting {
-                    ctx.introspection_resolver.resolve_scalar_value(
-                        object_type,
-                        o,
-                        field,
-                        t,
-                        o.get(&field.name),
-                    )
-                } else {
-                    ctx.resolver
-                        .resolve_scalar_value(object_type, o, field, t, o.get(&field.name))
-                }
+                ctx.resolve_scalar_value(object_type, o, field, t, o.get(&field.name))
             }
             _ => Ok(q::Value::Null),
         },
 
-        s::TypeDefinition::Interface(i) => {
-            if ctx.introspecting {
-                ctx.introspection_resolver.resolve_object(
-                    object_value,
-                    field,
-                    field_definition,
-                    i.into(),
-                    argument_values,
-                    &BTreeMap::new(), // The introspection schema has no interfaces.
-                )
-            } else {
-                ctx.resolver.resolve_object(
-                    object_value,
-                    field,
-                    field_definition,
-                    i.into(),
-                    argument_values,
-                    ctx.schema.types_for_interface(),
-                )
-            }
-        }
+        s::TypeDefinition::Interface(i) => ctx.resolve_object(
+            object_value,
+            field,
+            field_definition,
+            i.into(),
+            argument_values,
+        ),
 
         s::TypeDefinition::Union(_) => Err(QueryExecutionError::Unimplemented("unions".to_owned())),
 
@@ -507,54 +585,27 @@ where
         ),
 
         s::Type::NamedType(ref type_name) => {
-            let named_type = sast::get_named_type(
-                if ctx.introspecting {
-                    ctx.introspection_schema
-                } else {
-                    &ctx.schema.document
-                },
-                type_name,
-            )
-            .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
+            let named_type = sast::get_named_type(ctx.get_schema(), type_name)
+                .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
 
             match named_type {
                 // Let the resolver decide how the list field (with the given item object type)
                 // is resolved into a entities based on the (potential) parent object
-                s::TypeDefinition::Object(t) => if ctx.introspecting {
-                    ctx.introspection_resolver.resolve_objects(
+                s::TypeDefinition::Object(t) => ctx
+                    .resolve_objects(
                         object_value,
                         &field.name,
                         field_definition,
                         t.into(),
                         argument_values,
-                        &BTreeMap::new(), // The introspection schema has no interfaces.
                     )
-                } else {
-                    ctx.resolver.resolve_objects(
-                        object_value,
-                        &field.name,
-                        field_definition,
-                        t.into(),
-                        argument_values,
-                        ctx.schema.types_for_interface(),
-                    )
-                }
-                .map_err(|e| vec![e]),
+                    .map_err(|e| vec![e]),
 
                 // Let the resolver decide how values in the resolved object value
                 // map to values of GraphQL enums
                 s::TypeDefinition::Enum(t) => match object_value {
                     Some(q::Value::Object(o)) => {
-                        if ctx.introspecting {
-                            ctx.introspection_resolver.resolve_enum_values(
-                                field,
-                                &t,
-                                o.get(&field.name),
-                            )
-                        } else {
-                            ctx.resolver
-                                .resolve_enum_values(field, &t, o.get(&field.name))
-                        }
+                        ctx.resolve_enum_values(field, &t, o.get(&field.name))
                     }
                     _ => Ok(q::Value::Null),
                 },
@@ -563,40 +614,20 @@ where
                 // map to values of GraphQL scalars
                 s::TypeDefinition::Scalar(t) => match object_value {
                     Some(q::Value::Object(o)) => {
-                        if ctx.introspecting {
-                            ctx.introspection_resolver.resolve_scalar_values(
-                                field,
-                                &t,
-                                o.get(&field.name),
-                            )
-                        } else {
-                            ctx.resolver
-                                .resolve_scalar_values(field, &t, o.get(&field.name))
-                        }
+                        ctx.resolve_scalar_values(field, &t, o.get(&field.name))
                     }
                     _ => Ok(q::Value::Null),
                 },
 
-                s::TypeDefinition::Interface(t) => if ctx.introspecting {
-                    ctx.introspection_resolver.resolve_objects(
+                s::TypeDefinition::Interface(t) => ctx
+                    .resolve_objects(
                         object_value,
                         &field.name,
                         field_definition,
                         t.into(),
                         argument_values,
-                        &BTreeMap::new(), // The introspection schema has no interfaces.
                     )
-                } else {
-                    ctx.resolver.resolve_objects(
-                        object_value,
-                        &field.name,
-                        field_definition,
-                        t.into(),
-                        argument_values,
-                        ctx.schema.types_for_interface(),
-                    )
-                }
-                .map_err(|e| vec![e]),
+                    .map_err(|e| vec![e]),
 
                 s::TypeDefinition::Union(_) => Err(vec![QueryExecutionError::Unimplemented(
                     "unions".to_owned(),
@@ -672,15 +703,7 @@ where
         }
 
         s::Type::NamedType(name) => {
-            let named_type = sast::get_named_type(
-                if ctx.introspecting {
-                    ctx.introspection_schema
-                } else {
-                    &ctx.schema.document
-                },
-                name,
-            )
-            .unwrap();
+            let named_type = sast::get_named_type(ctx.get_schema(), name).unwrap();
 
             match named_type {
                 // Complete scalar values; we're assuming that the resolver has
@@ -747,6 +770,8 @@ where
     // yields nothing
     ctx.resolver
         .resolve_abstract_type(
+            // Can't get rid of this conditional because of lifetime headaches
+            // "R1/R2 might not live long enough"
             if ctx.introspecting {
                 ctx.introspection_schema
             } else {
@@ -803,16 +828,7 @@ where
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
-    let resolver = |name: &Name| {
-        sast::get_named_type(
-            if ctx.introspecting {
-                ctx.introspection_schema
-            } else {
-                &ctx.schema.document
-            },
-            name,
-        )
-    };
+    let resolver = |name: &Name| sast::get_named_type(ctx.get_schema(), name);
 
     for argument_def in sast::get_argument_definitions(object_type, &field.name)
         .into_iter()
