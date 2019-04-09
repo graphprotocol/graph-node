@@ -219,19 +219,87 @@ where
         None => return Err(vec![QueryExecutionError::NoRootQueryObjectType]),
     };
 
+    // Split the toplevel fields into introspection fields and
+    // 'normal' data fields
+    let mut errors: Vec<QueryExecutionError> = Vec::new();
+    let mut data_set = q::SelectionSet {
+        span: selection_set.span.clone(),
+        items: Vec::new(),
+    };
+    let mut intro_set = q::SelectionSet {
+        span: selection_set.span.clone(),
+        items: Vec::new(),
+    };
+
+    for (_, fields) in collect_fields(ctx.clone(), query_type, selection_set, None) {
+        if let Some((_, introspecting)) = get_field_type(ctx.clone(), query_type, &fields[0].name) {
+            let selections = fields.into_iter().map(|f| q::Selection::Field(f.clone()));
+            if introspecting {
+                intro_set.items.extend(selections)
+            } else {
+                data_set.items.extend(selections)
+            }
+        } else {
+            errors.push(QueryExecutionError::UnknownField(
+                fields[0].position,
+                query_type.name.clone(),
+                fields[0].name.clone(),
+            ))
+        }
+    }
+
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+
     // Execute the root selection set against the root query type
-    execute_selection_set(ctx, selection_set, query_type, initial_value)
+    if data_set.items.is_empty() {
+        // Only introspection
+        execute_selection_set(ctx, &intro_set, query_type, initial_value)
+    } else if intro_set.items.is_empty() {
+        // Only data
+        execute_selection_set(ctx, &data_set, query_type, initial_value)
+    } else {
+        // Both introspection and data
+        let mut values =
+            execute_selection_set_to_map(ctx.clone(), &data_set, query_type, initial_value)?;
+        values.extend(execute_selection_set_to_map(
+            ctx,
+            &intro_set,
+            query_type,
+            initial_value,
+        )?);
+        Ok(q::Value::Object(values))
+    }
 }
 
 /// Executes a selection set, requiring the result to be of the given object type.
 ///
 /// Allows passing in a parent value during recursive processing of objects and their fields.
 pub fn execute_selection_set<'a, R1, R2>(
-    mut ctx: ExecutionContext<'a, R1, R2>,
+    ctx: ExecutionContext<'a, R1, R2>,
     selection_set: &'a q::SelectionSet,
     object_type: &s::ObjectType,
     object_value: &Option<q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>>
+where
+    R1: Resolver,
+    R2: Resolver,
+{
+    Ok(q::Value::Object(execute_selection_set_to_map(
+        ctx,
+        selection_set,
+        object_type,
+        object_value,
+    )?))
+}
+
+fn execute_selection_set_to_map<'a, R1, R2>(
+    mut ctx: ExecutionContext<'a, R1, R2>,
+    selection_set: &'a q::SelectionSet,
+    object_type: &s::ObjectType,
+    object_value: &Option<q::Value>,
+) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>>
 where
     R1: Resolver,
     R2: Resolver,
@@ -280,7 +348,7 @@ where
     }
 
     if errors.is_empty() && !result_map.is_empty() {
-        Ok(q::Value::Object(result_map))
+        Ok(result_map)
     } else {
         if errors.is_empty() {
             errors.push(QueryExecutionError::EmptySelectionSet(
