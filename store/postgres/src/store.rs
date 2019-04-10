@@ -890,9 +890,12 @@ impl StoreTrait for Store {
             panic!("transact_block_operations must transact a single block only");
         }
 
-        // All operations should apply only to entities in this subgraph
+        // All operations should apply only to entities in this subgraph (or
+        // the subgraph of subgraphs)
         for op in &operations {
-            if op.entity_key().subgraph_id != subgraph_id {
+            if op.entity_key().subgraph_id != subgraph_id
+                && *op.entity_key().subgraph_id != "subgraphs"
+            {
                 panic!("transact_block_operations must affect only entities in the subgraph");
             }
         }
