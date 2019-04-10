@@ -670,7 +670,7 @@ mod tests {
             .expect("Query type is missing in derived API schema");
 
         let user_singular_field = match query_type {
-            TypeDefinition::Object(t) => ast::get_field_type(t, &"user".to_string()),
+            TypeDefinition::Object(t) => ast::get_field(t, &"user".to_string()),
             _ => None,
         }
         .expect("\"user\" field is missing on Query type");
@@ -690,7 +690,7 @@ mod tests {
         );
 
         let user_plural_field = match query_type {
-            TypeDefinition::Object(t) => ast::get_field_type(t, &"users".to_string()),
+            TypeDefinition::Object(t) => ast::get_field(t, &"users".to_string()),
             _ => None,
         }
         .expect("\"users\" field is missing on Query type");
@@ -715,7 +715,7 @@ mod tests {
         );
 
         let user_profile_singular_field = match query_type {
-            TypeDefinition::Object(t) => ast::get_field_type(t, &"userProfile".to_string()),
+            TypeDefinition::Object(t) => ast::get_field(t, &"userProfile".to_string()),
             _ => None,
         }
         .expect("\"userProfile\" field is missing on Query type");
@@ -726,7 +726,7 @@ mod tests {
         );
 
         let user_profile_plural_field = match query_type {
-            TypeDefinition::Object(t) => ast::get_field_type(t, &"userProfiles".to_string()),
+            TypeDefinition::Object(t) => ast::get_field(t, &"userProfiles".to_string()),
             _ => None,
         }
         .expect("\"userProfiles\" field is missing on Query type");
@@ -754,7 +754,7 @@ mod tests {
             .expect("Query type is missing in derived API schema");
 
         let singular_field = match query_type {
-            TypeDefinition::Object(ref t) => ast::get_field_type(t, &"node".to_string()),
+            TypeDefinition::Object(ref t) => ast::get_field(t, &"node".to_string()),
             _ => None,
         }
         .expect("\"node\" field is missing on Query type");
@@ -774,7 +774,7 @@ mod tests {
         );
 
         let plural_field = match query_type {
-            TypeDefinition::Object(ref t) => ast::get_field_type(t, &"nodes".to_string()),
+            TypeDefinition::Object(ref t) => ast::get_field(t, &"nodes".to_string()),
             _ => None,
         }
         .expect("\"nodes\" field is missing on Query type");

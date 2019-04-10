@@ -77,17 +77,10 @@ where
         // Depending on whether the field we're deriving from has a list or a
         // single value type, we either create a `Contains` or `Equal`
         // filter argument
-        let filter = match derived_from_field.field_type {
-            s::Type::ListType(_) => {
-                EntityFilter::Contains(field_name, Value::List(vec![parent_id]))
-            }
-            s::Type::NonNullType(ref inner) => match inner.deref() {
-                s::Type::ListType(_) => {
-                    EntityFilter::Contains(field_name, Value::List(vec![parent_id]))
-                }
-                _ => EntityFilter::Equal(field_name, parent_id),
-            },
-            _ => EntityFilter::Equal(field_name, parent_id),
+        let filter = if sast::is_list_or_non_null_list_field(derived_from_field) {
+            EntityFilter::Contains(field_name, Value::List(vec![parent_id]))
+        } else {
+            EntityFilter::Equal(field_name, parent_id)
         };
 
         // Add the `Contains`/`Equal` filter to the top-level `And` filter, creating one
@@ -363,7 +356,7 @@ where
         field: &'b q::Field,
     ) -> result::Result<StoreEventStreamBox, QueryExecutionError> {
         // Fail if the field does not exist on the object type
-        if sast::get_field_type(object_type, &field.name).is_none() {
+        if sast::get_field(object_type, &field.name).is_none() {
             return Err(QueryExecutionError::UnknownField(
                 field.position,
                 object_type.name.clone(),
