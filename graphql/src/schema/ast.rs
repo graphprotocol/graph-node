@@ -163,7 +163,7 @@ pub fn get_interface_type_mut<'a>(
 }
 
 /// Returns the type of a field of an object type.
-pub fn get_field_type<'a>(
+pub fn get_field<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
     name: &Name,
 ) -> Option<&'a Field> {
@@ -294,16 +294,16 @@ pub fn get_argument_definitions<'a>(
     if name == "__type" {
         Some(&NAME_ARGUMENT)
     } else {
-        get_field_type(object_type, name).map(|field| &field.arguments)
+        get_field(object_type, name).map(|field| &field.arguments)
     }
 }
 
 /// Returns the type definition that a field type corresponds to.
-pub fn get_type_definition_from_field_type<'a>(
+pub fn get_type_definition_from_field<'a>(
     schema: &'a Document,
-    field_type: &'a Field,
+    field: &'a Field,
 ) -> Option<&'a TypeDefinition> {
-    get_type_definition_from_type(schema, &field_type.field_type)
+    get_type_definition_from_type(schema, &field.field_type)
 }
 
 /// Returns the type definition for a type.
@@ -443,5 +443,5 @@ pub fn get_derived_from_field<'a>(
             Value::String(s) => Some(s),
             _ => None,
         })
-        .and_then(|derived_from_field_name| get_field_type(object_type, derived_from_field_name))
+        .and_then(|derived_from_field_name| get_field(object_type, derived_from_field_name))
 }

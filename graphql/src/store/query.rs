@@ -102,7 +102,7 @@ fn build_filter_from_object(
 
                 let (field_name, op) = sast::parse_field_as_filter(key);
 
-                let field = sast::get_field_type(entity, &field_name).ok_or_else(|| {
+                let field = sast::get_field(entity, &field_name).ok_or_else(|| {
                     QueryExecutionError::EntityFieldError(
                         entity.name().to_owned(),
                         field_name.clone(),
@@ -170,7 +170,7 @@ fn build_order_by(
         .get(&"orderBy".to_string())
         .map_or(Ok(None), |value| match value {
             q::Value::Enum(name) => {
-                let field = sast::get_field_type(entity, &name).ok_or_else(|| {
+                let field = sast::get_field(entity, &name).ok_or_else(|| {
                     QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
                 })?;
                 sast::get_field_value_type(&field.field_type)
@@ -239,11 +239,10 @@ pub fn collect_entities_from_query_field(
 
     while let Some((object_type, field)) = queue.pop_front() {
         // Check if the field exists on the object type
-        if let Some(field_type) = sast::get_field_type(object_type, &field.name) {
+        if let Some(field_type) = sast::get_field(object_type, &field.name) {
             // Check if the field type corresponds to a type definition (in a valid schema,
             // this should always be the case)
-            if let Some(type_definition) =
-                sast::get_type_definition_from_field_type(schema, field_type)
+            if let Some(type_definition) = sast::get_type_definition_from_field(schema, field_type)
             {
                 // If the field's type definition is an object type, extract that type
                 if let s::TypeDefinition::Object(object_type) = type_definition {
