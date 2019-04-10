@@ -52,11 +52,13 @@ Once you have all the dependencies set up, you can run the following:
 ```
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://USERNAME[:PASSWORD]@localhost:5432/graph-node \
-  --ethereum-rpc mainnet:https://mainnet.infura.io/ \
+  --ethereum-rpc mainnet:https://mainnet.infura.io/v3/[PROJECT_ID] \
   --ipfs 127.0.0.1:5001
 ```
 
 Try your OS username as `USERNAME` and `PASSWORD`. The password might be optional. It depends on your setup.
+
+If you're using Infura you should [sign up](https://infura.io/register) to get a PROJECT_ID, it's free.
 
 This will also spin up a GraphiQL interface at `http://127.0.0.1:8000/`.
 
