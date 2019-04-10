@@ -6,7 +6,6 @@ use std::time::{Duration, Instant};
 use graph::prelude::*;
 
 use crate::execution::*;
-use crate::prelude::*;
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
 
@@ -47,19 +46,11 @@ where
         Err(errors) => return Err(SubscriptionError::from(errors)),
     };
 
-    // Create an introspection type store and resolver
-    let introspection_schema = introspection_schema(subscription.query.schema.id.clone());
-    let introspection_resolver =
-        IntrospectionResolver::new(&options.logger, &subscription.query.schema);
-
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: options.logger,
         resolver: Arc::new(options.resolver),
-        schema: &subscription.query.schema,
-        introspection_resolver: Arc::new(introspection_resolver),
-        introspection_schema: &introspection_schema,
-        introspecting: false,
+        schema: subscription.query.schema.clone(),
         document: &subscription.query.document,
         fields: vec![],
         variable_values: Arc::new(coerced_variable_values),
@@ -82,13 +73,12 @@ where
     }
 }
 
-fn create_source_event_stream<'a, R1, R2>(
-    ctx: &'a ExecutionContext<'a, R1, R2>,
+fn create_source_event_stream<'a, R>(
+    ctx: &'a ExecutionContext<'a, R>,
     operation: &q::Subscription,
 ) -> Result<StoreEventStreamBox, SubscriptionError>
 where
-    R1: Resolver,
-    R2: Resolver,
+    R: Resolver,
 {
     let subscription_type = sast::get_root_subscription_type(&ctx.schema.document)
         .ok_or(QueryExecutionError::NoRootSubscriptionObjectType)?;
@@ -115,30 +105,28 @@ where
     resolve_field_stream(ctx, subscription_type, field, argument_values)
 }
 
-fn resolve_field_stream<'a, R1, R2>(
-    ctx: &'a ExecutionContext<'a, R1, R2>,
+fn resolve_field_stream<'a, R>(
+    ctx: &'a ExecutionContext<'a, R>,
     object_type: &'a s::ObjectType,
     field: &'a q::Field,
     _argument_values: HashMap<&q::Name, q::Value>,
 ) -> Result<StoreEventStreamBox, SubscriptionError>
 where
-    R1: Resolver,
-    R2: Resolver,
+    R: Resolver,
 {
     ctx.resolver
         .resolve_field_stream(&ctx.schema.document, object_type, field)
         .map_err(SubscriptionError::from)
 }
 
-fn map_source_to_response_stream<'a, R1, R2>(
-    ctx: &ExecutionContext<'a, R1, R2>,
+fn map_source_to_response_stream<'a, R>(
+    ctx: &ExecutionContext<'a, R>,
     subscription: &'a q::Subscription,
     source_stream: StoreEventStreamBox,
     timeout: Option<Duration>,
 ) -> Result<QueryResultStream, SubscriptionError>
 where
-    R1: Resolver + 'static,
-    R2: Resolver,
+    R: Resolver + 'static,
 {
     let logger = ctx.logger.clone();
     let resolver = ctx.resolver.clone();
@@ -164,7 +152,7 @@ where
 fn execute_subscription_event<R1>(
     logger: Logger,
     resolver: Arc<R1>,
-    schema: Schema,
+    schema: Arc<Schema>,
     document: q::Document,
     subscription: q::Subscription,
     variable_values: Arc<HashMap<q::Name, q::Value>>,
@@ -176,18 +164,11 @@ where
 {
     debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
 
-    // Create an introspection type store and resolver
-    let introspection_schema = introspection_schema(schema.id.clone());
-    let introspection_resolver = IntrospectionResolver::new(&logger, &schema);
-
     // Create a fresh execution context with deadline.
     let ctx = ExecutionContext {
         logger: logger,
         resolver: resolver,
-        schema: &schema,
-        introspection_resolver: Arc::new(introspection_resolver),
-        introspection_schema: &introspection_schema,
-        introspecting: false,
+        schema: schema,
         document: &document,
         fields: vec![],
         variable_values,
@@ -197,7 +178,7 @@ where
     // We have established that this exists earlier in the subscription execution
     let subscription_type = sast::get_root_subscription_type(&ctx.schema.document).unwrap();
 
-    let result = execute_selection_set(ctx, &subscription.selection_set, subscription_type, &None);
+    let result = execute_selection_set(&ctx, &subscription.selection_set, subscription_type, &None);
 
     match result {
         Ok(value) => QueryResult::new(Some(value)),

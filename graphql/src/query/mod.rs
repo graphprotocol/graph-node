@@ -4,7 +4,6 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::execution::*;
-use crate::prelude::*;
 use crate::query::ast as qast;
 
 /// Utilities for working with GraphQL query ASTs.
@@ -56,18 +55,11 @@ where
             Err(errors) => return QueryResult::from(errors),
         };
 
-    // Create an introspection type store and resolver
-    let introspection_schema = introspection_schema(query.schema.id.clone());
-    let introspection_resolver = IntrospectionResolver::new(&query_logger, &query.schema);
-
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: query_logger.clone(),
         resolver: Arc::new(options.resolver),
-        schema: &query.schema,
-        introspection_resolver: Arc::new(introspection_resolver),
-        introspection_schema: &introspection_schema,
-        introspecting: false,
+        schema: query.schema.clone(),
         document: &query.document,
         fields: vec![],
         variable_values: Arc::new(coerced_variable_values),
@@ -78,11 +70,11 @@ where
         // Execute top-level `query { ... }` expressions
         q::OperationDefinition::Query(q::Query {
             ref selection_set, ..
-        }) => execute_root_selection_set(ctx, selection_set, &None),
+        }) => execute_root_selection_set(&ctx, selection_set, &None),
 
         // Execute top-level `{ ... }` expressions
         q::OperationDefinition::SelectionSet(ref selection_set) => {
-            execute_root_selection_set(ctx, selection_set, &None)
+            execute_root_selection_set(&ctx, selection_set, &None)
         }
 
         // Everything else (e.g. mutations) is unsupported
