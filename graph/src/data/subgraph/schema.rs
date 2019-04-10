@@ -379,7 +379,7 @@ impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifestEntity {
 }
 
 #[derive(Debug)]
-struct EthereumContractDataSourceEntity {
+pub struct EthereumContractDataSourceEntity {
     kind: String,
     network: Option<String>,
     name: String,
@@ -394,7 +394,7 @@ impl TypedEntity for EthereumContractDataSourceEntity {
 }
 
 impl EthereumContractDataSourceEntity {
-    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    pub fn write_operations(self, id: &str) -> Vec<EntityOperation> {
         let mut ops = vec![];
 
         let source_id = format!("{}-source", id);
