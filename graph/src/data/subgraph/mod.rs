@@ -447,8 +447,8 @@ pub struct UnresolvedMapping {
     pub entities: Vec<String>,
     pub abis: Vec<UnresolvedMappingABI>,
     pub block_handler: Option<MappingBlockHandler>,
-    pub call_handlers: Vec<MappingCallHandler>,
-    pub event_handlers: Vec<MappingEventHandler>,
+    pub call_handlers: Option<Vec<MappingCallHandler>>,
+    pub event_handlers: Option<Vec<MappingEventHandler>>,
     pub file: Link,
 }
 
@@ -501,8 +501,8 @@ impl UnresolvedMapping {
             entities,
             abis,
             block_handler,
-            call_handlers,
-            event_handlers,
+            call_handlers: call_handlers.unwrap_or(Vec::new()),
+            event_handlers: event_handlers.unwrap_or(Vec::new()),
             runtime,
             link,
         })
