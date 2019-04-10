@@ -249,7 +249,7 @@ where
     if data_set.items.is_empty() {
         // Only introspection
         ctx.introspecting = true;
-        execute_selection_set(ctx, &intro_set, query_type, initial_value)
+        execute_selection_set(ctx, &intro_set, introspection_query_type, initial_value)
     } else if intro_set.items.is_empty() {
         // Only data
         ctx.introspecting = false;
@@ -263,7 +263,7 @@ where
         values.extend(execute_selection_set_to_map(
             ctx,
             &intro_set,
-            query_type,
+            introspection_query_type,
             initial_value,
         )?);
         Ok(q::Value::Object(values))
@@ -318,7 +318,7 @@ where
         }
 
         // If the field exists on the object, execute it and add its result to the result map
-        if let Some(ref field) = get_field_type(ctx.clone(), object_type, &fields[0].name) {
+        if let Some(ref field) = sast::get_field_type(object_type, &fields[0].name) {
             // Push the new field onto the context's field stack
             let ctx = ctx.for_field(&fields[0]);
 
@@ -909,25 +909,6 @@ where
     } else {
         Err(errors)
     }
-}
-
-fn get_field_type<'a, R1, R2>(
-    ctx: ExecutionContext<'a, R1, R2>,
-    object_type: &'a s::ObjectType,
-    name: &'a s::Name,
-) -> Option<&'a s::Field>
-where
-    R1: Resolver,
-    R2: Resolver,
-{
-    // Resolve __schema and __Type using the introspection schema
-    let introspection_query_type =
-        sast::get_root_query_type(&ctx.introspection_schema.document).unwrap();
-    if let Some(ty) = sast::get_field_type(introspection_query_type, name) {
-        return Some(ty);
-    }
-
-    sast::get_field_type(object_type, name)
 }
 
 /// Coerces variable values for an operation.
