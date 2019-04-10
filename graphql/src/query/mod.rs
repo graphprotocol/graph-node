@@ -57,7 +57,7 @@ where
         };
 
     // Create an introspection type store and resolver
-    let introspection_schema = introspection_schema();
+    let introspection_schema = introspection_schema(query.schema.id.clone());
     let introspection_resolver = IntrospectionResolver::new(&query_logger, &query.schema);
 
     // Create a fresh execution context

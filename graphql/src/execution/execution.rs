@@ -27,7 +27,7 @@ where
     pub schema: &'a Schema,
 
     /// Introspection data that corresponds to the schema.
-    pub introspection_schema: &'a s::Document,
+    pub introspection_schema: &'a Schema,
 
     /// The query to execute.
     pub document: &'a q::Document,
@@ -68,7 +68,7 @@ where
     // making decisions on whether we are introspecting or not
     fn get_schema(&self) -> &s::Document {
         if self.introspecting {
-            self.introspection_schema
+            &self.introspection_schema.document
         } else {
             &self.schema.document
         }
@@ -89,7 +89,7 @@ where
                 field_definition,
                 object_type,
                 arguments,
-                &BTreeMap::new(), // The introspection schema has no interfaces.
+                self.introspection_schema.types_for_interface(),
             )
         } else {
             self.resolver.resolve_object(
@@ -118,7 +118,7 @@ where
                 field_definition,
                 object_type,
                 arguments,
-                &BTreeMap::new(), // The introspection schema has no interfaces.
+                self.introspection_schema.types_for_interface(),
             )
         } else {
             self.resolver.resolve_objects(
@@ -230,7 +230,8 @@ where
         items: Vec::new(),
     };
 
-    let introspection_query_type = sast::get_root_query_type(ctx.introspection_schema).unwrap();
+    let introspection_query_type =
+        sast::get_root_query_type(&ctx.introspection_schema.document).unwrap();
     for (_, fields) in collect_fields(ctx.clone(), query_type, selection_set, None) {
         let name = fields[0].name.clone();
         let selections = fields.into_iter().map(|f| q::Selection::Field(f.clone()));
@@ -832,7 +833,7 @@ where
             // Can't get rid of this conditional because of lifetime headaches
             // "R1/R2 might not live long enough"
             if ctx.introspecting {
-                ctx.introspection_schema
+                &ctx.introspection_schema.document
             } else {
                 &ctx.schema.document
             },
@@ -920,7 +921,8 @@ where
     R2: Resolver,
 {
     // Resolve __schema and __Type using the introspection schema
-    let introspection_query_type = sast::get_root_query_type(ctx.introspection_schema).unwrap();
+    let introspection_query_type =
+        sast::get_root_query_type(&ctx.introspection_schema.document).unwrap();
     if let Some(ty) = sast::get_field_type(introspection_query_type, name) {
         return Some(ty);
     }

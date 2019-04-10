@@ -27,6 +27,18 @@ pub struct Schema {
 }
 
 impl Schema {
+    /// Create a new schema. The document must already have been
+    /// validated. This function is only useful for creating an introspection
+    /// schema, and should not be used otherwise
+    pub fn new(id: SubgraphDeploymentId, document: schema::Document) -> Self {
+        Schema {
+            id,
+            document,
+            interfaces_for_type: BTreeMap::new(),
+            types_for_interface: BTreeMap::new(),
+        }
+    }
+
     pub fn parse(raw: &str, id: SubgraphDeploymentId) -> Result<Self, Error> {
         let document = graphql_parser::parse_schema(&raw)?;
         validate_schema(&document)?;

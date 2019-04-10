@@ -1,5 +1,7 @@
 use graphql_parser;
-use graphql_parser::schema as s;
+
+use graph::data::schema::Schema;
+use graph::data::subgraph::SubgraphDeploymentId;
 
 const INTROSPECTION_SCHEMA: &str = "
 scalar Boolean
@@ -107,6 +109,9 @@ enum __DirectiveLocation {
   INPUT_FIELD_DEFINITION
 }";
 
-pub fn introspection_schema() -> s::Document {
-    graphql_parser::parse_schema(INTROSPECTION_SCHEMA).unwrap()
+pub fn introspection_schema(id: SubgraphDeploymentId) -> Schema {
+    Schema::new(
+        id,
+        graphql_parser::parse_schema(INTROSPECTION_SCHEMA).unwrap(),
+    )
 }

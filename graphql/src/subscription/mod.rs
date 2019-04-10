@@ -48,7 +48,7 @@ where
     };
 
     // Create an introspection type store and resolver
-    let introspection_schema = introspection_schema();
+    let introspection_schema = introspection_schema(subscription.query.schema.id.clone());
     let introspection_resolver =
         IntrospectionResolver::new(&options.logger, &subscription.query.schema);
 
@@ -177,7 +177,7 @@ where
     debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
 
     // Create an introspection type store and resolver
-    let introspection_schema = introspection_schema();
+    let introspection_schema = introspection_schema(schema.id.clone());
     let introspection_resolver = IntrospectionResolver::new(&logger, &schema);
 
     // Create a fresh execution context with deadline.
