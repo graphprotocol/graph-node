@@ -205,7 +205,7 @@ where
 
 /// Executes the root selection set of a query.
 pub fn execute_root_selection_set<'a, R1, R2>(
-    ctx: ExecutionContext<'a, R1, R2>,
+    mut ctx: ExecutionContext<'a, R1, R2>,
     selection_set: &'a q::SelectionSet,
     initial_value: &Option<q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>>
@@ -221,7 +221,6 @@ where
 
     // Split the toplevel fields into introspection fields and
     // 'normal' data fields
-    let mut errors: Vec<QueryExecutionError> = Vec::new();
     let mut data_set = q::SelectionSet {
         span: selection_set.span.clone(),
         items: Vec::new(),
@@ -231,38 +230,35 @@ where
         items: Vec::new(),
     };
 
+    let introspection_query_type = sast::get_root_query_type(ctx.introspection_schema).unwrap();
     for (_, fields) in collect_fields(ctx.clone(), query_type, selection_set, None) {
-        if let Some((_, introspecting)) = get_field_type(ctx.clone(), query_type, &fields[0].name) {
-            let selections = fields.into_iter().map(|f| q::Selection::Field(f.clone()));
-            if introspecting {
-                intro_set.items.extend(selections)
-            } else {
-                data_set.items.extend(selections)
-            }
+        let name = fields[0].name.clone();
+        let selections = fields.into_iter().map(|f| q::Selection::Field(f.clone()));
+        // See if this is an introspection or data field. We don't worry about
+        // nonexistant fields; those will cause an error later when we execute
+        // the data_set SelectionSet
+        if sast::get_field_type(introspection_query_type, &name).is_some() {
+            intro_set.items.extend(selections)
         } else {
-            errors.push(QueryExecutionError::UnknownField(
-                fields[0].position,
-                query_type.name.clone(),
-                fields[0].name.clone(),
-            ))
+            data_set.items.extend(selections)
         }
-    }
-
-    if !errors.is_empty() {
-        return Err(errors);
     }
 
     // Execute the root selection set against the root query type
     if data_set.items.is_empty() {
         // Only introspection
+        ctx.introspecting = true;
         execute_selection_set(ctx, &intro_set, query_type, initial_value)
     } else if intro_set.items.is_empty() {
         // Only data
+        ctx.introspecting = false;
         execute_selection_set(ctx, &data_set, query_type, initial_value)
     } else {
         // Both introspection and data
+        ctx.introspecting = false;
         let mut values =
             execute_selection_set_to_map(ctx.clone(), &data_set, query_type, initial_value)?;
+        ctx.introspecting = true;
         values.extend(execute_selection_set_to_map(
             ctx,
             &intro_set,
@@ -321,14 +317,9 @@ where
         }
 
         // If the field exists on the object, execute it and add its result to the result map
-        if let Some((ref field, introspecting)) =
-            get_field_type(ctx.clone(), object_type, &fields[0].name)
-        {
+        if let Some(ref field) = get_field_type(ctx.clone(), object_type, &fields[0].name) {
             // Push the new field onto the context's field stack
-            let mut ctx = ctx.for_field(&fields[0]);
-
-            // Remember whether or not we're introspecting now
-            ctx.introspecting = introspecting;
+            let ctx = ctx.for_field(&fields[0]);
 
             match execute_field(ctx, object_type, object_value, &fields[0], field, fields) {
                 Ok(v) => {
@@ -923,7 +914,7 @@ fn get_field_type<'a, R1, R2>(
     ctx: ExecutionContext<'a, R1, R2>,
     object_type: &'a s::ObjectType,
     name: &'a s::Name,
-) -> Option<(&'a s::Field, bool)>
+) -> Option<&'a s::Field>
 where
     R1: Resolver,
     R2: Resolver,
@@ -931,10 +922,10 @@ where
     // Resolve __schema and __Type using the introspection schema
     let introspection_query_type = sast::get_root_query_type(ctx.introspection_schema).unwrap();
     if let Some(ty) = sast::get_field_type(introspection_query_type, name) {
-        return Some((ty, true));
+        return Some(ty);
     }
 
-    sast::get_field_type(object_type, name).map(|t| (t, ctx.introspecting))
+    sast::get_field_type(object_type, name)
 }
 
 /// Coerces variable values for an operation.
