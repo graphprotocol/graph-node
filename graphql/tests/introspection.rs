@@ -45,6 +45,7 @@ fn mock_schema() -> Schema {
              scalar ID
              scalar Int
              scalar String
+             scalar Boolean
 
              directive @language(
                language: String = \"English\"
@@ -114,6 +115,17 @@ fn expected_mock_schema_introspection() -> q::Value {
     let int_type = object_value(vec![
         ("kind", q::Value::Enum("SCALAR".to_string())),
         ("name", q::Value::String("Int".to_string())),
+        ("description", q::Value::Null),
+        ("fields", q::Value::Null),
+        ("inputFields", q::Value::Null),
+        ("enumValues", q::Value::Null),
+        ("interfaces", q::Value::Null),
+        ("possibleTypes", q::Value::Null),
+    ]);
+
+    let boolean_type = object_value(vec![
+        ("kind", q::Value::Enum("SCALAR".to_string())),
+        ("name", q::Value::String("Boolean".to_string())),
         ("description", q::Value::Null),
         ("fields", q::Value::Null),
         ("inputFields", q::Value::Null),
@@ -470,6 +482,7 @@ fn expected_mock_schema_introspection() -> q::Value {
     ]);
 
     let expected_types = q::Value::List(vec![
+        boolean_type,
         id_type,
         int_type,
         node_type,
