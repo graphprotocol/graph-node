@@ -13,6 +13,7 @@ extern crate serde_json;
 extern crate lazy_static;
 extern crate semver;
 extern crate serde_yaml;
+extern crate uuid;
 
 mod graphql;
 mod log;
