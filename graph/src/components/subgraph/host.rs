@@ -21,7 +21,7 @@ pub trait RuntimeHost: Send + Sync + Debug {
     ) -> Box<Future<Item = ProcessingState, Error = Error> + Send>;
 }
 
-pub trait RuntimeHostBuilder: Clone + Send + 'static {
+pub trait RuntimeHostBuilder: Clone + Send + Sync + 'static {
     type Host: RuntimeHost;
 
     /// Build a new runtime host for a subgraph data source.
