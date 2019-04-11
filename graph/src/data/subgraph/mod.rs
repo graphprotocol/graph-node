@@ -18,6 +18,12 @@ use crate::components::link_resolver::LinkResolver;
 use crate::components::store::StoreError;
 use crate::data::query::QueryExecutionError;
 use crate::data::schema::Schema;
+use crate::data::subgraph::schema::{
+    EthereumContractAbiEntity, EthereumContractDataSourceEntity,
+    EthereumContractDataSourceTemplateEntity, EthereumContractDataSourceTemplateSourceEntity,
+    EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
+    EthereumContractSourceEntity,
+};
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
 pub mod schema;
@@ -244,6 +250,8 @@ impl From<Error> for SubgraphRegistrarError {
 pub enum SubgraphAssignmentProviderError {
     #[fail(display = "subgraph resolve error: {}", _0)]
     ResolveError(SubgraphManifestResolveError),
+    #[fail(display = "failed to load dynamic data sources: {}", _0)]
+    DynamicDataSourcesError(failure::Error),
     /// Occurs when attempting to remove a subgraph that's not hosted.
     #[fail(display = "subgraph with ID {} already running", _0)]
     AlreadyRunning(SubgraphDeploymentId),
@@ -307,6 +315,12 @@ pub struct Link {
     pub link: String,
 }
 
+impl From<String> for Link {
+    fn from(s: String) -> Self {
+        Self { link: s }
+    }
+}
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct SchemaData {
     pub file: Link,
@@ -331,15 +345,39 @@ pub struct Source {
     pub abi: String,
 }
 
+impl From<EthereumContractSourceEntity> for Source {
+    fn from(entity: EthereumContractSourceEntity) -> Self {
+        Self {
+            address: entity.address,
+            abi: entity.abi,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct TemplateSource {
     pub abi: String,
+}
+
+impl From<EthereumContractDataSourceTemplateSourceEntity> for TemplateSource {
+    fn from(entity: EthereumContractDataSourceTemplateSourceEntity) -> Self {
+        Self { abi: entity.abi }
+    }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct UnresolvedMappingABI {
     pub name: String,
     pub file: Link,
+}
+
+impl From<EthereumContractAbiEntity> for UnresolvedMappingABI {
+    fn from(entity: EthereumContractAbiEntity) -> Self {
+        Self {
+            name: entity.name,
+            file: entity.file.into(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -369,6 +407,15 @@ impl UnresolvedMappingABI {
 pub struct MappingEventHandler {
     pub event: String,
     pub handler: String,
+}
+
+impl From<EthereumContractEventHandlerEntity> for MappingEventHandler {
+    fn from(entity: EthereumContractEventHandlerEntity) -> Self {
+        Self {
+            event: entity.event,
+            handler: entity.handler,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -448,6 +495,20 @@ impl UnresolvedMapping {
             runtime,
             link,
         })
+    }
+}
+
+impl From<EthereumContractMappingEntity> for UnresolvedMapping {
+    fn from(entity: EthereumContractMappingEntity) -> Self {
+        Self {
+            kind: entity.kind,
+            api_version: entity.api_version,
+            language: entity.language,
+            entities: entity.entities,
+            abis: entity.abis.into_iter().map(Into::into).collect(),
+            event_handlers: entity.event_handlers.into_iter().map(Into::into).collect(),
+            file: entity.file.into(),
+        }
     }
 }
 
@@ -548,6 +609,21 @@ impl DataSource {
     }
 }
 
+impl From<EthereumContractDataSourceEntity> for UnresolvedDataSource {
+    fn from(entity: EthereumContractDataSourceEntity) -> Self {
+        Self {
+            kind: entity.kind,
+            network: entity.network,
+            name: entity.name,
+            source: entity.source.into(),
+            mapping: entity.mapping.into(),
+            templates: entity
+                .templates
+                .map(|templates| templates.into_iter().map(Into::into).collect()),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct BaseDataSourceTemplate<M> {
     pub kind: String,
@@ -555,6 +631,18 @@ pub struct BaseDataSourceTemplate<M> {
     pub name: String,
     pub source: TemplateSource,
     pub mapping: M,
+}
+
+impl From<EthereumContractDataSourceTemplateEntity> for UnresolvedDataSourceTemplate {
+    fn from(entity: EthereumContractDataSourceTemplateEntity) -> Self {
+        Self {
+            kind: entity.kind,
+            network: entity.network,
+            name: entity.name,
+            source: entity.source.into(),
+            mapping: entity.mapping.into(),
+        }
+    }
 }
 
 pub type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping>;
