@@ -1,4 +1,4 @@
-extern crate graphql_parser;
+pub extern crate graphql_parser;
 
 use graph::prelude::failure;
 
