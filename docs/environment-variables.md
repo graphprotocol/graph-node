@@ -36,6 +36,13 @@ in parallel for block retrieval (defaults to 64)
   is done processing. This setting therefore limits how much memory a call
   to `ipfs.map` may use. (in bytes, defaults to 256MB)
 
+## GraphQL
+* `GRAPH_GRAPHQL_QUERY_TIMEOUT`: maximum execution time for a graphql query, in seconds. Default is unlimited.
+* `SUBSCRIPTION_THROTTLE_INTERVAL`: while a subgraph is syncing,
+  subscriptions to that subgraph get updated at most this often, in
+  ms. Default is 1000ms.
+* `GRAPH_GRAPHQL_MAX_COMPLEXITY`: maximum complexity for a graphql query. See [here](https://developer.github.com/v4/guides/resource-limitations) for what that means. Default is unlimited.
+
 ## Miscellaneous
 * `GRAPH_LOG`: control log levels, the same way that `RUST_LOG` is
 described [here](https://docs.rs/env_logger/0.6.0/env_logger/)
@@ -43,7 +50,3 @@ described [here](https://docs.rs/env_logger/0.6.0/env_logger/)
 * `THEGRAPH_STORE_POSTGRES_DIESEL_URL`: postgres instance used when running
    tests. Set to
    `postgresql://<DBUSER>:<DBPASSWORD>@<DBHOST>:<DBPORT>/<DBNAME>`
-* `GRAPH_GRAPHQL_QUERY_TIMEOUT`: maximum execution time for a graphql query, in seconds. Default is unlimited.
-* `SUBSCRIPTION_THROTTLE_INTERVAL`: while a subgraph is syncing,
-  subscriptions to that subgraph get updated at most this often, in
-  ms. Default is 1000ms.
