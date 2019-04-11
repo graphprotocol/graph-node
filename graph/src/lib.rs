@@ -78,7 +78,7 @@ pub mod prelude {
         TransactionAbortError, SUBSCRIPTION_THROTTLE_INTERVAL,
     };
     pub use crate::components::subgraph::{
-        DataSourceTemplateInfo, ProcessingState, RuntimeHost, RuntimeHostBuilder,
+        DataSourceLoader, DataSourceTemplateInfo, ProcessingState, RuntimeHost, RuntimeHostBuilder,
         SubgraphAssignmentProvider, SubgraphInstance, SubgraphInstanceManager, SubgraphRegistrar,
         SubgraphVersionSwitchingMode,
     };
