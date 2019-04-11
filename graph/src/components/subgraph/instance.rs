@@ -1,9 +1,17 @@
 use crate::prelude::*;
 use web3::types::{Log, Transaction};
 
+#[derive(Debug)]
+pub struct DataSourceTemplateInfo {
+    pub data_source: String,
+    pub template: String,
+    pub params: Vec<String>,
+}
+
 #[derive(Debug, Default)]
 pub struct ProcessingState {
     pub entity_operations: Vec<EntityOperation>,
+    pub created_data_sources: Vec<DataSourceTemplateInfo>,
 }
 
 /// Represents a loaded instance of a subgraph.
