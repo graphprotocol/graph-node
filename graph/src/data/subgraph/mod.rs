@@ -499,6 +499,44 @@ impl UnresolvedDataSource {
     }
 }
 
+impl DataSource {
+    pub fn try_from_template(
+        template: &DataSourceTemplate,
+        params: &Vec<String>,
+    ) -> Result<Self, failure::Error> {
+        // Obtain the address from the parameters
+        let string = params
+            .get(0)
+            .ok_or_else(|| {
+                format_err!(
+                    "Failed to create data source from template `{}`: address parameter is missing",
+                    template.name
+                )
+            })?
+            .trim_start_matches("0x");
+
+        let address = Address::from_str(string).map_err(|e| {
+            format_err!(
+                "Failed to create data source from template `{}`: invalid address provided: {}",
+                template.name,
+                e
+            )
+        })?;
+
+        Ok(DataSource {
+            kind: template.kind.clone(),
+            network: template.network.clone(),
+            name: template.name.clone(),
+            source: Source {
+                address,
+                abi: template.source.abi.clone(),
+            },
+            mapping: template.mapping.expensive_clone(),
+            templates: None,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct BaseDataSourceTemplate<M> {
     pub kind: String,
