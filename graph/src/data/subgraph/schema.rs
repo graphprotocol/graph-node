@@ -12,6 +12,7 @@
 //! See `subgraphs.graphql` in the store for corresponding graphql schema.
 
 use failure::Error;
+use graphql_parser::query as q;
 use graphql_parser::schema::{Definition, Document, Type, TypeDefinition};
 use hex;
 use rand::rngs::OsRng;
@@ -24,6 +25,7 @@ use crate::components::ethereum::EthereumBlockPointer;
 use crate::components::store::{
     AttributeIndexDefinition, EntityFilter, EntityKey, EntityOperation, EntityQuery, EntityRange,
 };
+use crate::data::graphql::{TryFromValue, ValueMap};
 use crate::data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
 use crate::data::subgraph::{SubgraphManifest, SubgraphName};
 
@@ -380,12 +382,12 @@ impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifestEntity {
 
 #[derive(Debug)]
 pub struct EthereumContractDataSourceEntity {
-    kind: String,
-    network: Option<String>,
-    name: String,
-    source: EthereumContractSourceEntity,
-    mapping: EthereumContractMappingEntity,
-    templates: Option<Vec<EthereumContractDataSourceTemplateEntity>>,
+    pub kind: String,
+    pub network: Option<String>,
+    pub name: String,
+    pub source: EthereumContractSourceEntity,
+    pub mapping: EthereumContractMappingEntity,
+    pub templates: Option<Vec<EthereumContractDataSourceTemplateEntity>>,
 }
 
 impl TypedEntity for EthereumContractDataSourceEntity {
@@ -452,10 +454,112 @@ impl<'a> From<&'a super::DataSource> for EthereumContractDataSourceEntity {
     }
 }
 
+impl TryFromValue for EthereumContractDataSourceEntity {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        let map = match value {
+            q::Value::Object(map) => Ok(map),
+            _ => Err(format_err!(
+                "Cannot parse value into a data source entity: {:?}",
+                value
+            )),
+        }?;
+
+        Ok(Self {
+            kind: map.get_required("kind")?,
+            name: map.get_required("name")?,
+            network: map.get_optional("network")?,
+            source: map.get_required("source")?,
+            mapping: map.get_required("mapping")?,
+            templates: map.get_optional("templates")?,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct DynamicEthereumContractDataSourceEntity {
+    kind: String,
+    deployment: String,
+    network: Option<String>,
+    name: String,
+    source: EthereumContractSourceEntity,
+    mapping: EthereumContractMappingEntity,
+    templates: Option<Vec<EthereumContractDataSourceTemplateEntity>>,
+}
+
+impl TypedEntity for DynamicEthereumContractDataSourceEntity {
+    const TYPENAME: &'static str = "DynamicEthereumContractDataSource";
+    type IdType = String;
+}
+
+impl DynamicEthereumContractDataSourceEntity {
+    pub fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+        let mut ops = vec![];
+
+        let source_id = format!("{}-source", id);
+        ops.extend(self.source.write_operations(&source_id));
+
+        let mapping_id = format!("{}-mapping", id);
+        ops.extend(self.mapping.write_operations(&mapping_id));
+
+        let template_ids: Option<Vec<Value>> = self.templates.map(|templates| {
+            templates
+                .into_iter()
+                .enumerate()
+                .map(|(i, template)| {
+                    let template_id = format!("{}-templates-{}", id, i);
+                    ops.extend(template.write_operations(&template_id));
+                    template_id.into()
+                })
+                .collect()
+        });
+
+        let mut entity = Entity::new();
+        entity.set("id", id);
+        entity.set("deployment", self.deployment);
+        entity.set("kind", self.kind);
+        entity.set("network", self.network);
+        entity.set("name", self.name);
+        entity.set("source", source_id);
+        entity.set("mapping", mapping_id);
+        match template_ids {
+            Some(ids) => {
+                entity.set("templates", ids);
+            }
+            None => {}
+        }
+        ops.push(set_entity_operation(Self::TYPENAME, id, entity));
+
+        ops
+    }
+}
+
+impl<'a, 'b> From<(&'a SubgraphDeploymentId, &'b super::DataSource)>
+    for DynamicEthereumContractDataSourceEntity
+{
+    fn from(data: (&'a SubgraphDeploymentId, &'b super::DataSource)) -> Self {
+        let (deployment_id, data_source) = data;
+
+        Self {
+            deployment: deployment_id.to_string(),
+            kind: data_source.kind.clone(),
+            name: data_source.name.clone(),
+            network: data_source.network.clone(),
+            source: data_source.source.clone().into(),
+            mapping: EthereumContractMappingEntity::from(&data_source.mapping),
+            templates: data_source.templates.as_ref().map(|templates| {
+                templates
+                    .iter()
+                    .map(|template| EthereumContractDataSourceTemplateEntity::from(template))
+                    .collect()
+            }),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
-struct EthereumContractSourceEntity {
-    address: Option<super::Address>,
-    abi: String,
+pub struct EthereumContractSourceEntity {
+    pub address: Option<super::Address>,
+    pub abi: String,
 }
 
 impl TypedEntity for EthereumContractSourceEntity {
@@ -482,15 +586,32 @@ impl From<super::Source> for EthereumContractSourceEntity {
     }
 }
 
+impl TryFromValue for EthereumContractSourceEntity {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        let map = match value {
+            q::Value::Object(map) => Ok(map),
+            _ => Err(format_err!(
+                "Cannot parse value into a contract source entity: {:?}",
+                value
+            )),
+        }?;
+
+        Ok(Self {
+            address: map.get_optional("address")?,
+            abi: map.get_required("abi")?,
+        })
+    }
+}
+
 #[derive(Debug)]
-struct EthereumContractMappingEntity {
-    kind: String,
-    api_version: String,
-    language: String,
-    file: String,
-    entities: Vec<String>,
-    abis: Vec<EthereumContractAbiEntity>,
-    event_handlers: Vec<EthereumContractEventHandlerEntity>,
+pub struct EthereumContractMappingEntity {
+    pub kind: String,
+    pub api_version: String,
+    pub language: String,
+    pub file: String,
+    pub entities: Vec<String>,
+    pub abis: Vec<EthereumContractAbiEntity>,
+    pub event_handlers: Vec<EthereumContractEventHandlerEntity>,
 }
 
 impl TypedEntity for EthereumContractMappingEntity {
@@ -556,10 +677,32 @@ impl<'a> From<&'a super::Mapping> for EthereumContractMappingEntity {
     }
 }
 
+impl TryFromValue for EthereumContractMappingEntity {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        let map = match value {
+            q::Value::Object(map) => Ok(map),
+            _ => Err(format_err!(
+                "Cannot parse value into a mapping entity: {:?}",
+                value
+            )),
+        }?;
+
+        Ok(Self {
+            kind: map.get_required("kind")?,
+            api_version: map.get_required("apiVersion")?,
+            language: map.get_required("language")?,
+            file: map.get_required("file")?,
+            entities: map.get_required("entities")?,
+            abis: map.get_required("abis")?,
+            event_handlers: map.get_required("eventHandlers")?,
+        })
+    }
+}
+
 #[derive(Debug)]
-struct EthereumContractAbiEntity {
-    name: String,
-    file: String,
+pub struct EthereumContractAbiEntity {
+    pub name: String,
+    pub file: String,
 }
 
 impl TypedEntity for EthereumContractAbiEntity {
@@ -586,10 +729,27 @@ impl<'a> From<&'a super::MappingABI> for EthereumContractAbiEntity {
     }
 }
 
+impl TryFromValue for EthereumContractAbiEntity {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        let map = match value {
+            q::Value::Object(map) => Ok(map),
+            _ => Err(format_err!(
+                "Cannot parse value into ABI entity: {:?}",
+                value
+            )),
+        }?;
+
+        Ok(Self {
+            name: map.get_required("name")?,
+            file: map.get_required("file")?,
+        })
+    }
+}
+
 #[derive(Debug)]
-struct EthereumContractEventHandlerEntity {
-    event: String,
-    handler: String,
+pub struct EthereumContractEventHandlerEntity {
+    pub event: String,
+    pub handler: String,
 }
 
 impl TypedEntity for EthereumContractEventHandlerEntity {
@@ -616,13 +776,30 @@ impl From<super::MappingEventHandler> for EthereumContractEventHandlerEntity {
     }
 }
 
+impl TryFromValue for EthereumContractEventHandlerEntity {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        let map = match value {
+            q::Value::Object(map) => Ok(map),
+            _ => Err(format_err!(
+                "Cannot parse value into event handler entity: {:?}",
+                value
+            )),
+        }?;
+
+        Ok(Self {
+            event: map.get_required("event")?,
+            handler: map.get_required("handler")?,
+        })
+    }
+}
+
 #[derive(Debug)]
-struct EthereumContractDataSourceTemplateEntity {
-    kind: String,
-    network: Option<String>,
-    name: String,
-    source: EthereumContractDataSourceTemplateSourceEntity,
-    mapping: EthereumContractMappingEntity,
+pub struct EthereumContractDataSourceTemplateEntity {
+    pub kind: String,
+    pub network: Option<String>,
+    pub name: String,
+    pub source: EthereumContractDataSourceTemplateSourceEntity,
+    pub mapping: EthereumContractMappingEntity,
 }
 
 impl TypedEntity for EthereumContractDataSourceTemplateEntity {
@@ -665,9 +842,29 @@ impl From<&super::DataSourceTemplate> for EthereumContractDataSourceTemplateEnti
     }
 }
 
+impl TryFromValue for EthereumContractDataSourceTemplateEntity {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        let map = match value {
+            q::Value::Object(map) => Ok(map),
+            _ => Err(format_err!(
+                "Cannot parse value into a data source template entity: {:?}",
+                value
+            )),
+        }?;
+
+        Ok(Self {
+            kind: map.get_required("kind")?,
+            name: map.get_required("name")?,
+            network: map.get_optional("network")?,
+            source: map.get_required("source")?,
+            mapping: map.get_required("mapping")?,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
-struct EthereumContractDataSourceTemplateSourceEntity {
-    abi: String,
+pub struct EthereumContractDataSourceTemplateSourceEntity {
+    pub abi: String,
 }
 
 impl TypedEntity for EthereumContractDataSourceTemplateSourceEntity {
@@ -687,6 +884,22 @@ impl EthereumContractDataSourceTemplateSourceEntity {
 impl From<super::TemplateSource> for EthereumContractDataSourceTemplateSourceEntity {
     fn from(source: super::TemplateSource) -> Self {
         Self { abi: source.abi }
+    }
+}
+
+impl TryFromValue for EthereumContractDataSourceTemplateSourceEntity {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        let map = match value {
+            q::Value::Object(map) => Ok(map),
+            _ => Err(format_err!(
+                "Cannot parse value into a template source entity: {:?}",
+                value
+            )),
+        }?;
+
+        Ok(Self {
+            abi: map.get_required("abi")?,
+        })
     }
 }
 
