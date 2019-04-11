@@ -528,12 +528,23 @@ impl DataSource {
             network: template.network.clone(),
             name: template.name.clone(),
             source: Source {
-                address,
+                address: Some(address),
                 abi: template.source.abi.clone(),
             },
             mapping: template.mapping.expensive_clone(),
             templates: None,
         })
+    }
+
+    pub fn expensive_clone(&self) -> Self {
+        DataSource {
+            kind: self.kind.clone(),
+            network: self.network.clone(),
+            name: self.name.clone(),
+            source: self.source.clone(),
+            mapping: self.mapping.expensive_clone(),
+            templates: None,
+        }
     }
 }
 
