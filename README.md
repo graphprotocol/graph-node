@@ -150,7 +150,7 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 | ------- |  :------: |
 | **Ethereum** |    |
 | Indexing smart contract events | ✅ |
-| Handle chain reorganizations | 🛠 |
+| Handle chain reorganizations | ✅ |
 | **Mappings** |    |
 | WASM-based mappings| ✅ |
 | TypeScript-to-WASM toolchain | ✅ |
@@ -161,7 +161,7 @@ THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
 | Pagination | ✅ |
 | Filtering | ✅ |
 | Entity relationships | ✅ |
-| Subscriptions | 🔨|
+| Subscriptions | ✅ |
 
 
 ## Contributing
