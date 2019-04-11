@@ -7,7 +7,6 @@ use std::env;
 use std::mem;
 use std::sync::Mutex;
 
-use graph::components::forward;
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphEntity, SubgraphVersionEntity,
 };
@@ -119,6 +118,7 @@ pub struct BlockStream<S, C, E> {
     log_filter: EthereumLogFilter,
     chain_head_update_sink: Sender<ChainHeadUpdate>,
     chain_head_update_stream: Receiver<ChainHeadUpdate>,
+    _chain_head_update_guard: CancelGuard,
     ctx: BlockStreamContext<S, C, E>,
 }
 
@@ -132,16 +132,13 @@ where
         subgraph_store: Arc<S>,
         chain_store: Arc<C>,
         eth_adapter: Arc<E>,
+        chain_head_update_guard: CancelGuard,
         node_id: NodeId,
         subgraph_id: SubgraphDeploymentId,
         log_filter: EthereumLogFilter,
         reorg_threshold: u64,
         logger: Logger,
     ) -> Self {
-        let logger = logger.new(o!(
-            "component" => "BlockStream",
-        ));
-
         let (chain_head_update_sink, chain_head_update_stream) = channel(100);
 
         BlockStream {
@@ -150,6 +147,7 @@ where
             log_filter,
             chain_head_update_sink,
             chain_head_update_stream,
+            _chain_head_update_guard: chain_head_update_guard,
             ctx: BlockStreamContext {
                 subgraph_store,
                 chain_store,
@@ -993,7 +991,7 @@ where
         let logger = self.ctx.logger.clone();
 
         Box::new(self.chain_head_update_sink.clone().sink_map_err(move |_| {
-            debug!(logger, "Terminating chain head updates");
+            debug!(logger, "Terminating chain head updates; channel closed");
         }))
     }
 }
@@ -1061,13 +1059,29 @@ where
         deployment_id: SubgraphDeploymentId,
         log_filter: EthereumLogFilter,
     ) -> Self::Stream {
+        let logger = logger.new(o!(
+            "component" => "BlockStream",
+        ));
+        let logger_for_stream = logger.clone();
+
+        // Create a chain head update stream whose lifetime is tied to the
+        // liftetime of the block stream; we do this to immediately terminate
+        // the chain head update listener when the block stream is shut down
         let mut chain_head_update_listener = self.chain_store.chain_head_updates();
+        let cancel_guard = CancelGuard::new();
+        let chain_head_update_stream = chain_head_update_listener
+            .take_event_stream()
+            .unwrap()
+            .cancelable(&cancel_guard, move || {
+                debug!(logger_for_stream, "Terminating chain head updates");
+            });
 
         // Create the actual subgraph-specific block stream
         let block_stream = BlockStream::new(
             self.subgraph_store.clone(),
             self.chain_store.clone(),
             self.eth_adapter.clone(),
+            cancel_guard,
             self.node_id.clone(),
             deployment_id,
             log_filter,
@@ -1075,8 +1089,14 @@ where
             logger,
         );
 
-        // Forward chain head updates from the listener to the block stream
-        tokio::spawn(forward(&mut chain_head_update_listener, &block_stream).unwrap());
+        // Forward chain head updates from the listener to the block stream;
+        // this will be canceled as soon as the block stream goes out of scope
+        tokio::spawn(
+            chain_head_update_stream
+                .forward(block_stream.event_sink())
+                .map_err(|_| ())
+                .map(|_| ()),
+        );
 
         // Start listening for chain head updates
         chain_head_update_listener.start();
