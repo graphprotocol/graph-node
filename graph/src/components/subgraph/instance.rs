@@ -15,7 +15,7 @@ pub struct ProcessingState {
 }
 
 /// Represents a loaded instance of a subgraph.
-pub trait SubgraphInstance<T>: Sized
+pub trait SubgraphInstance<T>: Sized + Sync
 where
     T: RuntimeHostBuilder,
 {
