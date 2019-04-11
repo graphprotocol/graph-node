@@ -3,7 +3,7 @@ use graph::web3::types::{Log, Transaction};
 
 pub struct SubgraphInstance<T>
 where
-    T: RuntimeHostBuilder,
+    T: RuntimeHostBuilder + Sync,
 {
     /// Runtime hosts, one for each data source mapping.
     ///
@@ -15,7 +15,7 @@ where
 
 impl<T> SubgraphInstanceTrait<T> for SubgraphInstance<T>
 where
-    T: RuntimeHostBuilder,
+    T: RuntimeHostBuilder + Sync,
 {
     fn from_manifest(
         logger: &Logger,
