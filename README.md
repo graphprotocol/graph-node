@@ -1,7 +1,3 @@
-<p align="center">
-  <img width="100%" src="resources/construction.svg" title="Under Construction" />
-</p>
-
 # Graph Node
 
 **Note:** This project is a heavily WIP and until it reaches v1.0, the API is subject to change in breaking ways without notice.
