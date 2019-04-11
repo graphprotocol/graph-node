@@ -1,4 +1,4 @@
-use graphql_parser::{query as q, schema as s};
+use graphql_parser::{query as q, schema as s, Style};
 use std::collections::HashMap;
 use std::result::Result;
 use std::time::{Duration, Instant};
@@ -22,6 +22,9 @@ where
 
     /// Individual timeout for each subscription query.
     pub timeout: Option<Duration>,
+
+    /// Maximum complexity for a subscription.
+    pub max_complexity: Option<u64>,
 }
 
 pub fn execute_subscription<R>(
@@ -31,8 +34,6 @@ pub fn execute_subscription<R>(
 where
     R: Resolver + 'static,
 {
-    info!(options.logger, "Execute subscription");
-
     // Obtain the only operation of the subscription (fail if there is none or more than one)
     let operation = qast::get_operation(&subscription.query.document, None)?;
 
@@ -57,13 +58,38 @@ where
         deadline: None,
     };
 
-    match *operation {
+    match operation {
         // Execute top-level `subscription { ... }` expressions
-        q::OperationDefinition::Subscription(ref subscription) => {
-            let source_stream = create_source_event_stream(&ctx, subscription)?;
-            let response_stream =
-                map_source_to_response_stream(&ctx, subscription, source_stream, options.timeout)?;
-            Ok(response_stream)
+        q::OperationDefinition::Subscription(q::Subscription { selection_set, .. }) => {
+            let complexity = ctx
+                .root_query_complexity(
+                    sast::get_root_query_type_def(&ctx.schema.document).unwrap(),
+                    selection_set,
+                )
+                .map_err(|e| vec![e])?;
+
+            info!(
+                ctx.logger,
+                "Execute subscription";
+                "query" => ctx.document.format(&Style::default().indent(0)).replace('\n', " "),
+                "complexity" => complexity,
+            );
+
+            match options.max_complexity {
+                Some(max_complexity) if complexity > max_complexity => {
+                    Err(vec![QueryExecutionError::TooComplex(complexity, max_complexity)].into())
+                }
+                _ => {
+                    let source_stream = create_source_event_stream(&ctx, selection_set)?;
+                    let response_stream = map_source_to_response_stream(
+                        &ctx,
+                        selection_set,
+                        source_stream,
+                        options.timeout,
+                    )?;
+                    Ok(response_stream)
+                }
+            }
         }
 
         // Everything else (queries, mutations) is unsupported
@@ -75,7 +101,7 @@ where
 
 fn create_source_event_stream<'a, R>(
     ctx: &'a ExecutionContext<'a, R>,
-    operation: &q::Subscription,
+    selection_set: &q::SelectionSet,
 ) -> Result<StoreEventStreamBox, SubscriptionError>
 where
     R: Resolver,
@@ -83,12 +109,7 @@ where
     let subscription_type = sast::get_root_subscription_type(&ctx.schema.document)
         .ok_or(QueryExecutionError::NoRootSubscriptionObjectType)?;
 
-    let grouped_field_set = collect_fields(
-        ctx.clone(),
-        &subscription_type,
-        &operation.selection_set,
-        None,
-    );
+    let grouped_field_set = collect_fields(ctx.clone(), &subscription_type, &selection_set, None);
 
     if grouped_field_set.is_empty() {
         return Err(SubscriptionError::from(QueryExecutionError::EmptyQuery));
@@ -121,7 +142,7 @@ where
 
 fn map_source_to_response_stream<'a, R>(
     ctx: &ExecutionContext<'a, R>,
-    subscription: &'a q::Subscription,
+    selection_set: &'a q::SelectionSet,
     source_stream: StoreEventStreamBox,
     timeout: Option<Duration>,
 ) -> Result<QueryResultStream, SubscriptionError>
@@ -132,7 +153,7 @@ where
     let resolver = ctx.resolver.clone();
     let schema = ctx.schema.clone();
     let document = ctx.document.clone();
-    let subscription = subscription.to_owned();
+    let selection_set = selection_set.to_owned();
     let variable_values = ctx.variable_values.clone();
 
     Ok(Box::new(source_stream.map(move |event| {
@@ -141,7 +162,7 @@ where
             resolver.clone(),
             schema.clone(),
             document.clone(),
-            subscription.clone(),
+            &selection_set,
             variable_values.clone(),
             event,
             timeout.clone(),
@@ -154,7 +175,7 @@ fn execute_subscription_event<R1>(
     resolver: Arc<R1>,
     schema: Arc<Schema>,
     document: q::Document,
-    subscription: q::Subscription,
+    selection_set: &q::SelectionSet,
     variable_values: Arc<HashMap<q::Name, q::Value>>,
     event: StoreEvent,
     timeout: Option<Duration>,
@@ -178,7 +199,7 @@ where
     // We have established that this exists earlier in the subscription execution
     let subscription_type = sast::get_root_subscription_type(&ctx.schema.document).unwrap();
 
-    let result = execute_selection_set(&ctx, &subscription.selection_set, subscription_type, &None);
+    let result = execute_selection_set(&ctx, selection_set, subscription_type, &None);
 
     match result {
         Ok(value) => QueryResult::new(Some(value)),

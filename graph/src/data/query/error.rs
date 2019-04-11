@@ -50,6 +50,8 @@ pub enum QueryExecutionError {
     Unimplemented(String),
     EnumCoercionError(Pos, String, q::Value, String, Vec<String>),
     ScalarCoercionError(Pos, String, q::Value, String),
+    TooComplex(u64, u64), // (complexity, max_complexity)
+    TooDeep,
 }
 
 impl Error for QueryExecutionError {
@@ -182,6 +184,10 @@ impl fmt::Display for QueryExecutionError {
             ScalarCoercionError(_, field, value, scalar_type) => {
                 write!(f, "Failed to coerce value `{}` of field `{}` to scalar type `{}`", value, field, scalar_type)
             }
+            TooComplex(complexity, max_complexity) => {
+                write!(f, "Query has complexity `{}` which is over the maximum `{}`", complexity, max_complexity)
+            }
+            TooDeep => write!(f, "Query is too deep")
         }
     }
 }
