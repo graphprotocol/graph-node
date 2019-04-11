@@ -301,7 +301,7 @@ pub fn get_argument_definitions<'a>(
 /// Returns the type definition that a field type corresponds to.
 pub fn get_type_definition_from_field<'a>(
     schema: &'a Document,
-    field: &'a Field,
+    field: &Field,
 ) -> Option<&'a TypeDefinition> {
     get_type_definition_from_type(schema, &field.field_type)
 }
@@ -309,7 +309,7 @@ pub fn get_type_definition_from_field<'a>(
 /// Returns the type definition for a type.
 pub fn get_type_definition_from_type<'a>(
     schema: &'a Document,
-    t: &'a Type,
+    t: &Type,
 ) -> Option<&'a TypeDefinition> {
     match t {
         Type::NamedType(name) => get_named_type(schema, name),
@@ -438,7 +438,7 @@ pub fn get_derived_from_field<'a>(
     field_definition: &'a Field,
 ) -> Option<&'a Field> {
     get_derived_from_directive(field_definition)
-        .and_then(|directive| qast::get_argument_value(&directive.arguments, &Name::from("field")))
+        .and_then(|directive| qast::get_argument_value(&directive.arguments, "field"))
         .and_then(|value| match value {
             Value::String(s) => Some(s),
             _ => None,
