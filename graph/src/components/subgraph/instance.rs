@@ -38,4 +38,10 @@ where
         log: Log,
         state: ProcessingState,
     ) -> Box<Future<Item = ProcessingState, Error = Error> + Send>;
+
+    /// Returns an `EthereumLogFilter` for all the subgraph's data sources.
+    fn ethereum_log_filter(&self) -> EthereumLogFilter;
+
+    /// Adds dynamic data sources to the subgraph.
+    fn add_dynamic_data_sources(&mut self, data_sources: Vec<DataSource>) -> Result<(), Error>;
 }
