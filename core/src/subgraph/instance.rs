@@ -11,6 +11,18 @@ where
     /// data sources appear in the subgraph manifest. Incoming block
     /// stream events are processed by the mappings in this same order.
     hosts: Vec<Arc<T::Host>>,
+
+    /// The subgraph manifest ID.
+    manifest_id: SubgraphDeploymentId,
+
+    /// Logger
+    logger: Logger,
+
+    /// Builder for runtime hosts.
+    host_builder: T,
+
+    /// Dynamic data sources.
+    ethereum_log_filter: EthereumLogFilter,
 }
 
 impl<T> SubgraphInstanceTrait<T> for SubgraphInstance<T>
@@ -26,6 +38,8 @@ where
         // we use the same order here as in the subgraph manifest to make the
         // event processing behavior predictable
         let manifest_id = manifest.id;
+
+        let manifest_log_filter = EthereumLogFilter::from(&manifest.data_sources);
 
         let (hosts, errors): (_, Vec<_>) = manifest
             .data_sources
@@ -52,6 +66,10 @@ where
                 .map(Result::unwrap)
                 .map(Arc::new)
                 .collect(),
+            host_builder,
+            logger: logger.clone(),
+            manifest_id: manifest_id.clone(),
+            ethereum_log_filter: manifest_log_filter,
         })
     }
 
@@ -93,5 +111,41 @@ where
                 )
             }),
         )
+    }
+
+    fn ethereum_log_filter(&self) -> EthereumLogFilter {
+        self.ethereum_log_filter.clone()
+    }
+
+    fn add_dynamic_data_sources(&mut self, data_sources: Vec<DataSource>) -> Result<(), Error> {
+        // Add the data sources to the log filter
+        self.ethereum_log_filter
+            .extend(EthereumLogFilter::from(&data_sources));
+
+        // Then, add hosts for the data sources
+        let (hosts, errors): (_, Vec<_>) = data_sources
+            .iter()
+            .map(|d| {
+                self.host_builder
+                    .build(&self.logger, self.manifest_id.clone(), d.expensive_clone())
+            })
+            .partition(|res| res.is_ok());
+
+        if errors.is_empty() {
+            self.hosts
+                .extend(hosts.into_iter().map(Result::unwrap).map(Arc::new));
+            Ok(())
+        } else {
+            let joined_errors = errors
+                .into_iter()
+                .map(Result::unwrap_err)
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(format_err!(
+                "Errors loading data sources: {}",
+                joined_errors
+            ));
+        }
     }
 }
