@@ -61,6 +61,16 @@ pub fn get_root_query_type(schema: &Document) -> Option<&ObjectType> {
         .next()
 }
 
+pub fn get_root_query_type_def(schema: &Document) -> Option<&TypeDefinition> {
+    schema.definitions.iter().find_map(|d| match d {
+        Definition::TypeDefinition(def @ TypeDefinition::Object(_)) => match def {
+            TypeDefinition::Object(t) if t.name == "Query" => Some(def),
+            _ => None,
+        },
+        _ => None,
+    })
+}
+
 /// Returns the root subscription type (if there is one).
 pub fn get_root_subscription_type(schema: &Document) -> Option<&ObjectType> {
     schema

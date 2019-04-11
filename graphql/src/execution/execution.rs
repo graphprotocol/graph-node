@@ -41,6 +41,13 @@ where
     pub deadline: Option<Instant>,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum ComplexityError {
+    TooDeep,
+    Overflow,
+    Invalid,
+}
+
 impl<'a, R> ExecutionContext<'a, R>
 where
     R: Resolver,
@@ -66,6 +73,151 @@ where
             variable_values: self.variable_values.clone(),
             deadline: self.deadline,
         }
+    }
+
+    /// See https://developer.github.com/v4/guides/resource-limitations/.
+    ///
+    /// If the query is invalid, returns `Ok(0)` so that execution proceeds and
+    /// gives a proper error.
+    pub(crate) fn root_query_complexity(
+        &self,
+        root_type: &s::TypeDefinition,
+        root_selection_set: &q::SelectionSet,
+    ) -> Result<u64, QueryExecutionError> {
+        const MAX_DEPTH: u32 = 100;
+
+        match self.query_complexity(root_type, root_selection_set, MAX_DEPTH, 0) {
+            Ok(complexity) => Ok(complexity),
+            Err(ComplexityError::Invalid) => Ok(0),
+            Err(ComplexityError::TooDeep) => Err(QueryExecutionError::TooDeep),
+            Err(ComplexityError::Overflow) => {
+                Err(QueryExecutionError::TooComplex(u64::max_value(), 0))
+            }
+        }
+    }
+
+    fn query_complexity(
+        &self,
+        ty: &s::TypeDefinition,
+        selection_set: &q::SelectionSet,
+        max_depth: u32,
+        depth: u32,
+    ) -> Result<u64, ComplexityError> {
+        use ComplexityError::*;
+
+        if depth > max_depth {
+            return Err(TooDeep);
+        }
+
+        // Helpers to look for types and fields on both the introspection and
+        // regular schemas.
+        fn get_named_type(
+            schema: &s::Document,
+            name: &Name,
+        ) -> Result<s::TypeDefinition, ComplexityError> {
+            if name.starts_with("__") {
+                let doc = introspection_schema(SubgraphDeploymentId::new("").unwrap()).document;
+                sast::get_named_type(&doc, name).cloned()
+            } else {
+                sast::get_named_type(schema, name).cloned()
+            }
+            .ok_or(Invalid)
+        }
+        fn get_type_definition_from_type(
+            schema: &s::Document,
+            t: &s::Type,
+        ) -> Result<s::TypeDefinition, ComplexityError> {
+            match t {
+                s::Type::NamedType(name) => get_named_type(schema, name),
+                s::Type::ListType(inner) => get_type_definition_from_type(schema, inner),
+                s::Type::NonNullType(inner) => get_type_definition_from_type(schema, inner),
+            }
+        }
+        fn get_field<'a>(
+            object_type: impl Into<ObjectOrInterface<'a>>,
+            name: &Name,
+        ) -> Option<s::Field> {
+            if name == "__schema" || name == "__type" {
+                let doc = introspection_schema(SubgraphDeploymentId::new("").unwrap()).document;
+                let object_type = sast::get_root_query_type(&doc).unwrap();
+                sast::get_field(object_type, name).cloned()
+            } else {
+                sast::get_field(object_type, name).cloned()
+            }
+        }
+
+        selection_set
+            .items
+            .iter()
+            .try_fold(0, |total_complexity, selection| {
+                let schema = &self.schema.document;
+                match selection {
+                    q::Selection::Field(field) => {
+                        // Empty selection sets are the base case.
+                        if field.selection_set.items.is_empty() {
+                            return Ok(total_complexity);
+                        }
+
+                        // Get field type to determine if this is a collection query.
+                        let s_field = match ty {
+                            s::TypeDefinition::Object(t) => get_field(t, &field.name),
+                            s::TypeDefinition::Interface(t) => get_field(t, &field.name),
+
+                            // `Scalar` and `Enum` cannot have selection sets.
+                            // `InputObject` can't appear in a selection.
+                            // `Union` is not yet supported.
+                            s::TypeDefinition::Scalar(_)
+                            | s::TypeDefinition::Enum(_)
+                            | s::TypeDefinition::InputObject(_)
+                            | s::TypeDefinition::Union(_) => None,
+                        }
+                        .ok_or(Invalid)
+                        .unwrap();
+
+                        let field_complexity = self.query_complexity(
+                            &get_type_definition_from_type(schema, &s_field.field_type)?,
+                            &field.selection_set,
+                            max_depth,
+                            depth + 1,
+                        )?;
+
+                        // Non-collection queries pass through.
+                        if !sast::is_list_or_non_null_list_field(&s_field) {
+                            return Ok(total_complexity + field_complexity);
+                        }
+
+                        // For collection queries, check the `first` argument.
+                        let max_entities = qast::get_argument_value(&field.arguments, "first")
+                            .and_then(|arg| match arg {
+                                q::Value::Int(n) => Some(n.as_i64()? as u64),
+                                _ => None,
+                            })
+                            .unwrap_or(100);
+                        max_entities
+                            .checked_add(
+                                max_entities.checked_mul(field_complexity).ok_or(Overflow)?,
+                            )
+                            .ok_or(Overflow)
+                    }
+                    q::Selection::FragmentSpread(fragment) => {
+                        let def = qast::get_fragment(&self.document, &fragment.fragment_name)
+                            .ok_or(Invalid)?;
+                        let q::TypeCondition::On(type_name) = &def.type_condition;
+                        let ty = get_named_type(schema, &type_name)?;
+                        self.query_complexity(&ty, &def.selection_set, max_depth, depth + 1)
+                    }
+                    q::Selection::InlineFragment(fragment) => {
+                        let ty = match &fragment.type_condition {
+                            Some(q::TypeCondition::On(type_name)) => {
+                                get_named_type(schema, &type_name)?
+                            }
+                            _ => ty.clone(),
+                        };
+                        self.query_complexity(&ty, &fragment.selection_set, max_depth, depth + 1)
+                    }
+                }
+                .and_then(|complexity| total_complexity.checked_add(complexity).ok_or(Overflow))
+            })
     }
 }
 
@@ -103,7 +255,7 @@ where
         // See if this is an introspection or data field. We don't worry about
         // nonexistant fields; those will cause an error later when we execute
         // the data_set SelectionSet
-        if sast::get_field_type(introspection_query_type, &name).is_some() {
+        if sast::get_field(introspection_query_type, &name).is_some() {
             intro_set.items.extend(selections)
         } else {
             data_set.items.extend(selections)
@@ -176,7 +328,7 @@ where
         }
 
         // If the field exists on the object, execute it and add its result to the result map
-        if let Some(ref field) = sast::get_field_type(object_type, &fields[0].name) {
+        if let Some(ref field) = sast::get_field(object_type, &fields[0].name) {
             // Push the new field onto the context's field stack
             let ctx = ctx.for_field(&fields[0]);
 

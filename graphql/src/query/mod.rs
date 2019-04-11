@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::execution::*;
 use crate::query::ast as qast;
+use crate::schema::ast as sast;
 
 /// Utilities for working with GraphQL query ASTs.
 pub mod ast;
@@ -22,6 +23,9 @@ where
 
     /// Time at which the query times out.
     pub deadline: Option<Instant>,
+
+    /// Maximum complexity for a query.
+    pub max_complexity: Option<u64>,
 }
 
 /// Executes a query and returns a result.
@@ -35,12 +39,6 @@ where
         "query_id" => query_id
     ));
     let start_time = Instant::now();
-
-    info!(
-        query_logger,
-        "Execute query";
-        "query" => query.document.format(&Style::default().indent(0)).replace('\n', " "),
-    );
 
     // Obtain the only operation of the query (fail if there is none or more than one)
     let operation = match qast::get_operation(&query.document, None) {
@@ -66,17 +64,33 @@ where
         deadline: options.deadline,
     };
 
-    let result = match *operation {
-        // Execute top-level `query { ... }` expressions
-        q::OperationDefinition::Query(q::Query {
-            ref selection_set, ..
-        }) => execute_root_selection_set(&ctx, selection_set, &None),
+    let result = match operation {
+        // Execute top-level `query { ... }` and `{ ... }` expressions.
+        q::OperationDefinition::Query(q::Query { selection_set, .. })
+        | q::OperationDefinition::SelectionSet(selection_set) => {
+            let complexity = ctx.root_query_complexity(
+                sast::get_root_query_type_def(&ctx.schema.document).unwrap(),
+                selection_set,
+            );
 
-        // Execute top-level `{ ... }` expressions
-        q::OperationDefinition::SelectionSet(ref selection_set) => {
-            execute_root_selection_set(&ctx, selection_set, &None)
+            info!(
+                query_logger,
+                "Execute query";
+                "query" => query.document.format(&Style::default().indent(0)).replace('\n', " "),
+                "complexity" => format!("{:?}", complexity),
+            );
+
+            match (complexity, options.max_complexity) {
+                (Err(e), _) => Err(vec![e]),
+                (Ok(complexity), Some(max_complexity)) if complexity > max_complexity => {
+                    Err(vec![QueryExecutionError::TooComplex(
+                        complexity,
+                        max_complexity,
+                    )])
+                }
+                (Ok(_), _) => execute_root_selection_set(&ctx, selection_set, &None),
+            }
         }
-
         // Everything else (e.g. mutations) is unsupported
         _ => Err(vec![QueryExecutionError::NotSupported(
             "Only queries are supported".to_string(),

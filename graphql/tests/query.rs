@@ -57,6 +57,7 @@ fn test_schema(id: SubgraphDeploymentId) -> Schema {
 fn api_test_schema() -> Schema {
     let mut schema = test_schema(TEST_SUBGRAPH_ID.clone());
     schema.document = api_schema(&schema.document).expect("Failed to derive API schema");
+    schema.add_subgraph_id_directives(TEST_SUBGRAPH_ID.clone());
     schema
 }
 
@@ -208,6 +209,7 @@ fn execute_query_document_with_variables(
         logger: logger,
         resolver: store_resolver,
         deadline: None,
+        max_complexity: None,
     };
 
     execute_query(&query, options)
@@ -672,6 +674,156 @@ fn include_directive_works_with_query_variables() {
 }
 
 #[test]
+fn query_complexity() {
+    let logger = Logger::root(slog::Discard, o!());
+    let store_resolver = StoreResolver::new(&logger, STORE.clone());
+
+    let query = Query {
+        schema: Arc::new(api_test_schema()),
+        document: graphql_parser::parse_query(
+            "query {
+                musicians(orderBy: id) {
+                    name
+                    bands(first: 100, orderBy: id) {
+                        name
+                        members(first: 100, orderBy: id) {
+                            name
+                        }
+                    }
+                }
+            }",
+        )
+        .unwrap(),
+        variables: None,
+    };
+    let max_complexity = Some(1_010_100);
+    let options = QueryExecutionOptions {
+        logger: logger.clone(),
+        resolver: store_resolver.clone(),
+        deadline: None,
+        max_complexity,
+    };
+
+    // This query is exactly at the maximum complexity.
+    let result = execute_query(&query, options);
+    assert!(result.errors.is_none());
+
+    let query = Query {
+        schema: Arc::new(api_test_schema()),
+        document: graphql_parser::parse_query(
+            "query {
+                musicians(orderBy: id) {
+                    name
+                    bands(first: 100, orderBy: id) {
+                        name
+                        members(first: 100, orderBy: id) {
+                            name
+                        }
+                    }
+                }
+                __schema {
+                    types {
+                        name
+                    }
+                }
+            }",
+        )
+        .unwrap(),
+        variables: None,
+    };
+
+    let options = QueryExecutionOptions {
+        logger,
+        resolver: store_resolver,
+        deadline: None,
+        max_complexity,
+    };
+
+    // The extra introspection causes the complexity to go over.
+    let result = execute_query(&query, options);
+    match result.errors.unwrap()[0] {
+        QueryError::ExecutionError(QueryExecutionError::TooComplex(1_010_200, _)) => (),
+        _ => panic!("did not catch complexity"),
+    };
+}
+
+#[test]
+fn query_complexity_subscriptions() {
+    let logger = Logger::root(slog::Discard, o!());
+    let store_resolver = StoreResolver::new(&logger, STORE.clone());
+
+    let query = Query {
+        schema: Arc::new(api_test_schema()),
+        document: graphql_parser::parse_query(
+            "subscription {
+                musicians(orderBy: id) {
+                    name
+                    bands(first: 100, orderBy: id) {
+                        name
+                        members(first: 100, orderBy: id) {
+                            name
+                        }
+                    }
+                }
+            }",
+        )
+        .unwrap(),
+        variables: None,
+    };
+    let max_complexity = Some(1_010_100);
+    let options = SubscriptionExecutionOptions {
+        logger: logger.clone(),
+        resolver: store_resolver.clone(),
+        timeout: None,
+        max_complexity,
+    };
+
+    // This query is exactly at the maximum complexity.
+    execute_subscription(&Subscription { query }, options).unwrap();
+
+    let query = Query {
+        schema: Arc::new(api_test_schema()),
+        document: graphql_parser::parse_query(
+            "subscription {
+                musicians(orderBy: id) {
+                    name
+                    bands(first: 100, orderBy: id) {
+                        name
+                        members(first: 100, orderBy: id) {
+                            name
+                        }
+                    }
+                }
+                __schema {
+                    types {
+                        name
+                    }
+                }
+            }",
+        )
+        .unwrap(),
+        variables: None,
+    };
+
+    let options = SubscriptionExecutionOptions {
+        logger,
+        resolver: store_resolver,
+        timeout: None,
+        max_complexity,
+    };
+
+    // The extra introspection causes the complexity to go over.
+    let result = execute_subscription(&Subscription { query }, options);
+    match result {
+        Err(SubscriptionError::GraphQLError(e)) => match e[0] {
+            QueryExecutionError::TooComplex(1_010_200, _) => (), // Expected
+            _ => panic!("did not catch complexity"),
+        },
+        _ => panic!("did not catch complexity"),
+    }
+}
+
+#[test]
 fn instant_timeout() {
     let query = Query {
         schema: Arc::new(api_test_schema()),
@@ -685,6 +837,7 @@ fn instant_timeout() {
         logger: logger,
         resolver: store_resolver,
         deadline: Some(Instant::now()),
+        max_complexity: None,
     };
 
     match execute_query(&query, options).errors.unwrap()[0] {
