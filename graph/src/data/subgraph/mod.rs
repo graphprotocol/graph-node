@@ -396,6 +396,22 @@ pub struct Mapping {
     pub link: Link,
 }
 
+impl Mapping {
+    /// Clones a mapping, making it very obvious that this is an expensive operation.
+    fn expensive_clone(&self) -> Self {
+        Mapping {
+            kind: self.kind.clone(),
+            api_version: self.api_version.clone(),
+            language: self.language.clone(),
+            entities: self.entities.clone(),
+            abis: self.abis.clone(),
+            event_handlers: self.event_handlers.clone(),
+            runtime: self.runtime.clone(),
+            link: self.link.clone(),
+        }
+    }
+}
+
 impl UnresolvedMapping {
     pub fn resolve(
         self,
@@ -514,6 +530,19 @@ impl UnresolvedDataSourceTemplate {
             source,
             mapping,
         })
+    }
+}
+
+impl DataSourceTemplate {
+    /// Clones a template, making it very obvious that this is an expensive operation.
+    pub fn expensive_clone(&self) -> Self {
+        DataSourceTemplate {
+            kind: self.kind.clone(),
+            network: self.network.clone(),
+            name: self.name.clone(),
+            source: self.source.clone(),
+            mapping: self.mapping.expensive_clone(),
+        }
     }
 }
 
