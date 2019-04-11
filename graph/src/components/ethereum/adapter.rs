@@ -127,6 +127,12 @@ impl EthereumLogFilter {
                 }),
         }
     }
+
+    /// Extends this log filter with another one.
+    pub fn extend(&mut self, other: EthereumLogFilter) {
+        self.contract_address_and_event_sig_pairs
+            .extend(other.contract_address_and_event_sig_pairs.iter());
+    }
 }
 
 impl FromIterator<(Option<Address>, H256)> for EthereumLogFilter {
