@@ -459,8 +459,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
 
     // Create IPFS-based subgraph provider
-    let mut subgraph_provider =
-        IpfsSubgraphAssignmentProvider::new(logger.clone(), ipfs_client.clone(), store.clone());
+    let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
+        logger.clone(),
+        ipfs_client.clone(),
+        store.clone(),
+        graphql_runner.clone(),
+    );
 
     // Forward subgraph events from the subgraph provider to the subgraph instance manager
     tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());
