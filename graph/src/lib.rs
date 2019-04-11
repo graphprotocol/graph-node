@@ -84,7 +84,7 @@ pub mod prelude {
     };
     pub use crate::components::{EventConsumer, EventProducer};
 
-    pub use crate::data::graphql::SerializableValue;
+    pub use crate::data::graphql::{SerializableValue, TryFromValue, ValueMap};
     pub use crate::data::query::{
         Query, QueryError, QueryExecutionError, QueryResult, QueryVariables,
     };
