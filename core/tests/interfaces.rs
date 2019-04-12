@@ -53,6 +53,7 @@ fn insert_and_query(
         resolver,
         deadline: None,
         max_complexity: None,
+        max_depth: 100,
     };
     let document = graphql_parser::parse_query(query).unwrap();
     let query = Query {

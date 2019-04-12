@@ -83,13 +83,12 @@ where
         &self,
         root_type: &s::TypeDefinition,
         root_selection_set: &q::SelectionSet,
+        max_depth: u8,
     ) -> Result<u64, QueryExecutionError> {
-        const MAX_DEPTH: u32 = 100;
-
-        match self.query_complexity(root_type, root_selection_set, MAX_DEPTH, 0) {
+        match self.query_complexity(root_type, root_selection_set, max_depth, 0) {
             Ok(complexity) => Ok(complexity),
             Err(ComplexityError::Invalid) => Ok(0),
-            Err(ComplexityError::TooDeep) => Err(QueryExecutionError::TooDeep),
+            Err(ComplexityError::TooDeep) => Err(QueryExecutionError::TooDeep(max_depth)),
             Err(ComplexityError::Overflow) => {
                 Err(QueryExecutionError::TooComplex(u64::max_value(), 0))
             }
@@ -100,12 +99,12 @@ where
         &self,
         ty: &s::TypeDefinition,
         selection_set: &q::SelectionSet,
-        max_depth: u32,
-        depth: u32,
+        max_depth: u8,
+        depth: u8,
     ) -> Result<u64, ComplexityError> {
         use ComplexityError::*;
 
-        if depth > max_depth {
+        if depth >= max_depth {
             return Err(TooDeep);
         }
 

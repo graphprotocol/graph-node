@@ -26,6 +26,9 @@ where
 
     /// Maximum complexity for a query.
     pub max_complexity: Option<u64>,
+
+    /// Maximum depth for a query.
+    pub max_depth: u8,
 }
 
 /// Executes a query and returns a result.
@@ -71,6 +74,7 @@ where
             let complexity = ctx.root_query_complexity(
                 sast::get_root_query_type_def(&ctx.schema.document).unwrap(),
                 selection_set,
+                options.max_depth,
             );
 
             info!(

@@ -23,8 +23,11 @@ where
     /// Individual timeout for each subscription query.
     pub timeout: Option<Duration>,
 
-    /// Maximum complexity for a subscription.
+    /// Maximum complexity for a subscription query.
     pub max_complexity: Option<u64>,
+
+    /// Maximum depth for a subscription query.
+    pub max_depth: u8,
 }
 
 pub fn execute_subscription<R>(
@@ -65,6 +68,7 @@ where
                 .root_query_complexity(
                     sast::get_root_query_type_def(&ctx.schema.document).unwrap(),
                     selection_set,
+                    options.max_depth,
                 )
                 .map_err(|e| vec![e])?;
 

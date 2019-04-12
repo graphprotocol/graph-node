@@ -210,6 +210,7 @@ fn execute_query_document_with_variables(
         resolver: store_resolver,
         deadline: None,
         max_complexity: None,
+        max_depth: 100,
     };
 
     execute_query(&query, options)
@@ -702,6 +703,7 @@ fn query_complexity() {
         resolver: store_resolver.clone(),
         deadline: None,
         max_complexity,
+        max_depth: 100,
     };
 
     // This query is exactly at the maximum complexity.
@@ -737,6 +739,7 @@ fn query_complexity() {
         resolver: store_resolver,
         deadline: None,
         max_complexity,
+        max_depth: 100,
     };
 
     // The extra introspection causes the complexity to go over.
@@ -776,6 +779,7 @@ fn query_complexity_subscriptions() {
         resolver: store_resolver.clone(),
         timeout: None,
         max_complexity,
+        max_depth: 100,
     };
 
     // This query is exactly at the maximum complexity.
@@ -810,6 +814,7 @@ fn query_complexity_subscriptions() {
         resolver: store_resolver,
         timeout: None,
         max_complexity,
+        max_depth: 100,
     };
 
     // The extra introspection causes the complexity to go over.
@@ -838,6 +843,7 @@ fn instant_timeout() {
         resolver: store_resolver,
         deadline: Some(Instant::now()),
         max_complexity: None,
+        max_depth: 100,
     };
 
     match execute_query(&query, options).errors.unwrap()[0] {

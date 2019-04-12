@@ -550,6 +550,7 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
             resolver: MockResolver,
             deadline: None,
             max_complexity: None,
+            max_depth: 100,
         },
     )
 }
