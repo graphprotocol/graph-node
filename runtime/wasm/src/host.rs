@@ -8,7 +8,7 @@ use std::time::Instant;
 use graph::components::ethereum::*;
 use graph::components::store::Store;
 use graph::data::subgraph::{DataSource, Source};
-use graph::ethabi::{LogParam, Param};
+use graph::ethabi::{LogParam, Param, Token};
 use graph::ethabi::RawLog;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
@@ -432,7 +432,7 @@ impl RuntimeHostTrait for RuntimeHost {
         // get a vector of `Token`s. Match the `Token`s with the `Param`s in `function.inputs` to
         // create a `Vec<LogParam>`.
         let inputs = match function_abi
-            .decode_output(&call.input.0[4..])
+            .decode_input(&call.input.0[4..])
             .map_err(|err| {
                 format_err!(
                     "Generating function inputs for an Ethereum call failed = {}",

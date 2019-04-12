@@ -48,13 +48,13 @@ where
         }
     }
 
-    fn calls(
+    fn traces(
         &self,
         logger: &Logger,
         from: u64,
         to: u64,
         addresses: Vec<H160>,
-    ) -> impl Future<Item = Vec<EthereumCall>, Error = Error> {
+    ) -> impl Future<Item = Vec<Trace>, Error = Error> {
         let eth = self.clone();
         let logger = logger.to_owned();
 
@@ -79,24 +79,33 @@ where
                 };
 
                 let logger = logger.clone();
+                let logger_1 = logger.clone();
                 eth
                     .web3
                     .trace()
                     .filter(trace_filter)
                     .map(move |traces| {
-                        debug!(logger, "Received traces for block range [{}, {}]", from, to);
-                        // Transform traces into calls
+                        if traces.len() > 0 {
+                            debug!(logger, "Received {} traces for block range [{}, {}]", traces.len(), from, to);
+                        } else {
+                            debug!(logger, "No traces for block range [{}, {}]", from, to);
+                        }
                         traces
-                            .iter()
-                            .filter(|trace| match trace.action {
-                                Action::Call(_) => true,
-                                _ => false,
-                            })
-                            .map(EthereumCall::from)
-                            .collect()
                     })
-                    .map_err(SyncFailure::new)
+                    .from_err::<EthereumContractCallError>()
                     .from_err()
+                    .then(move |result| {
+                        if result.is_err() {
+                            debug!(
+                                logger_1,
+                                "Error querying traces error = {:?} from = {:?} to = {:?}",
+                                result,
+                                from,
+                                to
+                            );
+                        }
+                        result
+                    })
             })
             .map_err(move |e| {
                 e.into_inner().unwrap_or_else(move || {
@@ -144,7 +153,7 @@ where
                         debug!(logger, "Received logs for [{}, {}].", from, to);
                         logs
                     })
-                    .map_err(SyncFailure::new)
+                    .from_err::<EthereumContractCallError>()
                     .from_err()
             })
             .map_err(move |e| {
@@ -160,13 +169,13 @@ where
             })
     }
 
-    fn call_stream(
+    fn trace_stream(
         self,
         logger: &Logger,
         from: u64,
         to: u64,
-        call_filter: EthereumCallFilter,
-    ) -> impl Stream<Item = Vec<EthereumCall>, Error = Error> + Send {
+        addresses: Vec<H160>,
+    ) -> impl Stream<Item = Vec<Trace>, Error = Error> + Send {
         if from > to {
             panic!(
                 "Can not produce a call stream on a backwards block range: from = {}, to = {}",
@@ -176,33 +185,16 @@ where
         
         let eth = self.clone();
         let logger = logger.to_owned();
-
-        let addresses: Vec<H160> = call_filter
-            .contract_addresses_function_signatures
-            .iter()
-            .map(|(addr, _fsigs)| *addr)
-            .collect::<HashSet<H160>>()
-            .into_iter()
-            .collect::<Vec<H160>>();
         stream::unfold(from, move |start| {
             if start > to {
                 return None
             }
-            let end = (start + 500 - 1).min(to);
+            let end = (start + 200 - 1).min(to);
             let new_start = end + 1;
-            let call_filter = call_filter.clone();
-            debug!(logger, "Starting request for method calls in block range: [{}, {}]", start, end);
-            Some(eth.calls(&logger, start, end, addresses.clone())
-                 .map(move |calls| {
-                     calls
-                         .into_iter()
-                         .filter(|call| {
-                             call_filter.matches(&call)
-                         })
-                         .collect()
-                 })
-                 .map(move |calls| {
-                     (calls, new_start)
+            debug!(logger, "Starting request in for traces block range: [{}, {}]", start, end);
+            Some(eth.traces(&logger, start, end, addresses.clone())
+                 .map(move |traces| {
+                     (traces, new_start)
                  }))
         })
     }
@@ -346,7 +338,7 @@ where
                         };
                         web3.eth()
                             .call(req, block_number_opt)
-                            .map_err(SyncFailure::new)
+                            .from_err::<EthereumContractCallError>()
                             .from_err()
                     })
                     .map_err(|e| {
@@ -374,7 +366,7 @@ where
         let net_version_future = retry("net_version RPC call", &logger)
             .no_limit()
             .timeout_secs(20)
-            .run(move || web3.net().version().map_err(SyncFailure::new).from_err());
+            .run(move || web3.net().version().from_err::<EthereumContractCallError>().from_err());
 
         let web3 = self.web3.clone();
         let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
@@ -383,7 +375,7 @@ where
             .run(move || {
                 web3.eth()
                     .block(BlockNumber::Earliest.into())
-                    .map_err(SyncFailure::new)
+                    .from_err::<EthereumContractCallError>()
                     .from_err()
                     .and_then(|gen_block_opt| {
                         future::result(
@@ -457,7 +449,7 @@ where
                 .run(move || {
                     web3.eth()
                         .block_with_txs(BlockId::Hash(block_hash))
-                        .map_err(SyncFailure::new)
+                        .from_err::<EthereumContractCallError>()
                         .from_err()
                 })
                 .map_err(move |e| {
@@ -500,7 +492,7 @@ where
                             batching_web3
                                 .eth()
                                 .transaction_receipt(tx_hash)
-                                .map_err(SyncFailure::new)
+                                .from_err::<EthereumContractCallError>()
                                 .from_err()
                                 .map_err(EthereumAdapterError::Unknown)
                                 .and_then(move |receipt_opt| {
@@ -556,7 +548,7 @@ where
                     batching_web3
                         .transport()
                         .submit_batch()
-                        .map_err(SyncFailure::new)
+                        .from_err::<EthereumContractCallError>()
                         .from_err()
                         .map_err(EthereumAdapterError::Unknown)
                         .and_then(move |_| {
@@ -594,7 +586,7 @@ where
                 .run(move || {
                     web3.eth()
                         .block(BlockId::Hash(descendant_block_hash))
-                        .map_err(SyncFailure::new)
+                        .from_err::<EthereumContractCallError>()
                         .from_err()
                         .map(|block_opt| block_opt.map(|block| block.parent_hash))
                 })
@@ -623,7 +615,7 @@ where
                 .run(move || {
                     web3.eth()
                         .block(BlockId::Number(block_number.into()))
-                        .map_err(SyncFailure::new)
+                        .from_err::<EthereumContractCallError>()
                         .from_err()
                         .map(|block_opt| block_opt.map(|block| block.hash.unwrap()))
                 })
@@ -665,36 +657,57 @@ where
         let call_filter = EthereumCallFilter {
             contract_addresses_function_signatures: HashMap::new(),
         };
-        let calls = eth.call_stream(&logger, block_number, block_number, call_filter)
+        let addresses = Vec::new();
+        let calls = eth.trace_stream(&logger, block_number, block_number, addresses)
             .collect()
-            .map(|call_chunks| match call_chunks.len() {
+            .map(|trace_chunks| match trace_chunks.len() {
                 0 => vec![],
                 _ => {
-                    call_chunks
+                    trace_chunks
                         .into_iter()
                         .flatten()
                         .collect()
                 }
             })
-            .and_then(move |calls| {
-                // Ensure the `EthereumCall` objects are for the correct Ethereum block
-                // by checking the call's block hash against the desired block hash.
-                // 
-                // DISCLAIMER: If the call stream returns calls for the correct block_number but the
-                // incorrect block_hash we can catch this and error. But if the call streams returns no calls
-                // for the correct block_number but the incorrect block_hash, there is no way to tell.
-                // Since we are asking for all the calls in the block this is not a problem.
-                assert!(calls.len() > 0);
-                for call in calls.iter() {
-                    if call.block_hash != block_hash {
+            .and_then(move |traces| {
+                // `trace_stream` returns all of the traces for the block, and this includes
+                // a trace for the block reward which every block should have.
+                // If there are no traces something has gone wrong.
+                if traces.is_empty() {
+                    return future::err(format_err!(
+                        "Trace stream return no traces for block: number = {}, hash = {}",
+                        block_number,
+                        block_hash,
+                    ))
+                }
+                // Since we can only pull traces by block number and we have all the traces for the block, we
+                // need to ensure that the block hash for the traces is equal to the desired block hash.
+                for trace in traces.iter() {
+                    if trace.block_hash != block_hash {
                         return future::err(format_err!(
-                            "Call stream returned calls for an unexpected block: number = {}, hash = {}",
+                            "Trace stream returned traces for an unexpected block: number = {}, hash = {}",
                             block_number,
                             block_hash,
                         ))
                     }
                 }
-                future::ok(calls)
+                future::ok(traces)
+            })
+            .map(move |traces| {
+                traces
+                    .iter()
+                    .filter(|trace| {
+                        let is_call = match trace.action {
+                            Action::Call(_) => true,
+                            _ => false,
+                        };
+                        if !is_call || trace.result.is_none() || trace.error.is_some() {
+                            return false
+                        }
+                        true
+                    })
+                    .map(EthereumCall::from)
+                    .collect()
             });
         Box::new(calls)
     }
@@ -838,32 +851,63 @@ where
         call_filter: EthereumCallFilter,
     ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         let eth = self.clone();
-        
-        Box::new(
-            eth.call_stream(&logger, from, to, call_filter)
-                .collect()
-                .map(|call_chunks| match call_chunks.len() {
+
+        let addresses: Vec<H160> = call_filter
+            .contract_addresses_function_signatures
+            .iter()
+            .map(|(addr, _fsigs)| *addr)
+            .collect::<HashSet<H160>>()
+            .into_iter()
+            .collect::<Vec<H160>>();
+        let blocks = eth.trace_stream(&logger, from, to, addresses)
+            .collect()
+            .map(move |trace_chunks| {
+                match trace_chunks.len() {
                     0 => vec![],
                     _ => {
-                        let calls: Vec<EthereumCall> = call_chunks
-                            .into_iter()
+                        trace_chunks
+                            .iter()
                             .flatten()
-                            .collect();
-                        let mut block_ptrs = vec![];
-                        for call in calls.iter() {
-                            let hash = call.block_hash;
-                            let number = call.block_number;
-                            let block_ptr = EthereumBlockPointer::from((hash, number));
-                            if !block_ptrs.contains(&block_ptr) {
-                                if let Some(prev) = block_ptrs.last() {
-                                    assert!(prev.number < number);
+                            .filter(|trace| {
+                                let is_call = match trace.action {
+                                    Action::Call(_) => true,
+                                    _ => false,
+                                };
+                                // Remove traces that are not for a call, do not have a result, or
+                                // are for a transaction which errored.
+                                if !is_call || trace.result.is_none() || trace.error.is_some() {
+                                    return false
                                 }
-                                block_ptrs.push(block_ptr);
-                            }
-                        }
-                        block_ptrs
+                                true
+                            })
+                            .map(EthereumCall::from)
+                            .filter(|call| {
+                                // `trace_filter` can only filter by calls `to` an address and
+                                // a block range. Since subgraphs are subscribing to calls
+                                // for a specific contract function an additional filter needs
+                                // to be applied
+                                call_filter.matches(&call)
+                            })
+                            .collect()
                     }
-                }))
+                }
+            })
+            .map(|calls| {
+                let mut block_ptrs = vec![];
+                for call in calls.iter() {
+                    let hash = call.block_hash;
+                    let number = call.block_number;
+                    let block_ptr = EthereumBlockPointer::from((hash, number));
+                    if !block_ptrs.contains(&block_ptr) {
+                        if let Some(prev) = block_ptrs.last() {
+                            assert!(prev.number < number);
+                        }
+                        block_ptrs.push(block_ptr);
+                    }
+                }
+                block_ptrs
+            });
+        Box::new(blocks)
     }
 
     fn contract_call(
