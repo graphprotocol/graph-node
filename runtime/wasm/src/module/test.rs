@@ -145,6 +145,7 @@ fn mock_data_source(path: &str) -> DataSource {
             },
             runtime,
         },
+        templates: None,
     }
 }
 
@@ -153,7 +154,7 @@ fn mock_context() -> EventHandlerContext {
         logger: Logger::root(slog::Discard, o!()),
         block: Default::default(),
         transaction: Default::default(),
-        entity_operations: Vec::new(),
+        state: BlockState::default(),
     }
 }
 
@@ -340,7 +341,7 @@ fn ipfs_map() {
             &mut module,
         )?;
         assert_eq!(None, converted);
-        Ok(module.ctx.entity_operations)
+        Ok(module.ctx.state.entity_operations)
     };
 
     // Try it with two valid objects
