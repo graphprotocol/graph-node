@@ -42,6 +42,13 @@ where
     /// Returns an `EthereumLogFilter` for all the subgraph's data sources.
     fn ethereum_log_filter(&self) -> EthereumLogFilter;
 
+    /// Returns the runtime host builder used by the subgraph instance.
+    fn runtime_host_builder(&self) -> &T;
+
     /// Adds dynamic data sources to the subgraph.
-    fn add_dynamic_data_sources(&mut self, data_sources: Vec<DataSource>) -> Result<(), Error>;
+    fn add_dynamic_data_sources(
+        &mut self,
+        data_sources: Vec<DataSource>,
+        runtime_hosts: Vec<Arc<T::Host>>,
+    );
 }
