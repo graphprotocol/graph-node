@@ -12,12 +12,6 @@ where
     /// stream events are processed by the mappings in this same order.
     hosts: Vec<Arc<T::Host>>,
 
-    /// The subgraph manifest ID.
-    manifest_id: SubgraphDeploymentId,
-
-    /// Logger
-    logger: Logger,
-
     /// Builder for runtime hosts.
     host_builder: T,
 
@@ -34,13 +28,9 @@ where
         manifest: SubgraphManifest,
         host_builder: T,
     ) -> Result<Self, Error> {
-        // Create a new runtime host for each data source in the subgraph manifest;
-        // we use the same order here as in the subgraph manifest to make the
-        // event processing behavior predictable
-        let manifest_id = manifest.id;
-
         let manifest_log_filter = EthereumLogFilter::from(&manifest.data_sources);
 
+        let manifest_id = manifest.id.clone();
         let (hosts, errors): (_, Vec<_>) = manifest
             .data_sources
             .into_iter()
@@ -67,8 +57,6 @@ where
                 .map(Arc::new)
                 .collect(),
             host_builder,
-            logger: logger.clone(),
-            manifest_id: manifest_id.clone(),
             ethereum_log_filter: manifest_log_filter,
         })
     }
@@ -117,35 +105,20 @@ where
         self.ethereum_log_filter.clone()
     }
 
-    fn add_dynamic_data_sources(&mut self, data_sources: Vec<DataSource>) -> Result<(), Error> {
+    fn runtime_host_builder(&self) -> &T {
+        &self.host_builder
+    }
+
+    fn add_dynamic_data_sources(
+        &mut self,
+        data_sources: Vec<DataSource>,
+        runtime_hosts: Vec<Arc<T::Host>>,
+    ) {
         // Add the data sources to the log filter
         self.ethereum_log_filter
             .extend(EthereumLogFilter::from(&data_sources));
 
-        // Then, add hosts for the data sources
-        let (hosts, errors): (_, Vec<_>) = data_sources
-            .iter()
-            .map(|d| {
-                self.host_builder
-                    .build(&self.logger, self.manifest_id.clone(), d.expensive_clone())
-            })
-            .partition(|res| res.is_ok());
-
-        if errors.is_empty() {
-            self.hosts
-                .extend(hosts.into_iter().map(Result::unwrap).map(Arc::new));
-            Ok(())
-        } else {
-            let joined_errors = errors
-                .into_iter()
-                .map(Result::unwrap_err)
-                .map(|e| e.to_string())
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Err(format_err!(
-                "Errors loading data sources: {}",
-                joined_errors
-            ));
-        }
+        // Add the runtime hosts
+        self.hosts.extend(runtime_hosts);
     }
 }

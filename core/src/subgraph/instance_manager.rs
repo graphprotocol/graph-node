@@ -400,12 +400,15 @@ where
     }
 
     // Obtain current and new block pointer (after this block is processed)
+    let block = Arc::new(block);
     let block_ptr_now = EthereumBlockPointer::to_parent(&block);
-    let block_ptr_after = EthereumBlockPointer::from(&block);
+    let block_ptr_after = EthereumBlockPointer::from(&*block);
 
     // Clone a few things to pass into futures
     let logger1 = logger.clone();
     let logger2 = logger.clone();
+    let logger3 = logger.clone();
+    let logger4 = logger.clone();
 
     // Process events one after the other, passing in entity operations
     // collected previously to every new event being processed
@@ -413,20 +416,77 @@ where
         logger.clone(),
         subgraph_state.instance.clone(),
         BlockState::default(),
-        Arc::new(block),
+        block.clone(),
         logs,
     )
     .and_then(|block_state| {
         // Instantiate dynamic data sources
-        create_dynamic_data_sources(subgraph_state, block_state).from_err()
+        create_dynamic_data_sources(logger1, subgraph_state, block_state).from_err()
     })
-    //
-    // TODO: Request and process events for the current block
-    //
-    .and_then(move |(subgraph_state, block_state, data_sources)| {
-        // Add entity operations for the new data sources to the block state
-        // and add runtimes for the data sources to the subgraph instance
-        persist_dynamic_data_sources(logger1, subgraph_state, block_state, data_sources)
+    .and_then(
+        move |(subgraph_state, block_state, data_sources, runtime_hosts)| {
+            // Reprocess the logs that only match the new data sources
+            //
+            // Note: Once we support other triggers as well, we may have to
+            // re-request the current block from the block stream's adapter
+            // and process that instead of the block we already have here.
+
+            // Extract logs relevant to the new runtime hosts
+            let logs: Vec<_> = if runtime_hosts.is_empty() {
+                vec![]
+            } else {
+                block
+                    .transaction_receipts
+                    .iter()
+                    .flat_map(|receipt| {
+                        receipt
+                            .logs
+                            .iter()
+                            .filter(|log| runtime_hosts.iter().any(|host| host.matches_log(&log)))
+                    })
+                    .cloned()
+                    .collect()
+            };
+
+            if logs.len() == 0 {
+                debug!(
+                    logger,
+                    "No events found in this block for the new data sources"
+                );
+            } else if logs.len() == 1 {
+                info!(
+                    logger,
+                    "1 event found in this block for the new data sources"
+                );
+            } else {
+                info!(
+                    logger,
+                    "{} events found in this block for the new data sources",
+                    logs.len()
+                );
+            }
+
+            process_logs_in_runtime_hosts(
+                logger2.clone(),
+                runtime_hosts.clone(),
+                block_state,
+                block.clone(),
+                logs,
+            )
+            .map(move |block_state| (subgraph_state, block_state, data_sources, runtime_hosts))
+        },
+    )
+    .and_then(
+        move |(subgraph_state, block_state, data_sources, runtime_hosts)| {
+            // Add entity operations for the new data sources to the block state
+            // and add runtimes for the data sources to the subgraph instance
+            persist_dynamic_data_sources(
+                logger3,
+                subgraph_state,
+                block_state,
+                data_sources,
+                runtime_hosts,
+            )
             .map(move |(subgraph_state, block_state, data_sources_created)| {
                 // If new data sources have been added, indicate that the subgraph
                 // needs to be restarted after this block
@@ -437,18 +497,17 @@ where
                 (subgraph_state, block_state)
             })
             .from_err()
-    })
+        },
+    )
     // Apply entity operations and advance the stream
     .and_then(move |(subgraph_state, block_state)| {
-        let logger = logger2.clone();
-
         // Avoid writing to store if block stream has been canceled
         if block_stream_cancel_handle.is_canceled() {
             return Err(CancelableError::Cancel);
         }
 
         info!(
-            logger,
+            logger4,
             "Applying {} entity operation(s)",
             block_state.entity_operations.len()
         );
@@ -503,10 +562,69 @@ where
         })
 }
 
+fn process_logs_in_runtime_hosts<R>(
+    logger: Logger,
+    runtime_hosts: Vec<Arc<R>>,
+    block_state: BlockState,
+    block: Arc<EthereumBlock>,
+    logs: Vec<Log>,
+) -> impl Future<Item = BlockState, Error = CancelableError<Error>>
+where
+    R: RuntimeHost + 'static,
+{
+    stream::iter_ok::<_, CancelableError<Error>>(logs)
+        // Process events from the block stream
+        .fold(block_state, move |block_state, log| {
+            let logger = logger.clone();
+            let block = block.clone();
+            let runtime_hosts = runtime_hosts.clone();
+
+            let transaction = block
+                .transaction_for_log(&log)
+                .map(Arc::new)
+                .ok_or_else(|| format_err!("Found no transaction for event"));
+
+            future::result(transaction).and_then(move |transaction| {
+                // Identify runtime hosts that will handle this event
+                let matching_hosts: Vec<_> = runtime_hosts
+                    .iter()
+                    .filter(|host| host.matches_log(&log))
+                    .cloned()
+                    .collect();
+
+                let log = Arc::new(log);
+
+                // Process the log in each host in the same order the corresponding
+                // data sources have been created
+                Box::new(stream::iter_ok(matching_hosts).fold(
+                    block_state,
+                    move |block_state, host| {
+                        host.process_log(
+                            logger.clone(),
+                            block.clone(),
+                            transaction.clone(),
+                            log.clone(),
+                            block_state,
+                        )
+                    },
+                ))
+            })
+        })
+}
+
 fn create_dynamic_data_sources<B, S, T>(
+    logger: Logger,
     subgraph_state: SubgraphState<B, S, T>,
     block_state: BlockState,
-) -> impl Future<Item = (SubgraphState<B, S, T>, BlockState, Vec<DataSource>), Error = Error>
+) -> impl Future<
+    Item = (
+        SubgraphState<B, S, T>,
+        BlockState,
+        Vec<DataSource>,
+        Vec<Arc<T::Host>>,
+    ),
+    Error = Error,
+>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store,
@@ -521,12 +639,14 @@ where
         subgraph_state: SubgraphState<B, S, T>,
         block_state: BlockState,
         data_sources: Vec<DataSource>,
+        runtime_hosts: Vec<Arc<T::Host>>,
     };
 
     let initial_state = State {
         subgraph_state,
         block_state,
         data_sources: vec![],
+        runtime_hosts: vec![],
     };
 
     stream::iter_ok(initial_state.block_state.created_data_sources.clone())
@@ -553,12 +673,31 @@ where
                 Err(e) => return future::err(e),
             };
 
+            // Try to instantiate a data source from the template
             let data_source = match DataSource::try_from_template(&template, &info.params) {
                 Ok(data_source) => data_source,
                 Err(e) => return future::err(e),
             };
 
+            // Try to create a runtime host for the data source
+            let host = match state
+                .subgraph_state
+                .instance
+                .read()
+                .unwrap()
+                .runtime_host_builder()
+                .build(
+                    &logger,
+                    state.subgraph_state.deployment_id.clone(),
+                    data_source.expensive_clone(),
+                ) {
+                Ok(host) => Arc::new(host),
+                Err(e) => return future::err(e),
+            };
+
             state.data_sources.push(data_source);
+            state.runtime_hosts.push(host);
+
             future::ok(state)
         })
         .map(|final_state| {
@@ -566,6 +705,7 @@ where
                 final_state.subgraph_state,
                 final_state.block_state,
                 final_state.data_sources,
+                final_state.runtime_hosts,
             )
         })
 }
@@ -575,6 +715,7 @@ fn persist_dynamic_data_sources<B, S, T>(
     subgraph_state: SubgraphState<B, S, T>,
     mut block_state: BlockState,
     data_sources: Vec<DataSource>,
+    runtime_hosts: Vec<Arc<T::Host>>,
 ) -> impl Future<Item = (SubgraphState<B, S, T>, BlockState, bool), Error = Error>
 where
     B: BlockStreamBuilder,
@@ -603,16 +744,13 @@ where
         block_state.entity_operations.extend(operations);
     }
 
-    // Try to add the new data sources to the subgraph;
-    // fail if they can't be added
-    future::result(
-        subgraph_state
-            .instance
-            .clone()
-            .write()
-            .unwrap()
-            .add_dynamic_data_sources(data_sources),
-    )
-    .map(move |_| (subgraph_state, block_state, needs_restart))
-    .map_err(|e| e.into())
+    // Add the new data sources to the subgraph instance
+    subgraph_state
+        .instance
+        .clone()
+        .write()
+        .unwrap()
+        .add_dynamic_data_sources(data_sources, runtime_hosts);
+
+    future::ok((subgraph_state, block_state, needs_restart))
 }
