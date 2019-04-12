@@ -222,7 +222,7 @@ where
         handler_name: &str,
         log: Arc<Log>,
         params: Vec<LogParam>,
-    ) -> Result<ProcessingState, FailureError> {
+    ) -> Result<BlockState, FailureError> {
         self.start_time = Instant::now();
 
         let block = self.ctx.block.block.clone();
