@@ -343,7 +343,9 @@ impl RuntimeHostTrait for RuntimeHost {
         debug!(
             logger, "Start processing Ethereum event";
             "signature" => &event_handler.event,
-            "handler" => &event_handler.handler
+            "handler" => &event_handler.handler,
+            "data_source" => &self.data_source_name,
+            "address" => format!("{}", &log.address),
         );
 
         // Call the event handler and asynchronously wait for the result
