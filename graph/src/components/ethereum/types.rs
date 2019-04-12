@@ -59,6 +59,8 @@ impl Default for EthereumBlock {
                 uncles: vec![],
                 transactions: vec![],
                 size: None,
+                mix_hash: Some(H256::default()),
+                nonce: None,
             },
             transaction_receipts: vec![],
         }
@@ -85,7 +87,7 @@ impl From<&Trace> for EthereumCall {
             _ => (Address::zero(), Address::zero(), U256::zero(), Bytes::from(vec![])),
         };
         let (output, gas_used) = match &trace.result {
-            Res::Call(result) => (result.output.clone(), result.gas_used),
+            Some(Res::Call(result)) => (result.output.clone(), result.gas_used),
             _ => (Bytes::from(vec![]), U256::zero()),
         };
         Self {

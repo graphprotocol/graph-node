@@ -45,7 +45,7 @@ pub struct EthereumContractCall {
 #[derive(Fail, Debug)]
 pub enum EthereumContractCallError {
     #[fail(display = "call error: {}", _0)]
-    CallError(SyncFailure<Web3Error>),
+    CallError(Error),
     #[fail(display = "ABI error: {}", _0)]
     ABIError(SyncFailure<ABIError>),
     /// `Token` is not of expected `ParamType`
@@ -57,7 +57,7 @@ pub enum EthereumContractCallError {
 
 impl From<Web3Error> for EthereumContractCallError {
     fn from(e: Web3Error) -> Self {
-        EthereumContractCallError::CallError(SyncFailure::new(e))
+        EthereumContractCallError::CallError(failure::err_msg(e.to_string()))
     }
 }
 
