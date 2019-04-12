@@ -282,9 +282,16 @@ where
                     let result_sink = msg_sink.clone();
                     let result_id = id.clone();
                     let err_id = id.clone();
+                    let err_connection_id = connection_id.clone();
+                    let err_logger = logger.clone();
                     let run_subscription = graphql_runner
                         .run_subscription(subscription)
                         .map_err(move |e| {
+                            debug!(err_logger, "Subscription error";
+                                               "connection" => &err_connection_id,
+                                               "id" => &err_id,
+                                               "error" => format!("{:?}", e));
+
                             // Send errors back to the client as GQL_DATA
                             match e {
                                 SubscriptionError::GraphQLError(e) => {

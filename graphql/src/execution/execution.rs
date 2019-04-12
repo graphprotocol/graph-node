@@ -8,11 +8,11 @@ use std::time::Instant;
 
 use graph::prelude::*;
 
+use crate::introspection::INTROSPECTION_DOCUMENT;
 use crate::prelude::*;
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
 use crate::values::coercion;
-use crate::introspection::INTROSPECTION_DOCUMENT;
 
 /// Contextual information passed around during query execution.
 #[derive(Clone)]
