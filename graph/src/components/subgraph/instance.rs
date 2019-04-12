@@ -9,7 +9,7 @@ pub struct DataSourceTemplateInfo {
 }
 
 #[derive(Debug, Default)]
-pub struct ProcessingState {
+pub struct BlockState {
     pub entity_operations: Vec<EntityOperation>,
     pub created_data_sources: Vec<DataSourceTemplateInfo>,
 }
@@ -36,8 +36,8 @@ where
         block: Arc<EthereumBlock>,
         transaction: Arc<Transaction>,
         log: Log,
-        state: ProcessingState,
-    ) -> Box<Future<Item = ProcessingState, Error = Error> + Send>;
+        state: BlockState,
+    ) -> Box<Future<Item = BlockState, Error = Error> + Send>;
 
     /// Returns an `EthereumLogFilter` for all the subgraph's data sources.
     fn ethereum_log_filter(&self) -> EthereumLogFilter;

@@ -84,8 +84,8 @@ where
         block: Arc<EthereumBlock>,
         transaction: Arc<Transaction>,
         log: Log,
-        state: ProcessingState,
-    ) -> Box<Future<Item = ProcessingState, Error = Error> + Send> {
+        state: BlockState,
+    ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
         let logger = logger.to_owned();
 
         // Identify runtime hosts that will handle this event
