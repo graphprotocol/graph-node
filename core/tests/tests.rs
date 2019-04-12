@@ -14,7 +14,7 @@ use graph::components::ethereum::*;
 use graph::prelude::*;
 use graph::web3::types::*;
 use graph_core::SubgraphInstanceManager;
-use graph_mock::{FakeStore, MockBlockStreamBuilder, MockStore};
+use graph_mock::{FakeStore, MockBlockStreamBuilder, MockGraphQlRunner, MockStore};
 use std::collections::HashSet;
 use std::fs::read_to_string;
 use std::io::Cursor;
@@ -80,8 +80,8 @@ fn multiple_data_sources_per_subgraph() {
             _: Arc<EthereumBlock>,
             _: Arc<Transaction>,
             _: Arc<Log>,
-            _: Vec<EntityOperation>,
-        ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send> {
+            _: BlockState,
+        ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
             unreachable!();
         }
     }
@@ -207,10 +207,12 @@ fn subgraph_provider_events() {
             let logger = Logger::root(slog::Discard, o!());
             let resolver = Arc::new(IpfsClient::default());
             let store = Arc::new(MockStore::new(vec![]));
+            let graphql_runner = Arc::new(MockGraphQlRunner::new(&logger));
             let mut provider = graph_core::SubgraphAssignmentProvider::new(
                 logger.clone(),
                 resolver.clone(),
                 store.clone(),
+                graphql_runner.clone(),
             );
             let provider_events = provider.take_event_stream().unwrap();
             let node_id = NodeId::new("test").unwrap();
@@ -355,10 +357,12 @@ fn subgraph_list() {
             let logger = Logger::root(slog::Discard, o!());
             let store = Arc::new(MockStore::new(vec![]));
             let resolver = Arc::new(IpfsClient::default());
+            let graphql_runner = Arc::new(MockGraphQlRunner::new(&logger));
             let provider = graph_core::SubgraphAssignmentProvider::new(
                 logger.clone(),
                 resolver.clone(),
                 store.clone(),
+                graphql_runner.clone(),
             );
             let node_id = NodeId::new("testnode").unwrap();
 
