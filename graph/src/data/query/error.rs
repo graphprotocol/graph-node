@@ -51,7 +51,7 @@ pub enum QueryExecutionError {
     EnumCoercionError(Pos, String, q::Value, String, Vec<String>),
     ScalarCoercionError(Pos, String, q::Value, String),
     TooComplex(u64, u64), // (complexity, max_complexity)
-    TooDeep(u8), // max_depth
+    TooDeep(u8),          // max_depth
 }
 
 impl Error for QueryExecutionError {

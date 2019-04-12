@@ -12,6 +12,7 @@ use crate::prelude::*;
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
 use crate::values::coercion;
+use crate::introspection::INTROSPECTION_DOCUMENT;
 
 /// Contextual information passed around during query execution.
 #[derive(Clone)]
@@ -115,8 +116,7 @@ where
             name: &Name,
         ) -> Result<s::TypeDefinition, ComplexityError> {
             if name.starts_with("__") {
-                let doc = introspection_schema(SubgraphDeploymentId::new("").unwrap()).document;
-                sast::get_named_type(&doc, name).cloned()
+                sast::get_named_type(&INTROSPECTION_DOCUMENT, name).cloned()
             } else {
                 sast::get_named_type(schema, name).cloned()
             }
@@ -137,8 +137,7 @@ where
             name: &Name,
         ) -> Option<s::Field> {
             if name == "__schema" || name == "__type" {
-                let doc = introspection_schema(SubgraphDeploymentId::new("").unwrap()).document;
-                let object_type = sast::get_root_query_type(&doc).unwrap();
+                let object_type = sast::get_root_query_type(&INTROSPECTION_DOCUMENT).unwrap();
                 sast::get_field(object_type, name).cloned()
             } else {
                 sast::get_field(object_type, name).cloned()

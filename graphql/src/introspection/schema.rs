@@ -1,7 +1,8 @@
-use graphql_parser;
+use graphql_parser::{self, schema::Document};
 
 use graph::data::schema::Schema;
 use graph::data::subgraph::SubgraphDeploymentId;
+use lazy_static::lazy_static;
 
 const INTROSPECTION_SCHEMA: &str = "
 scalar Boolean
@@ -109,9 +110,11 @@ enum __DirectiveLocation {
   INPUT_FIELD_DEFINITION
 }";
 
+lazy_static! {
+    pub static ref INTROSPECTION_DOCUMENT: Document =
+        graphql_parser::parse_schema(INTROSPECTION_SCHEMA).unwrap();
+}
+
 pub fn introspection_schema(id: SubgraphDeploymentId) -> Schema {
-    Schema::new(
-        id,
-        graphql_parser::parse_schema(INTROSPECTION_SCHEMA).unwrap(),
-    )
+    Schema::new(id, INTROSPECTION_DOCUMENT.clone())
 }
