@@ -104,7 +104,8 @@ where
     debug!(
         query_logger,
         "Finished query";
-        "time" => format!("{}ms", start_time.elapsed().as_millis())
+        "time" => format!("{}ms", start_time.elapsed().as_millis()),
+        "errors" => format!("{:?}", result.as_ref().err()),
     );
 
     match result {
