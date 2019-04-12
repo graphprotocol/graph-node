@@ -25,6 +25,11 @@ lazy_static! {
         .ok()
         .map(|s| u64::from_str(&s)
             .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_COMPLEXITY")));
+    static ref GRAPHQL_MAX_DEPTH: u8 = env::var("GRAPH_GRAPHQL_MAX_DEPTH")
+        .ok()
+        .map(|s| u8::from_str(&s)
+            .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_DEPTH")))
+        .unwrap_or(u8::max_value());
 }
 
 impl<S> GraphQlRunner<S>
@@ -52,6 +57,7 @@ where
                 resolver: StoreResolver::new(&self.logger, self.store.clone()),
                 deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
                 max_complexity: *GRAPHQL_MAX_COMPLEXITY,
+                max_depth: *GRAPHQL_MAX_DEPTH,
             },
         );
         Box::new(future::ok(result))
@@ -65,6 +71,7 @@ where
                 resolver: StoreResolver::new(&self.logger, self.store.clone()),
                 timeout: GRAPHQL_QUERY_TIMEOUT.clone(),
                 max_complexity: *GRAPHQL_MAX_COMPLEXITY,
+                max_depth: *GRAPHQL_MAX_DEPTH,
             },
         );
 
