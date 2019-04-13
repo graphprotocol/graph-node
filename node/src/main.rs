@@ -64,6 +64,7 @@ lazy_static! {
 git_testament!(TESTAMENT);
 
 fn main() {
+    println!("REORG_THRESHOLD = {:#?}", *REORG_THRESHOLD);
     let (shutdown_sender, shutdown_receiver) = oneshot::channel();
     // Register guarded panic logger which ensures logs flush on shutdown
     let (panic_logger, _panic_guard) = guarded_logger();
