@@ -52,15 +52,16 @@ type EthereumContractDataSource @entity {
 }
 
 type DynamicEthereumContractDataSource @entity {
-    # TODO: Add created time and block here
     id: ID!
-    deployment: SubgraphDeployment!
     kind: String!
     name: String!
     network: String
     source: EthereumContractSource!
     mapping: EthereumContractMapping!
     templates: [EthereumContractDataSourceTemplate!]
+    ethereumBlockHash: Bytes!
+    ethereumBlockNumber: BigInt!
+    deployment: SubgraphDeployment!
 }
 
 type EthereumContractSource @entity {

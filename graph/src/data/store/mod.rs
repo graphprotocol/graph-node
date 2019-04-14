@@ -1,16 +1,17 @@
 use ethabi::Address;
 use failure::Error;
+use graphql_parser::query;
+use graphql_parser::schema;
 use serde::de;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
+use web3::types::H256;
 
 use crate::data::subgraph::SubgraphDeploymentId;
 use crate::prelude::QueryExecutionError;
-use graphql_parser::query;
-use graphql_parser::schema;
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -340,6 +341,12 @@ impl From<Vec<Value>> for Value {
 impl From<Address> for Value {
     fn from(address: Address) -> Value {
         Value::Bytes(scalar::Bytes::from(address.as_ref()))
+    }
+}
+
+impl From<H256> for Value {
+    fn from(hash: H256) -> Value {
+        Value::Bytes(scalar::Bytes::from(hash.as_ref()))
     }
 }
 

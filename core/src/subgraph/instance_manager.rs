@@ -403,6 +403,7 @@ where
     let block = Arc::new(block);
     let block_ptr_now = EthereumBlockPointer::to_parent(&block);
     let block_ptr_after = EthereumBlockPointer::from(&*block);
+    let block_ptr_for_new_data_sources = block_ptr_after.clone();
 
     // Clone a few things to pass into futures
     let logger1 = logger.clone();
@@ -486,6 +487,7 @@ where
                 block_state,
                 data_sources,
                 runtime_hosts,
+                block_ptr_for_new_data_sources,
             )
             .map(move |(subgraph_state, block_state, data_sources_created)| {
                 // If new data sources have been added, indicate that the subgraph
@@ -716,6 +718,7 @@ fn persist_dynamic_data_sources<B, S, T>(
     mut block_state: BlockState,
     data_sources: Vec<DataSource>,
     runtime_hosts: Vec<Arc<T::Host>>,
+    block_ptr: EthereumBlockPointer,
 ) -> impl Future<Item = (SubgraphState<B, S, T>, BlockState, bool), Error = Error>
 where
     B: BlockStreamBuilder,
@@ -738,6 +741,7 @@ where
         let entity = DynamicEthereumContractDataSourceEntity::from((
             &subgraph_state.deployment_id,
             data_source,
+            &block_ptr,
         ));
         let id = format!("{}-dynamic", Uuid::new_v4().to_simple());
         let operations = entity.write_operations(id.as_ref());
