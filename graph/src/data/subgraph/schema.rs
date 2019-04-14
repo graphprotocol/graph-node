@@ -479,6 +479,8 @@ impl TryFromValue for EthereumContractDataSourceEntity {
 pub struct DynamicEthereumContractDataSourceEntity {
     kind: String,
     deployment: String,
+    ethereum_block_hash: H256,
+    ethereum_block_number: u64,
     network: Option<String>,
     name: String,
     source: EthereumContractSourceEntity,
@@ -515,7 +517,6 @@ impl DynamicEthereumContractDataSourceEntity {
 
         let mut entity = Entity::new();
         entity.set("id", id);
-        entity.set("deployment", self.deployment);
         entity.set("kind", self.kind);
         entity.set("network", self.network);
         entity.set("name", self.name);
@@ -527,21 +528,36 @@ impl DynamicEthereumContractDataSourceEntity {
             }
             None => {}
         }
+        entity.set("deployment", self.deployment);
+        entity.set("ethereumBlockHash", self.ethereum_block_hash);
+        entity.set("ethereumBlockNumber", self.ethereum_block_number);
         ops.push(set_entity_operation(Self::TYPENAME, id, entity));
 
         ops
     }
 }
 
-impl<'a, 'b> From<(&'a SubgraphDeploymentId, &'b super::DataSource)>
-    for DynamicEthereumContractDataSourceEntity
+impl<'a, 'b, 'c>
+    From<(
+        &'a SubgraphDeploymentId,
+        &'b super::DataSource,
+        &'c EthereumBlockPointer,
+    )> for DynamicEthereumContractDataSourceEntity
 {
-    fn from(data: (&'a SubgraphDeploymentId, &'b super::DataSource)) -> Self {
-        let (deployment_id, data_source) = data;
+    fn from(
+        data: (
+            &'a SubgraphDeploymentId,
+            &'b super::DataSource,
+            &'c EthereumBlockPointer,
+        ),
+    ) -> Self {
+        let (deployment_id, data_source, block_ptr) = data;
 
         Self {
-            deployment: deployment_id.to_string(),
             kind: data_source.kind.clone(),
+            deployment: deployment_id.to_string(),
+            ethereum_block_hash: block_ptr.hash.clone(),
+            ethereum_block_number: block_ptr.number,
             name: data_source.name.clone(),
             network: data_source.network.clone(),
             source: data_source.source.clone().into(),
