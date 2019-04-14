@@ -50,5 +50,5 @@ where
         &mut self,
         data_sources: Vec<DataSource>,
         runtime_hosts: Vec<Arc<T::Host>>,
-    );
+    ) -> Result<(), Error>;
 }
