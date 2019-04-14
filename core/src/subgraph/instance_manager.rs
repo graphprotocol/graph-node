@@ -749,12 +749,14 @@ where
     }
 
     // Add the new data sources to the subgraph instance
-    subgraph_state
+    match subgraph_state
         .instance
         .clone()
         .write()
         .unwrap()
-        .add_dynamic_data_sources(data_sources, runtime_hosts);
-
-    future::ok((subgraph_state, block_state, needs_restart))
+        .add_dynamic_data_sources(data_sources, runtime_hosts)
+    {
+        Ok(_) => future::ok((subgraph_state, block_state, needs_restart)),
+        Err(e) => future::err(e),
+    }
 }

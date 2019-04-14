@@ -1,5 +1,16 @@
+use lazy_static::lazy_static;
+use std::env;
+use std::str::FromStr;
+
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::web3::types::{Log, Transaction};
+
+lazy_static! {
+    static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
+        .ok()
+        .map(|s| usize::from_str(&s)
+            .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_SUBGRAPH_MAX_DATA_SOURCES")));
+}
 
 pub struct SubgraphInstance<T>
 where
@@ -113,12 +124,24 @@ where
         &mut self,
         data_sources: Vec<DataSource>,
         runtime_hosts: Vec<Arc<T::Host>>,
-    ) {
+    ) -> Result<(), Error> {
+        // Protect against creating more than the allowed maximum number of data sources
+        if let Some(max_data_sources) = *MAX_DATA_SOURCES {
+            if self.hosts.len() + runtime_hosts.len() > max_data_sources {
+                return Err(format_err!(
+                    "Limit of {} data sources per subgraph exceeded",
+                    max_data_sources
+                ));
+            }
+        }
+
         // Add the data sources to the log filter
         self.ethereum_log_filter
             .extend(EthereumLogFilter::from(&data_sources));
 
         // Add the runtime hosts
         self.hosts.extend(runtime_hosts);
+
+        Ok(())
     }
 }
