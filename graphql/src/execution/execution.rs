@@ -169,8 +169,7 @@ where
                             | s::TypeDefinition::InputObject(_)
                             | s::TypeDefinition::Union(_) => None,
                         }
-                        .ok_or(Invalid)
-                        .unwrap();
+                        .ok_or(Invalid)?;
 
                         let field_complexity = self.query_complexity(
                             &get_type_definition_from_type(schema, &s_field.field_type)?,
