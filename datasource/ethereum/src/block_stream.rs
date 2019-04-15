@@ -1341,14 +1341,14 @@ fn parse_triggers(
                 return Ordering::Equal
             }
             if a_tx_index.is_none() {
-                return Ordering::Less
+                return Ordering::Greater
             }
             if b_tx_index.is_none() {
-                return Ordering::Greater
+                return Ordering::Less
             }
             a_tx_index.unwrap().cmp(&b_tx_index.unwrap())
         });
-
+    
     Ok(triggers)
 }
 
