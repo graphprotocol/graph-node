@@ -753,10 +753,12 @@ where
                     .into_iter()
                     .flatten()
                     .collect::<Vec<EthereumBlockPointer>>();
-                blocks.dedup();
                 blocks.sort_by(|a, b| {
                     a.number.cmp(&b.number)
                 });
+                // Dedup only remove consecutive duplicates, so it needs to be
+                // run after the vector is sorted
+                blocks.dedup();
                 future::ok(blocks)
             }))
     }
