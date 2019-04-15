@@ -436,7 +436,7 @@ pub fn get_input_object_definitions(schema: &Document) -> Vec<InputObjectType> {
 
 /// If the field has a `@derivedFrom(field: "foo")` directive, obtain the
 /// name of the field (e.g. `"foo"`)
-fn get_derived_from_directive<'a>(field_definition: &Field) -> Option<&Directive> {
+pub fn get_derived_from_directive<'a>(field_definition: &Field) -> Option<&Directive> {
     field_definition
         .directives
         .iter()
