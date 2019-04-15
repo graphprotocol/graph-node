@@ -41,7 +41,7 @@ in parallel for block retrieval (defaults to 64)
 * `SUBSCRIPTION_THROTTLE_INTERVAL`: while a subgraph is syncing,
   subscriptions to that subgraph get updated at most this often, in
   ms. Default is 1000ms.
-* `GRAPH_GRAPHQL_MAX_COMPLEXITY`: maximum complexity for a graphql query. See [here](https://developer.github.com/v4/guides/resource-limitations) for what that means. Default is unlimited.
+* `GRAPH_GRAPHQL_MAX_COMPLEXITY`: maximum complexity for a graphql query. See [here](https://developer.github.com/v4/guides/resource-limitations) for what that means. Default is unlimited. Typical introspection queries have a complexity of just over 1 million, so setting a value below that may interfere with introspection done by graphql clients.
 * `GRAPH_GRAPHQL_MAX_DEPTH`: maximum depth of a graphql query. Default (and maximum) is 255.
 
 ## Miscellaneous
