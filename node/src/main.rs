@@ -315,7 +315,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 logger,
                 "Failed to create IPFS client for `{}`: {}", &ipfs_address, e
             );
-            panic!("Cloud not connect to IPFS");
+            panic!("Could not connect to IPFS");
         }
     };
 
