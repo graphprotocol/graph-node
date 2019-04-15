@@ -1034,3 +1034,92 @@ fn ambiguous_derived_from_result() {
         )),
     }
 }
+
+#[test]
+fn can_filter_by_relationship_fields() {
+    let result = execute_query_document(
+        graphql_parser::parse_query(
+            "
+        query {
+            musicians(orderBy: id, where: { mainBand: \"b2\" }) {
+                id name
+                mainBand { id }
+            }
+            bands(orderBy: id, where: { originalSongs: [\"s1\", \"s3\", \"s4\"] }) {
+                id name
+                originalSongs { id }
+            }
+        }
+        ",
+        )
+        .expect("invalid test query"),
+    );
+
+    assert!(
+        result.errors.is_none(),
+        format!("Unexpected errors return for query: {:#?}", result.errors)
+    );
+    assert_eq!(
+        result.data,
+        Some(object_value(vec![
+            (
+                "musicians",
+                q::Value::List(vec![object_value(vec![
+                    ("id", q::Value::String(String::from("m3"))),
+                    ("name", q::Value::String(String::from("Tom"))),
+                    (
+                        "mainBand",
+                        object_value(vec![("id", q::Value::String(String::from("b2")))])
+                    )
+                ])])
+            ),
+            (
+                "bands",
+                q::Value::List(vec![object_value(vec![
+                    ("id", q::Value::String(String::from("b2"))),
+                    ("name", q::Value::String(String::from("The Amateurs"))),
+                    (
+                        "originalSongs",
+                        q::Value::List(vec![
+                            object_value(vec![("id", q::Value::String(String::from("s1")))]),
+                            object_value(vec![("id", q::Value::String(String::from("s3")))]),
+                            object_value(vec![("id", q::Value::String(String::from("s4")))]),
+                        ])
+                    )
+                ])])
+            )
+        ]))
+    );
+}
+
+#[test]
+fn cannot_filter_by_derved_relationship_fields() {
+    let result = execute_query_document(
+        graphql_parser::parse_query(
+            "
+        query {
+            musicians(orderBy: id, where: { writtenSongs: [\"s1\"] }) {
+                id name
+                mainBand { id }
+            }
+        }
+        ",
+        )
+        .expect("invalid test query"),
+    );
+
+    assert!(result.errors.is_some());
+    match &result.errors.unwrap()[0] {
+        QueryError::ExecutionError(QueryExecutionError::InvalidArgumentError(_, s, v)) => {
+            assert_eq!(s, "where");
+            assert_eq!(
+                v,
+                &object_value(vec![(
+                    "writtenSongs",
+                    q::Value::List(vec![q::Value::String(String::from("s1"))])
+                )]),
+            );
+        }
+        e => panic!(format!("expected ResolveEntitiesError, got {}", e)),
+    };
+}
