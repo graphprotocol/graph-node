@@ -20,11 +20,8 @@ extern crate url;
 use clap::{App, Arg};
 use futures::sync::oneshot;
 use ipfs_api::IpfsClient;
-use itertools::FoldWhile::{Continue, Done};
-use itertools::Itertools;
 use lazy_static::lazy_static;
 use std::env;
-use std::net::ToSocketAddrs;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -295,36 +292,30 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     sentry::integrations::panic::register_panic_handler();
     info!(logger, "Starting up");
 
-    // Try to create an IPFS client for one of the resolved IPFS addresses
-    let ipfs_address = matches.value_of("ipfs").unwrap();
-    let (ipfs_client, ipfs_address) = match ipfs_address
-        // Resolve the IPFS address into socket addresses
-        .to_socket_addrs()
-        .unwrap_or_else(|e| panic!("failed to resolve IPFS address {}: {}", ipfs_address, e))
-        // Try to create an IPFS client for one of these addresses; collect
-        // errors in case we can't create a client for any of them
-        .fold_while(Err(vec![]), |result, address| {
-            info!(logger, "Trying IPFS node at: {}", address);
-
-            match IpfsClient::new(&format!("{}", address.ip()), address.port()) {
-                Ok(client) => Done(Ok((Arc::new(client), address))),
-                Err(e) => Continue(result.map_err(|mut errors| {
-                    errors.push((address, e));
-                    errors
-                })),
+    // Parse the IPFS URL from the `--ipfs` command line argument
+    let ipfs_address = matches
+        .value_of("ipfs")
+        .map(|uri| {
+            if uri.starts_with("http://") || uri.starts_with("https://") {
+                String::from(uri)
+            } else {
+                format!("http://{}", uri)
             }
         })
-        .into_inner()
-    {
-        Ok((client, address)) => (client, address),
-        Err(errors) => {
-            for (address, e) in errors.iter() {
-                error!(
-                    logger, "Failed to create IPFS client for address: {}", address;
-                    "error" => format!("{}", e),
-                )
-            }
-            panic!("Could not connect to IPFS");
+        .unwrap()
+        .to_owned();
+
+    info!(logger, "Trying IPFS node at: {}", &ipfs_address);
+
+    // Try to create an IPFS client for this URL
+    let ipfs_client = match IpfsClient::new_from_uri(ipfs_address.as_ref()) {
+        Ok(ipfs_client) => Arc::new(ipfs_client),
+        Err(e) => {
+            error!(
+                logger,
+                "Failed to create IPFS client for `{}`: {}", &ipfs_address, e
+            );
+            panic!("Cloud not connect to IPFS");
         }
     };
 
@@ -332,19 +323,21 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let ipfs_test = ipfs_client.version();
     let ipfs_ok_logger = logger.clone();
     let ipfs_err_logger = logger.clone();
+    let ipfs_address_for_ok = ipfs_address.clone();
+    let ipfs_address_for_err = ipfs_address.clone();
     tokio::spawn(
         ipfs_test
             .map_err(move |e| {
                 error!(
                     ipfs_err_logger,
-                    "Is there an IPFS node running at \"{}\"?", ipfs_address
+                    "Is there an IPFS node running at \"{}\"?", ipfs_address_for_err,
                 );
                 panic!("Failed to connect to IPFS: {}", e);
             })
             .map(move |_| {
                 info!(
                     ipfs_ok_logger,
-                    "Successfully connected to IPFS node at: {}", ipfs_address
+                    "Successfully connected to IPFS node at: {}", ipfs_address_for_ok
                 );
             }),
     );
