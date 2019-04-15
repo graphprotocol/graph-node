@@ -197,8 +197,18 @@ pub(crate) fn build_filter(filter: EntityFilter) -> Result<FilterExpression, Uns
                 Value::BigDecimal(n) => Ok(n.into_filter(attribute, op)),
                 Value::Int(n) => Ok(n.into_filter(attribute, op)),
                 Value::List(lst) => {
+                    // In order to compare lists, we have to coerce the database value to jsonb
                     let s = serde_json::to_string(&lst).expect("failed to serialize list value");
-                    Ok(s.into_filter(attribute, op))
+                    Ok(Box::new(
+                        sql("(")
+                            .sql("data -> ")
+                            .bind::<Text, _>(attribute)
+                            .sql("-> 'data'")
+                            .sql(")::jsonb")
+                            .sql(op)
+                            .bind::<Text, _>(s)
+                            .sql("::jsonb"),
+                    ))
                 }
                 Value::Null => Ok(if is_negated {
                     // Value is not null if the property is present ("IS NOT NULL") and is not a
