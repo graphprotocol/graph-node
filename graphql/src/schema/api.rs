@@ -210,7 +210,15 @@ fn field_filter_input_values(
                     if ast::get_derived_from_directive(field).is_some() {
                         vec![]
                     } else {
-                        field_reference_filter_input_values(schema, field)
+                        // We allow filtering with `where: { other: "some-id" }` and
+                        // `where: { others: ["some-id", "other-id"] }`. In both cases,
+                        // we allow ID strings as the values to be passed to these
+                        // filters.
+                        field_scalar_filter_input_values(
+                            schema,
+                            field,
+                            &ScalarType::new(Name::from("String")),
+                        )
                     }
                 }
                 TypeDefinition::Scalar(ref t) => field_scalar_filter_input_values(schema, field, t),
@@ -223,38 +231,6 @@ fn field_filter_input_values(
         }
         Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
     }
-}
-
-/// Generates `*_filter` input values for the given interface or object field.
-fn field_reference_filter_input_values(_schema: &Document, field: &Field) -> Vec<InputValue> {
-    // Singular relationship fields store ID strings. In `where` filters we therefore
-    // allow filtering as if the fields were regular string fields.
-    vec![
-        "",
-        "not",
-        "gt",
-        "lt",
-        "gte",
-        "lte",
-        "in",
-        "not_in",
-        "contains",
-        "not_contains",
-        "starts_with",
-        "not_starts_with",
-        "ends_with",
-        "not_ends_with",
-    ]
-    .into_iter()
-    .map(|filter_type| {
-        let field_type = Type::NamedType("String".into());
-        let value_type = match filter_type {
-            "in" | "not_in" => Type::ListType(Box::new(Type::NonNullType(Box::new(field_type)))),
-            _ => field_type,
-        };
-        input_value(&field.name, filter_type, value_type)
-    })
-    .collect()
 }
 
 /// Generates `*_filter` input values for the given scalar field.
