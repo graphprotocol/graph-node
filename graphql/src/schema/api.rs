@@ -204,6 +204,15 @@ fn field_filter_input_values(
             let named_type = ast::get_named_type(schema, name)
                 .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
             Ok(match named_type {
+                TypeDefinition::Object(_) | TypeDefinition::Interface(_) => {
+                    // Only add `where` filter fields for object and interface fields
+                    // if they are not @derivedFrom
+                    if ast::get_derived_from_directive(field).is_some() {
+                        vec![]
+                    } else {
+                        field_reference_filter_input_values(schema, field)
+                    }
+                }
                 TypeDefinition::Scalar(ref t) => field_scalar_filter_input_values(schema, field, t),
                 TypeDefinition::Enum(ref t) => field_enum_filter_input_values(schema, field, t),
                 _ => vec![],
@@ -214,6 +223,38 @@ fn field_filter_input_values(
         }
         Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
     }
+}
+
+/// Generates `*_filter` input values for the given interface or object field.
+fn field_reference_filter_input_values(_schema: &Document, field: &Field) -> Vec<InputValue> {
+    // Singular relationship fields store ID strings. In `where` filters we therefore
+    // allow filtering as if the fields were regular string fields.
+    vec![
+        "",
+        "not",
+        "gt",
+        "lt",
+        "gte",
+        "lte",
+        "in",
+        "not_in",
+        "contains",
+        "not_contains",
+        "starts_with",
+        "not_starts_with",
+        "ends_with",
+        "not_ends_with",
+    ]
+    .into_iter()
+    .map(|filter_type| {
+        let field_type = Type::NamedType("String".into());
+        let value_type = match filter_type {
+            "in" | "not_in" => Type::ListType(Box::new(Type::NonNullType(Box::new(field_type)))),
+            _ => field_type,
+        };
+        input_value(&field.name, filter_type, value_type)
+    })
+    .collect()
 }
 
 /// Generates `*_filter` input values for the given scalar field.
@@ -285,23 +326,43 @@ fn field_enum_filter_input_values(
 
 /// Generates `*_filter` input values for the given list field.
 fn field_list_filter_input_values(
-    _schema: &Document,
+    schema: &Document,
     field: &Field,
     field_type: &Type,
 ) -> Option<Vec<InputValue>> {
-    let _value_type = ast::get_field_value_type(field_type).ok()?;
-    Some(
-        vec!["", "not", "contains", "not_contains"]
-            .into_iter()
-            .map(|filter_type| {
-                input_value(
-                    &field.name,
-                    filter_type,
-                    Type::ListType(Box::new(field_type.to_owned())),
-                )
-            })
-            .collect(),
-    )
+    // Only add a filter field if the type of the field exists in the schema
+    ast::get_type_definition_from_type(schema, field_type).and_then(|typedef| {
+        // Decide what type of values can be passed to the filter. In the case
+        // one-to-many or many-to-many object or interface fields that are not
+        // derived, we allow ID strings to be passed on.
+        let input_field_type = match typedef {
+            TypeDefinition::Interface(_) | TypeDefinition::Object(_) => {
+                if ast::get_derived_from_directive(field).is_some() {
+                    return None;
+                } else {
+                    Type::NamedType("String".into())
+                }
+            }
+            TypeDefinition::Scalar(ref t) => Type::NamedType(t.name.to_owned()),
+            TypeDefinition::Enum(ref t) => Type::NamedType(t.name.to_owned()),
+            TypeDefinition::InputObject(_) | TypeDefinition::Union(_) => return None,
+        };
+
+        Some(
+            vec!["", "not", "contains", "not_contains"]
+                .into_iter()
+                .map(|filter_type| {
+                    input_value(
+                        &field.name,
+                        filter_type,
+                        Type::ListType(Box::new(Type::NonNullType(Box::new(
+                            input_field_type.clone(),
+                        )))),
+                    )
+                })
+                .collect(),
+        )
+    })
 }
 
 /// Generates a `*_filter` input value for the given field name, suffix and value type.
@@ -605,8 +666,27 @@ mod tests {
 
     #[test]
     fn api_schema_contains_object_type_filter_enum() {
-        let input_schema = parse_schema("type User { id: ID!, name: String!, pets: [String!]}")
-            .expect("Failed to parse input schema");
+        let input_schema = parse_schema(
+            r#"
+              type Pet {
+                  id: ID!
+                  name: String!
+                  mostHatedBy: [User!]!
+                  mostLovedBy: [User!]!
+              }
+
+              type User {
+                  id: ID!
+                  name: String!
+                  favoritePetNames: [String!]
+                  pets: [Pet!]!
+                  favoritePet: Pet!
+                  leastFavoritePet: Pet @derivedFrom(field: "mostHatedBy")
+                  mostFavoritePets: [Pet!] @derivedFrom(field: "mostLovedBy")
+              }
+            "#,
+        )
+        .expect("Failed to parse input schema");
         let schema = api_schema(&input_schema).expect("Failed to derived API schema");
 
         let user_filter = ast::get_named_type(&schema, &"User_filter".to_string())
@@ -647,10 +727,28 @@ mod tests {
                 "name_not_starts_with",
                 "name_ends_with",
                 "name_not_ends_with",
+                "favoritePetNames",
+                "favoritePetNames_not",
+                "favoritePetNames_contains",
+                "favoritePetNames_not_contains",
                 "pets",
                 "pets_not",
                 "pets_contains",
-                "pets_not_contains"
+                "pets_not_contains",
+                "favoritePet",
+                "favoritePet_not",
+                "favoritePet_gt",
+                "favoritePet_lt",
+                "favoritePet_gte",
+                "favoritePet_lte",
+                "favoritePet_in",
+                "favoritePet_not_in",
+                "favoritePet_contains",
+                "favoritePet_not_contains",
+                "favoritePet_starts_with",
+                "favoritePet_not_starts_with",
+                "favoritePet_ends_with",
+                "favoritePet_not_ends_with",
             ]
             .iter()
             .map(|name| name.to_string())
