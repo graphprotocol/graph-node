@@ -435,8 +435,27 @@ where
                 }
             }
 
-            q::Selection::InlineFragment(_fragment) => {
-                warn!(ctx.logger, "Inline fragments are not yet implemented")
+            q::Selection::InlineFragment(fragment) => {
+                let applies = match &fragment.type_condition {
+                    Some(cond) => does_fragment_type_apply(ctx.clone(), object_type, &cond),
+                    None => true,
+                };
+
+                if applies {
+                    let fragment_grouped_field_set = collect_fields(
+                        ctx.clone(),
+                        object_type,
+                        &fragment.selection_set,
+                        Some(visited_fragments.clone()),
+                    );
+
+                    for (response_key, mut fragment_group) in fragment_grouped_field_set {
+                        grouped_fields
+                            .entry(response_key)
+                            .or_default()
+                            .append(&mut fragment_group);
+                    }
+                }
             }
         };
     }

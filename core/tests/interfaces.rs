@@ -308,3 +308,27 @@ fn interface_non_inline_fragment() {
         r#"Object({"leggeds": List([Object({"legs": Int(Number(3)), "name": String("cow")})])})"#,
     );
 }
+
+#[test]
+fn interface_inline_fragment() {
+    let subgraph_id = "interfaceInlineFragment";
+    let schema = "interface Legged { legs: Int }
+                  type Animal implements Legged @entity { id: ID!, name: String, legs: Int }";
+
+    let entity = (
+        Entity::from(vec![
+            ("id", Value::from("1")),
+            ("name", Value::from("cow")),
+            ("legs", Value::from(3)),
+        ]),
+        "Animal",
+    );
+
+    let query = "query { leggeds { ... on Animal { name } } }";
+    let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
+    dbg!(&res.errors);
+    assert_eq!(
+        format!("{:?}", res.data.unwrap()),
+        r#"Object({"leggeds": List([Object({"name": String("cow")})])})"#
+    );
+}
