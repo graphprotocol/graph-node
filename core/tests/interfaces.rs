@@ -313,22 +313,32 @@ fn interface_non_inline_fragment() {
 fn interface_inline_fragment() {
     let subgraph_id = "interfaceInlineFragment";
     let schema = "interface Legged { legs: Int }
-                  type Animal implements Legged @entity { id: ID!, name: String, legs: Int }";
+                  type Animal implements Legged @entity { id: ID!, name: String, legs: Int }
+                  type Bird implements Legged @entity { id: ID!, airspeed: Int, legs: Int }";
 
-    let entity = (
+    let animal = (
         Entity::from(vec![
             ("id", Value::from("1")),
             ("name", Value::from("cow")),
-            ("legs", Value::from(3)),
+            ("legs", Value::from(4)),
         ]),
         "Animal",
     );
+    let bird = (
+        Entity::from(vec![
+            ("id", Value::from("2")),
+            ("airspeed", Value::from(24)),
+            ("legs", Value::from(2)),
+        ]),
+        "Bird",
+    );
 
-    let query = "query { leggeds { ... on Animal { name } } }";
-    let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
+    let query =
+        "query { leggeds(orderBy: legs) { ... on Animal { name } ...on Bird { airspeed } } }";
+    let res = insert_and_query(subgraph_id, schema, vec![animal, bird], query).unwrap();
     dbg!(&res.errors);
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
-        r#"Object({"leggeds": List([Object({"name": String("cow")})])})"#
+        r#"Object({"leggeds": List([Object({"airspeed": Int(Number(24))}), Object({"name": String("cow")})])})"#
     );
 }
