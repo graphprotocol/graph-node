@@ -90,7 +90,7 @@ type HandleEventResponse = Result<Vec<EntityOperation>, Error>;
 
 #[derive(Debug)]
 struct HandleEventRequest {
-    handler: MappingEventHandler,
+    handler_name: String,
     logger: Logger,
     block: Arc<EthereumBlock>,
     transaction: Arc<Transaction>,
@@ -207,7 +207,7 @@ impl RuntimeHost {
                 .map_err(|()| err_msg("Canceled"))
                 .for_each(move |request: HandleEventRequest| -> Result<(), Error> {
                     let HandleEventRequest {
-                        handler,
+                        handler_name,
                         logger,
                         block,
                         transaction,
@@ -226,7 +226,7 @@ impl RuntimeHost {
 
                     let result =
                         WasmiModule::from_valid_module_with_ctx(valid_module.clone(), ctx)?
-                            .handle_ethereum_event(handler.handler.as_str(), log, params);
+                            .handle_ethereum_event(&handler_name, log, params);
                     result_sender
                         .send(result)
                         .map_err(|_| err_msg("receiver dropped"))
@@ -357,7 +357,7 @@ impl RuntimeHostTrait for RuntimeHost {
             self.handle_event_sender
                 .clone()
                 .send(HandleEventRequest {
-                    handler: event_handler.clone(),
+                    handler_name: event_handler.handler.clone(),
                     logger: logger.clone(),
                     block: block.clone(),
                     transaction: transaction.clone(),
