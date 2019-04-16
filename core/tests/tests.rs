@@ -207,7 +207,7 @@ fn subgraph_provider_events() {
             let logger = Logger::root(slog::Discard, o!());
             let resolver = Arc::new(IpfsClient::default());
             let store = Arc::new(MockStore::new(vec![]));
-            let graphql_runner = Arc::new(MockGraphQlRunner::new(&logger));
+            let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(&logger, store.clone()));
             let mut provider = graph_core::SubgraphAssignmentProvider::new(
                 logger.clone(),
                 resolver.clone(),
