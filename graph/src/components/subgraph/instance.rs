@@ -1,7 +1,7 @@
 use crate::prelude::*;
 use web3::types::{Log, Transaction};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DataSourceTemplateInfo {
     pub data_source: String,
     pub template: String,
