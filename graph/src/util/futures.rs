@@ -275,9 +275,10 @@ where
                     if attempt_count >= log_after {
                         debug!(
                             logger,
-                            "Trying again after {} failed (attempt #{})",
+                            "Trying again after {} failed (attempt #{}) with result {:?}",
                             &operation_name,
                             attempt_count + 1,
+                            result
                         );
                     }
 
