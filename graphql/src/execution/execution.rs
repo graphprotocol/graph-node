@@ -448,14 +448,11 @@ where
 }
 
 /// Determines whether a fragment is applicable to the given object type.
-fn does_fragment_type_apply<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+fn does_fragment_type_apply(
+    ctx: ExecutionContext<'_, impl Resolver>,
     object_type: &s::ObjectType,
     fragment_type: &q::TypeCondition,
-) -> bool
-where
-    R: Resolver,
-{
+) -> bool {
     // This is safe to do, as TypeCondition only has a single `On` variant.
     let q::TypeCondition::On(ref name) = fragment_type;
 
@@ -468,21 +465,13 @@ where
 
         // The fragment also applies to the object type if its type is an interface
         // that the object type implements
-        Some(s::TypeDefinition::Interface(it)) => object_type
-            .implements_interfaces
-            .iter()
-            .find(|name| name == &&it.name)
-            .map(|_| true)
-            .unwrap_or(false),
+        Some(s::TypeDefinition::Interface(it)) => {
+            object_type.implements_interfaces.contains(&it.name)
+        }
 
         // The fragment also applies to an object type if its type is a union that
         // the object type is one of the possible types for
-        Some(s::TypeDefinition::Union(ut)) => ut
-            .types
-            .iter()
-            .find(|name| name == &&object_type.name)
-            .map(|_| true)
-            .unwrap_or(false),
+        Some(s::TypeDefinition::Union(ut)) => ut.types.contains(&object_type.name),
 
         // In all other cases, the fragment does not apply
         _ => false,
