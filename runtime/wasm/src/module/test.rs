@@ -143,9 +143,28 @@ fn mock_data_source(path: &str) -> DataSource {
             link: Link {
                 link: "link".to_owned(),
             },
-            runtime,
+            runtime: runtime.clone(),
         },
-        templates: None,
+        templates: Some(vec![DataSourceTemplate {
+            kind: String::from("ethereum/contract"),
+            name: String::from("example template"),
+            network: Some(String::from("mainnet")),
+            source: TemplateSource {
+                abi: String::from("foo"),
+            },
+            mapping: Mapping {
+                kind: String::from("ethereum/events"),
+                api_version: String::from("0.1.0"),
+                language: String::from("wasm/assemblyscript"),
+                entities: vec![],
+                abis: vec![],
+                event_handlers: vec![],
+                link: Link {
+                    link: "link".to_owned(),
+                },
+                runtime,
+            },
+        }]),
     }
 }
 
@@ -677,4 +696,52 @@ fn bytes_to_base58() {
     let result_ptr: AscPtr<AscString> = module.takes_ptr_returns_ptr("bytes_to_base58", bytes_ptr);
     let base58: String = module.asc_get(result_ptr);
     assert_eq!(base58, "QmWmyoMoctfbAaiEs2G46gpeUmhqFRDW6KWo64y5r581Vz");
+}
+
+#[test]
+fn data_source_create() {
+    let run_data_source_create = move |name: String,
+                                       params: Vec<String>|
+          -> Result<Vec<DataSourceTemplateInfo>, Error> {
+        let valid_module = test_valid_module(mock_data_source("wasm_test/data_source_create.wasm"));
+        let mut module =
+            WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
+
+        let name = RuntimeValue::from(module.asc_new(&name));
+        let params = RuntimeValue::from(module.asc_new(&*params));
+        module
+            .module
+            .clone()
+            .invoke_export("dataSourceCreate", &[name, params], &mut module)?;
+        Ok(module.ctx.state.created_data_sources)
+    };
+
+    // Test with a valid template
+    let data_source = String::from("example data source");
+    let template = String::from("example template");
+    let params = vec![String::from("0xc0a47dFe034B400B47bDaD5FecDa2621de6c4d95")];
+    let result = run_data_source_create(template.clone(), params.clone());
+    assert_eq!(
+        result.expect("unexpected error returned from dataSourceCreate"),
+        vec![DataSourceTemplateInfo {
+            data_source: data_source.clone(),
+            template: template.clone(),
+            params: params.clone()
+        }]
+    );
+
+    // Test with a template that doesn't exist
+    let template = String::from("nonexistent template");
+    let params = vec![String::from("0xc000000000000000000000000000000000000000")];
+    match run_data_source_create(template.clone(), params.clone()) {
+        Ok(_) => panic!("expected an error because the template does not exist"),
+        Err(e) => assert_eq!(
+            e.to_string(),
+            "Trap: Trap { kind: Host(HostExportError(\
+             \"Failed to create data source from name `nonexistent template`: \
+             No template with this name in parent data source `example data source`. \
+             Available names: example template.\"\
+             )) }"
+        ),
+    };
 }
