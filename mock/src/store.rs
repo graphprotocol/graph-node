@@ -6,8 +6,10 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use graph::components::store::*;
+use graph::data::subgraph::schema::*;
 use graph::prelude::*;
 use graph::web3::types::H256;
+use graph_graphql::prelude::api_schema;
 
 /// A mock `ChainHeadUpdateListener`
 pub struct MockChainHeadUpdateListener {}
@@ -99,8 +101,17 @@ impl MockStore {
         };
 
         // Sort results
-        let sorted_entities = if let Some((_order_by_attr_name, _order_by_attr_type)) = order_by {
-            unimplemented!();
+        let sorted_entities = if let Some((order_by_attr_name, _order_by_attr_type)) = order_by {
+            if order_by_attr_name == "id" {
+                let mut sorted_entities = filtered_entities;
+                sorted_entities.sort_by(|a, b| match (a.get("id"), b.get("id")) {
+                    (Some(Value::String(a_id)), Some(Value::String(b_id))) => a_id.cmp(&b_id),
+                    _ => ::std::cmp::Ordering::Equal,
+                });
+                sorted_entities
+            } else {
+                unimplemented!("only ordering by `id` is support in the mock store");
+            }
         } else {
             assert_eq!(order_direction, None);
 
@@ -327,6 +338,19 @@ impl Store for MockStore {
 
 impl SubgraphDeploymentStore for MockStore {
     fn subgraph_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+        if *subgraph_id == *SUBGRAPHS_ID {
+            // The subgraph of subgraphs schema is built-in.
+            let raw_schema = include_str!("../../store/postgres/src/subgraphs.graphql").to_owned();
+
+            // Parse the schema and add @subgraphId directives
+            let mut schema = Schema::parse(&raw_schema, subgraph_id.clone())?;
+
+            // Generate an API schema for the subgraph and make sure all types in the
+            // API schema have a @subgraphId directive as well
+            schema.document = api_schema(&schema.document)?;
+
+            return Ok(Arc::new(schema));
+        }
         Ok(Arc::new(self.schemas.get(subgraph_id).unwrap().clone()))
     }
 }
