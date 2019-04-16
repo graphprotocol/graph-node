@@ -399,46 +399,43 @@ where
 
                     // Resolve the fragment using its name and, if it applies, collect
                     // fields for the fragment and group them
-                    let fragment_grouped_field_set =
-                        qast::get_fragment(&ctx.document, &spread.fragment_name)
-                            .and_then(|fragment| {
-                                // We have a fragment, only pass it on if it applies to the
-                                // current object type
-                                if does_fragment_type_apply(
-                                    ctx.clone(),
-                                    object_type,
-                                    &fragment.type_condition,
-                                ) {
-                                    Some(fragment)
-                                } else {
-                                    None
-                                }
-                            })
-                            .map(|fragment| {
-                                // We have a fragment that applies to the current object type,
-                                // collect its fields into response key groups
-                                collect_fields(
-                                    ctx.clone(),
-                                    object_type,
-                                    &fragment.selection_set,
-                                    Some(visited_fragments.clone()),
-                                )
-                            });
+                    qast::get_fragment(&ctx.document, &spread.fragment_name)
+                        .and_then(|fragment| {
+                            // We have a fragment, only pass it on if it applies to the
+                            // current object type
+                            if does_fragment_type_apply(
+                                ctx.clone(),
+                                object_type,
+                                &fragment.type_condition,
+                            ) {
+                                Some(fragment)
+                            } else {
+                                None
+                            }
+                        })
+                        .map(|fragment| {
+                            // We have a fragment that applies to the current object type,
+                            // collect its fields into response key groups
+                            let fragment_grouped_field_set = collect_fields(
+                                ctx.clone(),
+                                object_type,
+                                &fragment.selection_set,
+                                Some(visited_fragments.clone()),
+                            );
 
-                    if let Some(grouped_field_set) = fragment_grouped_field_set {
-                        // Add all items from each fragments group to the field group
-                        // with the corresponding response key
-                        for (response_key, mut fragment_group) in grouped_field_set {
-                            grouped_fields
-                                .entry(response_key)
-                                .or_default()
-                                .append(&mut fragment_group);
-                        }
-                    }
+                            // Add all items from each fragments group to the field group
+                            // with the corresponding response key
+                            for (response_key, mut fragment_group) in fragment_grouped_field_set {
+                                grouped_fields
+                                    .entry(response_key)
+                                    .or_default()
+                                    .append(&mut fragment_group);
+                            }
+                        });
                 }
             }
 
-            q::Selection::InlineFragment(_) => {
+            q::Selection::InlineFragment(_fragment) => {
                 warn!(ctx.logger, "Inline fragments are not yet implemented")
             }
         };
