@@ -17,20 +17,24 @@ pub struct EthereumAdapter<T: web3::Transport> {
     web3: Arc<Web3<T>>,
 }
 
-/// Number of chunks to request in parallel when streaming logs.
-const LOG_STREAM_PARALLEL_CHUNKS: u64 = 5;
-
 lazy_static! {
-    static ref LOG_STREAM_FAST_SCAN_END: u64 = ::std::env::var_os("ETHEREUM_FAST_SCAN_END")
-        .unwrap_or_else(|| "4000000".into())
-        .to_str()
-        .expect("invalid fast scan end block number (character encoding error)")
+    static ref LOG_STREAM_FAST_SCAN_END: u64 = ::std::env::var("ETHEREUM_FAST_SCAN_END")
+        .unwrap_or("4000000".into())
         .parse::<u64>()
         .expect("invalid fast scan end block number");
-}
 
-/// Number of blocks to request in each chunk.
-const LOG_STREAM_CHUNK_SIZE_IN_BLOCKS: u64 = 10000;
+    /// Number of chunks to request in parallel when streaming logs.
+    static ref LOG_STREAM_PARALLEL_CHUNKS: u64 = ::std::env::var("ETHEREUM_PARALLEL_BLOCK_RANGES")
+        .unwrap_or("5".into())
+        .parse::<u64>()
+        .expect("invalid number of parallel Ethereum block ranges to scan");
+
+    /// Number of blocks to request in each chunk.
+    static ref LOG_STREAM_CHUNK_SIZE_IN_BLOCKS: u64 = ::std::env::var("ETHEREUM_BLOCK_RANGE_SIZE")
+        .unwrap_or("10000".into())
+        .parse::<u64>()
+        .expect("invalid Ethereum block range size");
+}
 
 impl<T> EthereumAdapter<T>
 where
@@ -185,9 +189,9 @@ where
 
                     chunk_offset = chunk_end + 1;
                 } else {
-                    for _ in 0..LOG_STREAM_PARALLEL_CHUNKS {
+                    for _ in 0..*LOG_STREAM_PARALLEL_CHUNKS {
                         // Last chunk may be shorter than CHUNK_SIZE, so needs special handling
-                        let is_last_chunk = (chunk_offset + LOG_STREAM_CHUNK_SIZE_IN_BLOCKS) > to;
+                        let is_last_chunk = (chunk_offset + *LOG_STREAM_CHUNK_SIZE_IN_BLOCKS) > to;
 
                         // Determine the upper bound on the chunk
                         // Note: chunk_end is inclusive
@@ -195,7 +199,7 @@ where
                             to
                         } else {
                             // Subtract 1 to make range inclusive
-                            chunk_offset + LOG_STREAM_CHUNK_SIZE_IN_BLOCKS - 1
+                            chunk_offset + *LOG_STREAM_CHUNK_SIZE_IN_BLOCKS - 1
                         };
 
                         // Start request for this chunk of logs
@@ -228,7 +232,7 @@ where
                             as Box<Future<Item = Vec<Log>, Error = _> + Send>);
 
                         // If last chunk, will push offset past `to`. That's fine.
-                        chunk_offset += LOG_STREAM_CHUNK_SIZE_IN_BLOCKS;
+                        chunk_offset += *LOG_STREAM_CHUNK_SIZE_IN_BLOCKS;
 
                         if is_last_chunk {
                             break;
