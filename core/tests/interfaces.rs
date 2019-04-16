@@ -274,3 +274,37 @@ fn two_interfaces() {
                  \"ifoos\": List([Object({\"foo\": String(\"bla\")}), Object({\"foo\": String(\"ble\")})])})"
     );
 }
+
+#[test]
+fn interface_non_inline_fragment() {
+    let subgraph_id = "interfaceNonInlineFragment";
+    let schema = "interface Legged { legs: Int }
+                  type Animal implements Legged @entity { id: ID!, name: String, legs: Int }";
+
+    let entity = (
+        Entity::from(vec![
+            ("id", Value::from("1")),
+            ("name", Value::from("cow")),
+            ("legs", Value::from(3)),
+        ]),
+        "Animal",
+    );
+
+    // Query only the fragment.
+    let query = "query { leggeds { ...frag } } fragment frag on Animal { name }";
+    let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
+    dbg!(&res.errors);
+    assert_eq!(
+        format!("{:?}", res.data.unwrap()),
+        r#"Object({"leggeds": List([Object({"name": String("cow")})])})"#
+    );
+
+    // Query the fragment and something else.
+    let query = "query { leggeds { legs, ...frag } } fragment frag on Animal { name }";
+    let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
+    assert!(res.errors.is_none());
+    assert_eq!(
+        format!("{:?}", res.data.unwrap()),
+        r#"Object({"leggeds": List([Object({"legs": Int(Number(3)), "name": String("cow")})])})"#,
+    );
+}
