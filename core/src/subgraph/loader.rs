@@ -29,6 +29,7 @@ where
     fn dynamic_data_sources_query(
         self: Arc<Self>,
         deployment: &SubgraphDeploymentId,
+        skip: i32,
     ) -> Result<Query, Error> {
         // Obtain the "subgraphs" schema
         let schema = self.store.subgraph_schema(&SUBGRAPHS_ID)?;
@@ -39,9 +40,9 @@ where
             schema,
             document: parse_query(
                 r#"
-                query deployment($id: ID!) {
+                query deployment($id: ID!, $skip: Int!) {
                   subgraphDeployment(id: $id) {
-                    dynamicDataSources(orderBy: id) {
+                    dynamicDataSources(orderBy: id, skip: $skip) {
                       kind
                       network
                       name
@@ -77,7 +78,11 @@ where
             )
             .expect("invalid query for dynamic data sources"),
             variables: Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("id"), q::Value::String(deployment.to_string()))].into_iter(),
+                vec![
+                    (String::from("id"), q::Value::String(deployment.to_string())),
+                    (String::from("skip"), q::Value::Int(skip.into())),
+                ]
+                .into_iter(),
             ))),
         })
     }
@@ -189,26 +194,54 @@ where
         self: Arc<Self>,
         deployment_id: &SubgraphDeploymentId,
     ) -> Box<Future<Item = Vec<DataSource>, Error = Error> + Send> {
-        let self1 = self.clone();
-        let self2 = self.clone();
-        let self3 = self.clone();
-        let self4 = self.clone();
+        struct LoopState {
+            data_sources: Vec<DataSource>,
+            skip: i32,
+        }
 
-        let deployment_id1 = deployment_id.clone();
-        let deployment_id2 = deployment_id.clone();
+        let initial_state = LoopState {
+            data_sources: vec![],
+            skip: 0,
+        };
+
+        // Clones for async looping
+        let self1 = self.clone();
+        let deployment_id = deployment_id.clone();
 
         Box::new(
-            future::result(self.dynamic_data_sources_query(deployment_id))
-                .and_then(move |query| self1.query_dynamic_data_sources(deployment_id1, query))
-                .and_then(move |query_result| {
-                    self2.parse_data_sources(deployment_id2, query_result)
-                })
-                .and_then(move |typed_entities| {
-                    self3.convert_to_unresolved_data_sources(typed_entities)
-                })
-                .and_then(move |unresolved_data_sources| {
-                    self4.resolve_data_sources(unresolved_data_sources)
-                }),
+            future::loop_fn(initial_state, move |mut state| {
+                let deployment_id1 = deployment_id.clone();
+                let deployment_id2 = deployment_id.clone();
+                let deployment_id3 = deployment_id.clone();
+
+                let self2 = self1.clone();
+                let self3 = self1.clone();
+                let self4 = self1.clone();
+                let self5 = self1.clone();
+                let self6 = self1.clone();
+
+                future::result(self2.dynamic_data_sources_query(&deployment_id1, state.skip))
+                    .and_then(move |query| self3.query_dynamic_data_sources(deployment_id2, query))
+                    .and_then(move |query_result| {
+                        self4.parse_data_sources(deployment_id3, query_result)
+                    })
+                    .and_then(move |typed_entities| {
+                        self5.convert_to_unresolved_data_sources(typed_entities)
+                    })
+                    .and_then(move |unresolved_data_sources| {
+                        self6.resolve_data_sources(unresolved_data_sources)
+                    })
+                    .map(move |data_sources| {
+                        if data_sources.is_empty() {
+                            future::Loop::Break(state)
+                        } else {
+                            state.skip += dbg!(data_sources.len() as i32);
+                            state.data_sources.extend(data_sources);
+                            future::Loop::Continue(state)
+                        }
+                    })
+            })
+            .map(|state| state.data_sources),
         )
     }
 }
