@@ -20,9 +20,14 @@ in parallel for block retrieval (defaults to 64)
   case by inquiring about a large range. The value of this variable
   is the block number at which we switch from probing large ranges to
   smaller ranges (defaults to 4000000)
-* `DISABLE_BLOCK_INGESTOR`: set to `true` to disable block ingestion. Leave unset or set to `false` to leave block ingestion enabled.
+* `DISABLE_BLOCK_INGESTOR`: set to `true` to disable block ingestion. Leave
+  unset or set to `false` to leave block ingestion enabled.
 * `ETHEREUM_BLOCK_BATCH_SIZE`: number of Ethereum blocks to request in
   parallel (defaults to 50)
+* `ETHEREUM_BLOCK_RANGE_SIZE` - number of blocks to scan for events in
+  each request (defaults to 10000).
+* `ETHEREUM_PARALLEL_BLOCK_RANGES` - number of block ranges to scan
+  for events in parallel (defaults to 5).
 
 ## Running mapping handlers
 * `GRAPH_EVENT_HANDLER_TIMEOUT`: amount of time an event handler is allowed
