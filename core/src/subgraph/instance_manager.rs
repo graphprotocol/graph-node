@@ -171,9 +171,9 @@ impl SubgraphInstanceManager {
         // the form
         // ```
         // vec![
-        //   ("DataSource1", "Template1", <template struct>),
-        //   ("DataSource2", "Template1", <template struct>),
-        //   ("DataSource2", "Template2", <template struct>),
+        //   ("DataSource1", <template struct>),
+        //   ("DataSource2", <template struct>),
+        //   ("DataSource2", <template struct>),
         // ]
         // ```
         // for easy filtering later
