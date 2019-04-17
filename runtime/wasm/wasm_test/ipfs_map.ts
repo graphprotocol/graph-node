@@ -86,11 +86,7 @@ class Value {
   }
 }
 
-class Entity extends TypedMap<string, Value> {
-  constructor() {
-    this.entries = new Array<TypedMapEntry<string, Value>>(0)
-  }
-}
+class Entity extends TypedMap<string, Value> { }
 
 enum JSONValueKind {
   NULL = 0,
