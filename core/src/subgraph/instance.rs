@@ -161,7 +161,8 @@ where
                             trigger_type.clone(),
                             state,
                         )
-                    });
+                    },
+                );
                 Box::new(eops)
             }
         }

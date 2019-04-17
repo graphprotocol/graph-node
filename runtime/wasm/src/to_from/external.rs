@@ -1,7 +1,9 @@
 use ethabi;
 use std::collections::HashMap;
 
-use graph::components::ethereum::{EthereumBlockData, EthereumEventData, EthereumCallData, EthereumTransactionData};
+use graph::components::ethereum::{
+    EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
+};
 use graph::data::store;
 use graph::prelude::{BigDecimal, BigInt};
 use graph::serde_json;

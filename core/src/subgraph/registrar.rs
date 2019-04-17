@@ -2,12 +2,12 @@ use std::collections::HashSet;
 use std::iter;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use super::validation;
 use graph::data::subgraph::schema::*;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
-use super::validation;
 
 pub struct SubgraphRegistrar<L, P, S, CS> {
     logger: Logger,

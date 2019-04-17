@@ -2,9 +2,9 @@ use futures::future;
 use futures::prelude::*;
 use graph::ethabi::Token;
 use lazy_static::lazy_static;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tiny_keccak::{keccak256};
+use tiny_keccak::keccak256;
 
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::*;
@@ -63,30 +63,31 @@ where
             .timeout_secs(60)
             .run(move || {
                 let trace_filter: TraceFilter = match addresses.len() {
-                    0 => {
-                        TraceFilterBuilder::default()
-                            .from_block(from.into())
-                            .to_block(to.into())
-                            .build()
-                    }
-                    _ => {
-                        TraceFilterBuilder::default()
-                            .from_block(from.into())
-                            .to_block(to.into())
-                            .to_address(addresses.clone())
-                            .build()
-                    }
+                    0 => TraceFilterBuilder::default()
+                        .from_block(from.into())
+                        .to_block(to.into())
+                        .build(),
+                    _ => TraceFilterBuilder::default()
+                        .from_block(from.into())
+                        .to_block(to.into())
+                        .to_address(addresses.clone())
+                        .build(),
                 };
 
                 let logger = logger.clone();
                 let logger_1 = logger.clone();
-                eth
-                    .web3
+                eth.web3
                     .trace()
                     .filter(trace_filter)
                     .map(move |traces| {
                         if traces.len() > 0 {
-                            debug!(logger, "Received {} traces for block range [{}, {}]", traces.len(), from, to);
+                            debug!(
+                                logger,
+                                "Received {} traces for block range [{}, {}]",
+                                traces.len(),
+                                from,
+                                to
+                            );
                         } else {
                             debug!(logger, "No traces for block range [{}, {}]", from, to);
                         }
@@ -182,20 +183,23 @@ where
                 from, to,
             );
         }
-        
+
         let eth = self.clone();
         let logger = logger.to_owned();
         stream::unfold(from, move |start| {
             if start > to {
-                return None
+                return None;
             }
             let end = (start + 200 - 1).min(to);
             let new_start = end + 1;
-            debug!(logger, "Starting request in for traces block range: [{}, {}]", start, end);
-            Some(eth.traces(&logger, start, end, addresses.clone())
-                 .map(move |traces| {
-                     (traces, new_start)
-                 }))
+            debug!(
+                logger,
+                "Starting request in for traces block range: [{}, {}]", start, end
+            );
+            Some(
+                eth.traces(&logger, start, end, addresses.clone())
+                    .map(move |traces| (traces, new_start)),
+            )
         })
     }
 
@@ -214,6 +218,9 @@ where
         }
 
         // Collect all event sigs
+        let eth = self.clone();
+        let logger = logger.to_owned();
+
         let event_sigs = log_filter
             .contract_address_and_event_sig_pairs
             .iter()
@@ -259,36 +266,30 @@ where
         let logger = logger.to_owned();
         stream::unfold(from, move |start| {
             if start > to {
-                return None
+                return None;
             }
             let end = if start < *LOG_STREAM_FAST_SCAN_END {
-                (start + 100_000 - 1)
-                    .min(to)
-                    .min(*LOG_STREAM_FAST_SCAN_END)
+                (start + 100_000 - 1).min(to).min(*LOG_STREAM_FAST_SCAN_END)
             } else {
                 (start + 1_000 - 1).min(to)
             };
             let new_start = end + 1;
-            
-            debug!(logger, "Starting request for logs in block range: [{}, {}]", start, end);
-            
+
+            debug!(
+                logger,
+                "Starting request for logs in block range: [{}, {}]", start, end
+            );
+
             let log_filter = log_filter.clone();
-            Some(eth
-                .logs_with_sigs(
-                    &logger,
-                    start,
-                    end,
-                    addresses.clone(),
-                    event_sigs.clone(),
-                )
-                .map(move |logs| {
-                    logs.into_iter()
-                        .filter(move |log| log_filter.matches(log))
-                        .collect()
-                })
-                .map(move |logs| {
-                    (logs, new_start)
-                }))
+            Some(
+                eth.logs_with_sigs(&logger, start, end, addresses.clone(), event_sigs.clone())
+                    .map(move |logs| {
+                        logs.into_iter()
+                            .filter(move |log| log_filter.matches(log))
+                            .collect()
+                    })
+                    .map(move |logs| (logs, new_start)),
+            )
         })
         .filter(|chunk| !chunk.is_empty())
     }
@@ -366,7 +367,12 @@ where
         let net_version_future = retry("net_version RPC call", &logger)
             .no_limit()
             .timeout_secs(20)
-            .run(move || web3.net().version().from_err::<EthereumContractCallError>().from_err());
+            .run(move || {
+                web3.net()
+                    .version()
+                    .from_err::<EthereumContractCallError>()
+                    .from_err()
+            });
 
         let web3 = self.web3.clone();
         let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
@@ -723,24 +729,36 @@ where
     ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         // If no filters are provided, return an empty vector of blocks.
         if log_filter_opt.is_none() && call_filter_opt.is_none() && block_filter_opt.is_none() {
-            return Box::new(future::ok(vec![]))
+            return Box::new(future::ok(vec![]));
         }
 
         // Each trigger filter needs to be queried for the same block range
         // and the blocks yielded need to be deduped. If any error occurs while searching for a trigger type, the
         // entire operation fails.
         let eth = self.clone();
-        let mut block_futs: Vec<Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>> = vec![];
+        let mut block_futs: Vec<
+            Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>,
+        > = vec![];
         if block_filter_opt.is_some() && block_filter_opt.clone().unwrap().trigger_every_block {
             // All blocks in the range contain a trigger
             block_futs.push(eth.blocks(&logger, from, to));
         } else {
             // Scan the block range from triggers to find relevant blocks
             if log_filter_opt.is_some() {
-                block_futs.push(Box::new(eth.blocks_with_logs(&logger, from, to, log_filter_opt.unwrap())));
+                block_futs.push(Box::new(eth.blocks_with_logs(
+                    &logger,
+                    from,
+                    to,
+                    log_filter_opt.unwrap(),
+                )));
             }
             if call_filter_opt.is_some() {
-                block_futs.push(Box::new(eth.blocks_with_calls(&logger, from, to, call_filter_opt.unwrap())));
+                block_futs.push(Box::new(eth.blocks_with_calls(
+                    &logger,
+                    from,
+                    to,
+                    call_filter_opt.unwrap(),
+                )));
             }
             if block_filter_opt.is_some() {
                 let block_filter = block_filter_opt.unwrap();
@@ -748,25 +766,29 @@ where
                     0 => (),
                     _ => {
                         let call_filter = EthereumCallFilter::from(block_filter);
-                        block_futs.push(Box::new(eth.blocks_with_calls(&logger, from, to, call_filter)));
+                        block_futs.push(Box::new(eth.blocks_with_calls(
+                            &logger,
+                            from,
+                            to,
+                            call_filter,
+                        )));
                     }
                 }
             }
         }
-        Box::new(future::join_all(block_futs)
-            .and_then(|block_pointer_chunks| {
+        Box::new(
+            future::join_all(block_futs).and_then(|block_pointer_chunks| {
                 let mut blocks = block_pointer_chunks
                     .into_iter()
                     .flatten()
                     .collect::<Vec<EthereumBlockPointer>>();
-                blocks.sort_by(|a, b| {
-                    a.number.cmp(&b.number)
-                });
+                blocks.sort_by(|a, b| a.number.cmp(&b.number));
                 // Dedup only remove consecutive duplicates, so it needs to be
                 // run after the vector is sorted
                 blocks.dedup();
                 future::ok(blocks)
-            }))
+            }),
+        )
     }
 
     fn blocks(
@@ -779,29 +801,30 @@ where
         let logger = logger.clone();
 
         // Generate `EthereumBlockPointers` from `to` backwards to `from`
-        let block_ptrs = self.block_hash_by_block_number(&logger, to)
-            .map(move |block_hash_opt| {
-                EthereumBlockPointer {
-                    hash: block_hash_opt.unwrap(),
-                    number: to,
-                }
+        let block_ptrs = self
+            .block_hash_by_block_number(&logger, to)
+            .map(move |block_hash_opt| EthereumBlockPointer {
+                hash: block_hash_opt.unwrap(),
+                number: to,
             })
             .and_then(move |block_pointer| {
                 stream::unfold(block_pointer, move |descendant_block_pointer| {
                     if descendant_block_pointer.number < from {
-                        return None
+                        return None;
                     }
                     // Populate the parent block pointer
-                    Some(eth
-                         .block_parent_hash_by_block_hash(&logger, descendant_block_pointer.hash)
-                         .map(move |block_hash_opt| {
-                             let parent_block_pointer = EthereumBlockPointer {
-                                 hash: block_hash_opt.unwrap(),
-                                 number: descendant_block_pointer.number - 1,
-                             };
-                             (descendant_block_pointer, parent_block_pointer)
-                         }))
-                }).collect()
+                    Some(
+                        eth.block_parent_hash_by_block_hash(&logger, descendant_block_pointer.hash)
+                            .map(move |block_hash_opt| {
+                                let parent_block_pointer = EthereumBlockPointer {
+                                    hash: block_hash_opt.unwrap(),
+                                    number: descendant_block_pointer.number - 1,
+                                };
+                                (descendant_block_pointer, parent_block_pointer)
+                            }),
+                    )
+                })
+                .collect()
             })
             .map(move |mut block_pointers| {
                 block_pointers.reverse();
@@ -825,10 +848,7 @@ where
                 .map(|log_chunks| match log_chunks.len() {
                     0 => vec![],
                     _ => {
-                        let logs: Vec<Log> = log_chunks
-                            .into_iter()
-                            .flatten()
-                            .collect();
+                        let logs: Vec<Log> = log_chunks.into_iter().flatten().collect();
                         let mut block_ptrs = vec![];
                         for log in logs.iter() {
                             let hash = log
@@ -848,7 +868,8 @@ where
                         }
                         block_ptrs
                     }
-                }))
+                }),
+        )
     }
 
     fn blocks_with_calls(
@@ -867,7 +888,8 @@ where
             .collect::<HashSet<H160>>()
             .into_iter()
             .collect::<Vec<H160>>();
-        let blocks = eth.trace_stream(&logger, from, to, addresses)
+        let blocks = eth
+            .trace_stream(&logger, from, to, addresses)
             .collect()
             .map(move |trace_chunks| {
                 match trace_chunks.len() {
@@ -884,7 +906,7 @@ where
                                 // Remove traces that are not for a call, do not have a result, or
                                 // are for a transaction which errored.
                                 if !is_call || trace.result.is_none() || trace.error.is_some() {
-                                    return false
+                                    return false;
                                 }
                                 true
                             })

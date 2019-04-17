@@ -84,7 +84,12 @@ impl From<&Trace> for EthereumCall {
     fn from(trace: &Trace) -> Self {
         let (from, to, value, input) = match &trace.action {
             Action::Call(call) => (call.from, call.to, call.value, call.input.clone()),
-            _ => (Address::zero(), Address::zero(), U256::zero(), Bytes::from(vec![])),
+            _ => (
+                Address::zero(),
+                Address::zero(),
+                U256::zero(),
+                Bytes::from(vec![]),
+            ),
         };
         let (output, gas_used) = match &trace.result {
             Some(Res::Call(result)) => (result.output.clone(), result.gas_used),
@@ -120,8 +125,8 @@ pub enum EthereumBlockTriggerType {
 impl EthereumTrigger {
     pub fn transaction_index(
         &self,
-        transaction_hash_index_lookup: &HashMap<H256, u64>
-    ) -> Result<Option<u64>, ()>  {
+        transaction_hash_index_lookup: &HashMap<H256, u64>,
+    ) -> Result<Option<u64>, ()> {
         match self {
             EthereumTrigger::Log(log) => {
                 match transaction_hash_index_lookup.get(&log.transaction_hash.unwrap()) {
@@ -135,7 +140,7 @@ impl EthereumTrigger {
                     None => Err(()),
                 }
             }
-            EthereumTrigger::Block(_call) => Ok(None)
+            EthereumTrigger::Block(_call) => Ok(None),
         }
     }
 }
