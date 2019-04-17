@@ -23,7 +23,7 @@ where
     fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest,
-        host_builder: T,
+        host_builder: &T,
     ) -> Result<Self, Error>;
 
     /// Returns true if the subgraph has a handler for an Ethereum event.
@@ -41,9 +41,6 @@ where
 
     /// Returns an `EthereumLogFilter` for all the subgraph's data sources.
     fn ethereum_log_filter(&self) -> EthereumLogFilter;
-
-    /// Returns the runtime host builder used by the subgraph instance.
-    fn runtime_host_builder(&self) -> &T;
 
     /// Adds dynamic data sources to the subgraph.
     fn add_dynamic_data_sources(

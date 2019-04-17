@@ -23,9 +23,6 @@ where
     /// stream events are processed by the mappings in this same order.
     hosts: Vec<Arc<T::Host>>,
 
-    /// Builder for runtime hosts.
-    host_builder: T,
-
     /// Dynamic data sources.
     ethereum_log_filter: EthereumLogFilter,
 }
@@ -37,7 +34,7 @@ where
     fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest,
-        host_builder: T,
+        host_builder: &T,
     ) -> Result<Self, Error> {
         let manifest_log_filter = EthereumLogFilter::from(&manifest.data_sources);
 
@@ -67,7 +64,6 @@ where
                 .map(Result::unwrap)
                 .map(Arc::new)
                 .collect(),
-            host_builder,
             ethereum_log_filter: manifest_log_filter,
         })
     }
@@ -114,10 +110,6 @@ where
 
     fn ethereum_log_filter(&self) -> EthereumLogFilter {
         self.ethereum_log_filter.clone()
-    }
-
-    fn runtime_host_builder(&self) -> &T {
-        &self.host_builder
     }
 
     fn add_dynamic_data_sources(
