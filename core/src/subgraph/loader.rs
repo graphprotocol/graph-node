@@ -233,7 +233,7 @@ where
                         if data_sources.is_empty() {
                             future::Loop::Break(state)
                         } else {
-                            state.skip += dbg!(data_sources.len() as i32);
+                            state.skip += data_sources.len() as i32;
                             state.data_sources.extend(data_sources);
                             future::Loop::Continue(state)
                         }
