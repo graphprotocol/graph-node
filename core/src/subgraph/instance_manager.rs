@@ -298,19 +298,25 @@ where
         .unwrap()
         .insert(ctx.inputs.deployment_id.clone(), block_stream_canceler);
 
+    debug!(logger, "Starting block stream");
+
     // Flag that indicates when the subgraph needs to be
     // restarted due to new dynamic data sources being added
-    let needs_restart = Arc::new(AtomicBool::new(false));
-    let needs_restart_read = needs_restart.clone();
+    let needs_restart_set = Arc::new(AtomicBool::new(false));
 
-    debug!(logger, "Starting block stream");
+    // Handle to the flag for checking it before every block
+    let needs_restart_check = needs_restart_set.clone();
+
+    // Handle to the flag for resetting it after having detected that
+    // a restart is necessary
+    let needs_restart_reset = needs_restart_set.clone();
 
     block_stream
         // Take blocks from the stream as long as no dynamic data sources
         // have been created. Once that has happened, we need to restart
         // the stream to include blocks for these data sources as well.
         .take_while(move |_| {
-            if needs_restart_read.load(Ordering::SeqCst) {
+            if needs_restart_check.load(Ordering::SeqCst) {
                 debug!(
                     logger_for_restart_check,
                     "New data sources added, restart the subgraph",
@@ -322,16 +328,28 @@ where
         })
         // Process blocks from the stream as long as no restart is needed
         .fold(ctx, move |ctx, block| {
+            let needs_restart_set = needs_restart_set.clone();
+
             process_block(
                 logger.clone(),
                 ctx,
                 block_stream_cancel_handle.clone(),
-                needs_restart.clone(),
                 block,
             )
+            .map(move |(ctx, needs_restart)| {
+                // If new data sources were detected in this block, set the
+                // needs restart flag. This will cause `take_while` to stop
+                // emitting blocks and finish this `fold` loop as well
+                if needs_restart {
+                    needs_restart_set.store(true, Ordering::SeqCst);
+                }
+                ctx
+            })
         })
         // A restart is needed
         .and_then(move |mut ctx| {
+            // Reset the needs restart flag and increase the restart counter
+            needs_restart_reset.store(false, Ordering::SeqCst);
             ctx.state.restarts += 1;
 
             // Cancel the stream for real
@@ -379,9 +397,8 @@ fn process_block<B, S, T>(
     logger: Logger,
     ctx: IndexingContext<B, S, T>,
     block_stream_cancel_handle: CancelHandle,
-    needs_restart: Arc<AtomicBool>,
     block: EthereumBlock,
-) -> impl Future<Item = IndexingContext<B, S, T>, Error = CancelableError<Error>>
+) -> impl Future<Item = (IndexingContext<B, S, T>, bool), Error = CancelableError<Error>>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store,
@@ -509,17 +526,13 @@ where
             .map(move |(ctx, block_state, data_sources_created)| {
                 // If new data sources have been added, indicate that the subgraph
                 // needs to be restarted after this block
-                if data_sources_created {
-                    needs_restart.swap(true, Ordering::SeqCst);
-                }
-
-                (ctx, block_state)
+                (ctx, block_state, data_sources_created)
             }),
         )
         .from_err()
     })
     // Apply entity operations and advance the stream
-    .and_then(move |(ctx, block_state)| {
+    .and_then(move |(ctx, block_state, needs_restart)| {
         // Avoid writing to store if block stream has been canceled
         if block_stream_cancel_handle.is_canceled() {
             return Err(CancelableError::Cancel);
@@ -541,7 +554,7 @@ where
                 block_ptr_after,
                 block_state.entity_operations,
             )
-            .map(|_| ctx)
+            .map(|_| (ctx, needs_restart))
             .map_err(|e| {
                 format_err!("Error while processing block stream for a subgraph: {}", e).into()
             })
