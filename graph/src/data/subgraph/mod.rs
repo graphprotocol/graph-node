@@ -248,14 +248,14 @@ impl From<Error> for SubgraphRegistrarError {
 
 #[derive(Fail, Debug)]
 pub enum SubgraphAssignmentProviderError {
-    #[fail(display = "subgraph resolve error: {}", _0)]
+    #[fail(display = "Subgraph resolve error: {}", _0)]
     ResolveError(SubgraphManifestResolveError),
-    #[fail(display = "failed to load dynamic data sources: {}", _0)]
+    #[fail(display = "Failed to load dynamic data sources: {}", _0)]
     DynamicDataSourcesError(failure::Error),
     /// Occurs when attempting to remove a subgraph that's not hosted.
-    #[fail(display = "subgraph with ID {} already running", _0)]
+    #[fail(display = "Subgraph with ID {} already running", _0)]
     AlreadyRunning(SubgraphDeploymentId),
-    #[fail(display = "subgraph with ID {} is not running", _0)]
+    #[fail(display = "Subgraph with ID {} is not running", _0)]
     NotRunning(SubgraphDeploymentId),
     /// Occurs when a subgraph's GraphQL schema is invalid.
     #[fail(display = "GraphQL schema error: {}", _0)]
@@ -265,7 +265,7 @@ pub enum SubgraphAssignmentProviderError {
         _0, _1, _2
     )]
     BuildIndexesError(String, String, String),
-    #[fail(display = "subgraph provider error: {}", _0)]
+    #[fail(display = "Subgraph provider error: {}", _0)]
     Unknown(failure::Error),
 }
 
