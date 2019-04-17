@@ -113,7 +113,7 @@ impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
             subgraph_id: self.subgraph_id.clone(),
             reorg_threshold: self.reorg_threshold,
             logger: self.logger.clone(),
-            include_calls_in_blocks: self.include_calls_in_blocks.clone(),
+            include_calls_in_blocks: self.include_calls_in_blocks,
         }
     }
 }
