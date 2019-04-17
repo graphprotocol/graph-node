@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use web3::types::{Log, Transaction};
+use web3::types::Log;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DataSourceTemplateInfo {
@@ -34,10 +34,20 @@ where
         &self,
         logger: &Logger,
         block: Arc<EthereumBlock>,
-        transaction: Arc<Transaction>,
         log: Log,
         state: BlockState,
     ) -> Box<Future<Item = BlockState, Error = Error> + Send>;
+
+    /// Like `process_log` but processes an Ethereum event in a given list of hosts.
+    fn process_log_in_runtime_hosts<I>(
+        logger: &Logger,
+        hosts: I,
+        block: Arc<EthereumBlock>,
+        log: Log,
+        state: BlockState,
+    ) -> Box<Future<Item = BlockState, Error = Error> + Send>
+    where
+        I: IntoIterator<Item = Arc<T::Host>>;
 
     /// Adds dynamic data sources to the subgraph.
     fn add_dynamic_data_sources(&mut self, runtime_hosts: Vec<Arc<T::Host>>) -> Result<(), Error>;
