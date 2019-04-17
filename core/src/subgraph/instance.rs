@@ -34,6 +34,10 @@ where
         host_builder: &T,
     ) -> Result<Self, Error> {
         let manifest_id = manifest.id.clone();
+
+        // Create a new runtime host for each data source in the subgraph manifest;
+        // we use the same order here as in the subgraph manifest to make the
+        // event processing behavior predictable
         let (hosts, errors): (_, Vec<_>) = manifest
             .data_sources
             .into_iter()
