@@ -18,25 +18,39 @@ use crate::split_logger;
 use crate::ElasticDrainConfig;
 use crate::ElasticLoggingConfig;
 
-struct SubgraphState<B, S, T>
-where
-    B: BlockStreamBuilder,
-    S: Store + ChainStore,
-    T: RuntimeHostBuilder,
-{
+type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<SubgraphDeploymentId, CancelGuard>>>;
+
+struct IndexingInputs<B, S, T> {
     pub deployment_id: SubgraphDeploymentId,
-    pub instance: Arc<RwLock<SubgraphInstance<T>>>,
-    pub logger: Logger,
-    pub templates: Vec<(String, DataSourceTemplate)>,
     pub store: Arc<S>,
     pub stream_builder: B,
     pub host_builder: T,
+    pub templates: Vec<(String, DataSourceTemplate)>,
+}
+
+struct IndexingState<T>
+where
+    T: RuntimeHostBuilder,
+{
+    pub logger: Logger,
+    pub instance: Arc<RwLock<SubgraphInstance<T>>>,
     pub instances: SharedInstanceKeepAliveMap,
     pub log_filter: EthereumLogFilter,
     pub restarts: u64,
 }
 
-type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<SubgraphDeploymentId, CancelGuard>>>;
+struct IndexingContext<B, S, T>
+where
+    B: BlockStreamBuilder,
+    S: Store + ChainStore,
+    T: RuntimeHostBuilder,
+{
+    /// Read only inputs that are needed while indexing a subgraph.
+    pub inputs: IndexingInputs<B, S, T>,
+
+    /// Mutable state that may be modified while indexing a subgraph.
+    pub state: IndexingState<T>,
+}
 
 pub struct SubgraphInstanceManager {
     logger: Logger,
@@ -199,17 +213,21 @@ impl SubgraphInstanceManager {
         )?));
 
         // The subgraph state tracks the state of the subgraph instance over time
-        let subgraph_state = SubgraphState {
-            logger,
-            deployment_id,
-            instance,
-            templates,
-            store,
-            stream_builder,
-            host_builder,
-            instances,
-            log_filter,
-            restarts: 0,
+        let ctx = IndexingContext {
+            inputs: IndexingInputs {
+                deployment_id,
+                templates,
+                store,
+                stream_builder,
+                host_builder,
+            },
+            state: IndexingState {
+                logger,
+                instance,
+                instances,
+                log_filter,
+                restarts: 0,
+            },
         };
 
         // Keep restarting the subgraph until it terminates. The subgraph
@@ -217,9 +235,7 @@ impl SubgraphInstanceManager {
         // creates dynamic data sources. This allows us to recreate the
         // block stream and include events for the new data sources going
         // forward; this is easier than updating the existing block stream.
-        tokio::spawn(loop_fn(subgraph_state, move |subgraph_state| {
-            run_subgraph(subgraph_state)
-        }));
+        tokio::spawn(loop_fn(ctx, move |ctx| run_subgraph(ctx)));
 
         Ok(())
     }
@@ -244,44 +260,43 @@ impl EventConsumer<SubgraphAssignmentProviderEvent> for SubgraphInstanceManager 
 }
 
 fn run_subgraph<B, S, T>(
-    subgraph_state: SubgraphState<B, S, T>,
-) -> impl Future<Item = Loop<(), SubgraphState<B, S, T>>, Error = ()>
+    ctx: IndexingContext<B, S, T>,
+) -> impl Future<Item = Loop<(), IndexingContext<B, S, T>>, Error = ()>
 where
     B: BlockStreamBuilder,
     S: Store + ChainStore,
     T: RuntimeHostBuilder,
 {
-    let logger = subgraph_state
-        .logger
-        .new(o!("restarts" => subgraph_state.restarts));
+    let logger = ctx.state.logger.new(o!("restarts" => ctx.state.restarts));
 
     debug!(logger, "Starting or restarting subgraph");
 
     // Clone a few things for different parts of the async processing
-    let id_for_err = subgraph_state.deployment_id.clone();
-    let store_for_err = subgraph_state.store.clone();
+    let id_for_err = ctx.inputs.deployment_id.clone();
+    let store_for_err = ctx.inputs.store.clone();
     let logger_for_err = logger.clone();
     let logger_for_restart_check = logger.clone();
 
     let block_stream_canceler = CancelGuard::new();
     let block_stream_cancel_handle = block_stream_canceler.handle();
-    let block_stream = subgraph_state
+    let block_stream = ctx
+        .inputs
         .stream_builder
         .build(
             logger.clone(),
-            subgraph_state.deployment_id.clone(),
-            subgraph_state.log_filter.clone(),
+            ctx.inputs.deployment_id.clone(),
+            ctx.state.log_filter.clone(),
         )
         .from_err()
         .cancelable(&block_stream_canceler, || CancelableError::Cancel);
 
     // Keep the stream's cancel guard around to be able to shut it down
     // when the subgraph deployment is unassigned
-    subgraph_state
+    ctx.state
         .instances
         .write()
         .unwrap()
-        .insert(subgraph_state.deployment_id.clone(), block_stream_canceler);
+        .insert(ctx.inputs.deployment_id.clone(), block_stream_canceler);
 
     // Flag that indicates when the subgraph needs to be
     // restarted due to new dynamic data sources being added
@@ -306,28 +321,28 @@ where
             }
         })
         // Process blocks from the stream as long as no restart is needed
-        .fold(subgraph_state, move |subgraph_state, block| {
+        .fold(ctx, move |ctx, block| {
             process_block(
                 logger.clone(),
-                subgraph_state,
+                ctx,
                 block_stream_cancel_handle.clone(),
                 needs_restart.clone(),
                 block,
             )
         })
         // A restart is needed
-        .and_then(move |mut subgraph_state| {
-            subgraph_state.restarts += 1;
+        .and_then(move |mut ctx| {
+            ctx.state.restarts += 1;
 
             // Cancel the stream for real
-            subgraph_state
+            ctx.state
                 .instances
                 .write()
                 .unwrap()
-                .remove(&subgraph_state.deployment_id);
+                .remove(&ctx.inputs.deployment_id);
 
             // And restart the subgraph
-            Ok(Loop::Continue(subgraph_state))
+            Ok(Loop::Continue(ctx))
         })
         // Handle unexpected stream errors by marking the subgraph as failed
         .map_err(move |e| match e {
@@ -362,11 +377,11 @@ where
 
 fn process_block<B, S, T>(
     logger: Logger,
-    subgraph_state: SubgraphState<B, S, T>,
+    ctx: IndexingContext<B, S, T>,
     block_stream_cancel_handle: CancelHandle,
     needs_restart: Arc<AtomicBool>,
     block: EthereumBlock,
-) -> impl Future<Item = SubgraphState<B, S, T>, Error = CancelableError<Error>>
+) -> impl Future<Item = IndexingContext<B, S, T>, Error = CancelableError<Error>>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store,
@@ -378,7 +393,7 @@ where
     ));
 
     // Extract logs relevant to the subgraph
-    let instance = subgraph_state.instance.clone();
+    let instance = ctx.state.instance.clone();
     let logs: Vec<_> = block
         .transaction_receipts
         .iter()
@@ -419,94 +434,90 @@ where
     // collected previously to every new event being processed
     process_logs(
         logger.clone(),
-        subgraph_state.instance.clone(),
+        ctx.state.instance.clone(),
         BlockState::default(),
         block.clone(),
         logs,
     )
     .and_then(|block_state| {
         // Instantiate dynamic data sources
-        create_dynamic_data_sources(logger1, subgraph_state, block_state).from_err()
+        create_dynamic_data_sources(logger1, ctx, block_state).from_err()
     })
-    .and_then(
-        move |(subgraph_state, block_state, data_sources, runtime_hosts)| {
-            // Reprocess the logs that only match the new data sources
-            //
-            // Note: Once we support other triggers as well, we may have to
-            // re-request the current block from the block stream's adapter
-            // and process that instead of the block we already have here.
+    .and_then(move |(ctx, block_state, data_sources, runtime_hosts)| {
+        // Reprocess the logs that only match the new data sources
+        //
+        // Note: Once we support other triggers as well, we may have to
+        // re-request the current block from the block stream's adapter
+        // and process that instead of the block we already have here.
 
-            // Extract logs relevant to the new runtime hosts
-            let logs: Vec<_> = if runtime_hosts.is_empty() {
-                vec![]
-            } else {
-                block
-                    .transaction_receipts
-                    .iter()
-                    .flat_map(|receipt| {
-                        receipt
-                            .logs
-                            .iter()
-                            .filter(|log| runtime_hosts.iter().any(|host| host.matches_log(&log)))
-                    })
-                    .cloned()
-                    .collect()
-            };
+        // Extract logs relevant to the new runtime hosts
+        let logs: Vec<_> = if runtime_hosts.is_empty() {
+            vec![]
+        } else {
+            block
+                .transaction_receipts
+                .iter()
+                .flat_map(|receipt| {
+                    receipt
+                        .logs
+                        .iter()
+                        .filter(|log| runtime_hosts.iter().any(|host| host.matches_log(&log)))
+                })
+                .cloned()
+                .collect()
+        };
 
-            if logs.len() == 0 {
-                debug!(
-                    logger,
-                    "No events found in this block for the new data sources"
-                );
-            } else if logs.len() == 1 {
-                info!(
-                    logger,
-                    "1 event found in this block for the new data sources"
-                );
-            } else {
-                info!(
-                    logger,
-                    "{} events found in this block for the new data sources",
-                    logs.len()
-                );
+        if logs.len() == 0 {
+            debug!(
+                logger,
+                "No events found in this block for the new data sources"
+            );
+        } else if logs.len() == 1 {
+            info!(
+                logger,
+                "1 event found in this block for the new data sources"
+            );
+        } else {
+            info!(
+                logger,
+                "{} events found in this block for the new data sources",
+                logs.len()
+            );
+        }
+
+        process_logs_in_runtime_hosts(
+            logger2.clone(),
+            runtime_hosts.clone(),
+            block_state,
+            block.clone(),
+            logs,
+        )
+        .map(move |block_state| (ctx, block_state, data_sources, runtime_hosts))
+    })
+    .and_then(move |(ctx, block_state, data_sources, runtime_hosts)| {
+        // Add entity operations for the new data sources to the block state
+        // and add runtimes for the data sources to the subgraph instance
+        persist_dynamic_data_sources(
+            logger3,
+            ctx,
+            block_state,
+            data_sources,
+            runtime_hosts,
+            block_ptr_for_new_data_sources,
+        )
+        .map(move |(ctx, block_state, data_sources_created)| {
+            // If new data sources have been added, indicate that the subgraph
+            // needs to be restarted after this block
+            if data_sources_created {
+                needs_restart.swap(true, Ordering::SeqCst);
             }
 
-            process_logs_in_runtime_hosts(
-                logger2.clone(),
-                runtime_hosts.clone(),
-                block_state,
-                block.clone(),
-                logs,
-            )
-            .map(move |block_state| (subgraph_state, block_state, data_sources, runtime_hosts))
-        },
-    )
-    .and_then(
-        move |(subgraph_state, block_state, data_sources, runtime_hosts)| {
-            // Add entity operations for the new data sources to the block state
-            // and add runtimes for the data sources to the subgraph instance
-            persist_dynamic_data_sources(
-                logger3,
-                subgraph_state,
-                block_state,
-                data_sources,
-                runtime_hosts,
-                block_ptr_for_new_data_sources,
-            )
-            .map(move |(subgraph_state, block_state, data_sources_created)| {
-                // If new data sources have been added, indicate that the subgraph
-                // needs to be restarted after this block
-                if data_sources_created {
-                    needs_restart.swap(true, Ordering::SeqCst);
-                }
-
-                (subgraph_state, block_state)
-            })
-            .from_err()
-        },
-    )
+            (ctx, block_state)
+        })
+        .from_err()
+    })
     // Apply entity operations and advance the stream
-    .and_then(move |(subgraph_state, block_state)| {
+    .and_then(move |(ctx, block_state)| {
         // Avoid writing to store if block stream has been canceled
         if block_stream_cancel_handle.is_canceled() {
             return Err(CancelableError::Cancel);
@@ -520,15 +531,15 @@ where
 
         // Transact entity operations into the store and update the
         // subgraph's block stream pointer
-        subgraph_state
+        ctx.inputs
             .store
             .transact_block_operations(
-                subgraph_state.deployment_id.clone(),
+                ctx.inputs.deployment_id.clone(),
                 block_ptr_now,
                 block_ptr_after,
                 block_state.entity_operations,
             )
-            .map(|_| subgraph_state)
+            .map(|_| ctx)
             .map_err(|e| {
                 format_err!("Error while processing block stream for a subgraph: {}", e).into()
             })
@@ -620,11 +631,11 @@ where
 
 fn create_dynamic_data_sources<B, S, T>(
     logger: Logger,
-    subgraph_state: SubgraphState<B, S, T>,
+    ctx: IndexingContext<B, S, T>,
     block_state: BlockState,
 ) -> impl Future<
     Item = (
-        SubgraphState<B, S, T>,
+        IndexingContext<B, S, T>,
         BlockState,
         Vec<DataSource>,
         Vec<Arc<T::Host>>,
@@ -642,14 +653,14 @@ where
         S: ChainStore + Store,
         T: RuntimeHostBuilder,
     {
-        subgraph_state: SubgraphState<B, S, T>,
+        ctx: IndexingContext<B, S, T>,
         block_state: BlockState,
         data_sources: Vec<DataSource>,
         runtime_hosts: Vec<Arc<T::Host>>,
     };
 
     let initial_state = State {
-        subgraph_state,
+        ctx,
         block_state,
         data_sources: vec![],
         runtime_hosts: vec![],
@@ -659,7 +670,8 @@ where
         .fold(initial_state, move |mut state, info| {
             // Find the template for this data source
             let template = match state
-                .subgraph_state
+                .ctx
+                .inputs
                 .templates
                 .iter()
                 .find(|(data_source_name, template)| {
@@ -686,9 +698,9 @@ where
             };
 
             // Try to create a runtime host for the data source
-            let host = match state.subgraph_state.host_builder.build(
+            let host = match state.ctx.inputs.host_builder.build(
                 &logger,
-                state.subgraph_state.deployment_id.clone(),
+                state.ctx.inputs.deployment_id.clone(),
                 data_source.expensive_clone(),
             ) {
                 Ok(host) => Arc::new(host),
@@ -702,7 +714,7 @@ where
         })
         .map(|final_state| {
             (
-                final_state.subgraph_state,
+                final_state.ctx,
                 final_state.block_state,
                 final_state.data_sources,
                 final_state.runtime_hosts,
@@ -712,12 +724,12 @@ where
 
 fn persist_dynamic_data_sources<B, S, T>(
     logger: Logger,
-    mut subgraph_state: SubgraphState<B, S, T>,
+    mut ctx: IndexingContext<B, S, T>,
     mut block_state: BlockState,
     data_sources: Vec<DataSource>,
     runtime_hosts: Vec<Arc<T::Host>>,
     block_ptr: EthereumBlockPointer,
-) -> impl Future<Item = (SubgraphState<B, S, T>, BlockState, bool), Error = Error>
+) -> impl Future<Item = (IndexingContext<B, S, T>, BlockState, bool), Error = Error>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store,
@@ -737,7 +749,7 @@ where
     // the dynamic data sources
     for data_source in data_sources.iter() {
         let entity = DynamicEthereumContractDataSourceEntity::from((
-            &subgraph_state.deployment_id,
+            &ctx.inputs.deployment_id,
             data_source,
             &block_ptr,
         ));
@@ -747,19 +759,20 @@ where
     }
 
     // Merge log filters from data sources into the block stream builder
-    subgraph_state
+    ctx.state
         .log_filter
         .extend(EthereumLogFilter::from_iter(data_sources.iter()));
 
     // Add the new data sources to the subgraph instance
-    match subgraph_state
+    match ctx
+        .state
         .instance
         .clone()
         .write()
         .unwrap()
         .add_dynamic_data_sources(runtime_hosts)
     {
-        Ok(_) => future::ok((subgraph_state, block_state, needs_restart)),
+        Ok(_) => future::ok((ctx, block_state, needs_restart)),
         Err(e) => future::err(e),
     }
 }
