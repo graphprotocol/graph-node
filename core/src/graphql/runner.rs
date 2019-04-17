@@ -63,6 +63,24 @@ where
         Box::new(future::ok(result))
     }
 
+    fn run_query_with_complexity(
+        &self,
+        query: Query,
+        max_complexity: Option<u64>,
+    ) -> QueryResultFuture {
+        let result = execute_query(
+            &query,
+            QueryExecutionOptions {
+                logger: self.logger.clone(),
+                resolver: StoreResolver::new(&self.logger, self.store.clone()),
+                deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
+                max_complexity: max_complexity,
+                max_depth: *GRAPHQL_MAX_DEPTH,
+            },
+        );
+        Box::new(future::ok(result))
+    }
+
     fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture {
         let result = execute_subscription(
             &subscription,
