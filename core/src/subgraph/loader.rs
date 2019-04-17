@@ -18,16 +18,16 @@ where
     S: Store + SubgraphDeploymentStore,
     Q: GraphQlRunner,
 {
-    pub fn new(store: Arc<S>, link_resolver: Arc<L>, graphql_runner: Arc<Q>) -> Arc<Self> {
-        Arc::new(Self {
+    pub fn new(store: Arc<S>, link_resolver: Arc<L>, graphql_runner: Arc<Q>) -> Self {
+        Self {
             store,
             link_resolver,
             graphql_runner,
-        })
+        }
     }
 
     fn dynamic_data_sources_query(
-        self: Arc<Self>,
+        &self,
         deployment: &SubgraphDeploymentId,
         skip: i32,
     ) -> Result<Query, Error> {
@@ -88,7 +88,7 @@ where
     }
 
     fn query_dynamic_data_sources(
-        self: Arc<Self>,
+        &self,
         deployment: SubgraphDeploymentId,
         query: Query,
     ) -> impl Future<Item = QueryResult, Error = Error> + Send {
@@ -98,7 +98,7 @@ where
     }
 
     fn parse_data_sources(
-        self: Arc<Self>,
+        &self,
         deployment_id: SubgraphDeploymentId,
         query_result: QueryResult,
     ) -> Result<Vec<EthereumContractDataSourceEntity>, Error> {
@@ -156,16 +156,14 @@ where
     }
 
     fn convert_to_unresolved_data_sources(
-        self: Arc<Self>,
+        &self,
         entities: Vec<EthereumContractDataSourceEntity>,
-    ) -> impl Future<Item = Vec<UnresolvedDataSource>, Error = Error> + Send {
+    ) -> Vec<UnresolvedDataSource> {
         // Turn the entities into unresolved data sources
-        future::ok(
-            entities
-                .into_iter()
-                .map(Into::into)
-                .collect::<Vec<UnresolvedDataSource>>(),
-        )
+        entities
+            .into_iter()
+            .map(Into::into)
+            .collect::<Vec<UnresolvedDataSource>>()
     }
 
     fn resolve_data_sources(
@@ -226,7 +224,7 @@ where
                         self4.parse_data_sources(deployment_id3, query_result)
                     })
                     .and_then(move |typed_entities| {
-                        self5.convert_to_unresolved_data_sources(typed_entities)
+                        future::ok(self5.convert_to_unresolved_data_sources(typed_entities))
                     })
                     .and_then(move |unresolved_data_sources| {
                         self6.resolve_data_sources(unresolved_data_sources)

@@ -70,11 +70,11 @@ where
         let subgraph_id = id.clone();
         let subgraph_id_for_data_sources = id.clone();
 
-        let loader = DataSourceLoader::new(
+        let loader = Arc::new(DataSourceLoader::new(
             store.clone(),
             self.resolver.clone(),
             self.graphql_runner.clone(),
-        );
+        ));
 
         let link = format!("/ipfs/{}", id);
 
