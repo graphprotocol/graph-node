@@ -558,7 +558,7 @@ where
         ctx: &mut EventHandlerContext,
         name: String,
         params: Vec<String>,
-    ) -> Result<bool, HostExportError<impl ExportError>> {
+    ) -> Result<(), HostExportError<impl ExportError>> {
         // Resolve the name into the right template
         self.data_source
             .templates
@@ -597,7 +597,7 @@ where
             params,
         });
 
-        Ok(true)
+        Ok(())
     }
 }
 
