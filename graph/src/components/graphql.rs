@@ -15,6 +15,13 @@ pub trait GraphQlRunner: Send + Sync + 'static {
     /// Runs a GraphQL query and returns its result.
     fn run_query(&self, query: Query) -> QueryResultFuture;
 
+    /// Runs a GraphqL query up to the given complexity. Overrides the global complexity limit.
+    fn run_query_with_complexity(
+        &self,
+        query: Query,
+        max_complexity: Option<u64>,
+    ) -> QueryResultFuture;
+
     /// Runs a GraphQL subscription and returns a stream of results.
     fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture;
 }

@@ -38,6 +38,14 @@ impl GraphQlRunner for MockGraphQlRunner {
         Box::new(future::ok(QueryResult::new(Some(data))))
     }
 
+    fn run_query_with_complexity(
+        &self,
+        _query: Query,
+        _max_complexity: Option<u64>,
+    ) -> QueryResultFuture {
+        unimplemented!();
+    }
+
     fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture {
         info!(self.logger, "Run subscription"; "subscription" => format!("{:?}", subscription));
         let (_, receiver) = channel(2);

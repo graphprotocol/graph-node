@@ -24,6 +24,14 @@ use crate::tokio::timer::Delay;
 pub struct TestGraphQlRunner;
 
 impl GraphQlRunner for TestGraphQlRunner {
+    fn run_query_with_complexity(
+        &self,
+        _query: Query,
+        _complexity: Option<u64>,
+    ) -> QueryResultFuture {
+        unimplemented!();
+    }
+
     fn run_query(&self, query: Query) -> QueryResultFuture {
         Box::new(future::ok(QueryResult::new(Some(q::Value::Object(
             if query.variables.is_some()
