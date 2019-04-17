@@ -5,3 +5,6 @@ all: $(WASM_FILES)
 
 %.wasm: %.ts
 	@asc $< -b $@ --validate
+
+clean:
+	rm $(WASM_FILES)
