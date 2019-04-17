@@ -569,7 +569,6 @@ where
 
             instance
                 .process_log(&logger, block, log, block_state)
-                .map(|block_state| block_state)
                 .map_err(|e| format_err!("Failed to process event: {}", e))
         })
 }
