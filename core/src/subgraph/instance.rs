@@ -3,7 +3,7 @@ use std::env;
 use std::str::FromStr;
 
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
-use graph::web3::types::{Log, Transaction};
+use graph::web3::types::Log;
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -75,25 +75,40 @@ where
         &self,
         logger: &Logger,
         block: Arc<EthereumBlock>,
-        transaction: Arc<Transaction>,
         log: Log,
         state: BlockState,
     ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
+        Self::process_log_in_runtime_hosts(logger, self.hosts.iter().cloned(), block, log, state)
+    }
+
+    fn process_log_in_runtime_hosts<I>(
+        logger: &Logger,
+        hosts: I,
+        block: Arc<EthereumBlock>,
+        log: Log,
+        state: BlockState,
+    ) -> Box<Future<Item = BlockState, Error = Error> + Send>
+    where
+        I: IntoIterator<Item = Arc<T::Host>>,
+    {
         let logger = logger.to_owned();
 
         // Identify runtime hosts that will handle this event
-        let matching_hosts: Vec<_> = self
-            .hosts
-            .iter()
+        let matching_hosts: Vec<_> = hosts
+            .into_iter()
             .filter(|host| host.matches_log(&log))
-            .cloned()
             .collect();
 
         let log = Arc::new(log);
 
+        let transaction = block
+            .transaction_for_log(&log)
+            .map(Arc::new)
+            .ok_or_else(|| format_err!("Found no transaction for event"));
+
         // Process the log in each host in the same order the corresponding
         // data sources appear in the subgraph manifest
-        Box::new(
+        Box::new(future::result(transaction).and_then(move |transaction| {
             stream::iter_ok(matching_hosts).fold(state, move |state, host| {
                 host.process_log(
                     logger.clone(),
@@ -102,8 +117,8 @@ where
                     log.clone(),
                     state,
                 )
-            }),
-        )
+            })
+        }))
     }
 
     fn add_dynamic_data_sources(&mut self, runtime_hosts: Vec<Arc<T::Host>>) -> Result<(), Error> {

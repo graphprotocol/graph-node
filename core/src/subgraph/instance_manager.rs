@@ -485,7 +485,7 @@ where
             );
         }
 
-        process_logs_in_runtime_hosts(
+        process_logs_in_runtime_hosts::<T>(
             logger2.clone(),
             runtime_hosts.clone(),
             block_state,
@@ -563,31 +563,24 @@ where
             let instance = instance.clone();
             let block = block.clone();
 
-            let transaction = block
-                .transaction_for_log(&log)
-                .map(Arc::new)
-                .ok_or_else(|| format_err!("Found no transaction for event"));
+            let instance = instance.read().unwrap();
 
-            future::result(transaction).and_then(move |transaction| {
-                instance
-                    .read()
-                    .unwrap()
-                    .process_log(&logger, block, transaction, log, block_state)
-                    .map(|block_state| block_state)
-                    .map_err(|e| format_err!("Failed to process event: {}", e))
-            })
+            instance
+                .process_log(&logger, block, log, block_state)
+                .map(|block_state| block_state)
+                .map_err(|e| format_err!("Failed to process event: {}", e))
         })
 }
 
-fn process_logs_in_runtime_hosts<R>(
+fn process_logs_in_runtime_hosts<T>(
     logger: Logger,
-    runtime_hosts: Vec<Arc<R>>,
+    runtime_hosts: Vec<Arc<T::Host>>,
     block_state: BlockState,
     block: Arc<EthereumBlock>,
     logs: Vec<Log>,
 ) -> impl Future<Item = BlockState, Error = CancelableError<Error>>
 where
-    R: RuntimeHost + 'static,
+    T: RuntimeHostBuilder,
 {
     stream::iter_ok::<_, CancelableError<Error>>(logs)
         // Process events from the block stream
@@ -596,36 +589,15 @@ where
             let block = block.clone();
             let runtime_hosts = runtime_hosts.clone();
 
-            let transaction = block
-                .transaction_for_log(&log)
-                .map(Arc::new)
-                .ok_or_else(|| format_err!("Found no transaction for event"));
-
-            future::result(transaction).and_then(move |transaction| {
-                // Identify runtime hosts that will handle this event
-                let matching_hosts: Vec<_> = runtime_hosts
-                    .iter()
-                    .filter(|host| host.matches_log(&log))
-                    .cloned()
-                    .collect();
-
-                let log = Arc::new(log);
-
-                // Process the log in each host in the same order the corresponding
-                // data sources have been created
-                Box::new(stream::iter_ok(matching_hosts).fold(
-                    block_state,
-                    move |block_state, host| {
-                        host.process_log(
-                            logger.clone(),
-                            block.clone(),
-                            transaction.clone(),
-                            log.clone(),
-                            block_state,
-                        )
-                    },
-                ))
-            })
+            // Process the log in each host in the same order the corresponding
+            // data sources have been created
+            SubgraphInstance::<T>::process_log_in_runtime_hosts(
+                &logger,
+                runtime_hosts.iter().map(|host| host.clone()),
+                block.clone(),
+                log.clone(),
+                block_state,
+            )
         })
 }
 
