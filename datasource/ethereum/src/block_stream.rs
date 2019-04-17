@@ -1370,56 +1370,56 @@ fn parse_log_triggers(
     log_filter: Option<EthereumLogFilter>,
     block: &EthereumBlock,
 ) -> Vec<EthereumTrigger> {
-    if log_filter.is_none() {
-        return vec![];
-    }
-    let log_filter = log_filter.unwrap();
-    block
-        .transaction_receipts
-        .iter()
-        .flat_map(move |receipt| {
-            let log_filter = log_filter.clone();
-            receipt
-                .logs
-                .iter()
-                .filter(move |log| log_filter.matches(log))
-                .map(move |log| EthereumTrigger::Log(log.clone()))
-        })
-        .collect()
+    log_filter.map_or(vec![], |log_filter| {
+        block
+            .transaction_receipts
+            .iter()
+            .flat_map(move |receipt| {
+                let log_filter = log_filter.clone();
+                receipt
+                    .logs
+                    .iter()
+                    .filter(move |log| log_filter.matches(log))
+                    .map(move |log| EthereumTrigger::Log(log.clone()))
+            })
+            .collect()
+    })
 }
 
 fn parse_call_triggers(
     call_filter: Option<EthereumCallFilter>,
     block: &EthereumBlockWithCalls,
 ) -> Vec<EthereumTrigger> {
-    if call_filter.is_none() || block.calls.is_none() {
-        return vec![];
-    }
-    let call_filter = call_filter.unwrap();
-    let calls = &block.calls.clone().unwrap();
-    calls
-        .iter()
-        .filter(move |call| call_filter.matches(call))
-        .map(move |call| EthereumTrigger::Call(call.clone()))
-        .collect()
+    call_filter.map_or(vec![], move |call_filter| {
+        block.calls.as_ref().map_or(vec![], |calls| {
+            calls
+                .iter()
+                .filter(move |call| call_filter.matches(call))
+                .map(move |call| EthereumTrigger::Call(call.clone()))
+                .collect()
+        })
+    })
 }
 
 fn parse_block_triggers(
     block_filter: Option<EthereumBlockFilter>,
     block: &EthereumBlockWithCalls,
 ) -> Vec<EthereumTrigger> {
-    if block_filter.is_none() {
-        return vec![];
-    }
-    let call_filter = EthereumCallFilter::from(block_filter.clone().unwrap());
-    let calls = &block.calls.clone().unwrap();
-    let mut triggers = calls
-        .iter()
-        .filter(move |call| call_filter.matches(call))
-        .map(move |call| EthereumTrigger::Block(EthereumBlockTriggerType::WithCallTo(call.to)))
-        .collect::<Vec<EthereumTrigger>>();
-    if block_filter.unwrap().trigger_every_block {
-        triggers.push(EthereumTrigger::Block(EthereumBlockTriggerType::Every));
-    }
-    triggers
+    block_filter.map_or(vec![], move |block_filter| {
+        let trigger_every_block = block_filter.trigger_every_block;
+        let call_filter = EthereumCallFilter::from(block_filter);
+        let mut triggers = block.calls.as_ref().map_or(vec![], |calls| {
+            calls
+                .iter()
+                .filter(move |call| call_filter.matches(call))
+                .map(move |call| {
+                    EthereumTrigger::Block(EthereumBlockTriggerType::WithCallTo(call.to))
+                })
+                .collect::<Vec<EthereumTrigger>>()
+        });
+        if trigger_every_block {
+            triggers.push(EthereumTrigger::Block(EthereumBlockTriggerType::Every));
+        }
+        triggers
+    })
 }
