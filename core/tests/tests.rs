@@ -64,6 +64,7 @@ fn add_subgraph_to_ipfs(
     ipfs_upload.and_then(move |subgraph_string| add(&add_client, subgraph_string))
 }
 
+#[ignore]
 #[test]
 fn multiple_data_sources_per_subgraph() {
     #[derive(Debug)]
