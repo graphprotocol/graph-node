@@ -627,7 +627,7 @@ struct EthereumContractMappingEntity {
     pub file: String,
     pub entities: Vec<String>,
     pub abis: Vec<EthereumContractAbiEntity>,
-    pub block_handler: Option<EthereumBlockHandlerEntity>,
+    pub block_handlers: Vec<EthereumBlockHandlerEntity>,
     pub call_handlers: Vec<EthereumCallHandlerEntity>,
     pub event_handlers: Vec<EthereumContractEventHandlerEntity>,
 }
@@ -685,10 +685,12 @@ impl<'a> From<&'a super::Mapping> for EthereumContractMappingEntity {
             file: mapping.link.link.clone(),
             entities: mapping.entities.clone(),
             abis: mapping.abis.iter().map(Into::into).collect(),
-            block_handler: mapping
-                .block_handler
+            block_handlers: mapping
+                .block_handlers
                 .clone()
-                .map(|block_handler| block_handler.into()),
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             call_handlers: mapping
                 .call_handlers
                 .clone()
