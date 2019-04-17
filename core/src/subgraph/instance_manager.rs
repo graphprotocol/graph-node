@@ -497,23 +497,25 @@ where
     .and_then(move |(ctx, block_state, data_sources, runtime_hosts)| {
         // Add entity operations for the new data sources to the block state
         // and add runtimes for the data sources to the subgraph instance
-        persist_dynamic_data_sources(
-            logger3,
-            ctx,
-            block_state,
-            data_sources,
-            runtime_hosts,
-            block_ptr_for_new_data_sources,
-        )
-        .map(move |(ctx, block_state, data_sources_created)| {
-            // If new data sources have been added, indicate that the subgraph
-            // needs to be restarted after this block
-            if data_sources_created {
-                needs_restart.swap(true, Ordering::SeqCst);
-            }
+        future::result(
+            persist_dynamic_data_sources(
+                logger3,
+                ctx,
+                block_state,
+                data_sources,
+                runtime_hosts,
+                block_ptr_for_new_data_sources,
+            )
+            .map(move |(ctx, block_state, data_sources_created)| {
+                // If new data sources have been added, indicate that the subgraph
+                // needs to be restarted after this block
+                if data_sources_created {
+                    needs_restart.swap(true, Ordering::SeqCst);
+                }
 
-            (ctx, block_state)
-        })
+                (ctx, block_state)
+            }),
+        )
         .from_err()
     })
     // Apply entity operations and advance the stream
@@ -701,7 +703,7 @@ fn persist_dynamic_data_sources<B, S, T>(
     data_sources: Vec<DataSource>,
     runtime_hosts: Vec<Arc<T::Host>>,
     block_ptr: EthereumBlockPointer,
-) -> impl Future<Item = (IndexingContext<B, S, T>, BlockState, bool), Error = Error>
+) -> Result<(IndexingContext<B, S, T>, BlockState, bool), Error>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store,
@@ -736,15 +738,11 @@ where
         .extend(EthereumLogFilter::from_iter(data_sources.iter()));
 
     // Add the new data sources to the subgraph instance
-    match ctx
-        .state
+    ctx.state
         .instance
         .clone()
         .write()
         .unwrap()
         .add_dynamic_data_sources(runtime_hosts)
-    {
-        Ok(_) => future::ok((ctx, block_state, needs_restart)),
-        Err(e) => future::err(e),
-    }
+        .map(move |_| (ctx, block_state, needs_restart))
 }
