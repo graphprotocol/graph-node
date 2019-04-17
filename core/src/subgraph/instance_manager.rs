@@ -303,10 +303,6 @@ where
     // Handle to the flag for checking it before every block
     let needs_restart_check = needs_restart_set.clone();
 
-    // Handle to the flag for resetting it after having detected that
-    // a restart is necessary
-    let needs_restart_reset = needs_restart_set.clone();
-
     block_stream
         // Take blocks from the stream as long as no dynamic data sources
         // have been created. Once that has happened, we need to restart
@@ -344,8 +340,7 @@ where
         })
         // A restart is needed
         .and_then(move |mut ctx| {
-            // Reset the needs restart flag and increase the restart counter
-            needs_restart_reset.store(false, Ordering::SeqCst);
+            // Increase the restart counter
             ctx.state.restarts += 1;
 
             // Cancel the stream for real
@@ -389,6 +384,8 @@ where
         })
 }
 
+/// Processes a block and returns the updated context and a boolean flag indicating
+/// whether new dynamic data sources have been added to the subgraph.
 fn process_block<B, S, T>(
     logger: Logger,
     ctx: IndexingContext<B, S, T>,
