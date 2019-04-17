@@ -148,10 +148,12 @@ impl FromIterator<(Option<Address>, H256)> for EthereumLogFilter {
     }
 }
 
-impl From<&Vec<DataSource>> for EthereumLogFilter {
-    fn from(data_sources: &Vec<DataSource>) -> Self {
-        data_sources
-            .iter()
+impl<'a> FromIterator<&'a DataSource> for EthereumLogFilter {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = &'a DataSource>,
+    {
+        iter.into_iter()
             .flat_map(|data_source| {
                 let contract_addr = data_source.source.address;
                 data_source

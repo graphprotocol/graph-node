@@ -1002,8 +1002,6 @@ pub struct BlockStreamBuilder<S, C, E> {
     eth_adapter: Arc<E>,
     node_id: NodeId,
     reorg_threshold: u64,
-    manifest_log_filter: Option<EthereumLogFilter>,
-    data_sources_log_filter: Option<EthereumLogFilter>,
 }
 
 impl<S, C, E> Clone for BlockStreamBuilder<S, C, E> {
@@ -1014,8 +1012,6 @@ impl<S, C, E> Clone for BlockStreamBuilder<S, C, E> {
             eth_adapter: self.eth_adapter.clone(),
             node_id: self.node_id.clone(),
             reorg_threshold: self.reorg_threshold,
-            manifest_log_filter: self.manifest_log_filter.clone(),
-            data_sources_log_filter: self.data_sources_log_filter.clone(),
         }
     }
 }
@@ -1039,8 +1035,6 @@ where
             eth_adapter,
             node_id,
             reorg_threshold,
-            manifest_log_filter: None,
-            data_sources_log_filter: None,
         }
     }
 }

@@ -39,13 +39,6 @@ where
         state: BlockState,
     ) -> Box<Future<Item = BlockState, Error = Error> + Send>;
 
-    /// Returns an `EthereumLogFilter` for all the subgraph's data sources.
-    fn ethereum_log_filter(&self) -> EthereumLogFilter;
-
     /// Adds dynamic data sources to the subgraph.
-    fn add_dynamic_data_sources(
-        &mut self,
-        data_sources: Vec<DataSource>,
-        runtime_hosts: Vec<Arc<T::Host>>,
-    ) -> Result<(), Error>;
+    fn add_dynamic_data_sources(&mut self, runtime_hosts: Vec<Arc<T::Host>>) -> Result<(), Error>;
 }
