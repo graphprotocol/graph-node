@@ -3,6 +3,8 @@ use graph::prelude::*;
 pub fn validate_manifest(
     manifest: SubgraphManifest,
 ) -> Result<SubgraphManifest, SubgraphRegistrarError> {
+    let mut validation_errs: Vec<SubgraphManifestValidationError> = Vec::new();
+
     // Validate that the manifest has a `source` address in each data source
     // which has call or block handlers
     let has_invalid_data_source = manifest.data_sources.iter().any(|data_source| {
@@ -12,9 +14,7 @@ pub fn validate_manifest(
         no_source_address && (has_call_handlers || has_block_handlers)
     });
     if has_invalid_data_source {
-        return Err(SubgraphRegistrarError::ManifestValidationError(
-            SubgraphManifestValidationError::SourceAddressRequired,
-        ));
+        validation_errs.push(SubgraphManifestValidationError::SourceAddressRequired)
     }
 
     // Validate that there are no more than one of each type of
@@ -38,10 +38,13 @@ pub fn validate_manifest(
         return non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1;
     });
     if has_too_many_block_handlers {
-        return Err(SubgraphRegistrarError::ManifestValidationError(
-            SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded,
-        ));
+        validation_errs.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded)
     }
 
-    Ok(manifest)
+    if validation_errs.is_empty() {
+        return Ok(manifest);
+    }
+    return Err(SubgraphRegistrarError::ManifestValidationError(
+        validation_errs,
+    ));
 }
