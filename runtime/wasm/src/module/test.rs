@@ -143,7 +143,7 @@ fn mock_data_source(path: &str) -> DataSource {
             link: Link {
                 link: "link".to_owned(),
             },
-            runtime: runtime.clone(),
+            runtime: Arc::new(runtime.clone()),
         },
         templates: Some(vec![DataSourceTemplate {
             kind: String::from("ethereum/contract"),
@@ -162,7 +162,7 @@ fn mock_data_source(path: &str) -> DataSource {
                 link: Link {
                     link: "link".to_owned(),
                 },
-                runtime,
+                runtime: Arc::new(runtime),
             },
         }]),
     }

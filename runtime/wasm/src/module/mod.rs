@@ -94,8 +94,8 @@ where
     ) -> Result<Self, FailureError> {
         let logger = logger.new(o!("component" => "WasmiModule"));
 
-        // FIXME: Cloning this may be expensive.
-        let parsed_module = config.data_source.mapping.runtime.clone();
+        // Clone the parsed module so we can create an instance of `Module` from it
+        let parsed_module = config.data_source.mapping.runtime.as_ref().clone();
 
         // Inject metering calls, which are used for checking timeouts.
         let parsed_module = pwasm_utils::inject_gas_counter(parsed_module, &Default::default())

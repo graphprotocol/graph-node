@@ -430,8 +430,7 @@ pub struct UnresolvedMapping {
     pub file: Link,
 }
 
-// Avoid deriving `Clone` because cloning a `Module` is expensive.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Mapping {
     pub kind: String,
     pub api_version: String,
@@ -439,24 +438,8 @@ pub struct Mapping {
     pub entities: Vec<String>,
     pub abis: Vec<MappingABI>,
     pub event_handlers: Vec<MappingEventHandler>,
-    pub runtime: Module,
+    pub runtime: Arc<Module>,
     pub link: Link,
-}
-
-impl Mapping {
-    /// Clones a mapping, making it very obvious that this is an expensive operation.
-    fn expensive_clone(&self) -> Self {
-        Mapping {
-            kind: self.kind.clone(),
-            api_version: self.api_version.clone(),
-            language: self.language.clone(),
-            entities: self.entities.clone(),
-            abis: self.abis.clone(),
-            event_handlers: self.event_handlers.clone(),
-            runtime: self.runtime.clone(),
-            link: self.link.clone(),
-        }
-    }
 }
 
 impl UnresolvedMapping {
@@ -481,9 +464,9 @@ impl UnresolvedMapping {
         )
         .collect()
         .join(
-            resolver
-                .cat(&link)
-                .and_then(|module_bytes| Ok(parity_wasm::deserialize_buffer(&module_bytes)?)),
+            resolver.cat(&link).and_then(|module_bytes| {
+                Ok(Arc::new(parity_wasm::deserialize_buffer(&module_bytes)?))
+            }),
         )
         .map(|(abis, runtime)| Mapping {
             kind,
@@ -592,20 +575,9 @@ impl DataSource {
                 address: Some(address),
                 abi: template.source.abi.clone(),
             },
-            mapping: template.mapping.expensive_clone(),
+            mapping: template.mapping.clone(),
             templates: None,
         })
-    }
-
-    pub fn expensive_clone(&self) -> Self {
-        DataSource {
-            kind: self.kind.clone(),
-            network: self.network.clone(),
-            name: self.name.clone(),
-            source: self.source.clone(),
-            mapping: self.mapping.expensive_clone(),
-            templates: None,
-        }
     }
 }
 
@@ -667,19 +639,6 @@ impl UnresolvedDataSourceTemplate {
             source,
             mapping,
         })
-    }
-}
-
-impl DataSourceTemplate {
-    /// Clones a template, making it very obvious that this is an expensive operation.
-    pub fn expensive_clone(&self) -> Self {
-        DataSourceTemplate {
-            kind: self.kind.clone(),
-            network: self.network.clone(),
-            name: self.name.clone(),
-            source: self.source.clone(),
-            mapping: self.mapping.expensive_clone(),
-        }
     }
 }
 
