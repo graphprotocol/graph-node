@@ -194,7 +194,7 @@ impl SubgraphInstanceManager {
         let mut templates: Vec<(String, DataSourceTemplate)> = vec![];
         for data_source in manifest.data_sources.iter() {
             for template in data_source.templates.iter().flatten() {
-                templates.push((data_source.name.clone(), template.expensive_clone()));
+                templates.push((data_source.name.clone(), template.clone()));
             }
         }
 
@@ -675,7 +675,7 @@ where
             let host = match state.ctx.inputs.host_builder.build(
                 &logger,
                 state.ctx.inputs.deployment_id.clone(),
-                data_source.expensive_clone(),
+                data_source.clone(),
             ) {
                 Ok(host) => Arc::new(host),
                 Err(e) => return future::err(e),
