@@ -16,7 +16,7 @@ use graph::data::store;
 use graph::data::subgraph::DataSource;
 use graph::ethabi::{LogParam, Param};
 use graph::prelude::{Error as FailureError, *};
-use graph::web3::types::{Log, U256, Transaction};
+use graph::web3::types::{Log, Transaction, U256};
 
 use crate::asc_abi::asc_ptr::*;
 use crate::asc_abi::class::*;
@@ -267,7 +267,6 @@ where
             .module
             .clone()
             .invoke_export(handler_name, &[event], &mut self);
-
         // Return either the output state (collected entity operations etc.) or an error
         result.map(|_| self.ctx.state).map_err(|e| {
             format_err!(
@@ -327,14 +326,13 @@ where
             &[RuntimeValue::from(self.asc_new(&arg))],
             &mut self,
         );
-        result.map(|_| self.ctx.entity_operations)
-            .map_err(|err| {
-                format_err!(
-                    "Failed to handle Ethereum call with handler \"{}\": {}",
-                    handler_name,
-                    err
-                )
-            })
+        result.map(|_| self.ctx.entity_operations).map_err(|err| {
+            format_err!(
+                "Failed to handle Ethereum call with handler \"{}\": {}",
+                handler_name,
+                err
+            )
+        })
     }
 
     pub(crate) fn handle_ethereum_block(
@@ -349,14 +347,13 @@ where
             &[RuntimeValue::from(self.asc_new(&arg))],
             &mut self,
         );
-        result.map(|_| self.ctx.entity_operations)
-            .map_err(|err| {
-                format_err!(
-                    "Failed to handle Ethereum block with handler \"{}\": {}",
-                    handler_name,
-                    err
-                )
-            })
+        result.map(|_| self.ctx.entity_operations).map_err(|err| {
+            format_err!(
+                "Failed to handle Ethereum block with handler \"{}\": {}",
+                handler_name,
+                err
+            )
+        })
     }
 }
 

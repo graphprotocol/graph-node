@@ -1,11 +1,11 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::cmp;
-use std::collections::{HashSet, HashMap};
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::mem;
 use std::sync::Mutex;
-use std::cmp::Ordering;
 use tiny_keccak::keccak256;
 
 use graph::data::subgraph::schema::{
@@ -28,7 +28,9 @@ enum BlockStreamState {
     Reconciliation(
         Box<
             Future<
-                    Item = Option<Box<Stream<Item = EthereumBlockWithTriggers, Error = Error> + Send>>,
+                    Item = Option<
+                        Box<Stream<Item = EthereumBlockWithTriggers, Error = Error> + Send>,
+                    >,
                     Error = Error,
                 > + Send,
         >,
@@ -466,13 +468,13 @@ where
                         // due to the race conditions previously mentioned,
                         // so instead we will advance the subgraph ptr by one block.
                         // Note that head_ancestor is a child of subgraph_ptr.
-                        let block_future = future::ok(head_ancestor)
-                            .and_then(move |block| -> Box<Future<Item = _, Error = _> + Send> {
+                        let block_future = future::ok(head_ancestor).and_then(
+                            move |block| -> Box<Future<Item = _, Error = _> + Send> {
                                 if !include_calls_in_blocks {
                                     return Box::new(future::ok(EthereumBlockWithCalls {
                                         ethereum_block: block,
                                         calls: None,
-                                    }))
+                                    }));
                                 }
                                 let block_with_calls = ctx
                                     .eth_adapter
@@ -481,20 +483,21 @@ where
                                         block.block.number.unwrap().as_u64(),
                                         block.block.hash.unwrap(),
                                     )
-                                    .map(move |calls| {
-                                        EthereumBlockWithCalls {
-                                            ethereum_block: block,
-                                            calls: Some(calls),
-                                        }
+                                    .map(move |calls| EthereumBlockWithCalls {
+                                        ethereum_block: block,
+                                        calls: Some(calls),
                                     });
                                 Box::new(block_with_calls)
-                            });
+                            },
+                        );
                         Box::new(future::ok(ReconciliationStep::ProcessDescendantBlocks {
                             from: subgraph_ptr,
                             log_filter_opt: log_filter.clone(),
                             call_filter_opt: call_filter.clone(),
                             block_filter_opt: block_filter.clone(),
-                            descendant_blocks: Box::new(stream::futures_ordered(vec![block_future])),
+                            descendant_blocks: Box::new(stream::futures_ordered(vec![
+                                block_future,
+                            ])),
                         }))
                     } else {
                         // The subgraph ptr is not on the main chain.
@@ -583,51 +586,55 @@ where
                 // Advance the subgraph ptr to each of the specified descendants and yield each
                 // block with relevant events.
                 Box::new(future::ok(ReconciliationStepOutcome::YieldBlocks(
-                    Box::new(descendant_blocks
-                             .and_then(move |descendant_block| {
-                                 // First, check if there are blocks between subgraph_ptr and
-                                 // descendant_block.
-                                 let descendant_parent_ptr = EthereumBlockPointer::to_parent(&descendant_block.ethereum_block);
-                                 if subgraph_ptr != descendant_parent_ptr {
-                                     // descendant_block is not a direct child.
-                                     // Therefore, there are blocks that are irrelevant to this subgraph
-                                     // that we can skip.
-                                     debug!(
-                                         ctx.logger,
-                                         "Skipping {} block(s) with no relevant triggers...",
-                                         descendant_parent_ptr.number - subgraph_ptr.number
-                                     );
+                    Box::new(
+                        descendant_blocks
+                            .and_then(move |descendant_block| {
+                                // First, check if there are blocks between subgraph_ptr and
+                                // descendant_block.
+                                let descendant_parent_ptr = EthereumBlockPointer::to_parent(
+                                    &descendant_block.ethereum_block,
+                                );
+                                if subgraph_ptr != descendant_parent_ptr {
+                                    // descendant_block is not a direct child.
+                                    // Therefore, there are blocks that are irrelevant to this subgraph
+                                    // that we can skip.
+                                    debug!(
+                                        ctx.logger,
+                                        "Skipping {} block(s) with no relevant triggers...",
+                                        descendant_parent_ptr.number - subgraph_ptr.number
+                                    );
 
-                                     // Update subgraph_ptr in store to skip the irrelevant blocks.
-                                     ctx.subgraph_store.set_block_ptr_with_no_changes(
-                                         ctx.subgraph_id.clone(),
-                                         subgraph_ptr,
-                                         descendant_parent_ptr,
-                                     )?;
-                                 }
+                                    // Update subgraph_ptr in store to skip the irrelevant blocks.
+                                    ctx.subgraph_store.set_block_ptr_with_no_changes(
+                                        ctx.subgraph_id.clone(),
+                                        subgraph_ptr,
+                                        descendant_parent_ptr,
+                                    )?;
+                                }
 
-                                 // Update our copy of the subgraph ptr to reflect the
-                                 // value it will have after descendant_block is
-                                 // processed.
-                                 subgraph_ptr = (&descendant_block.ethereum_block).into();
+                                // Update our copy of the subgraph ptr to reflect the
+                                // value it will have after descendant_block is
+                                // processed.
+                                subgraph_ptr = (&descendant_block.ethereum_block).into();
 
-                                 Ok(descendant_block)
-                             })
-                             .and_then(move |descendant_block| {
-                                 let triggers = match parse_triggers(
-                                     log_filter_opt.clone(),
-                                     call_filter_opt.clone(),
-                                     block_filter_opt.clone(),
-                                     &descendant_block,
-                                 ) {
-                                     Ok(triggers) => triggers,
-                                     Err(err) => return future::err(err)
-                                 };
-                                 future::ok(EthereumBlockWithTriggers {
-                                     ethereum_block: descendant_block.ethereum_block,
-                                     triggers: triggers,
-                                 })
-                             })) as Box<Stream<Item = _, Error = _> + Send>,
+                                Ok(descendant_block)
+                            })
+                            .and_then(move |descendant_block| {
+                                let triggers = match parse_triggers(
+                                    log_filter_opt.clone(),
+                                    call_filter_opt.clone(),
+                                    block_filter_opt.clone(),
+                                    &descendant_block,
+                                ) {
+                                    Ok(triggers) => triggers,
+                                    Err(err) => return future::err(err),
+                                };
+                                future::ok(EthereumBlockWithTriggers {
+                                    ethereum_block: descendant_block.ethereum_block,
+                                    triggers: triggers,
+                                })
+                            }),
+                    ) as Box<Stream<Item = _, Error = _> + Send>,
                 )))
             }
         }
@@ -839,45 +846,52 @@ where
         let ctx = self.clone();
         let eth = self.eth_adapter.clone();
         let logger = self.logger.clone();
-        
+
         // Search for the block in the store first then use the ethereum adapter as a backup
         let block = future::result(ctx.chain_store.block(block_hash))
-            .and_then(move |local_block_opt| -> Box<Future<Item = _, Error = _> + Send> {
-                match local_block_opt {
-                    Some(block) => Box::new(future::ok(block)),
-                    None => {
-                        let logger = ctx.logger.clone();
-                        let ctx_1 = ctx.clone();
-                        let ctx_2 = ctx_1.clone();
-                        Box::new(ctx_1.eth_adapter
-                            .block_by_hash(&logger, block_hash)
-                            .and_then(move |block_opt| {
-                                block_opt.ok_or_else(move || {
-                                    format_err!("Ethereum node could not find block with hash {}", block_hash)
-                                })
-                            })
-                            .and_then(move |block| {
+            .and_then(
+                move |local_block_opt| -> Box<Future<Item = _, Error = _> + Send> {
+                    match local_block_opt {
+                        Some(block) => Box::new(future::ok(block)),
+                        None => {
+                            let logger = ctx.logger.clone();
+                            let ctx_1 = ctx.clone();
+                            let ctx_2 = ctx_1.clone();
+                            Box::new(
                                 ctx_1
                                     .eth_adapter
-                                    .load_full_block(&logger, block)
-                                    .map_err(|e| format_err!("Error loading full block: {}", e))
-                            })
-                            .and_then(move |block| {
-                                // Cache in store for later
-                                ctx_2
-                                    .chain_store
-                                    .upsert_blocks(stream::once(Ok(block.clone())))
-                                    .map(move |()| block)
-                            }))
+                                    .block_by_hash(&logger, block_hash)
+                                    .and_then(move |block_opt| {
+                                        block_opt.ok_or_else(move || {
+                                            format_err!(
+                                                "Ethereum node could not find block with hash {}",
+                                                block_hash
+                                            )
+                                        })
+                                    })
+                                    .and_then(move |block| {
+                                        ctx_1.eth_adapter.load_full_block(&logger, block).map_err(
+                                            |e| format_err!("Error loading full block: {}", e),
+                                        )
+                                    })
+                                    .and_then(move |block| {
+                                        // Cache in store for later
+                                        ctx_2
+                                            .chain_store
+                                            .upsert_blocks(stream::once(Ok(block.clone())))
+                                            .map(move |()| block)
+                                    }),
+                            )
+                        }
                     }
-                }
-            })
-            .and_then(move |block| -> Box<Future<Item = _, Error = _> + Send>{
+                },
+            )
+            .and_then(move |block| -> Box<Future<Item = _, Error = _> + Send> {
                 if !include_calls_in_block {
                     return Box::new(future::ok(EthereumBlockWithCalls {
                         ethereum_block: block,
                         calls: None,
-                    }))
+                    }));
                 }
                 let block = eth
                     .calls_in_block(
@@ -885,11 +899,9 @@ where
                         block.block.number.unwrap().as_u64(),
                         block.block.hash.unwrap(),
                     )
-                    .map(move |calls| {
-                        EthereumBlockWithCalls {
-                            ethereum_block: block,
-                            calls: Some(calls),
-                        }
+                    .map(move |calls| EthereumBlockWithCalls {
+                        ethereum_block: block,
+                        calls: Some(calls),
                     });
                 Box::new(block)
             });
@@ -1249,6 +1261,7 @@ fn create_call_filter_from_subgraph(manifest: &SubgraphManifest) -> Option<Ether
     let call_filter = manifest
         .data_sources
         .iter()
+        .filter(|data_source| data_source.source.address.is_some())
         .flat_map(|data_source| {
             let contract_addr = data_source.source.address.unwrap();
             data_source
@@ -1272,50 +1285,38 @@ fn create_block_filter_from_subgraph(manifest: &SubgraphManifest) -> Option<Ethe
         .data_sources
         .iter()
         .filter(|data_source| {
-            let has_address = data_source
-                .source
-                .address
-                .is_some();
-            let has_block_handler_with_call_filter = data_source
-                .mapping
-                .block_handlers
-                .iter()
-                .any(|block_handler| {
-                    match block_handler.filter {
+            let has_address = data_source.source.address.is_some();
+            let has_block_handler_with_call_filter =
+                data_source
+                    .mapping
+                    .block_handlers
+                    .iter()
+                    .any(|block_handler| match block_handler.filter {
                         Some(ref filter) if *filter == BlockHandlerFilter::Call => return true,
                         _ => return false,
-                    }
-                });
+                    });
             has_address && has_block_handler_with_call_filter
         })
         .map(|data_source| {
             data_source.source.address
         })
         .collect::<HashSet<Address>>();
-    let trigger_every_block = manifest
-        .data_sources
-        .iter()
-        .any(|data_source| {
-            let has_address = data_source
-                .source
-                .address
-                .is_some();
-            let has_block_handler_without_filter = data_source
-                .mapping
-                .block_handlers
-                .iter()
-                .any(|block_handler| {
-                    block_handler.filter.is_none()
-                });
-            has_address && has_block_handler_without_filter
-        });
+    let trigger_every_block = manifest.data_sources.iter().any(|data_source| {
+        let has_address = data_source.source.address.is_some();
+        let has_block_handler_without_filter = data_source
+            .mapping
+            .block_handlers
+            .iter()
+            .any(|block_handler| block_handler.filter.is_none());
+        has_address && has_block_handler_without_filter
+    });
     if contract_addresses.is_empty() && !trigger_every_block {
-        return None
+        return None;
     }
     return Some(EthereumBlockFilter {
         contract_addresses,
         trigger_every_block,
-    })
+    });
 }
 
 fn parse_triggers(
@@ -1329,10 +1330,7 @@ fn parse_triggers(
         log_filter_opt,
         &descendant_block.ethereum_block,
     ));
-    triggers.append(&mut parse_call_triggers(
-        call_filter_opt,
-        descendant_block,
-    ));
+    triggers.append(&mut parse_call_triggers(call_filter_opt, descendant_block));
     triggers.append(&mut parse_block_triggers(
         block_filter_opt,
         descendant_block,
@@ -1341,22 +1339,30 @@ fn parse_triggers(
         .ethereum_block
         .transaction_receipts
         .iter()
-        .map(|receipt| {
-            (receipt.transaction_hash, receipt.transaction_index.as_u64())
-        })
+        .map(|receipt| (receipt.transaction_hash, receipt.transaction_index.as_u64()))
         .collect::<HashMap<H256, u64>>();
 
     // Ensure all `Call` and `Log` triggers have a transaction index
     for trigger in triggers.iter() {
         match trigger {
             EthereumTrigger::Log(log) => {
-                if !tx_hash_indexes.get(&log.transaction_hash.unwrap()).is_some() {
-                    return Err(format_err!("Unable to determine transaction index for Ethereum event."))
+                if !tx_hash_indexes
+                    .get(&log.transaction_hash.unwrap())
+                    .is_some()
+                {
+                    return Err(format_err!(
+                        "Unable to determine transaction index for Ethereum event."
+                    ));
                 }
             }
             EthereumTrigger::Call(call) => {
-                if !tx_hash_indexes.get(&call.transaction_hash.unwrap()).is_some() {
-                    return Err(format_err!("Unable to determine transaction index for Ethereum call."))
+                if !tx_hash_indexes
+                    .get(&call.transaction_hash.unwrap())
+                    .is_some()
+                {
+                    return Err(format_err!(
+                        "Unable to determine transaction index for Ethereum call."
+                    ));
                 }
             }
             EthereumTrigger::Block(_) => continue,
@@ -1364,31 +1370,30 @@ fn parse_triggers(
     }
 
     // Sort the triggers
-    triggers
-        .sort_by(|a, b| {
-            let a_tx_index = a.transaction_index(&tx_hash_indexes).unwrap();
-            let b_tx_index = b.transaction_index(&tx_hash_indexes).unwrap();
-            if a_tx_index.is_none() && b_tx_index.is_none() {
-                return Ordering::Equal
-            }
-            if a_tx_index.is_none() {
-                return Ordering::Greater
-            }
-            if b_tx_index.is_none() {
-                return Ordering::Less
-            }
-            a_tx_index.unwrap().cmp(&b_tx_index.unwrap())
-        });
-    
+    triggers.sort_by(|a, b| {
+        let a_tx_index = a.transaction_index(&tx_hash_indexes).unwrap();
+        let b_tx_index = b.transaction_index(&tx_hash_indexes).unwrap();
+        if a_tx_index.is_none() && b_tx_index.is_none() {
+            return Ordering::Equal;
+        }
+        if a_tx_index.is_none() {
+            return Ordering::Greater;
+        }
+        if b_tx_index.is_none() {
+            return Ordering::Less;
+        }
+        a_tx_index.unwrap().cmp(&b_tx_index.unwrap())
+    });
+
     Ok(triggers)
 }
 
 fn parse_log_triggers(
     log_filter: Option<EthereumLogFilter>,
-    block: &EthereumBlock
+    block: &EthereumBlock,
 ) -> Vec<EthereumTrigger> {
     if log_filter.is_none() {
-        return vec![]
+        return vec![];
     }
     let log_filter = log_filter.unwrap();
     block
@@ -1399,12 +1404,8 @@ fn parse_log_triggers(
             receipt
                 .logs
                 .iter()
-                .filter(move |log| {
-                    log_filter.matches(log)
-                })
-                .map(move |log| {
-                    EthereumTrigger::Log(log.clone())
-                })
+                .filter(move |log| log_filter.matches(log))
+                .map(move |log| EthereumTrigger::Log(log.clone()))
         })
         .collect()
 }
@@ -1414,18 +1415,14 @@ fn parse_call_triggers(
     block: &EthereumBlockWithCalls,
 ) -> Vec<EthereumTrigger> {
     if call_filter.is_none() || block.calls.is_none() {
-        return vec![]
+        return vec![];
     }
     let call_filter = call_filter.unwrap();
     let calls = &block.calls.clone().unwrap();
     calls
         .iter()
-        .filter(move |call| {
-            call_filter.matches(call)
-        })
-        .map(move |call| {
-            EthereumTrigger::Call(call.clone())
-        })
+        .filter(move |call| call_filter.matches(call))
+        .map(move |call| EthereumTrigger::Call(call.clone()))
         .collect()
 }
 
@@ -1434,18 +1431,14 @@ fn parse_block_triggers(
     block: &EthereumBlockWithCalls,
 ) -> Vec<EthereumTrigger> {
     if block_filter.is_none() {
-        return vec![]
+        return vec![];
     }
     let call_filter = EthereumCallFilter::from(block_filter.clone().unwrap());
     let calls = &block.calls.clone().unwrap();
     let mut triggers = calls
         .iter()
-        .filter(move |call| {
-            call_filter.matches(call)
-        })
-        .map(move |call| {
-            EthereumTrigger::Block(EthereumBlockTriggerType::WithCallTo(call.to))
-        })
+        .filter(move |call| call_filter.matches(call))
+        .map(move |call| EthereumTrigger::Block(EthereumBlockTriggerType::WithCallTo(call.to)))
         .collect::<Vec<EthereumTrigger>>();
     if block_filter.unwrap().trigger_every_block {
         triggers.push(EthereumTrigger::Block(EthereumBlockTriggerType::Every));
