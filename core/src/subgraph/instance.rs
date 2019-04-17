@@ -22,9 +22,6 @@ where
     /// data sources appear in the subgraph manifest. Incoming block
     /// stream events are processed by the mappings in this same order.
     hosts: Vec<Arc<T::Host>>,
-
-    /// Dynamic data sources.
-    ethereum_log_filter: EthereumLogFilter,
 }
 
 impl<T> SubgraphInstanceTrait<T> for SubgraphInstance<T>
@@ -36,8 +33,6 @@ where
         manifest: SubgraphManifest,
         host_builder: &T,
     ) -> Result<Self, Error> {
-        let manifest_log_filter = EthereumLogFilter::from(&manifest.data_sources);
-
         let manifest_id = manifest.id.clone();
         let (hosts, errors): (_, Vec<_>) = manifest
             .data_sources
@@ -64,7 +59,6 @@ where
                 .map(Result::unwrap)
                 .map(Arc::new)
                 .collect(),
-            ethereum_log_filter: manifest_log_filter,
         })
     }
 
@@ -108,15 +102,7 @@ where
         )
     }
 
-    fn ethereum_log_filter(&self) -> EthereumLogFilter {
-        self.ethereum_log_filter.clone()
-    }
-
-    fn add_dynamic_data_sources(
-        &mut self,
-        data_sources: Vec<DataSource>,
-        runtime_hosts: Vec<Arc<T::Host>>,
-    ) -> Result<(), Error> {
+    fn add_dynamic_data_sources(&mut self, runtime_hosts: Vec<Arc<T::Host>>) -> Result<(), Error> {
         // Protect against creating more than the allowed maximum number of data sources
         if let Some(max_data_sources) = *MAX_DATA_SOURCES {
             if self.hosts.len() + runtime_hosts.len() > max_data_sources {
@@ -126,10 +112,6 @@ where
                 ));
             }
         }
-
-        // Add the data sources to the log filter
-        self.ethereum_log_filter
-            .extend(EthereumLogFilter::from(&data_sources));
 
         // Add the runtime hosts
         self.hosts.extend(runtime_hosts);

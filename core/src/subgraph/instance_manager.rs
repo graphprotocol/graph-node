@@ -32,6 +32,7 @@ where
     pub stream_builder: B,
     pub host_builder: T,
     pub instances: SharedInstanceKeepAliveMap,
+    pub log_filter: EthereumLogFilter,
     pub restarts: u64,
 }
 
@@ -186,6 +187,9 @@ impl SubgraphInstanceManager {
         // Clone the deployment ID for later
         let deployment_id = manifest.id.clone();
 
+        // Obtain a log filter from the manifest
+        let log_filter = EthereumLogFilter::from_iter(manifest.data_sources.iter());
+
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
         let instance = Arc::new(RwLock::new(SubgraphInstance::from_manifest(
@@ -196,6 +200,7 @@ impl SubgraphInstanceManager {
 
         // The subgraph state tracks the state of the subgraph instance over time
         let subgraph_state = SubgraphState {
+            logger,
             deployment_id,
             instance,
             templates,
@@ -203,8 +208,8 @@ impl SubgraphInstanceManager {
             stream_builder,
             host_builder,
             instances,
+            log_filter,
             restarts: 0,
-            logger,
         };
 
         // Keep restarting the subgraph until it terminates. The subgraph
@@ -258,9 +263,6 @@ where
     let logger_for_err = logger.clone();
     let logger_for_restart_check = logger.clone();
 
-    // Obtain the subgraph instance from the state
-    let subgraph_instance = subgraph_state.instance.clone();
-
     let block_stream_canceler = CancelGuard::new();
     let block_stream_cancel_handle = block_stream_canceler.handle();
     let block_stream = subgraph_state
@@ -268,7 +270,7 @@ where
         .build(
             logger.clone(),
             subgraph_state.deployment_id.clone(),
-            subgraph_instance.read().unwrap().ethereum_log_filter(),
+            subgraph_state.log_filter.clone(),
         )
         .from_err()
         .cancelable(&block_stream_canceler, || CancelableError::Cancel);
@@ -710,7 +712,7 @@ where
 
 fn persist_dynamic_data_sources<B, S, T>(
     logger: Logger,
-    subgraph_state: SubgraphState<B, S, T>,
+    mut subgraph_state: SubgraphState<B, S, T>,
     mut block_state: BlockState,
     data_sources: Vec<DataSource>,
     runtime_hosts: Vec<Arc<T::Host>>,
@@ -744,13 +746,18 @@ where
         block_state.entity_operations.extend(operations);
     }
 
+    // Merge log filters from data sources into the block stream builder
+    subgraph_state
+        .log_filter
+        .extend(EthereumLogFilter::from_iter(data_sources.iter()));
+
     // Add the new data sources to the subgraph instance
     match subgraph_state
         .instance
         .clone()
         .write()
         .unwrap()
-        .add_dynamic_data_sources(data_sources, runtime_hosts)
+        .add_dynamic_data_sources(runtime_hosts)
     {
         Ok(_) => future::ok((subgraph_state, block_state, needs_restart)),
         Err(e) => future::err(e),
