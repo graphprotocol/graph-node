@@ -807,11 +807,10 @@ where
     ) -> Result<Option<RuntimeValue>, Trap> {
         let name: String = self.asc_get(name_ptr);
         let params: Vec<String> = self.asc_get(params_ptr);
-        let result =
-            self.valid_module
-                .host_exports
-                .data_source_create(&mut self.ctx, name, params)?;
-        Ok(Some(RuntimeValue::from(result as u32)))
+        self.valid_module
+            .host_exports
+            .data_source_create(&mut self.ctx, name, params)?;
+        Ok(None)
     }
 }
 
