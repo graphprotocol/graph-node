@@ -1351,7 +1351,7 @@ fn parse_triggers(
         match trigger {
             EthereumTrigger::Log(log) => {
                 if !tx_hash_indexes.get(&log.transaction_hash.unwrap()).is_some() {
-                    return Err(format_err!("Unable to determine transaction index for Ethereum log."))
+                    return Err(format_err!("Unable to determine transaction index for Ethereum event."))
                 }
             }
             EthereumTrigger::Call(call) => {
