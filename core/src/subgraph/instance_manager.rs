@@ -33,7 +33,7 @@ where
     T: RuntimeHostBuilder,
 {
     pub logger: Logger,
-    pub instance: Arc<RwLock<SubgraphInstance<T>>>,
+    pub instance: SubgraphInstance<T>,
     pub instances: SharedInstanceKeepAliveMap,
     pub log_filter: EthereumLogFilter,
     pub restarts: u64,
@@ -206,11 +206,7 @@ impl SubgraphInstanceManager {
 
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
-        let instance = Arc::new(RwLock::new(SubgraphInstance::from_manifest(
-            &logger,
-            manifest,
-            &host_builder,
-        )?));
+        let instance = SubgraphInstance::from_manifest(&logger, manifest, &host_builder)?;
 
         // The subgraph state tracks the state of the subgraph instance over time
         let ctx = IndexingContext {
@@ -410,7 +406,6 @@ where
     ));
 
     // Extract logs relevant to the subgraph
-    let instance = ctx.state.instance.clone();
     let logs: Vec<_> = block
         .transaction_receipts
         .iter()
@@ -418,7 +413,7 @@ where
             receipt
                 .logs
                 .iter()
-                .filter(|log| instance.read().unwrap().matches_log(&log))
+                .filter(|log| ctx.state.instance.matches_log(&log))
         })
         .cloned()
         .collect();
@@ -451,12 +446,12 @@ where
     // collected previously to every new event being processed
     process_logs(
         logger.clone(),
-        ctx.state.instance.clone(),
+        ctx,
         BlockState::default(),
         block.clone(),
         logs,
     )
-    .and_then(|block_state| {
+    .and_then(|(ctx, block_state)| {
         // Instantiate dynamic data sources
         create_dynamic_data_sources(logger1, ctx, block_state).from_err()
     })
@@ -561,27 +556,28 @@ where
     })
 }
 
-fn process_logs<T>(
+fn process_logs<B, S, T>(
     logger: Logger,
-    instance: Arc<RwLock<SubgraphInstance<T>>>,
+    ctx: IndexingContext<B, S, T>,
     block_state: BlockState,
     block: Arc<EthereumBlock>,
     logs: Vec<Log>,
-) -> impl Future<Item = BlockState, Error = CancelableError<Error>>
+) -> impl Future<Item = (IndexingContext<B, S, T>, BlockState), Error = CancelableError<Error>>
 where
+    B: BlockStreamBuilder,
+    S: ChainStore + Store,
     T: RuntimeHostBuilder,
 {
     stream::iter_ok::<_, CancelableError<Error>>(logs)
         // Process events from the block stream
-        .fold(block_state, move |block_state, log| {
+        .fold((ctx, block_state), move |(ctx, block_state), log| {
             let logger = logger.clone();
-            let instance = instance.clone();
             let block = block.clone();
 
-            let instance = instance.read().unwrap();
-
-            instance
+            ctx.state
+                .instance
                 .process_log(&logger, block, log, block_state)
+                .map(|block_state| (ctx, block_state))
                 .map_err(|e| format_err!("Failed to process event: {}", e))
         })
 }
@@ -752,9 +748,6 @@ where
     // Add the new data sources to the subgraph instance
     ctx.state
         .instance
-        .clone()
-        .write()
-        .unwrap()
         .add_dynamic_data_sources(runtime_hosts)
         .map(move |_| (ctx, block_state, needs_restart))
 }
