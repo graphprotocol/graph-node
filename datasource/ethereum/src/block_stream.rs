@@ -521,7 +521,7 @@ where
             ReconciliationStep::RevertBlock(subgraph_ptr) => {
                 // We would like to move to the parent of the current block.
                 // This means we need to revert this block.
-                
+
                 // First, load the block in order to get the parent hash.
                 Box::new(ctx.load_block(subgraph_ptr.hash, false).and_then(move |block| {
                     debug!(
