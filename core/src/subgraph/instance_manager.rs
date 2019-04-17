@@ -30,6 +30,7 @@ where
     pub templates: Vec<(String, DataSourceTemplate)>,
     pub store: Arc<S>,
     pub stream_builder: B,
+    pub host_builder: T,
     pub instances: SharedInstanceKeepAliveMap,
     pub restarts: u64,
 }
@@ -190,7 +191,7 @@ impl SubgraphInstanceManager {
         let instance = Arc::new(RwLock::new(SubgraphInstance::from_manifest(
             &logger,
             manifest,
-            host_builder,
+            &host_builder,
         )?));
 
         // The subgraph state tracks the state of the subgraph instance over time
@@ -200,6 +201,7 @@ impl SubgraphInstanceManager {
             templates,
             store,
             stream_builder,
+            host_builder,
             instances,
             restarts: 0,
             logger,
@@ -682,17 +684,11 @@ where
             };
 
             // Try to create a runtime host for the data source
-            let host = match state
-                .subgraph_state
-                .instance
-                .read()
-                .unwrap()
-                .runtime_host_builder()
-                .build(
-                    &logger,
-                    state.subgraph_state.deployment_id.clone(),
-                    data_source.expensive_clone(),
-                ) {
+            let host = match state.subgraph_state.host_builder.build(
+                &logger,
+                state.subgraph_state.deployment_id.clone(),
+                data_source.expensive_clone(),
+            ) {
                 Ok(host) => Arc::new(host),
                 Err(e) => return future::err(e),
             };
