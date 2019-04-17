@@ -106,9 +106,15 @@ impl From<&Trace> for EthereumCall {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum EthereumTrigger {
-    Block(EthereumCall),
+    Block(EthereumBlockTriggerType),
     Call(EthereumCall),
     Log(Log),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum EthereumBlockTriggerType {
+    Every,
+    WithCallTo(Address),
 }
 
 impl EthereumTrigger {

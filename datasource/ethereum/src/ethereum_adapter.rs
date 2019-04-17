@@ -731,19 +731,25 @@ where
         // entire operation fails.
         let eth = self.clone();
         let mut block_futs: Vec<Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>> = vec![];
-        if log_filter_opt.is_some() {
-            block_futs.push(Box::new(eth.blocks_with_logs(&logger, from, to, log_filter_opt.unwrap())));
-        }
-        if call_filter_opt.is_some() {
-            block_futs.push(Box::new(eth.blocks_with_calls(&logger, from, to, call_filter_opt.unwrap())));
-        }
-        if block_filter_opt.is_some() {
-            let block_filter = block_filter_opt.unwrap();
-            match block_filter.contract_addresses.len() {
-                0 => (),
-                _ => {
-                    let call_filter = EthereumCallFilter::from(block_filter);
-                    block_futs.push(Box::new(eth.blocks_with_calls(&logger, from, to, call_filter)));
+        if block_filter_opt.is_some() && block_filter_opt.clone().unwrap().trigger_every_block {
+            // All blocks in the range contain a trigger
+            block_futs.push(eth.blocks(&logger, from, to));
+        } else {
+            // Scan the block range from triggers to find relevant blocks
+            if log_filter_opt.is_some() {
+                block_futs.push(Box::new(eth.blocks_with_logs(&logger, from, to, log_filter_opt.unwrap())));
+            }
+            if call_filter_opt.is_some() {
+                block_futs.push(Box::new(eth.blocks_with_calls(&logger, from, to, call_filter_opt.unwrap())));
+            }
+            if block_filter_opt.is_some() {
+                let block_filter = block_filter_opt.unwrap();
+                match block_filter.contract_addresses.len() {
+                    0 => (),
+                    _ => {
+                        let call_filter = EthereumCallFilter::from(block_filter);
+                        block_futs.push(Box::new(eth.blocks_with_calls(&logger, from, to, call_filter)));
+                    }
                 }
             }
         }
@@ -773,35 +779,35 @@ where
         let logger = logger.clone();
 
         // Generate `EthereumBlockPointers` from `to` backwards to `from`
-        Box::new(
-            self.block_hash_by_block_number(&logger, to)
-                .map(move |block_hash_opt| {
-                    EthereumBlockPointer {
-                        hash: block_hash_opt.unwrap(),
-                        number: to,
+        let block_ptrs = self.block_hash_by_block_number(&logger, to)
+            .map(move |block_hash_opt| {
+                EthereumBlockPointer {
+                    hash: block_hash_opt.unwrap(),
+                    number: to,
+                }
+            })
+            .and_then(move |block_pointer| {
+                stream::unfold(block_pointer, move |descendant_block_pointer| {
+                    if descendant_block_pointer.number < from {
+                        return None
                     }
-                })
-                .and_then(move |block_pointer| {
-                    stream::unfold(block_pointer, move |descendant_block_pointer| {
-                        if descendant_block_pointer.number < from {
-                            return None
-                        }
-                        // Populate the parent block pointer
-                        Some(eth
-                             .block_parent_hash_by_block_hash(&logger, descendant_block_pointer.hash)
-                             .map(move |block_hash_opt| {
-                                 let parent_block_pointer = EthereumBlockPointer {
-                                     hash: block_hash_opt.unwrap(),
-                                     number: descendant_block_pointer.number - 1,
-                                 };
-                                 (descendant_block_pointer, parent_block_pointer)
-                             }))
-                    }).collect()
-                })
-                .map(move |mut block_pointers| {
-                    block_pointers.reverse();
-                    block_pointers
-                }))
+                    // Populate the parent block pointer
+                    Some(eth
+                         .block_parent_hash_by_block_hash(&logger, descendant_block_pointer.hash)
+                         .map(move |block_hash_opt| {
+                             let parent_block_pointer = EthereumBlockPointer {
+                                 hash: block_hash_opt.unwrap(),
+                                 number: descendant_block_pointer.number - 1,
+                             };
+                             (descendant_block_pointer, parent_block_pointer)
+                         }))
+                }).collect()
+            })
+            .map(move |mut block_pointers| {
+                block_pointers.reverse();
+                block_pointers
+            });
+        Box::new(block_ptrs)
     }
 
     fn blocks_with_logs(

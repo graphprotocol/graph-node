@@ -128,7 +128,7 @@ pub struct RuntimeHost {
     data_source_contract_abi: MappingABI,
     data_source_event_handlers: Vec<MappingEventHandler>,
     data_source_call_handlers: Vec<MappingCallHandler>,
-    data_source_block_handler: Option<MappingBlockHandler>,
+    data_source_block_handlers: Vec<MappingBlockHandler>,
     mapping_request_sender: Sender<MappingRequest>,
     _guard: oneshot::Sender<()>,
 }
@@ -180,7 +180,7 @@ impl RuntimeHost {
         let data_source_contract = config.data_source.source.clone();
         let data_source_event_handlers = config.data_source.mapping.event_handlers.clone();
         let data_source_call_handlers = config.data_source.mapping.call_handlers.clone();
-        let data_source_block_handler = config.data_source.mapping.block_handler.clone();
+        let data_source_block_handlers = config.data_source.mapping.block_handlers.clone();
         let data_source_contract_abi = config
             .data_source
             .mapping
@@ -287,7 +287,7 @@ impl RuntimeHost {
             data_source_contract_abi,
             data_source_event_handlers,
             data_source_call_handlers,
-            data_source_block_handler,
+            data_source_block_handlers,
             mapping_request_sender,
             _guard: cancel_sender,
         })
@@ -326,6 +326,20 @@ impl RuntimeHost {
         self.data_source_event_handlers
             .iter()
             .any(|handler| *topic0 == handler.topic0())
+    }
+
+    fn matches_block_trigger(&self, block_trigger_type: EthereumBlockTriggerType) -> bool {
+        let source_address_matches = match block_trigger_type {
+            EthereumBlockTriggerType::WithCallTo(address) => {
+                self
+                    .data_source_contract
+                    .address
+                    // Do not match if this datasource has no address
+                    .map_or(false, |addr| addr == address)
+            },
+            EthereumBlockTriggerType::Every => true,
+        };
+        source_address_matches && self.handler_for_block(block_trigger_type).is_ok()
     }
 
     fn handler_for_log(&self, log: &Arc<Log>) -> Result<MappingEventHandler, Error> {
@@ -369,16 +383,39 @@ impl RuntimeHost {
             })
     }
 
-    fn handler_for_block(&self) -> Result<MappingBlockHandler, Error> {
-        self
-            .data_source_block_handler
-            .clone()
-            .ok_or_else(|| {
-                format_err!(
-                    "RuntimeHost does not have a block handler in data source \"{}\"",
-                    self.data_source_name,
-                )
-            })
+    fn handler_for_block(&self, trigger_type: EthereumBlockTriggerType) -> Result<MappingBlockHandler, Error> {
+        match trigger_type {
+            EthereumBlockTriggerType::Every => {
+                self
+                    .data_source_block_handlers
+                    .iter()
+                    .find(move |handler| {
+                        handler.filter == None
+                    })
+                    .cloned()
+                    .ok_or_else(|| {
+                        format_err!(
+                            "No block handler for `Every` block trigger type found in data source \"{}\"",
+                            self.data_source_name,
+                        )
+                    })
+            }
+            EthereumBlockTriggerType::WithCallTo(address) => {
+                self
+                    .data_source_block_handlers
+                    .iter()
+                    .find(move |handler| {
+                        handler.filter.is_some() && handler.filter.clone().unwrap() == BlockHandlerFilter::Call
+                    })
+                    .cloned()
+                    .ok_or_else(|| {
+                        format_err!(
+                            "No block handler for `WithCallTo` block trigger type found in data source \"{}\"",
+                            self.data_source_name,
+                        )
+                    })
+            }
+        }
     }
 }
 
@@ -391,8 +428,8 @@ impl RuntimeHostTrait for RuntimeHost {
         self.matches_call_address(call) && self.matches_call_function(call)
     }
 
-    fn matches_block(&self, block: &EthereumBlock, call: &EthereumCall) -> bool {
-        self.data_source_block_handler.is_some() && self.matches_call_address(call)
+    fn matches_block(&self, block_trigger_type: EthereumBlockTriggerType) -> bool {
+        self.matches_block_trigger(block_trigger_type)
     }
 
     fn process_call(
@@ -538,9 +575,10 @@ impl RuntimeHostTrait for RuntimeHost {
         &self,
         logger: Logger,
         block: Arc<EthereumBlock>,
+        trigger_type: EthereumBlockTriggerType,
         entity_operations: Vec<EntityOperation>,
     ) -> Box<Future<Item = Vec<EntityOperation>, Error = Error> + Send> {
-        let block_handler = match self.handler_for_block() {
+        let block_handler = match self.handler_for_block(trigger_type) {
             Ok(handler) => handler,
             Err(e) => return Box::new(future::err(e)),
         };
@@ -560,15 +598,11 @@ impl RuntimeHostTrait for RuntimeHost {
                 result_sender,
             })
             .map_err(move |_| {
-                format_err!(
-                    "Mapping terminated before passing in Ethereum block",
-                )
+                format_err!("Mapping terminated before passing in Ethereum block")
             })
             .and_then(|_| {
                 result_receiver.map_err(move |_| {
-                    format_err!(
-                        "Mapping terminated before finishing to handle",
-                    )
+                    format_err!("Mapping terminated before finishing to handle block trigger")
                 })
             })
             .and_then(move |result| {

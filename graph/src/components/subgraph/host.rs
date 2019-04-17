@@ -14,7 +14,7 @@ pub trait RuntimeHost: Send + Sync + Debug {
     fn matches_call(&self, call: &EthereumCall) -> bool;
 
     /// Returns true if the RuntimeHost has a handler for an Ethereum block.
-    fn matches_block(&self, block: &EthereumBlock, call: &EthereumCall) -> bool;
+    fn matches_block(&self, call: EthereumBlockTriggerType) -> bool;
 
     /// Process an Ethereum event and return a vector of entity operations.
     fn process_log(
@@ -41,6 +41,7 @@ pub trait RuntimeHost: Send + Sync + Debug {
         &self,
         logger: Logger,
         block: Arc<EthereumBlock>,
+        trigger_type: EthereumBlockTriggerType,
         state: BlockState,
     ) -> Box<Future<Item = BlockState, Error = Error> + Send>;
 }
