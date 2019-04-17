@@ -153,11 +153,11 @@ where
     ) -> Self {
         let (chain_head_update_sink, chain_head_update_stream) = channel(100);
 
-        let mut include_calls_in_blocks = false;
-        if call_filter.is_some() {
-            include_calls_in_blocks = true
-        }
-        if block_filter.is_some() && block_filter.clone().unwrap().contract_addresses.len() > 0 {
+        let mut include_calls_in_blocks = call_filter.as_ref().map_or(false, |_call_filter| true);
+        if block_filter
+            .as_ref()
+            .map_or(false, |filter| filter.contract_addresses.len() > 0)
+        {
             include_calls_in_blocks = true
         }
 
