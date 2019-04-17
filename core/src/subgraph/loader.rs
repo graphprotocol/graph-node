@@ -89,20 +89,41 @@ where
 
     fn query_dynamic_data_sources(
         &self,
-        deployment: SubgraphDeploymentId,
+        deployment_id: SubgraphDeploymentId,
         query: Query,
-    ) -> impl Future<Item = QueryResult, Error = Error> + Send {
+    ) -> impl Future<Item = q::Value, Error = Error> + Send {
+        let deployment_id1 = deployment_id.clone();
+
         self.graphql_runner
             .run_query(query)
-            .map_err(move |e| format_err!("Failed to load manifest `{}`: {}", deployment, e))
+            .map_err(move |e| {
+                format_err!(
+                    "Failed to query subgraph deployment `{}`: {}",
+                    deployment_id1,
+                    e
+                )
+            })
+            .and_then(move |result| {
+                if result.errors.is_some() {
+                    Err(format_err!(
+                        "Failed to query subgraph deployment `{}`: {:?}",
+                        deployment_id,
+                        result.errors
+                    ))
+                } else {
+                    result.data.ok_or_else(|| {
+                        format_err!("No data found for subgraph deployment `{}`", deployment_id)
+                    })
+                }
+            })
     }
 
     fn parse_data_sources(
         &self,
         deployment_id: SubgraphDeploymentId,
-        query_result: QueryResult,
+        query_result: q::Value,
     ) -> Result<Vec<EthereumContractDataSourceEntity>, Error> {
-        let data = match query_result.data.expect("subgraph deployment not found") {
+        let data = match query_result {
             q::Value::Object(obj) => Ok(obj),
             _ => Err(format_err!(
                 "Query result for deployment `{}` is not an on object",
