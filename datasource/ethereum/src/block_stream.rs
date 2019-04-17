@@ -615,19 +615,20 @@ where
                                 Ok(descendant_block)
                             })
                             .and_then(move |descendant_block| {
-                                let triggers = match parse_triggers(
-                                    log_filter.clone(),
-                                    call_filter.clone(),
-                                    block_filter.clone(),
-                                    &descendant_block,
-                                ) {
-                                    Ok(triggers) => triggers,
-                                    Err(err) => return future::err(err),
-                                };
-                                future::ok(EthereumBlockWithTriggers {
-                                    ethereum_block: descendant_block.ethereum_block,
-                                    triggers: triggers,
-                                })
+                                future::result(
+                                    parse_triggers(
+                                        log_filter.clone(),
+                                        call_filter.clone(),
+                                        block_filter.clone(),
+                                        &descendant_block,
+                                    )
+                                    .map(move |triggers| {
+                                        EthereumBlockWithTriggers {
+                                            ethereum_block: descendant_block.ethereum_block,
+                                            triggers,
+                                        }
+                                    }),
+                                )
                             }),
                     ) as Box<Stream<Item = _, Error = _> + Send>,
                 )))
