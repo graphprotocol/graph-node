@@ -32,8 +32,9 @@ pub fn validate_manifest(
             .for_each(|block_handler| {
                 if block_handler.filter.is_none() {
                     non_filtered_block_handler_count += 1
+                } else {
+                    call_filtered_block_handler_count += 1
                 }
-                call_filtered_block_handler_count += 1
             });
         return non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1;
     });
