@@ -206,7 +206,8 @@ where
         ctx: &EventHandlerContext,
         unresolved_call: UnresolvedContractCall,
     ) -> Result<Vec<Token>, HostExportError<impl ExportError>> {
-        debug!(ctx.logger, "Call smart contract";
+        let start_time = Instant::now();
+        debug!(ctx.logger, "Making contract call";
               "address" => &unresolved_call.contract_address.to_string(),
               "contract" => &unresolved_call.contract_name,
               "function" => &unresolved_call.function_name);
@@ -238,23 +239,33 @@ where
             })?;
 
         let call = EthereumContractCall {
-            address: unresolved_call.contract_address,
+            address: unresolved_call.contract_address.clone(),
             block_ptr: ctx.block.as_ref().deref().into(),
             function: function.clone(),
             args: unresolved_call.function_args.clone(),
         };
 
         // Run Ethereum call in tokio runtime
+        let function_name = unresolved_call.function_name.clone();
+        let contract_name = unresolved_call.contract_name.clone();
         let eth_adapter = self.ethereum_adapter.clone();
         let logger = ctx.logger.clone();
-        self.block_on(future::lazy(move || {
+        let result = self.block_on(future::lazy(move || {
             eth_adapter.contract_call(&logger, call).map_err(move |e| {
                 HostExportError(format!(
                     "Failed to call function \"{}\" of contract \"{}\": {}",
-                    unresolved_call.function_name, unresolved_call.contract_name, e
+                    function_name, contract_name, e
                 ))
             })
-        }))
+        }));
+
+        debug!(ctx.logger, "Contract call finished";
+              "address" => &unresolved_call.contract_address.to_string(),
+              "contract" => &unresolved_call.contract_name,
+              "function" => &unresolved_call.function_name,
+              "time" => format!("{}ms", start_time.elapsed().as_millis()));
+
+        result
     }
 
     pub(crate) fn bytes_to_string(
