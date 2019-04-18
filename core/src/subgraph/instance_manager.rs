@@ -263,7 +263,9 @@ where
     S: Store + ChainStore,
     T: RuntimeHostBuilder,
 {
-    let logger = ctx.state.logger.new(o!("restarts" => ctx.state.restarts));
+    // Log restarts as "updates" here to not freak people out thinking that
+    // those restarts could be crashes or similar; they are deliberate
+    let logger = ctx.state.logger.new(o!("updates" => ctx.state.restarts));
 
     debug!(logger, "Starting or restarting subgraph");
 
