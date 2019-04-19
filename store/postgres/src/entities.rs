@@ -1,25 +1,25 @@
-use diesel::debug_query;
 use diesel::dsl::{any, sql};
-use diesel::insert_into;
-use diesel::pg::Pg;
-use diesel::pg::PgConnection;
+use diesel::pg::{Pg, PgConnection};
 use diesel::sql_types::Text;
 use diesel::ExpressionMethods;
+use diesel::{debug_query, insert_into};
 use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
 use graph::prelude::{
-    format_err, EntityFilter, EntityKey, Error, EventSource, QueryExecutionError, StoreError,
-    SubgraphDeploymentId, TransactionAbortError,
+    format_err, EntityChange, EntityChangeOperation, EntityFilter, EntityKey, Error, EventSource,
+    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, TransactionAbortError,
 };
 use graph::serde_json;
 
 use crate::filter::{build_filter, store_filter};
-use crate::functions::set_config;
+use crate::functions::{revert_block, set_config};
 use crate::jsonb::PgJsonbExpressionMethods as _;
 
 /// Marker trait for tables that store entities
 pub(crate) trait EntitySource {}
 
-// The entities table in the public schema
+// The entities and related tables in the public schema. We put them in
+// this module to make sure that nobody else gets access to them. All access
+// to these tables must go through functions in this module.
 mod public {
     table! {
         entities (id, subgraph, entity) {
@@ -30,6 +30,36 @@ mod public {
             event_source -> Varchar,
         }
     }
+
+    table! {
+        entity_history (id) {
+            id -> Integer,
+            // This is a BigInt in the database, but if we mark it that
+            // diesel won't let us join event_meta_data and entity_history
+            // Since event_meta_data.id is Integer, it shouldn't matter
+            // that we call it Integer here
+            event_id -> Integer,
+            entity_id -> Varchar,
+            subgraph -> Varchar,
+            entity -> Varchar,
+            data_before -> Nullable<Jsonb>,
+            data_after -> Nullable<Jsonb>,
+            op_id -> SmallInt,
+            reversion -> Bool,
+        }
+    }
+
+    table! {
+        event_meta_data (id) {
+            id -> Integer,
+            db_transaction_id -> BigInt,
+            db_transaction_time -> Timestamp,
+            source -> Nullable<Varchar>,
+        }
+    }
+
+    joinable!(entity_history -> event_meta_data (event_id));
+    allow_tables_to_appear_in_same_query!(entity_history, event_meta_data);
 }
 
 impl EntitySource for self::public::entities::table {}
@@ -247,13 +277,65 @@ impl Table {
                 .optional()?),
         }
     }
+
+    /// Revert the block with the given `block_ptr` which must be the hash
+    /// of the block to revert. The returned `StoreEvent` reflects the changes
+    /// that were made during reversion
+    pub(crate) fn revert_block(
+        &self,
+        conn: &PgConnection,
+        block_ptr: String,
+    ) -> Result<StoreEvent, StoreError> {
+        match self {
+            Table::Public(subgraph) => {
+                use self::public::entity_history::dsl as h;
+                use self::public::event_meta_data as m;
+
+                let entries: Vec<(String, String, i16)> = h::entity_history
+                    .inner_join(m::table)
+                    .select((h::entity, h::entity_id, h::op_id))
+                    .filter(h::subgraph.eq(&subgraph.to_string()))
+                    .filter(m::source.eq(&block_ptr))
+                    .order(h::event_id.desc())
+                    .load(conn)?;
+
+                let mut changes = Vec::with_capacity(entries.len());
+                for (entity_type, entity_id, op) in entries.into_iter() {
+                    let change = EntityChange {
+                        subgraph_id: subgraph.clone(),
+                        entity_type,
+                        entity_id,
+                        operation: match op {
+                            0 => EntityChangeOperation::Removed,
+                            1 | 2 => EntityChangeOperation::Set,
+                            _ => {
+                                return Err(StoreError::Unknown(format_err!(
+                                    "bad operation {}",
+                                    op
+                                )))
+                            }
+                        },
+                    };
+                    changes.push(change);
+                }
+
+                public::entities::table
+                    .select(revert_block(block_ptr, subgraph.to_string()))
+                    .execute(conn)?;
+                Ok(StoreEvent::new(changes))
+            }
+        }
+    }
 }
 
 /// Delete all entities. This function exists solely for integration tests
 /// and should never be called from any other code. Unfortunately, Rust makes
 /// it very hard to export items just for testing
 pub fn delete_all_entities_for_test_use_only(conn: &PgConnection) -> Result<usize, StoreError> {
-    Ok(diesel::delete(public::entities::table).execute(conn)?)
+    let mut rows = diesel::delete(public::entities::table).execute(conn)?;
+    rows = rows + diesel::delete(public::entity_history::table).execute(conn)?;
+    rows = rows + diesel::delete(public::event_meta_data::table).execute(conn)?;
+    Ok(rows)
 }
 
 /// Return a table for the subgraph

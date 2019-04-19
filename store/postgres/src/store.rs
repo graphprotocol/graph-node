@@ -19,10 +19,8 @@ use graph::{tokio, tokio::timer::Interval};
 use graph_graphql::prelude::api_schema;
 
 use crate::chain_head_listener::ChainHeadUpdateListener;
-use crate::functions::{
-    attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, revert_block,
-};
-use crate::store_events::{get_revert_event, StoreEventListener};
+use crate::functions::{attempt_chain_head_update, build_attribute_index, lookup_ancestor_block};
+use crate::store_events::StoreEventListener;
 
 embed_migrations!("./migrations");
 
@@ -343,7 +341,7 @@ impl Store {
                 query.entity_types,
                 query.filter,
                 order,
-                query.range.first.unwrap_or(0),
+                query.range.first,
                 query.range.skip,
             )
             .map(|values| {
@@ -673,23 +671,6 @@ impl Store {
         let v = serde_json::to_value(event)?;
         JsonNotification::send("store_events", &v, conn)
     }
-
-    fn emit_revert_event(
-        &self,
-        conn: &PgConnection,
-        subgraph_id: &SubgraphDeploymentId,
-        block_ptr_from: &EthereumBlockPointer,
-        block_ptr_to: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
-        let event = get_revert_event(conn, subgraph_id, block_ptr_from, block_ptr_to)?;
-
-        trace!(self.logger, "Emit store event for revert";
-                "tag" => event.tag,
-                "changes" => event.changes.len());
-
-        let v = serde_json::to_value(event)?;
-        JsonNotification::send("store_events", &v, conn)
-    }
 }
 
 impl StoreTrait for Store {
@@ -849,15 +830,15 @@ impl StoreTrait for Store {
             self.emit_store_events(&conn, &ops)?;
             self.apply_entity_operations_with_conn(&conn, ops, EventSource::None)?;
 
-            self.emit_revert_event(&conn, &subgraph_id, &block_ptr_from, block_ptr_to)?;
+            let event = crate::entities::table(&subgraph_id)
+                .revert_block(&*conn, block_ptr_from.hash_hex())?;
 
-            select(revert_block(
-                &block_ptr_from.hash_hex(),
-                subgraph_id.to_string(),
-            ))
-            .execute(&*conn)
-            .map(|_| ())
-            .map_err(|e| format_err!("Error reverting block: {}", e).into())
+            trace!(self.logger, "Emit store event for revert";
+                "tag" => event.tag,
+                "changes" => event.changes.len());
+
+            let v = serde_json::to_value(event)?;
+            JsonNotification::send("store_events", &v, &*conn)
         })
     }
 

@@ -18,7 +18,7 @@ use graph::data::store::scalar;
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::*;
 use graph::web3::types::H256;
-use graph_store_postgres::{db_schema, Store as DieselStore};
+use graph_store_postgres::Store as DieselStore;
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID_STRING: String = String::from("testsubgraph");
@@ -232,18 +232,10 @@ fn create_test_entity(
 
 /// Removes test data from the database behind the store.
 fn remove_test_data() {
-    use crate::db_schema::{entity_history, event_meta_data};
-
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
     graph_store_postgres::store::delete_all_entities_for_test_use_only(&conn)
         .expect("Failed to remove entity test data");
-    delete(entity_history::table)
-        .execute(&conn)
-        .expect("Failed to remove entity history test data");
-    delete(event_meta_data::table)
-        .execute(&conn)
-        .expect("Failed to remove entity change event test data");
 }
 
 #[test]
