@@ -8,6 +8,7 @@ use std::error::Error;
 use std::fmt;
 use std::string::FromUtf8Error;
 
+use crate::components::store::StoreError;
 use crate::data::subgraph::*;
 
 /// Error caused while executing a [Query](struct.Query.html).
@@ -216,6 +217,12 @@ impl From<num_bigint::ParseBigIntError> for QueryExecutionError {
 impl From<bigdecimal::ParseBigDecimalError> for QueryExecutionError {
     fn from(e: bigdecimal::ParseBigDecimalError) -> Self {
         QueryExecutionError::ValueParseError("BigDecimal".to_string(), format!("{}", e))
+    }
+}
+
+impl From<StoreError> for QueryExecutionError {
+    fn from(e: StoreError) -> Self {
+        QueryExecutionError::StoreError(e.into())
     }
 }
 

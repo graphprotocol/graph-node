@@ -505,6 +505,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "diesel-dynamic-schema"
+version = "1.0.0"
+source = "git+https://github.com/diesel-rs/diesel-dynamic-schema?rev=a8ec4fb1#a8ec4fb11de6242488ba3698d74406f4b5073dc4"
+dependencies = [
+ "diesel 1.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "diesel_derives"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -995,6 +1003,7 @@ name = "graph-store-postgres"
 version = "0.9.0"
 dependencies = [
  "diesel 1.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "diesel-dynamic-schema 1.0.0 (git+https://github.com/diesel-rs/diesel-dynamic-schema?rev=a8ec4fb1)",
  "diesel_migrations 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "fallible-iterator 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3244,6 +3253,7 @@ dependencies = [
 "checksum crypto-mac 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "0999b4ff4d3446d4ddb19a63e9e00c1876e75cd7000d20e57a693b4b3f08d958"
 "checksum debugid 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "088c9627adec1e494ff9dea77377f1e69893023d631254a0ec68b16ee20be3e9"
 "checksum diesel 1.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "a2469cbcf1dfb9446e491cac4c493c2554133f87f7d041e892ac82e5cd36e863"
+"checksum diesel-dynamic-schema 1.0.0 (git+https://github.com/diesel-rs/diesel-dynamic-schema?rev=a8ec4fb1)" = "<none>"
 "checksum diesel_derives 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "62a27666098617d52c487a41f70de23d44a1dc1f3aa5877ceba2790fb1f1cab4"
 "checksum diesel_migrations 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "bf3cde8413353dc7f5d72fa8ce0b99a560a359d2c5ef1e5817ca731cd9008f4c"
 "checksum difference 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "524cbf6897b527295dff137cec09ecf3a05f4fddffd7dfcd1585403449e74198"

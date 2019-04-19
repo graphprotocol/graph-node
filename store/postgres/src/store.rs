@@ -274,7 +274,7 @@ impl Store {
         op_entity: &String,
         op_id: &String,
     ) -> Result<Option<Entity>, QueryExecutionError> {
-        let entities = crate::entities::table(op_subgraph);
+        let entities = crate::entities::table(conn, op_subgraph)?;
 
         match entities.find(conn, op_entity, op_id).map_err(|e| {
             QueryExecutionError::ResolveEntityError(
@@ -334,7 +334,7 @@ impl Store {
         };
 
         // Process results; deserialize JSON data
-        let table = crate::entities::table(&query.subgraph_id);
+        let table = crate::entities::table(conn, &query.subgraph_id)?;
         table
             .query(
                 conn,
@@ -387,7 +387,7 @@ impl Store {
         );
 
         if !types_with_shared_interface.is_empty() {
-            let table = crate::entities::table(&key.subgraph_id);
+            let table = crate::entities::table(conn, &key.subgraph_id)?;
             if let Some(conflicting_entity) =
                 table.conflicting_entity(conn, &key.entity_id, types_with_shared_interface)?
             {
@@ -434,7 +434,7 @@ impl Store {
             })?;
 
         // Either add or update the entity in Postgres
-        let table = crate::entities::table(&key.subgraph_id);
+        let table = crate::entities::table(conn, &key.subgraph_id)?;
         table
             .upsert(conn, &key, &updated_json, event_source)
             .map(|_| ())
@@ -472,7 +472,7 @@ impl Store {
         })?;
 
         // Update the entity in Postgres
-        let table = crate::entities::table(&key.subgraph_id);
+        let table = crate::entities::table(conn, &key.subgraph_id)?;
 
         match table.update(conn, &key, &json, guard, event_source)? {
             0 => Err(TransactionAbortError::AbortUnless {
@@ -498,7 +498,7 @@ impl Store {
         key: EntityKey,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
-        let table = crate::entities::table(&key.subgraph_id);
+        let table = crate::entities::table(conn, &key.subgraph_id)?;
 
         table
             .delete(conn, &key, event_source)
@@ -830,7 +830,7 @@ impl StoreTrait for Store {
             self.emit_store_events(&conn, &ops)?;
             self.apply_entity_operations_with_conn(&conn, ops, EventSource::None)?;
 
-            let event = crate::entities::table(&subgraph_id)
+            let event = crate::entities::table(&*conn, &subgraph_id)?
                 .revert_block(&*conn, block_ptr_from.hash_hex())?;
 
             trace!(self.logger, "Emit store event for revert";
@@ -868,7 +868,7 @@ impl StoreTrait for Store {
 
     fn count_entities(&self, subgraph_id: SubgraphDeploymentId) -> Result<u64, Error> {
         let conn = &*self.conn.get()?;
-        let table = crate::entities::table(&subgraph_id);
+        let table = crate::entities::table(conn, &subgraph_id)?;
 
         table.count_entities(conn)
     }

@@ -446,6 +446,8 @@ pub enum EntityOperation {
     /// need to be changed, not the entire entity. The update will only happen
     /// if the given entity matches `guard` when the update is made. `Update`
     /// provides a way to atomically do a check-and-set change to an entity.
+    /// This operation can currently only be performed on the subgraph of
+    /// subgraphs
     Update {
         key: EntityKey,
         data: Entity,
