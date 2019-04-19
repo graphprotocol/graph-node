@@ -1,12 +1,7 @@
-use crate::filter::{build_filter, store_filter};
-use diesel::debug_query;
-use diesel::dsl::{any, sql};
-use diesel::pg::Pg;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool};
-use diesel::sql_types::Text;
-use diesel::{delete, insert_into, select, update};
+use diesel::{insert_into, select, update};
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
 use std::collections::HashMap;
@@ -26,9 +21,7 @@ use graph_graphql::prelude::api_schema;
 use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::functions::{
     attempt_chain_head_update, build_attribute_index, lookup_ancestor_block, revert_block,
-    set_config,
 };
-use crate::jsonb::PgJsonbExpressionMethods as _;
 use crate::store_events::{get_revert_event, StoreEventListener};
 
 embed_migrations!("./migrations");
@@ -283,21 +276,16 @@ impl Store {
         op_entity: &String,
         op_id: &String,
     ) -> Result<Option<Entity>, QueryExecutionError> {
-        use crate::db_schema::entities::dsl::*;
+        let entities = crate::entities::table(op_subgraph);
 
-        match entities
-            .find((op_id, op_subgraph.to_string(), op_entity))
-            .select(data)
-            .first::<serde_json::Value>(conn)
-            .optional()
-            .map_err(|e| {
-                QueryExecutionError::ResolveEntityError(
-                    op_subgraph.clone(),
-                    op_entity.clone(),
-                    op_id.clone(),
-                    format!("{}", e),
-                )
-            })? {
+        match entities.find(conn, op_entity, op_id).map_err(|e| {
+            QueryExecutionError::ResolveEntityError(
+                op_subgraph.clone(),
+                op_entity.clone(),
+                op_id.clone(),
+                format!("{}", e),
+            )
+        })? {
             Some(json) => {
                 let mut value = serde_json::from_value::<Entity>(json).map_err(|e| {
                     QueryExecutionError::ResolveEntityError(
@@ -319,89 +307,56 @@ impl Store {
         conn: &PgConnection,
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        use crate::db_schema::entities::dsl::*;
-
-        // Create base boxed query; this will be added to based on the
-        // query parameters provided
-        let mut diesel_query = entities
-            .filter(entity.eq(any(query.entity_types)))
-            .filter(subgraph.eq(query.subgraph_id.to_string()))
-            .into_boxed::<Pg>();
-
-        // Add specified filter to query
-        if let Some(filter) = query.filter {
-            diesel_query = store_filter(diesel_query, filter).map_err(|e| {
-                QueryExecutionError::FilterNotSupportedError(format!("{}", e.value), e.filter)
-            })?;
-        }
-
         // Add order by filters to query
-        if let Some((order_attribute, value_type)) = query.order_by {
-            let direction = query
-                .order_direction
-                .map(|direction| match direction {
-                    EntityOrder::Ascending => "ASC",
-                    EntityOrder::Descending => "DESC",
-                })
-                .unwrap_or("ASC");
-            let cast_type = match value_type {
-                ValueType::BigInt | ValueType::BigDecimal => "::numeric",
-                ValueType::Boolean => "::boolean",
-                ValueType::Bytes => "",
-                ValueType::ID => "",
-                ValueType::Int => "::bigint",
-                ValueType::String => "",
-                ValueType::List => {
-                    return Err(QueryExecutionError::OrderByNotSupportedForType(
-                        "List".to_string(),
-                    ));
-                }
-            };
-            diesel_query = diesel_query.order(
-                sql::<Text>("(data ->")
-                    .bind::<Text, _>(order_attribute)
-                    .sql("->> 'data')")
-                    .sql(cast_type)
-                    .sql(" ")
-                    .sql(direction)
-                    .sql(" NULLS LAST"),
-            );
-        }
-
-        // Add range filter to query
-        if let Some(limit) = query.range.first {
-            diesel_query = diesel_query.limit(limit as i64);
-        }
-        if query.range.skip > 0 {
-            diesel_query = diesel_query.offset(query.range.skip as i64);
-        }
-
-        // Finally add the selected columns
-        let diesel_query = diesel_query.select((data, entity));
-
-        // Record debug info in case of error
-        let diesel_query_debug_info = debug_query(&diesel_query).to_string();
+        let order = match query.order_by {
+            Some((attribute, value_type)) => {
+                let direction = query
+                    .order_direction
+                    .map(|direction| match direction {
+                        EntityOrder::Ascending => "ASC",
+                        EntityOrder::Descending => "DESC",
+                    })
+                    .unwrap_or("ASC");
+                let cast_type = match value_type {
+                    ValueType::BigInt | ValueType::BigDecimal => "::numeric",
+                    ValueType::Boolean => "::boolean",
+                    ValueType::Bytes => "",
+                    ValueType::ID => "",
+                    ValueType::Int => "::bigint",
+                    ValueType::String => "",
+                    ValueType::List => {
+                        return Err(QueryExecutionError::OrderByNotSupportedForType(
+                            "List".to_string(),
+                        ));
+                    }
+                };
+                Some((attribute, cast_type, direction))
+            }
+            None => None,
+        };
 
         // Process results; deserialize JSON data
-        diesel_query
-            .load::<(serde_json::Value, String)>(conn)
+        let table = crate::entities::table(&query.subgraph_id);
+        table
+            .query(
+                conn,
+                query.entity_types,
+                query.filter,
+                order,
+                query.range.first.unwrap_or(0),
+                query.range.skip,
+            )
             .map(|values| {
                 values
                     .into_iter()
                     .map(|(value, entity_type)| {
-                        let parse_error_msg = format!("Error parsing entity JSON: {:?}", data);
+                        let parse_error_msg = format!("Error parsing entity JSON: {:?}", value);
                         let mut value =
                             serde_json::from_value::<Entity>(value).expect(&parse_error_msg);
                         value.set("__typename", entity_type);
                         value
                     })
                     .collect()
-            })
-            .map_err(|e| {
-                QueryExecutionError::ResolveEntitiesError(format!(
-                    "{}, query = {:?}",
-                    e, diesel_query_debug_info
-                ))
             })
     }
 
@@ -410,8 +365,6 @@ impl Store {
         conn: &PgConnection,
         key: &EntityKey,
     ) -> Result<(), StoreError> {
-        use crate::db_schema::entities::{self, dsl};
-
         // Collect all types that share an interface implementation with this
         // entity type, and make sure there are no conflicting IDs.
         //
@@ -436,13 +389,9 @@ impl Store {
         );
 
         if !types_with_shared_interface.is_empty() {
-            if let Some(conflicting_entity) = dsl::entities
-                .select(entities::entity)
-                .filter(entities::subgraph.eq(key.subgraph_id.to_string()))
-                .filter(entities::entity.eq(any(types_with_shared_interface)))
-                .filter(entities::id.eq(&key.entity_id))
-                .first(conn)
-                .optional()?
+            let table = crate::entities::table(&key.subgraph_id);
+            if let Some(conflicting_entity) =
+                table.conflicting_entity(conn, &key.entity_id, types_with_shared_interface)?
             {
                 return Err(StoreError::ConflictingId(
                     key.entity_type.clone(),
@@ -462,8 +411,6 @@ impl Store {
         data: Entity,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
-        use crate::db_schema::entities;
-
         self.check_interface_entity_uniqueness(conn, &key)?;
 
         // Load the entity if exists
@@ -489,24 +436,9 @@ impl Store {
             })?;
 
         // Either add or update the entity in Postgres
-        insert_into(entities::table)
-            .values((
-                entities::id.eq(&key.entity_id),
-                entities::entity.eq(&key.entity_type),
-                entities::subgraph.eq(key.subgraph_id.to_string()),
-                entities::data.eq(&updated_json),
-                entities::event_source.eq(event_source.to_string()),
-            ))
-            .on_conflict((entities::id, entities::entity, entities::subgraph))
-            .do_update()
-            .set((
-                entities::id.eq(&key.entity_id),
-                entities::entity.eq(&key.entity_type),
-                entities::subgraph.eq(key.subgraph_id.to_string()),
-                entities::data.eq(&updated_json),
-                entities::event_source.eq(event_source.to_string()),
-            ))
-            .execute(conn)
+        let table = crate::entities::table(&key.subgraph_id);
+        table
+            .upsert(conn, &key, &updated_json, event_source)
             .map(|_| ())
             .map_err(|e| {
                 format_err!(
@@ -529,8 +461,6 @@ impl Store {
         guard: Option<EntityFilter>,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
-        use crate::db_schema::entities;
-
         self.check_interface_entity_uniqueness(conn, &key)?;
 
         let json: serde_json::Value = serde_json::to_value(&data).map_err(|e| {
@@ -544,30 +474,9 @@ impl Store {
         })?;
 
         // Update the entity in Postgres
-        let target = entities::table
-            .filter(entities::subgraph.eq(key.subgraph_id.to_string()))
-            .filter(entities::entity.eq(&key.entity_type))
-            .filter(entities::id.eq(&key.entity_id));
+        let table = crate::entities::table(&key.subgraph_id);
 
-        let query = diesel::update(target).set((
-            entities::data.eq(entities::data.merge(&json)),
-            entities::event_source.eq(event_source.to_string()),
-        ));
-
-        let res = match guard {
-            Some(filter) => {
-                let filter = build_filter(filter).map_err(|e| {
-                    TransactionAbortError::Other(format!(
-                        "invalid filter '{}' for value '{}'",
-                        e.filter, e.value
-                    ))
-                })?;
-                query.filter(filter).execute(conn)?
-            }
-            None => query.execute(conn)?,
-        };
-
-        match res {
+        match table.update(conn, &key, &json, guard, event_source)? {
             0 => Err(TransactionAbortError::AbortUnless {
                 expected_entity_ids: vec![key.entity_id.clone()],
                 actual_entity_ids: vec![],
@@ -575,7 +484,7 @@ impl Store {
             }
             .into()),
             1 => Ok(()),
-            _ => Err(TransactionAbortError::AbortUnless {
+            res => Err(TransactionAbortError::AbortUnless {
                 expected_entity_ids: vec![key.entity_id.clone()],
                 actual_entity_ids: vec![],
                 description: format!("update changed {} rows instead of just one", res),
@@ -591,35 +500,21 @@ impl Store {
         key: EntityKey,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
-        use crate::db_schema::entities;
+        let table = crate::entities::table(&key.subgraph_id);
 
-        select(set_config(
-            "vars.current_event_source",
-            event_source.to_string(),
-            true,
-        ))
-        .execute(conn)
-        .map_err(|e| format_err!("Failed to save event source for remove operation: {}", e))
-        .map(|_| ())?;
-
-        delete(
-            entities::table
-                .filter(entities::subgraph.eq(key.subgraph_id.to_string()))
-                .filter(entities::entity.eq(&key.entity_type))
-                .filter(entities::id.eq(&key.entity_id)),
-        )
-        .execute(conn)
-        .map(|_| ())
-        .map_err(|e| {
-            format_err!(
-                "Failed to remove entity ({}, {}, {}): {}",
-                key.subgraph_id,
-                key.entity_type,
-                key.entity_id,
-                e
-            )
-            .into()
-        })
+        table
+            .delete(conn, &key, event_source)
+            .map(|_| ())
+            .map_err(|e| {
+                format_err!(
+                    "Failed to remove entity ({}, {}, {}): {}",
+                    key.subgraph_id,
+                    key.entity_type,
+                    key.entity_id,
+                    e
+                )
+                .into()
+            })
     }
 
     fn apply_abort_unless_operation(
@@ -991,13 +886,10 @@ impl StoreTrait for Store {
     }
 
     fn count_entities(&self, subgraph_id: SubgraphDeploymentId) -> Result<u64, Error> {
-        use crate::db_schema::entities::dsl::*;
+        let conn = &*self.conn.get()?;
+        let table = crate::entities::table(&subgraph_id);
 
-        let count: i64 = entities
-            .filter(subgraph.eq(subgraph_id.to_string()))
-            .count()
-            .get_result(&*self.conn.get()?)?;
-        Ok(count as u64)
+        table.count_entities(conn)
     }
 
     fn create_subgraph_deployment(
@@ -1192,3 +1084,8 @@ impl ChainStore for Store {
             .map_err(Error::from)
     }
 }
+
+/// Delete all entities. This function exists solely for integration tests
+/// and should never be called from any other code. Unfortunately, Rust makes
+/// it very hard to export items just for testing
+pub use crate::entities::delete_all_entities_for_test_use_only;

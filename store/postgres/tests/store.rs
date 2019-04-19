@@ -232,12 +232,11 @@ fn create_test_entity(
 
 /// Removes test data from the database behind the store.
 fn remove_test_data() {
-    use crate::db_schema::{entities, entity_history, event_meta_data};
+    use crate::db_schema::{entity_history, event_meta_data};
 
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
-    delete(entities::table)
-        .execute(&conn)
+    graph_store_postgres::store::delete_all_entities_for_test_use_only(&conn)
         .expect("Failed to remove entity test data");
     delete(entity_history::table)
         .execute(&conn)

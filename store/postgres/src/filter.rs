@@ -3,7 +3,7 @@ use diesel::pg::Pg;
 use diesel::prelude::*;
 use diesel::query_builder::BoxedSelectStatement;
 use diesel::serialize::ToSql;
-use diesel::sql_types::{Array, Bool, HasSqlType, Integer, Numeric, Text};
+use diesel::sql_types::{Array, Bool, Double, HasSqlType, Integer, Numeric, Text};
 use std::str::FromStr;
 
 use graph::components::store::EntityFilter;
@@ -11,61 +11,71 @@ use graph::data::store::*;
 use graph::prelude::{BigDecimal, BigInt};
 use graph::serde_json;
 
-use crate::db_schema::entities;
+use crate::entities::EntitySource;
 use crate::sql_value::SqlValue;
 
+#[derive(Debug)]
 pub(crate) struct UnsupportedFilter {
     pub filter: String,
     pub value: Value,
 }
 
-type FilterExpression = Box<BoxableExpression<entities::table, Pg, SqlType = Bool>>;
+type FilterExpression<QS> = Box<BoxableExpression<QS, Pg, SqlType = Bool>>;
 
-trait IntoFilter {
-    fn into_filter(self, attribute: String, op: &str) -> FilterExpression;
+trait IntoFilter<QS> {
+    fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS>;
 }
 
-impl IntoFilter for String {
-    fn into_filter(self, attribute: String, op: &str) -> FilterExpression {
-        Box::new(match &*attribute {
-            "id" => Box::new(sql("id").sql(op).bind::<Text, _>(self)) as FilterExpression,
-            _ => Box::new(
-                sql("data -> ")
-                    .bind::<Text, _>(attribute)
-                    .sql("->> 'data'")
-                    .sql(op)
-                    .bind::<Text, _>(self),
-            ) as FilterExpression,
-        })
+impl<QS> IntoFilter<QS> for String {
+    fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
+        Box::new(
+            sql("data -> ")
+                .bind::<Text, _>(attribute)
+                .sql("->> 'data'")
+                .sql(op)
+                .bind::<Text, _>(self),
+        ) as FilterExpression<QS>
     }
 }
 
-impl IntoFilter for i32 {
-    fn into_filter(self, attribute: String, op: &str) -> FilterExpression {
+impl<QS> IntoFilter<QS> for f64 {
+    fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
+        Box::new(
+            sql("(data -> ")
+                .bind::<Text, _>(attribute)
+                .sql("->> 'data')::float")
+                .sql(op)
+                .bind::<Double, _>(self),
+        ) as FilterExpression<QS>
+    }
+}
+
+impl<QS> IntoFilter<QS> for i32 {
+    fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
         Box::new(
             sql("(data -> ")
                 .bind::<Text, _>(attribute)
                 .sql("->> 'data')::int")
                 .sql(op)
                 .bind::<Integer, _>(self),
-        ) as FilterExpression
+        ) as FilterExpression<QS>
     }
 }
 
-impl IntoFilter for bool {
-    fn into_filter(self, attribute: String, op: &str) -> FilterExpression {
+impl<QS> IntoFilter<QS> for bool {
+    fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
         Box::new(
             sql("(data -> ")
                 .bind::<Text, _>(attribute)
                 .sql("->> 'data')::boolean")
                 .sql(op)
                 .bind::<Bool, _>(self),
-        ) as FilterExpression
+        ) as FilterExpression<QS>
     }
 }
 
-impl IntoFilter for BigInt {
-    fn into_filter(self, attribute: String, op: &str) -> FilterExpression {
+impl<QS> IntoFilter<QS> for BigInt {
+    fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
         Box::new(
             sql("(data -> ")
                 .bind::<Text, _>(attribute)
@@ -75,35 +85,45 @@ impl IntoFilter for BigInt {
                 // mismatch of `bignum` versions, go through the string
                 // representation to work around that.
                 .bind::<Numeric, _>(BigDecimal::from_str(&self.to_string()).unwrap()),
-        ) as FilterExpression
+        ) as FilterExpression<QS>
     }
 }
 
-impl IntoFilter for BigDecimal {
-    fn into_filter(self, attribute: String, op: &str) -> FilterExpression {
+impl<QS> IntoFilter<QS> for BigDecimal {
+    fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
         Box::new(
             sql("(data -> ")
                 .bind::<Text, _>(attribute)
                 .sql("->> 'data')::numeric")
                 .sql(op)
                 .bind::<Numeric, _>(self),
-        ) as FilterExpression
+        ) as FilterExpression<QS>
     }
 }
 
-trait IntoArrayFilter<T>
+trait IntoArrayFilter<QS, T>
 where
     T: 'static,
 {
-    fn into_array_filter<U>(self, attribute: String, op: &str, coercion: &str) -> FilterExpression
+    fn into_array_filter<U>(
+        self,
+        attribute: String,
+        op: &str,
+        coercion: &str,
+    ) -> FilterExpression<QS>
     where
         T: ToSql<U, Pg>,
         U: 'static,
         Pg: HasSqlType<U>;
 }
 
-impl IntoArrayFilter<SqlValue> for Vec<SqlValue> {
-    fn into_array_filter<U>(self, attribute: String, op: &str, coercion: &str) -> FilterExpression
+impl<QS> IntoArrayFilter<QS, SqlValue> for Vec<SqlValue> {
+    fn into_array_filter<U>(
+        self,
+        attribute: String,
+        op: &str,
+        coercion: &str,
+    ) -> FilterExpression<QS>
     where
         SqlValue: ToSql<U, Pg>,
         U: 'static,
@@ -118,31 +138,41 @@ impl IntoArrayFilter<SqlValue> for Vec<SqlValue> {
                 .sql("(")
                 .bind::<Array<U>, _>(self)
                 .sql(")"),
-        ) as FilterExpression
+        ) as FilterExpression<QS>
     }
 }
 
-/// Adds `filter` to a SELECT statement.
-pub(crate) fn store_filter<T>(
-    query: BoxedSelectStatement<T, entities::table, Pg>,
+/// Adds `filter` to a `SELECT data FROM entities` statement.
+pub(crate) fn store_filter<QS, ST>(
+    query: BoxedSelectStatement<ST, QS, Pg>,
     filter: EntityFilter,
-) -> Result<BoxedSelectStatement<T, entities::table, Pg>, UnsupportedFilter> {
+) -> Result<BoxedSelectStatement<ST, QS, Pg>, UnsupportedFilter>
+where
+    QS: EntitySource + 'static,
+{
     Ok(query.filter(build_filter(filter)?))
 }
 
-pub(crate) fn build_filter(filter: EntityFilter) -> Result<FilterExpression, UnsupportedFilter> {
+pub(crate) fn build_filter<QS>(
+    filter: EntityFilter,
+) -> Result<FilterExpression<QS>, UnsupportedFilter>
+where
+    QS: EntitySource + 'static,
+{
     use self::EntityFilter::*;
 
-    let false_expr = Box::new(false.into_sql::<Bool>()) as FilterExpression;
-    let true_expr = Box::new(true.into_sql::<Bool>()) as FilterExpression;
+    let false_expr = Box::new(false.into_sql::<Bool>()) as FilterExpression<QS>;
+    let true_expr = Box::new(true.into_sql::<Bool>()) as FilterExpression<QS>;
 
     match filter {
         And(filters) => filters.into_iter().try_fold(true_expr, |p, filter| {
-            build_filter(filter).map(|filter_expr| Box::new(p.and(filter_expr)) as FilterExpression)
+            build_filter(filter)
+                .map(|filter_expr| Box::new(p.and(filter_expr)) as FilterExpression<QS>)
         }),
 
         Or(filters) => filters.into_iter().try_fold(false_expr, |p, filter| {
-            build_filter(filter).map(|filter_expr| Box::new(p.or(filter_expr)) as FilterExpression)
+            build_filter(filter)
+                .map(|filter_expr| Box::new(p.or(filter_expr)) as FilterExpression<QS>)
         }),
 
         Contains(..) | NotContains(..) => {
@@ -165,9 +195,9 @@ pub(crate) fn build_filter(filter: EntityFilter) -> Result<FilterExpression, Uns
                         .bind::<Text, _>(s)
                         .sql("::jsonb");
                     if contains {
-                        Ok(Box::new(predicate) as FilterExpression)
+                        Ok(Box::new(predicate) as FilterExpression<QS>)
                     } else {
-                        Ok(Box::new(dsl::not(predicate)) as FilterExpression)
+                        Ok(Box::new(dsl::not(predicate)) as FilterExpression<QS>)
                     }
                 }
                 Value::Null
