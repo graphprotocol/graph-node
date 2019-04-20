@@ -620,7 +620,7 @@ impl TryFromValue for EthereumContractSourceEntity {
 }
 
 #[derive(Debug)]
-struct EthereumContractMappingEntity {
+pub struct EthereumContractMappingEntity {
     pub kind: String,
     pub api_version: String,
     pub language: String,
@@ -725,6 +725,8 @@ impl TryFromValue for EthereumContractMappingEntity {
             entities: map.get_required("entities")?,
             abis: map.get_required("abis")?,
             event_handlers: map.get_required("eventHandlers")?,
+            call_handlers: map.get_required("callHandlers")?,
+            block_handlers: map.get_required("blockHandler")?,
         })
     }
 }
@@ -776,8 +778,10 @@ impl TryFromValue for EthereumContractAbiEntity {
     }
 }
 
+#[derive(Debug)]
 pub struct EthereumBlockHandlerEntity {
-    handler: String,
+    pub handler: String,
+    pub filter: EthereumBlockHandlerFilterEntity,
 }
 
 impl TypedEntity for EthereumBlockHandlerEntity {
@@ -793,15 +797,45 @@ impl From<super::MappingBlockHandler> for EthereumBlockHandlerEntity {
     }
 }
 
+impl TryFromValue for EthereumBlockHandlerEntity {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        let map = match value {
+            q::Value::Object(map) => Ok(map),
+            _ => Err(format_err!(
+                "Cannot parse value into block handler entity: {:?}",
+                value
+            )),
+        }?;
+
+        Ok(Self {
+            handler: map.get_required("handler")?,
+        })
+    }
+}
+
+pub struct EthereumBlockHandlerFilterEntity {
+    kind: 
+}
+
 #[derive(Debug)]
 pub struct EthereumCallHandlerEntity {
-    function: String,
-    handler: String,
+    pub function: String,
+    pub handler: String,
 }
 
 impl TypedEntity for EthereumCallHandlerEntity {
     const TYPENAME: &'static str = "EthereumCallHandlerEntity";
     type IdType = String;
+}
+
+impl EthereumCallHandlerEntity {
+    fn write_operations(self: id &str) -> Vec<EntityOperation> {
+        let mut entity = Entity::new();
+        entity.set("id", id);
+        entity.set("function", self.function);
+        entity.set("handler", self.handler);
+        vec![set_entity_operation(Self::TYPENAME, id, entity)]
+    }
 }
 
 impl From<super::MappingCallHandler> for EthereumCallHandlerEntity {
@@ -810,6 +844,23 @@ impl From<super::MappingCallHandler> for EthereumCallHandlerEntity {
             function: call_handler.function,
             handler: call_handler.handler,
         }
+    }
+}
+
+impl TryFromValue for EthereumCallHandlerEntity {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        let map = match value {
+            q::Value::Object(map) => Ok(map),
+            _ => Err(format_err!(
+                "Cannot parse value into call handler entity: {:?}",
+                value
+            )),
+        }?;
+
+        Ok(Self {
+            function: map.get_required("function")?,
+            handler: map.get_required("handler")?,
+        })
     }
 }
 

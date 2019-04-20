@@ -4,10 +4,12 @@ use futures::Future;
 use slog::Logger;
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
+use tiny_keccak::keccak256;
 use web3::error::Error as Web3Error;
 use web3::types::*;
 
 use super::types::*;
+use crate::prelude::BlockHandlerFilter;
 use crate::prelude::DataSource;
 
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
@@ -208,11 +210,12 @@ impl<'a> FromIterator<&'a DataSource> for EthereumCallFilter {
         I: IntoIterator<Item = &'a DataSource>,
     {
         iter.into_iter()
+            .filter(|data_source| data_source.source.address.is_some())
             .flat_map(|data_source| {
-                let contract_addr = data_source.source.address;
+                let contract_addr = data_source.source.address.unwrap();
                 data_source
                     .mapping
-                    .transaction_handlers
+                    .call_handlers
                     .iter()
                     .map(move |call_handler| {
                         let sig = keccak256(call_handler.function.as_bytes());
@@ -262,28 +265,40 @@ pub struct EthereumBlockFilter {
     pub trigger_every_block: bool,
 }
 
-impl FromIterator<Address> for EthereumBlockFilter {
-    fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = Address>,
-    {
-        EthereumBlockFilter {
-            contract_addresses: iter.into_iter().collect(),
-            trigger_every_block: false,
-        }
-    }
-}
-
 impl<'a> FromIterator<&'a DataSource> for EthereumBlockFilter {
     fn from_iter<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = &'a DataSource>,
     {
-        iter.into_iter()
-            .map(|data_source| {
-                data_source.source.address;
+        let mut trigger_every_block = false;
+        let contract_addresses = iter
+            .into_iter()
+            .filter(|data_source| {
+                let has_address = data_source.source.address.is_some();
+                let has_block_handler_with_call_filter = data_source
+                    .mapping
+                    .block_handlers
+                    .iter()
+                    .any(|block_handler| match block_handler.filter {
+                        Some(ref filter) if *filter == BlockHandlerFilter::Call => return true,
+                        _ => return false,
+                    });
+                let has_block_handler_without_filter = data_source
+                    .mapping
+                    .block_handlers
+                    .iter()
+                    .any(|block_handler| block_handler.filter.is_none());
+
+                trigger_every_block = has_address && has_block_handler_without_filter;
+
+                has_address && has_block_handler_with_call_filter
             })
-            .collect::<EthereumBlockFilter>()
+            .map(|data_source| data_source.source.address.unwrap())
+            .collect::<HashSet<Address>>();
+        return Self {
+            contract_addresses,
+            trigger_every_block,
+        };
     }
 }
 
