@@ -776,3 +776,107 @@ pub(crate) fn table(
 ) -> Result<Table, StoreError> {
     Table::new(conn, subgraph)
 }
+
+pub(crate) fn create_schema(
+    conn: &PgConnection,
+    subgraph_id: &SubgraphDeploymentId,
+) -> Result<(), StoreError> {
+    // Create a schema for the deployment
+    let schemas: Vec<String> = diesel::insert_into(deployment_schemas::table)
+        .values(deployment_schemas::subgraph.eq(subgraph_id.to_string()))
+        .returning(deployment_schemas::name)
+        .get_results(conn)?;
+    let schema_name = schemas
+        .first()
+        .ok_or_else(|| format_err!("failed to read schema name for {} back", subgraph_id))?;
+
+    // Note that we have to use conn.batch_execute to issue DDL commands; using
+    // diesel::sql_query(..).execute(conn) can lead to cases where the command
+    // is sent to the database, and shows up in the database logs, but has no
+    // effect at all, but also does not result in an error.
+    let query = format!("create schema {}", schema_name);
+    conn.batch_execute(&*query)?;
+
+    // The order of columns in the primary key matters a lot, since
+    // we want the pk index to also support queries that do not have an id,
+    // just an entity (like counting the number of entities of a certain type)
+    let query = format!(
+        "create table {}.entities(
+            entity       varchar not null,
+            id           varchar not null,
+            data         jsonb,
+            event_source varchar not null,
+            primary key(entity, id)
+        )",
+        schema_name
+    );
+    conn.batch_execute(&*query)?;
+
+    let query = format!(
+        "create trigger entity_change_insert_trigger
+            after insert on {schema}.entities
+            for each row
+            execute procedure subgraph_log_entity_event()",
+        schema = schema_name
+    );
+    conn.batch_execute(&*query)?;
+
+    let query = format!(
+        "create trigger entity_change_update_trigger
+            after update on {schema}.entities
+            for each row
+            when (old.data != new.data)
+            execute procedure subgraph_log_entity_event()",
+        schema = schema_name
+    );
+    conn.batch_execute(&*query)?;
+
+    let query = format!(
+        "create trigger entity_change_delete_trigger
+            after delete on {schema}.entities
+            for each row
+            execute procedure subgraph_log_entity_event()",
+        schema = schema_name
+    );
+    conn.batch_execute(&*query)?;
+
+    let query = format!(
+        "create table {}.entity_history (
+            id           serial primary key,
+	        event_id     integer references event_meta_data(id)
+                             on update cascade on delete cascade,
+            entity       varchar not null,
+	        entity_id    varchar not null,
+	        data_before  jsonb,
+	        reversion    bool not null default false,
+	        op_id        int2 NOT NULL)",
+        schema_name
+    );
+    conn.batch_execute(&*query)?;
+
+    let query = format!(
+        "create index entity_history_event_id_btree_idx
+            on {}.entity_history(event_id)",
+        schema_name
+    );
+    conn.batch_execute(&*query)?;
+
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub(crate) fn drop_schema(
+    conn: &diesel::pg::PgConnection,
+    subgraph: &SubgraphDeploymentId,
+) -> Result<usize, StoreError> {
+    let info = find_schema(conn, subgraph)?;
+    if let Some(schema) = info {
+        let query = format!("drop schema if exists {} cascade", schema.name);
+        conn.batch_execute(&*query)?;
+        Ok(diesel::delete(deployment_schemas::table)
+            .filter(deployment_schemas::subgraph.eq(schema.subgraph))
+            .execute(conn)?)
+    } else {
+        Ok(0)
+    }
+}

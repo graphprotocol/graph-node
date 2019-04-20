@@ -858,10 +858,17 @@ impl StoreTrait for Store {
 
     fn create_subgraph_deployment(
         &self,
-        _subgraph_id: &SubgraphDeploymentId,
+        subgraph_id: &SubgraphDeploymentId,
         ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError> {
-        self.apply_entity_operations(ops, EventSource::None)
+        let conn = self.conn.get().map_err(Error::from)?;
+
+        conn.transaction(|| {
+            let source = EventSource::None;
+            self.emit_store_events(&conn, &ops)?;
+            self.apply_entity_operations_with_conn(&conn, ops, source)?;
+            crate::entities::create_schema(&conn, subgraph_id)
+        })
     }
 }
 
