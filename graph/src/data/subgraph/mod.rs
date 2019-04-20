@@ -428,11 +428,19 @@ pub enum BlockHandlerFilter {
     Call,
 }
 
+// impl From<EthereumBlockHandlerEntity> for MappingBlockHandler {
+//     fn from(entity: EthereumBlockHandlerEntity) -> Self {
+//         Self {}
+//     }
+// }
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct MappingCallHandler {
     pub function: String,
     pub handler: String,
 }
+
+// impl From<EthereumCallHandlerEntity> for MappingCallHandler {}
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct MappingEventHandler {
@@ -537,6 +545,8 @@ impl From<EthereumContractMappingEntity> for UnresolvedMapping {
             entities: entity.entities,
             abis: entity.abis.into_iter().map(Into::into).collect(),
             event_handlers: entity.event_handlers.into_iter().map(Into::into).collect(),
+            call_handlers: entity.call_handlers.into_iter().map(Into::into).collect(),
+            block_handlers: entity.block_handlers.into_iter().map(Into::into).collect(),
             file: entity.file.into(),
         }
     }
