@@ -791,8 +791,11 @@ impl TypedEntity for EthereumBlockHandlerEntity {
 
 impl From<super::MappingBlockHandler> for EthereumBlockHandlerEntity {
     fn from(block_handler: super::MappingBlockHandler) -> Self {
-        Self {
+        EthereumBlockHandlerEntity {
             handler: block_handler.handler,
+            filter: EthereumBlockHandlerFilterEntity {
+                filter: block_handler.filter,
+            },
         }
     }
 }
@@ -807,14 +810,14 @@ impl TryFromValue for EthereumBlockHandlerEntity {
             )),
         }?;
 
-        Ok(Self {
+        Ok(EthereumBlockHandlerEntity {
             handler: map.get_required("handler")?,
         })
     }
 }
 
 pub struct EthereumBlockHandlerFilterEntity {
-    kind: 
+    kind: String,
 }
 
 #[derive(Debug)]
@@ -829,7 +832,7 @@ impl TypedEntity for EthereumCallHandlerEntity {
 }
 
 impl EthereumCallHandlerEntity {
-    fn write_operations(self: id &str) -> Vec<EntityOperation> {
+    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("function", self.function);
