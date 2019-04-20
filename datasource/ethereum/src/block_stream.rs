@@ -216,8 +216,6 @@ where
         let ctx = self.clone();
         let reorg_threshold = ctx.reorg_threshold;
 
-        debug!(ctx.logger, "Identify next step");
-
         // Get pointers from database for comparison
         let head_ptr_opt = ctx.chain_store.chain_head_ptr().unwrap();
         let subgraph_ptr = ctx
@@ -234,12 +232,12 @@ where
 
         let head_ptr = head_ptr_opt.unwrap();
 
-        debug!(
+        trace!(
             ctx.logger, "Chain head pointer";
             "hash" => format!("{:?}", head_ptr.hash),
             "number" => &head_ptr.number
         );
-        debug!(
+        trace!(
             ctx.logger, "Subgraph pointer";
             "hash" => format!("{:?}", subgraph_ptr.hash),
             "number" => &subgraph_ptr.number

@@ -417,11 +417,9 @@ where
         .cloned()
         .collect();
 
-    if logs.len() == 0 {
-        debug!(logger, "No events found in this block for this subgraph");
-    } else if logs.len() == 1 {
+    if logs.len() == 1 {
         info!(logger, "1 event found in this block for this subgraph");
-    } else {
+    } else if logs.len() > 1 {
         info!(
             logger,
             "{} events found in this block for this subgraph",
@@ -478,17 +476,12 @@ where
                 .collect()
         };
 
-        if logs.len() == 0 {
-            debug!(
-                logger,
-                "No events found in this block for the new data sources"
-            );
-        } else if logs.len() == 1 {
+        if logs.len() == 1 {
             info!(
                 logger,
                 "1 event found in this block for the new data sources"
             );
-        } else {
+        } else if logs.len() > 1 {
             info!(
                 logger,
                 "{} events found in this block for the new data sources",
@@ -718,11 +711,13 @@ where
     S: ChainStore + Store,
     T: RuntimeHostBuilder,
 {
-    debug!(
-        logger,
-        "Creating {} dynamic data source(s)",
-        data_sources.len()
-    );
+    if !data_sources.is_empty() {
+        debug!(
+            logger,
+            "Creating {} dynamic data source(s)",
+            data_sources.len()
+        );
+    }
 
     // If there are any new dynamic data sources, we'll have to restart
     // the subgraph after this block
