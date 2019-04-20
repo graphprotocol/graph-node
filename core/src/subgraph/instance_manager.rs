@@ -532,11 +532,13 @@ where
             return Err(CancelableError::Cancel);
         }
 
-        info!(
-            logger4,
-            "Applying {} entity operation(s)",
-            block_state.entity_operations.len()
-        );
+        if !block_state.entity_operations.is_empty() {
+            info!(
+                logger4,
+                "Applying {} entity operation(s)",
+                block_state.entity_operations.len()
+            );
+        }
 
         // Transact entity operations into the store and update the
         // subgraph's block stream pointer
