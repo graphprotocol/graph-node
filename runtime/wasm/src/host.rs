@@ -259,26 +259,26 @@ impl RuntimeHost {
     }
 
     fn matches_log_signature(&self, log: &Log) -> bool {
-        if log.topics.is_empty() {
-            return false;
-        }
-        let signature = log.topics[0];
+        let topic0 = match log.topics.iter().next() {
+            Some(topic0) => topic0,
+            None => return false,
+        };
 
-        self.data_source_event_handlers.iter().any(|event_handler| {
-            signature == util::ethereum::string_to_h256(event_handler.event.as_str())
-        })
+        self.data_source_event_handlers
+            .iter()
+            .any(|handler| *topic0 == handler.topic0())
     }
 
     fn event_handler_for_log(&self, log: &Arc<Log>) -> Result<MappingEventHandler, Error> {
         // Get signature from the log
-        if log.topics.is_empty() {
-            return Err(format_err!("Ethereum event has no topics"));
-        }
-        let signature = log.topics[0];
+        let topic0 = match log.topics.iter().next() {
+            Some(topic0) => topic0,
+            None => return Err(format_err!("Ethereum event has no topics")),
+        };
 
         self.data_source_event_handlers
             .iter()
-            .find(|handler| signature == util::ethereum::string_to_h256(handler.event.as_str()))
+            .find(|handler| *topic0 == handler.topic0())
             .cloned()
             .ok_or_else(|| {
                 format_err!(
