@@ -19,10 +19,10 @@ use crate::components::store::StoreError;
 use crate::data::query::QueryExecutionError;
 use crate::data::schema::Schema;
 use crate::data::subgraph::schema::{
-    EthereumContractAbiEntity, EthereumContractDataSourceEntity,
-    EthereumContractDataSourceTemplateEntity, EthereumContractDataSourceTemplateSourceEntity,
-    EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
-    EthereumContractSourceEntity,
+    EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
+    EthereumContractDataSourceEntity, EthereumContractDataSourceTemplateEntity,
+    EthereumContractDataSourceTemplateSourceEntity, EthereumContractEventHandlerEntity,
+    EthereumContractMappingEntity, EthereumContractSourceEntity,
 };
 use crate::util::ethereum::string_to_h256;
 
@@ -428,11 +428,14 @@ pub enum BlockHandlerFilter {
     Call,
 }
 
-// impl From<EthereumBlockHandlerEntity> for MappingBlockHandler {
-//     fn from(entity: EthereumBlockHandlerEntity) -> Self {
-//         Self {}
-//     }
-// }
+impl From<EthereumBlockHandlerEntity> for MappingBlockHandler {
+    fn from(entity: EthereumBlockHandlerEntity) -> Self {
+        Self {
+            handler: entity.handler,
+            filter: None,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct MappingCallHandler {
@@ -440,7 +443,14 @@ pub struct MappingCallHandler {
     pub handler: String,
 }
 
-// impl From<EthereumCallHandlerEntity> for MappingCallHandler {}
+impl From<EthereumCallHandlerEntity> for MappingCallHandler {
+    fn from(entity: EthereumCallHandlerEntity) -> Self {
+        Self {
+            function: entity.function,
+            handler: entity.handler,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct MappingEventHandler {
@@ -544,9 +554,15 @@ impl From<EthereumContractMappingEntity> for UnresolvedMapping {
             language: entity.language,
             entities: entity.entities,
             abis: entity.abis.into_iter().map(Into::into).collect(),
-            event_handlers: entity.event_handlers.into_iter().map(Into::into).collect(),
-            call_handlers: entity.call_handlers.into_iter().map(Into::into).collect(),
-            block_handlers: entity.block_handlers.into_iter().map(Into::into).collect(),
+            event_handlers: entity
+                .event_handlers
+                .map(|event_handlers| event_handlers.into_iter().map(Into::into).collect()),
+            call_handlers: entity
+                .call_handlers
+                .map(|call_handlers| call_handlers.into_iter().map(Into::into).collect()),
+            block_handlers: entity
+                .block_handlers
+                .map(|block_handlers| block_handlers.into_iter().map(Into::into).collect()),
             file: entity.file.into(),
         }
     }
