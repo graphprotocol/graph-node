@@ -9,7 +9,6 @@ use web3::types::*;
 
 use super::types::*;
 use crate::prelude::DataSource;
-use crate::util::ethereum::string_to_h256;
 
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
 pub struct EthereumNetworkIdentifier {
@@ -161,7 +160,7 @@ impl<'a> FromIterator<&'a DataSource> for EthereumLogFilter {
                     .event_handlers
                     .iter()
                     .map(move |event_handler| {
-                        let event_sig = string_to_h256(&event_handler.event);
+                        let event_sig = event_handler.topic0();
                         (contract_addr, event_sig)
                     })
             })

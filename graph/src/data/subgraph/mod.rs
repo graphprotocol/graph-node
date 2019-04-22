@@ -24,6 +24,7 @@ use crate::data::subgraph::schema::{
     EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
     EthereumContractSourceEntity,
 };
+use crate::util::ethereum::string_to_h256;
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
 pub mod schema;
@@ -408,6 +409,12 @@ pub struct MappingEventHandler {
     pub event: String,
     pub topic0: Option<H256>,
     pub handler: String,
+}
+
+impl MappingEventHandler {
+    pub fn topic0(&self) -> H256 {
+        self.topic0.unwrap_or_else(|| string_to_h256(&self.event))
+    }
 }
 
 impl From<EthereumContractEventHandlerEntity> for MappingEventHandler {
