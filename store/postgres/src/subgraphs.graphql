@@ -90,6 +90,7 @@ type EthereumContractAbi @entity {
 type EthereumContractEventHandler @entity {
     id: ID!
     event: String!
+    topic0: Bytes
     handler: String!
 }
 
