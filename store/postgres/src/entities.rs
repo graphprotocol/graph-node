@@ -1,3 +1,4 @@
+use diesel::connection::SimpleConnection;
 use diesel::deserialize::QueryableByName;
 use diesel::dsl::{any, sql};
 use diesel::pg::{Pg, PgConnection};
@@ -9,10 +10,12 @@ use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
 use diesel_dynamic_schema::{schema, Column, Table as DynamicTable};
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{
-    format_err, EntityChange, EntityChangeOperation, EntityFilter, EntityKey, Error, EventSource,
-    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, TransactionAbortError,
+    format_err, AttributeIndexDefinition, EntityChange, EntityChangeOperation, EntityFilter,
+    EntityKey, Error, EventSource, QueryExecutionError, StoreError, StoreEvent,
+    SubgraphDeploymentId, TransactionAbortError, ValueType,
 };
 use graph::serde_json;
+use inflector::cases::snakecase::to_snake_case;
 
 use crate::filter::{build_filter, store_filter};
 use crate::functions::set_config;
@@ -689,6 +692,67 @@ impl Table {
         }
 
         Ok(StoreEvent::new(changes))
+    }
+
+    pub(crate) fn build_attribute_index(
+        &self,
+        conn: &PgConnection,
+        index: &AttributeIndexDefinition,
+    ) -> Result<usize, StoreError> {
+        let (index_type, index_operator, jsonb_operator) = match index.field_value_type {
+            ValueType::Boolean
+            | ValueType::BigInt
+            | ValueType::Bytes
+            | ValueType::BigDecimal
+            | ValueType::ID
+            | ValueType::Int => (String::from("btree"), String::from(""), "->>"),
+            ValueType::String => (String::from("gin"), String::from("gin_trgm_ops"), "->>"),
+            ValueType::List => (String::from("gin"), String::from("jsonb_path_ops"), "->"),
+        };
+
+        // It is not to be possible to use bind variables in this code,
+        // and we have to interpolate everything into the query directly.
+        // We also have to use conn.batch_execute to issue the `create index`
+        // commands; using `sql_query(..).execute(conn)` will make the database
+        // accept the commands, and log them as if they were successful, but
+        // without any effect on the schema
+        match self {
+            Table::Public(_) => {
+                let query = format!("
+                    create index if not exists {name} on public.entities 
+                    using {index_type} ((data->'{attribute_name}'{jsonb_operator}'data') {index_operator})
+                    where subgraph='{subgraph}' and entity='{entity_name}'",
+                    name=&index.index_name,
+                    index_type=index_type,
+                    attribute_name=&index.attribute_name,
+                    jsonb_operator=jsonb_operator,
+                    index_operator=index_operator,
+                    subgraph=index.subgraph_id.to_string(),
+                    entity_name=&index.entity_name);
+                conn.batch_execute(&*query)?;
+                Ok(1)
+            }
+            Table::Split(entities) => {
+                let name = format!(
+                    "entities_{}_{}",
+                    to_snake_case(&index.entity_name),
+                    to_snake_case(&index.attribute_name)
+                );
+                let query = format!("
+                    create index if not exists {name} on {subgraph}.entities 
+                    using {index_type} ((data->'{attribute_name}'{jsonb_operator}'data') {index_operator})
+                    where entity='{entity_name}'",
+                    name=name,
+                    subgraph=entities.schema,
+                    index_type=index_type,
+                    attribute_name=&index.attribute_name,
+                    jsonb_operator=jsonb_operator,
+                    index_operator=index_operator,
+                    entity_name=&index.entity_name);
+                conn.batch_execute(&*query)?;
+                Ok(1)
+            }
+        }
     }
 }
 

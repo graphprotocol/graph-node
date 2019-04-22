@@ -8,6 +8,7 @@ extern crate fallible_iterator;
 extern crate futures;
 extern crate graph;
 extern crate graph_graphql;
+extern crate inflector;
 extern crate lru_time_cache;
 extern crate postgres;
 extern crate serde;

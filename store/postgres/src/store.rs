@@ -19,7 +19,7 @@ use graph::{tokio, tokio::timer::Interval};
 use graph_graphql::prelude::api_schema;
 
 use crate::chain_head_listener::ChainHeadUpdateListener;
-use crate::functions::{attempt_chain_head_update, build_attribute_index, lookup_ancestor_block};
+use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
 use crate::store_events::StoreEventListener;
 
 embed_migrations!("./migrations");
@@ -609,36 +609,19 @@ impl Store {
         conn: &PgConnection,
         index: AttributeIndexDefinition,
     ) -> Result<(), SubgraphAssignmentProviderError> {
-        let (index_type, index_operator, jsonb_index) = match index.field_value_type {
-            ValueType::Boolean
-            | ValueType::BigInt
-            | ValueType::Bytes
-            | ValueType::BigDecimal
-            | ValueType::ID
-            | ValueType::Int => (String::from("btree"), String::from(""), false),
-            ValueType::String => (String::from("gin"), String::from("gin_trgm_ops"), false),
-            ValueType::List => (String::from("gin"), String::from("jsonb_path_ops"), true),
-        };
-
-        select(build_attribute_index(
-            index.subgraph_id.to_string(),
-            index.index_name.clone(),
-            index_type,
-            index_operator,
-            jsonb_index,
-            index.attribute_name.clone(),
-            index.entity_name.clone(),
-        ))
-        .execute(conn)
-        .map_err(|e| SubgraphAssignmentProviderError::Unknown(e.into()))
-        .and_then(move |row_count| match row_count {
-            1 => Ok(()),
-            _ => Err(SubgraphAssignmentProviderError::BuildIndexesError(
-                index.subgraph_id.to_string(),
-                index.entity_name.clone(),
-                index.attribute_name.clone(),
-            )),
-        })
+        let table = crate::entities::table(conn, &index.subgraph_id)
+            .map_err(|e| SubgraphAssignmentProviderError::Unknown(e.into()))?;
+        table
+            .build_attribute_index(conn, &index)
+            .map_err(|e| SubgraphAssignmentProviderError::Unknown(e.into()))
+            .and_then(move |row_count| match row_count {
+                1 => Ok(()),
+                _ => Err(SubgraphAssignmentProviderError::BuildIndexesError(
+                    index.subgraph_id.to_string(),
+                    index.entity_name.clone(),
+                    index.attribute_name.clone(),
+                )),
+            })
     }
 
     /// Build a set of indexes on the entities table
