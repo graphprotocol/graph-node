@@ -12,7 +12,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::prelude::*;
-use web3::types::Address;
+use web3::types::{Address, H256};
 
 use crate::components::link_resolver::LinkResolver;
 use crate::components::store::StoreError;
@@ -406,6 +406,7 @@ impl UnresolvedMappingABI {
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct MappingEventHandler {
     pub event: String,
+    pub topic0: Option<H256>,
     pub handler: String,
 }
 
@@ -413,6 +414,7 @@ impl From<EthereumContractEventHandlerEntity> for MappingEventHandler {
     fn from(entity: EthereumContractEventHandlerEntity) -> Self {
         Self {
             event: entity.event,
+            topic0: entity.topic0,
             handler: entity.handler,
         }
     }

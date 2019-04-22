@@ -765,6 +765,7 @@ impl TryFromValue for EthereumContractAbiEntity {
 #[derive(Debug)]
 pub struct EthereumContractEventHandlerEntity {
     pub event: String,
+    pub topic0: Option<H256>,
     pub handler: String,
 }
 
@@ -778,6 +779,7 @@ impl EthereumContractEventHandlerEntity {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("event", self.event);
+        entity.set("topic0", self.topic0.map_or(Value::Null, Value::from));
         entity.set("handler", self.handler);
         vec![set_entity_operation(Self::TYPENAME, id, entity)]
     }
@@ -787,6 +789,7 @@ impl From<super::MappingEventHandler> for EthereumContractEventHandlerEntity {
     fn from(event_handler: super::MappingEventHandler) -> Self {
         Self {
             event: event_handler.event,
+            topic0: event_handler.topic0,
             handler: event_handler.handler,
         }
     }
@@ -804,6 +807,7 @@ impl TryFromValue for EthereumContractEventHandlerEntity {
 
         Ok(Self {
             event: map.get_required("event")?,
+            topic0: map.get_optional("topic0")?,
             handler: map.get_required("handler")?,
         })
     }
