@@ -16,6 +16,8 @@ use graph::prelude::{
 };
 use graph::serde_json;
 use inflector::cases::snakecase::to_snake_case;
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 use crate::filter::{build_filter, store_filter};
 use crate::functions::set_config;
@@ -168,9 +170,128 @@ impl QueryableByName<Pg> for RawHistory {
     }
 }
 
+#[derive(Clone, Debug)]
 pub(crate) enum Table {
     Public(SubgraphDeploymentId),
     Split(SplitTable),
+}
+
+/// A connection into the database to handle entities which caches the
+/// mapping to actual database tables. Instances of this struct must not be
+/// cached across transactions as we do not track possible changes to
+/// entity storage, such as migrating a subgraph from the monolithic
+/// entities table to a split entities table
+pub(crate) struct Connection<'a> {
+    conn: &'a PgConnection,
+    tables: RefCell<HashMap<SubgraphDeploymentId, Table>>,
+}
+
+impl<'a> Connection<'a> {
+    pub(crate) fn new(conn: &'a PgConnection) -> Connection<'a> {
+        Connection {
+            conn,
+            tables: RefCell::new(HashMap::new()),
+        }
+    }
+
+    /// Return a table for the subgraph
+    fn table(&self, subgraph: &SubgraphDeploymentId) -> Result<Table, StoreError> {
+        let mut tables = self.tables.borrow_mut();
+
+        match tables.get(subgraph) {
+            Some(table) => Ok(table.clone()),
+            None => {
+                let table = Table::new(self.conn, subgraph)?;
+                tables.insert(subgraph.clone(), table.clone());
+                Ok(table)
+            }
+        }
+    }
+
+    pub(crate) fn find(
+        &self,
+        subgraph: &SubgraphDeploymentId,
+        entity: &String,
+        id: &String,
+    ) -> Result<Option<serde_json::Value>, StoreError> {
+        let table = self.table(subgraph)?;
+        table.find(self.conn, entity, id)
+    }
+
+    pub(crate) fn query(
+        &self,
+        subgraph: &SubgraphDeploymentId,
+        entity_types: Vec<String>,
+        filter: Option<EntityFilter>,
+        order: Option<(String, &str, &str)>,
+        first: Option<u32>,
+        skip: u32,
+    ) -> Result<Vec<(serde_json::Value, String)>, QueryExecutionError> {
+        let table = self.table(subgraph)?;
+        table.query(self.conn, entity_types, filter, order, first, skip)
+    }
+
+    pub(crate) fn conflicting_entity(
+        &self,
+        subgraph: &SubgraphDeploymentId,
+        entity_id: &String,
+        entities: Vec<&String>,
+    ) -> Result<Option<String>, StoreError> {
+        let table = self.table(subgraph)?;
+        table.conflicting_entity(self.conn, entity_id, entities)
+    }
+
+    pub(crate) fn upsert(
+        &self,
+        key: &EntityKey,
+        data: &serde_json::Value,
+        event_source: EventSource,
+    ) -> Result<usize, StoreError> {
+        let table = self.table(&key.subgraph_id)?;
+        table.upsert(self.conn, key, data, event_source)
+    }
+
+    pub(crate) fn update(
+        &self,
+        key: &EntityKey,
+        data: &serde_json::Value,
+        guard: Option<EntityFilter>,
+        event_source: EventSource,
+    ) -> Result<usize, StoreError> {
+        let table = self.table(&key.subgraph_id)?;
+        table.update(self.conn, key, data, guard, event_source)
+    }
+
+    pub(crate) fn delete(
+        &self,
+        key: &EntityKey,
+        event_source: EventSource,
+    ) -> Result<usize, StoreError> {
+        let table = self.table(&key.subgraph_id)?;
+        table.delete(self.conn, key, event_source)
+    }
+
+    pub(crate) fn build_attribute_index(
+        &self,
+        index: &AttributeIndexDefinition,
+    ) -> Result<usize, StoreError> {
+        let table = self.table(&index.subgraph_id)?;
+        table.build_attribute_index(self.conn, index)
+    }
+
+    pub(crate) fn revert_block(
+        &self,
+        subgraph: &SubgraphDeploymentId,
+        block_ptr: String,
+    ) -> Result<StoreEvent, StoreError> {
+        let table = self.table(subgraph)?;
+        table.revert_block(self.conn, block_ptr)
+    }
+
+    pub(crate) fn count_entities(&self, subgraph: &SubgraphDeploymentId) -> Result<u64, Error> {
+        let table = self.table(subgraph)?;
+        table.count_entities(self.conn)
+    }
 }
 
 // Find the database schema for `subgraph`. If no explicit schema exists,
@@ -297,7 +418,7 @@ impl Table {
         }
     }
 
-    pub(crate) fn find(
+    fn find(
         &self,
         conn: &PgConnection,
         entity: &String,
@@ -322,7 +443,7 @@ impl Table {
     }
 
     /// order is a tuple (attribute, cast, direction)
-    pub(crate) fn query(
+    fn query(
         &self,
         conn: &PgConnection,
         entity_types: Vec<String>,
@@ -436,7 +557,7 @@ impl Table {
         }
     }
 
-    pub(crate) fn upsert(
+    fn upsert(
         &self,
         conn: &PgConnection,
         key: &EntityKey,
@@ -481,7 +602,7 @@ impl Table {
         }
     }
 
-    pub(crate) fn update(
+    fn update(
         &self,
         conn: &PgConnection,
         key: &EntityKey,
@@ -518,7 +639,7 @@ impl Table {
         }
     }
 
-    pub(crate) fn delete(
+    fn delete(
         &self,
         conn: &PgConnection,
         key: &EntityKey,
@@ -555,7 +676,7 @@ impl Table {
         }
     }
 
-    pub(crate) fn count_entities(&self, conn: &PgConnection) -> Result<u64, Error> {
+    fn count_entities(&self, conn: &PgConnection) -> Result<u64, Error> {
         match self {
             Table::Public(subgraph) => {
                 let count: i64 = public::entities::table
@@ -572,7 +693,7 @@ impl Table {
         }
     }
 
-    pub(crate) fn conflicting_entity(
+    fn conflicting_entity(
         &self,
         conn: &PgConnection,
         entity_id: &String,
@@ -602,7 +723,7 @@ impl Table {
     /// Revert the block with the given `block_ptr` which must be the hash
     /// of the block to revert. The returned `StoreEvent` reflects the changes
     /// that were made during reversion
-    pub(crate) fn revert_block(
+    fn revert_block(
         &self,
         conn: &PgConnection,
         block_ptr: String,
@@ -694,7 +815,7 @@ impl Table {
         Ok(StoreEvent::new(changes))
     }
 
-    pub(crate) fn build_attribute_index(
+    fn build_attribute_index(
         &self,
         conn: &PgConnection,
         index: &AttributeIndexDefinition,
@@ -767,14 +888,6 @@ pub fn delete_all_entities_for_test_use_only(conn: &PgConnection) -> Result<usiz
     // Delete subgraphs entities
     rows = rows + diesel::delete(subgraphs::entities::table).execute(conn)?;
     Ok(rows)
-}
-
-/// Return a table for the subgraph
-pub(crate) fn table(
-    conn: &PgConnection,
-    subgraph: &SubgraphDeploymentId,
-) -> Result<Table, StoreError> {
-    Table::new(conn, subgraph)
 }
 
 pub(crate) fn create_schema(

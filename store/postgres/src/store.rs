@@ -19,6 +19,7 @@ use graph::{tokio, tokio::timer::Interval};
 use graph_graphql::prelude::api_schema;
 
 use crate::chain_head_listener::ChainHeadUpdateListener;
+use crate::entities as e;
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
 use crate::store_events::StoreEventListener;
 
@@ -269,14 +270,12 @@ impl Store {
     /// Gets an entity from Postgres.
     fn get_entity(
         &self,
-        conn: &PgConnection,
+        conn: &e::Connection,
         op_subgraph: &SubgraphDeploymentId,
         op_entity: &String,
         op_id: &String,
     ) -> Result<Option<Entity>, QueryExecutionError> {
-        let entities = crate::entities::table(conn, op_subgraph)?;
-
-        match entities.find(conn, op_entity, op_id).map_err(|e| {
+        match conn.find(op_subgraph, op_entity, op_id).map_err(|e| {
             QueryExecutionError::ResolveEntityError(
                 op_subgraph.clone(),
                 op_entity.clone(),
@@ -302,7 +301,7 @@ impl Store {
 
     fn execute_query(
         &self,
-        conn: &PgConnection,
+        conn: &e::Connection,
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         // Add order by filters to query
@@ -334,33 +333,31 @@ impl Store {
         };
 
         // Process results; deserialize JSON data
-        let table = crate::entities::table(conn, &query.subgraph_id)?;
-        table
-            .query(
-                conn,
-                query.entity_types,
-                query.filter,
-                order,
-                query.range.first,
-                query.range.skip,
-            )
-            .map(|values| {
-                values
-                    .into_iter()
-                    .map(|(value, entity_type)| {
-                        let parse_error_msg = format!("Error parsing entity JSON: {:?}", value);
-                        let mut value =
-                            serde_json::from_value::<Entity>(value).expect(&parse_error_msg);
-                        value.set("__typename", entity_type);
-                        value
-                    })
-                    .collect()
-            })
+        conn.query(
+            &query.subgraph_id,
+            query.entity_types,
+            query.filter,
+            order,
+            query.range.first,
+            query.range.skip,
+        )
+        .map(|values| {
+            values
+                .into_iter()
+                .map(|(value, entity_type)| {
+                    let parse_error_msg = format!("Error parsing entity JSON: {:?}", value);
+                    let mut value =
+                        serde_json::from_value::<Entity>(value).expect(&parse_error_msg);
+                    value.set("__typename", entity_type);
+                    value
+                })
+                .collect()
+        })
     }
 
     fn check_interface_entity_uniqueness(
         &self,
-        conn: &PgConnection,
+        conn: &e::Connection,
         key: &EntityKey,
     ) -> Result<(), StoreError> {
         // Collect all types that share an interface implementation with this
@@ -387,10 +384,11 @@ impl Store {
         );
 
         if !types_with_shared_interface.is_empty() {
-            let table = crate::entities::table(conn, &key.subgraph_id)?;
-            if let Some(conflicting_entity) =
-                table.conflicting_entity(conn, &key.entity_id, types_with_shared_interface)?
-            {
+            if let Some(conflicting_entity) = conn.conflicting_entity(
+                &key.subgraph_id,
+                &key.entity_id,
+                types_with_shared_interface,
+            )? {
                 return Err(StoreError::ConflictingId(
                     key.entity_type.clone(),
                     key.entity_id.clone(),
@@ -404,7 +402,7 @@ impl Store {
     /// Applies a set operation in Postgres.
     fn apply_set_operation(
         &self,
-        conn: &PgConnection,
+        conn: &e::Connection,
         key: EntityKey,
         data: Entity,
         event_source: EventSource,
@@ -434,9 +432,7 @@ impl Store {
             })?;
 
         // Either add or update the entity in Postgres
-        let table = crate::entities::table(conn, &key.subgraph_id)?;
-        table
-            .upsert(conn, &key, &updated_json, event_source)
+        conn.upsert(&key, &updated_json, event_source)
             .map(|_| ())
             .map_err(|e| {
                 format_err!(
@@ -453,7 +449,7 @@ impl Store {
     /// Applies an update operation to an existing entity
     fn apply_update_operation(
         &self,
-        conn: &PgConnection,
+        conn: &e::Connection,
         key: EntityKey,
         data: Entity,
         guard: Option<EntityFilter>,
@@ -472,9 +468,7 @@ impl Store {
         })?;
 
         // Update the entity in Postgres
-        let table = crate::entities::table(conn, &key.subgraph_id)?;
-
-        match table.update(conn, &key, &json, guard, event_source)? {
+        match conn.update(&key, &json, guard, event_source)? {
             0 => Err(TransactionAbortError::AbortUnless {
                 expected_entity_ids: vec![key.entity_id.clone()],
                 actual_entity_ids: vec![],
@@ -494,30 +488,25 @@ impl Store {
     /// Applies a remove operation by deleting the entity from Postgres.
     fn apply_remove_operation(
         &self,
-        conn: &PgConnection,
+        conn: &e::Connection,
         key: EntityKey,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
-        let table = crate::entities::table(conn, &key.subgraph_id)?;
-
-        table
-            .delete(conn, &key, event_source)
-            .map(|_| ())
-            .map_err(|e| {
-                format_err!(
-                    "Failed to remove entity ({}, {}, {}): {}",
-                    key.subgraph_id,
-                    key.entity_type,
-                    key.entity_id,
-                    e
-                )
-                .into()
-            })
+        conn.delete(&key, event_source).map(|_| ()).map_err(|e| {
+            format_err!(
+                "Failed to remove entity ({}, {}, {}): {}",
+                key.subgraph_id,
+                key.entity_type,
+                key.entity_id,
+                e
+            )
+            .into()
+        })
     }
 
     fn apply_abort_unless_operation(
         &self,
-        conn: &PgConnection,
+        conn: &e::Connection,
         description: String,
         query: EntityQuery,
         mut expected_entity_ids: Vec<String>,
@@ -564,7 +553,7 @@ impl Store {
     /// Apply an entity operation in Postgres.
     fn apply_entity_operation(
         &self,
-        conn: &PgConnection,
+        conn: &e::Connection,
         operation: EntityOperation,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
@@ -593,7 +582,7 @@ impl Store {
     /// Apply a series of entity operations in Postgres.
     fn apply_entity_operations_with_conn(
         &self,
-        conn: &PgConnection,
+        conn: &e::Connection,
         operations: Vec<EntityOperation>,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
@@ -606,13 +595,10 @@ impl Store {
     /// Build a partial Postgres index on a Subgraph-Entity-Attribute
     fn build_entity_attribute_index_with_conn(
         &self,
-        conn: &PgConnection,
+        conn: &e::Connection,
         index: AttributeIndexDefinition,
     ) -> Result<(), SubgraphAssignmentProviderError> {
-        let table = crate::entities::table(conn, &index.subgraph_id)
-            .map_err(|e| SubgraphAssignmentProviderError::Unknown(e.into()))?;
-        table
-            .build_attribute_index(conn, &index)
+        conn.build_attribute_index(&index)
             .map_err(|e| SubgraphAssignmentProviderError::Unknown(e.into()))
             .and_then(move |row_count| match row_count {
                 1 => Ok(()),
@@ -627,7 +613,7 @@ impl Store {
     /// Build a set of indexes on the entities table
     fn build_entity_attribute_indexes_with_conn(
         &self,
-        conn: &PgConnection,
+        conn: &e::Connection,
         indexes: Vec<AttributeIndexDefinition>,
     ) -> Result<(), SubgraphAssignmentProviderError> {
         for index in indexes.into_iter() {
@@ -697,7 +683,8 @@ impl StoreTrait for Store {
             .conn
             .get()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        self.get_entity(&*conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
+        let conn = e::Connection::new(&conn);
+        self.get_entity(&conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
     }
 
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
@@ -705,6 +692,7 @@ impl StoreTrait for Store {
             .conn
             .get()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+        let conn = e::Connection::new(&conn);
         self.execute_query(&conn, query)
     }
 
@@ -715,6 +703,7 @@ impl StoreTrait for Store {
             .conn
             .get()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+        let conn = e::Connection::new(&conn);
 
         let mut results = self.execute_query(&conn, query)?;
         match results.len() {
@@ -778,9 +767,10 @@ impl StoreTrait for Store {
         event_source: EventSource,
     ) -> Result<(), StoreError> {
         let conn = self.conn.get().map_err(Error::from)?;
+        let econn = e::Connection::new(&conn);
         conn.transaction(|| {
             self.emit_store_events(&conn, &operations)?;
-            self.apply_entity_operations_with_conn(&conn, operations, event_source)
+            self.apply_entity_operations_with_conn(&econn, operations, event_source)
         })
     }
 
@@ -789,7 +779,8 @@ impl StoreTrait for Store {
         indexes: Vec<AttributeIndexDefinition>,
     ) -> Result<(), SubgraphAssignmentProviderError> {
         let conn = self.conn.get().map_err(Error::from)?;
-        conn.transaction(|| self.build_entity_attribute_indexes_with_conn(&conn, indexes))
+        let econn = e::Connection::new(&conn);
+        conn.transaction(|| self.build_entity_attribute_indexes_with_conn(&econn, indexes))
     }
 
     fn revert_block_operations(
@@ -804,6 +795,7 @@ impl StoreTrait for Store {
         }
 
         let conn = self.conn.get().map_err(Error::from)?;
+        let econn = e::Connection::new(&conn);
         conn.transaction(|| {
             let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
                 &subgraph_id,
@@ -811,10 +803,9 @@ impl StoreTrait for Store {
                 block_ptr_to,
             );
             self.emit_store_events(&conn, &ops)?;
-            self.apply_entity_operations_with_conn(&conn, ops, EventSource::None)?;
+            self.apply_entity_operations_with_conn(&econn, ops, EventSource::None)?;
 
-            let event = crate::entities::table(&*conn, &subgraph_id)?
-                .revert_block(&*conn, block_ptr_from.hash_hex())?;
+            let event = econn.revert_block(&subgraph_id, block_ptr_from.hash_hex())?;
 
             trace!(self.logger, "Emit store event for revert";
                 "tag" => event.tag,
@@ -851,9 +842,9 @@ impl StoreTrait for Store {
 
     fn count_entities(&self, subgraph_id: SubgraphDeploymentId) -> Result<u64, Error> {
         let conn = &*self.conn.get()?;
-        let table = crate::entities::table(conn, &subgraph_id)?;
+        let conn = e::Connection::new(&conn);
 
-        table.count_entities(conn)
+        conn.count_entities(&subgraph_id)
     }
 
     fn create_subgraph_deployment(
@@ -862,11 +853,12 @@ impl StoreTrait for Store {
         ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError> {
         let conn = self.conn.get().map_err(Error::from)?;
+        let econn = e::Connection::new(&conn);
 
         conn.transaction(|| {
             let source = EventSource::None;
             self.emit_store_events(&conn, &ops)?;
-            self.apply_entity_operations_with_conn(&conn, ops, source)?;
+            self.apply_entity_operations_with_conn(&econn, ops, source)?;
             crate::entities::create_schema(&conn, subgraph_id)
         })
     }
