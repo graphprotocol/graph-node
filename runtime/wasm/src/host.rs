@@ -1,6 +1,7 @@
 use futures::sync::mpsc::{channel, Sender};
 use futures::sync::oneshot;
 use semver::{Version, VersionReq};
+use tiny_keccak::keccak256;
 
 use std::thread;
 use std::time::Instant;
@@ -17,10 +18,6 @@ use graph::prelude::{
 };
 use graph::util;
 use graph::web3::types::{Log, Transaction};
-
-use futures::sync::mpsc::{channel, Sender};
-use futures::sync::oneshot;
-use tiny_keccak::keccak256;
 
 pub struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
@@ -241,7 +238,6 @@ impl RuntimeHost {
                     let ctx = MappingContext {
                         logger,
                         block,
-                        transaction,
                         state,
                     };
                     let module =
@@ -689,7 +685,7 @@ impl RuntimeHostTrait for RuntimeHost {
                     params,
                     handler: event_handler.clone(),
                 },
-                entity_operations,
+                state,
                 result_sender,
             })
             .map_err(move |_| {

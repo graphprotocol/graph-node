@@ -34,7 +34,6 @@ pub(crate) struct UnresolvedContractCall {
 pub(crate) struct MappingContext {
     logger: Logger,
     block: Arc<EthereumBlock>,
-    transaction: Arc<Transaction>,
     state: BlockState,
 }
 
@@ -46,7 +45,6 @@ impl Clone for MappingContext {
         MappingContext {
             logger: self.logger.clone(),
             block: self.block.clone(),
-            transaction: self.transaction.clone(),
             state: BlockState::default(),
         }
     }

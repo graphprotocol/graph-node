@@ -496,9 +496,9 @@ pub struct Mapping {
     pub language: String,
     pub entities: Vec<String>,
     pub abis: Vec<MappingABI>,
-    pub block_handlers: Vec<MappingBlockHandler>,
-    pub call_handlers: Vec<MappingCallHandler>,
-    pub event_handlers: Vec<MappingEventHandler>,
+    pub block_handlers: Option<Vec<MappingBlockHandler>>,
+    pub call_handlers: Option<Vec<MappingCallHandler>>,
+    pub event_handlers: Option<Vec<MappingEventHandler>>,
     pub runtime: Arc<Module>,
     pub link: Link,
 }
@@ -531,15 +531,15 @@ impl UnresolvedMapping {
                 Ok(Arc::new(parity_wasm::deserialize_buffer(&module_bytes)?))
             }),
         )
-        .map(|(abis, runtime)| Mapping {
+        .map(move |(abis, runtime)| Mapping {
             kind,
             api_version,
             language,
             entities,
             abis,
-            block_handlers: block_handlers.unwrap_or(Vec::new()),
-            call_handlers: call_handlers.unwrap_or(Vec::new()),
-            event_handlers: event_handlers.unwrap_or(Vec::new()),
+            block_handlers: block_handlers.clone(),
+            call_handlers: call_handlers.clone(),
+            event_handlers: event_handlers.clone(),
             runtime,
             link,
         })

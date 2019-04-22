@@ -8,6 +8,8 @@ use std::mem;
 use std::sync::Mutex;
 use tiny_keccak::keccak256;
 
+use graph::util::ethereum::string_to_h256;
+
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphEntity, SubgraphVersionEntity,
 };
@@ -1275,9 +1277,7 @@ fn create_block_filter_from_subgraph(manifest: &SubgraphManifest) -> Option<Ethe
                     });
             has_address && has_block_handler_with_call_filter
         })
-        .map(|data_source| {
-            data_source.source.address
-        })
+        .map(|data_source| data_source.source.address)
         .collect::<HashSet<Address>>();
     let trigger_every_block = manifest.data_sources.iter().any(|data_source| {
         let has_address = data_source.source.address.is_some();
