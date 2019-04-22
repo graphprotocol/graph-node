@@ -172,7 +172,7 @@ where
 {
     /// Creates a new wasmi module
     pub fn from_valid_module_with_ctx(
-        valid_module: Arc<ValidModule<T, L, S, U>,
+        valid_module: Arc<ValidModule<T, L, S, U>>,
         ctx: MappingContext,
     ) -> Result<Self, FailureError> {
         let logger = valid_module.logger.new(o!("component" => "WasmiModule"));

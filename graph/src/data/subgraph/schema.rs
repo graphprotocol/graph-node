@@ -701,25 +701,9 @@ impl EthereumContractMappingEntity {
                 .map(Value::from)
                 .collect::<Vec<Value>>(),
         );
-        match event_handler_ids {
-            Some(ids) => {
-                entity.set("eventHandlers", event_handler_ids);
-            }
-            None => {}
-        }
-        match call_handler_ids {
-            Some(ids) => {
-                entity.set("callHandlers", call_handler_ids);
-            }
-            None => {}
-        }
-        match block_handler_ids {
-            Some(ids) => {
-                entity.set("blockHandlers", block_handler_ids);
-            }
-            None => {}
-        }
-
+        event_handler_ids.map(|event_handler_ids| entity.set("eventHandlers", event_handler_ids));
+        call_handler_ids.map(|call_handler_ids| entity.set("callHandlers", call_handler_ids));
+        block_handler_ids.map(|block_handler_ids| entity.set("blockHandlers", block_handler_ids));
         ops
     }
 }
@@ -734,10 +718,16 @@ impl<'a> From<&'a super::Mapping> for EthereumContractMappingEntity {
             entities: mapping.entities.clone(),
             abis: mapping.abis.iter().map(Into::into).collect(),
             block_handlers: mapping
+                .block_handlers
+                .clone()
                 .map(|block_handlers| block_handlers.clone().into_iter().map(Into::into).collect()),
             call_handlers: mapping
+                .call_handlers
+                .clone()
                 .map(|call_handlers| call_handlers.clone().into_iter().map(Into::into).collect()),
             event_handlers: mapping
+                .event_handlers
+                .clone()
                 .map(|event_handlers| event_handlers.clone().into_iter().map(Into::into).collect()),
         }
     }

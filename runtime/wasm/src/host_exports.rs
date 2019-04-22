@@ -15,7 +15,6 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
-
 use crate::module::WasmiModule;
 
 pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_MAPPING_HANDLER_TIMEOUT";
@@ -571,7 +570,7 @@ where
 
     pub(crate) fn data_source_create(
         &self,
-        ctx: &mut EventHandlerContext,
+        ctx: &mut MappingContext,
         name: String,
         params: Vec<String>,
     ) -> Result<(), HostExportError<impl ExportError>> {
