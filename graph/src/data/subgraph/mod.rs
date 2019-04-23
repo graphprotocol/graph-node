@@ -410,7 +410,7 @@ pub struct MappingBlockHandler {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct MappingTransactionHandler {
+pub struct MappingCallHandler {
     pub function: String,
     pub handler: String,
 }
@@ -447,7 +447,7 @@ pub struct UnresolvedMapping {
     pub entities: Vec<String>,
     pub abis: Vec<UnresolvedMappingABI>,
     pub block_handler: Option<MappingBlockHandler>,
-    pub transaction_handlers: Vec<MappingTransactionHandler>,
+    pub call_handlers: Vec<MappingCallHandler>,
     pub event_handlers: Vec<MappingEventHandler>,
     pub file: Link,
 }
@@ -460,7 +460,7 @@ pub struct Mapping {
     pub entities: Vec<String>,
     pub abis: Vec<MappingABI>,
     pub block_handler: Option<MappingBlockHandler>,
-    pub transaction_handlers: Vec<MappingTransactionHandler>,
+    pub call_handlers: Vec<MappingCallHandler>,
     pub event_handlers: Vec<MappingEventHandler>,
     pub runtime: Arc<Module>,
     pub link: Link,
@@ -478,7 +478,7 @@ impl UnresolvedMapping {
             entities,
             abis,
             block_handler,
-            transaction_handlers,
+            call_handlers,
             event_handlers,
             file: link,
         } = self;
@@ -501,7 +501,7 @@ impl UnresolvedMapping {
             entities,
             abis,
             block_handler,
-            transaction_handlers,
+            call_handlers,
             event_handlers,
             runtime,
             link,
