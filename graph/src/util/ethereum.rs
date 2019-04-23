@@ -1,4 +1,4 @@
-use ethabi::{Contract, Event};
+use ethabi::{Contract, Event, Function};
 use tiny_keccak::Keccak;
 use web3::types::H256;
 
@@ -24,4 +24,27 @@ pub fn contract_event_with_signature<'a>(
     contract
         .events()
         .find(|event| event.signature() == string_to_h256(signature))
+}
+
+pub fn contract_function_with_signature<'a>(
+    contract: &'a Contract,
+    target_signature: &str,
+) -> Option<&'a Function> {
+    contract
+        .functions()
+        .find(|function| {
+            // Construct the argument function signature:
+            // `address,uint256,bool`
+            let mut arguments = function
+                .inputs
+                .iter()
+                .map(|input| format!("{}", input.kind))
+                .collect::<Vec<String>>()
+                .join(",");
+            // `address,uint256,bool)
+            arguments.push_str(")");
+            // `operation(address,uint256,bool)`
+            let actual_signature = vec![function.name.clone(), arguments].join("(");
+            !function.constant && target_signature == actual_signature
+        })
 }
