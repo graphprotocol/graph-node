@@ -29,12 +29,12 @@ where
     /// Returns true if the subgraph has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool;
 
-    /// Process an Ethereum event and return the resulting entity operations as a future.
-    fn process_log(
+    /// Process and Ethereum trigger and return the resulting entity operations as a future.
+    fn process_trigger(
         &self,
         logger: &Logger,
         block: Arc<EthereumBlock>,
-        log: Log,
+        trigger: EthereumTrigger,
         state: BlockState,
     ) -> Box<Future<Item = BlockState, Error = Error> + Send>;
 
@@ -43,7 +43,7 @@ where
         logger: &Logger,
         hosts: I,
         block: Arc<EthereumBlock>,
-        log: Log,
+        trigger: EthereumTrigger,
         state: BlockState,
     ) -> Box<Future<Item = BlockState, Error = Error> + Send>
     where
