@@ -62,11 +62,21 @@ where
             .no_limit()
             .timeout_secs(60)
             .run(move || {
-                let trace_filter: TraceFilter = TraceFilterBuilder::default()
-                    .from_block(from.into())
-                    .to_block(to.into())
-                    .to_address(addresses.clone())
-                    .build();
+                let trace_filter: TraceFilter = match addresses.len() {
+                    0 => {
+                        TraceFilterBuilder::default()
+                            .from_block(from.into())
+                            .to_block(to.into())
+                            .build()
+                    }
+                    _ => {
+                        TraceFilterBuilder::default()
+                            .from_block(from.into())
+                            .to_block(to.into())
+                            .to_address(addresses.clone())
+                            .build()
+                    }
+                };
 
                 let logger = logger.clone();
                 eth
