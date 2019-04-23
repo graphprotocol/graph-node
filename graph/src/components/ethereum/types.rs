@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use ethabi::LogParam;
 use web3::types::*;
 
@@ -22,6 +24,12 @@ pub struct EthereumBlock {
 impl EthereumBlock {
     pub fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
         log.transaction_hash
+            .and_then(|hash| self.block.transactions.iter().find(|tx| tx.hash == hash))
+            .cloned()
+    }
+
+    pub fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction> {
+        call.transaction_hash
             .and_then(|hash| self.block.transactions.iter().find(|tx| tx.hash == hash))
             .cloned()
     }
