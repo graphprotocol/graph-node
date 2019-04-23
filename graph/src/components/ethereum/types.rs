@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ethabi::LogParam;
+use ethabi::{LogParam, Param};
 use web3::types::*;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -224,6 +224,42 @@ impl Clone for EthereumEventData {
             transaction: self.transaction.clone(),
             params: self
                 .params
+                .iter()
+                .map(|log_param| LogParam {
+                    name: log_param.name.clone(),
+                    value: log_param.value.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// An Ethereum call executed within a transaction within a block to a contract address.
+#[derive(Debug)]
+pub struct EthereumCallData {
+    pub address: Address,
+    pub block: EthereumBlockData,
+    pub transaction: EthereumTransactionData,
+    pub inputs: Vec<LogParam>,
+    pub outputs: Vec<LogParam>,
+}
+
+impl Clone for EthereumCallData {
+    fn clone(&self) -> Self {
+        EthereumCallData {
+            address: self.address,
+            block: self.block.clone(),
+            transaction: self.transaction.clone(),
+            inputs: self
+                .inputs
+                .iter()
+                .map(|log_param| LogParam {
+                    name: log_param.name.clone(),
+                    value: log_param.value.clone(),
+                })
+                .collect(),
+            outputs: self
+                .outputs
                 .iter()
                 .map(|log_param| LogParam {
                     name: log_param.name.clone(),

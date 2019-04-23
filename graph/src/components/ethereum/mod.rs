@@ -13,6 +13,6 @@ pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpda
 pub use self::stream::{BlockStream, BlockStreamBuilder};
 pub use self::types::{
     EthereumBlock, EthereumBlockData, EthereumBlockPointer, EthereumBlockWithCalls,
-    EthereumBlockWithTriggers, EthereumCall, EthereumEventData, EthereumTransactionData,
-    EthereumTrigger,
+    EthereumBlockWithTriggers, EthereumCall, EthereumCallData, EthereumEventData,
+    EthereumTransactionData, EthereumTrigger,
 };
