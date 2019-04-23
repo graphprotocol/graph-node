@@ -36,7 +36,7 @@ slog = { version = "2.2.3", features = ["release_max_level_debug", "max_level_tr
 slog-async = "2.3.0"
 slog-envlogger = "2.1.0"
 slog-term = "2.4.0"
-tiny-keccak = "1.0"
+tiny-keccak = "1.4.2"
 tokio = "0.1.11"
 tokio-executor = "0.1.5"
 tokio-retry = "0.2"
