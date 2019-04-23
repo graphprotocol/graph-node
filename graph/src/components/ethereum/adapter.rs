@@ -2,7 +2,7 @@ use ethabi::{Bytes, Error as ABIError, Function, ParamType, Token};
 use failure::{Error, SyncFailure};
 use futures::Future;
 use slog::Logger;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 use web3::error::Error as Web3Error;
 use web3::types::*;
@@ -170,7 +170,7 @@ impl<'a> FromIterator<&'a DataSource> for EthereumLogFilter {
 
 #[derive(Clone, Debug)]
 pub struct EthereumCallFilter {
-    pub contract_address_function_signature_pairs: HashSet<(Address, String)>,
+    pub contract_addresses_function_signatures: HashMap<Address, HashSet<String>>,
 }
 
 impl FromIterator<(Address, String)> for EthereumCallFilter {
@@ -240,6 +240,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block: Block<Transaction>,
     ) -> Box<Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send>;
 
+    // Find the hash for the parent block of the provided block hash
+    fn block_parent_hash_by_block_hash(
+        &self,
+        logger: &Logger,
+        block_hash: H256,
+    ) -> Box<Future<Item = Option<H256>, Error = Error> + Send>;
+
     /// Find a block by its number.
     ///
     /// Careful: don't use this function without considering race conditions.
@@ -271,6 +278,24 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_ptr: EthereumBlockPointer,
     ) -> Box<Future<Item = bool, Error = Error> + Send>;
 
+    fn calls_in_block(
+        &self,
+        logger: &Logger,
+        block_number: u64,
+        block_hash: H256,
+        call_filter: EthereumCallFilter,
+    ) -> Box<Future<Item = Vec<EthereumCall>, Error = Error> + Send>;
+
+    fn blocks_with_triggers(
+        &self,
+        logger: &Logger,
+        from: u64,
+        to: u64,
+        log_filter: Option<EthereumLogFilter>,
+        tx_filter: Option<EthereumCallFilter>,
+        block_filter: Option<EthereumBlockFilter>,
+    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
+
     /// Find the first few blocks in the specified range containing at least one transaction with
     /// at least one log entry matching the specified `log_filter`.
     ///
@@ -283,7 +308,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// reorgs.
     /// It is recommended that `to` be far behind the block number of latest block the Ethereum
     /// node is aware of.
-    fn find_first_blocks_with_logs(
+    fn blocks_with_logs(
         &self,
         logger: &Logger,
         from: u64,
@@ -291,10 +316,26 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         log_filter: EthereumLogFilter,
     ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
 
+    fn blocks_with_calls(
+        &self,
+        logger: &Logger,
+        from: u64,
+        to: u64,
+        call_filter: EthereumCallFilter,
+    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
+
+    fn blocks(
+        &self,
+        logger: &Logger,
+        from: u64,
+        to: u64,
+    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
+    
     /// Call the function of a smart contract.
     fn contract_call(
         &self,
         logger: &Logger,
         call: EthereumContractCall,
     ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send>;
+
 }

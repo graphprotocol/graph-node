@@ -321,7 +321,7 @@ where
                         debug!(ctx.logger, "Finding next blocks with relevant events...");
                         Box::new(
                         ctx.eth_adapter
-                            .find_first_blocks_with_logs(&ctx.logger, from, to, log_filter.clone())
+                            .blocks_with_logs(&ctx.logger, from, to, log_filter.clone())
                             .and_then(move |descendant_ptrs| -> Box<Future<Item = _, Error = _> + Send> {
                                 debug!(ctx.logger, "Done finding next blocks.");
 

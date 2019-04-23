@@ -3,6 +3,7 @@ extern crate futures;
 extern crate graph;
 extern crate jsonrpc_core;
 extern crate lazy_static;
+extern crate tiny_keccak;
 
 mod block_ingestor;
 mod block_stream;
