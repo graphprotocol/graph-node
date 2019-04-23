@@ -559,7 +559,8 @@ impl fmt::Display for EventSource {
 #[derive(Clone, Debug)]
 pub struct AttributeIndexDefinition {
     pub subgraph_id: SubgraphDeploymentId,
-    pub index_name: String,
+    pub entity_number: usize,
+    pub attribute_number: usize,
     pub field_value_type: ValueType,
     pub attribute_name: String,
     pub entity_name: String,

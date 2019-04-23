@@ -963,12 +963,8 @@ pub fn attribute_index_definitions(
                 {
                     indexing_ops.push(AttributeIndexDefinition {
                         subgraph_id: subgraph_id.clone(),
-                        index_name: format!(
-                            "{}_{}_{}_idx",
-                            subgraph_id.clone(),
-                            entity_number,
-                            attribute_number,
-                        ),
+                        entity_number,
+                        attribute_number,
                         field_value_type: match inner_type_name(&entity_field.field_type) {
                             Ok(value_type) => value_type,
                             Err(_) => continue,

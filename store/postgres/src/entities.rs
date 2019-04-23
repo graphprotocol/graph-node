@@ -837,13 +837,22 @@ impl Table {
         // commands; using `sql_query(..).execute(conn)` will make the database
         // accept the commands, and log them as if they were successful, but
         // without any effect on the schema
+        //
+        // Note that this code depends on `index.entity_number` and
+        // `index.attribute_number` to be stable, i.e., that we always get the
+        // same numbers for the same `(entity, attribute)` combination. If it is
+        // not stable, we will generate duplicate indexes
         match self {
             Table::Public(_) => {
+                let index_name = format!(
+                    "{}_{}_{}_idx",
+                    &index.subgraph_id, index.entity_number, index.attribute_number,
+                );
                 let query = format!("
                     create index if not exists {name} on public.entities 
                     using {index_type} ((data->'{attribute_name}'{jsonb_operator}'data') {index_operator})
                     where subgraph='{subgraph}' and entity='{entity_name}'",
-                    name=&index.index_name,
+                    name=index_name,
                     index_type=index_type,
                     attribute_name=&index.attribute_name,
                     jsonb_operator=jsonb_operator,
@@ -854,8 +863,17 @@ impl Table {
                 Ok(1)
             }
             Table::Split(entities) => {
+                // It is possible that the user's `entity_name` and
+                // `attribute_name` are so long that `name` becomes longer than
+                // 63 characters which is Postgres' length limit on identifiers.
+                // If we go over, Postgres will truncate the name to 63 characters;
+                // because of that we include the `entity_number` and
+                // `attribute_number` to ensure that a 63 character prefix
+                // of the name is guaranteed to be unique
                 let name = format!(
-                    "entities_{}_{}",
+                    "attr_{}_{}_{}_{}",
+                    index.entity_number,
+                    index.attribute_number,
                     to_snake_case(&index.entity_name),
                     to_snake_case(&index.attribute_name)
                 );
