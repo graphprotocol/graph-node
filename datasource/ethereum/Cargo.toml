@@ -8,3 +8,4 @@ futures = "0.1.21"
 jsonrpc-core = "8.0.1"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
+tiny-keccak = "1.4.2"
