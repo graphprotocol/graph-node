@@ -1,7 +1,7 @@
 use ethabi;
 use std::collections::HashMap;
 
-use graph::components::ethereum::{EthereumBlockData, EthereumEventData, EthereumTransactionData};
+use graph::components::ethereum::{EthereumBlockData, EthereumEventData, EthereumCallData, EthereumTransactionData};
 use graph::data::store;
 use graph::prelude::{BigDecimal, BigInt};
 use graph::serde_json;
@@ -353,6 +353,18 @@ where
             block: heap.asc_new(&self.block),
             transaction: heap.asc_new::<T, EthereumTransactionData>(&self.transaction),
             params: heap.asc_new(self.params.as_slice()),
+        }
+    }
+}
+
+impl ToAscObj<AscEthereumCall> for EthereumCallData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumCall {
+        AscEthereumCall {
+            address: heap.asc_new(&self.address),
+            block: heap.asc_new(&self.block),
+            transaction: heap.asc_new(&self.transaction),
+            inputs: heap.asc_new(self.inputs.as_slice()),
+            outputs: heap.asc_new(self.outputs.as_slice()),
         }
     }
 }
