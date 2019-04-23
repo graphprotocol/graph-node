@@ -104,7 +104,7 @@ impl From<&Trace> for EthereumCall {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum EthereumTrigger {
-    Block,
+    Block(EthereumCall),
     Call(EthereumCall),
     Log(Log),
 }
@@ -114,7 +114,6 @@ impl EthereumTrigger {
         &self,
         transaction_hash_index_lookup: &HashMap<H256, u64>
     ) -> Result<Option<u64>, ()>  {
-        // TODO: Returning Result<Option> smells
         match self {
             EthereumTrigger::Log(log) => {
                 match transaction_hash_index_lookup.get(&log.transaction_hash.unwrap()) {
@@ -128,7 +127,7 @@ impl EthereumTrigger {
                     None => Err(()),
                 }
             }
-            EthereumTrigger::Block => Ok(None)
+            EthereumTrigger::Block(_call) => Ok(None)
         }
     }
 }
