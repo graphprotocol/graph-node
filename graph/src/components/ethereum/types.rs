@@ -2,6 +2,12 @@ use ethabi::LogParam;
 use web3::types::*;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct EthereumBlockWithTriggers {
+    pub ethereum_block: Block<Transaction>,
+    pub triggers: Vec<EthereumTrigger>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EthereumBlock {
     pub block: Block<Transaction>,
     pub transaction_receipts: Vec<TransactionReceipt>,
@@ -43,6 +49,50 @@ impl Default for EthereumBlock {
             transaction_receipts: vec![],
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EthereumCall {
+    pub from: Address,
+    pub to: Address,
+    pub value: U256,
+    pub gas_used: U256,
+    pub input: Bytes,
+    pub output: Bytes,
+    pub block_number: u64,
+    pub block_hash: H256,
+    pub transaction_hash: Option<H256>,
+}
+
+impl From<&Trace> for EthereumCall {
+    fn from(trace: &Trace) -> Self {
+        let (from, to, value, input) = match &trace.action {
+            Action::Call(call) => (call.from, call.to, call.value, call.input.clone()),
+            _ => (Address::zero(), Address::zero(), U256::zero(), Bytes::from(vec![])),
+        };
+        let (output, gas_used) = match &trace.result {
+            Res::Call(result) => (result.output.clone(), result.gas_used),
+            _ => (Bytes::from(vec![]), U256::zero()),
+        };
+        Self {
+            from: from,
+            to: to,
+            value: value,
+            gas_used: gas_used,
+            input: input,
+            output: output,
+            block_number: trace.block_number,
+            block_hash: trace.block_hash,
+            transaction_hash: trace.transaction_hash,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum EthereumTrigger {
+    Block,
+    Transaction(EthereumCall),
+    Log(Log),
 }
 
 /// Ethereum block data.
