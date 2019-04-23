@@ -64,6 +64,7 @@ The `mapping` field may be one of the following supported mapping manifests:
 | --- | --- | --- |
 | **event** | *String* | An identifier for an event that will be handled in the mapping script. For Ethereum contracts, this must be the full event signature to distinguish from events that may share the same name. No alias types can be used. For example, uint will not work, uint256 must be used.|
 | **handler** | *String* | The name of an exported function in the mapping script that should handle the specified event. |
+| **topic0** | optional *String* | A `0x` prefixed hex string. If provided, logs whose topic 0 is equal to this value will be processed by the given handler. By default, this is equal to the hash of the event signature. This is useful for processing solidity anonymous events. |
 
 ## 1.6 Path
 A path has one field `path`, which either refers to a path of a file on the local dev machine or an [IPLD link](https://github.com/ipld/specs/).
