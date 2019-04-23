@@ -36,6 +36,8 @@ where
     pub instance: SubgraphInstance<T>,
     pub instances: SharedInstanceKeepAliveMap,
     pub log_filter: EthereumLogFilter,
+    pub call_filter: EthereumCallFilter,
+    pub block_filter: EthereumBlockFilter,
     pub restarts: u64,
 }
 
@@ -203,6 +205,8 @@ impl SubgraphInstanceManager {
 
         // Obtain a log filter from the manifest
         let log_filter = EthereumLogFilter::from_iter(manifest.data_sources.iter());
+        let call_filter = EthereumCallFilter::from_iter(manifest.data_sources.iter());
+        let block_filter = EthereumBlockFilter::from_iter(manifest.data_source.iter());
 
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
@@ -222,6 +226,8 @@ impl SubgraphInstanceManager {
                 instance,
                 instances,
                 log_filter,
+                call_filter,
+                block_filter,
                 restarts: 0,
             },
         };
@@ -284,6 +290,8 @@ where
             logger.clone(),
             ctx.inputs.deployment_id.clone(),
             ctx.state.log_filter.clone(),
+            ctx.state.call_filter.clone(),
+            ctx.state.block_filter.clone(),
         )
         .from_err()
         .cancelable(&block_stream_canceler, || CancelableError::Cancel);
@@ -392,38 +400,27 @@ fn process_block<B, S, T>(
     logger: Logger,
     ctx: IndexingContext<B, S, T>,
     block_stream_cancel_handle: CancelHandle,
-    block: EthereumBlock,
+    block: EthereumBlockWithTriggers,
 ) -> impl Future<Item = (IndexingContext<B, S, T>, bool), Error = CancelableError<Error>>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store,
     T: RuntimeHostBuilder,
 {
+    let triggers = block.triggers;
+    let block = block.ethereum_block;
     let logger = logger.new(o!(
         "block_number" => format!("{:?}", block.block.number.unwrap()),
         "block_hash" => format!("{:?}", block.block.hash.unwrap())
     ));
 
-    // Extract logs relevant to the subgraph
-    let logs: Vec<_> = block
-        .transaction_receipts
-        .iter()
-        .flat_map(|receipt| {
-            receipt
-                .logs
-                .iter()
-                .filter(|log| ctx.state.instance.matches_log(&log))
-        })
-        .cloned()
-        .collect();
-
-    if logs.len() == 1 {
-        info!(logger, "1 event found in this block for this subgraph");
-    } else if logs.len() > 1 {
+    if triggers.len() == 1 {
+        info!(logger, "1 trigger found in this block for this subgraph");
+    } else if triggers.len() > 1 {
         info!(
             logger,
-            "{} events found in this block for this subgraph",
-            logs.len()
+            "{} triggers found in this block for this subgraph",
+            triggers.len()
         );
     }
 
@@ -441,12 +438,12 @@ where
 
     // Process events one after the other, passing in entity operations
     // collected previously to every new event being processed
-    process_logs(
+    process_triggers(
         logger.clone(),
         ctx,
         BlockState::default(),
         block.clone(),
-        logs,
+        triggers,
     )
     .and_then(|(ctx, block_state)| {
         // Instantiate dynamic data sources
@@ -550,27 +547,27 @@ where
     })
 }
 
-fn process_logs<B, S, T>(
+fn process_triggers<B, S, T>(
     logger: Logger,
     ctx: IndexingContext<B, S, T>,
     block_state: BlockState,
     block: Arc<EthereumBlock>,
-    logs: Vec<Log>,
+    triggers: Vec<EthereumTrigger>,
 ) -> impl Future<Item = (IndexingContext<B, S, T>, BlockState), Error = CancelableError<Error>>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store,
     T: RuntimeHostBuilder,
 {
-    stream::iter_ok::<_, CancelableError<Error>>(logs)
+    stream::iter_ok::<_, CancelableError<Error>>(triggers)
         // Process events from the block stream
-        .fold((ctx, block_state), move |(ctx, block_state), log| {
+        .fold((ctx, block_state), move |(ctx, block_state), trigger| {
             let logger = logger.clone();
             let block = block.clone();
 
             ctx.state
                 .instance
-                .process_log(&logger, block, log, block_state)
+                .process_trigger(&logger, block, trigger, block_state)
                 .map(|block_state| (ctx, block_state))
                 .map_err(|e| format_err!("Failed to process event: {}", e))
         })
