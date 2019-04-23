@@ -57,6 +57,9 @@ enum ReconciliationStep {
     /// Move forwards, processing one or more blocks.
     ProcessDescendantBlocks {
         from: EthereumBlockPointer,
+        log_filter: Option<EthereumLogFilter>,
+        call_filter: Option<EthereumCallFilter>,
+        block_filter: Option<EthereumBlockFilter>,
         descendant_blocks: Box<Stream<Item = EthereumBlock, Error = Error> + Send>,
     },
 
@@ -114,7 +117,9 @@ impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
 pub struct BlockStream<S, C, E> {
     state: Mutex<BlockStreamState>,
     consecutive_err_count: u32,
-    log_filter: EthereumLogFilter,
+    log_filter: Option<EthereumLogFilter>,
+    call_filter: Option<EthereumCallFilter>,
+    block_filter: Option<EthereumBlockFilter>,
     chain_head_update_sink: Sender<ChainHeadUpdate>,
     chain_head_update_stream: Receiver<ChainHeadUpdate>,
     _chain_head_update_guard: CancelGuard,
@@ -134,7 +139,9 @@ where
         chain_head_update_guard: CancelGuard,
         node_id: NodeId,
         subgraph_id: SubgraphDeploymentId,
-        log_filter: EthereumLogFilter,
+        log_filter: Option<EthereumLogFilter>,
+        call_filter: Option<EthereumCallFilter>,
+        block_filter: Option<EthereumBlockFilter>,
         reorg_threshold: u64,
         logger: Logger,
     ) -> Self {
@@ -144,6 +151,8 @@ where
             state: Mutex::new(BlockStreamState::New),
             consecutive_err_count: 0,
             log_filter,
+            call_filter,
+            block_filter,
             chain_head_update_sink,
             chain_head_update_stream,
             _chain_head_update_guard: chain_head_update_guard,
@@ -169,7 +178,9 @@ where
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
     fn next_blocks(
         &self,
-        log_filter: EthereumLogFilter,
+        log_filter: Option<EthereumLogFilter>,
+        call_filter: Option<EthereumCallFilter>,
+        block_filter: Option<EthereumBlockFilter>,
     ) -> Box<
         Future<
                 Item = Option<Box<Stream<Item = EthereumBlock, Error = Error> + Send>>,
@@ -183,11 +194,13 @@ where
             let ctx2 = ctx.clone();
             let ctx3 = ctx.clone();
             let log_filter = log_filter.clone();
+            let call_filter = call_filter.clone();
+            let block_filter = block_filter.clone();
 
             // Update progress metrics
             future::result(ctx1.update_subgraph_block_count())
                 // Determine the next step.
-                .and_then(move |()| ctx1.get_next_step(log_filter))
+                .and_then(move |()| ctx1.get_next_step(log_filter, call_filter, block_filter))
                 // Do the next step.
                 .and_then(move |step| ctx2.do_step(step))
                 // Check outcome.
@@ -210,7 +223,9 @@ where
     /// Determine the next reconciliation step. Does not modify Store or ChainStore.
     fn get_next_step(
         &self,
-        log_filter: EthereumLogFilter,
+        log_filter: Option<EthereumLogFilter>,
+        call_filter: Option<EthereumCallFilter>,
+        block_filter: Option<EthereumBlockFilter>,
     ) -> impl Future<Item = ReconciliationStep, Error = Error> + Send {
         let ctx = self.clone();
         let reorg_threshold = ctx.reorg_threshold;
@@ -320,59 +335,69 @@ where
 
                         debug!(ctx.logger, "Finding next blocks with relevant events...");
                         Box::new(
-                        ctx.eth_adapter
-                            .blocks_with_logs(&ctx.logger, from, to, log_filter.clone())
-                            .and_then(move |descendant_ptrs| -> Box<Future<Item = _, Error = _> + Send> {
-                                debug!(ctx.logger, "Done finding next blocks.");
+                            ctx.eth_adapter
+                                .blocks_with_triggers(
+                                    &ctx.logger,
+                                    from,
+                                    to,
+                                    log_filter.clone(),
+                                    call_filter.clone(),
+                                    block_filter.clone(),
+                                )
+                                .and_then(move |descendant_ptrs| -> Box<Future<Item = _, Error = _> + Send> {
+                                    debug!(ctx.logger, "Done finding next blocks.");
 
-                                if descendant_ptrs.is_empty() {
-                                    // No matching events in range.
-                                    // Therefore, we can update the subgraph ptr without any
-                                    // changes to the entity data.
+                                    if descendant_ptrs.is_empty() {
+                                        // No matching events in range.
+                                        // Therefore, we can update the subgraph ptr without any
+                                        // changes to the entity data.
 
-                                    // We need to look up what block hash corresponds to the
-                                    // block number `to`.
-                                    // Again, this is only safe from race conditions due to
-                                    // being beyond the reorg threshold.
-                                    Box::new(ctx.eth_adapter
-                                        .block_hash_by_block_number(&ctx.logger, to)
-                                        .and_then(move |to_block_hash_opt| {
-                                            to_block_hash_opt
-                                                .ok_or_else(|| {
-                                                    format_err!("Ethereum node could not find block with number {}", to)
-                                                })
-                                                .map(|to_block_hash| {
-                                                    ReconciliationStep::AdvanceToDescendantBlock {
-                                                        from: subgraph_ptr,
-                                                        to: (to_block_hash, to).into(),
-                                                    }
-                                                })
-                                        }))
-                                } else {
-                                    // The next few interesting blocks are at descendant_ptrs.
-                                    // In particular, descendant_ptrs is a list of all blocks
-                                    // between subgraph_ptr and descendant_ptrs.last() that
-                                    // contain relevant events.
-                                    // This will allow us to advance the subgraph_ptr to
-                                    // descendant_ptrs.last() while being confident that we did
-                                    // not miss any relevant events.
+                                        // We need to look up what block hash corresponds to the
+                                        // block number `to`.
+                                        // Again, this is only safe from race conditions due to
+                                        // being beyond the reorg threshold.
+                                        Box::new(ctx.eth_adapter
+                                                 .block_hash_by_block_number(&ctx.logger, to)
+                                                 .and_then(move |to_block_hash_opt| {
+                                                     to_block_hash_opt
+                                                         .ok_or_else(|| {
+                                                             format_err!("Ethereum node could not find block with number {}", to)
+                                                         })
+                                                         .map(|to_block_hash| {
+                                                             ReconciliationStep::AdvanceToDescendantBlock {
+                                                                 from: subgraph_ptr,
+                                                                 to: (to_block_hash, to).into(),
+                                                             }
+                                                         })
+                                                 }))
+                                    } else {
+                                        // The next few interesting blocks are at descendant_ptrs.
+                                        // In particular, descendant_ptrs is a list of all blocks
+                                        // between subgraph_ptr and descendant_ptrs.last() that
+                                        // contain relevant events.
+                                        // This will allow us to advance the subgraph_ptr to
+                                        // descendant_ptrs.last() while being confident that we did
+                                        // not miss any relevant events.
 
-                                    // Load the blocks
-                                    debug!(
-                                        ctx.logger,
-                                        "Found {} block(s) with events.",
-                                        descendant_ptrs.len()
-                                    );
-                                    let descendant_hashes = descendant_ptrs.into_iter().map(|ptr| ptr.hash).collect();
-                                    Box::new(future::ok(
-                                        // Proceed to those blocks
-                                        ReconciliationStep::ProcessDescendantBlocks {
-                                            from: subgraph_ptr,
-                                            descendant_blocks: Box::new(ctx.load_blocks(descendant_hashes)),
-                                        }
-                                    ))
-                                }
-                            })
+                                        // Load the blocks
+                                        debug!(
+                                            ctx.logger,
+                                            "Found {} block(s) with events.",
+                                            descendant_ptrs.len()
+                                        );
+                                        let descendant_hashes = descendant_ptrs.into_iter().map(|ptr| ptr.hash).collect();
+                                        Box::new(future::ok(
+                                            // Proceed to those blocks
+                                            ReconciliationStep::ProcessDescendantBlocks {
+                                                from: subgraph_ptr,
+                                                log_filter: log_filter.clone(),
+                                                call_filter: call_filter.clone(),
+                                                block_filter: block_filter.clone(),
+                                                descendant_blocks: Box::new(ctx.load_blocks(descendant_hashes)),
+                                            }
+                                        ))
+                                    }
+                                })
                         )
                     } else {
                         // The subgraph ptr points to a block that was uncled.
@@ -428,6 +453,9 @@ where
                         // Note that head_ancestor is a child of subgraph_ptr.
                         Box::new(future::ok(ReconciliationStep::ProcessDescendantBlocks {
                             from: subgraph_ptr,
+                            log_filter: log_filter.clone(),
+                            call_filter: call_filter.clone(),
+                            block_filter: block_filter.clone(),
                             descendant_blocks: Box::new(stream::once(Ok(head_ancestor))),
                         }))
                     } else {
@@ -504,6 +532,9 @@ where
             }
             ReconciliationStep::ProcessDescendantBlocks {
                 from,
+                log_filter,
+                call_filter,
+                block_filter,
                 descendant_blocks,
             } => {
                 let mut subgraph_ptr = from;
@@ -511,37 +542,42 @@ where
                 // Advance the subgraph ptr to each of the specified descendants and yield each
                 // block with relevant events.
                 Box::new(future::ok(ReconciliationStepOutcome::YieldBlocks(
-                    Box::new(descendant_blocks.and_then(move |descendant_block| {
-                        // First, check if there are blocks between subgraph_ptr and
-                        // descendant_block.
-                        let descendant_parent_ptr =
-                            EthereumBlockPointer::to_parent(&descendant_block);
-                        if subgraph_ptr != descendant_parent_ptr {
-                            // descendant_block is not a direct child.
-                            // Therefore, there are blocks that are irrelevant to this subgraph
-                            // that we can skip.
+                    Box::new(descendant_blocks
+                             .and_then(move |descendant_block| {
+                                 // First, check if there are blocks between subgraph_ptr and
+                                 // descendant_block.
+                                 let descendant_parent_ptr =
+                                     EthereumBlockPointer::to_parent(&descendant_block);
+                                 if subgraph_ptr != descendant_parent_ptr {
+                                     // descendant_block is not a direct child.
+                                     // Therefore, there are blocks that are irrelevant to this subgraph
+                                     // that we can skip.
+                                     debug!(
+                                         ctx.logger,
+                                         "Skipping {} block(s) with no relevant events...",
+                                         descendant_parent_ptr.number - subgraph_ptr.number
+                                     );
 
-                            debug!(
-                                ctx.logger,
-                                "Skipping {} block(s) with no relevant events...",
-                                descendant_parent_ptr.number - subgraph_ptr.number
-                            );
+                                     // Update subgraph_ptr in store to skip the irrelevant blocks.
+                                     ctx.subgraph_store.set_block_ptr_with_no_changes(
+                                         ctx.subgraph_id.clone(),
+                                         subgraph_ptr,
+                                         descendant_parent_ptr,
+                                     )?;
+                                 }
 
-                            // Update subgraph_ptr in store to skip the irrelevant blocks.
-                            ctx.subgraph_store.set_block_ptr_with_no_changes(
-                                ctx.subgraph_id.clone(),
-                                subgraph_ptr,
-                                descendant_parent_ptr,
-                            )?;
-                        }
+                                 // Update our copy of the subgraph ptr to reflect the
+                                 // value it will have after descendant_block is
+                                 // processed.
+                                 subgraph_ptr = (&descendant_block).into();
 
-                        // Update our copy of the subgraph ptr to reflect the
-                        // value it will have after descendant_block is
-                        // processed.
-                        subgraph_ptr = (&descendant_block).into();
-
-                        Ok(descendant_block)
-                    })) as Box<Stream<Item = _, Error = _> + Send>,
+                                 Ok(descendant_block)
+                             })) as Box<Stream<Item = _, Error = _> + Send>,
+                             // .map(|descendant_block| {
+                             //     // Map the decendant block to an `EthereumBlockWithTriggers`
+                             //     // To do this we need to scan the entire block for
+                             //     // call triggers and block triggers
+                             // })
                 )))
             }
         }
@@ -822,7 +858,11 @@ where
                 // First time being polled
                 BlockStreamState::New => {
                     // Start the reconciliation process by asking for blocks
-                    let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());
+                    let next_blocks_future = self.ctx.next_blocks(
+                        self.log_filter.clone(),
+                        self.call_filter.clone(),
+                        self.block_filter.clone(),
+                    );
                     state = BlockStreamState::Reconciliation(next_blocks_future);
 
                     // Poll the next_blocks() future
@@ -873,7 +913,11 @@ where
                             );
 
                             // Try again by restarting reconciliation
-                            let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());
+                            let next_blocks_future = self.ctx.next_blocks(
+                                self.log_filter.clone(),
+                                self.call_filter.clone(),
+                                self.block_filter.clone(),
+                            );
                             state = BlockStreamState::Reconciliation(next_blocks_future);
 
                             // Poll the next_blocks() future
@@ -897,7 +941,11 @@ where
                             self.consecutive_err_count = 0;
 
                             // Restart reconciliation until more blocks or done
-                            let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());
+                            let next_blocks_future = self.ctx.next_blocks(
+                                self.log_filter.clone(),
+                                self.call_filter.clone(),
+                                self.block_filter.clone(),
+                            );
                             state = BlockStreamState::Reconciliation(next_blocks_future);
 
                             // Poll the next_blocks() future
@@ -924,7 +972,11 @@ where
                             );
 
                             // Try again by restarting reconciliation
-                            let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());
+                            let next_blocks_future = self.ctx.next_blocks(
+                                self.log_filter.clone(),
+                                self.call_filter.clone(),
+                                self.block_filter.clone(),
+                            );
                             state = BlockStreamState::Reconciliation(next_blocks_future);
 
                             // Poll the next_blocks() future
@@ -939,7 +991,11 @@ where
                         // Chain head was updated
                         Ok(Async::Ready(Some(_chain_head_update))) => {
                             // Start reconciliation process
-                            let next_blocks_future = self.ctx.next_blocks(self.log_filter.clone());
+                            let next_blocks_future = self.ctx.next_blocks(
+                                self.log_filter.clone(),
+                                self.call_filter.clone(),
+                                self.block_filter.clone(),
+                            );
                             state = BlockStreamState::Reconciliation(next_blocks_future);
 
                             // Poll the next_blocks() future
@@ -1067,6 +1123,9 @@ where
                 });
 
         // Create the actual subgraph-specific block stream
+        let log_filter = create_log_filter_from_subgraph(manifest);
+        let call_filter = create_call_filter_from_subgraph(manifest);
+        let block_filter = create_block_filter_from_subgraph(manifest);
         let block_stream = BlockStream::new(
             self.subgraph_store.clone(),
             self.chain_store.clone(),
@@ -1075,6 +1134,8 @@ where
             self.node_id.clone(),
             deployment_id,
             log_filter,
+            call_filter,
+            block_filter,
             self.reorg_threshold,
             logger,
         );
@@ -1089,5 +1150,62 @@ where
         );
 
         block_stream
+    }
+}
+
+fn create_log_filter_from_subgraph(manifest: &SubgraphManifest) -> Option<EthereumLogFilter> {
+    let log_filter = manifest
+        .data_sources
+        .iter()
+        .flat_map(|data_source| {
+            let contract_addr = data_source.source.address;
+            data_source
+                .mapping
+                .event_handlers
+                .iter()
+                .map(move |event_handler| {
+                    let event_sig = string_to_h256(&event_handler.event);
+                    (contract_addr, event_sig)
+                })
+        })
+        .collect::<EthereumLogFilter>();
+    match log_filter.contract_address_and_event_sig_pairs.len() {
+        0 => return None,
+        _ => return Some(log_filter),
+    }
+}
+
+fn create_call_filter_from_subgraph(manifest: &SubgraphManifest) -> Option<EthereumCallFilter> {
+    let call_filter = manifest
+        .data_sources
+        .iter()
+        .flat_map(|data_source| {
+            let contract_addr = data_source.source.address;
+            data_source
+                .mapping
+                .call_handlers
+                .iter()
+                .map(move |call_handler| {
+                    (contract_addr, call_handler.function.clone())
+                })
+        })
+        .collect::<EthereumCallFilter>();
+    match call_filter.contract_addresses_function_signatures.len() {
+        0 => return None,
+        _ => return Some(call_filter),
+    }
+}
+
+fn create_block_filter_from_subgraph(manifest: &SubgraphManifest) -> Option<EthereumBlockFilter> {
+    let block_filter = manifest
+        .data_sources
+        .iter()
+        .map(|data_source| {
+            data_source.source.address
+        })
+        .collect::<EthereumBlockFilter>();
+    match block_filter.contract_addresses.len() {
+        0 => return None,
+        _ => return Some(block_filter),
     }
 }
