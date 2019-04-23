@@ -41,7 +41,7 @@ impl TryFromValue for H256 {
     fn try_from_value(value: &Value) -> Result<Self, Error> {
         match value {
             Value::String(s) => {
-                // `H160::from_str` takes a hex string with no leading `0x`.
+                // `H256::from_str` takes a hex string with no leading `0x`.
                 let string = s.trim_start_matches("0x");
                 H256::from_str(string)
                     .map_err(|e| format_err!("Cannot parse H256 value from string `{}`: {}", s, e))
