@@ -148,9 +148,9 @@ where
         chain_head_update_guard: CancelGuard,
         node_id: NodeId,
         subgraph_id: SubgraphDeploymentId,
-        log_filter: EthereumLogFilter,
-        call_filter: EthereumCallFilter,
-        block_filter: EthereumBlockFilter,
+        log_filter: Option<EthereumLogFilter>,
+        call_filter: Option<EthereumCallFilter>,
+        block_filter: Option<EthereumBlockFilter>,
         reorg_threshold: u64,
         logger: Logger,
     ) -> Self {
@@ -1162,9 +1162,9 @@ where
         &self,
         logger: Logger,
         deployment_id: SubgraphDeploymentId,
-        log_filter: EthereumLogFilter,
-        call_filter: EthereumCallFilter,
-        block_filter: EthereumBlockFilter,
+        log_filter: Option<EthereumLogFilter>,
+        call_filter: Option<EthereumCallFilter>,
+        block_filter: Option<EthereumBlockFilter>,
     ) -> Self::Stream {
         let logger = logger.new(o!(
             "component" => "BlockStream",
@@ -1183,9 +1183,6 @@ where
                 });
 
         // Create the actual subgraph-specific block stream
-        // let log_filter = create_log_filter_from_subgraph(manifest);
-        // let call_filter = create_call_filter_from_subgraph(manifest);
-        // let block_filter = create_block_filter_from_subgraph(manifest);
         let block_stream = BlockStream::new(
             self.subgraph_store.clone(),
             self.chain_store.clone(),
@@ -1211,90 +1208,6 @@ where
 
         block_stream
     }
-}
-
-fn create_log_filter_from_subgraph(manifest: &SubgraphManifest) -> Option<EthereumLogFilter> {
-    let log_filter = manifest
-        .data_sources
-        .iter()
-        .flat_map(|data_source| {
-            let contract_addr = data_source.source.address;
-            data_source
-                .mapping
-                .event_handlers
-                .iter()
-                .map(move |event_handler| {
-                    let event_sig = string_to_h256(&event_handler.event);
-                    (contract_addr, event_sig)
-                })
-        })
-        .collect::<EthereumLogFilter>();
-
-    match log_filter.contract_address_and_event_sig_pairs.len() {
-        0 => return None,
-        _ => return Some(log_filter),
-    }
-}
-
-fn create_call_filter_from_subgraph(manifest: &SubgraphManifest) -> Option<EthereumCallFilter> {
-    let call_filter = manifest
-        .data_sources
-        .iter()
-        .filter(|data_source| data_source.source.address.is_some())
-        .flat_map(|data_source| {
-            let contract_addr = data_source.source.address.unwrap();
-            data_source
-                .mapping
-                .call_handlers
-                .iter()
-                .map(move |call_handler| {
-                    let sig = keccak256(call_handler.function.as_bytes());
-                    (contract_addr, [sig[0], sig[1], sig[2], sig[3]])
-                })
-        })
-        .collect::<EthereumCallFilter>();
-
-    match call_filter.contract_addresses_function_signatures.len() {
-        0 => return None,
-        _ => return Some(call_filter),
-    }
-}
-
-fn create_block_filter_from_subgraph(manifest: &SubgraphManifest) -> Option<EthereumBlockFilter> {
-    let contract_addresses = manifest
-        .data_sources
-        .iter()
-        .filter(|data_source| {
-            let has_address = data_source.source.address.is_some();
-            let has_block_handler_with_call_filter =
-                data_source
-                    .mapping
-                    .block_handlers
-                    .iter()
-                    .any(|block_handler| match block_handler.filter {
-                        Some(ref filter) if *filter == BlockHandlerFilter::Call => return true,
-                        _ => return false,
-                    });
-            has_address && has_block_handler_with_call_filter
-        })
-        .map(|data_source| data_source.source.address)
-        .collect::<HashSet<Address>>();
-    let trigger_every_block = manifest.data_sources.iter().any(|data_source| {
-        let has_address = data_source.source.address.is_some();
-        let has_block_handler_without_filter = data_source
-            .mapping
-            .block_handlers
-            .iter()
-            .any(|block_handler| block_handler.filter.is_none());
-        has_address && has_block_handler_without_filter
-    });
-    if contract_addresses.is_empty() && !trigger_every_block {
-        return None;
-    }
-    return Some(EthereumBlockFilter {
-        contract_addresses,
-        trigger_every_block,
-    });
 }
 
 fn parse_triggers(
