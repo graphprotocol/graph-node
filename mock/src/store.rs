@@ -15,13 +15,7 @@ use graph_graphql::prelude::api_schema;
 pub struct MockChainHeadUpdateListener {}
 
 impl ChainHeadUpdateListener for MockChainHeadUpdateListener {
-    fn start(&mut self) {}
-}
-
-impl EventProducer<ChainHeadUpdate> for MockChainHeadUpdateListener {
-    fn take_event_stream(
-        &mut self,
-    ) -> Option<Box<Stream<Item = ChainHeadUpdate, Error = ()> + Send>> {
+    fn subscribe(&self) -> ChainHeadUpdateStream {
         unimplemented!();
     }
 }
@@ -385,7 +379,7 @@ impl ChainStore for MockStore {
         unimplemented!();
     }
 
-    fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener {
+    fn chain_head_updates(&self) -> ChainHeadUpdateStream {
         unimplemented!();
     }
 
@@ -504,7 +498,7 @@ impl ChainStore for FakeStore {
         unimplemented!();
     }
 
-    fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener {
+    fn chain_head_updates(&self) -> ChainHeadUpdateStream {
         unimplemented!();
     }
 

@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::notification_listener::JsonNotification;
 use graph::components::store::Store as StoreTrait;
 use graph::data::subgraph::schema::*;
-use graph::prelude::*;
+use graph::prelude::{ChainHeadUpdateListener as _, *};
 use graph::serde_json;
 use graph::web3::types::H256;
 use graph::{tokio, tokio::timer::Interval};
@@ -61,7 +61,7 @@ pub struct Store {
     subscriptions: Arc<RwLock<HashMap<String, Sender<StoreEvent>>>>,
     // listen to StoreEvents emitted by emit_store_events
     listener: StoreEventListener,
-    postgres_url: String,
+    chain_head_update_listener: ChainHeadUpdateListener,
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
@@ -108,7 +108,11 @@ impl Store {
             logger: logger.clone(),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             listener,
-            postgres_url: config.postgres_url.clone(),
+            chain_head_update_listener: ChainHeadUpdateListener::new(
+                &logger,
+                config.postgres_url,
+                config.network_name.clone(),
+            ),
             network_name: config.network_name.clone(),
             genesis_block_ptr: (net_identifiers.genesis_block_hash, 0u64).into(),
             conn: pool,
@@ -981,12 +985,8 @@ impl ChainStore for Store {
         .and_then(|r| r.map_err(Error::from))
     }
 
-    fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener {
-        Self::ChainHeadUpdateListener::new(
-            &self.logger,
-            self.postgres_url.clone(),
-            self.network_name.clone(),
-        )
+    fn chain_head_updates(&self) -> ChainHeadUpdateStream {
+        self.chain_head_update_listener.subscribe()
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
