@@ -796,6 +796,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "git-testament"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "git-testament-derive 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "git-testament-derive"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "chrono 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 0.6.11 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 0.15.26 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "globset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -912,6 +931,7 @@ dependencies = [
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.5.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
+ "git-testament 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.9.0",
  "graph-core 0.9.0",
  "graph-datasource-ethereum 0.9.0",
@@ -3289,6 +3309,8 @@ dependencies = [
 "checksum futures-cpupool 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)" = "ab90cde24b3319636588d0c35fe03b1333857621051837ed769faefb4c2162e4"
 "checksum generic-array 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)" = "3c0f28c2f5bfb5960175af447a2da7c18900693738343dc896ffbcabd9839592"
 "checksum generic-array 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ef25c5683767570c2bbd7deba372926a55eaae9982d7726ee2a1050239d45b9d"
+"checksum git-testament 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "0b00f56c9844ed5d927a5cfccfe5d4a32fffa3b8a56f14c0634e70c613dc584b"
+"checksum git-testament-derive 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "4abfb23d91a9da7cec4796bc94b3009fe87812d909035faea726681d2f3e3b5e"
 "checksum globset 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "4743617a7464bbda3c8aec8558ff2f9429047e025771037df561d383337ff865"
 "checksum graphql-parser 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "070cef3f91429889a1ed86e5f5824d6e8b3ebcb9870d7c7050f9bfcc9e4ae235"
 "checksum h2 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)" = "ddb2b25a33e231484694267af28fec74ac63b5ccf51ee2065a5e313b834d836e"
