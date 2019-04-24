@@ -11,6 +11,7 @@ use web3::types::*;
 use super::types::*;
 use crate::prelude::BlockHandlerFilter;
 use crate::prelude::DataSource;
+use crate::util::extend::Extend;
 
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
 pub struct EthereumNetworkIdentifier {
@@ -131,10 +132,36 @@ impl EthereumLogFilter {
         }
     }
 
+    pub fn from_data_sources_opt<'a, I>(iter: I) -> Option<Self>
+    where
+        I: IntoIterator<Item = &'a DataSource>,
+    {
+        iter.into_iter().fold(None, |filter_opt, data_source| {
+            let contract_addr = data_source.source.address;
+
+            if let Some(ref handlers) = data_source.mapping.event_handlers {
+                filter_opt.extend(
+                    handlers
+                        .iter()
+                        .map(move |event_handler| {
+                            let event_sig = event_handler.topic0();
+                            (contract_addr, event_sig)
+                        })
+                        .collect::<EthereumLogFilter>(),
+                )
+            } else {
+                filter_opt
+            }
+        })
+    }
+}
+
+impl Extend<EthereumLogFilter> for EthereumLogFilter {
     /// Extends this log filter with another one.
-    pub fn extend(&mut self, other: EthereumLogFilter) {
+    fn extend(mut self, other: EthereumLogFilter) -> Self {
         self.contract_address_and_event_sig_pairs
             .extend(other.contract_address_and_event_sig_pairs.iter());
+        self
     }
 }
 
@@ -146,29 +173,6 @@ impl FromIterator<(Option<Address>, H256)> for EthereumLogFilter {
         EthereumLogFilter {
             contract_address_and_event_sig_pairs: iter.into_iter().collect(),
         }
-    }
-}
-
-impl<'a> FromIterator<&'a DataSource> for EthereumLogFilter {
-    fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = &'a DataSource>,
-    {
-        iter.into_iter()
-            .flat_map(|data_source| {
-                let contract_addr = data_source.source.address;
-                data_source
-                    .mapping
-                    .event_handlers
-                    .clone()
-                    .unwrap_or(vec![])
-                    .into_iter()
-                    .map(move |event_handler| {
-                        let event_sig = event_handler.topic0();
-                        (contract_addr, event_sig)
-                    })
-            })
-            .collect::<EthereumLogFilter>()
     }
 }
 
@@ -204,29 +208,39 @@ impl EthereumCallFilter {
             .unwrap()
             .contains(&call.input.0[..4])
     }
-}
 
-impl<'a> FromIterator<&'a DataSource> for EthereumCallFilter {
-    fn from_iter<I>(iter: I) -> Self
+    pub fn from_data_sources_opt<'a, I>(iter: I) -> Option<Self>
     where
         I: IntoIterator<Item = &'a DataSource>,
     {
         iter.into_iter()
             .filter(|data_source| data_source.source.address.is_some())
-            .flat_map(|data_source| {
+            .fold(None, |filter_opt, data_source| {
                 let contract_addr = data_source.source.address.unwrap();
-                data_source
-                    .mapping
-                    .call_handlers
-                    .clone()
-                    .unwrap_or(vec![])
-                    .into_iter()
-                    .map(move |call_handler| {
-                        let sig = keccak256(call_handler.function.as_bytes());
-                        (contract_addr, [sig[0], sig[1], sig[2], sig[3]])
-                    })
+
+                if let Some(ref handlers) = data_source.mapping.call_handlers {
+                    filter_opt.extend(
+                        handlers
+                            .iter()
+                            .map(move |call_handler| {
+                                let sig = keccak256(call_handler.function.as_bytes());
+                                (contract_addr, [sig[0], sig[1], sig[2], sig[3]])
+                            })
+                            .collect::<EthereumCallFilter>(),
+                    )
+                } else {
+                    filter_opt
+                }
             })
-            .collect::<EthereumCallFilter>()
+    }
+}
+
+impl Extend<EthereumCallFilter> for EthereumCallFilter {
+    /// Extends this call filter with another one.
+    fn extend(mut self, other: EthereumCallFilter) -> Self {
+        self.contract_addresses_function_signatures
+            .extend(other.contract_addresses_function_signatures.into_iter());
+        self
     }
 }
 
@@ -269,16 +283,14 @@ pub struct EthereumBlockFilter {
     pub trigger_every_block: bool,
 }
 
-impl<'a> FromIterator<&'a DataSource> for EthereumBlockFilter {
-    fn from_iter<I>(iter: I) -> Self
+impl EthereumBlockFilter {
+    pub fn from_data_sources_opt<'a, I>(iter: I) -> Option<Self>
     where
         I: IntoIterator<Item = &'a DataSource>,
     {
-        let mut trigger_every_block = false;
-        let contract_addresses = iter
-            .into_iter()
-            .filter(|data_source| {
-                let has_address = data_source.source.address.is_some();
+        iter.into_iter()
+            .filter(|data_source| data_source.source.address.is_some())
+            .fold(None, |filter_opt, data_source| {
                 let has_block_handler_with_call_filter = data_source
                     .mapping
                     .block_handlers
@@ -289,6 +301,7 @@ impl<'a> FromIterator<&'a DataSource> for EthereumBlockFilter {
                         Some(ref filter) if *filter == BlockHandlerFilter::Call => return true,
                         _ => return false,
                     });
+
                 let has_block_handler_without_filter = data_source
                     .mapping
                     .block_handlers
@@ -297,16 +310,29 @@ impl<'a> FromIterator<&'a DataSource> for EthereumBlockFilter {
                     .into_iter()
                     .any(|block_handler| block_handler.filter.is_none());
 
-                trigger_every_block = has_address && has_block_handler_without_filter;
-
-                has_address && has_block_handler_with_call_filter
+                if has_block_handler_without_filter || has_block_handler_with_call_filter {
+                    filter_opt.extend(Self {
+                        trigger_every_block: has_block_handler_without_filter,
+                        contract_addresses: if has_block_handler_with_call_filter {
+                            vec![data_source.source.address.unwrap().to_owned()]
+                                .into_iter()
+                                .collect()
+                        } else {
+                            HashSet::default()
+                        },
+                    })
+                } else {
+                    filter_opt
+                }
             })
-            .map(|data_source| data_source.source.address.unwrap())
-            .collect::<HashSet<Address>>();
-        return Self {
-            contract_addresses,
-            trigger_every_block,
-        };
+    }
+}
+
+impl Extend<EthereumBlockFilter> for EthereumBlockFilter {
+    fn extend(mut self, other: EthereumBlockFilter) -> Self {
+        self.trigger_every_block = self.trigger_every_block || other.trigger_every_block;
+        self.contract_addresses.extend(other.contract_addresses);
+        self
     }
 }
 
