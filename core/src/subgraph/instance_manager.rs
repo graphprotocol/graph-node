@@ -591,13 +591,15 @@ where
             let block = block.clone();
             let runtime_hosts = runtime_hosts.clone();
 
+            let trigger = EthereumTrigger::Log(log);
+
             // Process the log in each host in the same order the corresponding
             // data sources have been created
-            SubgraphInstance::<T>::process_log_in_runtime_hosts(
+            SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
                 &logger,
                 runtime_hosts.iter().map(|host| host.clone()),
                 block.clone(),
-                log.clone(),
+                trigger,
                 block_state,
             )
         })
