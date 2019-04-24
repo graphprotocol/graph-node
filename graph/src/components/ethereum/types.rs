@@ -7,6 +7,7 @@ use web3::types::*;
 pub struct EthereumBlockWithTriggers {
     pub ethereum_block: EthereumBlock,
     pub triggers: Vec<EthereumTrigger>,
+    pub calls: Option<Vec<EthereumCall>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

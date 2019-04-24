@@ -27,6 +27,7 @@ struct IndexingInputs<B, S, T> {
     pub stream_builder: B,
     pub host_builder: T,
     pub templates: Vec<(String, DataSourceTemplate)>,
+    pub include_calls_in_blocks: bool,
 }
 
 struct IndexingState<T>
@@ -209,6 +210,17 @@ impl SubgraphInstanceManager {
         let call_filter = EthereumCallFilter::from_data_sources_opt(manifest.data_sources.iter());
         let block_filter = EthereumBlockFilter::from_data_sources_opt(manifest.data_sources.iter());
 
+        // Identify whether there are templates with call handlers or
+        // block handlers with call filters; in this case, we need to
+        // include calls in all blocks so we cen reprocess the block
+        // when new dynamic data sources are being created
+        let include_calls_in_blocks = templates
+            .iter()
+            .find(|(_, template)| {
+                template.has_call_handler() || template.has_block_handler_with_call_filter()
+            })
+            .is_some();
+
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
         let instance = SubgraphInstance::from_manifest(&logger, manifest, &host_builder)?;
@@ -221,6 +233,7 @@ impl SubgraphInstanceManager {
                 store,
                 stream_builder,
                 host_builder,
+                include_calls_in_blocks,
             },
             state: IndexingState {
                 logger,
@@ -293,6 +306,7 @@ where
             ctx.state.log_filter.clone(),
             ctx.state.call_filter.clone(),
             ctx.state.block_filter.clone(),
+            ctx.inputs.include_calls_in_blocks,
         )
         .from_err()
         .cancelable(&block_stream_canceler, || CancelableError::Cancel);
