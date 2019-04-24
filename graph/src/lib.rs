@@ -60,10 +60,10 @@ pub mod prelude {
     pub use tokio::prelude::*;
 
     pub use crate::components::ethereum::{
-        BlockStream, BlockStreamBuilder, ChainHeadUpdate, ChainHeadUpdateListener, EthereumAdapter,
-        EthereumAdapterError, EthereumBlock, EthereumBlockData, EthereumBlockPointer,
-        EthereumContractCall, EthereumContractCallError, EthereumEventData, EthereumLogFilter,
-        EthereumNetworkIdentifier, EthereumTransactionData,
+        BlockStream, BlockStreamBuilder, ChainHeadUpdate, ChainHeadUpdateListener,
+        ChainHeadUpdateStream, EthereumAdapter, EthereumAdapterError, EthereumBlock,
+        EthereumBlockData, EthereumBlockPointer, EthereumContractCall, EthereumContractCallError,
+        EthereumEventData, EthereumLogFilter, EthereumNetworkIdentifier, EthereumTransactionData,
     };
     pub use crate::components::graphql::{
         GraphQlRunner, QueryResultFuture, SubscriptionResultFuture,

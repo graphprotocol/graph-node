@@ -1,6 +1,5 @@
 use futures::prelude::*;
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use std;
 use std::cmp;
 use std::collections::HashSet;
 use std::env;
@@ -1059,14 +1058,13 @@ where
         // Create a chain head update stream whose lifetime is tied to the
         // liftetime of the block stream; we do this to immediately terminate
         // the chain head update listener when the block stream is shut down
-        let mut chain_head_update_listener = self.chain_store.chain_head_updates();
         let cancel_guard = CancelGuard::new();
-        let chain_head_update_stream = chain_head_update_listener
-            .take_event_stream()
-            .unwrap()
-            .cancelable(&cancel_guard, move || {
-                debug!(logger_for_stream, "Terminating chain head updates");
-            });
+        let chain_head_update_stream =
+            self.chain_store
+                .chain_head_updates()
+                .cancelable(&cancel_guard, move || {
+                    debug!(logger_for_stream, "Terminating chain head updates");
+                });
 
         // Create the actual subgraph-specific block stream
         let block_stream = BlockStream::new(
@@ -1089,13 +1087,6 @@ where
                 .map_err(|_| ())
                 .map(|_| ()),
         );
-
-        // Start listening for chain head updates
-        chain_head_update_listener.start();
-
-        // Leak the chain update listener; we'll terminate it by closing the
-        // block stream's chain head update sink
-        std::mem::forget(chain_head_update_listener);
 
         block_stream
     }

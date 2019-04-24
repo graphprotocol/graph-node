@@ -1,8 +1,6 @@
 use failure::Error;
 use futures::stream::poll_fn;
-use futures::Future;
-use futures::Stream;
-use futures::{Async, Poll};
+use futures::{Async, Future, Poll, Stream};
 use std::collections::HashSet;
 use std::env;
 use std::fmt;
@@ -1017,7 +1015,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error>;
 
     /// Subscribe to chain head updates.
-    fn chain_head_updates(&self) -> Self::ChainHeadUpdateListener;
+    fn chain_head_updates(&self) -> ChainHeadUpdateStream;
 
     /// Get the current head block pointer for this chain.
     /// Any changes to the head block pointer will be to a block with a larger block number, never
