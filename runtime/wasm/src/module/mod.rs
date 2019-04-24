@@ -14,7 +14,7 @@ use crate::MappingContext;
 use graph::components::ethereum::*;
 use graph::data::store;
 use graph::data::subgraph::DataSource;
-use graph::ethabi::{LogParam, Param};
+use graph::ethabi::LogParam;
 use graph::prelude::{Error as FailureError, *};
 use graph::web3::types::{Log, Transaction, U256};
 

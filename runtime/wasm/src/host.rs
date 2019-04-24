@@ -11,8 +11,7 @@ use crate::module::{ValidModule, WasmiModule, WasmiModuleConfig};
 use graph::components::ethereum::*;
 use graph::components::store::Store;
 use graph::data::subgraph::{DataSource, Source};
-use graph::ethabi::RawLog;
-use graph::ethabi::{LogParam, Param, Token};
+use graph::ethabi::{LogParam, RawLog};
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
@@ -440,7 +439,7 @@ impl RuntimeHost {
                         self.data_source_name,
                     )
                 }),
-            EthereumBlockTriggerType::WithCallTo(address) => self
+            EthereumBlockTriggerType::WithCallTo(_address) => self
                 .data_source_block_handlers
                 .as_ref()
                 .ok_or_else(|| {
