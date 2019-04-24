@@ -10,6 +10,7 @@ use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity,
 };
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
+use graph::util::extend::Extend;
 use graph::web3::types::Log;
 
 use super::SubgraphInstance;
@@ -35,9 +36,9 @@ where
     pub logger: Logger,
     pub instance: SubgraphInstance<T>,
     pub instances: SharedInstanceKeepAliveMap,
-    pub log_filter: EthereumLogFilter,
-    pub call_filter: EthereumCallFilter,
-    pub block_filter: EthereumBlockFilter,
+    pub log_filter: Option<EthereumLogFilter>,
+    pub call_filter: Option<EthereumCallFilter>,
+    pub block_filter: Option<EthereumBlockFilter>,
     pub restarts: u64,
 }
 
@@ -203,10 +204,10 @@ impl SubgraphInstanceManager {
         // Clone the deployment ID for later
         let deployment_id = manifest.id.clone();
 
-        // Obtain a log filter from the manifest
-        let log_filter = EthereumLogFilter::from_iter(manifest.data_sources.iter());
-        let call_filter = EthereumCallFilter::from_iter(manifest.data_sources.iter());
-        let block_filter = EthereumBlockFilter::from_iter(manifest.data_source.iter());
+        // Obtain filters from the manifest
+        let log_filter = EthereumLogFilter::from_data_sources_opt(manifest.data_sources.iter());
+        let call_filter = EthereumCallFilter::from_data_sources_opt(manifest.data_sources.iter());
+        let block_filter = EthereumBlockFilter::from_data_sources_opt(manifest.data_sources.iter());
 
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
@@ -734,9 +735,19 @@ where
     }
 
     // Merge log filters from data sources into the block stream builder
-    ctx.state
-        .log_filter
-        .extend(EthereumLogFilter::from_iter(data_sources.iter()));
+    if let Some(filter) = EthereumLogFilter::from_data_sources_opt(data_sources.iter()) {
+        ctx.state.log_filter = ctx.state.log_filter.extend(filter);
+    }
+
+    // Merge call filters from data sources into the block stream builder
+    if let Some(filter) = EthereumCallFilter::from_data_sources_opt(data_sources.iter()) {
+        ctx.state.call_filter = ctx.state.call_filter.extend(filter);
+    }
+
+    // Merge block filters from data sources into the block stream builder
+    if let Some(filter) = EthereumBlockFilter::from_data_sources_opt(data_sources.iter()) {
+        ctx.state.block_filter = ctx.state.block_filter.extend(filter);
+    }
 
     // Add the new data sources to the subgraph instance
     ctx.state
