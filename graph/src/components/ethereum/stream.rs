@@ -15,8 +15,8 @@ pub trait BlockStreamBuilder: Clone + Send + Sync {
         &self,
         logger: Logger,
         deployment_id: SubgraphDeploymentId,
-        log_filter: EthereumLogFilter,
-        call_filter: EthereumCallFilter,
-        block_filter: EthereumBlockFilter,
+        log_filter: Option<EthereumLogFilter>,
+        call_filter: Option<EthereumCallFilter>,
+        block_filter: Option<EthereumBlockFilter>,
     ) -> Self::Stream;
 }

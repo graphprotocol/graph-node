@@ -51,7 +51,9 @@ impl BlockStreamBuilder for MockBlockStreamBuilder {
         &self,
         _logger: Logger,
         _deployment_id: SubgraphDeploymentId,
-        _log_filter: EthereumLogFilter,
+        _log_filter: Option<EthereumLogFilter>,
+        _call_filter: Option<EthereumCallFilter>,
+        _block_filter: Option<EthereumBlockFilter>,
     ) -> Self::Stream {
         MockBlockStream::new()
     }
