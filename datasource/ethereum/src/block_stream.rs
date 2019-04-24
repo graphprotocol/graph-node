@@ -6,9 +6,6 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::mem;
 use std::sync::Mutex;
-use tiny_keccak::keccak256;
-
-use graph::util::ethereum::string_to_h256;
 
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphEntity, SubgraphVersionEntity,
