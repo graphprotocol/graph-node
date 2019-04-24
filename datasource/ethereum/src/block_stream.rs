@@ -103,6 +103,7 @@ struct BlockStreamContext<S, C, E> {
     log_filter: Option<EthereumLogFilter>,
     call_filter: Option<EthereumCallFilter>,
     block_filter: Option<EthereumBlockFilter>,
+    include_calls_in_blocks: bool,
     logger: Logger,
 }
 
@@ -118,6 +119,7 @@ impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
             log_filter: self.log_filter.clone(),
             call_filter: self.call_filter.clone(),
             block_filter: self.block_filter.clone(),
+            include_calls_in_blocks: self.include_calls_in_blocks,
             logger: self.logger.clone(),
         }
     }
@@ -148,6 +150,7 @@ where
         log_filter: Option<EthereumLogFilter>,
         call_filter: Option<EthereumCallFilter>,
         block_filter: Option<EthereumBlockFilter>,
+        include_calls_in_blocks: bool,
         reorg_threshold: u64,
         logger: Logger,
     ) -> Self {
@@ -170,6 +173,7 @@ where
                 log_filter,
                 call_filter,
                 block_filter,
+                include_calls_in_blocks,
             },
         }
     }
@@ -365,20 +369,22 @@ where
                                         // block number `to`.
                                         // Again, this is only safe from race conditions due to
                                         // being beyond the reorg threshold.
-                                        Box::new(ctx.eth_adapter
-                                                 .block_hash_by_block_number(&ctx.logger, to)
-                                                 .and_then(move |to_block_hash_opt| {
-                                                     to_block_hash_opt
-                                                         .ok_or_else(|| {
-                                                             format_err!("Ethereum node could not find block with number {}", to)
-                                                         })
-                                                         .map(|to_block_hash| {
-                                                             ReconciliationStep::AdvanceToDescendantBlock {
-                                                                 from: subgraph_ptr,
-                                                                 to: (to_block_hash, to).into(),
-                                                             }
-                                                         })
-                                                 }))
+                                        Box::new(
+                                            ctx.eth_adapter
+                                                .block_hash_by_block_number(&ctx.logger, to)
+                                                .and_then(move |to_block_hash_opt| {
+                                                    to_block_hash_opt
+                                                        .ok_or_else(|| {
+                                                            format_err!("Ethereum node could not find block with number {}", to)
+                                                        })
+                                                        .map(|to_block_hash| {
+                                                            ReconciliationStep::AdvanceToDescendantBlock {
+                                                                from: subgraph_ptr,
+                                                                to: (to_block_hash, to).into(),
+                                                            }
+                                                        })
+                                                })
+                                        )
                                     } else {
                                         // The next few interesting blocks are at descendant_ptrs.
                                         // In particular, descendant_ptrs is a list of all blocks
@@ -394,7 +400,12 @@ where
                                             "Found {} block(s) with events.",
                                             descendant_ptrs.len()
                                         );
-                                        let descendant_hashes = descendant_ptrs.into_iter().map(|ptr| ptr.hash).collect();
+
+                                        let descendant_hashes = descendant_ptrs
+                                            .into_iter()
+                                            .map(|ptr| ptr.hash)
+                                            .collect();
+
                                         Box::new(future::ok(
                                             // Proceed to those blocks
                                             ReconciliationStep::ProcessDescendantBlocks {
@@ -402,7 +413,9 @@ where
                                                 log_filter: log_filter.clone(),
                                                 call_filter: call_filter.clone(),
                                                 block_filter: block_filter.clone(),
-                                                descendant_blocks: Box::new(ctx.load_blocks(descendant_hashes)),
+                                                descendant_blocks: Box::new(
+                                                    ctx.load_blocks(descendant_hashes)
+                                                ),
                                             }
                                         ))
                                     }
@@ -510,6 +523,7 @@ where
         step: ReconciliationStep,
     ) -> Box<Future<Item = ReconciliationStepOutcome, Error = Error> + Send> {
         let ctx = self.clone();
+        let include_calls_in_blocks = self.include_calls_in_blocks;
 
         // We now know where to take the subgraph ptr.
         match step {
@@ -541,8 +555,8 @@ where
                             )
                             .map_err(Error::from)
                             .map(|()| {
-                                // At this point, the loop repeats, and we try to move the subgraph ptr another
-                                // step in the right direction.
+                                // At this point, the loop repeats, and we try to move
+                                // the subgraph ptr another step in the right direction.
                                 ReconciliationStepOutcome::MoreSteps
                             }),
                     )
@@ -614,20 +628,13 @@ where
                                 Ok(descendant_block)
                             })
                             .and_then(move |descendant_block| {
-                                future::result(
-                                    parse_triggers(
-                                        log_filter.clone(),
-                                        call_filter.clone(),
-                                        block_filter.clone(),
-                                        &descendant_block,
-                                    )
-                                    .map(move |triggers| {
-                                        EthereumBlockWithTriggers {
-                                            ethereum_block: descendant_block.ethereum_block,
-                                            triggers,
-                                        }
-                                    }),
-                                )
+                                future::result(parse_triggers(
+                                    log_filter.clone(),
+                                    call_filter.clone(),
+                                    block_filter.clone(),
+                                    include_calls_in_blocks,
+                                    descendant_block,
+                                ))
                             }),
                     ) as Box<Stream<Item = _, Error = _> + Send>,
                 )))
@@ -1162,6 +1169,7 @@ where
         log_filter: Option<EthereumLogFilter>,
         call_filter: Option<EthereumCallFilter>,
         block_filter: Option<EthereumBlockFilter>,
+        include_calls_in_blocks: bool,
     ) -> Self::Stream {
         let logger = logger.new(o!(
             "component" => "BlockStream",
@@ -1190,6 +1198,7 @@ where
             log_filter,
             call_filter,
             block_filter,
+            include_calls_in_blocks,
             self.reorg_threshold,
             logger,
         );
@@ -1211,18 +1220,20 @@ fn parse_triggers(
     log_filter_opt: Option<EthereumLogFilter>,
     call_filter_opt: Option<EthereumCallFilter>,
     block_filter_opt: Option<EthereumBlockFilter>,
-    descendant_block: &EthereumBlockWithCalls,
-) -> Result<Vec<EthereumTrigger>, Error> {
+    include_calls_in_blocks: bool,
+    descendant_block: EthereumBlockWithCalls,
+) -> Result<EthereumBlockWithTriggers, Error> {
     let mut triggers = Vec::new();
     triggers.append(&mut parse_log_triggers(
         log_filter_opt,
         &descendant_block.ethereum_block,
     ));
-    triggers.append(&mut parse_call_triggers(call_filter_opt, descendant_block));
+    triggers.append(&mut parse_call_triggers(call_filter_opt, &descendant_block));
     triggers.append(&mut parse_block_triggers(
         block_filter_opt,
-        descendant_block,
+        &descendant_block,
     ));
+
     let tx_hash_indexes = descendant_block
         .ethereum_block
         .transaction_receipts
@@ -1273,7 +1284,15 @@ fn parse_triggers(
         a_tx_index.unwrap().cmp(&b_tx_index.unwrap())
     });
 
-    Ok(triggers)
+    Ok(EthereumBlockWithTriggers {
+        ethereum_block: descendant_block.ethereum_block,
+        triggers,
+        calls: if include_calls_in_blocks {
+            descendant_block.calls
+        } else {
+            None
+        },
+    })
 }
 
 fn parse_log_triggers(

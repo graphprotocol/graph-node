@@ -715,6 +715,30 @@ impl UnresolvedDataSourceTemplate {
     }
 }
 
+impl DataSourceTemplate {
+    pub fn has_call_handler(&self) -> bool {
+        self.mapping
+            .call_handlers
+            .as_ref()
+            .map_or(false, |handlers| !handlers.is_empty())
+    }
+
+    pub fn has_block_handler_with_call_filter(&self) -> bool {
+        self.mapping
+            .block_handlers
+            .as_ref()
+            .map_or(false, |handlers| {
+                handlers
+                    .iter()
+                    .find(|handler| match handler.filter {
+                        Some(BlockHandlerFilter::Call) => true,
+                        _ => false,
+                    })
+                    .is_some()
+            })
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BaseSubgraphManifest<S, D> {

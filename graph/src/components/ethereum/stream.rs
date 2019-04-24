@@ -18,5 +18,6 @@ pub trait BlockStreamBuilder: Clone + Send + Sync {
         log_filter: Option<EthereumLogFilter>,
         call_filter: Option<EthereumCallFilter>,
         block_filter: Option<EthereumBlockFilter>,
+        include_calls_in_blocks: bool,
     ) -> Self::Stream;
 }

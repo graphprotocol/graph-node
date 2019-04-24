@@ -54,6 +54,7 @@ impl BlockStreamBuilder for MockBlockStreamBuilder {
         _log_filter: Option<EthereumLogFilter>,
         _call_filter: Option<EthereumCallFilter>,
         _block_filter: Option<EthereumBlockFilter>,
+        _include_calls_in_blocks: bool,
     ) -> Self::Stream {
         MockBlockStream::new()
     }
