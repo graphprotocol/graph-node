@@ -18,7 +18,7 @@ mod to_from;
 mod host_exports;
 
 use graph::prelude::*;
-use graph::web3::types::{Address, Transaction};
+use graph::web3::types::Address;
 
 pub use self::host::{RuntimeHost, RuntimeHostBuilder, RuntimeHostConfig};
 
