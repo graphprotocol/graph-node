@@ -628,7 +628,7 @@ where
                                 Ok(descendant_block)
                             })
                             .and_then(move |descendant_block| {
-                                future::result(parse_triggers(
+                                future::result(Self::parse_triggers(
                                     log_filter.clone(),
                                     call_filter.clone(),
                                     block_filter.clone(),
@@ -909,6 +909,85 @@ where
             });
         Box::new(block)
     }
+
+    pub fn parse_triggers(
+        log_filter_opt: Option<EthereumLogFilter>,
+        call_filter_opt: Option<EthereumCallFilter>,
+        block_filter_opt: Option<EthereumBlockFilter>,
+        include_calls_in_blocks: bool,
+        descendant_block: EthereumBlockWithCalls,
+    ) -> Result<EthereumBlockWithTriggers, Error> {
+        let mut triggers = Vec::new();
+        triggers.append(&mut parse_log_triggers(
+            log_filter_opt,
+            &descendant_block.ethereum_block,
+        ));
+        triggers.append(&mut parse_call_triggers(call_filter_opt, &descendant_block));
+        triggers.append(&mut parse_block_triggers(
+            block_filter_opt,
+            &descendant_block,
+        ));
+
+        let tx_hash_indexes = descendant_block
+            .ethereum_block
+            .transaction_receipts
+            .iter()
+            .map(|receipt| (receipt.transaction_hash, receipt.transaction_index.as_u64()))
+            .collect::<HashMap<H256, u64>>();
+
+        // Ensure all `Call` and `Log` triggers have a transaction index
+        for trigger in triggers.iter() {
+            match trigger {
+                EthereumTrigger::Log(log) => {
+                    if !tx_hash_indexes
+                        .get(&log.transaction_hash.unwrap())
+                        .is_some()
+                    {
+                        return Err(format_err!(
+                            "Unable to determine transaction index for Ethereum event."
+                        ));
+                    }
+                }
+                EthereumTrigger::Call(call) => {
+                    if !tx_hash_indexes
+                        .get(&call.transaction_hash.unwrap())
+                        .is_some()
+                    {
+                        return Err(format_err!(
+                            "Unable to determine transaction index for Ethereum call."
+                        ));
+                    }
+                }
+                EthereumTrigger::Block(_) => continue,
+            }
+        }
+
+        // Sort the triggers
+        triggers.sort_by(|a, b| {
+            let a_tx_index = a.transaction_index(&tx_hash_indexes).unwrap();
+            let b_tx_index = b.transaction_index(&tx_hash_indexes).unwrap();
+            if a_tx_index.is_none() && b_tx_index.is_none() {
+                return Ordering::Equal;
+            }
+            if a_tx_index.is_none() {
+                return Ordering::Greater;
+            }
+            if b_tx_index.is_none() {
+                return Ordering::Less;
+            }
+            a_tx_index.unwrap().cmp(&b_tx_index.unwrap())
+        });
+
+        Ok(EthereumBlockWithTriggers {
+            ethereum_block: descendant_block.ethereum_block,
+            triggers,
+            calls: if include_calls_in_blocks {
+                descendant_block.calls
+            } else {
+                None
+            },
+        })
+    }
 }
 
 impl<S, C, E> BlockStreamTrait for BlockStream<S, C, E>
@@ -917,6 +996,21 @@ where
     C: ChainStore,
     E: EthereumAdapter,
 {
+    fn parse_triggers(
+        log_filter_opt: Option<EthereumLogFilter>,
+        call_filter_opt: Option<EthereumCallFilter>,
+        block_filter_opt: Option<EthereumBlockFilter>,
+        include_calls_in_blocks: bool,
+        descendant_block: EthereumBlockWithCalls,
+    ) -> Result<EthereumBlockWithTriggers, Error> {
+        BlockStreamContext::<S, C, E>::parse_triggers(
+            log_filter_opt,
+            call_filter_opt,
+            block_filter_opt,
+            include_calls_in_blocks,
+            descendant_block,
+        )
+    }
 }
 
 impl<S, C, E> Stream for BlockStream<S, C, E>
@@ -1214,85 +1308,6 @@ where
 
         block_stream
     }
-}
-
-fn parse_triggers(
-    log_filter_opt: Option<EthereumLogFilter>,
-    call_filter_opt: Option<EthereumCallFilter>,
-    block_filter_opt: Option<EthereumBlockFilter>,
-    include_calls_in_blocks: bool,
-    descendant_block: EthereumBlockWithCalls,
-) -> Result<EthereumBlockWithTriggers, Error> {
-    let mut triggers = Vec::new();
-    triggers.append(&mut parse_log_triggers(
-        log_filter_opt,
-        &descendant_block.ethereum_block,
-    ));
-    triggers.append(&mut parse_call_triggers(call_filter_opt, &descendant_block));
-    triggers.append(&mut parse_block_triggers(
-        block_filter_opt,
-        &descendant_block,
-    ));
-
-    let tx_hash_indexes = descendant_block
-        .ethereum_block
-        .transaction_receipts
-        .iter()
-        .map(|receipt| (receipt.transaction_hash, receipt.transaction_index.as_u64()))
-        .collect::<HashMap<H256, u64>>();
-
-    // Ensure all `Call` and `Log` triggers have a transaction index
-    for trigger in triggers.iter() {
-        match trigger {
-            EthereumTrigger::Log(log) => {
-                if !tx_hash_indexes
-                    .get(&log.transaction_hash.unwrap())
-                    .is_some()
-                {
-                    return Err(format_err!(
-                        "Unable to determine transaction index for Ethereum event."
-                    ));
-                }
-            }
-            EthereumTrigger::Call(call) => {
-                if !tx_hash_indexes
-                    .get(&call.transaction_hash.unwrap())
-                    .is_some()
-                {
-                    return Err(format_err!(
-                        "Unable to determine transaction index for Ethereum call."
-                    ));
-                }
-            }
-            EthereumTrigger::Block(_) => continue,
-        }
-    }
-
-    // Sort the triggers
-    triggers.sort_by(|a, b| {
-        let a_tx_index = a.transaction_index(&tx_hash_indexes).unwrap();
-        let b_tx_index = b.transaction_index(&tx_hash_indexes).unwrap();
-        if a_tx_index.is_none() && b_tx_index.is_none() {
-            return Ordering::Equal;
-        }
-        if a_tx_index.is_none() {
-            return Ordering::Greater;
-        }
-        if b_tx_index.is_none() {
-            return Ordering::Less;
-        }
-        a_tx_index.unwrap().cmp(&b_tx_index.unwrap())
-    });
-
-    Ok(EthereumBlockWithTriggers {
-        ethereum_block: descendant_block.ethereum_block,
-        triggers,
-        calls: if include_calls_in_blocks {
-            descendant_block.calls
-        } else {
-            None
-        },
-    })
 }
 
 fn parse_log_triggers(
