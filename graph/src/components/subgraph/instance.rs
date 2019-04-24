@@ -38,8 +38,8 @@ where
         state: BlockState,
     ) -> Box<Future<Item = BlockState, Error = Error> + Send>;
 
-    /// Like `process_log` but processes an Ethereum event in a given list of hosts.
-    fn process_log_in_runtime_hosts<I>(
+    /// Like `process_trigger` but processes an Ethereum event in a given list of hosts.
+    fn process_trigger_in_runtime_hosts<I>(
         logger: &Logger,
         hosts: I,
         block: Arc<EthereumBlock>,
