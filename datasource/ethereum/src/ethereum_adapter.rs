@@ -2,9 +2,8 @@ use futures::future;
 use futures::prelude::*;
 use graph::ethabi::Token;
 use lazy_static::lazy_static;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
-use tiny_keccak::keccak256;
 
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::*;
@@ -262,8 +261,8 @@ where
                 .collect::<Vec<H160>>()
         };
 
-        let eth_adapter = self.clone();
         let logger = logger.to_owned();
+
         stream::unfold(from, move |start| {
             if start > to {
                 return None;
@@ -660,41 +659,36 @@ where
         block_hash: H256,
     ) -> Box<Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
         let eth = self.clone();
-        let call_filter = EthereumCallFilter {
-            contract_addresses_function_signatures: HashMap::new(),
-        };
         let addresses = Vec::new();
-        let calls = eth.trace_stream(&logger, block_number, block_number, addresses)
+        let calls = eth
+            .trace_stream(&logger, block_number, block_number, addresses)
             .collect()
             .map(|trace_chunks| match trace_chunks.len() {
                 0 => vec![],
-                _ => {
-                    trace_chunks
-                        .into_iter()
-                        .flatten()
-                        .collect()
-                }
+                _ => trace_chunks.into_iter().flatten().collect(),
             })
             .and_then(move |traces| {
-                // `trace_stream` returns all of the traces for the block, and this includes
-                // a trace for the block reward which every block should have.
+                // `trace_stream` returns all of the traces for the block, and this
+                // includes a trace for the block reward which every block should have.
                 // If there are no traces something has gone wrong.
                 if traces.is_empty() {
                     return future::err(format_err!(
                         "Trace stream return no traces for block: number = {}, hash = {}",
                         block_number,
                         block_hash,
-                    ))
+                    ));
                 }
-                // Since we can only pull traces by block number and we have all the traces for the block, we
-                // need to ensure that the block hash for the traces is equal to the desired block hash.
+                // Since we can only pull traces by block number and we have
+                // all the traces for the block, we need to ensure that the
+                // block hash for the traces is equal to the desired block hash.
                 for trace in traces.iter() {
                     if trace.block_hash != block_hash {
                         return future::err(format_err!(
-                            "Trace stream returned traces for an unexpected block: number = {}, hash = {}",
+                            "Trace stream returned traces for an unexpected block: \
+                             number = {}, hash = {}",
                             block_number,
                             block_hash,
-                        ))
+                        ));
                     }
                 }
                 future::ok(traces)
@@ -708,7 +702,7 @@ where
                             _ => false,
                         };
                         if !is_call || trace.result.is_none() || trace.error.is_some() {
-                            return false
+                            return false;
                         }
                         true
                     })
@@ -733,8 +727,8 @@ where
         }
 
         // Each trigger filter needs to be queried for the same block range
-        // and the blocks yielded need to be deduped. If any error occurs while searching for a trigger type, the
-        // entire operation fails.
+        // and the blocks yielded need to be deduped. If any error occurs
+        // while searching for a trigger type, the entire operation fails.
         let eth = self.clone();
         let mut block_futs: Vec<
             Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>,
