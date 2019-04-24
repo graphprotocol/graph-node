@@ -648,20 +648,19 @@ impl EthereumContractMappingEntity {
             abi_ids.push(abi_id.into());
         }
 
-        let mut event_handler_ids: Option<Vec<Value>> =
-            self.event_handlers.map(|(event_handlers)| {
-                event_handlers
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, event_handler)| {
-                        let handler_id = format!("{}-event-handler-{}", id, i);
-                        ops.extend(event_handler.write_operations(&handler_id));
-                        handler_id
-                    })
-                    .map(Into::into)
-                    .collect()
-            });
-        let mut call_handler_ids: Option<Vec<Value>> = self.call_handlers.map(|call_handlers| {
+        let event_handler_ids: Option<Vec<Value>> = self.event_handlers.map(|event_handlers| {
+            event_handlers
+                .into_iter()
+                .enumerate()
+                .map(|(i, event_handler)| {
+                    let handler_id = format!("{}-event-handler-{}", id, i);
+                    ops.extend(event_handler.write_operations(&handler_id));
+                    handler_id
+                })
+                .map(Into::into)
+                .collect()
+        });
+        let call_handler_ids: Option<Vec<Value>> = self.call_handlers.map(|call_handlers| {
             call_handlers
                 .into_iter()
                 .enumerate()
@@ -674,7 +673,7 @@ impl EthereumContractMappingEntity {
                 .collect()
         });
 
-        let mut block_handler_ids: Option<Vec<Value>> = self.block_handlers.map(|block_handlers| {
+        let block_handler_ids: Option<Vec<Value>> = self.block_handlers.map(|block_handlers| {
             block_handlers
                 .into_iter()
                 .enumerate()
