@@ -19,6 +19,7 @@ extern crate url;
 
 use clap::{App, Arg};
 use futures::sync::oneshot;
+use git_testament::{git_testament, render_testament};
 use ipfs_api::IpfsClient;
 use lazy_static::lazy_static;
 use std::env;
@@ -58,6 +59,8 @@ lazy_static! {
              .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_ANCESTOR_COUNT")))
         .unwrap_or(50);
 }
+
+git_testament!(TESTAMENT);
 
 fn main() {
     let (shutdown_sender, shutdown_receiver) = oneshot::channel();
@@ -235,6 +238,13 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Set up logger
     let logger = logger(matches.is_present("debug"));
+
+    // Log version information
+    info!(
+        logger,
+        "Graph Node version: {}",
+        render_testament!(TESTAMENT)
+    );
 
     // Safe to unwrap because a value is required by CLI
     let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
