@@ -78,14 +78,20 @@ where
         trigger: EthereumTrigger,
         state: BlockState,
     ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
-        Self::process_trigger_in_runtime_hosts(logger, self.hosts.iter().cloned(), block, trigger, state)
+        Self::process_trigger_in_runtime_hosts(
+            logger,
+            self.hosts.iter().cloned(),
+            block,
+            trigger,
+            state,
+        )
     }
 
     fn process_trigger_in_runtime_hosts<I>(
         logger: &Logger,
         hosts: I,
         block: Arc<EthereumBlock>,
-        log: Log,
+        trigger: EthereumTrigger,
         state: BlockState,
     ) -> Box<Future<Item = BlockState, Error = Error> + Send>
     where
@@ -99,27 +105,24 @@ where
                     .map(Arc::new)
                     .ok_or_else(|| format_err!("Found no transaction for event"));
                 let matching_hosts: Vec<_> = hosts
-                    .iter()
+                    .into_iter()
                     .filter(|host| host.matches_log(&log))
-                    .cloned()
                     .collect();
                 let log = Arc::new(log);
-                // Process the log in each host in the same order the corresponding data sources appear
-                // in the subgraph manifest
-                let eops = future::result(transaction)
-                    .and_then(|transaction| {
-                        stream::iter_ok(matching_hosts)
-                            .fold(state, move |state, host| {
-                                host.process_log(
-                                    logger.clone(),
-                                    block.clone(),
-                                    transaction.clone(),
-                                    log.clone(),
-                                    state,
-                                )
-                            })
-                    });
-                Box::new(eops)
+
+                // Process the log in each host in the same order the corresponding data
+                // sources appear in the subgraph manifest
+                Box::new(future::result(transaction).and_then(|transaction| {
+                    stream::iter_ok(matching_hosts).fold(state, move |state, host| {
+                        host.process_log(
+                            logger.clone(),
+                            block.clone(),
+                            transaction.clone(),
+                            log.clone(),
+                            state,
+                        )
+                    })
+                }))
             }
             EthereumTrigger::Call(call) => {
                 let transaction = block
@@ -127,43 +130,39 @@ where
                     .map(Arc::new)
                     .ok_or_else(|| format_err!("Found no transaction for call"));
                 let matching_hosts: Vec<_> = hosts
-                    .iter()
+                    .into_iter()
                     .filter(|host| host.matches_call(&call))
-                    .cloned()
                     .collect();
                 let call = Arc::new(call);
-                let eops = future::result(transaction)
-                    .and_then(|transaction| {
-                        stream::iter_ok(matching_hosts)
-                            .fold(state, move |state, host| {
-                                host.process_call(
-                                    logger.clone(),
-                                    block.clone(),
-                                    transaction.clone(),
-                                    call.clone(),
-                                    state,
-                                )
-                            })
-                    });
-                Box::new(eops)
+
+                Box::new(future::result(transaction).and_then(|transaction| {
+                    stream::iter_ok(matching_hosts).fold(state, move |state, host| {
+                        host.process_call(
+                            logger.clone(),
+                            block.clone(),
+                            transaction.clone(),
+                            call.clone(),
+                            state,
+                        )
+                    })
+                }))
             }
             EthereumTrigger::Block(trigger_type) => {
                 let matching_hosts: Vec<_> = hosts
-                    .iter()
+                    .into_iter()
                     .filter(|host| host.matches_block(trigger_type.clone()))
-                    .cloned()
                     .collect();
-                let eops = stream::iter_ok(matching_hosts)
-                    .fold(state, move |state, host| {
+
+                Box::new(
+                    stream::iter_ok(matching_hosts).fold(state, move |state, host| {
                         host.process_block(
                             logger.clone(),
                             block.clone(),
                             trigger_type.clone(),
                             state,
                         )
-                    },
-                );
-                Box::new(eops)
+                    }),
+                )
             }
         }
     }
