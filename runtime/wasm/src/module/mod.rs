@@ -153,7 +153,6 @@ pub(crate) struct WasmiModule<T, L, S, U> {
 
     pub ctx: MappingContext,
     pub valid_module: Arc<ValidModule<T, L, S, U>>,
-    host_exports: &'a HostExports<T, L, S, U>,
 
     // Time when the current handler began processing.
     start_time: Instant,
@@ -229,12 +228,11 @@ where
         self.start_time = Instant::now();
 
         let block = self.ctx.block.block.clone();
-        let transaction = self.ctx.transaction.clone();
 
         // Prepare an EthereumEvent for the WASM runtime
         // Decide on the destination type using the mapping
         // api version provided in the subgraph manifest
-        let event = if self.valid_module.host_exports.api_version >= Version::new(0, 0, 2) {
+        let event = if self.host_exports().api_version >= Version::new(0, 0, 2) {
             RuntimeValue::from(
                 self.asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _>(
                     &EthereumEventData {
@@ -267,6 +265,7 @@ where
             .module
             .clone()
             .invoke_export(handler_name, &[event], &mut self);
+
         // Return either the output state (collected entity operations etc.) or an error
         result.map(|_| self.ctx.state).map_err(|e| {
             format_err!(
@@ -311,8 +310,9 @@ where
         call: Arc<EthereumCall>,
         inputs: Vec<LogParam>,
         outputs: Vec<LogParam>,
-    ) -> Result<Vec<EntityOperation>, FailureError> {
+    ) -> Result<BlockState, FailureError> {
         self.start_time = Instant::now();
+
         // Prepare an EthereumCall for the WASM runtime
         let arg = EthereumCallData {
             address: call.to,
@@ -321,12 +321,14 @@ where
             inputs,
             outputs,
         };
+
         let result = self.module.clone().invoke_export(
             handler_name,
             &[RuntimeValue::from(self.asc_new(&arg))],
             &mut self,
         );
-        result.map(|_| self.ctx.entity_operations).map_err(|err| {
+
+        result.map(|_| self.ctx.state).map_err(|err| {
             format_err!(
                 "Failed to handle Ethereum call with handler \"{}\": {}",
                 handler_name,
@@ -338,16 +340,19 @@ where
     pub(crate) fn handle_ethereum_block(
         mut self,
         handler_name: &str,
-    ) -> Result<Vec<EntityOperation>, FailureError> {
+    ) -> Result<BlockState, FailureError> {
         self.start_time = Instant::now();
+
         // Prepare an EthereumBlock for the WASM runtime
         let arg = EthereumBlockData::from(&self.ctx.block.block);
+
         let result = self.module.clone().invoke_export(
             handler_name,
             &[RuntimeValue::from(self.asc_new(&arg))],
             &mut self,
         );
-        result.map(|_| self.ctx.entity_operations).map_err(|err| {
+
+        result.map(|_| self.ctx.state).map_err(|err| {
             format_err!(
                 "Failed to handle Ethereum block with handler \"{}\": {}",
                 handler_name,
