@@ -300,7 +300,12 @@ impl RuntimeHost {
     }
 
     fn matches_call_address(&self, call: &EthereumCall) -> bool {
-        self.data_source_contract.address == call.to
+        // The runtime host matches the contract address of the `EthereumCall`
+        // if the data source contains the same contract address or
+        // if the data source doesn't have a contract address at all
+        self.data_source_contract
+            .address
+            .map_or(true, |addr| addr == call.to)
     }
 
     fn matches_call_function(&self, call: &EthereumCall) -> bool {
