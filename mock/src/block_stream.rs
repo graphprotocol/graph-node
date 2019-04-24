@@ -33,7 +33,17 @@ impl EventConsumer<ChainHeadUpdate> for MockBlockStream {
     }
 }
 
-impl BlockStream for MockBlockStream {}
+impl BlockStream for MockBlockStream {
+    fn parse_triggers(
+        _log_filter_opt: Option<EthereumLogFilter>,
+        _call_filter_opt: Option<EthereumCallFilter>,
+        _block_filter_opt: Option<EthereumBlockFilter>,
+        _include_calls_in_blocks: bool,
+        _descendant_block: EthereumBlockWithCalls,
+    ) -> Result<EthereumBlockWithTriggers, Error> {
+        unimplemented!()
+    }
+}
 
 #[derive(Clone)]
 pub struct MockBlockStreamBuilder;
