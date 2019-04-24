@@ -9,3 +9,6 @@ pub mod ethereum;
 
 /// Security utilities.
 pub mod security;
+
+/// Extensible valules.
+pub mod extend;
