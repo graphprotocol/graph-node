@@ -915,12 +915,6 @@ pub trait Store: Send + Sync + 'static {
                     .join(", ")
             );
         }
-        if removed_assignments.is_empty() && added_assignments.is_empty() {
-            debug!(
-                logger,
-                "No subgraph node assignment additions/removals needed"
-            );
-        }
 
         ops.extend(
             removed_assignments
