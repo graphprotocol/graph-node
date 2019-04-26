@@ -193,7 +193,7 @@ where
             let new_start = end + 1;
             debug!(
                 logger,
-                "Starting request in for traces block range: [{}, {}]", start, end
+                "Starting request for traces block range: [{}, {}]", start, end
             );
             Some(
                 eth.traces(&logger, start, end, addresses.clone())
