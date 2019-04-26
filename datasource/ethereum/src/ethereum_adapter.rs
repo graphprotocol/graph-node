@@ -80,15 +80,17 @@ where
                     .filter(trace_filter)
                     .map(move |traces| {
                         if traces.len() > 0 {
-                            debug!(
-                                logger,
-                                "Received {} traces for block range [{}, {}]",
-                                traces.len(),
-                                from,
-                                to
-                            );
-                        } else {
-                            debug!(logger, "No traces for block range [{}, {}]", from, to);
+                            if to == from {
+                                debug!(logger, "Received {} traces for block {}", traces.len(), to);
+                            } else {
+                                debug!(
+                                    logger,
+                                    "Received {} traces for blocks [{}, {}]",
+                                    traces.len(),
+                                    from,
+                                    to
+                                );
+                            }
                         }
                         traces
                     })
@@ -150,7 +152,7 @@ where
                     .eth()
                     .logs(log_filter)
                     .map(move |logs| {
-                        debug!(logger, "Received logs for [{}, {}].", from, to);
+                        debug!(logger, "Received logs for blocks [{}, {}]", from, to);
                         logs
                     })
                     .from_err::<EthereumContractCallError>()
@@ -191,10 +193,11 @@ where
             }
             let end = (start + 200 - 1).min(to);
             let new_start = end + 1;
-            debug!(
-                logger,
-                "Starting request for traces block range: [{}, {}]", start, end
-            );
+            if start == end {
+                debug!(logger, "Requesting traces for block {}", start);
+            } else {
+                debug!(logger, "Requesting traces for blocks [{}, {}]", start, end);
+            }
             Some(
                 eth.traces(&logger, start, end, addresses.clone())
                     .map(move |traces| (traces, new_start)),
@@ -274,10 +277,7 @@ where
             };
             let new_start = end + 1;
 
-            debug!(
-                logger,
-                "Starting request for logs in block range: [{}, {}]", start, end
-            );
+            debug!(logger, "Requesting logs for blocks [{}, {}]", start, end);
 
             let log_filter = log_filter.clone();
             Some(

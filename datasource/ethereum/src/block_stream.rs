@@ -346,7 +346,7 @@ where
                         // updated frequently.
                         let to = cmp::min(from + (10_000 - 1), to_limit);
 
-                        debug!(ctx.logger, "Finding next blocks with relevant events...");
+                        debug!(ctx.logger, "Scanning blocks [{}, {}]", from, to);
                         Box::new(
                             ctx.eth_adapter
                                 .blocks_with_triggers(
@@ -358,8 +358,6 @@ where
                                     block_filter.clone(),
                                 )
                                 .and_then(move |descendant_ptrs| -> Box<Future<Item = _, Error = _> + Send> {
-                                    debug!(ctx.logger, "Done finding next blocks.");
-
                                     if descendant_ptrs.is_empty() {
                                         // No matching events in range.
                                         // Therefore, we can update the subgraph ptr without any
@@ -397,7 +395,7 @@ where
                                         // Load the blocks
                                         debug!(
                                             ctx.logger,
-                                            "Found {} block(s) with events.",
+                                            "Found {} relevant block(s)",
                                             descendant_ptrs.len()
                                         );
 
@@ -562,23 +560,21 @@ where
                     )
                 }))
             }
-            ReconciliationStep::AdvanceToDescendantBlock { from, to } => {
-                debug!(
-                    ctx.logger,
-                    "Skipping {} block(s) with no relevant triggers...",
-                    to.number - from.number
-                );
-
-                Box::new(
-                    future::result(ctx.subgraph_store.set_block_ptr_with_no_changes(
-                        ctx.subgraph_id.clone(),
-                        from,
-                        to,
-                    ))
-                    .map(|()| ReconciliationStepOutcome::MoreSteps)
-                    .map_err(|e| format_err!("Failed to skip blocks: {}", e)),
-                )
-            }
+            ReconciliationStep::AdvanceToDescendantBlock { from, to } => Box::new(
+                future::result(ctx.subgraph_store.set_block_ptr_with_no_changes(
+                    ctx.subgraph_id.clone(),
+                    from,
+                    to,
+                ))
+                .map(|()| ReconciliationStepOutcome::MoreSteps)
+                .map_err(move |e| {
+                    format_err!(
+                        "Failed to skip {} irrelevant blocks: {}",
+                        to.number - from.number,
+                        e
+                    )
+                }),
+            ),
             ReconciliationStep::ProcessDescendantBlocks {
                 from,
                 log_filter,
@@ -608,7 +604,7 @@ where
                                     // that we can skip.
                                     debug!(
                                         ctx.logger,
-                                        "Skipping {} block(s) with no relevant triggers...",
+                                        "Skipping {} irrelevant block(s)",
                                         descendant_parent_ptr.number - subgraph_ptr.number
                                     );
 
@@ -826,7 +822,7 @@ where
             .map(move |block_hashes_batch| {
                 debug!(
                     ctx.logger,
-                    "Requesting {} block(s) in parallel...",
+                    "Requesting {} block(s) in parallel",
                     block_hashes_batch.len()
                 );
 
