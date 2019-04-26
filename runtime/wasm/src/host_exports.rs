@@ -155,10 +155,11 @@ where
         entity_type: String,
         entity_id: String,
     ) -> Result<Option<Entity>, HostExportError<impl ExportError>> {
+        let start_time = Instant::now();
         let store_key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
-            entity_type,
-            entity_id,
+            entity_type: entity_type.clone(),
+            entity_id: entity_id.clone(),
         };
 
         // Get all operations for this entity
@@ -192,13 +193,19 @@ where
 
         // No removal in the operations => read the entity from the store, then apply
         // the operations to it to obtain the result
-        self.store
+        let result = self
+            .store
             .get(store_key)
             .and_then(|entity| {
                 EntityOperation::apply_all(entity, &matching_operations)
                     .map_err(QueryExecutionError::StoreError)
             })
-            .map_err(HostExportError)
+            .map_err(HostExportError);
+        debug!(ctx.logger, "Store get finished";
+               "type" => &entity_type, 
+               "id" => &entity_id,
+               "time" => format!("{}ms", start_time.elapsed().as_millis()));
+        result
     }
 
     pub(crate) fn ethereum_call(
@@ -207,10 +214,6 @@ where
         unresolved_call: UnresolvedContractCall,
     ) -> Result<Vec<Token>, HostExportError<impl ExportError>> {
         let start_time = Instant::now();
-        debug!(ctx.logger, "Making contract call";
-              "address" => &unresolved_call.contract_address.to_string(),
-              "contract" => &unresolved_call.contract_name,
-              "function" => &unresolved_call.function_name);
 
         // Obtain the path to the contract ABI
         let contract = self
