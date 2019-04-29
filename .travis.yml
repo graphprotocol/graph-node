@@ -26,7 +26,6 @@ before_install:
   - pushd . && cd $HOME/bin && tar -xzvf /tmp/ipfs.tar.gz && popd
   - export PATH="$HOME/bin/go-ipfs:$PATH"
   - ipfs init
-  - ipfs daemon &> /dev/null &
 
 matrix:
   fast_finish: true
@@ -68,6 +67,7 @@ script:
   # Run intgration tests
   - ./run-tests.sh
   # Run tests
+  - ipfs daemon &> /dev/null &
   - RUST_BACKTRACE=1 cargo test --verbose --all -- --nocapture
   # Run tests again using JSONB storage
   - psql -c 'drop database graph_node_test;' -U travis
