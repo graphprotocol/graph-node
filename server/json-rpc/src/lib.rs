@@ -26,7 +26,6 @@ lazy_static! {
 const JSON_RPC_DEPLOY_ERROR: i64 = 0;
 const JSON_RPC_REMOVE_ERROR: i64 = 1;
 const JSON_RPC_CREATE_ERROR: i64 = 2;
-const JSON_RPC_INTERNAL_ERROR: i64 = 3;
 
 #[derive(Debug, Deserialize)]
 struct SubgraphCreateParams {
@@ -134,32 +133,6 @@ where
                 .flatten(),
         )
     }
-
-    /// Handler for the `subgraph_list` endpoint.
-    ///
-    /// Returns the names of deployed subgraphs.
-    fn list_handler(&self) -> Box<Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
-        let logger = self.logger.clone();
-
-        info!(logger, "Received subgraph_list request");
-
-        Box::new(
-            self.registrar
-                .list_subgraphs()
-                .map_err(move |e| {
-                    error!(logger, "Failed to list subgraphs: {}", e);
-                    json_rpc_error(JSON_RPC_INTERNAL_ERROR, "database error".to_owned())
-                })
-                .map(|names| {
-                    Value::from(
-                        names
-                            .into_iter()
-                            .map(|name| name.to_string())
-                            .collect::<Vec<_>>(),
-                    )
-                }),
-        )
-    }
 }
 
 impl<R> JsonRpcServerTrait<R> for JsonRpcServer<R>
@@ -221,9 +194,6 @@ where
                 .into_future()
                 .and_then(move |params| me.remove_handler(params))
         });
-
-        let me = arc_self.clone();
-        handler.add_method("subgraph_list", move |_| me.list_handler());
 
         ServerBuilder::new(handler)
             // Enable REST API:

@@ -34,8 +34,4 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
         &self,
         name: SubgraphName,
     ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static>;
-
-    fn list_subgraphs(
-        &self,
-    ) -> Box<Future<Item = Vec<SubgraphName>, Error = SubgraphRegistrarError> + Send + 'static>;
 }

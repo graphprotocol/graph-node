@@ -275,32 +275,6 @@ where
             name,
         )))
     }
-
-    fn list_subgraphs(
-        &self,
-    ) -> Box<Future<Item = Vec<SubgraphName>, Error = SubgraphRegistrarError> + Send + 'static>
-    {
-        Box::new(
-            future::result(self.store.find(SubgraphEntity::query()))
-                .from_err()
-                .and_then(|subgraph_entities| {
-                    subgraph_entities
-                        .into_iter()
-                        .map(|mut entity| {
-                            let name_string = entity.remove("name").unwrap().as_string().unwrap();
-                            SubgraphName::new(name_string.to_owned())
-                                .map_err(|()| {
-                                    format_err!(
-                                        "Subgraph name in store has invalid format: {:?}",
-                                        name_string
-                                    )
-                                })
-                                .map_err(SubgraphRegistrarError::from)
-                        })
-                        .collect::<Result<_, _>>()
-                }),
-        )
-    }
 }
 
 fn handle_assignment_event<P>(

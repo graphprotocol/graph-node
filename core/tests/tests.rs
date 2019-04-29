@@ -14,7 +14,7 @@ use graph::components::ethereum::*;
 use graph::prelude::*;
 use graph::web3::types::*;
 use graph_core::SubgraphInstanceManager;
-use graph_mock::{FakeStore, MockBlockStreamBuilder, MockGraphQlRunner, MockStore};
+use graph_mock::{FakeStore, MockBlockStreamBuilder, MockStore};
 use std::collections::HashSet;
 use std::fs::read_to_string;
 use std::io::Cursor;
@@ -343,94 +343,6 @@ fn subgraph_provider_events() {
                                     subgraph2_id_clone2.clone()
                                 )));
                             Ok(())
-                        })
-                })
-                .then(|result| -> Result<(), ()> { Ok(result.unwrap()) })
-        }))
-        .unwrap();
-}
-
-#[test]
-fn subgraph_list() {
-    let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    runtime
-        .block_on(future::lazy(|| {
-            let logger = Logger::root(slog::Discard, o!());
-            let store = Arc::new(MockStore::new(vec![]));
-            let resolver = Arc::new(IpfsClient::default());
-            let graphql_runner = Arc::new(MockGraphQlRunner::new(&logger));
-            let provider = graph_core::SubgraphAssignmentProvider::new(
-                logger.clone(),
-                resolver.clone(),
-                store.clone(),
-                graphql_runner.clone(),
-            );
-            let node_id = NodeId::new("testnode").unwrap();
-
-            let registrar = graph_core::SubgraphRegistrar::new(
-                logger.clone(),
-                resolver,
-                Arc::new(provider),
-                store.clone(),
-                store,
-                node_id.clone(),
-                SubgraphVersionSwitchingMode::Instant,
-            );
-            registrar
-                .start()
-                .from_err()
-                .and_then(move |()| {
-                    let registrar = Arc::new(registrar);
-                    let subgraph1_name = SubgraphName::new("subgraph1").unwrap();
-                    let subgraph2_name = SubgraphName::new("subgraph2").unwrap();
-
-                    let registrar_clone1 = registrar;
-                    let registrar_clone2 = registrar_clone1.clone();
-                    let registrar_clone3 = registrar_clone1.clone();
-                    let registrar_clone4 = registrar_clone1.clone();
-                    let registrar_clone5 = registrar_clone1.clone();
-                    let registrar_clone6 = registrar_clone1.clone();
-                    let registrar_clone7 = registrar_clone1.clone();
-                    let subgraph1_name_clone1 = subgraph1_name;
-                    let subgraph1_name_clone2 = subgraph1_name_clone1.clone();
-                    let subgraph2_name_clone1 = subgraph2_name;
-                    let subgraph2_name_clone2 = subgraph2_name_clone1.clone();
-                    let subgraph2_name_clone3 = subgraph2_name_clone1.clone();
-
-                    registrar_clone1
-                        .list_subgraphs()
-                        .map(|subgraphs| {
-                            assert!(subgraphs.is_empty());
-                        })
-                        .and_then(move |()| {
-                            registrar_clone1.create_subgraph(subgraph1_name_clone1.clone())
-                        })
-                        .and_then(move |_| registrar_clone2.create_subgraph(subgraph2_name_clone1))
-                        .and_then(move |_| registrar_clone3.list_subgraphs())
-                        .and_then(move |subgraphs| {
-                            assert_eq!(
-                                subgraphs.into_iter().collect::<HashSet<_>>(),
-                                vec![subgraph1_name_clone2.clone(), subgraph2_name_clone2]
-                                    .into_iter()
-                                    .collect::<HashSet<_>>()
-                            );
-
-                            registrar_clone4.remove_subgraph(subgraph1_name_clone2)
-                        })
-                        .and_then(move |()| registrar_clone5.list_subgraphs())
-                        .and_then(move |subgraphs| {
-                            assert_eq!(
-                                subgraphs.into_iter().collect::<HashSet<_>>(),
-                                vec![(subgraph2_name_clone3.clone())]
-                                    .into_iter()
-                                    .collect::<HashSet<_>>()
-                            );
-
-                            registrar_clone6.remove_subgraph(subgraph2_name_clone3)
-                        })
-                        .and_then(move |()| registrar_clone7.list_subgraphs())
-                        .map(move |subgraphs| {
-                            assert!(subgraphs.is_empty());
                         })
                 })
                 .then(|result| -> Result<(), ()> { Ok(result.unwrap()) })
