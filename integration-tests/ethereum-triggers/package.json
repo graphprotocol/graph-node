@@ -1,0 +1,30 @@
+{
+  "name": "ethereum-triggers",
+  "version": "0.1.0",
+  "scripts": {
+    "build-contract": "solc contracts/Gravity.sol --abi -o abis --overwrite && solc contracts/Gravity.sol --bin -o bin --overwrite",
+    "create": "graph create test/ethereum-triggers --node https://api.thegraph.com/deploy/",
+    "create-test": "graph create test/ethereum-triggers --node http://graph-node:8020",
+    "remove-test": "graph remove test/ethereum-triggers --node http://graph-node:8020",
+    "create-local": "graph create test/ethereum-triggers --node http://127.0.0.1:8020",
+    "codegen": "graph codegen --output-dir src/types/",
+    "build": "graph build",
+    "deploy": "graph deploy test/ethereum-triggers --ipfs https://api.thegraph.com/ipfs/ --node https://api.thegraph.com/deploy/",
+    "deploy-local": "graph deploy test/ethereum-triggers --ipfs http://localhost:5001 --node http://127.0.0.1:8020",
+    "deploy-test": "graph deploy test/ethereum-triggers --ipfs http://ipfs:5001 --node http://graph-node:8020",
+    "test": "truffle test --network test"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#jannis/integration-testing",
+    "@graphprotocol/graph-ts": "^0.10.0"
+  },
+  "dependencies": {
+    "apollo-fetch": "^0.7.0",
+    "babel-polyfill": "^6.26.0",
+    "babel-register": "^6.26.0",
+    "gluegun": "^3.2.1",
+    "truffle": "^5.0.4",
+    "truffle-contract": "^4.0.5",
+    "truffle-hdwallet-provider": "^1.0.4"
+  }
+}
