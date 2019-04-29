@@ -70,7 +70,7 @@ const waitForSubgraphToBeSynced = async () => {
   }
 }
 
-contract("Entity triggers", accounts => {
+contract("Ethereum triggers", accounts => {
   // Deploy the subgraph once before all tests
   before(async () => {
     // Deploy the contract
