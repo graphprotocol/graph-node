@@ -1,0 +1,30 @@
+{
+  "name": "dynamic-data-sources",
+  "version": "0.1.0",
+  "scripts": {
+    "build-contracts": "cd contracts && solc Factory.sol --abi -o ../abis --overwrite && solc Factory.sol --bin -o ../bin --overwrite && solc Exchange.sol --abi -o ../abis --overwrite && solc Exchange.sol --bin -o ../bin --overwrite",
+    "create": "graph create test/dynamic-data-sources --node https://api.thegraph.com/deploy/",
+    "create-test": "graph create test/dynamic-data-sources --node http://graph-node:8020",
+    "remove-test": "graph remove test/dynamic-data-sources --node http://graph-node:8020",
+    "create-local": "graph create test/dynamic-data-sources --node http://127.0.0.1:8020",
+    "codegen": "graph codegen",
+    "build": "graph build",
+    "deploy": "graph deploy test/dynamic-data-sources --ipfs https://api.thegraph.com/ipfs/ --node https://api.thegraph.com/deploy/",
+    "deploy-local": "graph deploy test/dynamic-data-sources --ipfs http://localhost:5001 --node http://127.0.0.1:8020",
+    "deploy-test": "graph deploy test/dynamic-data-sources --ipfs http://ipfs:5001 --node http://graph-node:8020",
+    "test": "truffle test --network test"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#jannis/integration-testing",
+    "@graphprotocol/graph-ts": "^0.10.0"
+  },
+  "dependencies": {
+    "apollo-fetch": "^0.7.0",
+    "babel-polyfill": "^6.26.0",
+    "babel-register": "^6.26.0",
+    "gluegun": "^3.2.1",
+    "truffle": "^5.0.4",
+    "truffle-contract": "^4.0.5",
+    "truffle-hdwallet-provider": "^1.0.4"
+  }
+}

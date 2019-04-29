@@ -1,0 +1,11 @@
+type NewExchange @entity {
+  id: ID!
+  exchange: Bytes!
+  name: String!
+}
+
+type Created @entity {
+  id: ID!
+  exchange: Bytes!
+  name: String!
+}
