@@ -603,7 +603,7 @@ where
                 .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
                         format_err!(
-                            "Ethereum node took too long to return data for block hash = {}",
+                            "Ethereum node took too long to return data for block hash = `{}`",
                             descendant_block_hash
                         )
                     })
