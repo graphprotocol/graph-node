@@ -290,9 +290,9 @@ where
                     .map(move |logs| {
                         logs.into_iter()
                             .filter(move |log| log_filter.matches(log))
-                            .collect()
+                            .collect::<Vec<Log>>()
                     })
-                    .map(move |logs: Vec<Log>| (logs, new_start)),
+                    .map(move |logs| (logs, new_start)),
             )
         })
         .filter(|chunk| !chunk.is_empty())
