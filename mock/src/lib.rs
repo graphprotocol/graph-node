@@ -6,11 +6,7 @@ extern crate graphql_parser;
 extern crate rand;
 
 mod block_stream;
-mod graphql;
-mod server;
 mod store;
 
 pub use self::block_stream::{MockBlockStream, MockBlockStreamBuilder};
-pub use self::graphql::MockGraphQlRunner;
-pub use self::server::MockGraphQLServer;
 pub use self::store::{FakeStore, MockStore};
