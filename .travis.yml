@@ -64,7 +64,7 @@ before_script:
 
 script:
   # Run intgration tests
-  - popd integration-tests && ./run-tests.sh && pushd
+  - ./run-tests.sh
   # Run tests
   - RUST_BACKTRACE=1 cargo test --verbose --all -- --nocapture
   # Run tests again using JSONB storage

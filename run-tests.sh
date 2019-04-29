@@ -16,4 +16,8 @@ pushd ethereum-triggers
 graph test --node-image "$DOCKER_IMAGE" "yarn test"
 popd
 
+pushd dynamic-data-sources
+graph test --node-image "$DOCKER_IMAGE" "yarn test"
+popd
+
 popd
