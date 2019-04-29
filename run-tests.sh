@@ -1,23 +1,25 @@
 #!/bin/bash
 
 set -e
-set -x
 
 COMMIT=$(git rev-parse HEAD)
 DOCKER_IMAGE="graph-node-test:$COMMIT"
 
-pushd docker
+echo "COMMIT=$COMMIT"
+echo "DOCKER_IMAGE=$DOCKER_IMAGE"
+
+cd docker
 docker build --build-arg SOURCE_BRANCH="$COMMIT" -t "$DOCKER_IMAGE" .
-popd
+cd ..
 
-pushd integration-tests
+cd integration-tests
 
-pushd ethereum-triggers
+cd ethereum-triggers
 graph test --node-image "$DOCKER_IMAGE" "yarn test"
-popd
+cd ..
 
-pushd dynamic-data-sources
+cd dynamic-data-sources
 graph test --node-image "$DOCKER_IMAGE" "yarn test"
-popd
+cd ..
 
-popd
+cd ..
