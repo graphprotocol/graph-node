@@ -5,6 +5,9 @@ rust:
   - beta
   - nightly
 
+node_js:
+  - "11"
+
 # Select pre-installed services
 addons:
   postgresql: "10"
