@@ -368,8 +368,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block: Block<Transaction>,
     ) -> Box<Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send>;
 
-    // Find the hash for the parent block of the provided block hash
-    fn block_parent_hash_by_block_hash(
+    /// Find the hash for the parent block of the provided block hash
+    fn block_parent_hash(
         &self,
         logger: &Logger,
         block_hash: H256,
