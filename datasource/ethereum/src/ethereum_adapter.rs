@@ -690,7 +690,7 @@ where
                     if trace.block_hash != block_hash {
                         return future::err(format_err!(
                             "Trace stream returned traces for an unexpected block: \
-                             number = {}, hash = {}",
+                             number = `{}`, hash = `{}`",
                             block_number,
                             block_hash,
                         ));
