@@ -73,18 +73,23 @@ where
                         .build(),
                 };
 
-                let logger = logger.clone();
-                let logger_1 = logger.clone();
+                let logger_for_triggers = logger.clone();
+                let logger_for_error = logger.clone();
                 eth.web3
                     .trace()
                     .filter(trace_filter)
                     .map(move |traces| {
                         if traces.len() > 0 {
                             if to == from {
-                                debug!(logger, "Received {} traces for block {}", traces.len(), to);
+                                debug!(
+                                    logger_for_triggers,
+                                    "Received {} traces for block {}",
+                                    traces.len(),
+                                    to
+                                );
                             } else {
                                 debug!(
-                                    logger,
+                                    logger_for_triggers,
                                     "Received {} traces for blocks [{}, {}]",
                                     traces.len(),
                                     from,
@@ -99,7 +104,7 @@ where
                     .then(move |result| {
                         if result.is_err() {
                             debug!(
-                                logger_1,
+                                logger_for_error,
                                 "Error querying traces error = {:?} from = {:?} to = {:?}",
                                 result,
                                 from,
