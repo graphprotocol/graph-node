@@ -582,7 +582,7 @@ where
         )
     }
 
-    fn block_parent_hash_by_block_hash(
+    fn block_parent_hash(
         &self,
         logger: &Logger,
         descendant_block_hash: H256,
@@ -813,7 +813,7 @@ where
                     }
                     // Populate the parent block pointer
                     Some(
-                        eth.block_parent_hash_by_block_hash(&logger, descendant_block_pointer.hash)
+                        eth.block_parent_hash(&logger, descendant_block_pointer.hash)
                             .map(move |block_hash_opt| {
                                 let parent_block_pointer = EthereumBlockPointer {
                                     hash: block_hash_opt.unwrap(),
