@@ -4,19 +4,24 @@ use diesel::dsl::{any, sql};
 use diesel::pg::{Pg, PgConnection};
 use diesel::sql_types::{Bool, Integer, Jsonb, Nullable, Text};
 use diesel::BoolExpressionMethods;
+use diesel::Connection as _;
 use diesel::ExpressionMethods;
 use diesel::{debug_query, insert_into};
 use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
 use diesel_dynamic_schema::{schema, Column, Table as DynamicTable};
 use inflector::cases::snakecase::to_snake_case;
 use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::time::Instant;
 
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{
-    format_err, AttributeIndexDefinition, EntityChange, EntityChangeOperation, EntityFilter,
-    EntityKey, Error, EventSource, HistoryEvent, QueryExecutionError, StoreError, StoreEvent,
-    SubgraphDeploymentId, TransactionAbortError, ValueType,
+    debug, format_err, info, warn, AttributeIndexDefinition, EntityChange, EntityChangeOperation,
+    EntityFilter, EntityKey, Error, EthereumBlockPointer, EventSource, HistoryEvent, Logger,
+    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, TransactionAbortError,
+    ValueType,
 };
 use graph::serde_json;
 use graph::util::extend::Extend;
@@ -48,6 +53,8 @@ pub(crate) trait EntitySource {}
 // this module to make sure that nobody else gets access to them. All access
 // to these tables must go through functions in this module.
 mod public {
+    use diesel::sql_types::Varchar;
+
     table! {
         entities (id, subgraph, entity) {
             id -> Varchar,
@@ -88,13 +95,32 @@ mod public {
     joinable!(entity_history -> event_meta_data (event_id));
     allow_tables_to_appear_in_same_query!(entity_history, event_meta_data);
 
+    #[derive(DbEnum, Debug, Clone)]
+    pub enum DeploymentSchemaVersion {
+        Public,
+        Split,
+    }
+
+    #[derive(DbEnum, Debug, Clone)]
+    pub enum DeploymentSchemaState {
+        Ready,
+        Tables,
+    }
+
     table! {
         deployment_schemas(id) {
             id -> Integer,
             subgraph -> Text,
             name -> Text,
+            version -> crate::entities::public::DeploymentSchemaVersionMapping,
+            migrating -> Bool,
+            state -> crate::entities::public::DeploymentSchemaStateMapping,
         }
     }
+
+    // Migrate entities storage to a split entities table
+    sql_function!(fn migrate_entities_tables(schema_name: Varchar, schema_version: DeploymentSchemaVersionMapping, subgraph: Varchar));
+    sql_function!(fn migrate_entities_data(schema_name: Varchar, schema_version: DeploymentSchemaVersionMapping, subgraph: Varchar) -> Integer);
 }
 
 // The entities table for the subgraph of subgraphs.
@@ -169,12 +195,42 @@ impl EntitySource for DynamicTable<String> {}
 // for dynamic tables.
 use public::deployment_schemas;
 
+/// Information about the database schema that stores the entities for a
+/// subgraph. The schemas are versioned by subgraph, which makes it possible
+/// to migrate subgraphs one at a time to newer storage schemes. Migrations
+/// can be split into multiple stages to make sure that intrusive locks are
+/// only held a very short amount of time. The overall goal is to pause
+/// indexing (write activity) for a subgraph while we migrate, but keep it
+/// possible to query the subgraph, and not affect other subgraph's operation.
+///
+/// When writing a migration, the following guidelines should be followed:
+/// - each migration can only affect a single subgraph, and must not interfere
+///   with the working of any other subgraph
+/// - writing to the subgraph will be paused while the migration is running
+/// - each migration step is run in its own database transaction
 #[derive(Queryable, QueryableByName, Debug)]
 #[table_name = "deployment_schemas"]
 struct Schema {
     id: i32,
     subgraph: String,
     name: String,
+    /// The version currently in use. While we are migrating, the version
+    /// will remain at the old version until the new version is ready to use.
+    /// Migrations should update this field as the very last operation they
+    /// perform.
+    version: public::DeploymentSchemaVersion,
+    /// True if the subgraph is currently running a migration
+    migrating: bool,
+    /// Track which parts of a migration we performed already. The `Ready` state
+    /// means no work to get to the next version has been performed yet. A
+    /// migration will first perform a transaction that purely does DDL; since
+    /// that generally requires fairly strong locks but is fast, that is done
+    /// in a separate transaction. Once we have done the necessary DDL, the
+    /// state goes to `Tables`. The final state of the migration is copying data,
+    /// which can be very slow, but should not require intrusive locks. Once the
+    /// data is in place, the migration updates `version` to the new version
+    /// we migrated to, and sets the state to `Ready`
+    state: public::DeploymentSchemaState,
 }
 
 type EntityColumn<ST> = Column<DynamicTable<String>, String, ST>;
@@ -368,6 +424,143 @@ impl<'a> Connection<'a> {
     ) -> Result<HistoryEvent, Error> {
         create_history_event(self.conn, subgraph, event_source)
     }
+
+    /// Check if the database schema for `subgraph` needs to be migrated, and
+    /// if so, perform the migration. Return `true` if a migration was
+    /// performed, and `false` otherwise. A return value of `false` does not
+    /// indicate that no migration is necessary, just that we currently can
+    /// not perform it, for example, because too many other subgraphs are
+    /// migrating.
+    ///
+    /// Migrating requires performing multiple transactions, and the connection
+    /// in `self` must therefore not have a transaction open already.
+    pub(crate) fn migrate(
+        self,
+        logger: &Logger,
+        subgraph: &SubgraphDeploymentId,
+        block_ptr: EthereumBlockPointer,
+    ) -> Result<bool, Error> {
+        // How often to check whether a subgraph needs to be migrated (in
+        // blocks) Doing it every 20 blocks translates to roughly once every
+        // 5 minutes
+        const MIGRATION_CHECK_FREQ: u64 = 20;
+        // How many simultaneous subgraph migrations we allow
+        const MIGRATION_LIMIT: i32 = 2;
+
+        let table = self.table(subgraph)?;
+
+        if !table.needs_migrating() {
+            return Ok(false);
+        }
+
+        // We determine whether it is time for us to check whether we should
+        // migrate in a way that tries to splay the checks for different
+        // subgraphs, using the hash of the subgraph id as a somewhat
+        // arbitrary indicator. We really just want the checks to be distributed
+        // across all possible values mod MIGRATION_CHECK_FREQ so that we don't
+        // have a mad dash to migrate every MIGRATION_CHECK_FREQ blocks, which
+        // would happen if we checked for
+        // `block_ptr.number % MIGRATION_CHECK_FREQ == 0`
+        let mut hasher = DefaultHasher::new();
+        subgraph.hash(&mut hasher);
+        let hash = hasher.finish();
+        if hash % MIGRATION_CHECK_FREQ == block_ptr.number % MIGRATION_CHECK_FREQ {
+            // Check whether we should migrate. We only want MIGRATION_LIMIT
+            // subgraph migrations to happen at any one time. To make sure we
+            // stay within that limit, we need to lock the deployment_schemas
+            // table before we try and get a slot. We do not wait to get the lock:
+            // if we can't get a lock, we return `false` so that callers can
+            // try again later.
+            let do_migrate = self.conn.transaction(|| -> Result<bool, Error> {
+                let lock = diesel::sql_query(
+                    "lock table public.deployment_schemas in exclusive mode nowait",
+                )
+                .execute(self.conn);
+                if lock.is_err() {
+                    return Ok(false);
+                }
+
+                let query = "
+                UPDATE public.deployment_schemas
+                   SET migrating = true
+                 WHERE subgraph=$1
+                   AND (SELECT count(*) FROM public.deployment_schemas WHERE migrating) < $2";
+                let query = diesel::sql_query(query)
+                    .bind::<Text, _>(subgraph.to_string())
+                    .bind::<Integer, _>(MIGRATION_LIMIT);
+                Ok(query.execute(self.conn)? > 0)
+            })?;
+
+            if do_migrate {
+                use self::public::deployment_schemas as dsl;
+
+                let result = loop {
+                    match self.migration_step(logger, subgraph) {
+                        Err(e) => {
+                            // An error in a migration should not lead to the
+                            // subgraph being marked as failed
+                            warn!(logger, "aborted migrating";
+                                            "subgraph" => subgraph.to_string(),
+                                            "error" => e.to_string(),
+                            );
+                            break Ok(false);
+                        }
+                        Ok(again) if !again => break Ok(true),
+                        Ok(_) => continue,
+                    }
+                };
+                // Relinquish the migrating lock, no matter what happened in
+                // the migration
+                diesel::update(dsl::table.filter(dsl::subgraph.eq(subgraph.to_string())))
+                    .set(dsl::migrating.eq(false))
+                    .execute(self.conn)?;
+                result
+            } else {
+                Ok(false)
+            }
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Perform one migration step and return true if there are more steps
+    /// left to do. Each step of the migration is performed in  a separate
+    /// transaction so that any locks a step takes are freed up at the end
+    fn migration_step(
+        &self,
+        logger: &Logger,
+        subgraph: &SubgraphDeploymentId,
+    ) -> Result<bool, Error> {
+        self.conn.transaction(|| -> Result<bool, Error> {
+            let table = self.table(subgraph)?;
+            let errmsg = format_err!(
+                "subgraph {} has no entry in deployment_schemas and can not be migrated",
+                subgraph.to_string()
+            );
+            let schema = find_schema(self.conn, &subgraph)?.ok_or(errmsg)?;
+
+            debug!(
+                logger,
+                "start migrating";
+                "name" => &schema.name,
+                "subgraph" => subgraph.to_string(),
+                "state" => format!("{:?}", schema.state)
+            );
+            let start = Instant::now();
+            let table = table.migrate(self.conn, logger, &schema)?;
+            let needs_migrating = table.needs_migrating();
+            self.tables.borrow_mut().insert(subgraph.clone(), table);
+            info!(
+                logger,
+                "finished migrating";
+                "name" => &schema.name,
+                "subgraph" => subgraph.to_string(),
+                "state" => format!("{:?}", schema.state),
+                "migration_time_ms" => start.elapsed().as_millis()
+            );
+            Ok(needs_migrating)
+        })
+    }
 }
 
 // Find the database schema for `subgraph`. If no explicit schema exists,
@@ -383,6 +576,24 @@ fn find_schema(
 }
 
 impl SplitTable {
+    fn new(sc: String, subgraph: SubgraphDeploymentId) -> Self {
+        let table = schema(sc.clone()).table("entities".to_owned());
+        let id = table.column::<Text, _>("id".to_string());
+        let entity = table.column::<Text, _>("entity".to_string());
+        let data = table.column::<Jsonb, _>("data".to_string());
+        let event_source = table.column::<Text, _>("event_source".to_string());
+
+        SplitTable {
+            schema: sc,
+            subgraph: subgraph,
+            table,
+            id,
+            entity,
+            data,
+            event_source,
+        }
+    }
+
     // Update for a split entities table, called from Table.update. It's lengthy,
     // so we split it into its own helper function
     fn update(
@@ -477,30 +688,22 @@ impl SplitTable {
 }
 
 impl Table {
+    /// The version for newly created subgraph schemas. Changing this most
+    /// likely also requires changing `create_schema`
+    const DEFAULT_VERSION: public::DeploymentSchemaVersion = public::DeploymentSchemaVersion::Split;
+
     /// Look up the schema for `subgraph` and return its entity table.
     /// If `subgraph` does not have an entry in `deployment_schemas`, we assume
     /// it has not been migrated yet, and return the `entities` table
     /// in the `public` schema
     fn new(conn: &PgConnection, subgraph: &SubgraphDeploymentId) -> Result<Self, StoreError> {
-        let table = match find_schema(conn, subgraph)? {
-            Some(sc) => {
-                let table = schema(sc.name.clone()).table("entities".to_owned());
-                let id = table.column::<Text, _>("id".to_string());
-                let entity = table.column::<Text, _>("entity".to_string());
-                let data = table.column::<Jsonb, _>("data".to_string());
-                let event_source = table.column::<Text, _>("event_source".to_string());
+        use public::DeploymentSchemaVersion as V;
 
-                Table::Split(SplitTable {
-                    schema: sc.name,
-                    subgraph: subgraph.clone(),
-                    table,
-                    id,
-                    entity,
-                    data,
-                    event_source,
-                })
-            }
-            None => Table::Public(subgraph.clone()),
+        let schema = find_schema(conn, subgraph)?
+            .ok_or_else(|| StoreError::Unknown(format_err!("unknown subgraph {}", subgraph)))?;
+        let table = match schema.version {
+            V::Public => Table::Public(subgraph.clone()),
+            V::Split => Table::Split(SplitTable::new(schema.name, subgraph.clone())),
         };
         Ok(table)
     }
@@ -1303,6 +1506,70 @@ impl Table {
 
         Ok((changes, count))
     }
+
+    fn migrate(self, conn: &PgConnection, logger: &Logger, schema: &Schema) -> Result<Self, Error> {
+        match self {
+            Table::Split(_) => Ok(self),
+            Table::Public(ref subgraph) => {
+                use self::public::deployment_schemas as d;
+                use self::public::DeploymentSchemaState as S;
+                use self::public::DeploymentSchemaVersion as V;
+
+                match schema.state {
+                    S::Ready => {
+                        // Do the actual work
+                        diesel::select(public::migrate_entities_tables(
+                            &schema.name,
+                            &schema.version,
+                            subgraph.to_string(),
+                        ))
+                        .execute(conn)?;
+                        // Update the migration state
+                        diesel::update(d::table.find(schema.id))
+                            .set(d::state.eq(S::Tables))
+                            .execute(conn)?;
+                        Ok(self)
+                    }
+                    S::Tables => {
+                        // Move data around
+                        let count: i32 = diesel::select(public::migrate_entities_data(
+                            &schema.name,
+                            &schema.version,
+                            subgraph.to_string(),
+                        ))
+                        .first(conn)?;
+                        // Update the migration state
+                        diesel::update(d::table.find(schema.id))
+                            .set((
+                                d::state.eq(S::Ready),
+                                d::migrating.eq(false),
+                                d::version.eq(V::Split),
+                            ))
+                            .execute(conn)?;
+
+                        debug!(
+                            logger,
+                            "migrated {} entities for subgraph {} ({})",
+                            count,
+                            schema.name,
+                            subgraph
+                        );
+                        Ok(Table::Split(SplitTable::new(
+                            schema.name.clone(),
+                            subgraph.clone(),
+                        )))
+                    }
+                }
+            }
+        }
+    }
+
+    fn needs_migrating(&self) -> bool {
+        match self {
+            Table::Public(_) => true,
+            Table::Split(_) => false,
+        }
+    }
 }
 
 /// Delete all entities. This function exists solely for integration tests
@@ -1313,6 +1580,16 @@ pub fn delete_all_entities_for_test_use_only(conn: &PgConnection) -> Result<usiz
     let mut rows = diesel::delete(public::entities::table).execute(conn)?;
     rows = rows + diesel::delete(public::entity_history::table).execute(conn)?;
     rows = rows + diesel::delete(public::event_meta_data::table).execute(conn)?;
+    // Delete all subgraph schemas
+    for subgraph in public::deployment_schemas::table
+        .select(public::deployment_schemas::subgraph)
+        .filter(public::deployment_schemas::subgraph.ne("subgraphs"))
+        .get_results::<String>(conn)?
+    {
+        let subgraph = SubgraphDeploymentId::new(subgraph.clone())
+            .map_err(|_| StoreError::Unknown(format_err!("illegal subgraph {}", subgraph)))?;
+        drop_schema(conn, &subgraph)?;
+    }
     // Delete subgraphs entities
     rows = rows + diesel::delete(subgraphs::entities::table).execute(conn)?;
     Ok(rows)
@@ -1322,9 +1599,22 @@ pub(crate) fn create_schema(
     conn: &PgConnection,
     subgraph_id: &SubgraphDeploymentId,
 ) -> Result<(), StoreError> {
-    // Create a schema for the deployment
+    // Check if there already is an entry for this subgraph. If so, do
+    // nothing
+    let count = deployment_schemas::table
+        .filter(deployment_schemas::subgraph.eq(subgraph_id.to_string()))
+        .count()
+        .first::<i64>(conn)?;
+    if count > 0 {
+        return Ok(());
+    }
+
+    // Create a schema for the deployment.
     let schemas: Vec<String> = diesel::insert_into(deployment_schemas::table)
-        .values(deployment_schemas::subgraph.eq(subgraph_id.to_string()))
+        .values((
+            deployment_schemas::subgraph.eq(subgraph_id.to_string()),
+            deployment_schemas::version.eq(Table::DEFAULT_VERSION),
+        ))
         .returning(deployment_schemas::name)
         .get_results(conn)?;
     let schema_name = schemas

@@ -920,7 +920,11 @@ impl StoreTrait for Store {
             );
             self.emit_store_events(&conn, &block_ptr_ops)?;
             self.apply_entity_operations_with_conn(&econn, block_ptr_ops, None)
-        })
+        })?;
+
+        Ok(econn
+            .migrate(&self.logger, &subgraph_id, block_ptr_to)
+            .map(|_| ())?)
     }
 
     fn apply_entity_operations(

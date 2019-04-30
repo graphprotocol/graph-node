@@ -24,13 +24,9 @@ fn insert_and_query(
         data_sources: vec![],
     };
 
-    STORE
-        .apply_entity_operations(
-            SubgraphDeploymentEntity::new(&manifest, false, false, Default::default(), 1)
-                .create_operations_replace(&subgraph_id),
-            None,
-        )
-        .unwrap();
+    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, Default::default(), 1)
+        .create_operations_replace(&subgraph_id);
+    STORE.create_subgraph_deployment(&subgraph_id, ops).unwrap();
 
     let insert_ops = entities
         .into_iter()

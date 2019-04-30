@@ -114,12 +114,10 @@ fn insert_test_data(store: Arc<DieselStore>) {
     };
 
     // Create SubgraphDeploymentEntity
+    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, *TEST_BLOCK_0_PTR, 1)
+        .create_operations(&*TEST_SUBGRAPH_ID);
     store
-        .apply_entity_operations(
-            SubgraphDeploymentEntity::new(&manifest, false, false, *TEST_BLOCK_0_PTR, 1)
-                .create_operations(&*TEST_SUBGRAPH_ID),
-            None,
-        )
+        .create_subgraph_deployment(&TEST_SUBGRAPH_ID, ops)
         .unwrap();
 
     let test_entity_1 = create_test_entity(
@@ -1868,13 +1866,9 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         };
 
         // Create SubgraphDeploymentEntity
-        store
-            .apply_entity_operations(
-                SubgraphDeploymentEntity::new(&manifest, false, false, *TEST_BLOCK_0_PTR, 1)
-                    .create_operations(&subgraph_id),
-                None,
-            )
-            .unwrap();
+        let ops = SubgraphDeploymentEntity::new(&manifest, false, false, *TEST_BLOCK_0_PTR, 1)
+            .create_operations(&subgraph_id);
+        store.create_subgraph_deployment(&subgraph_id, ops).unwrap();
 
         // Create store subscriptions
         let meta_subscription =
