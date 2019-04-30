@@ -14,7 +14,7 @@ use graph::ethabi::{Function, Param, ParamType, Token};
 use graph::prelude::EthereumAdapter as EthereumAdapterTrait;
 use graph::prelude::*;
 use graph::serde_json;
-use graph::web3::error::{Error, ErrorKind};
+use graph::web3::error::Error;
 use graph::web3::helpers::*;
 use graph::web3::types::*;
 use graph::web3::{BatchTransport, RequestId, Transport};
@@ -43,6 +43,8 @@ fn mock_block() -> Block<U256> {
         uncles: Vec::<H256>::default(),
         transactions: Vec::<U256>::default(),
         size: Some(U256::from(10000)),
+        mix_hash: Some(H256::default()),
+        nonce: None,
     }
 }
 
@@ -69,7 +71,7 @@ impl Transport for TestTransport {
     fn send(&self, _: RequestId, _: jsonrpc_core::Call) -> Result<jsonrpc_core::Value> {
         match self.response.lock().unwrap().pop_front() {
             Some(response) => Box::new(finished(response)),
-            None => Box::new(failed(ErrorKind::Unreachable.into())),
+            None => Box::new(failed(Error::Unreachable.into())),
         }
     }
 }

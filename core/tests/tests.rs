@@ -75,6 +75,14 @@ fn multiple_data_sources_per_subgraph() {
             true
         }
 
+        fn matches_call(&self, call: &EthereumCall) -> bool {
+            true
+        }
+
+        fn matches_block(&self, call: EthereumBlockTriggerType) -> bool {
+            true
+        }
+
         fn process_log(
             &self,
             _: Logger,
@@ -83,7 +91,28 @@ fn multiple_data_sources_per_subgraph() {
             _: Arc<Log>,
             _: BlockState,
         ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
-            unreachable!();
+            unimplemented!();
+        }
+
+        fn process_call(
+            &self,
+            logger: Logger,
+            block: Arc<EthereumBlock>,
+            transaction: Arc<Transaction>,
+            call: Arc<EthereumCall>,
+            state: BlockState,
+        ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
+            unimplemented!();
+        }
+
+        fn process_block(
+            &self,
+            logger: Logger,
+            block: Arc<EthereumBlock>,
+            trigger_type: EthereumBlockTriggerType,
+            state: BlockState,
+        ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
+            unimplemented!();
         }
     }
 

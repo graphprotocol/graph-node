@@ -419,7 +419,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         from: u64,
         to: u64,
         log_filter: Option<EthereumLogFilter>,
-        tx_filter: Option<EthereumCallFilter>,
+        call_filter: Option<EthereumCallFilter>,
         block_filter: Option<EthereumBlockFilter>,
     ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
 
