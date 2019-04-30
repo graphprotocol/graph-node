@@ -2,6 +2,7 @@ extern crate failure;
 extern crate futures;
 extern crate graph;
 extern crate jsonrpc_core;
+#[macro_use]
 extern crate lazy_static;
 
 mod block_ingestor;

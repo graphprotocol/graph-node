@@ -22,18 +22,6 @@ lazy_static! {
         .unwrap_or("4000000".into())
         .parse::<u64>()
         .expect("invalid fast scan end block number");
-
-    /// Number of chunks to request in parallel when streaming logs.
-    static ref LOG_STREAM_PARALLEL_CHUNKS: u64 = ::std::env::var("ETHEREUM_PARALLEL_BLOCK_RANGES")
-        .unwrap_or("5".into())
-        .parse::<u64>()
-        .expect("invalid number of parallel Ethereum block ranges to scan");
-
-    /// Number of blocks to request in each chunk.
-    static ref LOG_STREAM_CHUNK_SIZE_IN_BLOCKS: u64 = ::std::env::var("ETHEREUM_BLOCK_RANGE_SIZE")
-        .unwrap_or("10000".into())
-        .parse::<u64>()
-        .expect("invalid Ethereum block range size");
 }
 
 impl<T> EthereumAdapter<T>
