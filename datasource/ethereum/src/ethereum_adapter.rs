@@ -752,6 +752,9 @@ where
                 match block_filter.contract_addresses.len() {
                     0 => (),
                     _ => {
+                        // To determine which blocks include a call to addresses
+                        // in the block filter, transform the `block_filter` into
+                        // a `call_filter` and run `blocks_with_calls`
                         let call_filter = EthereumCallFilter::from(block_filter);
                         block_futs.push(Box::new(eth.blocks_with_calls(
                             &logger,
