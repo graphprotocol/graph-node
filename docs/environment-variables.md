@@ -26,8 +26,6 @@ in parallel for block retrieval (defaults to 64)
   parallel (defaults to 50)
 * `ETHEREUM_BLOCK_RANGE_SIZE` - number of blocks to scan for events in
   each request (defaults to 10000).
-* `ETHEREUM_PARALLEL_BLOCK_RANGES` - number of block ranges to scan
-  for events in parallel (defaults to 5).
 
 ## Running mapping handlers
 * `GRAPH_EVENT_HANDLER_TIMEOUT`: amount of time an event handler is allowed
