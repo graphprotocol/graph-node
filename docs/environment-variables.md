@@ -20,6 +20,10 @@ in parallel for block retrieval (defaults to 64)
   case by inquiring about a large range. The value of this variable
   is the block number at which we switch from probing large ranges to
   smaller ranges (defaults to 4000000)
+* `ETHEREUM_TRACE_STREAM_STEP_SIZE`: `graph-node` queries traces for a given block
+  range when a subgraph defines call handlers or block handlers with a call filter.
+  The value of this variable controls the number of blocks to scan in a single RPC request for traces
+  from the Ethereum node.
 * `DISABLE_BLOCK_INGESTOR`: set to `true` to disable block ingestion. Leave
   unset or set to `false` to leave block ingestion enabled.
 * `ETHEREUM_BLOCK_BATCH_SIZE`: number of Ethereum blocks to request in

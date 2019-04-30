@@ -21,7 +21,11 @@ lazy_static! {
     static ref LOG_STREAM_FAST_SCAN_END: u64 = ::std::env::var("ETHEREUM_FAST_SCAN_END")
         .unwrap_or("4000000".into())
         .parse::<u64>()
-        .expect("invalid fast scan end block number");
+        .expect("nvalid fast scan end block number");
+    static ref TRACE_STREAM_STEP_SIZE: u64 = ::std::env::var("ETHEREUM_TRACE_STREAM_STEP_SIZE")
+        .unwrap_or("200".into())
+        .parse::<u64>()
+        .expect("invalid trace stream step size");
 }
 
 impl<T> EthereumAdapter<T>
@@ -184,7 +188,7 @@ where
             if start > to {
                 return None;
             }
-            let end = (start + 200 - 1).min(to);
+            let end = (start + *TRACE_STREAM_STEP_SIZE - 1).min(to);
             let new_start = end + 1;
             if start == end {
                 debug!(logger, "Requesting traces for block {}", start);
