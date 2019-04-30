@@ -878,56 +878,56 @@ where
             .collect::<HashSet<H160>>()
             .into_iter()
             .collect::<Vec<H160>>();
-        let blocks = eth
-            .trace_stream(&logger, from, to, addresses)
-            .collect()
-            .map(move |trace_chunks| {
-                match trace_chunks.len() {
-                    0 => vec![],
-                    _ => {
-                        trace_chunks
-                            .iter()
-                            .flatten()
-                            .filter(|trace| {
-                                let is_call = match trace.action {
-                                    Action::Call(_) => true,
-                                    _ => false,
-                                };
-                                // Remove traces that are not for a call, do not have a result, or
-                                // are for a transaction which errored.
-                                if !is_call || trace.result.is_none() || trace.error.is_some() {
-                                    return false;
-                                }
-                                true
-                            })
-                            .map(EthereumCall::from)
-                            .filter(|call| {
-                                // `trace_filter` can only filter by calls `to` an address and
-                                // a block range. Since subgraphs are subscribing to calls
-                                // for a specific contract function an additional filter needs
-                                // to be applied
-                                call_filter.matches(&call)
-                            })
-                            .collect()
-                    }
-                }
-            })
-            .map(|calls| {
-                let mut block_ptrs = vec![];
-                for call in calls.iter() {
-                    let hash = call.block_hash;
-                    let number = call.block_number;
-                    let block_ptr = EthereumBlockPointer::from((hash, number));
-                    if !block_ptrs.contains(&block_ptr) {
-                        if let Some(prev) = block_ptrs.last() {
-                            assert!(prev.number < number);
+        Box::new(
+            eth.trace_stream(&logger, from, to, addresses)
+                .collect()
+                .map(move |trace_chunks| {
+                    match trace_chunks.len() {
+                        0 => vec![],
+                        _ => {
+                            trace_chunks
+                                .iter()
+                                .flatten()
+                                .filter(|trace| {
+                                    let is_call = match trace.action {
+                                        Action::Call(_) => true,
+                                        _ => false,
+                                    };
+                                    // Remove traces that are not for a call, do not have a result, or
+                                    // are for a transaction which errored.
+                                    if !is_call || trace.result.is_none() || trace.error.is_some() {
+                                        return false;
+                                    }
+                                    true
+                                })
+                                .map(EthereumCall::from)
+                                .filter(|call| {
+                                    // `trace_filter` can only filter by calls `to` an address and
+                                    // a block range. Since subgraphs are subscribing to calls
+                                    // for a specific contract function an additional filter needs
+                                    // to be applied
+                                    call_filter.matches(&call)
+                                })
+                                .collect()
                         }
-                        block_ptrs.push(block_ptr);
                     }
-                }
-                block_ptrs
-            });
-        Box::new(blocks)
+                })
+                .map(|calls| {
+                    let mut block_ptrs = vec![];
+                    for call in calls.iter() {
+                        let hash = call.block_hash;
+                        let number = call.block_number;
+                        let block_ptr = EthereumBlockPointer::from((hash, number));
+                        if !block_ptrs.contains(&block_ptr) {
+                            if let Some(prev) = block_ptrs.last() {
+                                assert!(prev.number < number);
+                            }
+                            block_ptrs.push(block_ptr);
+                        }
+                    }
+                    block_ptrs
+                }),
+        )
     }
 
     fn contract_call(
