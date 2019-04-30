@@ -14,7 +14,7 @@ fn unbounded_loop() {
         .unwrap_err();
     assert_eq!(
         err.to_string(),
-        "Trap: Trap { kind: Host(HostExportError(\"Event handler timed out\")) }"
+        "Trap: Trap { kind: Host(HostExportError(\"Mapping handler timed out\")) }"
     );
 }
 
