@@ -712,10 +712,14 @@ pub trait Store: Send + Sync + 'static {
         }?;
 
         // Get current active subgraph version ID
-        let current_version_id = match subgraph_entity
-            .get("currentVersion")
-            .ok_or_else(|| format_err!("Subgraph entity without `currentVersion`"))?
-        {
+        let current_version_id = match subgraph_entity.get("currentVersion").ok_or_else(|| {
+            format_err!(
+                "Subgraph entity has no `currentVersion`. \
+                 The subgraph may have been created but not deployed yet. Make sure \
+                 to run `graph deploy` to deploy the subgraph and have it start \
+                 indexing."
+            )
+        })? {
             Value::String(s) => s.to_owned(),
             Value::Null => return Ok(None),
             _ => {
