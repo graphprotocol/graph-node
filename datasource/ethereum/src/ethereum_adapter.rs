@@ -678,7 +678,8 @@ where
                 // Since we can only pull traces by block number and we have
                 // all the traces for the block, we need to ensure that the
                 // block hash for the traces is equal to the desired block hash.
-                if traces.iter().any(|trace| trace.block_hash != block_hash) {
+                // Assume all traces are for the same block.
+                if traces.iter().nth(0).unwrap().block_hash != block_hash {
                     return future::err(format_err!(
                         "Trace stream returned traces for an unexpected block: \
                          number = `{}`, hash = `{}`",
