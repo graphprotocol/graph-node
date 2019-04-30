@@ -15,6 +15,14 @@ use graph::prelude::{
 };
 use graph::web3::types::*;
 
+lazy_static! {
+    /// Number of blocks to request in each chunk.
+    static ref LOG_STREAM_CHUNK_SIZE_IN_BLOCKS: u64 = ::std::env::var("ETHEREUM_BLOCK_RANGE_SIZE")
+        .unwrap_or("10000".into())
+        .parse::<u64>()
+        .expect("invalid Ethereum block range size");
+}
+
 enum BlockStreamState {
     /// The BlockStream is new and has not yet been polled.
     ///
@@ -344,7 +352,7 @@ where
 
                         // But also avoid having too large a range to ensure subgraph block ptr is
                         // updated frequently.
-                        let to = cmp::min(from + (10_000 - 1), to_limit);
+                        let to = cmp::min(from + (*LOG_STREAM_CHUNK_SIZE_IN_BLOCKS - 1), to_limit);
 
                         debug!(ctx.logger, "Scanning blocks [{}, {}]", from, to);
                         Box::new(
