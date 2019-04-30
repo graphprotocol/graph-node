@@ -915,12 +915,11 @@ where
                 .map(|calls| {
                     let mut block_ptrs = vec![];
                     for call in calls.iter() {
-                        let hash = call.block_hash;
-                        let number = call.block_number;
-                        let block_ptr = EthereumBlockPointer::from((hash, number));
+                        let block_ptr =
+                            EthereumBlockPointer::from((call.block_hash, call.block_number));
                         if !block_ptrs.contains(&block_ptr) {
                             if let Some(prev) = block_ptrs.last() {
-                                assert!(prev.number < number);
+                                assert!(prev.number < call.block_number);
                             }
                             block_ptrs.push(block_ptr);
                         }
