@@ -190,7 +190,7 @@ impl SubgraphInstanceManager {
         // If we can't even clear the 'failed' flag, don't try to start
         // the subgraph.
         let status_ops = SubgraphDeploymentEntity::update_failed_operations(&manifest.id, false);
-        store.apply_entity_operations(status_ops, EventSource::None)?;
+        store.apply_entity_operations(status_ops, None)?;
 
         // Create copies of the data source templates; this creates a vector of
         // the form
@@ -405,8 +405,7 @@ where
                 // Set subgraph status to Failed
                 let status_ops =
                     SubgraphDeploymentEntity::update_failed_operations(&id_for_err, true);
-                if let Err(e) = store_for_err.apply_entity_operations(status_ops, EventSource::None)
-                {
+                if let Err(e) = store_for_err.apply_entity_operations(status_ops, None) {
                     error!(
                         logger_for_err,
                         "Failed to set subgraph status to Failed: {}", e;
