@@ -108,7 +108,7 @@ pub struct StoreConfig {
 pub struct Store {
     logger: Logger,
     subscriptions: Arc<RwLock<HashMap<String, Sender<StoreEvent>>>>,
-    // listen to StoreEvents emitted by emit_store_events
+    // listen to StoreEvents generated when applying entity operations
     listener: StoreEventListener,
     chain_head_update_listener: ChainHeadUpdateListener,
     network_name: String,
@@ -669,7 +669,21 @@ impl Store {
         let mut count = 0;
         let mut subgraph = None;
 
-        self.emit_store_events(econn.conn, &operations)?;
+        // Emit a store event for the changes we are about to make
+        let changes: Vec<_> = operations
+            .iter()
+            .filter_map(|op| EntityChange::from_entity_operation(op.clone()))
+            .collect();
+        let event = StoreEvent::new(changes);
+
+        trace!(self.logger, "Emit store event";
+                "tag" => event.tag,
+                "changes" => event.changes.len());
+
+        let v = serde_json::to_value(event)?;
+        JsonNotification::send("store_events", &v, econn.conn)?;
+
+        // Actually apply the operations
         for operation in operations.into_iter() {
             if subgraph.is_none() {
                 subgraph = operation
@@ -727,25 +741,6 @@ impl Store {
             self.build_entity_attribute_index_with_conn(conn, index)?;
         }
         Ok(())
-    }
-
-    fn emit_store_events(
-        &self,
-        conn: &PgConnection,
-        operations: &[EntityOperation],
-    ) -> Result<(), StoreError> {
-        let changes: Vec<_> = operations
-            .iter()
-            .filter_map(|op| EntityChange::from_entity_operation(op.clone()))
-            .collect();
-        let event = StoreEvent::new(changes);
-
-        trace!(self.logger, "Emit store event";
-                "tag" => event.tag,
-                "changes" => event.changes.len());
-
-        let v = serde_json::to_value(event)?;
-        JsonNotification::send("store_events", &v, conn)
     }
 
     fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
@@ -909,7 +904,6 @@ impl StoreTrait for Store {
             let history_event = econn.create_history_event(subgraph_id.clone(), event_source)?;
 
             // Apply the entity operations with the new block as the event source
-            self.emit_store_events(&conn, &operations)?;
             self.apply_entity_operations_with_conn(&econn, operations, Some(&history_event))?;
 
             // Update the subgraph block pointer, without an event source; this way
@@ -919,7 +913,6 @@ impl StoreTrait for Store {
                 block_ptr_from,
                 block_ptr_to,
             );
-            self.emit_store_events(&conn, &block_ptr_ops)?;
             self.apply_entity_operations_with_conn(&econn, block_ptr_ops, None)
         })?;
 
