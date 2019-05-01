@@ -799,35 +799,42 @@ impl StoreTrait for Store {
         subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
-        mut operations: Vec<EntityOperation>,
+        operations: Vec<EntityOperation>,
     ) -> Result<(), StoreError> {
         // Sanity check on block numbers
         if block_ptr_from.number != block_ptr_to.number - 1 {
             panic!("transact_block_operations must transact a single block only");
         }
 
-        // All operations should apply only to entities in this subgraph (or
-        // the subgraph of subgraphs)
-        for op in &operations {
-            if op.entity_key().subgraph_id != subgraph_id
+        // All operations should apply only to entities in this subgraph or
+        // the subgraph of subgraphs
+        if operations.iter().any(|op| {
+            op.entity_key().subgraph_id != subgraph_id
                 && *op.entity_key().subgraph_id != "subgraphs"
-            {
-                panic!("transact_block_operations must affect only entities in the subgraph");
-            }
+        }) {
+            panic!(
+                "transact_block_operations must affect only entities \
+                 in the subgraph or in the subgraph of subgraphs"
+            );
         }
 
-        // Update subgraph block pointer in same transaction
-        operations.append(
-            &mut SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
+        let conn = self.conn.get().map_err(Error::from)?;
+        let econn = e::Connection::new(&conn);
+
+        conn.transaction(|| {
+            // Apply the entity operations with the new block as the event source
+            let event_source = EventSource::EthereumBlock(block_ptr_to);
+            self.apply_entity_operations_with_conn(&econn, operations, event_source)?;
+
+            // Update the subgraph block pointer, without an event source; this way
+            // no entity history is recorded for the block pointer update itself
+            let block_ptr_ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
                 &subgraph_id,
                 block_ptr_from,
                 block_ptr_to,
-            ),
-        );
-
-        let event_source = EventSource::EthereumBlock(block_ptr_to);
-        self.apply_entity_operations(operations, event_source)
-            .map(|_| ())
+            );
+            self.apply_entity_operations_with_conn(&econn, block_ptr_ops, EventSource::None)
+        })
     }
 
     fn apply_entity_operations(
