@@ -257,6 +257,17 @@ impl<'a> Connection<'a> {
         table.conflicting_entity(self.conn, entity_id, entities)
     }
 
+    pub(crate) fn insert(
+        &self,
+        key: &EntityKey,
+        data: &serde_json::Value,
+        history_event: Option<&HistoryEvent>,
+    ) -> Result<usize, StoreError> {
+        let table = self.table(&key.subgraph_id)?;
+        table.insert(self.conn, key, data, history_event)
+    }
+
+    #[allow(dead_code)]
     pub(crate) fn upsert(
         &self,
         key: &EntityKey,
@@ -588,6 +599,54 @@ impl Table {
                             e, query_debug_info
                         ))
                     })
+            }
+        }
+    }
+
+    fn insert(
+        &self,
+        conn: &PgConnection,
+        key: &EntityKey,
+        data: &serde_json::Value,
+        history_event: Option<&HistoryEvent>,
+    ) -> Result<usize, StoreError> {
+        let event_source = HistoryEvent::to_event_source_string(&history_event);
+
+        match self {
+            Table::Public(subgraph) => Ok(insert_into(public::entities::table)
+                .values((
+                    public::entities::id.eq(&key.entity_id),
+                    public::entities::entity.eq(&key.entity_type),
+                    public::entities::subgraph.eq(subgraph.to_string()),
+                    public::entities::data.eq(data),
+                    public::entities::event_source.eq(&event_source),
+                ))
+                .execute(conn)?),
+            Table::Split(entities) => {
+                // Since we are not using a subgraphs.entities table trigger for
+                // the history of the subgraph of subgraphs, write entity_history
+                // data for the subgraph of subgraphs directly
+                if history_event.is_some() && *key.subgraph_id == "subgraphs" {
+                    let history_event = history_event.unwrap();
+                    self.add_entity_history_record(
+                        conn,
+                        history_event,
+                        false,
+                        &key,
+                        OperationType::Insert,
+                    )?;
+                }
+
+                Ok(diesel::sql_query(format!(
+                    "insert into {}.entities(entity, id, data, event_source)
+                         values($1, $2, $3, $4)",
+                    entities.schema
+                ))
+                .bind::<Text, _>(&key.entity_type)
+                .bind::<Text, _>(&key.entity_id)
+                .bind::<Jsonb, _>(&data)
+                .bind::<Text, _>(&event_source)
+                .execute(conn)?)
             }
         }
     }
