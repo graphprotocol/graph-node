@@ -76,9 +76,9 @@ pub mod prelude {
     pub use crate::components::server::subscription::SubscriptionServer;
     pub use crate::components::store::{
         AttributeIndexDefinition, ChainStore, EntityChange, EntityChangeOperation, EntityFilter,
-        EntityKey, EntityOperation, EntityOrder, EntityQuery, EntityRange, EventSource, Store,
-        StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, SubgraphDeploymentStore,
-        TransactionAbortError, SUBSCRIPTION_THROTTLE_INTERVAL,
+        EntityKey, EntityOperation, EntityOrder, EntityQuery, EntityRange, EventSource,
+        HistoryEvent, Store, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox,
+        SubgraphDeploymentStore, TransactionAbortError, SUBSCRIPTION_THROTTLE_INTERVAL,
     };
     pub use crate::components::subgraph::{
         BlockState, DataSourceLoader, DataSourceTemplateInfo, RuntimeHost, RuntimeHostBuilder,

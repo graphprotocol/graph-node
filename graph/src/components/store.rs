@@ -564,6 +564,19 @@ impl fmt::Display for EventSource {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct HistoryEvent {
+    pub id: i32,
+    pub subgraph: SubgraphDeploymentId,
+    pub source: EventSource,
+}
+
+impl HistoryEvent {
+    pub fn to_event_source_string(event: &Option<&HistoryEvent>) -> String {
+        event.map_or(String::from("none"), |event| event.source.to_string())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AttributeIndexDefinition {
     pub subgraph_id: SubgraphDeploymentId,
