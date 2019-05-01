@@ -187,7 +187,7 @@ impl SubgraphInstanceManager {
         // If we can't even clear the 'failed' flag, don't try to start
         // the subgraph.
         let status_ops = SubgraphDeploymentEntity::update_failed_operations(&manifest.id, false);
-        store.apply_entity_operations(status_ops, None)?;
+        store.start_subgraph_deployment(&manifest.id, status_ops)?;
 
         // Create copies of the data source templates; this creates a vector of
         // the form

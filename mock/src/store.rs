@@ -336,6 +336,14 @@ impl Store for MockStore {
     ) -> Result<(), StoreError> {
         self.apply_entity_operations(ops, None)
     }
+
+    fn start_subgraph_deployment(
+        &self,
+        _subgraph_id: &SubgraphDeploymentId,
+        ops: Vec<EntityOperation>,
+    ) -> Result<(), StoreError> {
+        self.apply_entity_operations(ops, None)
+    }
 }
 
 impl SubgraphDeploymentStore for MockStore {
@@ -475,6 +483,14 @@ impl Store for FakeStore {
     }
 
     fn create_subgraph_deployment(
+        &self,
+        _subgraph_id: &SubgraphDeploymentId,
+        _ops: Vec<EntityOperation>,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn start_subgraph_deployment(
         &self,
         _subgraph_id: &SubgraphDeploymentId,
         _ops: Vec<EntityOperation>,

@@ -1005,6 +1005,16 @@ pub trait Store: Send + Sync + 'static {
         subgraph_id: &SubgraphDeploymentId,
         ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError>;
+
+    /// Start an existing subgraph deployment. This will reset the state of
+    /// the subgraph to a known good state. `ops` needs to contain all the
+    /// operations on the subgraph of subgraphs to reset the metadata of the
+    /// subgraph
+    fn start_subgraph_deployment(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+        ops: Vec<EntityOperation>,
+    ) -> Result<(), StoreError>;
 }
 
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {

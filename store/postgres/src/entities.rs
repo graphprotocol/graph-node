@@ -314,6 +314,18 @@ impl<'a> Connection<'a> {
         }
     }
 
+    /// Do any cleanup to bring the subgraph into a known good state
+    pub(crate) fn start_subgraph(&self, subgraph: &SubgraphDeploymentId) -> Result<(), StoreError> {
+        use public::deployment_schemas as dsl;
+
+        Ok(
+            diesel::update(dsl::table.filter(dsl::subgraph.eq(subgraph.to_string())))
+                .set(dsl::migrating.eq(false))
+                .execute(self.conn)
+                .map(|_| ())?,
+        )
+    }
+
     pub(crate) fn find(
         &self,
         subgraph: &SubgraphDeploymentId,
