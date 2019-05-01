@@ -2,7 +2,7 @@ use diesel::connection::SimpleConnection;
 use diesel::deserialize::QueryableByName;
 use diesel::dsl::{any, sql};
 use diesel::pg::{Pg, PgConnection};
-use diesel::sql_types::{Integer, Jsonb, Nullable, Text};
+use diesel::sql_types::{Bool, Integer, Jsonb, Nullable, Text};
 use diesel::BoolExpressionMethods;
 use diesel::ExpressionMethods;
 use diesel::{debug_query, insert_into};
@@ -791,6 +791,76 @@ impl Table {
         }
     }
 
+    /// This takes a history event, a reversion flag, an entity key to create
+    /// the history record for and an operation type (e.g. `OperationType::Insert`).
+    /// It then creates an entry in the subgraph's `entity_history` table.
+    ///
+    /// Special casing is applied for the "public.entities" and "subgraphs.entities"
+    /// tables, as their history records include the subgraph ID in the "subgraph"
+    /// column.
+    fn add_entity_history_record(
+        &self,
+        conn: &PgConnection,
+        history_event: &HistoryEvent,
+        reversion: bool,
+        key: &EntityKey,
+        operation: OperationType,
+    ) -> Result<(), Error> {
+        let schema = match self {
+            Table::Public(_) => "public",
+            Table::Split(split_table) => split_table.schema.as_str(),
+        };
+
+        if schema == "public" || schema == "subgraphs" {
+            diesel::sql_query(format!(
+                "insert into {}.entity_history(
+                     event_id,
+                     subgraph, entity, entity_id,
+                     data_before, reversion, op_id
+                 )
+                 select
+                     $1 as event_id,
+                     $2 as subgraph,
+                     $3 as entity,
+                     $4 as entity_id,
+                     (select data from {}.entities where entity = $3 and id = $4) as data_before,
+                     $5 as reversion,
+                     $6 as op_id",
+                schema, schema,
+            ))
+            .bind::<Integer, _>(history_event.id)
+            .bind::<Text, _>(&schema)
+            .bind::<Text, _>(&key.entity_type)
+            .bind::<Text, _>(&key.entity_id)
+            .bind::<Bool, _>(&reversion)
+            .bind::<Integer, i32>(operation.into())
+            .execute(conn)?;
+        } else {
+            diesel::sql_query(format!(
+                "insert into {}.entity_history(
+                    event_id,
+                    entity, entity_id,
+                    data_before, reversion, op_id
+                )
+                select
+                    $1 as event_id,
+                    $2 as entity,
+                    $3 as entity_id,
+                    (select data from {}.entities where entity = $2 and id = $3) as data_before,
+                    $4 as reversion,
+                    $5 as op_id",
+                schema, schema
+            ))
+            .bind::<Integer, _>(history_event.id)
+            .bind::<Text, _>(&key.entity_type)
+            .bind::<Text, _>(&key.entity_id)
+            .bind::<Bool, _>(&reversion)
+            .bind::<Integer, i32>(operation.into())
+            .execute(conn)?;
+        }
+
+        Ok(())
+    }
     /// Revert the block with the given `block_ptr` which must be the hash
     /// of the block to revert. The returned `StoreEvent` reflects the changes
     /// that were made during reversion
