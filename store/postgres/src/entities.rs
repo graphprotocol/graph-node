@@ -288,7 +288,7 @@ pub(crate) enum Table {
 /// entity storage, such as migrating a subgraph from the monolithic
 /// entities table to a split entities table
 pub(crate) struct Connection<'a> {
-    conn: &'a PgConnection,
+    pub conn: &'a PgConnection,
     tables: RefCell<HashMap<SubgraphDeploymentId, Table>>,
 }
 

@@ -658,7 +658,7 @@ impl Store {
     /// Apply a series of entity operations in Postgres.
     fn apply_entity_operations_with_conn(
         &self,
-        conn: &e::Connection,
+        econn: &e::Connection,
         operations: Vec<EntityOperation>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<(), StoreError> {
@@ -669,6 +669,7 @@ impl Store {
         let mut count = 0;
         let mut subgraph = None;
 
+        self.emit_store_events(econn.conn, &operations)?;
         for operation in operations.into_iter() {
             if subgraph.is_none() {
                 subgraph = operation
@@ -690,12 +691,12 @@ impl Store {
                 Some(subgraph) => !subgraph.is_meta(),
                 None => false,
             };
-            let n = self.apply_entity_operation(conn, operation, history_event.clone())?;
+            let n = self.apply_entity_operation(econn, operation, history_event.clone())?;
             if do_count {
                 count += n;
             }
         }
-        conn.update_entity_count(subgraph, count)
+        econn.update_entity_count(subgraph, count)
     }
 
     /// Build a partial Postgres index on a Subgraph-Entity-Attribute
@@ -935,7 +936,6 @@ impl StoreTrait for Store {
         let conn = self.get_conn().map_err(Error::from)?;
         let econn = e::Connection::new(&conn);
         conn.transaction(|| {
-            self.emit_store_events(&conn, &operations)?;
             self.apply_entity_operations_with_conn(&econn, operations, history_event.as_ref())
         })
     }
@@ -968,7 +968,6 @@ impl StoreTrait for Store {
                 block_ptr_from,
                 block_ptr_to,
             );
-            self.emit_store_events(&conn, &ops)?;
             self.apply_entity_operations_with_conn(&econn, ops, None)?;
 
             let (event, count) = econn.revert_block(&subgraph_id, block_ptr_from.hash_hex())?;
@@ -1016,7 +1015,6 @@ impl StoreTrait for Store {
         let econn = e::Connection::new(&conn);
 
         conn.transaction(|| {
-            self.emit_store_events(&conn, &ops)?;
             self.apply_entity_operations_with_conn(&econn, ops, None)?;
             crate::entities::create_schema(&conn, subgraph_id)
         })
@@ -1031,7 +1029,6 @@ impl StoreTrait for Store {
         let econn = e::Connection::new(&conn);
 
         conn.transaction(|| {
-            self.emit_store_events(&conn, &ops)?;
             self.apply_entity_operations_with_conn(&econn, ops, None)?;
             econn.start_subgraph(subgraph_id)
         })
