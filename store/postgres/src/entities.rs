@@ -364,9 +364,9 @@ impl SplitTable {
             // we need to use a direct query since diesel::update does not like
             // dynamic tables.
             let query = format!(
-                "UPDATE {}.entities
-                   SET data = data || $3, event_source = $4
-                   WHERE entity = $1 AND id = $2",
+                "update {}.entities
+                 set data = data || $3, event_source = $4
+                 where entity = $1 and id = $2",
                 self.schema
             );
             let query = diesel::sql_query(query)
@@ -597,10 +597,10 @@ impl Table {
                 .execute(conn)?),
             Table::Split(entities) => {
                 let query = format!(
-                    "INSERT into {}.entities(entity, id, data, event_source)
-                                VALUES($1, $2, $3, $4)
-                                ON CONFLICT(entity, id)
-                                DO UPDATE SET data = $3, event_source = $4",
+                    "insert into {}.entities(entity, id, data, event_source)
+                     values($1, $2, $3, $4)
+                     on conflict(entity, id)
+                     do update set data = $3, event_source = $4",
                     entities.schema
                 );
                 let query = diesel::sql_query(query)
@@ -675,8 +675,9 @@ impl Table {
             .execute(conn)?),
             Table::Split(entities) => {
                 let query = format!(
-                    "DELETE FROM {}.entities
-                    WHERE entity = $1 AND id = $2",
+                    "delete from {}.entities
+                     where entity = $1
+                       and id = $2",
                     entities.schema
                 );
                 let query = diesel::sql_query(query)
@@ -792,11 +793,11 @@ impl Table {
                 // does not implement AppearsInFromClause, so we have to run
                 // a raw SQL query
                 let query = format!(
-                    "SELECT h.id, h.entity, h.entity_id, h.data_before, h.op_id
-                    FROM {}.entity_history h, event_meta_data m
-                    WHERE m.id = h.event_id
-                      AND m.source = $1
-                    ORDER BY h.event_id desc",
+                    "select h.id, h.entity, h.entity_id, h.data_before, h.op_id
+                     from {}.entity_history h, event_meta_data m
+                     where m.id = h.event_id
+                       and m.source = $1
+                     order by h.event_id desc",
                     entities.schema
                 );
 
@@ -899,17 +900,23 @@ impl Table {
                     "{}_{}_{}_idx",
                     &index.subgraph_id, index.entity_number, index.attribute_number,
                 );
-                let query = format!("
-                    create index if not exists {name} on public.entities 
-                    using {index_type} ((data->'{attribute_name}'{jsonb_operator}'data') {index_operator})
-                    where subgraph='{subgraph}' and entity='{entity_name}'",
-                    name=index_name,
-                    index_type=index_type,
-                    attribute_name=&index.attribute_name,
-                    jsonb_operator=jsonb_operator,
-                    index_operator=index_operator,
-                    subgraph=index.subgraph_id.to_string(),
-                    entity_name=&index.entity_name);
+                let query = format!(
+                    "create index if not exists {name}
+                     on public.entities
+                     using {index_type} (
+                        (data->'{attribute_name}'{jsonb_operator}'data')
+                        {index_operator}
+                     )
+                     where subgraph='{subgraph}'
+                       and entity='{entity_name}'",
+                    name = index_name,
+                    index_type = index_type,
+                    attribute_name = &index.attribute_name,
+                    jsonb_operator = jsonb_operator,
+                    index_operator = index_operator,
+                    subgraph = index.subgraph_id.to_string(),
+                    entity_name = &index.entity_name
+                );
                 conn.batch_execute(&*query)?;
                 Ok(1)
             }
@@ -928,17 +935,22 @@ impl Table {
                     to_snake_case(&index.entity_name),
                     to_snake_case(&index.attribute_name)
                 );
-                let query = format!("
-                    create index if not exists {name} on {subgraph}.entities 
-                    using {index_type} ((data->'{attribute_name}'{jsonb_operator}'data') {index_operator})
-                    where entity='{entity_name}'",
-                    name=name,
-                    subgraph=entities.schema,
-                    index_type=index_type,
-                    attribute_name=&index.attribute_name,
-                    jsonb_operator=jsonb_operator,
-                    index_operator=index_operator,
-                    entity_name=&index.entity_name);
+                let query = format!(
+                    "create index if not exists {name}
+                     on {subgraph}.entities
+                     using {index_type} (
+                         (data->'{attribute_name}'{jsonb_operator}'data')
+                         {index_operator}
+                     )
+                     where entity='{entity_name}'",
+                    name = name,
+                    subgraph = entities.schema,
+                    index_type = index_type,
+                    attribute_name = &index.attribute_name,
+                    jsonb_operator = jsonb_operator,
+                    index_operator = index_operator,
+                    entity_name = &index.entity_name
+                );
                 conn.batch_execute(&*query)?;
                 Ok(1)
             }
@@ -996,19 +1008,19 @@ pub(crate) fn create_schema(
 
     let query = format!(
         "create trigger entity_change_insert_trigger
-            after insert on {schema}.entities
-            for each row
-            execute procedure subgraph_log_entity_event()",
+         after insert on {schema}.entities
+         for each row
+         execute procedure subgraph_log_entity_event()",
         schema = schema_name
     );
     conn.batch_execute(&*query)?;
 
     let query = format!(
         "create trigger entity_change_update_trigger
-            after update on {schema}.entities
-            for each row
-            when (old.data != new.data)
-            execute procedure subgraph_log_entity_event()",
+         after update on {schema}.entities
+         for each row
+         when (old.data != new.data)
+         execute procedure subgraph_log_entity_event()",
         schema = schema_name
     );
     conn.batch_execute(&*query)?;
@@ -1025,20 +1037,21 @@ pub(crate) fn create_schema(
     let query = format!(
         "create table {}.entity_history (
             id           serial primary key,
-	        event_id     integer references event_meta_data(id)
+	          event_id     integer references event_meta_data(id)
                              on update cascade on delete cascade,
             entity       varchar not null,
-	        entity_id    varchar not null,
-	        data_before  jsonb,
-	        reversion    bool not null default false,
-	        op_id        int2 NOT NULL)",
+	          entity_id    varchar not null,
+	          data_before  jsonb,
+	          reversion    bool not null default false,
+	          op_id        int2 NOT NULL
+         )",
         schema_name
     );
     conn.batch_execute(&*query)?;
 
     let query = format!(
         "create index entity_history_event_id_btree_idx
-            on {}.entity_history(event_id)",
+         on {}.entity_history(event_id)",
         schema_name
     );
     conn.batch_execute(&*query)?;
