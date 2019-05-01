@@ -710,6 +710,20 @@ impl Store {
         }
         conn.map_err(Error::from)
     }
+
+    /// Creates a history event to use when applying entity operations.
+    pub fn create_history_event(
+        &self,
+        subgraph: SubgraphDeploymentId,
+        event_source: EventSource,
+    ) -> Result<HistoryEvent, Error> {
+        let conn = self
+            .conn
+            .get()
+            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+        let conn = e::Connection::new(&conn);
+        conn.create_history_event(subgraph, event_source)
+    }
 }
 
 impl StoreTrait for Store {
