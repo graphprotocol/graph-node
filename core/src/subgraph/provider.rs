@@ -134,7 +134,7 @@ where
                 .map_err(move |e| {
                     let _ = store.apply_entity_operations(
                         SubgraphDeploymentEntity::update_failed_operations(&subgraph_id, true),
-                        EventSource::None,
+                        None,
                     );
                     e
                 }),

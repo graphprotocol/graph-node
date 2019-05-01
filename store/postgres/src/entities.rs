@@ -272,10 +272,10 @@ impl<'a> Connection<'a> {
         &self,
         key: &EntityKey,
         data: &serde_json::Value,
-        event_source: EventSource,
+        history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         let table = self.table(&key.subgraph_id)?;
-        table.upsert(self.conn, key, data, event_source)
+        table.upsert(self.conn, key, data, history_event)
     }
 
     pub(crate) fn update(
@@ -283,19 +283,19 @@ impl<'a> Connection<'a> {
         key: &EntityKey,
         data: &serde_json::Value,
         guard: Option<EntityFilter>,
-        event_source: EventSource,
+        history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         let table = self.table(&key.subgraph_id)?;
-        table.update(self.conn, key, data, guard, event_source)
+        table.update(self.conn, key, data, guard, history_event)
     }
 
     pub(crate) fn delete(
         &self,
         key: &EntityKey,
-        event_source: EventSource,
+        history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         let table = self.table(&key.subgraph_id)?;
-        table.delete(self.conn, key, event_source)
+        table.delete(self.conn, key, history_event)
     }
 
     pub(crate) fn build_attribute_index(
@@ -361,7 +361,7 @@ impl SplitTable {
         key: &EntityKey,
         data: &serde_json::Value,
         guard: Option<EntityFilter>,
-        event_source: EventSource,
+        history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         if !guard.is_none() && key.subgraph_id != *SUBGRAPHS_ID {
             // We can only make adding additional conditions to the update
@@ -372,6 +372,9 @@ impl SplitTable {
             // the subgraph of subgraphs
             panic!("update guards are only possible for the 'subgraphs' subgraph");
         }
+
+        let event_source = HistoryEvent::to_event_source_string(&history_event);
+
         if let Some(filter) = guard {
             // Update for subgraph of subgraphs with a guard
             use self::subgraphs::entities;
@@ -390,7 +393,7 @@ impl SplitTable {
             Ok(diesel::update(target)
                 .set((
                     entities::data.eq(entities::data.merge(&data)),
-                    entities::event_source.eq(event_source.to_string()),
+                    entities::event_source.eq(&event_source),
                 ))
                 .filter(filter)
                 .execute(conn)?)
@@ -408,7 +411,7 @@ impl SplitTable {
                 .bind::<Text, _>(&key.entity_type)
                 .bind::<Text, _>(&key.entity_id)
                 .bind::<Jsonb, _>(data)
-                .bind::<Text, _>(event_source.to_string());
+                .bind::<Text, _>(&event_source);
             query.execute(conn).map_err(|e| {
                 format_err!(
                     "Failed to update entity ({}, {}, {}): {}",
@@ -656,8 +659,10 @@ impl Table {
         conn: &PgConnection,
         key: &EntityKey,
         data: &serde_json::Value,
-        event_source: EventSource,
+        history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
+        let event_source = HistoryEvent::to_event_source_string(&history_event);
+
         match self {
             Table::Public(subgraph) => Ok(insert_into(public::entities::table)
                 .values((
@@ -665,7 +670,7 @@ impl Table {
                     public::entities::entity.eq(&key.entity_type),
                     public::entities::subgraph.eq(subgraph.to_string()),
                     public::entities::data.eq(data),
-                    public::entities::event_source.eq(&event_source.to_string()),
+                    public::entities::event_source.eq(&event_source),
                 ))
                 .on_conflict((
                     public::entities::id,
@@ -675,7 +680,7 @@ impl Table {
                 .do_update()
                 .set((
                     public::entities::data.eq(data),
-                    public::entities::event_source.eq(&event_source.to_string()),
+                    public::entities::event_source.eq(&event_source),
                 ))
                 .execute(conn)?),
             Table::Split(entities) => {
@@ -690,7 +695,7 @@ impl Table {
                     .bind::<Text, _>(&key.entity_type)
                     .bind::<Text, _>(&key.entity_id)
                     .bind::<Jsonb, _>(data)
-                    .bind::<Text, _>(event_source.to_string());
+                    .bind::<Text, _>(event_source);
                 Ok(query.execute(conn)?)
             }
         }
@@ -702,8 +707,10 @@ impl Table {
         key: &EntityKey,
         data: &serde_json::Value,
         guard: Option<EntityFilter>,
-        event_source: EventSource,
+        history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
+        let event_source = HistoryEvent::to_event_source_string(&history_event);
+
         match self {
             Table::Public(subgraph) => {
                 let target = public::entities::table
@@ -713,7 +720,7 @@ impl Table {
 
                 let query = diesel::update(target).set((
                     public::entities::data.eq(public::entities::data.merge(data)),
-                    public::entities::event_source.eq(event_source.to_string()),
+                    public::entities::event_source.eq(&event_source),
                 ));
 
                 match guard {
@@ -729,7 +736,23 @@ impl Table {
                     None => Ok(query.execute(conn)?),
                 }
             }
-            Table::Split(entities) => entities.update(conn, key, data, guard, event_source),
+            Table::Split(entities) => {
+                // Since we are not using a subgraphs.entities table trigger for
+                // the history of the subgraph of subgraphs, write entity_history
+                // data for the subgraph of subgraphs directly
+                if history_event.is_some() && *key.subgraph_id == "subgraphs" {
+                    let history_event = history_event.unwrap();
+                    self.add_entity_history_record(
+                        conn,
+                        history_event,
+                        false,
+                        &key,
+                        OperationType::Update,
+                    )?;
+                }
+
+                entities.update(conn, key, data, guard, history_event)
+            }
         }
     }
 
@@ -737,11 +760,11 @@ impl Table {
         &self,
         conn: &PgConnection,
         key: &EntityKey,
-        event_source: EventSource,
+        history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         diesel::select(set_config(
             "vars.current_event_source",
-            event_source.to_string(),
+            HistoryEvent::to_event_source_string(&history_event),
             true,
         ))
         .execute(conn)
@@ -757,6 +780,20 @@ impl Table {
             )
             .execute(conn)?),
             Table::Split(entities) => {
+                // Since we are not using a subgraphs.entities table trigger for
+                // the history of the subgraph of subgraphs, write entity_history
+                // data for the subgraph of subgraphs directly
+                if history_event.is_some() && *key.subgraph_id == "subgraphs" {
+                    let history_event = history_event.unwrap();
+                    self.add_entity_history_record(
+                        conn,
+                        history_event,
+                        false,
+                        &key,
+                        OperationType::Delete,
+                    )?;
+                }
+
                 let query = format!(
                     "delete from {}.entities
                      where entity = $1
@@ -973,13 +1010,13 @@ impl Table {
             match history.op {
                 0 => {
                     // Reverse an insert
-                    self.delete(conn, &key, EventSource::None)?;
+                    self.delete(conn, &key, None)?;
                     count -= 1;
                 }
                 1 | 2 => {
                     // Reverse an update or delete
                     if let Some(data) = history.data {
-                        self.upsert(conn, &key, &data, EventSource::None)?;
+                        self.upsert(conn, &key, &data, None)?;
                     } else {
                         return Err(StoreError::Unknown(format_err!(
                             "History entry for update/delete has NULL data_before. id={}, op={}",

@@ -165,7 +165,7 @@ impl Store for MockStore {
     fn apply_entity_operations(
         &self,
         ops: Vec<EntityOperation>,
-        _: EventSource,
+        _: Option<HistoryEvent>,
     ) -> Result<(), StoreError> {
         let mut entities_ref = self.entities.lock().unwrap();
 
@@ -330,7 +330,7 @@ impl Store for MockStore {
         _subgraph_id: &SubgraphDeploymentId,
         ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError> {
-        self.apply_entity_operations(ops, EventSource::None)
+        self.apply_entity_operations(ops, None)
     }
 }
 
@@ -437,7 +437,7 @@ impl Store for FakeStore {
     fn apply_entity_operations(
         &self,
         _: Vec<EntityOperation>,
-        _: EventSource,
+        _: Option<HistoryEvent>,
     ) -> Result<(), StoreError> {
         Ok(())
     }

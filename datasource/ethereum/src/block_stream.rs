@@ -802,7 +802,7 @@ where
             }
 
             self.subgraph_store
-                .apply_entity_operations(ops, EventSource::None)
+                .apply_entity_operations(ops, None)
                 .map_err(|e| format_err!("Failed to set deployment synced flag: {}", e))
         }
     }
@@ -820,7 +820,7 @@ where
                     head_ptr.number,
                 );
                 self.subgraph_store
-                    .apply_entity_operations(ops, EventSource::None)
+                    .apply_entity_operations(ops, None)
                     .map_err(|e| format_err!("Failed to set subgraph block count: {}", e))
             }
         }

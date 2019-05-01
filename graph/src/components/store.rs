@@ -559,14 +559,12 @@ impl EntityOperation {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum EventSource {
-    None,
     EthereumBlock(EthereumBlockPointer),
 }
 
 impl fmt::Display for EventSource {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            EventSource::None => f.write_str("none"),
             EventSource::EthereumBlock(block_ptr) => f.write_str(&block_ptr.hash_hex()),
         }
     }
@@ -690,7 +688,7 @@ pub trait Store: Send + Sync + 'static {
     fn apply_entity_operations(
         &self,
         operations: Vec<EntityOperation>,
-        event_source: EventSource,
+        history_event: Option<HistoryEvent>,
     ) -> Result<(), StoreError>;
 
     /// Build indexes for a set of subgraph entity attributes

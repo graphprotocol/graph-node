@@ -372,7 +372,7 @@ fn create_subgraph(
     let entity_id = generate_entity_id();
     ops.extend(entity.write_operations(&entity_id));
 
-    store.apply_entity_operations(ops, EventSource::None)?;
+    store.apply_entity_operations(ops, None)?;
 
     debug!(logger, "Created subgraph"; "subgraph_name" => name.to_string());
 
@@ -647,7 +647,7 @@ fn create_subgraph_version(
     // Commit entity ops
     let manifest_id = manifest.id.to_string();
     if deployment_exists {
-        store.apply_entity_operations(ops, EventSource::None)?
+        store.apply_entity_operations(ops, None)?
     } else {
         store.create_subgraph_deployment(&manifest.id, ops)?;
     }
@@ -731,7 +731,7 @@ fn remove_subgraph(
         key: SubgraphEntity::key(subgraph_entity.id()?),
     });
 
-    store.apply_entity_operations(ops, EventSource::None)?;
+    store.apply_entity_operations(ops, None)?;
 
     debug!(logger, "Removed subgraph"; "subgraph_name" => name.to_string());
 
