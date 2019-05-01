@@ -23,6 +23,22 @@ use crate::filter::{build_filter, store_filter};
 use crate::functions::set_config;
 use crate::jsonb::PgJsonbExpressionMethods as _;
 
+enum OperationType {
+    Insert,
+    Update,
+    Delete,
+}
+
+impl Into<i32> for OperationType {
+    fn into(self) -> i32 {
+        match self {
+            OperationType::Insert => 0,
+            OperationType::Update => 1,
+            OperationType::Delete => 2,
+        }
+    }
+}
+
 /// Marker trait for tables that store entities
 pub(crate) trait EntitySource {}
 
