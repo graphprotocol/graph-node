@@ -3108,7 +3108,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.6.0"
-source = "git+https://github.com/graphprotocol/rust-web3?branch=trace-struct-pre-ethereum-types#80b904fa1ab95136d3ea02d6e6e3159f180d6727"
+source = "git+https://github.com/graphprotocol/rust-web3?branch=trace-struct-pre-ethereum-types#1fc69c52ff9faf953db0cc5611f2d339ec14406b"
 dependencies = [
  "arrayvec 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "base64 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
