@@ -28,7 +28,7 @@ fn insert_and_query(
         .apply_entity_operations(
             SubgraphDeploymentEntity::new(&manifest, false, false, Default::default(), 1)
                 .create_operations_replace(&subgraph_id),
-            EventSource::None,
+            None,
         )
         .unwrap();
 
@@ -43,7 +43,7 @@ fn insert_and_query(
             data,
         });
 
-    STORE.apply_entity_operations(insert_ops.collect(), EventSource::None)?;
+    STORE.apply_entity_operations(insert_ops.collect(), None)?;
 
     let logger = Logger::root(slog::Discard, o!());
     let resolver = StoreResolver::new(&logger, STORE.clone());

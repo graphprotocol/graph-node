@@ -116,7 +116,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         .apply_entity_operations(
             SubgraphDeploymentEntity::new(&manifest, false, false, *TEST_BLOCK_0_PTR, 1)
                 .create_operations(&*TEST_SUBGRAPH_ID),
-            EventSource::None,
+            None,
         )
         .unwrap();
 
@@ -1420,10 +1420,14 @@ fn subscribe_and_consume(
         H256::from("0xf1ead03f5811aa2eacbb14e90cc62bd23003086562be21fcea4292a7aa6d9d85"),
         42u64,
     ));
-    let source = EventSource::EthereumBlock(block_ptr);
+    let history_event = Some(HistoryEvent {
+        id: 0,
+        subgraph: subgraph.clone(),
+        source: EventSource::EthereumBlock(block_ptr),
+    });
 
     store
-        .apply_entity_operations(vec![op], source.clone())
+        .apply_entity_operations(vec![op], history_event.clone())
         .expect("Failed to apply marker operation");
 
     let source = subscription
@@ -1674,7 +1678,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             .apply_entity_operations(
                 SubgraphDeploymentEntity::new(&manifest, false, false, *TEST_BLOCK_0_PTR, 1)
                     .create_operations(&subgraph_id),
-                EventSource::None,
+                None,
             )
             .unwrap();
 
