@@ -420,20 +420,25 @@ impl Store {
         Ok(())
     }
 
-    /// Applies a set operation in Postgres.
+    /// Applies a set operation in Postgres. Returns `1` if this is a new
+    /// entity, and `0` if it is an existing entity
     fn apply_set_operation(
         &self,
         conn: &e::Connection,
         key: EntityKey,
         data: Entity,
         event_source: EventSource,
-    ) -> Result<(), StoreError> {
+    ) -> Result<i32, StoreError> {
         self.check_interface_entity_uniqueness(conn, &key)?;
 
         // Load the entity if exists
         let existing_entity = self
             .get_entity(conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
             .map_err(Error::from)?;
+        let count = match existing_entity {
+            None => 1,
+            Some(_) => 0,
+        };
 
         // Apply the operation
         let operation = EntityOperation::Set {
@@ -454,8 +459,8 @@ impl Store {
 
         // Either add or update the entity in Postgres
         conn.upsert(&key, &updated_json, event_source)
-            .map(|_| ())
-            .map_err(|e| {
+            .map(|_| count)
+            .map_err::<StoreError, _>(|e| {
                 format_err!(
                     "Failed to set entity ({}, {}, {}): {}",
                     key.subgraph_id,
@@ -475,7 +480,7 @@ impl Store {
         data: Entity,
         guard: Option<EntityFilter>,
         event_source: EventSource,
-    ) -> Result<(), StoreError> {
+    ) -> Result<i32, StoreError> {
         self.check_interface_entity_uniqueness(conn, &key)?;
 
         let json: serde_json::Value = serde_json::to_value(&data).map_err(|e| {
@@ -496,7 +501,7 @@ impl Store {
                 description: "update did not change any rows".to_owned(),
             }
             .into()),
-            1 => Ok(()),
+            1 => Ok(0),
             res => Err(TransactionAbortError::AbortUnless {
                 expected_entity_ids: vec![key.entity_id.clone()],
                 actual_entity_ids: vec![],
@@ -512,17 +517,20 @@ impl Store {
         conn: &e::Connection,
         key: EntityKey,
         event_source: EventSource,
-    ) -> Result<(), StoreError> {
-        conn.delete(&key, event_source).map(|_| ()).map_err(|e| {
-            format_err!(
-                "Failed to remove entity ({}, {}, {}): {}",
-                key.subgraph_id,
-                key.entity_type,
-                key.entity_id,
-                e
-            )
-            .into()
-        })
+    ) -> Result<i32, StoreError> {
+        conn.delete(&key, event_source)
+            // This conversion is ok since n will only be 0 or 1
+            .map(|n| -(n as i32))
+            .map_err(|e| {
+                format_err!(
+                    "Failed to remove entity ({}, {}, {}): {}",
+                    key.subgraph_id,
+                    key.entity_type,
+                    key.entity_id,
+                    e
+                )
+                .into()
+            })
     }
 
     fn apply_abort_unless_operation(
@@ -532,7 +540,7 @@ impl Store {
         query: EntityQuery,
         mut expected_entity_ids: Vec<String>,
         _event_source: EventSource,
-    ) -> Result<(), StoreError> {
+    ) -> Result<i32, StoreError> {
         // Execute query
         let actual_entities = self.execute_query(conn, query.clone()).map_err(|e| {
             format_err!(
@@ -568,7 +576,7 @@ impl Store {
         }
 
         // Safe to continue
-        Ok(())
+        Ok(0)
     }
 
     /// Apply an entity operation in Postgres.
@@ -577,7 +585,7 @@ impl Store {
         conn: &e::Connection,
         operation: EntityOperation,
         event_source: EventSource,
-    ) -> Result<(), StoreError> {
+    ) -> Result<i32, StoreError> {
         match operation {
             EntityOperation::Set { key, data } => {
                 self.apply_set_operation(conn, key, data, event_source)
@@ -607,10 +615,40 @@ impl Store {
         operations: Vec<EntityOperation>,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
+        // Keep a count of how many entities have been added/removed. This
+        // crucially depends on the fact that all operations are about one
+        // subgraph, with the possible exception that some might touch
+        // the subgraph of subgraphs
+        let mut count = 0;
+        let mut subgraph = None;
+
         for operation in operations.into_iter() {
-            self.apply_entity_operation(conn, operation, event_source)?;
+            if subgraph.is_none() {
+                subgraph = operation
+                    .subgraph()
+                    .filter(|s| !s.is_meta())
+                    .map(|s| s.clone());
+            } else {
+                // Verify that we only have one non-meta subgraph in operations
+                if let Some(other) = operation.subgraph() {
+                    if !other.is_meta() && operation.subgraph() != subgraph.as_ref() {
+                        panic!(
+                            "applying entity operations to two non-metadata subgraphs {:?} and {}",
+                            subgraph, other
+                        );
+                    }
+                }
+            }
+            let do_count = match operation.subgraph() {
+                Some(subgraph) => !subgraph.is_meta(),
+                None => false,
+            };
+            let n = self.apply_entity_operation(conn, operation, event_source)?;
+            if do_count {
+                count += n;
+            }
         }
-        Ok(())
+        conn.update_entity_count(subgraph, count)
     }
 
     /// Build a partial Postgres index on a Subgraph-Entity-Attribute
@@ -745,6 +783,7 @@ impl StoreTrait for Store {
             block_ptr_to,
         );
         self.apply_entity_operations(ops, EventSource::None)
+            .map(|_| ())
     }
 
     fn transact_block_operations(
@@ -780,6 +819,7 @@ impl StoreTrait for Store {
 
         let event_source = EventSource::EthereumBlock(block_ptr_to);
         self.apply_entity_operations(operations, event_source)
+            .map(|_| ())
     }
 
     fn apply_entity_operations(

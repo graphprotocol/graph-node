@@ -292,6 +292,15 @@ impl<'a> Connection<'a> {
         let table = self.table(subgraph)?;
         table.count_entities(self.conn)
     }
+
+    pub(crate) fn update_entity_count(
+        &self,
+        subgraph: Option<SubgraphDeploymentId>,
+        count: i32,
+    ) -> Result<(), StoreError> {
+        // TODO: still needs to be implemented
+        Ok(())
+    }
 }
 
 // Find the database schema for `subgraph`. If no explicit schema exists,
