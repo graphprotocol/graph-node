@@ -22,7 +22,7 @@ use crate::data::subgraph::schema::{
     EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
     EthereumContractDataSourceEntity, EthereumContractDataSourceTemplateEntity,
     EthereumContractDataSourceTemplateSourceEntity, EthereumContractEventHandlerEntity,
-    EthereumContractMappingEntity, EthereumContractSourceEntity,
+    EthereumContractMappingEntity, EthereumContractSourceEntity, SUBGRAPHS_ID,
 };
 use crate::util::ethereum::string_to_h256;
 
@@ -67,6 +67,12 @@ impl SubgraphDeploymentId {
         Link {
             link: format!("/ipfs/{}", self),
         }
+    }
+
+    /// Return true if this is the id of the special
+    /// "subgraph of subgraphs" that contains metadata about everything
+    pub fn is_meta(&self) -> bool {
+        self.0 == *SUBGRAPHS_ID.0
     }
 }
 
