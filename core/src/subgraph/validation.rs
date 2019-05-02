@@ -9,12 +9,12 @@ pub fn validate_manifest(
     // which has call or block handlers
     let has_invalid_data_source = manifest.data_sources.iter().any(|data_source| {
         let no_source_address = data_source.source.address.is_none();
-        let has_call_handlers = !data_source
+        let has_call_handlers = data_source
             .mapping
             .call_handlers
             .as_ref()
             .map_or(false, |handlers| !handlers.is_empty());
-        let has_block_handlers = !data_source
+        let has_block_handlers = data_source
             .mapping
             .block_handlers
             .as_ref()
