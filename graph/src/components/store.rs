@@ -484,6 +484,16 @@ impl EntityOperation {
         }
     }
 
+    /// Return the subgraph that this operation applies to
+    pub fn subgraph(&self) -> Option<&SubgraphDeploymentId> {
+        use self::EntityOperation::*;
+
+        match self {
+            Set { key, .. } | Update { key, .. } | Remove { key } => Some(&key.subgraph_id),
+            AbortUnless { .. } => None,
+        }
+    }
+
     /// Returns true if the operation matches a given store key.
     pub fn matches_entity(&self, key: &EntityKey) -> bool {
         self.entity_key() == key
