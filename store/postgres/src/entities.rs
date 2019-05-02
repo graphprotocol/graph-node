@@ -283,7 +283,7 @@ impl<'a> Connection<'a> {
         &self,
         subgraph: &SubgraphDeploymentId,
         block_ptr: String,
-    ) -> Result<StoreEvent, StoreError> {
+    ) -> Result<(StoreEvent, i32), StoreError> {
         let table = self.table(subgraph)?;
         table.revert_block(self.conn, block_ptr)
     }
@@ -736,7 +736,7 @@ impl Table {
         &self,
         conn: &PgConnection,
         block_ptr: String,
-    ) -> Result<StoreEvent, StoreError> {
+    ) -> Result<(StoreEvent, i32), StoreError> {
         let entries: Vec<RawHistory> = match self {
             Table::Public(subgraph) => {
                 use self::public::entity_history::dsl as h;
@@ -775,6 +775,7 @@ impl Table {
         };
 
         let mut changes = Vec::with_capacity(entries.len());
+        let mut count = 0;
         for history in entries.into_iter() {
             // Perform the actual reversion
             let key = self.entity_key(history.entity.clone(), history.entity_id.clone());
@@ -782,6 +783,7 @@ impl Table {
                 0 => {
                     // Reverse an insert
                     self.delete(conn, &key, EventSource::None)?;
+                    count -= 1;
                 }
                 1 | 2 => {
                     // Reverse an update or delete
@@ -793,6 +795,9 @@ impl Table {
                             history.id,
                             history.op
                         )));
+                    }
+                    if history.op == 2 {
+                        count += 1;
                     }
                 }
                 _ => {
@@ -821,7 +826,7 @@ impl Table {
             changes.push(change);
         }
 
-        Ok(StoreEvent::new(changes))
+        Ok((StoreEvent::new(changes), count))
     }
 
     fn build_attribute_index(

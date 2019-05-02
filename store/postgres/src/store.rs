@@ -866,7 +866,8 @@ impl StoreTrait for Store {
             self.emit_store_events(&conn, &ops)?;
             self.apply_entity_operations_with_conn(&econn, ops, EventSource::None)?;
 
-            let event = econn.revert_block(&subgraph_id, block_ptr_from.hash_hex())?;
+            let (event, count) = econn.revert_block(&subgraph_id, block_ptr_from.hash_hex())?;
+            econn.update_entity_count(Some(subgraph_id), count)?;
 
             trace!(self.logger, "Emit store event for revert";
                 "tag" => event.tag,
