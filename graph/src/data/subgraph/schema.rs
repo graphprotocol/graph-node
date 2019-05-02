@@ -703,6 +703,9 @@ impl EthereumContractMappingEntity {
         event_handler_ids.map(|event_handler_ids| entity.set("eventHandlers", event_handler_ids));
         call_handler_ids.map(|call_handler_ids| entity.set("callHandlers", call_handler_ids));
         block_handler_ids.map(|block_handler_ids| entity.set("blockHandlers", block_handler_ids));
+
+        ops.push(set_entity_operation(Self::TYPENAME, id, entity));
+
         ops
     }
 }
