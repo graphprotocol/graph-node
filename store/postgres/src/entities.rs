@@ -105,6 +105,38 @@ mod subgraphs {
             event_source -> Varchar,
         }
     }
+
+    table! {
+        subgraphs.entity_history (id) {
+            id -> Integer,
+            // This is a BigInt in the database, but if we mark it that
+            // diesel won't let us join event_meta_data and entity_history
+            // Since event_meta_data.id is Integer, it shouldn't matter
+            // that we call it Integer here
+            event_id -> Integer,
+            subgraph -> Varchar,
+            entity -> Varchar,
+            entity_id -> Varchar,
+            data_before -> Nullable<Jsonb>,
+            op_id -> SmallInt,
+            reversion -> Bool,
+        }
+    }
+
+    /// NOTE: This is a duplicate of the `event_meta_data` in `public`.
+    /// It exists only so we can link from the subgraphs.entity_history
+    /// table to public.event_meta_data.
+    table! {
+        event_meta_data (id) {
+            id -> Integer,
+            db_transaction_id -> BigInt,
+            db_transaction_time -> Timestamp,
+            source -> Nullable<Varchar>,
+        }
+    }
+
+    joinable!(entity_history -> event_meta_data (event_id));
+    allow_tables_to_appear_in_same_query!(entity_history, event_meta_data);
 }
 
 impl EntitySource for self::public::entities::table {}
