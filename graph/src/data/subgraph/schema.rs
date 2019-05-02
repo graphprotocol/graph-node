@@ -754,7 +754,7 @@ impl TryFromValue for EthereumContractMappingEntity {
             abis: map.get_required("abis")?,
             event_handlers: map.get_optional("eventHandlers")?,
             call_handlers: map.get_optional("callHandlers")?,
-            block_handlers: map.get_optional("blockHandlersr")?,
+            block_handlers: map.get_optional("blockHandlers")?,
         })
     }
 }
