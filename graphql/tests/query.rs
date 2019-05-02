@@ -77,7 +77,7 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         .apply_entity_operations(
             SubgraphDeploymentEntity::new(&manifest, false, false, Default::default(), 1)
                 .create_operations_replace(&id),
-            EventSource::None,
+            None,
         )
         .unwrap();
 
@@ -184,7 +184,7 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
     });
 
     store
-        .apply_entity_operations(insert_ops.collect(), EventSource::None)
+        .apply_entity_operations(insert_ops.collect(), None)
         .unwrap();
 }
 

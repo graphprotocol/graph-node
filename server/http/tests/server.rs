@@ -101,7 +101,7 @@ mod test {
                     0,
                 )
                 .create_operations(&manifest.id),
-                EventSource::None,
+                None,
             )
             .unwrap();
 
