@@ -34,7 +34,7 @@ Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical For
 | **network** | *String* | For blockchains, this describes which network the subgraph targets. For Ethereum, this could be, for example, "mainnet" or "rinkeby". |
 | **source** | [*EthereumContractSource*](#151-ethereumcontractsource) | The source data on a blockchain such as Ethereum. |
 | **mapping** | [*Mapping*](#152-mapping) | The transformation logic applied to the data prior to being indexed. |
-| **templates** | [*Dynamic Data Source Spec*](#17-dynamic-data-source) | Each dynamic data source spec defines a template of a traditional data source. This templates will be created and mapped to a live data source at run-time. |
+| **templates** | [*Dynamic Data Source Spec*](#17-dynamic-data-source) | Each dynamic data source spec defines a template of a traditional data source. This template will be created and mapped to a live data source at runtime. |
 
 ### 1.5.1 EthereumContractSource
 
