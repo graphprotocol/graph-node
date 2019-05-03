@@ -121,12 +121,16 @@ where
         to: u64,
         addresses: Vec<H160>,
         event_signatures: Vec<H256>,
-    ) -> impl Future<Item = Vec<Log>, Error = Error> {
+    ) -> impl Future<Item = Vec<Log>, Error = graph::tokio_timer::timeout::Error<web3::error::Error>>
+    {
         let eth_adapter = self.clone();
         let logger = logger.to_owned();
-        let event_sig_count = event_signatures.len();
 
         retry("eth_getLogs RPC call", &logger)
+            .when(|res: &Result<_, web3::error::Error>| match res {
+                Ok(_) => false,
+                Err(e) => !e.to_string().contains("ServerError(-32005)"),
+            })
             .no_limit()
             .timeout_secs(60)
             .run(move || {
@@ -140,26 +144,9 @@ where
 
                 // Request logs from client
                 let logger = logger.clone();
-                eth_adapter
-                    .web3
-                    .eth()
-                    .logs(log_filter)
-                    .map(move |logs| {
-                        debug!(logger, "Received logs for blocks [{}, {}]", from, to);
-                        logs
-                    })
-                    .from_err::<EthereumContractCallError>()
-                    .from_err()
-            })
-            .map_err(move |e| {
-                e.into_inner().unwrap_or_else(move || {
-                    format_err!(
-                        "Ethereum node took too long to respond to eth_getLogs \
-                         (from block {}, to block {}, {} event signatures)",
-                        from,
-                        to,
-                        event_sig_count
-                    )
+                eth_adapter.web3.eth().logs(log_filter).map(move |logs| {
+                    debug!(logger, "Received logs for blocks [{}, {}]", from, to);
+                    logs
                 })
             })
     }
@@ -259,13 +246,13 @@ where
 
         let logger = logger.to_owned();
 
-        stream::unfold((from, to), move |(start, end)| {
+        stream::unfold((from, to - from), move |(start, step)| {
             if start > to {
                 return None;
             }
-
+            let end = start + step;
             debug!(logger, "Requesting logs for blocks [{}, {}]", start, end);
-
+            let logger = logger.clone();
             let log_filter = log_filter.clone();
             Some(
                 eth.logs_with_sigs(&logger, start, end, addresses.clone(), event_sigs.clone())
@@ -274,7 +261,23 @@ where
                             .filter(move |log| log_filter.matches(log))
                             .collect::<Vec<Log>>()
                     })
-                    .map(move |logs| (logs, (end + 1, to))),
+                    .then(move |res| {
+                        match res {
+                            Err(e) => {
+                                let string_err = e.to_string();
+                                // web3 doesn't seem to offer a better way of inspecting the error code.
+                                if string_err.contains("ServerError(-32005)") {
+                                    let new_step = (step / 10).max(1);
+                                    debug!(logger, "Reducing log step"; "new_step" => new_step);
+                                    Ok((vec![], (start, new_step)))
+                                } else {
+                                    warn!(logger, "Unexpected RPC error"; "error" => &string_err);
+                                    Err(err_msg(string_err))
+                                }
+                            }
+                            Ok(logs) => Ok((logs, (end + 1, step))),
+                        }
+                    }),
             )
         })
         .concat2()
