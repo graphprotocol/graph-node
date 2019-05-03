@@ -22,6 +22,7 @@ uuid = { version = "0.7.2", features = ["v4"] }
 
 [dev-dependencies]
 graphql-parser = "0.2.0"
-test-store = { path = "../test-store" }
-lazy_static = "1.1"
 hex = "0.3.2"
+lazy_static = "1.1"
+parity-wasm = "0.31"
+test-store = { path = "../test-store" }

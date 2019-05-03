@@ -9,15 +9,17 @@ extern crate hex;
 use diesel::pg::PgConnection;
 use diesel::*;
 use graphql_parser::schema as s;
+use std::collections::HashSet;
 use std::str::FromStr;
 use std::time::Duration;
 use test_store::*;
 
 use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityRange};
 use graph::data::store::scalar;
-use graph::data::subgraph::schema::SubgraphDeploymentEntity;
+use graph::data::subgraph::schema::*;
+use graph::data::subgraph::*;
 use graph::prelude::*;
-use graph::web3::types::H256;
+use graph::web3::types::{Address, H256};
 use graph_store_postgres::Store as DieselStore;
 
 lazy_static! {
@@ -1420,14 +1422,13 @@ fn subscribe_and_consume(
         H256::from("0xf1ead03f5811aa2eacbb14e90cc62bd23003086562be21fcea4292a7aa6d9d85"),
         42u64,
     ));
-    let history_event = Some(HistoryEvent {
-        id: 0,
-        subgraph: subgraph.clone(),
-        source: EventSource::EthereumBlock(block_ptr),
-    });
+
+    let history_event = store
+        .create_history_event(subgraph.clone(), EventSource::EthereumBlock(block_ptr))
+        .expect("failed to create history event");
 
     store
-        .apply_entity_operations(vec![op], history_event.clone())
+        .apply_entity_operations(vec![op], Some(history_event))
         .expect("Failed to apply marker operation");
 
     let source = subscription
@@ -1656,6 +1657,187 @@ fn revert_block_with_partial_update() {
         )]);
 
         check_events(subscription, vec![expected])
+    })
+}
+
+fn mock_data_source(path: &str) -> DataSource {
+    let runtime = parity_wasm::deserialize_file(path).expect("Failed to deserialize wasm");
+
+    DataSource {
+        kind: String::from("ethereum/contract"),
+        name: String::from("example data source"),
+        network: Some(String::from("mainnet")),
+        source: Source {
+            address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
+            abi: String::from("123123"),
+        },
+        mapping: Mapping {
+            kind: String::from("ethereum/events"),
+            api_version: String::from("0.1.0"),
+            language: String::from("wasm/assemblyscript"),
+            entities: vec![],
+            abis: vec![],
+            event_handlers: Some(vec![]),
+            call_handlers: Some(vec![]),
+            block_handlers: Some(vec![]),
+            link: Link {
+                link: "link".to_owned(),
+            },
+            runtime: Arc::new(runtime.clone()),
+        },
+        templates: Some(vec![DataSourceTemplate {
+            kind: String::from("ethereum/contract"),
+            name: String::from("example template"),
+            network: Some(String::from("mainnet")),
+            source: TemplateSource {
+                abi: String::from("foo"),
+            },
+            mapping: Mapping {
+                kind: String::from("ethereum/events"),
+                api_version: String::from("0.1.0"),
+                language: String::from("wasm/assemblyscript"),
+                entities: vec![],
+                abis: vec![],
+                event_handlers: Some(vec![]),
+                call_handlers: Some(vec![]),
+                block_handlers: Some(vec![]),
+                link: Link {
+                    link: "link".to_owned(),
+                },
+                runtime: Arc::new(runtime),
+            },
+        }]),
+    }
+}
+
+#[test]
+fn revert_block_with_dynamic_data_source_operations() {
+    run_test(|store| {
+        // Create operations to add a user
+        let user_key = EntityKey {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: "user".to_owned(),
+            entity_id: "1".to_owned(),
+        };
+        let partial_entity = Entity::from(vec![
+            ("id", Value::from("1")),
+            ("name", Value::from("Johnny Boy")),
+            ("email", Value::Null),
+        ]);
+
+        // Get the original user for comparisons
+        let original_user = store
+            .get(user_key.clone())
+            .unwrap()
+            .expect("missing entity");
+
+        // Create operations to add a dynamic data source
+        let data_source = mock_data_source("../../runtime/wasm/wasm_test/abort.wasm");
+        let dynamic_ds = DynamicEthereumContractDataSourceEntity::from((
+            &TEST_SUBGRAPH_ID.clone(),
+            &data_source,
+            &TEST_BLOCK_4_PTR.clone(),
+        ));
+
+        let mut ops = vec![EntityOperation::Set {
+            key: user_key.clone(),
+            data: partial_entity.clone(),
+        }];
+        ops.extend(dynamic_ds.write_operations("dynamic-data-source"));
+
+        // Add user and dynamic data source to the store
+        store
+            .transact_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_4_PTR,
+                ops,
+            )
+            .unwrap();
+
+        // Verify that the user is no longer the original
+        assert_ne!(
+            store
+                .get(user_key.clone())
+                .unwrap()
+                .expect("missing entity"),
+            original_user
+        );
+
+        // Verify that the dynamic data source exists afterwards
+        let dynamic_ds_key = EntityKey {
+            subgraph_id: SUBGRAPHS_ID.clone(),
+            entity_type: String::from(DynamicEthereumContractDataSourceEntity::TYPENAME),
+            entity_id: String::from("dynamic-data-source"),
+        };
+        store
+            .get(dynamic_ds_key.clone())
+            .unwrap()
+            .expect("dynamic data source entity wasn't written to store");
+
+        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user");
+
+        // Revert block that added the user and the dynamic data source
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_4_PTR,
+                *TEST_BLOCK_3_PTR,
+            )
+            .expect("revert block operations failed unexpectedly");
+
+        // Verify that the user is the original again
+        assert_eq!(
+            store
+                .get(user_key.clone())
+                .unwrap()
+                .expect("missing entity"),
+            original_user
+        );
+
+        // Verify that the dynamic data source is gone after the reversion
+        assert!(store.get(dynamic_ds_key.clone()).unwrap().is_none());
+
+        // Verify that the right change events were emitted for the reversion
+        let expected_events = vec![StoreEvent {
+            tag: 3,
+            changes: HashSet::from_iter(
+                vec![
+                    EntityChange {
+                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
+                        entity_type: "EthereumContractSource".into(),
+                        entity_id: "dynamic-data-source-source".into(),
+                        operation: EntityChangeOperation::Removed,
+                    },
+                    EntityChange {
+                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
+                        entity_type: "DynamicEthereumContractDataSource".into(),
+                        entity_id: "dynamic-data-source".into(),
+                        operation: EntityChangeOperation::Removed,
+                    },
+                    EntityChange {
+                        subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
+                        entity_type: "user".into(),
+                        entity_id: "1".into(),
+                        operation: EntityChangeOperation::Set,
+                    },
+                    EntityChange {
+                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
+                        entity_type: "EthereumContractDataSourceTemplateSource".into(),
+                        entity_id: "dynamic-data-source-templates-0-source".into(),
+                        operation: EntityChangeOperation::Removed,
+                    },
+                    EntityChange {
+                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
+                        entity_type: "EthereumContractDataSourceTemplate".into(),
+                        entity_id: "dynamic-data-source-templates-0".into(),
+                        operation: EntityChangeOperation::Removed,
+                    },
+                ]
+                .into_iter(),
+            ),
+        }];
+        check_events(subscription, expected_events)
     })
 }
 
