@@ -155,6 +155,9 @@ where
         to: u64,
         log_filter: EthereumLogFilter,
     ) -> impl Future<Item = Vec<Log>, Error = Error> {
+        // Code returned by Infura if a requests returns too many logs.
+        // web3 doesn't seem to offer a better way of checking the error code.
+        const TOO_MANY_LOGS_FINGERPRINT: &str = "ServerError(-32005)";
         let eth_get_logs = move |eth_adapter: Self,
                                  logger,
                                  from: u64,
@@ -164,7 +167,7 @@ where
             retry("eth_getLogs RPC call", &logger)
                 .when(|res: &Result<_, web3::error::Error>| match res {
                     Ok(_) => false,
-                    Err(e) => !e.to_string().contains("ServerError(-32005)"),
+                    Err(e) => !e.to_string().contains(TOO_MANY_LOGS_FINGERPRINT),
                 })
                 .no_limit()
                 .timeout_secs(60)
@@ -262,22 +265,19 @@ where
                         .filter(move |log| log_filter.matches(log))
                         .collect::<Vec<Log>>()
                 })
-                .then(move |res| {
-                    match res {
-                        Err(e) => {
-                            let string_err = e.to_string();
-                            // web3 doesn't seem to offer a better way of inspecting the error code.
-                            if string_err.contains("ServerError(-32005)") {
-                                let new_step = (step / 10).max(1);
-                                debug!(logger, "Reducing log step"; "new_step" => new_step);
-                                Ok((vec![], (start, new_step)))
-                            } else {
-                                warn!(logger, "Unexpected RPC error"; "error" => &string_err);
-                                Err(err_msg(string_err))
-                            }
+                .then(move |res| match res {
+                    Err(e) => {
+                        let string_err = e.to_string();
+                        if string_err.contains(TOO_MANY_LOGS_FINGERPRINT) {
+                            let new_step = (step / 10).max(1);
+                            debug!(logger, "Reducing log step"; "new_step" => new_step);
+                            Ok((vec![], (start, new_step)))
+                        } else {
+                            warn!(logger, "Unexpected RPC error"; "error" => &string_err);
+                            Err(err_msg(string_err))
                         }
-                        Ok(logs) => Ok((logs, (end + 1, step))),
                     }
+                    Ok(logs) => Ok((logs, (end + 1, step))),
                 }),
             )
         })
