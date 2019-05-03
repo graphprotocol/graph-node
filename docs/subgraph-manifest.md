@@ -34,6 +34,7 @@ Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical For
 | **network** | *String* | For blockchains, this describes which network the subgraph targets. For Ethereum, this could be, for example, "mainnet" or "rinkeby". |
 | **source** | [*EthereumContractSource*](#151-ethereumcontractsource) | The source data on a blockchain such as Ethereum. |
 | **mapping** | [*Mapping*](#152-mapping) | The transformation logic applied to the data prior to being indexed. |
+| **templates** | [*Dynamic Data Source Spec*](#17-dynamic-data-source) | Each dynamic data source spec defines a template of a traditional data source. This templates will be created and mapped to a live data source at run-time. |
 
 ### 1.5.1 EthereumContractSource
 
@@ -74,3 +75,32 @@ When using the Graph-CLI, local paths may be used during development, and then, 
 | Field | Type | Description |
 | --- | --- | --- |
 | **path** | *String or [IPLD Link](https://github.com/ipld/specs/)* | A path to a local file or IPLD link. |
+
+## 1.7 Dynamic Data Source
+A dynamic data source has all of the fields of a normal data source, except the [EthereumContractSource](#151-ethereumcontractsource) address field is removed.
+```yml
+# ...
+dataSources:
+  - kind: ethereum/contract
+    name: Factory
+    # ...
+    templates:
+      - name: Exchange
+        kind: ethereum/contract
+        network: mainnet
+        source:
+          abi: Exchange
+        mapping:
+          kind: ethereum/events
+          apiVersion: 0.0.1
+          language: wasm/assemblyscript
+          file: ./src/mappings/exchange.ts
+          entities:
+            - Exchange
+          abis:
+            - name: Exchange
+              file: ./abis/exchange.json
+          eventHandlers:
+            - event: TokenPurchase(address,uint256,uint256)
+              handler: handleTokenPurchase
+```
