@@ -19,7 +19,7 @@ in parallel for block retrieval (defaults to 64)
   events in the first few million blocks, so `graph-node` optimizes for that
   case by inquiring about a large range. The value of this variable
   is the block number at which we switch from probing large ranges to
-  smaller ranges (defaults to 4000000)
+  ranges of size `ETHEREUM_BLOCK_RANGE_SIZE` (defaults to 4000000).
 * `ETHEREUM_TRACE_STREAM_STEP_SIZE`: `graph-node` queries traces for a given block
   range when a subgraph defines call handlers or block handlers with a call filter.
   The value of this variable controls the number of blocks to scan in a single RPC request for traces

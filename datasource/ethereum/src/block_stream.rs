@@ -15,12 +15,19 @@ use graph::prelude::{
 };
 use graph::web3::types::*;
 
+const FAST_SCAN_SPEEDUP: u64 = 10;
+
 lazy_static! {
     /// Number of blocks to request in each chunk.
-    static ref LOG_STREAM_CHUNK_SIZE_IN_BLOCKS: u64 = ::std::env::var("ETHEREUM_BLOCK_RANGE_SIZE")
+    static ref ETHEREUM_BLOCK_RANGE_SIZE: u64 = ::std::env::var("ETHEREUM_BLOCK_RANGE_SIZE")
         .unwrap_or("10000".into())
         .parse::<u64>()
         .expect("invalid Ethereum block range size");
+
+    static ref ETHEREUM_FAST_SCAN_END: u64 = ::std::env::var("ETHEREUM_FAST_SCAN_END")
+        .unwrap_or("4000000".into())
+        .parse::<u64>()
+        .expect("invalid fast scan end block number");
 }
 
 enum BlockStreamState {
@@ -350,9 +357,10 @@ where
                         // It isn't safe to go any farther due to race conditions.
                         let to_limit = head_ptr.number - reorg_threshold;
 
-                        // But also avoid having too large a range to ensure subgraph block ptr is
-                        // updated frequently.
-                        let to = cmp::min(from + (*LOG_STREAM_CHUNK_SIZE_IN_BLOCKS - 1), to_limit);
+                        // But also respect ETHEREUM_BLOCK_RANGE_SIZE to ensure
+                        // the subgraph block ptr is updated frequently.
+                        let speedup = if from < *ETHEREUM_FAST_SCAN_END { FAST_SCAN_SPEEDUP } else { 1 };
+                        let to = cmp::min(from + speedup * *ETHEREUM_BLOCK_RANGE_SIZE - 1, to_limit);
 
                         debug!(ctx.logger, "Scanning blocks [{}, {}]", from, to);
                         Box::new(

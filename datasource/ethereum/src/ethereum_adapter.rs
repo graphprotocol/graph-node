@@ -18,10 +18,6 @@ pub struct EthereumAdapter<T: web3::Transport> {
 }
 
 lazy_static! {
-    static ref LOG_STREAM_FAST_SCAN_END: u64 = ::std::env::var("ETHEREUM_FAST_SCAN_END")
-        .unwrap_or("4000000".into())
-        .parse::<u64>()
-        .expect("nvalid fast scan end block number");
     static ref TRACE_STREAM_STEP_SIZE: u64 = ::std::env::var("ETHEREUM_TRACE_STREAM_STEP_SIZE")
         .unwrap_or("200".into())
         .parse::<u64>()
@@ -263,16 +259,10 @@ where
 
         let logger = logger.to_owned();
 
-        stream::unfold(from, move |start| {
+        stream::unfold((from, to), move |(start, end)| {
             if start > to {
                 return None;
             }
-            let end = if start < *LOG_STREAM_FAST_SCAN_END {
-                (start + 100_000 - 1).min(to).min(*LOG_STREAM_FAST_SCAN_END)
-            } else {
-                (start + 1_000 - 1).min(to)
-            };
-            let new_start = end + 1;
 
             debug!(logger, "Requesting logs for blocks [{}, {}]", start, end);
 
@@ -284,7 +274,7 @@ where
                             .filter(move |log| log_filter.matches(log))
                             .collect::<Vec<Log>>()
                     })
-                    .map(move |logs| (logs, new_start)),
+                    .map(move |logs| (logs, (end + 1, to))),
             )
         })
         .concat2()
