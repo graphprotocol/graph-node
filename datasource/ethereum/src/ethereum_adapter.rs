@@ -208,7 +208,7 @@ where
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> impl Stream<Item = Vec<Log>, Error = Error> + Send {
+    ) -> impl Future<Item = Vec<Log>, Error = Error> {
         if from > to {
             panic!(
                 "cannot produce a log stream on a backwards block range (from={}, to={})",
@@ -287,7 +287,7 @@ where
                     .map(move |logs| (logs, new_start)),
             )
         })
-        .filter(|chunk| !chunk.is_empty())
+        .concat2()
     }
 
     fn call(
@@ -836,32 +836,26 @@ where
         let eth = self.clone();
         Box::new(
             // Get a stream of all relevant logs in range
-            eth.log_stream(&logger, from, to, log_filter)
-                .collect()
-                .map(|log_chunks| match log_chunks.len() {
-                    0 => vec![],
-                    _ => {
-                        let logs: Vec<Log> = log_chunks.into_iter().flatten().collect();
-                        let mut block_ptrs = vec![];
-                        for log in logs.iter() {
-                            let hash = log
-                                .block_hash
-                                .expect("log from Eth node is missing block hash");
-                            let number = log
-                                .block_number
-                                .expect("log from Eth node is missing block number")
-                                .as_u64();
-                            let block_ptr = EthereumBlockPointer::from((hash, number));
-                            if !block_ptrs.contains(&block_ptr) {
-                                if let Some(prev) = block_ptrs.last() {
-                                    assert!(prev.number < number);
-                                }
-                                block_ptrs.push(block_ptr);
-                            }
+            eth.log_stream(&logger, from, to, log_filter).map(|logs| {
+                let mut block_ptrs = vec![];
+                for log in logs.iter() {
+                    let hash = log
+                        .block_hash
+                        .expect("log from Eth node is missing block hash");
+                    let number = log
+                        .block_number
+                        .expect("log from Eth node is missing block number")
+                        .as_u64();
+                    let block_ptr = EthereumBlockPointer::from((hash, number));
+                    if !block_ptrs.contains(&block_ptr) {
+                        if let Some(prev) = block_ptrs.last() {
+                            assert!(prev.number < number);
                         }
-                        block_ptrs
+                        block_ptrs.push(block_ptr);
                     }
-                }),
+                }
+                block_ptrs
+            }),
         )
     }
 
