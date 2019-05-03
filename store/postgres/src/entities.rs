@@ -2,7 +2,7 @@ use diesel::connection::SimpleConnection;
 use diesel::deserialize::QueryableByName;
 use diesel::dsl::{any, sql};
 use diesel::pg::{Pg, PgConnection};
-use diesel::sql_types::{Jsonb, Nullable, Text};
+use diesel::sql_types::{Integer, Jsonb, Nullable, Text};
 use diesel::BoolExpressionMethods;
 use diesel::ExpressionMethods;
 use diesel::{debug_query, insert_into};
@@ -293,8 +293,15 @@ impl<'a> Connection<'a> {
         subgraph: Option<SubgraphDeploymentId>,
         count: i32,
     ) -> Result<(), StoreError> {
-        // TODO: still needs to be implemented
-        Ok(())
+        if count == 0 {
+            return Ok(());
+        }
+        if let Some(subgraph) = subgraph {
+            let table = self.table(&subgraph)?;
+            table.update_entity_count(self.conn, subgraph, count)
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -425,7 +432,7 @@ impl Table {
     fn find(
         &self,
         conn: &PgConnection,
-        entity: &String,
+        entity: &str,
         id: &String,
     ) -> Result<Option<serde_json::Value>, StoreError> {
         match self {
@@ -678,6 +685,58 @@ impl Table {
                 Ok(query.execute(conn)?)
             }
         }
+    }
+
+    /// Adjust the `entityCount` property of the `SubgraphDeployment` for
+    /// `subgraph` by `count`. This needs to be performed after the changes
+    /// underlying `count` have been written to the store.
+    pub(crate) fn update_entity_count(
+        &self,
+        conn: &PgConnection,
+        subgraph: SubgraphDeploymentId,
+        count: i32,
+    ) -> Result<(), StoreError> {
+        let count_query = match self {
+            Table::Public(_) => format!(
+                "select count(*) from public.entities where subgraph = '{}'",
+                &subgraph
+            ),
+            Table::Split(entities) => format!("select count(*) from {}.entities", entities.schema),
+        };
+        // The big complication in this query is how to determine what the
+        // new entityCount should be. We want to make sure that if the entityCount
+        // is NULL or the special value `00`, it gets recomputed. Using `00` here
+        // makes it possible to manually set the `entityCount` to that value
+        // to force a recount; setting it to `NULL` is not desirable since
+        // `entityCount` on the GraphQL level is not nullable, and so setting
+        // `entityCount` to `NULL` could cause errors at that layer; temporarily
+        // returning `0` is more palatable. To be exact, recounts have to be
+        // done here, from the subgraph writer.
+        //
+        // The first argument of `coalesce` will be `NULL` if the entity count
+        // is `NULL` or `00`, forcing `coalesce` to evaluate its second
+        // argument, the query to count entities. In all other cases,
+        // `coalesce` does not evaluate its second argument
+        let current_count = "(nullif(data->'entityCount'->>'data', '00'))::numeric";
+        let query = format!(
+            "
+            update subgraphs.entities
+            set data = data || (format('{{\"entityCount\":
+                                  {{ \"data\": \"%s\", 
+                                    \"type\": \"BigInt\"}}}}',
+                                  coalesce({current_count} + $1,
+                                           ({count_query}))))::jsonb
+            where entity='SubgraphDeployment'
+              and id = $2
+            ",
+            current_count = current_count,
+            count_query = count_query
+        );
+        Ok(diesel::sql_query(query)
+            .bind::<Integer, _>(count)
+            .bind::<Text, _>(subgraph.to_string())
+            .execute(conn)
+            .map(|_| ())?)
     }
 
     fn conflicting_entity(

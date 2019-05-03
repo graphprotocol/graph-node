@@ -238,6 +238,21 @@ fn remove_test_data() {
         .expect("Failed to remove entity test data");
 }
 
+fn get_entity_count(
+    store: Arc<graph_store_postgres::Store>,
+    subgraph_id: &SubgraphDeploymentId,
+) -> u64 {
+    let key = SubgraphDeploymentEntity::key(subgraph_id.clone());
+    let entity = store.get(key).unwrap().unwrap();
+    entity
+        .get("entityCount")
+        .unwrap()
+        .clone()
+        .as_bigint()
+        .unwrap()
+        .to_u64()
+}
+
 #[test]
 fn delete_entity() {
     run_test(|store| -> Result<(), ()> {
@@ -250,6 +265,7 @@ fn delete_entity() {
         // Check that there is an entity to remove.
         store.get(entity_key.clone()).unwrap().unwrap();
 
+        let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
             .transact_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
@@ -260,6 +276,10 @@ fn delete_entity() {
                 }],
             )
             .unwrap();
+        assert_eq!(
+            count - 1,
+            get_entity_count(store.clone(), &TEST_SUBGRAPH_ID)
+        );
 
         // Check that that the deleted entity id is not present
         assert!(store.get(entity_key).unwrap().is_none());
@@ -360,6 +380,7 @@ fn insert_entity() {
             true,
             Some("green"),
         );
+        let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
             .transact_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
@@ -368,6 +389,10 @@ fn insert_entity() {
                 vec![test_entity],
             )
             .unwrap();
+        assert_eq!(
+            count + 1,
+            get_entity_count(store.clone(), &TEST_SUBGRAPH_ID)
+        );
 
         // Check that new record is in the store
         store.get(entity_key).unwrap().unwrap();
@@ -404,6 +429,7 @@ fn update_existing() {
         assert_ne!(store.get(entity_key.clone()).unwrap().unwrap(), new_data);
 
         // Set test entity; as the entity already exists an update should be performed
+        let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
             .transact_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
@@ -412,6 +438,7 @@ fn update_existing() {
                 vec![op],
             )
             .unwrap();
+        assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
 
         // Verify that the entity in the store has changed to what we have set.
         let bin_name = match new_data.get("bin_name") {
@@ -1467,7 +1494,11 @@ fn revert_block_basic_user() {
             EntityChangeOperation::Set,
         )]);
 
-        check_basic_revert(store.clone(), expected, &TEST_SUBGRAPH_ID, "user")
+        let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
+        check_basic_revert(store.clone(), expected, &TEST_SUBGRAPH_ID, "user").and_then(move |x| {
+            assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
+            Ok(x)
+        })
     })
 }
 
@@ -1519,6 +1550,7 @@ fn revert_block_with_delete() {
         let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user");
 
         // Revert deletion
+        let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
             .revert_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
@@ -1526,6 +1558,10 @@ fn revert_block_with_delete() {
                 *TEST_BLOCK_3_PTR,
             )
             .unwrap();
+        assert_eq!(
+            count + 1,
+            get_entity_count(store.clone(), &TEST_SUBGRAPH_ID)
+        );
 
         // Query after revert
         let returned_entities = store
@@ -1589,6 +1625,7 @@ fn revert_block_with_partial_update() {
         let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user");
 
         // Perform revert operation, reversing the partial update
+        let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
             .revert_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
@@ -1596,6 +1633,7 @@ fn revert_block_with_partial_update() {
                 *TEST_BLOCK_3_PTR,
             )
             .unwrap();
+        assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
 
         // Obtain the reverted entity from the store
         let reverted_entity = store
