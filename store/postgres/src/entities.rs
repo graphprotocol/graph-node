@@ -11,8 +11,8 @@ use diesel_dynamic_schema::{schema, Column, Table as DynamicTable};
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{
     format_err, AttributeIndexDefinition, EntityChange, EntityChangeOperation, EntityFilter,
-    EntityKey, Error, EventSource, QueryExecutionError, StoreError, StoreEvent,
-    SubgraphDeploymentId, TransactionAbortError, ValueType,
+    EntityKey, EventSource, QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId,
+    TransactionAbortError, ValueType,
 };
 use graph::serde_json;
 use inflector::cases::snakecase::to_snake_case;
@@ -286,11 +286,6 @@ impl<'a> Connection<'a> {
     ) -> Result<(StoreEvent, i32), StoreError> {
         let table = self.table(subgraph)?;
         table.revert_block(self.conn, block_ptr)
-    }
-
-    pub(crate) fn count_entities(&self, subgraph: &SubgraphDeploymentId) -> Result<u64, Error> {
-        let table = self.table(subgraph)?;
-        table.count_entities(self.conn)
     }
 
     pub(crate) fn update_entity_count(
@@ -681,23 +676,6 @@ impl Table {
                     .bind::<Text, _>(&key.entity_type)
                     .bind::<Text, _>(&key.entity_id);
                 Ok(query.execute(conn)?)
-            }
-        }
-    }
-
-    fn count_entities(&self, conn: &PgConnection) -> Result<u64, Error> {
-        match self {
-            Table::Public(subgraph) => {
-                let count: i64 = public::entities::table
-                    .filter(public::entities::subgraph.eq(subgraph.to_string()))
-                    .count()
-                    .get_result(conn)?;
-                Ok(count as u64)
-            }
-            Table::Split(entities) => {
-                let table = entities.table.clone();
-                let count: i64 = table.count().get_result(conn)?;
-                Ok(count as u64)
             }
         }
     }

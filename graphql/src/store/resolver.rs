@@ -1,6 +1,5 @@
 use graphql_parser::{query as q, schema as s};
 use std::collections::{BTreeMap, HashMap};
-use std::ops::Deref;
 use std::result;
 use std::sync::Arc;
 
@@ -161,67 +160,6 @@ impl<S> Resolver for StoreResolver<S>
 where
     S: Store,
 {
-    /// Resolves a scalar value for a given scalar type.
-    fn resolve_scalar_value(
-        &self,
-        parent_object_type: &s::ObjectType,
-        parent: &BTreeMap<String, q::Value>,
-        field: &q::Field,
-        scalar_type: &s::ScalarType,
-        value: Option<&q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
-        let subgraph_id = parse_subgraph_id(parent_object_type).unwrap();
-
-        // Extract __typename from the parent object
-        let typename = parent
-            .get("__typename")
-            .and_then(|typename| match typename {
-                q::Value::String(typename) => Some(typename),
-                _ => None,
-            })
-            .expect("GraphQL object must have `__typename`");
-
-        match (
-            subgraph_id.deref().as_str(),
-            typename.as_str(),
-            field.name.as_str(),
-        ) {
-            // Compute `entityCount` on-demand
-            ("subgraphs", "SubgraphDeployment", "entityCount") => {
-                // Extract the entity ID
-                let id = parent
-                    .get("id")
-                    .and_then(|id| match id {
-                        q::Value::String(id) => Some(id),
-                        _ => None,
-                    })
-                    .expect("GraphQL object must have an `id`");
-
-                // Convert the ID to a subgraph deployment ID
-                let hash =
-                    SubgraphDeploymentId::new(id.clone()).expect("invalid subgraph ID in database");
-
-                // Return the entity count of the deployment as a BigInt
-                Ok(Value::from(
-                    self.store
-                        .count_entities(hash)
-                        .map_err(QueryExecutionError::StoreError)?,
-                )
-                .into())
-            }
-            _ => value.map_or(Ok(q::Value::Null), |value| {
-                value.coerce(scalar_type).ok_or_else(|| {
-                    QueryExecutionError::ScalarCoercionError(
-                        field.position.clone(),
-                        field.name.to_owned(),
-                        value.clone(),
-                        scalar_type.name.to_owned(),
-                    )
-                })
-            }),
-        }
-    }
-
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,

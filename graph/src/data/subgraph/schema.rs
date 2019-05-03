@@ -233,6 +233,7 @@ impl SubgraphDeploymentEntity {
             self.latest_ethereum_block_number,
         );
         entity.set("totalEthereumBlocksCount", self.total_ethereum_blocks_count);
+        entity.set("entityCount", 0 as u64);
         ops.push(set_entity_operation(Self::TYPENAME, id.to_string(), entity));
 
         ops

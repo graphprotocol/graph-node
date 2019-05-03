@@ -695,9 +695,6 @@ pub trait Store: Send + Sync + 'static {
     /// Returns a stream of store events that match the input arguments.
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox;
 
-    /// Counts the total number of entities in a subgraph.
-    fn count_entities(&self, subgraph: SubgraphDeploymentId) -> Result<u64, Error>;
-
     fn resolve_subgraph_name_to_id(
         &self,
         name: SubgraphName,

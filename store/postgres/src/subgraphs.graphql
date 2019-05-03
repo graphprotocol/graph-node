@@ -22,7 +22,7 @@ type SubgraphDeployment @entity {
     latestEthereumBlockHash: String!
     latestEthereumBlockNumber: BigInt!
     totalEthereumBlocksCount: BigInt!
-    entityCount: BigInt! # Computed field, not stored.
+    entityCount: BigInt!
     dynamicDataSources: [DynamicEthereumContractDataSource!] @derivedFrom(field: "deployment")
 }
 

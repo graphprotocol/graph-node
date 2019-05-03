@@ -902,13 +902,6 @@ impl StoreTrait for Store {
         StoreEventStream::new(Box::new(receiver)).filter_by_entities(entities)
     }
 
-    fn count_entities(&self, subgraph_id: SubgraphDeploymentId) -> Result<u64, Error> {
-        let conn = &*self.conn.get()?;
-        let conn = e::Connection::new(&conn);
-
-        conn.count_entities(&subgraph_id)
-    }
-
     fn create_subgraph_deployment(
         &self,
         subgraph_id: &SubgraphDeploymentId,

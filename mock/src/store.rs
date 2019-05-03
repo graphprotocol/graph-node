@@ -325,10 +325,6 @@ impl Store for MockStore {
         StoreEventStream::new(Box::new(receiver))
     }
 
-    fn count_entities(&self, _: SubgraphDeploymentId) -> Result<u64, Error> {
-        unimplemented!();
-    }
-
     fn create_subgraph_deployment(
         &self,
         _subgraph_id: &SubgraphDeploymentId,
@@ -463,10 +459,6 @@ impl Store for FakeStore {
     }
 
     fn subscribe(&self, _: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
-        unimplemented!();
-    }
-
-    fn count_entities(&self, _: SubgraphDeploymentId) -> Result<u64, Error> {
         unimplemented!();
     }
 
