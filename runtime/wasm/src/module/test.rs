@@ -57,8 +57,8 @@ impl EthereumAdapter for MockEthereumAdapter {
 
     fn block_parent_hash(
         &self,
-        logger: &Logger,
-        block_hash: H256,
+        _: &Logger,
+        _: H256,
     ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
         unimplemented!();
     }
@@ -81,50 +81,50 @@ impl EthereumAdapter for MockEthereumAdapter {
 
     fn calls_in_block(
         &self,
-        logger: &Logger,
-        block_number: u64,
-        block_hash: H256,
+        _: &Logger,
+        _: u64,
+        _: H256,
     ) -> Box<Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
         unimplemented!();
     }
 
     fn blocks_with_triggers(
         &self,
-        logger: &Logger,
-        from: u64,
-        to: u64,
-        log_filter: Option<EthereumLogFilter>,
-        call_filter: Option<EthereumCallFilter>,
-        block_filter: Option<EthereumBlockFilter>,
+        _: &Logger,
+        _: u64,
+        _: u64,
+        _: Option<EthereumLogFilter>,
+        _: Option<EthereumCallFilter>,
+        _: Option<EthereumBlockFilter>,
     ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         unimplemented!();
     }
 
     fn blocks_with_logs(
         &self,
-        logger: &Logger,
-        from: u64,
-        to: u64,
-        log_filter: EthereumLogFilter,
+        _: &Logger,
+        _: u64,
+        _: u64,
+        _: EthereumLogFilter,
     ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         unimplemented!();
     }
 
     fn blocks_with_calls(
         &self,
-        logger: &Logger,
-        from: u64,
-        to: u64,
-        call_filter: EthereumCallFilter,
+        _: &Logger,
+        _: u64,
+        _: u64,
+        _: EthereumCallFilter,
     ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         unimplemented!();
     }
 
     fn blocks(
         &self,
-        logger: &Logger,
-        from: u64,
-        to: u64,
+        _: &Logger,
+        _: u64,
+        _: u64,
     ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         unimplemented!();
     }

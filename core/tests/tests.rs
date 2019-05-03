@@ -75,11 +75,11 @@ fn multiple_data_sources_per_subgraph() {
             true
         }
 
-        fn matches_call(&self, call: &EthereumCall) -> bool {
+        fn matches_call(&self, _call: &EthereumCall) -> bool {
             true
         }
 
-        fn matches_block(&self, call: EthereumBlockTriggerType) -> bool {
+        fn matches_block(&self, _call: EthereumBlockTriggerType) -> bool {
             true
         }
 
@@ -96,21 +96,21 @@ fn multiple_data_sources_per_subgraph() {
 
         fn process_call(
             &self,
-            logger: Logger,
-            block: Arc<EthereumBlock>,
-            transaction: Arc<Transaction>,
-            call: Arc<EthereumCall>,
-            state: BlockState,
+            _logger: Logger,
+            _block: Arc<EthereumBlock>,
+            _transaction: Arc<Transaction>,
+            _call: Arc<EthereumCall>,
+            _state: BlockState,
         ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
             unimplemented!();
         }
 
         fn process_block(
             &self,
-            logger: Logger,
-            block: Arc<EthereumBlock>,
-            trigger_type: EthereumBlockTriggerType,
-            state: BlockState,
+            _logger: Logger,
+            _block: Arc<EthereumBlock>,
+            _trigger_type: EthereumBlockTriggerType,
+            _state: BlockState,
         ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
             unimplemented!();
         }
