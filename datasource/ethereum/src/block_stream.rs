@@ -357,10 +357,20 @@ where
                         // It isn't safe to go any farther due to race conditions.
                         let to_limit = head_ptr.number - reorg_threshold;
 
-                        // But also respect ETHEREUM_BLOCK_RANGE_SIZE to ensure
-                        // the subgraph block ptr is updated frequently.
-                        let speedup = if from < *ETHEREUM_FAST_SCAN_END { FAST_SCAN_SPEEDUP } else { 1 };
-                        let to = cmp::min(from + speedup * *ETHEREUM_BLOCK_RANGE_SIZE - 1, to_limit);
+                        let to = if block_filter.as_ref().map_or(false, |b| b.trigger_every_block) {
+                            // If there is a block trigger on every block, go
+                            // one block at a time.
+                            from
+                        } else {
+                            // Otherwise use ETHEREUM_BLOCK_RANGE_SIZE to ensure the subgraph
+                            //  block ptr is updated frequently.
+                            let speedup = if from < *ETHEREUM_FAST_SCAN_END {
+                                FAST_SCAN_SPEEDUP
+                            } else {
+                                1
+                            };
+                            cmp::min(from + speedup * *ETHEREUM_BLOCK_RANGE_SIZE - 1, to_limit)
+                        };
 
                         debug!(ctx.logger, "Scanning blocks [{}, {}]", from, to);
                         Box::new(
