@@ -97,18 +97,29 @@ where
                                 let latest_number = latest_block.number.unwrap().as_u64() as i64;
                                 let head_number = head_block_ptr.number as i64;
                                 let distance = latest_number - head_number;
+                                info!(
+                                    self.logger,
+                                    "Assessing block synchronization";
+                                    "local_block_ptr" => head_number,
+                                    "network_block_ptr" => latest_number,
+                                    "distance" => distance,
+                                    "code" => LogCode::BlockSyncStatus,
+                                );
                                 if distance > 10 && distance <= 50 {
                                     info!(
                                         self.logger,
                                         "Downloading latest blocks from Ethereum. \
-                                        This may take a few seconds..."
+                                         This may take a few seconds...";
+                                        "distance" => distance,
+                                        "code" => LogCode::BlockSyncStatus,
                                     );
                                 } else if distance > 50 {
                                     info!(
                                         self.logger,
                                         "Downloading latest blocks from Ethereum. \
-                                        This may take a few minutes..."
-                                    );
+                                         This may take a few minutes...";
+                                        "distance" => distance,
+                                        "code" => LogCode::BlockSyncStatus,                                                                );
                                 }
                             }
                         }

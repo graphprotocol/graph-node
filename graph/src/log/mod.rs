@@ -4,6 +4,7 @@ pub enum LogCode {
     SubgraphStartFailure,
     SubgraphExecutionFailure,
     SubgraphExecutionFailureNotRecorded,
+    BlockSyncStatus,
 }
 
 impl Display for LogCode {
@@ -13,6 +14,7 @@ impl Display for LogCode {
             SubgraphStopped => "SubgraphStopped",
             SubgraphExecutionFailure => "SubgraphExecutionFailure",
             SubgraphFailureNotRecorded => "SubgraphExecutionFailureNotRecorded",
+            BlockSyncStatus => "BlockSyncStatus",
         };
         write!(f, "{}", value)
     }
