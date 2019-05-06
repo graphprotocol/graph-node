@@ -1,12 +1,12 @@
 use std::fmt::{Display, Error, Formatter};
 
-pub enum ErrorCode {
+pub enum LogCode {
     SubgraphStartFailure,
     SubgraphExecutionFailure,
     SubgraphExecutionFailureNotRecorded,
 }
 
-impl Display for ErrorCode {
+impl Display for LogCode {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let value = match self {
             SubgraphStartFailure => "SubgraphStartFailure",
@@ -18,7 +18,7 @@ impl Display for ErrorCode {
     }
 }
 
-impl slog::Value for ErrorCode {
+impl slog::Value for LogCode {
     fn serialize(
         &self,
         _rec: &slog::Record,

@@ -157,7 +157,7 @@ impl SubgraphInstanceManager {
                             logger,
                             "Failed to start subgraph: {}",
                             err;
-                            "code" => ErrorCode::SubgraphStartFailure
+                            "code" => LogCode::SubgraphStartFailure
                         )
                     })
                     .ok();
@@ -399,7 +399,7 @@ where
                     logger_for_err,
                     "Subgraph instance failed to run: {}", e;
                     "id" => id_for_err.to_string(),
-                    "code" => ErrorCode::SubgraphExecutionFailure
+                    "code" => LogCode::SubgraphExecutionFailure
                 );
 
                 // Set subgraph status to Failed
@@ -411,7 +411,7 @@ where
                         logger_for_err,
                         "Failed to set subgraph status to Failed: {}", e;
                         "id" => id_for_err.to_string(),
-                        "code" => ErrorCode::SubgraphExecutionFailureNotRecorded
+                        "code" => LogCode::SubgraphExecutionFailureNotRecorded
                     );
                 }
             }
