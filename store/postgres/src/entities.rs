@@ -443,8 +443,8 @@ impl SplitTable {
             // dynamic tables.
             let query = format!(
                 "update {}.entities
-                 set data = data || $3, event_source = $4
-                 where entity = $1 and id = $2",
+                   set data = data || $3, event_source = $4
+                   where entity = $1 and id = $2",
                 self.schema
             );
             let query = diesel::sql_query(query)
@@ -682,7 +682,7 @@ impl Table {
 
                 Ok(diesel::sql_query(format!(
                     "insert into {}.entities(entity, id, data, event_source)
-                         values($1, $2, $3, $4)",
+                       values($1, $2, $3, $4)",
                     entities.schema
                 ))
                 .bind::<Text, _>(&key.entity_type)
@@ -726,9 +726,9 @@ impl Table {
             Table::Split(entities) => {
                 let query = format!(
                     "insert into {}.entities(entity, id, data, event_source)
-                     values($1, $2, $3, $4)
+                       values($1, $2, $3, $4)
                      on conflict(entity, id)
-                     do update set data = $3, event_source = $4",
+                       do update set data = $3, event_source = $4",
                     entities.schema
                 );
                 let query = diesel::sql_query(query)
@@ -836,8 +836,8 @@ impl Table {
 
                 let query = format!(
                     "delete from {}.entities
-                     where entity = $1
-                       and id = $2",
+                      where entity = $1
+                        and id = $2",
                     entities.schema
                 );
                 let query = diesel::sql_query(query)
@@ -950,18 +950,18 @@ impl Table {
         if schema == "public" || schema == "subgraphs" {
             diesel::sql_query(format!(
                 "insert into {}.entity_history(
-                     event_id,
-                     subgraph, entity, entity_id,
-                     data_before, reversion, op_id
+                   event_id,
+                   subgraph, entity, entity_id,
+                   data_before, reversion, op_id
                  )
                  select
-                     $1 as event_id,
-                     $2 as subgraph,
-                     $3 as entity,
-                     $4 as entity_id,
-                     (select data from {}.entities where entity = $3 and id = $4) as data_before,
-                     $5 as reversion,
-                     $6 as op_id",
+                   $1 as event_id,
+                   $2 as subgraph,
+                   $3 as entity,
+                   $4 as entity_id,
+                   (select data from {}.entities where entity = $3 and id = $4) as data_before,
+                   $5 as reversion,
+                   $6 as op_id",
                 schema, schema,
             ))
             .bind::<Integer, _>(history_event.id)
@@ -974,17 +974,17 @@ impl Table {
         } else {
             diesel::sql_query(format!(
                 "insert into {}.entity_history(
-                    event_id,
-                    entity, entity_id,
-                    data_before, reversion, op_id
-                )
-                select
-                    $1 as event_id,
-                    $2 as entity,
-                    $3 as entity_id,
-                    (select data from {}.entities where entity = $2 and id = $3) as data_before,
-                    $4 as reversion,
-                    $5 as op_id",
+                   event_id,
+                   entity, entity_id,
+                   data_before, reversion, op_id
+                 )
+                 select
+                   $1 as event_id,
+                   $2 as entity,
+                   $3 as entity_id,
+                   (select data from {}.entities where entity = $2 and id = $3) as data_before,
+                   $4 as reversion,
+                   $5 as op_id",
                 schema, schema
             ))
             .bind::<Integer, _>(history_event.id)
@@ -1068,10 +1068,10 @@ impl Table {
                 // a raw SQL query
                 let query = format!(
                     "select h.id, h.entity, h.entity_id, h.data_before, h.op_id
-                     from {}.entity_history h, event_meta_data m
-                     where m.id = h.event_id
-                       and m.source = $1
-                     order by h.event_id desc",
+                       from {}.entity_history h, event_meta_data m
+                      where m.id = h.event_id
+                        and m.source = $1
+                      order by h.event_id desc",
                     entities.schema
                 );
 
@@ -1121,13 +1121,13 @@ impl Table {
                 );
                 let query = format!(
                     "create index if not exists {name}
-                     on public.entities
-                     using {index_type} (
-                        (data->'{attribute_name}'{jsonb_operator}'data')
-                        {index_operator}
-                     )
-                     where subgraph='{subgraph}'
-                       and entity='{entity_name}'",
+                         on public.entities
+                      using {index_type} (
+                              (data->'{attribute_name}'{jsonb_operator}'data')
+                              {index_operator}
+                            )
+                      where subgraph='{subgraph}'
+                        and entity='{entity_name}'",
                     name = index_name,
                     index_type = index_type,
                     attribute_name = &index.attribute_name,
@@ -1156,12 +1156,12 @@ impl Table {
                 );
                 let query = format!(
                     "create index if not exists {name}
-                     on {subgraph}.entities
-                     using {index_type} (
-                         (data->'{attribute_name}'{jsonb_operator}'data')
-                         {index_operator}
-                     )
-                     where entity='{entity_name}'",
+                         on {subgraph}.entities
+                      using {index_type} (
+                              (data->'{attribute_name}'{jsonb_operator}'data')
+                              {index_operator}
+                            )
+                      where entity='{entity_name}'",
                     name = name,
                     subgraph = entities.schema,
                     index_type = index_type,
@@ -1280,55 +1280,58 @@ pub(crate) fn create_schema(
     // we want the pk index to also support queries that do not have an id,
     // just an entity (like counting the number of entities of a certain type)
     let query = format!(
-        "create table {}.entities(
-            entity       varchar not null,
-            id           varchar not null,
-            data         jsonb,
-            event_source varchar not null,
-            primary key(entity, id)
-        )",
+        "create table {}.entities
+         (
+           entity       varchar not null,
+           id           varchar not null,
+           data         jsonb,
+           event_source varchar not null,
+
+           primary key(entity, id)
+         )",
         schema_name
     );
     conn.batch_execute(&*query)?;
 
     let query = format!(
         "create trigger entity_change_insert_trigger
-         after insert on {schema}.entities
-         for each row
-         execute procedure subgraph_log_entity_event()",
+           after insert on {schema}.entities
+           for each row
+             execute procedure subgraph_log_entity_event()",
         schema = schema_name
     );
     conn.batch_execute(&*query)?;
 
     let query = format!(
         "create trigger entity_change_update_trigger
-         after update on {schema}.entities
-         for each row
-         when (old.data != new.data)
-         execute procedure subgraph_log_entity_event()",
+           after update on {schema}.entities
+           for each row
+             when (old.data != new.data)
+             execute procedure subgraph_log_entity_event()",
         schema = schema_name
     );
     conn.batch_execute(&*query)?;
 
     let query = format!(
         "create trigger entity_change_delete_trigger
-            after delete on {schema}.entities
-            for each row
-            execute procedure subgraph_log_entity_event()",
+           after delete on {schema}.entities
+           for each row
+             execute procedure subgraph_log_entity_event()",
         schema = schema_name
     );
     conn.batch_execute(&*query)?;
 
     let query = format!(
-        "create table {}.entity_history (
-            id           serial primary key,
-	          event_id     integer references event_meta_data(id)
-                             on update cascade on delete cascade,
-            entity       varchar not null,
-	          entity_id    varchar not null,
-	          data_before  jsonb,
-	          reversion    bool not null default false,
-	          op_id        int2 NOT NULL
+        "create table {}.entity_history
+         (
+           id           serial primary key,
+           event_id     integer references event_meta_data(id)
+                          on update cascade on delete cascade,
+           entity       varchar not null,
+	         entity_id    varchar not null,
+	         data_before  jsonb,
+	         reversion    bool not null default false,
+	         op_id        int2 NOT NULL
          )",
         schema_name
     );
@@ -1336,7 +1339,7 @@ pub(crate) fn create_schema(
 
     let query = format!(
         "create index entity_history_event_id_btree_idx
-         on {}.entity_history(event_id)",
+           on {}.entity_history(event_id)",
         schema_name
     );
     conn.batch_execute(&*query)?;
@@ -1381,12 +1384,8 @@ fn create_history_event(
     }
 
     let result: Event = diesel::sql_query(
-        "insert into event_meta_data (
-             db_transaction_id, db_transaction_time, source
-         )
-         values (
-             txid_current(), statement_timestamp(), $1
-         )
+        "insert into event_meta_data (db_transaction_id, db_transaction_time, source)
+           values (txid_current(), statement_timestamp(), $1)
          returning event_meta_data.id as event_id",
     )
     .bind::<Text, _>(event_source.to_string())
