@@ -22,6 +22,12 @@ lazy_static! {
         .unwrap_or("200".into())
         .parse::<u64>()
         .expect("invalid trace stream step size");
+
+    /// Maximum number of chunks to request in parallel when streaming logs.
+    static ref LOG_STREAM_PARALLEL_CHUNKS: u64 = ::std::env::var("ETHEREUM_PARALLEL_BLOCK_RANGES")
+        .unwrap_or("100".into())
+        .parse::<u64>()
+        .expect("invalid number of parallel Ethereum block ranges to scan");
 }
 
 impl<T> EthereumAdapter<T>
@@ -255,39 +261,61 @@ where
             if start > to {
                 return None;
             }
-            let end = start + step;
-            debug!(logger, "Requesting logs for blocks [{}, {}]", start, end);
+
+            // This will iterate more than once iff `step` has been reduced,
+            // making as many parallel requests of size `step` as necessary,
+            // respecting `LOG_STREAM_PARALLEL_CHUNKS`.
+            let mut chunk_futures = vec![];
+            let mut offset = start;
+            for _ in 0..*LOG_STREAM_PARALLEL_CHUNKS {
+                if offset == to + 1 {
+                    break;
+                }
+                let log_filter = log_filter.clone();
+                let next_offset = (offset + step).min(to) + 1;
+                debug!(
+                    logger,
+                    "Requesting logs for blocks [{}, {}]",
+                    offset,
+                    next_offset - 1
+                );
+                chunk_futures.push(
+                    eth.logs_with_sigs(
+                        &logger,
+                        offset,
+                        next_offset - 1,
+                        addresses.clone(),
+                        event_sigs.clone(),
+                        TOO_MANY_LOGS_FINGERPRINT,
+                    )
+                    .map(move |logs| {
+                        logs.into_iter()
+                            .filter(|log| log_filter.matches(log))
+                            .collect::<Vec<Log>>()
+                    }),
+                );
+                offset = next_offset;
+            }
             let logger = logger.clone();
-            let log_filter = log_filter.clone();
             Some(
-                eth.logs_with_sigs(
-                    &logger,
-                    start,
-                    end,
-                    addresses.clone(),
-                    event_sigs.clone(),
-                    TOO_MANY_LOGS_FINGERPRINT,
-                )
-                .map(move |logs| {
-                    logs.into_iter()
-                        .filter(move |log| log_filter.matches(log))
-                        .collect::<Vec<Log>>()
-                })
-                .then(move |res| match res {
-                    Err(e) => {
-                        let string_err = e.to_string();
-                        if string_err.contains(TOO_MANY_LOGS_FINGERPRINT) {
-                            let new_step = step / 10;
-                            debug!(logger, "Reducing block range size to scan for events";
+                stream::futures_ordered(chunk_futures)
+                    .collect()
+                    .map(|chunks| chunks.into_iter().flatten().collect::<Vec<Log>>())
+                    .then(move |res| match res {
+                        Err(e) => {
+                            let string_err = e.to_string();
+                            if string_err.contains(TOO_MANY_LOGS_FINGERPRINT) {
+                                let new_step = step / 10;
+                                debug!(logger, "Reducing block range size to scan for events";
                                                "new_size" => new_step + 1);
-                            Ok((vec![], (start, new_step)))
-                        } else {
-                            warn!(logger, "Unexpected RPC error"; "error" => &string_err);
-                            Err(err_msg(string_err))
+                                Ok((vec![], (start, new_step)))
+                            } else {
+                                warn!(logger, "Unexpected RPC error"; "error" => &string_err);
+                                Err(err_msg(string_err))
+                            }
                         }
-                    }
-                    Ok(logs) => Ok((logs, (end + 1, step))),
-                }),
+                        Ok(logs) => Ok((logs, (offset + 1, step))),
+                    }),
             )
         })
         .concat2()
