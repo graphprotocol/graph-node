@@ -43,7 +43,7 @@ pub mod util;
 pub mod ext;
 
 /// Error codes for graph-node execution
-pub mod errors;
+pub mod log;
 
 /// A prelude that makes all system component traits and data types available.
 ///
@@ -111,10 +111,10 @@ pub mod prelude {
     pub use crate::data::subscription::{
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
     };
-    pub use crate::errors::ErrorCode;
     pub use crate::ext::futures::{
         CancelGuard, CancelHandle, CancelableError, FutureExtension, SharedCancelGuard,
         StreamExtension,
     };
+    pub use crate::log::LogCode;
     pub use crate::util::futures::retry;
 }
