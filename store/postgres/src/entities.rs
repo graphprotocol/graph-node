@@ -947,7 +947,7 @@ impl Table {
             Table::Split(split_table) => split_table.schema.as_str(),
         };
 
-        if schema == "public" || schema == SUBGRAPHS_ID.to_string() {
+        if schema == "public" {
             diesel::sql_query(format!(
                 "insert into {}.entity_history(
                    event_id,
@@ -959,7 +959,38 @@ impl Table {
                    $2 as subgraph,
                    $3 as entity,
                    $4 as entity_id,
-                   (select data from {}.entities where entity = $3 and id = $4) as data_before,
+                   (select data
+                      from {}.entities
+                     where subgraph = $2
+                       and entity = $3
+                       and id = $4) as data_before,
+                   $5 as reversion,
+                   $6 as op_id",
+                schema, schema,
+            ))
+            .bind::<Integer, _>(history_event.id)
+            .bind::<Text, _>(&*history_event.subgraph)
+            .bind::<Text, _>(&key.entity_type)
+            .bind::<Text, _>(&key.entity_id)
+            .bind::<Bool, _>(&reversion)
+            .bind::<Integer, i32>(operation.into())
+            .execute(conn)?;
+        } else if schema == SUBGRAPHS_ID.to_string() {
+            diesel::sql_query(format!(
+                "insert into {}.entity_history(
+                   event_id,
+                   subgraph, entity, entity_id,
+                   data_before, reversion, op_id
+                 )
+                 select
+                   $1 as event_id,
+                   $2 as subgraph,
+                   $3 as entity,
+                   $4 as entity_id,
+                   (select data
+                      from {}.entities
+                     where entity = $3
+                       and id = $4) as data_before,
                    $5 as reversion,
                    $6 as op_id",
                 schema, schema,
