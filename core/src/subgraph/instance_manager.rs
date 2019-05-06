@@ -152,7 +152,14 @@ impl SubgraphInstanceManager {
                         store.clone(),
                         manifest,
                     )
-                    .map_err(|err| error!(logger, "Failed to start subgraph: {}", err))
+                    .map_err(|err| {
+                        error!(
+                            logger,
+                            "Failed to start subgraph: {}",
+                            err;
+                            "code" => ErrorCode::SubgraphStartFailure
+                        )
+                    })
                     .ok();
                 }
                 SubgraphStop(id) => {
@@ -384,14 +391,15 @@ where
                 debug!(
                     logger_for_err,
                     "Subgraph block stream shut down cleanly";
-                    "id" => id_for_err.to_string()
+                    "id" => id_for_err.to_string(),
                 );
             }
             CancelableError::Error(e) => {
                 error!(
                     logger_for_err,
                     "Subgraph instance failed to run: {}", e;
-                    "id" => id_for_err.to_string()
+                    "id" => id_for_err.to_string(),
+                    "code" => ErrorCode::SubgraphExecutionFailure
                 );
 
                 // Set subgraph status to Failed
@@ -402,7 +410,8 @@ where
                     error!(
                         logger_for_err,
                         "Failed to set subgraph status to Failed: {}", e;
-                        "id" => id_for_err.to_string()
+                        "id" => id_for_err.to_string(),
+                        "code" => ErrorCode::SubgraphExecutionFailureNotRecorded
                     );
                 }
             }
