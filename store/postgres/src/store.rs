@@ -831,7 +831,7 @@ impl StoreTrait for Store {
         // the subgraph of subgraphs
         if operations.iter().any(|op| {
             op.entity_key().subgraph_id != subgraph_id
-                && *op.entity_key().subgraph_id != "subgraphs"
+                && op.entity_key().subgraph_id != *SUBGRAPHS_ID
         }) {
             panic!(
                 "transact_block_operations must affect only entities \

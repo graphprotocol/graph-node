@@ -669,7 +669,7 @@ impl Table {
                 // Since we are not using a subgraphs.entities table trigger for
                 // the history of the subgraph of subgraphs, write entity_history
                 // data for the subgraph of subgraphs directly
-                if history_event.is_some() && *key.subgraph_id == "subgraphs" {
+                if history_event.is_some() && key.subgraph_id == *SUBGRAPHS_ID {
                     let history_event = history_event.unwrap();
                     self.add_entity_history_record(
                         conn,
@@ -780,7 +780,7 @@ impl Table {
                 // Since we are not using a subgraphs.entities table trigger for
                 // the history of the subgraph of subgraphs, write entity_history
                 // data for the subgraph of subgraphs directly
-                if history_event.is_some() && *key.subgraph_id == "subgraphs" {
+                if history_event.is_some() && key.subgraph_id == *SUBGRAPHS_ID {
                     let history_event = history_event.unwrap();
                     self.add_entity_history_record(
                         conn,
@@ -823,7 +823,7 @@ impl Table {
                 // Since we are not using a subgraphs.entities table trigger for
                 // the history of the subgraph of subgraphs, write entity_history
                 // data for the subgraph of subgraphs directly
-                if history_event.is_some() && *key.subgraph_id == "subgraphs" {
+                if history_event.is_some() && key.subgraph_id == *SUBGRAPHS_ID {
                     let history_event = history_event.unwrap();
                     self.add_entity_history_record(
                         conn,
@@ -947,7 +947,7 @@ impl Table {
             Table::Split(split_table) => split_table.schema.as_str(),
         };
 
-        if schema == "public" || schema == "subgraphs" {
+        if schema == "public" || schema == SUBGRAPHS_ID.to_string() {
             diesel::sql_query(format!(
                 "insert into {}.entity_history(
                    event_id,
