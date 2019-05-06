@@ -131,7 +131,6 @@ where
     ) -> impl Future<Item = Vec<Log>, Error = graph::tokio_timer::timeout::Error<web3::error::Error>>
     {
         let eth_adapter = self.clone();
-        let logger = logger.to_owned();
 
         retry("eth_getLogs RPC call", &logger)
             .when(move |res: &Result<_, web3::error::Error>| match res {
@@ -150,11 +149,7 @@ where
                     .build();
 
                 // Request logs from client
-                let logger = logger.clone();
-                eth_adapter.web3.eth().logs(log_filter).map(move |logs| {
-                    debug!(logger, "Received logs for blocks [{}, {}]", from, to);
-                    logs
-                })
+                eth_adapter.web3.eth().logs(log_filter)
             })
     }
 
