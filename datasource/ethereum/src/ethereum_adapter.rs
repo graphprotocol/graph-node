@@ -114,6 +114,44 @@ where
             })
     }
 
+    fn logs_with_sigs(
+        &self,
+        logger: &Logger,
+        from: u64,
+        to: u64,
+        addresses: Vec<H160>,
+        event_signatures: Vec<H256>,
+        too_many_logs_fingerprint: &'static str,
+    ) -> impl Future<Item = Vec<Log>, Error = graph::tokio_timer::timeout::Error<web3::error::Error>>
+    {
+        let eth_adapter = self.clone();
+        let logger = logger.to_owned();
+
+        retry("eth_getLogs RPC call", &logger)
+            .when(move |res: &Result<_, web3::error::Error>| match res {
+                Ok(_) => false,
+                Err(e) => !e.to_string().contains(too_many_logs_fingerprint),
+            })
+            .no_limit()
+            .timeout_secs(60)
+            .run(move || {
+                // Create a log filter
+                let log_filter: Filter = FilterBuilder::default()
+                    .from_block(from.into())
+                    .to_block(to.into())
+                    .address(addresses.clone())
+                    .topics(Some(event_signatures.clone()), None, None, None)
+                    .build();
+
+                // Request logs from client
+                let logger = logger.clone();
+                eth_adapter.web3.eth().logs(log_filter).map(move |logs| {
+                    debug!(logger, "Received logs for blocks [{}, {}]", from, to);
+                    logs
+                })
+            })
+    }
+
     fn trace_stream(
         self,
         logger: &Logger,
@@ -158,36 +196,6 @@ where
         // Code returned by Infura if a requests returns too many logs.
         // web3 doesn't seem to offer a better way of checking the error code.
         const TOO_MANY_LOGS_FINGERPRINT: &str = "ServerError(-32005)";
-        let eth_get_logs = move |eth_adapter: Self,
-                                 logger,
-                                 from: u64,
-                                 to: u64,
-                                 addresses: Vec<H160>,
-                                 event_signatures: Vec<H256>| {
-            retry("eth_getLogs RPC call", &logger)
-                .when(|res: &Result<_, web3::error::Error>| match res {
-                    Ok(_) => false,
-                    Err(e) => !e.to_string().contains(TOO_MANY_LOGS_FINGERPRINT),
-                })
-                .no_limit()
-                .timeout_secs(60)
-                .run(move || {
-                    // Create a log filter
-                    let log_filter: Filter = FilterBuilder::default()
-                        .from_block(from.into())
-                        .to_block(to.into())
-                        .address(addresses.clone())
-                        .topics(Some(event_signatures.clone()), None, None, None)
-                        .build();
-
-                    // Request logs from client
-                    let logger = logger.clone();
-                    eth_adapter.web3.eth().logs(log_filter).map(move |logs| {
-                        debug!(logger, "Received logs for blocks [{}, {}]", from, to);
-                        logs
-                    })
-                })
-        };
 
         if from > to {
             panic!(
@@ -252,32 +260,35 @@ where
             let logger = logger.clone();
             let log_filter = log_filter.clone();
             Some(
-                eth_get_logs(
-                    eth.clone(),
-                    logger.clone(),
+                eth.logs_with_sigs(
+                    &logger,
                     start,
                     end,
                     addresses.clone(),
                     event_sigs.clone(),
+                    TOO_MANY_LOGS_FINGERPRINT,
                 )
                 .map(move |logs| {
                     logs.into_iter()
                         .filter(move |log| log_filter.matches(log))
                         .collect::<Vec<Log>>()
                 })
-                .then(move |res| match res {
-                    Err(e) => {
-                        let string_err = e.to_string();
-                        if string_err.contains(TOO_MANY_LOGS_FINGERPRINT) {
-                            let new_step = (step / 10).max(1);
-                            debug!(logger, "Reducing log step"; "new_step" => new_step);
-                            Ok((vec![], (start, new_step)))
-                        } else {
-                            warn!(logger, "Unexpected RPC error"; "error" => &string_err);
-                            Err(err_msg(string_err))
+                .then(move |res| {
+                    match res {
+                        Err(e) => {
+                            let string_err = e.to_string();
+                            // web3 doesn't seem to offer a better way of inspecting the error code.
+                            if string_err.contains(TOO_MANY_LOGS_FINGERPRINT) {
+                                let new_step = (step / 10).max(1);
+                                debug!(logger, "Reducing log step"; "new_step" => new_step);
+                                Ok((vec![], (start, new_step)))
+                            } else {
+                                warn!(logger, "Unexpected RPC error"; "error" => &string_err);
+                                Err(err_msg(string_err))
+                            }
                         }
+                        Ok(logs) => Ok((logs, (end + 1, step))),
                     }
-                    Ok(logs) => Ok((logs, (end + 1, step))),
                 }),
             )
         })
