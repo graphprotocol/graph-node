@@ -442,28 +442,31 @@ impl Store {
             Some(_) => (true, 0),
         };
 
-        // Apply the operation
+        // Create set operation
         let operation = EntityOperation::Set {
             key: key.clone(),
             data,
         };
+
+        // Apply the operation to obtain the updated (or new) entity
         let updated_entity = operation.apply(existing_entity)?;
-        let updated_json: serde_json::Value =
-            serde_json::to_value(&updated_entity).map_err(|e| {
-                format_err!(
-                    "Failed to set entity ({}, {}, {}) as setting it would break it: {}",
-                    key.subgraph_id,
-                    key.entity_type,
-                    key.entity_id,
-                    e
-                )
-            })?;
+
+        // Convert the entity data to JSON
+        let json_data: serde_json::Value = serde_json::to_value(updated_entity).map_err(|e| {
+            format_err!(
+                "Failed to set entity ({}, {}, {}) as setting it would break it: {}",
+                key.subgraph_id,
+                key.entity_type,
+                key.entity_id,
+                e
+            )
+        })?;
 
         // Either insert or update the entity in Postgres
         let result = if is_update {
-            conn.update(&key, &updated_json, None, history_event)
+            conn.update(&key, &json_data, true, None, history_event)
         } else {
-            conn.insert(&key, &updated_json, history_event)
+            conn.insert(&key, &json_data, history_event)
         };
 
         result.map(|_| count).map_err(|e| {
@@ -500,7 +503,7 @@ impl Store {
         })?;
 
         // Update the entity in Postgres
-        match conn.update(&key, &json, guard, history_event)? {
+        match conn.update(&key, &json, false, guard, history_event)? {
             0 => Err(TransactionAbortError::AbortUnless {
                 expected_entity_ids: vec![key.entity_id.clone()],
                 actual_entity_ids: vec![],
