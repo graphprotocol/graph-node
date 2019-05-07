@@ -848,6 +848,7 @@ impl StoreTrait for Store {
             let history_event = econn.create_history_event(subgraph_id.clone(), event_source)?;
 
             // Apply the entity operations with the new block as the event source
+            self.emit_store_events(&conn, &operations)?;
             self.apply_entity_operations_with_conn(&econn, operations, Some(&history_event))?;
 
             // Update the subgraph block pointer, without an event source; this way
@@ -857,6 +858,7 @@ impl StoreTrait for Store {
                 block_ptr_from,
                 block_ptr_to,
             );
+            self.emit_store_events(&conn, &block_ptr_ops)?;
             self.apply_entity_operations_with_conn(&econn, block_ptr_ops, None)
         })
     }
