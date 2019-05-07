@@ -109,17 +109,14 @@ where
                                     info!(
                                         self.logger,
                                         "Downloading latest blocks from Ethereum. \
-                                         This may take a few seconds...";
-                                        "distance" => distance,
-                                        "code" => LogCode::BlockSyncStatus,
+                                         This may take a few seconds..."
                                     );
                                 } else if distance > 50 {
                                     info!(
                                         self.logger,
                                         "Downloading latest blocks from Ethereum. \
-                                         This may take a few minutes...";
-                                        "distance" => distance,
-                                        "code" => LogCode::BlockSyncStatus,                                                                );
+                                         This may take a few minutes..."
+                                    );
                                 }
                             }
                         }
