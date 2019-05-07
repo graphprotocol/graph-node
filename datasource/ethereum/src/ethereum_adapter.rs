@@ -311,7 +311,7 @@ where
                                 Err(err_msg(string_err))
                             }
                         }
-                        Ok(logs) => Ok((logs, (low + 1, step))),
+                        Ok(logs) => Ok((logs, (low, step))),
                     }),
             )
         })
