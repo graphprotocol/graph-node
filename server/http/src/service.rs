@@ -230,16 +230,18 @@ where
                     match result {
                         Ok(_) => info!(
                             logger,
-                            "GraphQL query served.";
-                            "subgraph_deployment_id" => sd_id.deref(),
-                            "query_duration_ms" => elapsed
+                            "GraphQL query served";
+                            "subgraph_deployment" => sd_id.deref(),
+                            "query_time_ms" => elapsed,
+                            "code": LogCode::GraphQlQuerySuccess,
                         ),
                         Err(ref e) => error!(
                             logger,
-                            "GraphQL query failed.";
-                            "subgraph_deployment_id" => sd_id.deref(),
+                            "GraphQL query failed";
+                            "subgraph_deployment" => sd_id.deref(),
                             "error" => e.to_string(),
-                            "query_duration_ms" => elapsed
+                            "query_time_ms" => elapsed,
+                            "code": LogCode::GraphQlQueryFailure,
                         ),
                     }
                     GraphQLResponse::new(result)
