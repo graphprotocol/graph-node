@@ -233,7 +233,7 @@ where
                             "GraphQL query served";
                             "subgraph_deployment" => sd_id.deref(),
                             "query_time_ms" => elapsed,
-                            "code": LogCode::GraphQlQuerySuccess,
+                            "code" => LogCode::GraphQlQuerySuccess,
                         ),
                         Err(ref e) => error!(
                             logger,
@@ -241,7 +241,7 @@ where
                             "subgraph_deployment" => sd_id.deref(),
                             "error" => e.to_string(),
                             "query_time_ms" => elapsed,
-                            "code": LogCode::GraphQlQueryFailure,
+                            "code" => LogCode::GraphQlQueryFailure,
                         ),
                     }
                     GraphQLResponse::new(result)
