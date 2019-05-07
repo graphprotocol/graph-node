@@ -318,7 +318,7 @@ fn get_entity_1() {
         );
         expected_entity.insert("weight".to_owned(), Value::BigDecimal(184.4.into()));
         expected_entity.insert("coffee".to_owned(), Value::Bool(false));
-        // favorite_color was null, so we expect the property to be omitted
+        // "favorite_color" was set to `Null` earlier and should be absent
 
         // Check that the expected entity was returned
         assert_eq!(result, Some(expected_entity));
@@ -355,7 +355,7 @@ fn get_entity_3() {
         );
         expected_entity.insert("weight".to_owned(), Value::BigDecimal(111.7.into()));
         expected_entity.insert("coffee".to_owned(), Value::Bool(false));
-        // favorite_color was later set to null, so we expect the property to be omitted
+        // "favorite_color" was set to `Null` earlier and should be absent
 
         // Check that the expected entity was returned
         assert_eq!(result, Some(expected_entity));

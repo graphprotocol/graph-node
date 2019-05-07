@@ -316,11 +316,12 @@ impl<'a> Connection<'a> {
         &self,
         key: &EntityKey,
         data: &serde_json::Value,
+        overwrite: bool,
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         let table = self.table(&key.subgraph_id)?;
-        table.update(self.conn, key, data, guard, history_event)
+        table.update(self.conn, key, data, overwrite, guard, history_event)
     }
 
     pub(crate) fn delete(
@@ -400,6 +401,7 @@ impl SplitTable {
         conn: &PgConnection,
         key: &EntityKey,
         data: &serde_json::Value,
+        overwrite: bool,
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
@@ -430,23 +432,42 @@ impl SplitTable {
                 .filter(entities::entity.eq(&key.entity_type))
                 .filter(entities::id.eq(&key.entity_id));
 
-            Ok(diesel::update(target)
-                .set((
-                    entities::data.eq(entities::data.merge(&data)),
-                    entities::event_source.eq(&event_source),
-                ))
-                .filter(filter)
-                .execute(conn)?)
+            if overwrite {
+                Ok(diesel::update(target)
+                    .set((
+                        entities::data.eq(&data),
+                        entities::event_source.eq(&event_source),
+                    ))
+                    .filter(filter)
+                    .execute(conn)?)
+            } else {
+                Ok(diesel::update(target)
+                    .set((
+                        entities::data.eq(entities::data.merge(&data)),
+                        entities::event_source.eq(&event_source),
+                    ))
+                    .filter(filter)
+                    .execute(conn)?)
+            }
         } else {
             // If there is no guard (which has to include all 'normal' subgraphs),
             // we need to use a direct query since diesel::update does not like
             // dynamic tables.
-            let query = format!(
-                "update {}.entities
-                   set data = data || $3, event_source = $4
-                   where entity = $1 and id = $2",
-                self.schema
-            );
+            let query = if overwrite {
+                format!(
+                    "update {}.entities
+                       set data = $3, event_source = $4
+                       where entity = $1 and id = $2",
+                    self.schema
+                )
+            } else {
+                format!(
+                    "update {}.entities
+                       set data = data || $3, event_source = $4
+                       where entity = $1 and id = $2",
+                    self.schema
+                )
+            };
             let query = diesel::sql_query(query)
                 .bind::<Text, _>(&key.entity_type)
                 .bind::<Text, _>(&key.entity_id)
@@ -746,6 +767,7 @@ impl Table {
         conn: &PgConnection,
         key: &EntityKey,
         data: &serde_json::Value,
+        overwrite: bool,
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
@@ -758,22 +780,42 @@ impl Table {
                     .filter(public::entities::entity.eq(&key.entity_type))
                     .filter(public::entities::id.eq(&key.entity_id));
 
-                let query = diesel::update(target).set((
-                    public::entities::data.eq(public::entities::data.merge(data)),
-                    public::entities::event_source.eq(&event_source),
-                ));
+                if overwrite {
+                    let query = diesel::update(target).set((
+                        public::entities::data.eq(data),
+                        public::entities::event_source.eq(&event_source),
+                    ));
 
-                match guard {
-                    Some(filter) => {
-                        let filter = build_filter(filter).map_err(|e| {
-                            TransactionAbortError::Other(format!(
-                                "invalid filter '{}' for value '{}'",
-                                e.filter, e.value
-                            ))
-                        })?;
-                        Ok(query.filter(filter).execute(conn)?)
+                    match guard {
+                        Some(filter) => {
+                            let filter = build_filter(filter).map_err(|e| {
+                                TransactionAbortError::Other(format!(
+                                    "invalid filter '{}' for value '{}'",
+                                    e.filter, e.value
+                                ))
+                            })?;
+                            Ok(query.filter(filter).execute(conn)?)
+                        }
+                        None => Ok(query.execute(conn)?),
                     }
-                    None => Ok(query.execute(conn)?),
+                } else {
+                    let query = diesel::update(target).set((
+                        public::entities::data.eq(public::entities::data.merge(data)),
+                        public::entities::event_source.eq(&event_source),
+                    ));
+
+                    match guard {
+                        Some(filter) => {
+                            let filter = build_filter(filter).map_err(|e| {
+                                TransactionAbortError::Other(format!(
+                                    "invalid filter '{}' for value '{}'",
+                                    e.filter, e.value
+                                ))
+                            })?;
+                            Ok(query.filter(filter).execute(conn)?)
+                        }
+                        None => Ok(query.execute(conn)?),
+                    }
                 }
             }
             Table::Split(entities) => {
@@ -791,7 +833,7 @@ impl Table {
                     )?;
                 }
 
-                entities.update(conn, key, data, guard, history_event)
+                entities.update(conn, key, data, overwrite, guard, history_event)
             }
         }
     }
