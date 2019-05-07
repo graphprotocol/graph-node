@@ -261,24 +261,19 @@ where
             // making as many parallel requests of size `step` as necessary,
             // respecting `LOG_STREAM_PARALLEL_CHUNKS`.
             let mut chunk_futures = vec![];
-            let mut offset = start;
+            let mut low = start;
             for _ in 0..*LOG_STREAM_PARALLEL_CHUNKS {
-                if offset == to + 1 {
+                if low == to + 1 {
                     break;
                 }
                 let log_filter = log_filter.clone();
-                let next_offset = (offset + step).min(to) + 1;
-                debug!(
-                    logger,
-                    "Requesting logs for blocks [{}, {}]",
-                    offset,
-                    next_offset - 1
-                );
+                let high = (low + step).min(to);
+                debug!(logger, "Requesting logs for blocks [{}, {}]", low, high);
                 chunk_futures.push(
                     eth.logs_with_sigs(
                         &logger,
-                        offset,
-                        next_offset - 1,
+                        low,
+                        high,
                         addresses.clone(),
                         event_sigs.clone(),
                         TOO_MANY_LOGS_FINGERPRINT,
@@ -289,7 +284,7 @@ where
                             .collect::<Vec<Log>>()
                     }),
                 );
-                offset = next_offset;
+                low = high + 1;
             }
             let logger = logger.clone();
             Some(
@@ -299,7 +294,14 @@ where
                     .then(move |res| match res {
                         Err(e) => {
                             let string_err = e.to_string();
-                            if string_err.contains(TOO_MANY_LOGS_FINGERPRINT) {
+
+                            // If the step is already 0, we're hitting the log
+                            // limit even for a single block. We hope this never
+                            // happens, but if it does, make sure to error.
+                            if string_err.contains(TOO_MANY_LOGS_FINGERPRINT) && step > 0 {
+                                // The range size for a request is `step + 1`.
+                                // So it's ok if the step goes down to 0, in
+                                // that case we'll request one block at a time.
                                 let new_step = step / 10;
                                 debug!(logger, "Reducing block range size to scan for events";
                                                "new_size" => new_step + 1);
@@ -309,7 +311,7 @@ where
                                 Err(err_msg(string_err))
                             }
                         }
-                        Ok(logs) => Ok((logs, (offset + 1, step))),
+                        Ok(logs) => Ok((logs, (low + 1, step))),
                     }),
             )
         })
