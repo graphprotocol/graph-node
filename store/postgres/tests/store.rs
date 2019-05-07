@@ -1876,7 +1876,9 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             )
             .unwrap();
 
-        // Create a store subscription
+        // Create store subscriptions
+        let meta_subscription =
+            subscribe_and_consume(store.clone(), &SUBGRAPHS_ID, "SubgraphDeployment");
         let subscription = subscribe_and_consume(store.clone(), &subgraph_id, "User");
 
         // Add two entities to the store
@@ -1948,6 +1950,24 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             )
             .unwrap();
 
+        // We're expecting two meta data events to be written to the meta data subscription
+        let meta_expected = vec![
+            StoreEvent::new(vec![EntityChange {
+                subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
+                entity_type: "SubgraphDeployment".to_owned(),
+                entity_id: "EntityChangeTestSubgraph".to_owned(),
+                operation: EntityChangeOperation::Set,
+            }]),
+            StoreEvent::new(vec![EntityChange {
+                subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
+                entity_type: "SubgraphDeployment".to_owned(),
+                entity_id: "EntityChangeTestSubgraph".to_owned(),
+                operation: EntityChangeOperation::Set,
+            }]),
+        ];
+
+        check_events(meta_subscription, meta_expected);
+
         // We're expecting two events to be written to the subscription stream
         let expected = vec![
             StoreEvent::new(vec![
@@ -1961,12 +1981,6 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                     subgraph_id: subgraph_id.clone(),
                     entity_type: "User".to_owned(),
                     entity_id: added_entities[1].clone().0,
-                    operation: EntityChangeOperation::Set,
-                },
-                EntityChange {
-                    subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                    entity_type: "SubgraphDeployment".to_owned(),
-                    entity_id: "EntityChangeTestSubgraph".to_owned(),
                     operation: EntityChangeOperation::Set,
                 },
             ]),
@@ -1983,12 +1997,6 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                     entity_id: added_entities[1].clone().0,
                     operation: EntityChangeOperation::Removed,
                 },
-                EntityChange {
-                    subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                    entity_type: "SubgraphDeployment".to_owned(),
-                    entity_id: "EntityChangeTestSubgraph".to_owned(),
-                    operation: EntityChangeOperation::Set,
-                },
             ]),
         ];
 
@@ -1999,13 +2007,22 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 #[test]
 fn throttle_subscription_delivers() {
     run_test(|store| {
-        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user");
-        let subscription = subscription.throttle_while_syncing(
-            &*LOGGER,
-            store.clone(),
-            TEST_SUBGRAPH_ID.clone(),
-            Duration::from_millis(500),
-        );
+        let meta_subscription =
+            subscribe_and_consume(store.clone(), &SUBGRAPHS_ID, "SubgraphDeployment")
+                .throttle_while_syncing(
+                    &*LOGGER,
+                    store.clone(),
+                    SUBGRAPHS_ID.clone(),
+                    Duration::from_millis(500),
+                );
+
+        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user")
+            .throttle_while_syncing(
+                &*LOGGER,
+                store.clone(),
+                TEST_SUBGRAPH_ID.clone(),
+                Duration::from_millis(500),
+            );
 
         let user4 = create_test_entity(
             "4",
@@ -2027,10 +2044,18 @@ fn throttle_subscription_delivers() {
             )
             .unwrap();
 
-        let expected = StoreEvent::new(vec![
-            make_entity_change("user", "4", EntityChangeOperation::Set),
-            make_deployment_change("testsubgraph", EntityChangeOperation::Set),
-        ]);
+        let meta_expected = StoreEvent::new(vec![make_deployment_change(
+            "testsubgraph",
+            EntityChangeOperation::Set,
+        )]);
+
+        check_events(meta_subscription, vec![meta_expected]);
+
+        let expected = StoreEvent::new(vec![make_entity_change(
+            "user",
+            "4",
+            EntityChangeOperation::Set,
+        )]);
 
         check_events(subscription, vec![expected])
     })
@@ -2040,14 +2065,14 @@ fn throttle_subscription_delivers() {
 fn throttle_subscription_throttles() {
     run_test(
         |store| -> Box<Future<Item = (), Error = graph::tokio_timer::timeout::Error<()>> + Send> {
-            let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user");
-            // Throttle subscriptions for a very long time
-            let subscription = subscription.throttle_while_syncing(
-                &*LOGGER,
-                store.clone(),
-                TEST_SUBGRAPH_ID.clone(),
-                Duration::from_secs(30),
-            );
+            // Throttle for a very long time (30s)
+            let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user")
+                .throttle_while_syncing(
+                    &*LOGGER,
+                    store.clone(),
+                    TEST_SUBGRAPH_ID.clone(),
+                    Duration::from_secs(30),
+                );
 
             let user4 = create_test_entity(
                 "4",
