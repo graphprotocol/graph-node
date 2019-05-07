@@ -100,7 +100,7 @@ where
                                 if distance > 0 {
                                     info!(
                                         self.logger,
-                                        "Assessing block synchronization";
+                                        "Block synchronization";
                                         "local_block_ptr" => head_number,
                                         "network_block_ptr" => latest_number,
                                         "distance" => distance,
