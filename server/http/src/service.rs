@@ -1,3 +1,6 @@
+use std::ops::Deref;
+use std::time::{Duration, Instant};
+
 use graph::components::server::query::GraphQLServerError;
 use graph::data::subgraph::schema::{SubgraphEntity, SUBGRAPHS_ID};
 use graph::prelude::*;
@@ -182,6 +185,8 @@ where
         request_body: Body,
     ) -> GraphQLServiceResponse {
         let service = self.clone();
+        let logger = self.logger.clone();
+        let sd_id = id.clone();
 
         match self.store.is_deployed(id) {
             Err(e) => {
@@ -207,6 +212,7 @@ where
             }
         };
 
+        let start = Instant::now();
         Box::new(
             request_body
                 .concat2()
@@ -219,7 +225,25 @@ where
                         .run_query(query)
                         .map_err(|e| GraphQLServerError::from(e))
                 })
-                .then(|result| GraphQLResponse::new(result)),
+                .then(move |result| {
+                    let elapsed = start.elapsed().as_millis();
+                    match result {
+                        Ok(_) => info!(
+                            logger,
+                            "GraphQL query served.";
+                            "subgraph_deployment_id" => sd_id.deref(),
+                            "query_duration_ms" => elapsed
+                        ),
+                        Err(ref e) => error!(
+                            logger,
+                            "GraphQL query failed.";
+                            "subgraph_deployment_id" => sd_id.deref(),
+                            "error" => e.to_string(),
+                            "query_duration_ms" => elapsed
+                        ),
+                    }
+                    GraphQLResponse::new(result)
+                }),
         )
     }
 

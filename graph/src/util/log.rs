@@ -4,6 +4,7 @@ use slog::{crit, debug, o, Drain, FilterLevel, Logger};
 use slog_async;
 use slog_envlogger;
 use slog_term;
+use std::fmt::{Display, Error, Formatter};
 use std::sync::Mutex;
 use std::time::Duration;
 use std::{env, panic, process, thread};
@@ -102,4 +103,38 @@ pub fn register_panic_hook(panic_logger: Logger, shutdown_sender: oneshot::Sende
         thread::sleep(Duration::from_millis(3000));
         process::exit(1);
     }));
+}
+
+pub enum LogCode {
+    SubgraphStartFailure,
+    SubgraphSyncingFailure,
+    SubgraphSyncingFailureNotRecorded,
+    BlockIngestionStatus,
+    GraphQlQuerySuccess,
+    GraphQlQueryFailure,
+}
+
+impl Display for LogCode {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let value = match self {
+            LogCode::SubgraphStartFailure => "SubgraphStartFailure",
+            LogCode::SubgraphSyncingFailure => "SubgraphSyncingFailure",
+            LogCode::SubgraphSyncingFailureNotRecorded => "SubgraphSyncingFailureNotRecorded",
+            LogCode::BlockIngestionStatus => "BlockIngestionStatus",
+            LogCode::GraphQlQuerySuccess => "GraphQLQuerySuccess",
+            LogCode::GraphQlQueryFailure => "GraphQLQueryFailure",
+        };
+        write!(f, "{}", value)
+    }
+}
+
+impl slog::Value for LogCode {
+    fn serialize(
+        &self,
+        _rec: &slog::Record,
+        key: slog::Key,
+        serializer: &mut slog::Serializer,
+    ) -> slog::Result {
+        serializer.emit_str(key, format!("{}", self).as_str())
+    }
 }
