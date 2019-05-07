@@ -42,9 +42,6 @@ pub mod util;
 /// Extension traits for external types.
 pub mod ext;
 
-/// Error codes for graph-node execution
-pub mod log;
-
 /// A prelude that makes all system component traits and data types available.
 ///
 /// Add the following code to import all traits and data types listed below at once.
@@ -115,6 +112,6 @@ pub mod prelude {
         CancelGuard, CancelHandle, CancelableError, FutureExtension, SharedCancelGuard,
         StreamExtension,
     };
-    pub use crate::log::LogCode;
     pub use crate::util::futures::retry;
+    pub use crate::util::log::LogCode;
 }
