@@ -10,11 +10,10 @@ pub enum LogCode {
 impl Display for LogCode {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let value = match self {
-            SubgraphStartFailure => "SubgraphStartFailure",
-            SubgraphStopped => "SubgraphStopped",
-            SubgraphExecutionFailure => "SubgraphExecutionFailure",
-            SubgraphFailureNotRecorded => "SubgraphExecutionFailureNotRecorded",
-            BlockSyncStatus => "BlockSyncStatus",
+            LogCode::SubgraphStartFailure => "SubgraphStartFailure",
+            LogCode::SubgraphExecutionFailure => "SubgraphExecutionFailure",
+            LogCode::SubgraphExecutionFailureNotRecorded => "SubgraphExecutionFailureNotRecorded",
+            LogCode::BlockSyncStatus => "BlockSyncStatus",
         };
         write!(f, "{}", value)
     }
