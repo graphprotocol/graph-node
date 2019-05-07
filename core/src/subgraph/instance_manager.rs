@@ -399,7 +399,7 @@ where
                     logger_for_err,
                     "Subgraph instance failed to run: {}", e;
                     "id" => id_for_err.to_string(),
-                    "code" => LogCode::SubgraphExecutionFailure
+                    "code" => LogCode::SubgraphSyncingFailure
                 );
 
                 // Set subgraph status to Failed
@@ -411,7 +411,7 @@ where
                         logger_for_err,
                         "Failed to set subgraph status to Failed: {}", e;
                         "id" => id_for_err.to_string(),
-                        "code" => LogCode::SubgraphExecutionFailureNotRecorded
+                        "code" => LogCode::SubgraphSyncingFailureNotRecorded
                     );
                 }
             }

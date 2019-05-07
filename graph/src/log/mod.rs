@@ -2,18 +2,22 @@ use std::fmt::{Display, Error, Formatter};
 
 pub enum LogCode {
     SubgraphStartFailure,
-    SubgraphExecutionFailure,
-    SubgraphExecutionFailureNotRecorded,
-    BlockSyncStatus,
+    SubgraphSyncingFailure,
+    SubgraphSyncingFailureNotRecorded,
+    BlockIngestionStatus,
+    GraphQlQuerySuccess,
+    GraphQlQueryFailure,
 }
 
 impl Display for LogCode {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let value = match self {
             LogCode::SubgraphStartFailure => "SubgraphStartFailure",
-            LogCode::SubgraphExecutionFailure => "SubgraphExecutionFailure",
-            LogCode::SubgraphExecutionFailureNotRecorded => "SubgraphExecutionFailureNotRecorded",
-            LogCode::BlockSyncStatus => "BlockSyncStatus",
+            LogCode::SubgraphSyncingFailure => "SubgraphSyncingFailure",
+            LogCode::SubgraphSyncingFailureNotRecorded => "SubgraphSyncingFailureNotRecorded",
+            LogCode::BlockIngestionStatus => "BlockIngestionStatus",
+            LogCode::GraphQlQuerySuccess => "GraphQLQueryTimer",
+            LogCode::GraphQlQueryFailure => "GraphQLQueryFailure",
         };
         write!(f, "{}", value)
     }
