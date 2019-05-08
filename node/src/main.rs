@@ -18,13 +18,12 @@ extern crate lazy_static;
 extern crate url;
 
 use clap::{App, Arg};
-use futures::sync::oneshot;
+use futures::sync::{mpsc, oneshot};
 use git_testament::{git_testament, render_testament};
 use ipfs_api::IpfsClient;
 use lazy_static::lazy_static;
 use std::env;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::Duration;
 
 use graph::components::forward;
@@ -64,7 +63,6 @@ lazy_static! {
 git_testament!(TESTAMENT);
 
 fn main() {
-    println!("REORG_THRESHOLD = {:#?}", *REORG_THRESHOLD);
     let (shutdown_sender, shutdown_receiver) = oneshot::channel();
     // Register guarded panic logger which ensures logs flush on shutdown
     let (panic_logger, _panic_guard) = guarded_logger();
@@ -573,6 +571,29 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             .serve(ws_port)
             .expect("Failed to start GraphQL subscription server"),
     );
+
+    // Periodically check for contention in the tokio threadpool. First spawn a
+    // task that simply responds to "ping" requests. Then spawn a separate
+    // thread to periodically ping it and check responsiveness.
+    let (ping_send, ping_receive) = mpsc::channel::<std::sync::mpsc::Sender<()>>(1);
+    tokio::spawn(
+        ping_receive
+            .for_each(move |pong_send| pong_send.clone().send(()).map(|_| ()).map_err(|_| ())),
+    );
+    let contention_logger = logger.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(10));
+        let (pong_send, pong_receive) = std::sync::mpsc::channel();
+        ping_send.clone().send(pong_send).wait().unwrap();
+        let mut timeout = Duration::from_millis(1);
+        while pong_receive.recv_timeout(timeout).is_err() {
+            warn!(contention_logger, "Possible contention in tokio threadpool";
+                                     "timeout_ms" => timeout.as_millis());
+            if timeout < Duration::from_secs(10) {
+                timeout *= 10;
+            }
+        }
+    });
 
     future::empty()
 }
