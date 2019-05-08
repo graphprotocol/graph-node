@@ -1,5 +1,5 @@
 use std::ops::Deref;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use graph::components::server::query::GraphQLServerError;
 use graph::data::subgraph::schema::{SubgraphEntity, SUBGRAPHS_ID};
