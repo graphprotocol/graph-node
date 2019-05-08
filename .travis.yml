@@ -33,8 +33,15 @@ matrix:
     - env: CHECK_FORMATTING=true
       rust: stable
       script:
-        - rustup component add rustfmt-preview
+        - rustup component add rustfmt
         - cargo fmt --all -- --check
+
+    # Check for warnings
+    - env: RUSTFLAGS="-D warnings"
+      rust: stable
+      script:
+        - cargo check --tests
+
   # Build tagged commits in release mode
     - env: RELEASE=true
       if: tag IS present
