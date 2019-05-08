@@ -41,7 +41,6 @@ where
         "subgraph_id" => (*query.schema.id).clone(),
         "query_id" => query_id
     ));
-    let start_time = Instant::now();
 
     // Obtain the only operation of the query (fail if there is none or more than one)
     let operation = match qast::get_operation(&query.document, None) {
