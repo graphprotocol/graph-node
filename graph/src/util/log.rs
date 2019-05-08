@@ -112,6 +112,7 @@ pub enum LogCode {
     BlockIngestionStatus,
     GraphQlQuerySuccess,
     GraphQlQueryFailure,
+    TokioContention,
 }
 
 impl Display for LogCode {
@@ -123,6 +124,7 @@ impl Display for LogCode {
             LogCode::BlockIngestionStatus => "BlockIngestionStatus",
             LogCode::GraphQlQuerySuccess => "GraphQLQuerySuccess",
             LogCode::GraphQlQueryFailure => "GraphQLQueryFailure",
+            LogCode::TokioContention => "TokioContention",
         };
         write!(f, "{}", value)
     }
