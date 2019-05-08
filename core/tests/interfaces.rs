@@ -293,7 +293,6 @@ fn interface_non_inline_fragment() {
     // Query only the fragment.
     let query = "query { leggeds { ...frag } } fragment frag on Animal { name }";
     let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
-    dbg!(&res.errors);
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
         r#"Object({"leggeds": List([Object({"name": String("cow")})])})"#
@@ -336,7 +335,6 @@ fn interface_inline_fragment() {
     let query =
         "query { leggeds(orderBy: legs) { ... on Animal { name } ...on Bird { airspeed } } }";
     let res = insert_and_query(subgraph_id, schema, vec![animal, bird], query).unwrap();
-    dbg!(&res.errors);
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
         r#"Object({"leggeds": List([Object({"airspeed": Int(Number(24))}), Object({"name": String("cow")})])})"#
