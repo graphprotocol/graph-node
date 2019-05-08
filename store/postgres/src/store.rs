@@ -1,7 +1,7 @@
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
-use diesel::r2d2::{self, ConnectionManager, Pool};
+use diesel::r2d2::{self, ConnectionManager, Pool, PooledConnection};
 use diesel::{insert_into, select, update};
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
@@ -162,7 +162,7 @@ impl Store {
         let network_identifiers_opt = ethereum_networks
             .select((net_version, genesis_block_hash))
             .filter(name.eq(&self.network_name))
-            .first::<(Option<String>, Option<String>)>(&*self.conn.get()?)
+            .first::<(Option<String>, Option<String>)>(&*self.get_conn()?)
             .optional()?;
 
         match network_identifiers_opt {
@@ -179,7 +179,7 @@ impl Store {
                     ))
                     .on_conflict(name)
                     .do_nothing()
-                    .execute(&*self.conn.get()?)?;
+                    .execute(&*self.get_conn()?)?;
             }
 
             // Network is in database and has identifiers
@@ -212,7 +212,7 @@ impl Store {
                             .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
                     ))
                     .filter(name.eq(&self.network_name))
-                    .execute(&*self.conn.get()?)?;
+                    .execute(&*self.get_conn()?)?;
             }
         }
 
@@ -699,6 +699,17 @@ impl Store {
         let v = serde_json::to_value(event)?;
         JsonNotification::send("store_events", &v, conn)
     }
+
+    fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+        let start_time = Instant::now();
+        let conn = self.conn.get();
+        let wait = start_time.elapsed();
+        if wait > Duration::from_millis(10) {
+            warn!(self.logger, "Possible contention in DB connection pool";
+                               "wait_ms" => wait.as_millis())
+        }
+        conn.map_err(Error::from)
+    }
 }
 
 impl StoreTrait for Store {
@@ -739,8 +750,7 @@ impl StoreTrait for Store {
 
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
         let conn = self
-            .conn
-            .get()
+            .get_conn()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         let conn = e::Connection::new(&conn);
         self.get_entity(&conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
@@ -748,8 +758,7 @@ impl StoreTrait for Store {
 
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
         let conn = self
-            .conn
-            .get()
+            .get_conn()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         let conn = e::Connection::new(&conn);
         self.execute_query(&conn, query)
@@ -759,8 +768,7 @@ impl StoreTrait for Store {
         query.range = EntityRange::first(1);
 
         let conn = self
-            .conn
-            .get()
+            .get_conn()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         let conn = e::Connection::new(&conn);
 
@@ -827,7 +835,7 @@ impl StoreTrait for Store {
         operations: Vec<EntityOperation>,
         event_source: EventSource,
     ) -> Result<(), StoreError> {
-        let conn = self.conn.get().map_err(Error::from)?;
+        let conn = self.get_conn().map_err(Error::from)?;
         let econn = e::Connection::new(&conn);
         conn.transaction(|| {
             self.emit_store_events(&conn, &operations)?;
@@ -839,7 +847,7 @@ impl StoreTrait for Store {
         &self,
         indexes: Vec<AttributeIndexDefinition>,
     ) -> Result<(), SubgraphAssignmentProviderError> {
-        let conn = self.conn.get().map_err(Error::from)?;
+        let conn = self.get_conn().map_err(Error::from)?;
         let econn = e::Connection::new(&conn);
         conn.transaction(|| self.build_entity_attribute_indexes_with_conn(&econn, indexes))
     }
@@ -855,7 +863,7 @@ impl StoreTrait for Store {
             panic!("revert_block_operations must revert a single block only");
         }
 
-        let conn = self.conn.get().map_err(Error::from)?;
+        let conn = self.get_conn().map_err(Error::from)?;
         let econn = e::Connection::new(&conn);
         conn.transaction(|| {
             let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
@@ -907,7 +915,7 @@ impl StoreTrait for Store {
         subgraph_id: &SubgraphDeploymentId,
         ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError> {
-        let conn = self.conn.get().map_err(Error::from)?;
+        let conn = self.get_conn().map_err(Error::from)?;
         let econn = e::Connection::new(&conn);
 
         conn.transaction(|| {
@@ -1019,7 +1027,7 @@ impl ChainStore for Store {
             &self.network_name,
             ancestor_count as i64,
         ))
-        .load(&*self.conn.get()?)
+        .load(&*self.get_conn()?)
         .map_err(Error::from)
         // We got a single return value, but it's returned generically as a set of rows
         .map(|mut rows: Vec<_>| {
@@ -1046,7 +1054,7 @@ impl ChainStore for Store {
         ethereum_networks
             .select((head_block_hash, head_block_number))
             .filter(name.eq(&self.network_name))
-            .load::<(Option<String>, Option<i64>)>(&*self.conn.get()?)
+            .load::<(Option<String>, Option<i64>)>(&*self.get_conn()?)
             .map(|rows| {
                 rows.first()
                     .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
@@ -1066,7 +1074,7 @@ impl ChainStore for Store {
             .select(data)
             .filter(network_name.eq(&self.network_name))
             .filter(hash.eq(format!("{:x}", block_hash)))
-            .load::<serde_json::Value>(&*self.conn.get()?)
+            .load::<serde_json::Value>(&*self.get_conn()?)
             .map(|json_blocks| match json_blocks.len() {
                 0 => None,
                 1 => Some(
@@ -1088,7 +1096,7 @@ impl ChainStore for Store {
         }
 
         select(lookup_ancestor_block(block_ptr.hash_hex(), offset as i64))
-            .first::<Option<serde_json::Value>>(&*self.conn.get()?)
+            .first::<Option<serde_json::Value>>(&*self.get_conn()?)
             .map(|val_opt| {
                 val_opt.map(|val| {
                     serde_json::from_value::<EthereumBlock>(val)
