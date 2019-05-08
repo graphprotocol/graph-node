@@ -582,13 +582,14 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     );
     let contention_logger = logger.clone();
     std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_secs(10));
+        std::thread::sleep(Duration::from_millis(100));
         let (pong_send, pong_receive) = std::sync::mpsc::channel();
         ping_send.clone().send(pong_send).wait().unwrap();
         let mut timeout = Duration::from_millis(1);
         while pong_receive.recv_timeout(timeout).is_err() {
             warn!(contention_logger, "Possible contention in tokio threadpool";
-                                     "timeout_ms" => timeout.as_millis());
+                                     "timeout_ms" => timeout.as_millis(),
+                                     "code" => LogCode::TokioContention);
             if timeout < Duration::from_secs(10) {
                 timeout *= 10;
             }
