@@ -301,17 +301,6 @@ impl<'a> Connection<'a> {
         table.insert(self.conn, key, data, history_event)
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn upsert(
-        &self,
-        key: &EntityKey,
-        data: &serde_json::Value,
-        history_event: Option<&HistoryEvent>,
-    ) -> Result<usize, StoreError> {
-        let table = self.table(&key.subgraph_id)?;
-        table.upsert(self.conn, key, data, history_event)
-    }
-
     pub(crate) fn update(
         &self,
         key: &EntityKey,
