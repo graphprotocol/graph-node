@@ -26,8 +26,12 @@ begin
 
   -- Handle split entities tables
   for deployment in
-    select * from deployment_schemas
+    -- Join with pg_namespace to make sure we do not, under any
+    -- circumstances, try to access a schema that was dropped for
+    -- whatever reason
+    select s.* from deployment_schemas s, pg_namespace n
             where subgraph != 'subgraphs'
+              and s.name = n.nspname
   loop
     execute format('select count(*) from %I.entities', deployment.name)
        into entity_count;
