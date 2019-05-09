@@ -575,7 +575,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Periodically check for contention in the tokio threadpool. First spawn a
     // task that simply responds to "ping" requests. Then spawn a separate
     // thread to periodically ping it and check responsiveness.
-    let (ping_send, ping_receive) = mpsc::channel::<std::sync::mpsc::Sender<()>>(1);
+    let (ping_send, ping_receive) = mpsc::channel::<crossbeam_channel::Sender<()>>(1);
     tokio::spawn(
         ping_receive
             .for_each(move |pong_send| pong_send.clone().send(()).map(|_| ()).map_err(|_| ())),
@@ -583,7 +583,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let contention_logger = logger.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(100));
-        let (pong_send, pong_receive) = std::sync::mpsc::channel();
+        let (pong_send, pong_receive) = crossbeam_channel::bounded(1);
         ping_send.clone().send(pong_send).wait().unwrap();
         let mut timeout = Duration::from_millis(1);
         while pong_receive.recv_timeout(timeout).is_err() {
