@@ -139,6 +139,10 @@ impl Store for MockStore {
         Ok(self.find(query)?.pop())
     }
 
+    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError> {
+        Ok(None)
+    }
+
     fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
         unimplemented!();
     }

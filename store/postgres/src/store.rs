@@ -839,6 +839,27 @@ impl StoreTrait for Store {
         }
     }
 
+    fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
+        use crate::db_schema::ens_names as dsl;
+
+        let conn = self
+            .get_conn()
+            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+
+        dsl::table
+            .select(dsl::name)
+            .find(hash)
+            .get_result::<String>(&conn)
+            .optional()
+            .map_err(|e| {
+                QueryExecutionError::StoreError(format_err!(
+                    "error looking up ens_name for hash {}: {}",
+                    hash,
+                    e
+                ))
+            })
+    }
+
     fn set_block_ptr_with_no_changes(
         &self,
         subgraph_id: SubgraphDeploymentId,

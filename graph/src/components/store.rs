@@ -660,6 +660,10 @@ pub trait Store: Send + Sync + 'static {
     /// Queries the store for a single entity matching the store query.
     fn find_one(&self, query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError>;
 
+    /// Find the reverse of keccak256 for `hash` through looking it up in the
+    /// rainbow table.
+    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError>;
+
     /// Updates the block pointer.  Careful: this is only safe to use if it is known that no store
     /// changes are needed to go from `block_ptr_from` to `block_ptr_to`.
     ///

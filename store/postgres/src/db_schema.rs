@@ -25,3 +25,10 @@ table! {
         created_at -> Timestamp,
     }
 }
+
+table! {
+    ens_names(hash) {
+        hash -> Varchar,
+        name -> Varchar,
+    }
+}
