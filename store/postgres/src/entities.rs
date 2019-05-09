@@ -1315,6 +1315,12 @@ pub fn delete_all_entities_for_test_use_only(conn: &PgConnection) -> Result<usiz
     rows = rows + diesel::delete(public::event_meta_data::table).execute(conn)?;
     // Delete subgraphs entities
     rows = rows + diesel::delete(subgraphs::entities::table).execute(conn)?;
+    // Delete all subgraph deployment schemas entries; except for the "subgraphs"
+    // entry that is created by the split entities migration
+    rows = rows
+        + diesel::delete(deployment_schemas::table)
+            .filter(deployment_schemas::subgraph.ne("subgraphs"))
+            .execute(conn)?;
     Ok(rows)
 }
 
