@@ -27,14 +27,50 @@ use crate::store_events::StoreEventListener;
 
 embed_migrations!("./migrations");
 
-/// Run all initial schema migrations.
+/// Run all schema migrations.
 ///
-/// Creates the "entities" table if it doesn't already exist.
-fn initiate_schema(logger: &Logger, conn: &PgConnection) {
+/// When multiple `graph-node` processes start up at the same time, we ensure
+/// that they do not run migrations in parallel by using `blocking_conn` to
+/// serialize them. The `conn` is used to run the actual migration.
+fn initiate_schema(logger: &Logger, conn: &PgConnection, blocking_conn: &PgConnection) {
     // Collect migration logging output
     let mut output = vec![];
 
-    match embedded_migrations::run_with_output(conn, &mut output) {
+    // Make sure the locking table exists so we have something
+    // to lock. We intentionally ignore errors here, because they are most
+    // likely caused by us losing a race to create the table against another
+    // graph-node. If this truly is an error, we will trip over it when
+    // we try to lock the table and report it to the user
+    if let Err(e) = blocking_conn.batch_execute(
+        "create table if not exists \
+         __graph_node_global_lock(id int)",
+    ) {
+        debug!(
+            logger,
+            "Creating lock table failed, this is most likely harmless";
+            "error" => format!("{:?}", e)
+        );
+    }
+
+    // blocking_conn holds the lock on the migrations table for the duration
+    // of the migration on conn. Since all nodes execute this code, only one
+    // of them can run this code at the same time. We need to use two
+    // connections for this because diesel will run each migration in its
+    // own txn, which makes it impossible to hold a lock across all of them
+    // on that connection
+    info!(
+        logger,
+        "Waiting for other graph-node instances to finish migrating"
+    );
+    let result = blocking_conn.transaction(|| {
+        diesel::sql_query("lock table __graph_node_global_lock in exclusive mode")
+            .execute(blocking_conn)?;
+        info!(logger, "Running migrations");
+        embedded_migrations::run_with_output(conn, &mut output)
+    });
+    info!(logger, "Migrations finished");
+
+    match result {
         Ok(_) => info!(logger, "Completed pending Postgres schema migrations"),
         Err(e) => panic!(
             "Error setting up Postgres database: \
@@ -42,8 +78,7 @@ fn initiate_schema(logger: &Logger, conn: &PgConnection) {
              latest version of graph-node. Error information: {:?}",
             e
         ),
-    }
-
+    };
     // If there was any migration output, log it now
     if !output.is_empty() {
         debug!(
@@ -112,7 +147,7 @@ impl Store {
         );
 
         // Create the entities table (if necessary)
-        initiate_schema(&logger, &pool.get().unwrap());
+        initiate_schema(&logger, &pool.get().unwrap(), &pool.get().unwrap());
 
         // Listen to entity changes in Postgres
         let mut listener = StoreEventListener::new(&logger, config.postgres_url.clone());
