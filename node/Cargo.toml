@@ -10,6 +10,7 @@ futures = "0.1.21"
 git-testament = "0.1"
 graphql-parser = "0.2.1"
 http = "0.1"
+
 # We're using the latest ipfs-api for the HTTPS support that was merged in
 # https://github.com/ferristseng/rust-ipfs-api/commit/55902e98d868dcce047863859caf596a629d10ec
 # but has not been released yet.
@@ -18,6 +19,7 @@ itertools = "0.7"
 lazy_static = "1.2.0"
 sentry = "0.15.1"
 url = "1.7.1"
+crossbeam-channel = "0.3.8"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
 graph-datasource-ethereum = { path = "../datasource/ethereum" }
