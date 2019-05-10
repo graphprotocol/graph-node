@@ -86,7 +86,7 @@ where
     }
 }
 
-type MappingResponse = Result<BlockState, Error>;
+type MappingResponse = (Result<BlockState, Error>, futures::Finished<Instant, Error>);
 
 #[derive(Debug)]
 struct MappingRequest {
@@ -275,7 +275,7 @@ impl RuntimeHost {
                     };
 
                     result_sender
-                        .send(result)
+                        .send((result, future::ok(Instant::now())))
                         .map_err(|_| err_msg("WASM module result receiver dropped."))
                 })
                 .wait()
@@ -610,14 +610,12 @@ impl RuntimeHostTrait for RuntimeHost {
                         format_err!("Mapping terminated before finishing to handle")
                     })
                 })
-                .and_then(move |result| {
+                .and_then(move |(result, _)| {
                     info!(
                         logger, "Done processing Ethereum call";
                         "function" => &call_handler.function,
                         "handler" => &call_handler.handler,
-                        // Replace this when `as_millis` is stable.
-                        "secs" => start_time.elapsed().as_secs(),
-                        "ms" => start_time.elapsed().subsec_millis()
+                        "ms" => start_time.elapsed().as_millis(),
                     );
                     result
                 }),
@@ -667,15 +665,13 @@ impl RuntimeHostTrait for RuntimeHost {
                         format_err!("Mapping terminated before finishing to handle block trigger")
                     })
                 })
-                .and_then(move |result| {
+                .and_then(move |(result, _)| {
                     info!(
                         logger, "Done processing Ethereum block";
                         "hash" => block.block.hash.unwrap().to_string(),
                         "number" => &block.block.number.unwrap().to_string(),
                         "handler" => &block_handler.handler,
-                        // Replace this when `as_millis` is stable.
-                        "secs" => start_time.elapsed().as_secs(),
-                        "ms" => start_time.elapsed().subsec_millis()
+                        "ms" => start_time.elapsed().as_millis(),
                     );
                     result
                 }),
@@ -773,14 +769,17 @@ impl RuntimeHostTrait for RuntimeHost {
                         )
                     })
                 })
-                .and_then(move |result| {
+                .and_then(move |(result, send_time)| {
                     info!(
                         logger, "Done processing Ethereum event";
                         "signature" => &event_handler.event,
                         "handler" => &event_handler.handler,
-                        // Replace this when `as_millis` is stable.
-                        "secs" => start_time.elapsed().as_secs(),
-                        "ms" => start_time.elapsed().subsec_millis()
+                        "total_ms" => start_time.elapsed().as_millis(),
+
+                        // How much time the result spent in the channel,
+                        // waiting in the tokio threadpool queue. Anything
+                        // different from 0 is an issue here.
+                        "waiting_ms" => send_time.wait().unwrap().elapsed().as_millis(),
                     );
                     result
                 }),
