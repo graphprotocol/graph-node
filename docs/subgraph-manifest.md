@@ -34,7 +34,7 @@ Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical For
 | **network** | *String* | For blockchains, this describes which network the subgraph targets. For Ethereum, this could be, for example, "mainnet" or "rinkeby". |
 | **source** | [*EthereumContractSource*](#151-ethereumcontractsource) | The source data on a blockchain such as Ethereum. |
 | **mapping** | [*Mapping*](#152-mapping) | The transformation logic applied to the data prior to being indexed. |
-| **templates** | [*Dynamic Data Source Spec*](#17-dynamic-data-source) | Each dynamic data source spec defines a template of a traditional data source. This template will be created and mapped to a live data source at runtime. |
+| **templates** | [*Data Source Templates Spec*](#17-data-source-templates) | Each data source template defines a data source that can be created dynamically from the mappings. |
 
 ### 1.5.1 EthereumContractSource
 
@@ -76,8 +76,8 @@ When using the Graph-CLI, local paths may be used during development, and then, 
 | --- | --- | --- |
 | **path** | *String or [IPLD Link](https://github.com/ipld/specs/)* | A path to a local file or IPLD link. |
 
-## 1.7 Dynamic Data Source
-A dynamic data source has all of the fields of a normal data source, except the [EthereumContractSource](#151-ethereumcontractsource) address field is removed.
+## 1.7 Data Source Templates
+A data source template has all of the fields of a normal data source, except it does not include a contract address under `source`. The address is a parameter that can later be provided when creating a dynamic data source from the template.
 ```yml
 # ...
 dataSources:
