@@ -778,7 +778,7 @@ impl RuntimeHostTrait for RuntimeHost {
 
                         // How much time the result spent in the channel,
                         // waiting in the tokio threadpool queue. Anything
-                        // different from 0 is an issue here.
+                        // larger than 0 is bad here. The `.wait()` is instant.
                         "waiting_ms" => send_time.wait().unwrap().elapsed().as_millis(),
                     );
                     result
