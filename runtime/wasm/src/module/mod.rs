@@ -62,6 +62,7 @@ const BIG_DECIMAL_TO_STRING: usize = 32;
 const BIG_DECIMAL_FROM_STRING: usize = 33;
 const IPFS_MAP_FUNC_INDEX: usize = 34;
 const DATA_SOURCE_CREATE_INDEX: usize = 35;
+const ENS_NAME_BY_HASH: usize = 36;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
@@ -871,6 +872,18 @@ where
             .data_source_create(&mut self.ctx, name, params)?;
         Ok(None)
     }
+
+    fn ens_name_by_hash(
+        &mut self,
+        hash_ptr: AscPtr<AscString>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let hash: String = self.asc_get(hash_ptr);
+        let name = self.valid_module.host_exports.ens_name_by_hash(&*hash)?;
+        // map `None` to `null`, and `Some(s)` to a runtime string
+        Ok(name
+            .map(|name| RuntimeValue::from(self.asc_new(&*name)))
+            .or(Some(RuntimeValue::from(0))))
+    }
 }
 
 impl<T, L, S, U> Externals for WasmiModule<T, L, S, U>
@@ -952,6 +965,7 @@ where
             DATA_SOURCE_CREATE_INDEX => {
                 self.data_source_create(args.nth_checked(0)?, args.nth_checked(1)?)
             }
+            ENS_NAME_BY_HASH => self.ens_name_by_hash(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -1050,6 +1064,9 @@ impl ModuleImportResolver for ModuleResolver {
 
             // dataSource
             "dataSource.create" => FuncInstance::alloc_host(signature, DATA_SOURCE_CREATE_INDEX),
+
+            // ens.nameByHash
+            "ens.nameByHash" => FuncInstance::alloc_host(signature, ENS_NAME_BY_HASH),
 
             // Unknown export
             _ => {

@@ -614,6 +614,13 @@ where
 
         Ok(())
     }
+
+    pub(crate) fn ens_name_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<Option<String>, HostExportError<impl ExportError>> {
+        self.store.find_ens_name(hash).map_err(HostExportError)
+    }
 }
 
 pub(crate) fn string_to_h160(string: &str) -> Result<H160, HostExportError<impl ExportError>> {

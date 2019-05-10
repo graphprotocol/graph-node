@@ -415,6 +415,14 @@ impl Store for FakeStore {
         unimplemented!();
     }
 
+    fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
+        let s1 = "dealdrafts".to_string();
+        match hash {
+            "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3" => Ok(Some(s1)),
+            _ => Ok(None),
+        }
+    }
+
     fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
         unimplemented!();
     }

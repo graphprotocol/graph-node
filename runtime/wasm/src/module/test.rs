@@ -796,3 +796,28 @@ fn data_source_create() {
         ),
     };
 }
+
+#[test]
+fn ens_name_by_hash() {
+    let valid_module = test_valid_module(mock_data_source("wasm_test/ens_name_by_hash.wasm"));
+    let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
+
+    let hash = "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3";
+    let converted: AscPtr<AscString> = module
+        .module
+        .clone()
+        .invoke_export(
+            "nameByHash",
+            &[RuntimeValue::from(module.asc_new(hash))],
+            &mut module,
+        )
+        .expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return pointer");
+    let data: String = module.asc_get(converted);
+    assert_eq!(data, "dealdrafts");
+
+    let hash = module.asc_new("impossible keccak hash");
+    assert!(dbg!(module.takes_ptr_returns_ptr::<_, AscString>("nameByHash", hash,)).is_null());
+}
