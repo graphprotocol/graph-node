@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 use std::result::Result as StdResult;
 
-use graph::slog::*;
-use graph::slog_async;
+use slog::*;
+use slog_async;
 
 /// An error that could come from either of two slog `Drain`s.
 #[derive(Debug)]

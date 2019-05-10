@@ -12,6 +12,7 @@ use graph::components::ethereum::*;
 use graph::components::store::Store;
 use graph::data::subgraph::{DataSource, Source};
 use graph::ethabi::{LogParam, RawLog};
+use graph::log;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
@@ -199,7 +200,7 @@ impl RuntimeHost {
         // subgraph to fail the next time it tries to handle an event.
         let conf = thread::Builder::new().name(format!(
             "{}-{}-{}",
-            util::log::MAPPING_THREAD_PREFIX,
+            log::logger::MAPPING_THREAD_PREFIX,
             config.subgraph_id,
             data_source_name
         ));

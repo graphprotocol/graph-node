@@ -1,10 +1,13 @@
 extern crate backtrace;
 pub extern crate bigdecimal;
+extern crate chrono;
 extern crate diesel;
 pub extern crate ethabi;
 extern crate futures;
 extern crate graphql_parser;
 extern crate hex;
+extern crate itertools;
+extern crate reqwest;
 #[macro_use]
 extern crate lazy_static;
 extern crate num_bigint;
@@ -19,6 +22,7 @@ extern crate ipfs_api;
 extern crate parity_wasm;
 extern crate rand;
 extern crate semver;
+#[macro_use]
 pub extern crate serde_json;
 pub extern crate slog_async;
 extern crate slog_envlogger;
@@ -41,6 +45,9 @@ pub mod util;
 
 /// Extension traits for external types.
 pub mod ext;
+
+/// Logging utilities
+pub mod log;
 
 /// A prelude that makes all system component traits and data types available.
 ///
@@ -112,6 +119,8 @@ pub mod prelude {
         CancelGuard, CancelHandle, CancelableError, FutureExtension, SharedCancelGuard,
         StreamExtension,
     };
+    pub use crate::log::codes::LogCode;
+    pub use crate::log::elastic::{elastic_logger, ElasticDrainConfig, ElasticLoggingConfig};
+    pub use crate::log::split::split_logger;
     pub use crate::util::futures::retry;
-    pub use crate::util::log::LogCode;
 }

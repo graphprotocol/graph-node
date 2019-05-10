@@ -34,8 +34,8 @@ use graph::tokio_timer::timer::Timer;
 use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph::util::security::SafeDisplay;
 use graph_core::{
-    ElasticLoggingConfig, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
-    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
+    SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
+    SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
@@ -429,6 +429,16 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let mut subscription_server =
         GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), store.clone());
 
+    // Optionally, identify the Elasticsearch logging configuration
+    let elastic_config =
+        matches
+            .value_of("elasticsearch-url")
+            .map(|endpoint| ElasticLoggingConfig {
+                endpoint: endpoint.into(),
+                username: matches.value_of("elasticsearch-user").map(|s| s.into()),
+                password: matches.value_of("elasticsearch-password").map(|s| s.into()),
+            });
+
     if env::var_os("DISABLE_BLOCK_INGESTOR").unwrap_or("".into()) != "true" {
         // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
         // otherwise BlockStream will not work properly.
@@ -458,16 +468,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         node_id.clone(),
         *REORG_THRESHOLD,
     );
-
-    // Optionally, identify the Elasticsearch logging configuration
-    let elastic_config =
-        matches
-            .value_of("elasticsearch-url")
-            .map(|endpoint| ElasticLoggingConfig {
-                endpoint: endpoint.into(),
-                username: matches.value_of("elasticsearch-user").map(|s| s.into()),
-                password: matches.value_of("elasticsearch-password").map(|s| s.into()),
-            });
 
     // Prepare for hosting WASM runtimes and managing subgraph instances
     let runtime_host_builder =

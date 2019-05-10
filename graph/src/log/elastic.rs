@@ -1,19 +1,20 @@
+use std::fmt;
+use std::fmt::Write;
+use std::result::Result;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
 use chrono::prelude::{SecondsFormat, Utc};
+use futures::{Future, Stream};
 use itertools;
 use reqwest;
 use serde::ser::Serializer as SerdeSerializer;
-use std::fmt;
-use std::fmt::Write;
-use std::sync::Mutex;
-use std::time::Duration;
+use serde_json;
+use slog::*;
+use slog_async;
+use tokio::timer::Interval;
 
-use graph::prelude::tokio::timer::Interval;
-use graph::prelude::*;
-use graph::serde_json;
-use graph::slog::*;
-use graph::slog_async;
-
-use std::result::Result;
+use crate::data::subgraph::SubgraphDeploymentId;
 
 /// General configuration parameters for Elasticsearch logging.
 #[derive(Clone, Debug)]
