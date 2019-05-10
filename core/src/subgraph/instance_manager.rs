@@ -14,10 +14,6 @@ use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::util::extend::Extend;
 
 use super::SubgraphInstance;
-use crate::elastic_logger;
-use crate::split_logger;
-use crate::ElasticDrainConfig;
-use crate::ElasticLoggingConfig;
 
 type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<SubgraphDeploymentId, CancelGuard>>>;
 
