@@ -1,9 +1,10 @@
-use hyper;
-use hyper::Server;
-
 use std::error::Error;
 use std::fmt;
 use std::net::{Ipv4Addr, SocketAddrV4};
+use std::time::Duration;
+
+use hyper;
+use hyper::Server;
 
 use crate::service::GraphQLService;
 use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
@@ -48,9 +49,35 @@ pub struct GraphQLServer<Q, S> {
 
 impl<Q, S> GraphQLServer<Q, S> {
     /// Creates a new GraphQL server.
-    pub fn new(logger: &Logger, graphql_runner: Arc<Q>, store: Arc<S>, node_id: NodeId) -> Self {
+    pub fn new(
+        logger: &Logger,
+        graphql_runner: Arc<Q>,
+        store: Arc<S>,
+        node_id: NodeId,
+        elastic_config: Option<ElasticLoggingConfig>,
+    ) -> Self {
+        let term_logger = logger.new(o!("component" => "GraphQLServer"));
+        let logger = elastic_config
+            .clone()
+            .map(|elastic_config| {
+                split_logger(
+                    term_logger.clone(),
+                    elastic_logger(
+                        ElasticDrainConfig {
+                            general: elastic_config,
+                            index: String::from("graphql-server-logs"),
+                            document_type: String::from("log"),
+                            custom_id_key: String::from("componentName"),
+                            custom_id_value: String::from("graphqlServer"),
+                            flush_interval: Duration::from_secs(4),
+                        },
+                        term_logger.clone(),
+                    ),
+                )
+            })
+            .unwrap_or(term_logger);
         GraphQLServer {
-            logger: logger.new(o!("component" => "GraphQLServer")),
+            logger,
             graphql_runner,
             store,
             node_id,

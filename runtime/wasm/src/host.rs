@@ -200,7 +200,7 @@ impl RuntimeHost {
         // subgraph to fail the next time it tries to handle an event.
         let conf = thread::Builder::new().name(format!(
             "{}-{}-{}",
-            log::logger::MAPPING_THREAD_PREFIX,
+            log::MAPPING_THREAD_PREFIX,
             config.subgraph_id,
             data_source_name
         ));

@@ -27,11 +27,11 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use graph::components::forward;
+use graph::log::{guarded_logger, logger, register_panic_hook};
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::tokio_executor;
 use graph::tokio_timer;
 use graph::tokio_timer::timer::Timer;
-use graph::util::log::{guarded_logger, logger, register_panic_hook};
 use graph::util::security::SafeDisplay;
 use graph_core::{
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
@@ -315,6 +315,16 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .unwrap()
         .to_owned();
 
+    // Optionally, identify the Elasticsearch logging configuration
+    let elastic_config =
+        matches
+            .value_of("elasticsearch-url")
+            .map(|endpoint| ElasticLoggingConfig {
+                endpoint: endpoint.into(),
+                username: matches.value_of("elasticsearch-user").map(|s| s.into()),
+                password: matches.value_of("elasticsearch-password").map(|s| s.into()),
+            });
+
     info!(
         logger,
         "Trying IPFS node at: {}",
@@ -425,19 +435,10 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         graphql_runner.clone(),
         store.clone(),
         node_id.clone(),
+        elastic_config.clone(),
     );
     let mut subscription_server =
         GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), store.clone());
-
-    // Optionally, identify the Elasticsearch logging configuration
-    let elastic_config =
-        matches
-            .value_of("elasticsearch-url")
-            .map(|endpoint| ElasticLoggingConfig {
-                endpoint: endpoint.into(),
-                username: matches.value_of("elasticsearch-user").map(|s| s.into()),
-                password: matches.value_of("elasticsearch-password").map(|s| s.into()),
-            });
 
     if env::var_os("DISABLE_BLOCK_INGESTOR").unwrap_or("".into()) != "true" {
         // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
@@ -453,6 +454,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             *ANCESTOR_COUNT,
             logger.clone(),
             block_polling_interval,
+            elastic_config.clone(),
         )
         .expect("failed to create Ethereum block ingestor");
 
@@ -477,7 +479,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         store.clone(),
         runtime_host_builder,
         block_stream_builder,
-        elastic_config,
+        elastic_config.clone(),
     );
 
     // Create IPFS-based subgraph provider
