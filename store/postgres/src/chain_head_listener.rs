@@ -85,26 +85,29 @@ impl ChainHeadUpdateListener {
                     );
 
                     // Forward update to all susbcribers
-                    stream::iter_ok::<_, ()>(senders).for_each(move |(id, sender)| {
+                    stream::iter_ok::<_, ()>(senders).for_each(move |(id, mut sender)| {
                         let logger = logger.clone();
                         let subscribers = subscribers.clone();
 
-                        // A subgraph that's syncing will not regularly pull
-                        // chain head updates from the channel, to prevent a
-                        // full channel from stopping all updates each update is
-                        // sent in its own task. 
-                        tokio::spawn(sender.send(update.clone()).then(move |result| {
-                            if result.is_err() {
-                                // If sending to a subscriber fails, we'll assume that
-                                // the receiving end has been dropped. In this case we
-                                // remove the subscriber
+                        // A subgraph that's syncing will let chain head updates
+                        // pile up in the channel. So we don't wait for room in
+                        // the channel and instead skip it, it will have the
+                        // opportunity to grab future updates.
+                        match sender.try_send(update.clone()) {
+                            // Move on to the next subscriber
+                            Ok(()) => (),
+                            Err(ref e) if e.is_full() => {
+                                // Temporary log, feel free to remove if noisy.
+                                debug!(logger, "Full chain head update channel"; "id" => &id);
+                            }
+                            Err(ref e) if e.is_disconnected() => {
+                                // Remove disconnected subscribers.
                                 debug!(logger, "Unsubscribe"; "id" => &id);
                                 subscribers.write().unwrap().remove(&id);
                             }
-
-                            // Move on to the next subscriber
-                            Ok(())
-                        }))
+                            Err(e) => warn!(logger, "Unexpected send error"; "e" => e.to_string()),
+                        }
+                        Ok(())
                     })
                 }),
         );
