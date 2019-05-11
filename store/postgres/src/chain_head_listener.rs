@@ -89,7 +89,7 @@ impl ChainHeadUpdateListener {
                         let logger = logger.clone();
                         let subscribers = subscribers.clone();
 
-                        sender.send(update.clone()).then(move |result| {
+                        tokio::spawn(sender.send(update.clone()).then(move |result| {
                             if result.is_err() {
                                 // If sending to a subscriber fails, we'll assume that
                                 // the receiving end has been dropped. In this case we
@@ -100,7 +100,7 @@ impl ChainHeadUpdateListener {
 
                             // Move on to the next subscriber
                             Ok(())
-                        })
+                        }))
                     })
                 }),
         );
