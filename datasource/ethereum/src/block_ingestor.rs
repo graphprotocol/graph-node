@@ -40,7 +40,7 @@ where
                             general: elastic_config,
                             index: String::from("block-ingestor-logs"),
                             document_type: String::from("log"),
-                            custom_id_key: String::from("componentName"),
+                            custom_id_key: String::from("componentId"),
                             custom_id_value: String::from("blockIngestor"),
                             flush_interval: polling_interval,
                         },
