@@ -89,6 +89,10 @@ impl ChainHeadUpdateListener {
                         let logger = logger.clone();
                         let subscribers = subscribers.clone();
 
+                        // A subgraph that's syncing will not regularly pull
+                        // chain head updates from the channel, to prevent a
+                        // full channel from stopping all updates each update is
+                        // sent in its own task. 
                         tokio::spawn(sender.send(update.clone()).then(move |result| {
                             if result.is_err() {
                                 // If sending to a subscriber fails, we'll assume that
