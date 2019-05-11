@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Write;
 use std::result::Result;
@@ -13,8 +14,6 @@ use serde_json;
 use slog::*;
 use slog_async;
 use tokio::timer::Interval;
-
-use crate::data::subgraph::SubgraphDeploymentId;
 
 /// General configuration parameters for Elasticsearch logging.
 #[derive(Clone, Debug)]
@@ -56,7 +55,8 @@ struct ElasticLogMeta {
 #[serde(rename_all = "camelCase")]
 struct ElasticLog {
     id: String,
-    subgraph_id: SubgraphDeploymentId,
+    #[serde(flatten)]
+    custom_id: HashMap<String, String>,
     timestamp: String,
     text: String,
     #[serde(serialize_with = "serialize_log_level")]
@@ -102,8 +102,10 @@ pub struct ElasticDrainConfig {
     pub index: String,
     /// The Elasticsearch type to use for logs.
     pub document_type: String,
-    /// The subgraph ID that the drain is for.
-    pub subgraph_id: SubgraphDeploymentId,
+    /// The name of the custom object id that the drain is for.
+    pub custom_id_key: String,
+    /// The custom id for the object that the drain is for.
+    pub custom_id_value: String,
     /// The batching interval.
     pub flush_interval: Duration,
 }
@@ -254,7 +256,7 @@ impl Drain for ElasticDrain {
 
     fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
         let timestamp = Utc::now().to_rfc3339_opts(SecondsFormat::Nanos, true);
-        let id = format!("{}-{}", self.config.subgraph_id, timestamp);
+        let id = format!("{}-{}", self.config.custom_id_value, timestamp);
 
         // Serialize logger arguments
         let mut serializer = SimpleKVSerializer::new();
@@ -279,10 +281,17 @@ impl Drain for ElasticDrain {
             write!(text, ", {}", value_kvs).unwrap();
         }
 
+        // Prepare custom id for log document
+        let mut custom_id = HashMap::new();
+        custom_id.insert(
+            self.config.custom_id_key.clone(),
+            self.config.custom_id_value.clone(),
+        );
+
         // Prepare log document
         let log = ElasticLog {
             id: id.clone(),
-            subgraph_id: self.config.subgraph_id.clone(),
+            custom_id: custom_id,
             timestamp,
             text,
             level: record.level(),
