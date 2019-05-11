@@ -118,7 +118,7 @@ mod test {
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = mock_store(id.clone());
                 let node_id = NodeId::new("test").unwrap();
-                let mut server = HyperGraphQLServer::new(&logger, query_runner, store, node_id);
+                let mut server = HyperGraphQLServer::new(&logger, query_runner, store, node_id, None);
                 let http_server = server
                     .serve(8001, 8002)
                     .expect("Failed to start GraphQL server");
@@ -167,7 +167,8 @@ mod test {
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = mock_store(id.clone());
                 let node_id = NodeId::new("test").unwrap();
-                let mut server = HyperGraphQLServer::new(&logger, query_runner, store, node_id);
+                let mut server =
+                    HyperGraphQLServer::new(&logger, query_runner, store, node_id, None);
                 let http_server = server
                     .serve(8002, 8003)
                     .expect("Failed to start GraphQL server");
@@ -250,7 +251,8 @@ mod test {
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = mock_store(id.clone());
                 let node_id = NodeId::new("test").unwrap();
-                let mut server = HyperGraphQLServer::new(&logger, query_runner, store, node_id);
+                let mut server =
+                    HyperGraphQLServer::new(&logger, query_runner, store, node_id, None);
                 let http_server = server
                     .serve(8003, 8004)
                     .expect("Failed to start GraphQL server");
@@ -299,7 +301,8 @@ mod test {
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let store = mock_store(id.clone());
                 let node_id = NodeId::new("test").unwrap();
-                let mut server = HyperGraphQLServer::new(&logger, query_runner, store, node_id);
+                let mut server =
+                    HyperGraphQLServer::new(&logger, query_runner, store, node_id, None);
                 let http_server = server
                     .serve(8005, 8006)
                     .expect("Failed to start GraphQL server");
