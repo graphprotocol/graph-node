@@ -296,6 +296,7 @@ impl Drain for ElasticDrain {
         // Serialize log message arguments
         let mut serializer = SimpleKVSerializer::new();
         values
+            .clone()
             .serialize(record, &mut serializer)
             .expect("failed to serialize log message arguments");
         let (n_value_kvs, value_kvs) = serializer.finish();
@@ -303,6 +304,7 @@ impl Drain for ElasticDrain {
         // Serialize log message arguments into hash map
         let mut serializer = HashMapKVSerializer::new();
         values
+            .clone()
             .serialize(record, &mut serializer)
             .expect("failed to serialize log message arguments into hash map");
         let arguments = serializer.finish();
