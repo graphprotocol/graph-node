@@ -57,11 +57,38 @@ struct ElasticLog {
     id: String,
     #[serde(flatten)]
     custom_id: HashMap<String, String>,
+    arguments: HashMap<String, String>,
     timestamp: String,
     text: String,
     #[serde(serialize_with = "serialize_log_level")]
     level: Level,
     meta: ElasticLogMeta,
+}
+
+struct HashMapKVSerializer {
+    kvs: Vec<(String, String)>,
+}
+
+impl HashMapKVSerializer {
+    fn new() -> Self {
+        HashMapKVSerializer {
+            kvs: Default::default(),
+        }
+    }
+
+    fn finish(self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        self.kvs.into_iter().for_each(|(k, v)| {
+            map.insert(k, v);
+        });
+        map
+    }
+}
+
+impl Serializer for HashMapKVSerializer {
+    fn emit_arguments(&mut self, key: Key, val: &fmt::Arguments) -> slog::Result {
+        Ok(self.kvs.push((key.into(), format!("{}", val))))
+    }
 }
 
 /// A super-simple slog Serializer for concatenating key/value arguments.
@@ -273,6 +300,13 @@ impl Drain for ElasticDrain {
             .expect("failed to serialize log message arguments");
         let (n_value_kvs, value_kvs) = serializer.finish();
 
+        // Serialize log message arguments into hash map
+        let mut serializer = HashMapKVSerializer::new();
+        values
+            .serialize(record, &mut serializer)
+            .expect("failed to serialize log message arguments into hash map");
+        let arguments = serializer.finish();
+
         let mut text = format!("{}", record.msg());
         if n_logger_kvs > 0 {
             write!(text, ", {}", logger_kvs).unwrap();
@@ -292,6 +326,7 @@ impl Drain for ElasticDrain {
         let log = ElasticLog {
             id: id.clone(),
             custom_id: custom_id,
+            arguments,
             timestamp,
             text,
             level: record.level(),
