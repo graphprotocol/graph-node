@@ -698,7 +698,7 @@ where
                 // If there are no traces something has gone wrong.
                 if traces.is_empty() {
                     return future::err(format_err!(
-                        "Trace stream return no traces for block: number = `{}`, hash = `{}`",
+                        "Trace stream returned no traces for block: number = `{}`, hash = `{}`",
                         block_number,
                         block_hash,
                     ));
