@@ -12,7 +12,6 @@ use graph::components::ethereum::*;
 use graph::components::store::Store;
 use graph::data::subgraph::{DataSource, Source};
 use graph::ethabi::{LogParam, RawLog};
-use graph::log;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
@@ -199,10 +198,8 @@ impl RuntimeHost {
         // dropping the `mapping_request_receiver` which ultimately causes the
         // subgraph to fail the next time it tries to handle an event.
         let conf = thread::Builder::new().name(format!(
-            "{}-{}-{}",
-            log::MAPPING_THREAD_PREFIX,
-            config.subgraph_id,
-            data_source_name
+            "mapping-{}-{}",
+            config.subgraph_id, data_source_name
         ));
         conf.spawn(move || {
             debug!(module_logger, "Start WASM runtime");

@@ -18,7 +18,7 @@ extern crate lazy_static;
 extern crate url;
 
 use clap::{App, Arg};
-use futures::sync::{mpsc, oneshot};
+use futures::sync::mpsc;
 use git_testament::{git_testament, render_testament};
 use ipfs_api::IpfsClient;
 use lazy_static::lazy_static;
@@ -27,7 +27,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use graph::components::forward;
-use graph::log::{guarded_logger, logger, register_panic_hook};
+use graph::log::logger;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use graph::tokio_executor;
 use graph::tokio_timer;
@@ -63,37 +63,44 @@ lazy_static! {
 git_testament!(TESTAMENT);
 
 fn main() {
-    let (shutdown_sender, shutdown_receiver) = oneshot::channel();
-    // Register guarded panic logger which ensures logs flush on shutdown
-    let (panic_logger, _panic_guard) = guarded_logger();
-    register_panic_hook(panic_logger, shutdown_sender);
+    use std::sync::Mutex;
+    use tokio::runtime;
 
-    // Create components for tokio context: multi-threaded runtime,
-    // executor context on the runtime, and Timer handle.
-    let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-    let mut executor = runtime.executor();
+    // Create components for tokio context: multi-threaded runtime, executor
+    // context on the runtime, and Timer handle.
+    //
+    // Configure the runtime to shutdown after a panic.
+    let runtime: Arc<Mutex<Option<runtime::Runtime>>> = Arc::new(Mutex::new(None));
+    let handler_runtime = runtime.clone();
+    *runtime.lock().unwrap() = Some(
+        runtime::Builder::new()
+            .panic_handler(move |_| {
+                let runtime = handler_runtime.clone();
+                std::thread::spawn(move || {
+                    if let Some(runtime) = runtime.lock().unwrap().take() {
+                        // Try to cleanly shutdown the runtime, but
+                        // unconditionally exit after a while.
+                        std::thread::spawn(|| {
+                            std::thread::sleep(Duration::from_millis(3000));
+                            std::process::exit(1);
+                        });
+                        runtime
+                            .shutdown_now()
+                            .wait()
+                            .expect("Failed to shutdown Tokio Runtime");
+                        println!("Runtime cleaned up and shutdown successfully");
+                    }
+                });
+            })
+            .build()
+            .unwrap(),
+    );
+
+    let mut executor = runtime.lock().unwrap().as_ref().unwrap().executor();
     let mut enter = tokio_executor::enter()
         .expect("Failed to enter runtime executor, multiple executors at once");
     let timer = Timer::default();
     let timer_handle = timer.handle();
-
-    // Shutdown the runtime after a panic
-    std::thread::spawn(|| {
-        let shutdown_logger = logger(false);
-        shutdown_receiver
-            .wait()
-            .map(|_| {
-                let _ = runtime
-                    .shutdown_now()
-                    .wait()
-                    .expect("Failed to shutdown Tokio Runtime");
-                info!(
-                    shutdown_logger,
-                    "Runtime cleaned up and shutdown successfully"
-                );
-            })
-            .expect("Runtime shutdown process did not finish");
-    });
 
     // Setup runtime context with defaults and run the main application
     tokio_executor::with_default(&mut executor, &mut enter, |enter| {
@@ -592,7 +599,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             break;
         }
         let mut timeout = Duration::from_millis(1);
-        while pong_receive.recv_timeout(timeout).is_err() {
+        while pong_receive.recv_timeout(timeout)
+            == Err(crossbeam_channel::RecvTimeoutError::Timeout)
+        {
             warn!(contention_logger, "Possible contention in tokio threadpool";
                                      "timeout_ms" => timeout.as_millis(),
                                      "code" => LogCode::TokioContention);
