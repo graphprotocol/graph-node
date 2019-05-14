@@ -574,6 +574,13 @@ where
         name: String,
         params: Vec<String>,
     ) -> Result<(), HostExportError<impl ExportError>> {
+        info!(
+            ctx.logger,
+            "Create data source";
+            "name" => &name,
+            "params" => format!("{}", params.join(","))
+        );
+
         // Resolve the name into the right template
         self.data_source
             .templates
