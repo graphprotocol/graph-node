@@ -135,7 +135,7 @@ where
                                         "network_name" => network_name,
                                         "code" => LogCode::BlockIngestionStatus,
                                     );
-                                } else if distance > 15 {
+                                } else if distance >= 15 {
                                     info!(
                                         self.logger,
                                         "Syncing {} blocks from Ethereum.",
