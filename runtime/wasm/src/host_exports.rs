@@ -5,7 +5,7 @@ use futures::sync::oneshot;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
 use graph::data::store;
-use graph::prelude::*;
+use graph::prelude::{slog::b, slog::record_static, *};
 use graph::serde_json;
 use graph::web3::types::H160;
 use semver::Version;
@@ -627,6 +627,19 @@ where
         hash: &str,
     ) -> Result<Option<String>, HostExportError<impl ExportError>> {
         self.store.find_ens_name(hash).map_err(HostExportError)
+    }
+
+    pub(crate) fn log_log(&self, ctx: &MappingContext, level: slog::Level, msg: String) {
+        let rs = record_static!(level, self.data_source.name.as_str());
+        ctx.logger.log(&slog::Record::new(
+            &rs,
+            &format_args!("{}", msg),
+            b!("data_source" => &self.data_source.name),
+        ));
+
+        if level == slog::Level::Critical {
+            panic!("Critical error logged in mapping");
+        }
     }
 }
 

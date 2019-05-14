@@ -63,6 +63,7 @@ const BIG_DECIMAL_FROM_STRING: usize = 33;
 const IPFS_MAP_FUNC_INDEX: usize = 34;
 const DATA_SOURCE_CREATE_INDEX: usize = 35;
 const ENS_NAME_BY_HASH: usize = 36;
+const LOG_LOG: usize = 37;
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
@@ -884,6 +885,19 @@ where
             .map(|name| RuntimeValue::from(self.asc_new(&*name)))
             .or(Some(RuntimeValue::from(0))))
     }
+
+    fn log_log(
+        &mut self,
+        level: i32,
+        msg: AscPtr<AscString>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let level = LogLevel::from(level).into();
+        let msg: String = self.asc_get(msg);
+        self.valid_module
+            .host_exports
+            .log_log(&self.ctx, level, msg);
+        Ok(None)
+    }
 }
 
 impl<T, L, S, U> Externals for WasmiModule<T, L, S, U>
@@ -966,6 +980,7 @@ where
                 self.data_source_create(args.nth_checked(0)?, args.nth_checked(1)?)
             }
             ENS_NAME_BY_HASH => self.ens_name_by_hash(args.nth_checked(0)?),
+            LOG_LOG => self.log_log(args.nth_checked(0)?, args.nth_checked(1)?),
             _ => panic!("Unimplemented function at {}", index),
         }
     }
@@ -1067,6 +1082,9 @@ impl ModuleImportResolver for ModuleResolver {
 
             // ens.nameByHash
             "ens.nameByHash" => FuncInstance::alloc_host(signature, ENS_NAME_BY_HASH),
+
+            // log.log
+            "log.log" => FuncInstance::alloc_host(signature, LOG_LOG),
 
             // Unknown export
             _ => {
