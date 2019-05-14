@@ -1,6 +1,7 @@
 use super::{AscHeap, AscPtr, AscType, AscValue};
 use ethabi;
 use graph::data::store;
+use graph::prelude::slog;
 use graph::serde_json;
 use graph_runtime_derive::AscType;
 use std::marker::PhantomData;
@@ -535,4 +536,25 @@ pub(crate) struct AscBigDecimal {
 
     // Decimal exponent. This is the opposite of `scale` in rust BigDecimal.
     pub exp: AscPtr<AscBigInt>,
+}
+
+#[repr(u32)]
+pub(crate) enum LogLevel {
+    Critical,
+    Error,
+    Warning,
+    Info,
+    Debug,
+}
+
+impl From<LogLevel> for slog::Level {
+    fn from(level: LogLevel) -> slog::Level {
+        match level {
+            LogLevel::Critical => slog::Level::Critical,
+            LogLevel::Error => slog::Level::Error,
+            LogLevel::Warning => slog::Level::Warning,
+            LogLevel::Info => slog::Level::Info,
+            LogLevel::Debug => slog::Level::Debug,
+        }
+    }
 }

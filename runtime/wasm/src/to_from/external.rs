@@ -381,3 +381,16 @@ impl FromAscObj<AscUnresolvedContractCall> for UnresolvedContractCall {
         }
     }
 }
+
+impl From<i32> for LogLevel {
+    fn from(i: i32) -> Self {
+        match i {
+            0 => LogLevel::Critical,
+            1 => LogLevel::Error,
+            2 => LogLevel::Warning,
+            3 => LogLevel::Info,
+            4 => LogLevel::Debug,
+            _ => LogLevel::Debug,
+        }
+    }
+}
