@@ -74,6 +74,7 @@ fn main() {
     let handler_runtime = runtime.clone();
     *runtime.lock().unwrap() = Some(
         runtime::Builder::new()
+            .core_threads(100)
             .panic_handler(move |_| {
                 let runtime = handler_runtime.clone();
                 std::thread::spawn(move || {
