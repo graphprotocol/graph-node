@@ -135,6 +135,18 @@ where
                                         "network_name" => network_name,
                                         "code" => LogCode::BlockIngestionStatus,
                                     );
+                                } else if distance > 15 {
+                                    info!(
+                                        self.logger,
+                                        "Syncing {} blocks from Ethereum.",
+                                        blocks_needed;
+                                        "current_block_head" => head_number,
+                                        "latest_block_head" => latest_number,
+                                        "blocks_behind" => distance,
+                                        "blocks_needed" => blocks_needed,
+                                        "network_name" => network_name,
+                                        "code" => LogCode::BlockIngestionLagging,
+                                    );
                                 }
                             }
                         }
