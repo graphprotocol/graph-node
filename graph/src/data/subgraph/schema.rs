@@ -13,7 +13,7 @@
 
 use failure::Error;
 use graphql_parser::query as q;
-use graphql_parser::schema::{Definition, Document, Type, TypeDefinition};
+use graphql_parser::schema::{Definition, Document, Field, Name, Type, TypeDefinition};
 use hex;
 use rand::rngs::OsRng;
 use rand::Rng;
@@ -1163,11 +1163,20 @@ pub fn attribute_index_definitions(
                     .filter(|f| f.name != "id")
                     .enumerate()
                 {
+                    // Skip derived fields since they are not stored in objects
+                    // of this type. We can not put this check into the filter
+                    // above since that changes how indexes are numbered
+                    if is_derived_field(&entity_field) {
+                        continue;
+                    }
                     indexing_ops.push(AttributeIndexDefinition {
                         subgraph_id: subgraph_id.clone(),
                         entity_number,
                         attribute_number,
-                        field_value_type: match inner_type_name(&entity_field.field_type) {
+                        field_value_type: match inner_type_name(
+                            &entity_field.field_type,
+                            &document.definitions,
+                        ) {
                             Ok(value_type) => value_type,
                             Err(_) => continue,
                         },
@@ -1181,11 +1190,58 @@ pub fn attribute_index_definitions(
     indexing_ops
 }
 
+fn is_derived_field(field: &Field) -> bool {
+    field
+        .directives
+        .iter()
+        .any(|dir| dir.name == Name::from("derivedFrom"))
+}
+
+// This largely duplicates graphql::schema::ast::is_entity_type_definition
+// We do not use that function here to avoid this crate depending on
+// graph_graphql
+fn is_entity(type_name: &str, definitions: &[Definition]) -> bool {
+    use self::TypeDefinition::*;
+
+    definitions.iter().any(|defn| {
+        if let Definition::TypeDefinition(type_def) = defn {
+            match type_def {
+                // Entity types are obvious
+                Object(object_type) => {
+                    object_type.name == type_name
+                        && object_type
+                            .directives
+                            .iter()
+                            .any(|directive| directive.name == "entity")
+                }
+
+                // We assume that only entities can implement interfaces;
+                // thus, any interface type definition is automatically
+                // an entity type
+                Interface(interface_type) => interface_type.name == type_name,
+
+                // Everything else (unions, scalars, enums) are not
+                // considered entity types
+                _ => false,
+            }
+        } else {
+            false
+        }
+    })
+}
+
 /// Returns the value type for a GraphQL field type.
-pub fn inner_type_name(field_type: &Type) -> Result<ValueType, Error> {
+fn inner_type_name(field_type: &Type, definitions: &[Definition]) -> Result<ValueType, Error> {
     match field_type {
-        Type::NamedType(ref name) => ValueType::from_str(&name),
-        Type::NonNullType(inner) => inner_type_name(&inner),
-        Type::ListType(inner) => inner_type_name(inner).and(Ok(ValueType::List)),
+        Type::NamedType(ref name) => ValueType::from_str(&name).or_else(|e| {
+            if is_entity(name, definitions) {
+                // The field is a reference to another type and therefore of type ID
+                Ok(ValueType::ID)
+            } else {
+                Err(e)
+            }
+        }),
+        Type::NonNullType(inner) => inner_type_name(&inner, definitions),
+        Type::ListType(inner) => inner_type_name(inner, definitions).and(Ok(ValueType::List)),
     }
 }
