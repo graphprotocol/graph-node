@@ -12,6 +12,7 @@ where
     chain_store: Arc<S>,
     eth_adapter: Arc<E>,
     ancestor_count: u64,
+    network_name: String,
     logger: Logger,
     polling_interval: Duration,
 }
@@ -25,6 +26,7 @@ where
         chain_store: Arc<S>,
         eth_adapter: Arc<E>,
         ancestor_count: u64,
+        network_name: String,
         logger: Logger,
         polling_interval: Duration,
         elastic_config: Option<ElasticLoggingConfig>,
@@ -53,6 +55,7 @@ where
             chain_store,
             eth_adapter,
             ancestor_count,
+            network_name,
             logger,
             polling_interval,
         })
@@ -97,6 +100,7 @@ where
 
     fn do_poll<'a>(&'a self) -> impl Future<Item = (), Error = EthereumAdapterError> + 'a {
         trace!(self.logger, "BlockIngestor::do_poll");
+        let network_name = self.network_name.clone();
 
         // Get chain head ptr from store
         future::result(self.chain_store.chain_head_ptr())
@@ -128,6 +132,7 @@ where
                                         "latest_block_head" => latest_number,
                                         "blocks_behind" => distance,
                                         "blocks_needed" => blocks_needed,
+                                        "network_name" => network_name,
                                         "code" => LogCode::BlockIngestionStatus,
                                     );
                                 }
