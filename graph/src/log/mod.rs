@@ -89,9 +89,7 @@ pub fn register_panic_hook(panic_logger: Logger, shutdown_sender: oneshot::Sende
             return;
         }
 
-        // Send a shutdown signal to main which will attempt to cleanly shutdown the runtime
-        // After sending shutdown, the thread sleeps for 3 seconds then forces the process to
-        // exit because the shutdown is not always able to cleanly exit all workers
+        // Send a shutdown signal to main which will attempt to cleanly shutdown the runtime.
         match shutdown_mutex.lock().unwrap().take() {
             Some(sender) => sender
                 .send(())
@@ -103,7 +101,11 @@ pub fn register_panic_hook(panic_logger: Logger, shutdown_sender: oneshot::Sende
                 .unwrap_or(()),
             None => debug!(panic_logger, "Shutdown signal already sent"),
         }
-        thread::sleep(Duration::from_millis(3000));
-        process::exit(1);
+
+        // If shutting down the runtime takes too long, exit the process anyways.
+        thread::spawn(|| {
+            thread::sleep(Duration::from_millis(3000));
+            process::exit(1);
+        });
     }));
 }
