@@ -123,6 +123,11 @@ where
                                 let head_number = head_block_ptr.number as i64;
                                 let distance = latest_number - head_number;
                                 let blocks_needed = (distance).min(self.ancestor_count as i64);
+                                let code = if distance >= 15 {
+                                    LogCode::BlockIngestionLagging
+                                } else {
+                                    LogCode::BlockIngestionStatus
+                                };
                                 if distance > 0 {
                                     info!(
                                         self.logger,
@@ -133,19 +138,7 @@ where
                                         "blocks_behind" => distance,
                                         "blocks_needed" => blocks_needed,
                                         "network_name" => network_name,
-                                        "code" => LogCode::BlockIngestionStatus,
-                                    );
-                                } else if distance >= 15 {
-                                    info!(
-                                        self.logger,
-                                        "Syncing {} blocks from Ethereum.",
-                                        blocks_needed;
-                                        "current_block_head" => head_number,
-                                        "latest_block_head" => latest_number,
-                                        "blocks_behind" => distance,
-                                        "blocks_needed" => blocks_needed,
-                                        "network_name" => network_name,
-                                        "code" => LogCode::BlockIngestionLagging,
+                                        "code" => code,
                                     );
                                 }
                             }
