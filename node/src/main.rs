@@ -452,6 +452,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             store.clone(),
             eth_adapter.clone(),
             *ANCESTOR_COUNT,
+            ethereum_network_name.to_string(),
             logger.clone(),
             block_polling_interval,
             elastic_config.clone(),
