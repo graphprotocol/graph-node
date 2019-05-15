@@ -353,9 +353,10 @@ where
         .then(move |result| match result {
             Ok(block) => Ok(Some(block)),
             Err(e) => {
-                error!(
+                debug!(
                     logger_for_block_stream_errors,
-                    "Block stream produced a non fatal error = {}", e,
+                    "Block stream produced a non-fatal error";
+                    "error" => format!("{}", e),
                 );
                 Ok(None)
             }
