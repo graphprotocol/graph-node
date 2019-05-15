@@ -282,6 +282,10 @@ impl Drain for ElasticDrain {
     type Err = ();
 
     fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
+        // Don't sent `trace` logs to ElasticSearch.
+        if record.level() == Level::Trace {
+            return Ok(());
+        }
         let timestamp = Utc::now().to_rfc3339_opts(SecondsFormat::Nanos, true);
         let id = format!("{}-{}", self.config.custom_id_value, timestamp);
 
