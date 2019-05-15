@@ -1390,10 +1390,10 @@ pub(crate) fn create_schema(
            event_id     integer references event_meta_data(id)
                           on update cascade on delete cascade,
            entity       varchar not null,
-	         entity_id    varchar not null,
-	         data_before  jsonb,
-	         reversion    bool not null default false,
-	         op_id        int2 NOT NULL
+           entity_id    varchar not null,
+           data_before  jsonb,
+           reversion    bool not null default false,
+           op_id        int2 NOT NULL
          )",
         schema_name
     );
