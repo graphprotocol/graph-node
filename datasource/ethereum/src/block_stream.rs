@@ -1106,7 +1106,7 @@ where
                             self.consecutive_err_count += 1;
 
                             // Pause before trying again
-                            let secs = (5 * self.consecutive_err_count).min(120) as u64;
+                            let secs = (5 * self.consecutive_err_count).max(120) as u64;
                             let instant = Instant::now() + Duration::from_secs(secs);
                             state = BlockStreamState::Paused(Box::new(
                                 Delay::new(instant).map_err(|err| {
@@ -1150,7 +1150,7 @@ where
                             self.consecutive_err_count += 1;
 
                             // Pause before trying again
-                            let secs = (5 * self.consecutive_err_count).min(120) as u64;
+                            let secs = (5 * self.consecutive_err_count).max(120) as u64;
                             let instant = Instant::now() + Duration::from_secs(secs);
                             state = BlockStreamState::Paused(Box::new(
                                 Delay::new(instant).map_err(|err| {
