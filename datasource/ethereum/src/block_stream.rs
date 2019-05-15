@@ -63,7 +63,7 @@ enum BlockStreamState {
     /// blocks again.
     ///
     /// Valid next states: Reconciliation
-    Paused(Box<Future<Item = (), Error = Error> + Send>),
+    RetryAfterDelay(Box<Future<Item = (), Error = Error> + Send>),
 
     /// The BlockStream has reconciled the subgraph store and chain store states.
     /// No more work is needed until a chain head update.
@@ -1108,7 +1108,7 @@ where
                             // Pause before trying again
                             let secs = (5 * self.consecutive_err_count).max(120) as u64;
                             let instant = Instant::now() + Duration::from_secs(secs);
-                            state = BlockStreamState::Paused(Box::new(
+                            state = BlockStreamState::RetryAfterDelay(Box::new(
                                 Delay::new(instant).map_err(|err| {
                                     format_err!("Paused state's delay future failed = {}", err)
                                 }),
@@ -1152,17 +1152,18 @@ where
                             // Pause before trying again
                             let secs = (5 * self.consecutive_err_count).max(120) as u64;
                             let instant = Instant::now() + Duration::from_secs(secs);
-                            state =
-                                BlockStreamState::Paused(Box::new(Delay::new(instant).map_err(
-                                    |err| format_err!("RetryAfterDelays future failed: {}", err),
-                                )));
+                            state = BlockStreamState::RetryAfterDelay(Box::new(
+                                Delay::new(instant).map_err(|err| {
+                                    format_err!("RetryAfterDelays future failed: {}", err)
+                                }),
+                            ));
                             break Err(e);
                         }
                     }
                 }
 
                 // Pausing after an error, before looking for more blocks
-                BlockStreamState::Paused(mut delay) => match delay.poll() {
+                BlockStreamState::RetryAfterDelay(mut delay) => match delay.poll() {
                     Ok(Async::Ready(())) | Err(_) => {
                         state = BlockStreamState::Reconciliation(self.ctx.next_blocks());
 
@@ -1171,7 +1172,7 @@ where
                     }
 
                     Ok(Async::NotReady) => {
-                        state = BlockStreamState::Paused(delay);
+                        state = BlockStreamState::RetryAfterDelay(delay);
                         break Ok(Async::NotReady);
                     }
                 },
