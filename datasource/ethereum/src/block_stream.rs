@@ -1,11 +1,14 @@
-use futures::prelude::*;
-use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::cmp;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::mem;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+use futures::prelude::*;
+use futures::sync::mpsc::{channel, Receiver, Sender};
+use graph::tokio::timer::Delay;
 
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphEntity, SubgraphVersionEntity,
@@ -55,6 +58,12 @@ enum BlockStreamState {
     ///
     /// Valid next states: Reconciliation
     YieldingBlocks(Box<Stream<Item = EthereumBlockWithTriggers, Error = Error> + Send>),
+
+    /// The BlockStream experienced an error and is pausing before attempting to produce
+    /// blocks again.
+    ///
+    /// Valid next states: Reconciliation
+    Paused(Box<Future<Item = (), Error = Error> + Send>),
 
     /// The BlockStream has reconciled the subgraph store and chain store states.
     /// No more work is needed until a chain head update.
@@ -1051,7 +1060,7 @@ where
         let mut state = BlockStreamState::Transition;
         mem::swap(&mut *state_lock, &mut state);
 
-        let poll = loop {
+        let result = loop {
             match state {
                 // First time being polled
                 BlockStreamState::New => {
@@ -1090,17 +1099,21 @@ where
                         Ok(Async::NotReady) => {
                             // Nothing to change or yield yet.
                             state = BlockStreamState::Reconciliation(next_blocks_future);
-                            break Async::NotReady;
+                            break Ok(Async::NotReady);
                         }
 
                         Err(e) => {
                             self.consecutive_err_count += 1;
 
-                            // Try again by restarting reconciliation
-                            let next_blocks_future = self.ctx.next_blocks();
-                            state = BlockStreamState::Reconciliation(next_blocks_future);
-
-                            return Err(e);
+                            // Pause before trying again
+                            let secs = (5 * self.consecutive_err_count).min(120) as u64;
+                            let instant = Instant::now() + Duration::from_secs(secs);
+                            state = BlockStreamState::Paused(Box::new(
+                                Delay::new(instant).map_err(|err| {
+                                    format_err!("Paused state's delay future failed = {}", err)
+                                }),
+                            ));
+                            break Err(e);
                         }
                     }
                 }
@@ -1111,7 +1124,7 @@ where
                         // Yield one block
                         Ok(Async::Ready(Some(next_block))) => {
                             state = BlockStreamState::YieldingBlocks(next_blocks);
-                            break Async::Ready(Some(next_block));
+                            break Ok(Async::Ready(Some(next_block)));
                         }
 
                         // Done yielding blocks
@@ -1130,20 +1143,39 @@ where
                         Ok(Async::NotReady) => {
                             // Nothing to change or yield yet
                             state = BlockStreamState::YieldingBlocks(next_blocks);
-                            break Async::NotReady;
+                            break Ok(Async::NotReady);
                         }
 
                         Err(e) => {
                             self.consecutive_err_count += 1;
 
-                            // Try again by restarting reconciliation
-                            let next_blocks_future = self.ctx.next_blocks();
-                            state = BlockStreamState::Reconciliation(next_blocks_future);
-
-                            return Err(e);
+                            // Pause before trying again
+                            let secs = (5 * self.consecutive_err_count).min(120) as u64;
+                            let instant = Instant::now() + Duration::from_secs(secs);
+                            state = BlockStreamState::Paused(Box::new(
+                                Delay::new(instant).map_err(|err| {
+                                    format_err!("Paused state's delay future failed = {}", err)
+                                }),
+                            ));
+                            break Err(e);
                         }
                     }
                 }
+
+                // Pausing after an error, before looking for more blocks
+                BlockStreamState::Paused(mut delay) => match delay.poll() {
+                    Ok(Async::Ready(())) | Err(_) => {
+                        state = BlockStreamState::Reconciliation(self.ctx.next_blocks());
+
+                        // Poll the next_blocks() future
+                        continue;
+                    }
+
+                    Ok(Async::NotReady) => {
+                        state = BlockStreamState::Paused(delay);
+                        break Ok(Async::NotReady);
+                    }
+                },
 
                 // Waiting for a chain head update
                 BlockStreamState::Idle => {
@@ -1167,7 +1199,7 @@ where
                         Ok(Async::NotReady) => {
                             // Stay idle
                             state = BlockStreamState::Idle;
-                            break Async::NotReady;
+                            break Ok(Async::NotReady);
                         }
 
                         // mpsc channel failed
@@ -1186,7 +1218,7 @@ where
 
         mem::replace(&mut *state_lock, state);
 
-        Ok(poll)
+        result
     }
 }
 
