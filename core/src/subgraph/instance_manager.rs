@@ -298,6 +298,7 @@ where
     let store_for_err = ctx.inputs.store.clone();
     let logger_for_err = logger.clone();
     let logger_for_restart_check = logger.clone();
+    let logger_for_block_stream_errors = logger.clone();
 
     let block_stream_canceler = CancelGuard::new();
     let block_stream_cancel_handle = block_stream_canceler.handle();
@@ -347,6 +348,19 @@ where
                 Ok(true)
             }
         })
+        // Log and drop the errors from the block_stream
+        // The block stream will continue attempting to produce blocks
+        .then(move |result| match result {
+            Ok(block) => Ok(Some(block)),
+            Err(e) => {
+                error!(
+                    logger_for_block_stream_errors,
+                    "Block stream produced a non fatal error = {}", e,
+                );
+                Ok(None)
+            }
+        })
+        .filter_map(|block_opt| block_opt)
         // Process blocks from the stream as long as no restart is needed
         .fold(ctx, move |ctx, block| {
             let needs_restart_set = needs_restart_set.clone();
