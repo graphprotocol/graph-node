@@ -1152,11 +1152,10 @@ where
                             // Pause before trying again
                             let secs = (5 * self.consecutive_err_count).max(120) as u64;
                             let instant = Instant::now() + Duration::from_secs(secs);
-                            state = BlockStreamState::Paused(Box::new(
-                                Delay::new(instant).map_err(|err| {
-                                    format_err!("Paused state's delay future failed = {}", err)
-                                }),
-                            ));
+                            state =
+                                BlockStreamState::Paused(Box::new(Delay::new(instant).map_err(
+                                    |err| format_err!("RetryAfterDelays future failed: {}", err),
+                                )));
                             break Err(e);
                         }
                     }
