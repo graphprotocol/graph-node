@@ -1096,22 +1096,11 @@ where
                         Err(e) => {
                             self.consecutive_err_count += 1;
 
-                            // If too many errors without progress, give up
-                            if self.consecutive_err_count >= 100 {
-                                return Err(e);
-                            }
-
-                            warn!(
-                                self.ctx.logger,
-                                "Trying again after error in block stream reconcile: {}", e
-                            );
-
                             // Try again by restarting reconciliation
                             let next_blocks_future = self.ctx.next_blocks();
                             state = BlockStreamState::Reconciliation(next_blocks_future);
 
-                            // Poll the next_blocks() future
-                            continue;
+                            return Err(e);
                         }
                     }
                 }
@@ -1147,22 +1136,11 @@ where
                         Err(e) => {
                             self.consecutive_err_count += 1;
 
-                            // If too many errors without progress, give up
-                            if self.consecutive_err_count >= 100 {
-                                return Err(e);
-                            }
-
-                            warn!(
-                                self.ctx.logger,
-                                "Trying again after error yielding blocks to block stream: {}", e
-                            );
-
                             // Try again by restarting reconciliation
                             let next_blocks_future = self.ctx.next_blocks();
                             state = BlockStreamState::Reconciliation(next_blocks_future);
 
-                            // Poll the next_blocks() future
-                            continue;
+                            return Err(e);
                         }
                     }
                 }
