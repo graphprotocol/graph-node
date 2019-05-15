@@ -1110,7 +1110,7 @@ where
                             let instant = Instant::now() + Duration::from_secs(secs);
                             state = BlockStreamState::RetryAfterDelay(Box::new(
                                 Delay::new(instant).map_err(|err| {
-                                    format_err!("Paused state's delay future failed = {}", err)
+                                    format_err!("RetryAfterDelay future failed = {}", err)
                                 }),
                             ));
                             break Err(e);
@@ -1154,7 +1154,7 @@ where
                             let instant = Instant::now() + Duration::from_secs(secs);
                             state = BlockStreamState::RetryAfterDelay(Box::new(
                                 Delay::new(instant).map_err(|err| {
-                                    format_err!("RetryAfterDelays future failed: {}", err)
+                                    format_err!("RetryAfterDelay future failed: {}", err)
                                 }),
                             ));
                             break Err(e);
