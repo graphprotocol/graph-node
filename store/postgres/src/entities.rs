@@ -415,7 +415,7 @@ impl<'a> Connection<'a> {
 
     pub(crate) fn update_entity_count(
         &self,
-        subgraph: Option<SubgraphDeploymentId>,
+        subgraph: &Option<SubgraphDeploymentId>,
         count: i32,
     ) -> Result<(), StoreError> {
         if count == 0 {
@@ -437,6 +437,38 @@ impl<'a> Connection<'a> {
         create_history_event(self.conn, subgraph, event_source)
     }
 
+    /// Check if the schema for `subgraph` needs to be migrated, and if so
+    /// if now (indicated by the block pointer) is the right time to do so
+    pub(crate) fn should_migrate(
+        &self,
+        subgraph: &SubgraphDeploymentId,
+        block_ptr: &EthereumBlockPointer,
+    ) -> Result<bool, StoreError> {
+        // How often to check whether a subgraph needs to be migrated (in
+        // blocks) Doing it every 20 blocks translates to roughly once every
+        // 5 minutes
+        const MIGRATION_CHECK_FREQ: u64 = 20;
+
+        let table = self.table(subgraph)?;
+
+        if table.needs_migrating() {
+            // We determine whether it is time for us to check if we should
+            // migrate in a way that tries to splay the checks for different
+            // subgraphs, using the hash of the subgraph id as a somewhat
+            // arbitrary indicator. We really just want the checks to be
+            // distributed across all possible values mod MIGRATION_CHECK_FREQ
+            // so that we don't have a mad dash to migrate every
+            // MIGRATION_CHECK_FREQ blocks, which would happen if we checked
+            // for `block_ptr.number % MIGRATION_CHECK_FREQ == 0`
+            let mut hasher = DefaultHasher::new();
+            subgraph.hash(&mut hasher);
+            let hash = hasher.finish();
+            Ok(hash % MIGRATION_CHECK_FREQ == block_ptr.number % MIGRATION_CHECK_FREQ)
+        } else {
+            Ok(false)
+        }
+    }
+
     /// Check if the database schema for `subgraph` needs to be migrated, and
     /// if so, perform the migration. Return `true` if a migration was
     /// performed, and `false` otherwise. A return value of `false` does not
@@ -452,84 +484,56 @@ impl<'a> Connection<'a> {
         subgraph: &SubgraphDeploymentId,
         block_ptr: EthereumBlockPointer,
     ) -> Result<bool, Error> {
-        // How often to check whether a subgraph needs to be migrated (in
-        // blocks) Doing it every 20 blocks translates to roughly once every
-        // 5 minutes
-        const MIGRATION_CHECK_FREQ: u64 = 20;
         // How many simultaneous subgraph migrations we allow
         const MIGRATION_LIMIT: i32 = 2;
 
-        let table = self.table(subgraph)?;
-
-        if !table.needs_migrating() {
+        if !self.should_migrate(subgraph, &block_ptr)? {
             return Ok(false);
         }
 
-        // We determine whether it is time for us to check whether we should
-        // migrate in a way that tries to splay the checks for different
-        // subgraphs, using the hash of the subgraph id as a somewhat
-        // arbitrary indicator. We really just want the checks to be distributed
-        // across all possible values mod MIGRATION_CHECK_FREQ so that we don't
-        // have a mad dash to migrate every MIGRATION_CHECK_FREQ blocks, which
-        // would happen if we checked for
-        // `block_ptr.number % MIGRATION_CHECK_FREQ == 0`
-        let mut hasher = DefaultHasher::new();
-        subgraph.hash(&mut hasher);
-        let hash = hasher.finish();
-        if hash % MIGRATION_CHECK_FREQ == block_ptr.number % MIGRATION_CHECK_FREQ {
-            // Check whether we should migrate. We only want MIGRATION_LIMIT
-            // subgraph migrations to happen at any one time. To make sure we
-            // stay within that limit, we need to lock the deployment_schemas
-            // table before we try and get a slot. We do not wait to get the lock:
-            // if we can't get a lock, we return `false` so that callers can
-            // try again later.
-            let do_migrate = self.conn.transaction(|| -> Result<bool, Error> {
-                let lock = diesel::sql_query(
-                    "lock table public.deployment_schemas in exclusive mode nowait",
-                )
-                .execute(self.conn);
-                if lock.is_err() {
-                    return Ok(false);
-                }
+        let do_migrate = self.conn.transaction(|| -> Result<bool, Error> {
+            let lock =
+                diesel::sql_query("lock table public.deployment_schemas in exclusive mode nowait")
+                    .execute(self.conn);
+            if lock.is_err() {
+                return Ok(false);
+            }
 
-                let query = "
+            let query = "
                 UPDATE public.deployment_schemas
                    SET migrating = true
                  WHERE subgraph=$1
                    AND (SELECT count(*) FROM public.deployment_schemas WHERE migrating) < $2";
-                let query = diesel::sql_query(query)
-                    .bind::<Text, _>(subgraph.to_string())
-                    .bind::<Integer, _>(MIGRATION_LIMIT);
-                Ok(query.execute(self.conn)? > 0)
-            })?;
+            let query = diesel::sql_query(query)
+                .bind::<Text, _>(subgraph.to_string())
+                .bind::<Integer, _>(MIGRATION_LIMIT);
+            Ok(query.execute(self.conn)? > 0)
+        })?;
 
-            if do_migrate {
-                use self::public::deployment_schemas as dsl;
+        if do_migrate {
+            use self::public::deployment_schemas as dsl;
 
-                let result = loop {
-                    match self.migration_step(logger, subgraph) {
-                        Err(e) => {
-                            // An error in a migration should not lead to the
-                            // subgraph being marked as failed
-                            warn!(logger, "aborted migrating";
-                                            "subgraph" => subgraph.to_string(),
-                                            "error" => e.to_string(),
-                            );
-                            break Ok(false);
-                        }
-                        Ok(again) if !again => break Ok(true),
-                        Ok(_) => continue,
+            let result = loop {
+                match self.migration_step(logger, subgraph) {
+                    Err(e) => {
+                        // An error in a migration should not lead to the
+                        // subgraph being marked as failed
+                        warn!(logger, "aborted migrating";
+                                        "subgraph" => subgraph.to_string(),
+                                        "error" => e.to_string(),
+                        );
+                        break Ok(false);
                     }
-                };
-                // Relinquish the migrating lock, no matter what happened in
-                // the migration
-                diesel::update(dsl::table.filter(dsl::subgraph.eq(subgraph.to_string())))
-                    .set(dsl::migrating.eq(false))
-                    .execute(self.conn)?;
-                result
-            } else {
-                Ok(false)
-            }
+                    Ok(again) if !again => break Ok(true),
+                    Ok(_) => continue,
+                }
+            };
+            // Relinquish the migrating lock, no matter what happened in
+            // the migration
+            diesel::update(dsl::table.filter(dsl::subgraph.eq(subgraph.to_string())))
+                .set(dsl::migrating.eq(false))
+                .execute(self.conn)?;
+            result
         } else {
             Ok(false)
         }
@@ -1100,7 +1104,7 @@ impl Table {
     pub(crate) fn update_entity_count(
         &self,
         conn: &PgConnection,
-        subgraph: SubgraphDeploymentId,
+        subgraph: &SubgraphDeploymentId,
         count: i32,
     ) -> Result<(), StoreError> {
         let count_query = match self {

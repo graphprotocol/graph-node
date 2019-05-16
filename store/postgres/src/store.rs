@@ -655,13 +655,15 @@ impl Store {
         }
     }
 
-    /// Apply a series of entity operations in Postgres.
+    /// Apply a series of entity operations in Postgres. Return `true` if
+    /// the subgraph mentioned in `history_event` should have its schema
+    /// migrated
     fn apply_entity_operations_with_conn(
         &self,
         econn: &e::Connection,
         operations: Vec<EntityOperation>,
         history_event: Option<&HistoryEvent>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<bool, StoreError> {
         // Keep a count of how many entities have been added/removed. This
         // crucially depends on the fact that all operations are about one
         // subgraph, with the possible exception that some might touch
@@ -710,7 +712,15 @@ impl Store {
                 count += n;
             }
         }
-        econn.update_entity_count(subgraph, count)
+        econn.update_entity_count(&subgraph, count)?;
+        match history_event {
+            Some(HistoryEvent {
+                source: EventSource::EthereumBlock(block_ptr),
+                subgraph,
+                ..
+            }) => Ok(econn.should_migrate(&subgraph, block_ptr)?),
+            _ => Ok(false),
+        }
     }
 
     /// Build a partial Postgres index on a Subgraph-Entity-Attribute
@@ -921,6 +931,8 @@ impl StoreTrait for Store {
             .map(|_| ())?)
     }
 
+    /// Apply a series of entity operations. Return `true` if the subgraph
+    /// mentioned in `history_event` should have its schema migrated
     fn apply_entity_operations(
         &self,
         operations: Vec<EntityOperation>,
@@ -930,6 +942,7 @@ impl StoreTrait for Store {
         let econn = e::Connection::new(&conn);
         conn.transaction(|| {
             self.apply_entity_operations_with_conn(&econn, operations, history_event.as_ref())
+                .map(|_| ())
         })
     }
 
@@ -964,7 +977,7 @@ impl StoreTrait for Store {
             self.apply_entity_operations_with_conn(&econn, ops, None)?;
 
             let (event, count) = econn.revert_block(&subgraph_id, block_ptr_from.hash_hex())?;
-            econn.update_entity_count(Some(subgraph_id), count)?;
+            econn.update_entity_count(&Some(subgraph_id), count)?;
 
             trace!(self.logger, "Emit store event for revert";
                 "tag" => event.tag,
