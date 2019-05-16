@@ -482,12 +482,12 @@ impl<'a> Connection<'a> {
         self,
         logger: &Logger,
         subgraph: &SubgraphDeploymentId,
-        block_ptr: EthereumBlockPointer,
+        block_ptr: &EthereumBlockPointer,
     ) -> Result<bool, Error> {
         // How many simultaneous subgraph migrations we allow
         const MIGRATION_LIMIT: i32 = 2;
 
-        if !self.should_migrate(subgraph, &block_ptr)? {
+        if !self.should_migrate(subgraph, block_ptr)? {
             return Ok(false);
         }
 

@@ -162,7 +162,7 @@ impl Store for MockStore {
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
         _: Vec<EntityOperation>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<bool, StoreError> {
         unimplemented!();
     }
 
@@ -344,6 +344,14 @@ impl Store for MockStore {
     ) -> Result<(), StoreError> {
         self.apply_entity_operations(ops, None)
     }
+
+    fn migrate_subgraph_deployment(
+        &self,
+        _: &Logger,
+        _: &SubgraphDeploymentId,
+        _: &EthereumBlockPointer,
+    ) {
+    }
 }
 
 impl SubgraphDeploymentStore for MockStore {
@@ -450,7 +458,7 @@ impl Store for FakeStore {
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
         _: Vec<EntityOperation>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<bool, StoreError> {
         unimplemented!();
     }
 
@@ -495,6 +503,15 @@ impl Store for FakeStore {
         _subgraph_id: &SubgraphDeploymentId,
         _ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn migrate_subgraph_deployment(
+        &self,
+        _: &Logger,
+        _: &SubgraphDeploymentId,
+        _: &EthereumBlockPointer,
+    ) {
         unimplemented!()
     }
 }

@@ -583,7 +583,16 @@ where
                 block_ptr_after,
                 block_state.entity_operations,
             )
-            .map(|_| (ctx, needs_restart))
+            .map(|should_migrate| {
+                if should_migrate {
+                    ctx.inputs.store.migrate_subgraph_deployment(
+                        &logger4,
+                        &ctx.inputs.deployment_id,
+                        &block_ptr_after,
+                    );
+                }
+                (ctx, needs_restart)
+            })
             .map_err(|e| {
                 format_err!("Error while processing block stream for a subgraph: {}", e).into()
             })

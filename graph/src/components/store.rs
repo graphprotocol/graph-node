@@ -680,15 +680,18 @@ pub trait Store: Send + Sync + 'static {
     ///
     /// `block_ptr_from` must match the current value of the subgraph block pointer.
     /// `block_ptr_to` must point to a child block of `block_ptr_from`.
+    ///
+    /// Return `true` if the subgraph mentioned in `history_event` should have
+    /// its schema migrated at `block_ptr_to`
     fn transact_block_operations(
         &self,
         subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
         operations: Vec<EntityOperation>,
-    ) -> Result<(), StoreError>;
+    ) -> Result<bool, StoreError>;
 
-    /// Apply the specified entity operations
+    /// Apply the specified entity operations.
     fn apply_entity_operations(
         &self,
         operations: Vec<EntityOperation>,
@@ -1015,6 +1018,20 @@ pub trait Store: Send + Sync + 'static {
         subgraph_id: &SubgraphDeploymentId,
         ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError>;
+
+    /// Try to perform a pending migration for a subgraph schema. Even if a
+    /// subgraph has a pending schema migration, this method might not actually
+    /// perform the migration because of limits on the total number of
+    /// migrations that can happen at the same time across the whole system.
+    ///
+    /// Any errors happening during the migration will be logged as warnings
+    /// on `logger`, but otherwise ignored
+    fn migrate_subgraph_deployment(
+        &self,
+        logger: &Logger,
+        subgraph_id: &SubgraphDeploymentId,
+        block_ptr: &EthereumBlockPointer,
+    );
 }
 
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {

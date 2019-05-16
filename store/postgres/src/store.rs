@@ -887,7 +887,7 @@ impl StoreTrait for Store {
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
         operations: Vec<EntityOperation>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<bool, StoreError> {
         // Sanity check on block numbers
         if block_ptr_from.number != block_ptr_to.number - 1 {
             panic!("transact_block_operations must transact a single block only");
@@ -914,7 +914,8 @@ impl StoreTrait for Store {
             let history_event = econn.create_history_event(subgraph_id.clone(), event_source)?;
 
             // Apply the entity operations with the new block as the event source
-            self.apply_entity_operations_with_conn(&econn, operations, Some(&history_event))?;
+            let should_migrate =
+                self.apply_entity_operations_with_conn(&econn, operations, Some(&history_event))?;
 
             // Update the subgraph block pointer, without an event source; this way
             // no entity history is recorded for the block pointer update itself
@@ -923,12 +924,9 @@ impl StoreTrait for Store {
                 block_ptr_from,
                 block_ptr_to,
             );
-            self.apply_entity_operations_with_conn(&econn, block_ptr_ops, None)
-        })?;
-
-        Ok(econn
-            .migrate(&self.logger, &subgraph_id, block_ptr_to)
-            .map(|_| ())?)
+            self.apply_entity_operations_with_conn(&econn, block_ptr_ops, None)?;
+            Ok(should_migrate)
+        })
     }
 
     /// Apply a series of entity operations. Return `true` if the subgraph
@@ -1038,6 +1036,34 @@ impl StoreTrait for Store {
             self.apply_entity_operations_with_conn(&econn, ops, None)?;
             econn.start_subgraph(subgraph_id)
         })
+    }
+
+    fn migrate_subgraph_deployment(
+        &self,
+        logger: &Logger,
+        subgraph_id: &SubgraphDeploymentId,
+        block_ptr: &EthereumBlockPointer,
+    ) {
+        let conn = match self.get_conn() {
+            Ok(conn) => conn,
+            Err(e) => {
+                warn!(logger, "failed to get connection to start migrating";
+                                "subgraph" => subgraph_id.to_string(),
+                                "error" => e.to_string(),
+                );
+                return;
+            }
+        };
+        let econn = e::Connection::new(&conn);
+
+        if let Err(e) = econn.migrate(logger, subgraph_id, block_ptr) {
+            // An error in a migration should not lead to the
+            // subgraph being marked as failed
+            warn!(logger, "aborted migrating";
+                            "subgraph" => subgraph_id.to_string(),
+                            "error" => e.to_string(),
+            );
+        }
     }
 }
 
