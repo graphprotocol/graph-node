@@ -139,6 +139,13 @@ impl Store {
         let conn_manager = ConnectionManager::new(config.postgres_url.as_str());
         let pool = Pool::builder()
             .error_handler(error_handler)
+            // Set the time we wait for a connection to 6h. The default is 30s
+            // which can be too little if database connections are highly
+            // contended; if we don't get a connection within the timeout,
+            // ultimately subgraphs get marked as failed. This effectively
+            // turns off this timeout and makes it possible that work needing
+            // a database connection blocks for a very long time
+            .connection_timeout(Duration::from_secs(6 * 60 * 60))
             .build(conn_manager)
             .unwrap();
         info!(
