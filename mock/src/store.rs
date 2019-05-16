@@ -152,7 +152,7 @@ impl Store for MockStore {
         _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
+    ) -> Result<bool, StoreError> {
         unimplemented!();
     }
 
@@ -448,7 +448,7 @@ impl Store for FakeStore {
         _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
+    ) -> Result<bool, StoreError> {
         unimplemented!();
     }
 

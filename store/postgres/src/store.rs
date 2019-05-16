@@ -879,13 +879,17 @@ impl StoreTrait for Store {
         subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
+    ) -> Result<bool, StoreError> {
         let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
             &subgraph_id,
             block_ptr_from,
             block_ptr_to,
         );
-        self.apply_entity_operations(ops, None).map(|_| ())
+        let conn = self.get_conn().map_err(Error::from)?;
+        let econn = e::Connection::new(&conn);
+        conn.transaction(|| self.apply_entity_operations_with_conn(&econn, ops, None))?;
+
+        econn.should_migrate(&subgraph_id, &block_ptr_to)
     }
 
     fn transact_block_operations(

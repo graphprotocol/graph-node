@@ -668,12 +668,15 @@ pub trait Store: Send + Sync + 'static {
     /// changes are needed to go from `block_ptr_from` to `block_ptr_to`.
     ///
     /// `block_ptr_from` must match the current value of the subgraph block pointer.
+    ///
+    /// Return `true` if the subgraph mentioned in `history_event` should have
+    /// its schema migrated at `block_ptr_to`
     fn set_block_ptr_with_no_changes(
         &self,
         subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
-    ) -> Result<(), StoreError>;
+    ) -> Result<bool, StoreError>;
 
     /// Transact the entity changes from a single block atomically into the store, and update the
     /// subgraph block pointer from `block_ptr_from` to `block_ptr_to`.
