@@ -101,6 +101,7 @@ fn initiate_schema(logger: &Logger, conn: &PgConnection, blocking_conn: &PgConne
 pub struct StoreConfig {
     pub postgres_url: String,
     pub network_name: String,
+    pub start_block: u64,
 }
 
 /// A Store based on Diesel and Postgres.
@@ -166,7 +167,7 @@ impl Store {
                 config.network_name.clone(),
             ),
             network_name: config.network_name.clone(),
-            genesis_block_ptr: (net_identifiers.genesis_block_hash, 0u64).into(),
+            genesis_block_ptr: (net_identifiers.genesis_block_hash, config.start_block).into(),
             conn: pool,
             schema_cache: Mutex::new(LruCache::with_capacity(100)),
         };

@@ -58,6 +58,13 @@ lazy_static! {
         .map(|s| u64::from_str(&s)
              .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_ANCESTOR_COUNT")))
         .unwrap_or(50);
+
+    // Start block to use when indexing Ethereum.
+    static ref ETHEREUM_START_BLOCK: u64 = env::var("ETHEREUM_START_BLOCK")
+        .ok()
+        .map(|s| u64::from_str(&s)
+             .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_START_BLOCK")))
+        .unwrap_or(0);
 }
 
 git_testament!(TESTAMENT);
@@ -400,7 +407,10 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     std::mem::forget(transport_event_loop);
 
     // Create Ethereum adapter
-    let eth_adapter = Arc::new(graph_datasource_ethereum::EthereumAdapter::new(transport));
+    let eth_adapter = Arc::new(graph_datasource_ethereum::EthereumAdapter::new(
+        transport,
+        *ETHEREUM_START_BLOCK,
+    ));
 
     // Ask Ethereum node for network identifiers
     info!(
@@ -433,6 +443,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         StoreConfig {
             postgres_url,
             network_name: ethereum_network_name.to_owned(),
+            start_block: *ETHEREUM_START_BLOCK,
         },
         &logger,
         eth_net_identifiers,
