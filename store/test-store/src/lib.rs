@@ -40,6 +40,7 @@ lazy_static! {
                 StoreConfig {
                     postgres_url,
                     network_name,
+                    start_block: 0u64,
                 },
                 &logger,
                 net_identifiers,
