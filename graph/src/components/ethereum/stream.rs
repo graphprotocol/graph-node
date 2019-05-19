@@ -3,9 +3,7 @@ use futures::Stream;
 
 use crate::prelude::*;
 
-pub trait BlockStream:
-    Stream<Item = EthereumBlockWithTriggers, Error = Error> + EventConsumer<ChainHeadUpdate>
-{
+pub trait BlockStream: Stream<Item = EthereumBlockWithTriggers, Error = Error> {
     fn parse_triggers(
         log_filter_opt: Option<EthereumLogFilter>,
         call_filter_opt: Option<EthereumCallFilter>,
