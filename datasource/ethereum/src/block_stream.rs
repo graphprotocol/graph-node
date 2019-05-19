@@ -7,7 +7,6 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use futures::prelude::*;
-use futures::sync::mpsc::{channel, Receiver, Sender};
 use graph::tokio::timer::Delay;
 
 use graph::data::subgraph::schema::{
@@ -152,9 +151,7 @@ impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
 pub struct BlockStream<S, C, E> {
     state: Mutex<BlockStreamState>,
     consecutive_err_count: u32,
-    chain_head_update_sink: Sender<ChainHeadUpdate>,
-    chain_head_update_stream: Receiver<ChainHeadUpdate>,
-    _chain_head_update_guard: CancelGuard,
+    chain_head_update_stream: ChainHeadUpdateStream,
     ctx: BlockStreamContext<S, C, E>,
 }
 
@@ -168,7 +165,6 @@ where
         subgraph_store: Arc<S>,
         chain_store: Arc<C>,
         eth_adapter: Arc<E>,
-        chain_head_update_guard: CancelGuard,
         node_id: NodeId,
         subgraph_id: SubgraphDeploymentId,
         log_filter: Option<EthereumLogFilter>,
@@ -178,14 +174,10 @@ where
         reorg_threshold: u64,
         logger: Logger,
     ) -> Self {
-        let (chain_head_update_sink, chain_head_update_stream) = channel(100);
-
         BlockStream {
             state: Mutex::new(BlockStreamState::New),
             consecutive_err_count: 0,
-            chain_head_update_sink,
-            chain_head_update_stream,
-            _chain_head_update_guard: chain_head_update_guard,
+            chain_head_update_stream: chain_store.chain_head_updates(),
             ctx: BlockStreamContext {
                 subgraph_store,
                 chain_store,
@@ -1181,7 +1173,7 @@ where
                 BlockStreamState::Idle => {
                     match self.chain_head_update_stream.poll() {
                         // Chain head was updated
-                        Ok(Async::Ready(Some(_chain_head_update))) => {
+                        Ok(Async::Ready(Some(()))) => {
                             // Start reconciliation process
                             let next_blocks_future = self.ctx.next_blocks();
                             state = BlockStreamState::Reconciliation(next_blocks_future);
@@ -1219,21 +1211,6 @@ where
         mem::replace(&mut *state_lock, state);
 
         result
-    }
-}
-
-impl<S, C, E> EventConsumer<ChainHeadUpdate> for BlockStream<S, C, E>
-where
-    S: Store,
-    C: ChainStore,
-    E: EthereumAdapter,
-{
-    fn event_sink(&self) -> Box<Sink<SinkItem = ChainHeadUpdate, SinkError = ()> + Send> {
-        let logger = self.ctx.logger.clone();
-
-        Box::new(self.chain_head_update_sink.clone().sink_map_err(move |_| {
-            debug!(logger, "Terminating chain head updates; channel closed");
-        }))
     }
 }
 
@@ -1300,25 +1277,12 @@ where
         let logger = logger.new(o!(
             "component" => "BlockStream",
         ));
-        let logger_for_stream = logger.clone();
-
-        // Create a chain head update stream whose lifetime is tied to the
-        // liftetime of the block stream; we do this to immediately terminate
-        // the chain head update listener when the block stream is shut down
-        let cancel_guard = CancelGuard::new();
-        let chain_head_update_stream =
-            self.chain_store
-                .chain_head_updates()
-                .cancelable(&cancel_guard, move || {
-                    debug!(logger_for_stream, "Terminating chain head updates");
-                });
 
         // Create the actual subgraph-specific block stream
-        let block_stream = BlockStream::new(
+        BlockStream::new(
             self.subgraph_store.clone(),
             self.chain_store.clone(),
             self.eth_adapter.clone(),
-            cancel_guard,
             self.node_id.clone(),
             deployment_id,
             log_filter,
@@ -1327,18 +1291,7 @@ where
             include_calls_in_blocks,
             self.reorg_threshold,
             logger,
-        );
-
-        // Forward chain head updates from the listener to the block stream;
-        // this will be canceled as soon as the block stream goes out of scope
-        tokio::spawn(
-            chain_head_update_stream
-                .forward(block_stream.event_sink())
-                .map_err(|_| ())
-                .map(|_| ()),
-        );
-
-        block_stream
+        )
     }
 }
 
