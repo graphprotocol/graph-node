@@ -481,7 +481,8 @@ pub struct MappingEventHandler {
 
 impl MappingEventHandler {
     pub fn topic0(&self) -> H256 {
-        self.topic0.unwrap_or_else(|| string_to_h256(&self.event))
+        self.topic0
+            .unwrap_or_else(|| string_to_h256(&self.event.replace("indexed ", "")))
     }
 }
 
