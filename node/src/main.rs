@@ -406,6 +406,16 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // For now it's fine to just leak it.
     std::mem::forget(transport_event_loop);
 
+    // Warn if the start block is != genesis
+    if *ETHEREUM_START_BLOCK > 0 {
+        warn!(
+            logger,
+            "Using {} as the block to start indexing at. \
+             This may cause subgraphs to be only indexed partially",
+            *ETHEREUM_START_BLOCK,
+        );
+    }
+
     // Create Ethereum adapter
     let eth_adapter = Arc::new(graph_datasource_ethereum::EthereumAdapter::new(
         transport,
