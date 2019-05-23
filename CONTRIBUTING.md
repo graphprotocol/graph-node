@@ -28,7 +28,7 @@ While developing, a useful command to run in the background is this:
 
 ```sh
 cargo watch                       \
-    -x "fmt -all"                 \
+    -x "fmt --all"                 \
     -x check                      \
     -x "test -- --test-threads=1" \
     -x "doc --no-deps"
