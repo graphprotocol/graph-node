@@ -1,4 +1,4 @@
-use ethabi::{Contract, Event, Function};
+use ethabi::{Contract, Event, Function, ParamType};
 use tiny_keccak::Keccak;
 use web3::types::H256;
 
@@ -16,6 +16,54 @@ pub fn string_to_h256(s: &str) -> H256 {
     H256::from_slice(&result)
 }
 
+/// Returns a `(uint256,address)` style signature for a tuple type.
+fn tuple_signature(components: &Vec<Box<ParamType>>) -> String {
+    format!(
+        "({})",
+        components
+            .iter()
+            .map(|component| event_param_type_signature(&component))
+            .collect::<Vec<_>>()
+            .join(",")
+    )
+}
+
+/// Returns the signature of an event parameter type (e.g. `uint256`).
+fn event_param_type_signature(kind: &ParamType) -> String {
+    use ParamType::*;
+
+    match kind {
+        Address => "address".into(),
+        Bytes => "bytes".into(),
+        Int(size) => format!("int{}", size),
+        Uint(size) => format!("uint{}", size),
+        Bool => "bool".into(),
+        String => "string".into(),
+        Array(inner) => format!("{}[]", event_param_type_signature(&*inner)),
+        FixedBytes(size) => format!("bytes{}", size),
+        FixedArray(inner, size) => format!("{}[{}]", event_param_type_signature(&*inner), size),
+        Tuple(components) => tuple_signature(&components),
+    }
+}
+
+/// Returns an `Event(indexed uint256,address)` type signature for an event.
+fn event_signature(event: &Event) -> String {
+    format!(
+        "{}({})",
+        event.name,
+        event
+            .inputs
+            .iter()
+            .map(|input| format!(
+                "{}{}",
+                if input.indexed { "indexed " } else { "" },
+                event_param_type_signature(&input.kind)
+            ))
+            .collect::<Vec<_>>()
+            .join(",")
+    )
+}
+
 /// Returns the contract event with the given signature, if it exists.
 pub fn contract_event_with_signature<'a>(
     contract: &'a Contract,
@@ -23,7 +71,7 @@ pub fn contract_event_with_signature<'a>(
 ) -> Option<&'a Event> {
     contract
         .events()
-        .find(|event| event.signature() == string_to_h256(signature))
+        .find(|event| event_signature(event) == signature)
 }
 
 pub fn contract_function_with_signature<'a>(
