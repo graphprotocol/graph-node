@@ -65,6 +65,17 @@ const DATA_SOURCE_CREATE_INDEX: usize = 35;
 const ENS_NAME_BY_HASH: usize = 36;
 const LOG_LOG: usize = 37;
 
+/// A common error is a trap in the host, so simplify the message in that case.
+fn format_wasmi_error(e: Error) -> String {
+    match e {
+        Error::Trap(trap) => match trap.kind() {
+            wasmi::TrapKind::Host(host_error) => host_error.to_string(),
+            _ => trap.to_string(),
+        },
+        _ => e.to_string(),
+    }
+}
+
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
     pub data_source: DataSource,
@@ -273,7 +284,7 @@ where
             format_err!(
                 "Failed to handle Ethereum event with handler \"{}\": {}",
                 handler_name,
-                e
+                format_wasmi_error(e)
             )
         })
     }
@@ -300,7 +311,7 @@ where
                 format_err!(
                     "Failed to handle callback with handler \"{}\": {}",
                     handler_name,
-                    e
+                    format_wasmi_error(e),
                 )
             })
     }
@@ -334,7 +345,7 @@ where
             format_err!(
                 "Failed to handle Ethereum call with handler \"{}\": {}",
                 handler_name,
-                err
+                format_wasmi_error(err),
             )
         })
     }
@@ -358,7 +369,7 @@ where
             format_err!(
                 "Failed to handle Ethereum block with handler \"{}\": {}",
                 handler_name,
-                err
+                format_wasmi_error(err)
             )
         })
     }
