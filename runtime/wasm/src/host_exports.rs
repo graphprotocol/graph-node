@@ -479,8 +479,18 @@ where
         x * y
     }
 
-    pub(crate) fn big_int_divided_by(&self, x: BigInt, y: BigInt) -> BigInt {
-        x / y
+    pub(crate) fn big_int_divided_by(
+        &self,
+        x: BigInt,
+        y: BigInt,
+    ) -> Result<BigInt, HostExportError<impl ExportError>> {
+        if y == 0.into() {
+            return Err(HostExportError(format!(
+                "attempted to divide BigInt `{}` by zero",
+                x
+            )));
+        }
+        Ok(x / y)
     }
 
     pub(crate) fn big_int_mod(&self, x: BigInt, y: BigInt) -> BigInt {
