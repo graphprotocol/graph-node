@@ -748,7 +748,7 @@ where
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
             .host_exports()
-            .big_int_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr));
+            .big_int_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr))?;
         let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
