@@ -29,8 +29,8 @@ use crate::data::graphql::{TryFromValue, ValueMap};
 use crate::data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
 use crate::data::subgraph::{SubgraphManifest, SubgraphName};
 
-/// ID of the subgraph of subgraphs.
 lazy_static! {
+    /// ID of the subgraph of subgraphs.
     pub static ref SUBGRAPHS_ID: SubgraphDeploymentId =
         SubgraphDeploymentId::new("subgraphs").unwrap();
 }

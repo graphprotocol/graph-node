@@ -975,7 +975,6 @@ fn coerce_variable_value(
     value: &q::Value,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     use crate::values::coercion::coerce_value;
-    use graphql_parser::schema::Name;
 
     let resolver = |name: &Name| sast::get_named_type(&schema.document, name);
 
