@@ -49,13 +49,6 @@ matrix:
           - cargo build -p graph-node --release
           - mv target/release/graph-node target/release/graph-node-$TRAVIS_OS_NAME
 
-# Cache dependencies
-cache:
-  cargo: true
-  timeout: 1000
-before_cache:
-  - $TRAVIS_BUILD_DIR/.travis/before_cache.sh
-
 env:
   global:
   - PGPORT=5433
