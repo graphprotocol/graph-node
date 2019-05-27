@@ -125,9 +125,9 @@ mod subgraphs {
         }
     }
 
-    /// NOTE: This is a duplicate of the `event_meta_data` in `public`.
-    /// It exists only so we can link from the subgraphs.entity_history
-    /// table to public.event_meta_data.
+    // NOTE: This is a duplicate of the `event_meta_data` in `public`. It exists
+    // only so we can link from the subgraphs.entity_history table to
+    // public.event_meta_data.
     table! {
         event_meta_data (id) {
             id -> Integer,

@@ -1,3 +1,10 @@
+//! Facilities for creating and reading objects on the memory of an
+//! AssemblyScript (Asc) WASM module. Objects are passed through the `asc_new`
+//! and `asc_get` methods of an `AscHeap` implementation. These methods take
+//! types that implement `To`/`FromAscObj` and are therefore convertible to/from
+//! an `AscType`. Implementations of `AscType` live in the `class` module.
+//! Implementations of `To`/`FromAscObj` live in the `to_from` module.
+
 pub use self::asc_ptr::AscPtr;
 use std::mem::size_of;
 use wasmi;
@@ -5,16 +12,8 @@ use wasmi;
 pub mod asc_ptr;
 pub mod class;
 
-///! Facilities for creating and reading objects on the memory of an
-///! AssemblyScript (Asc) WASM module. Objects are passed through
-///! the `asc_new` and `asc_get` methods of an `AscHeap` implementation.
-///! These methods take types that implement `To`/`FromAscObj` and are
-///! therefore convertible to/from an `AscType`.
-///! Implementations of `AscType` live in the `class` module.
-///! Implementations of `To`/`FromAscObj` live in the `to_from` module.
-
-/// WASM is little-endian, and for simplicity we currently assume that the host
-/// is also little-endian.
+// WASM is little-endian, and for simplicity we currently assume that the host
+// is also little-endian.
 #[cfg(target_endian = "big")]
 compile_error!("big-endian targets are currently unsupported");
 
