@@ -1,3 +1,24 @@
+//! Support for the management of the schemas and tables we create in
+//! the database for each deployment. The Postgres schemas for each
+//! deployment/subgraph are tracked in the `deployment_schemas` table.
+//!
+//! The functions in this module are very low-level and should only be used
+//! directly by the Postgres store, and nowhere else. At the same time, all
+//! manipulation of entities in the database should go through this module
+//! to make it easier to handle future schema changes
+
+// We use Diesel's dynamic table support for querying the entities and history
+// tables of a subgraph. Unfortunately, this support is not good enough for
+// modifying data, and we fall back to generating literal SQL queries for that.
+// For the `entities` table of the subgraph of subgraphs, we do map the table
+// statically and use it in some cases to bridge the gap between dynamic and
+// static table support, in particular in the update operation for entities.
+// Diesel deeply embeds the assumption that all schema is known at compile time;
+// for example, the column for a dynamic table can not implement
+// `diesel::query_source::Column` since that must carry the column name as a
+// constant. As a consequence, a lot of Diesel functionality is not available
+// for dynamic tables.
+
 use diesel::connection::SimpleConnection;
 use diesel::deserialize::QueryableByName;
 use diesel::dsl::{any, sql};
@@ -30,12 +51,17 @@ use crate::filter::{build_filter, store_filter};
 use crate::functions::set_config;
 use crate::jsonb::PgJsonbExpressionMethods as _;
 
+/// The type of operation that led to a history entry. When we revert a block,
+/// we reverse the effects of that operation; e.g., an `Insert` entry in the
+/// history will cause us to delete the underlying entity
 enum OperationType {
     Insert,
     Update,
     Delete,
 }
 
+/// Translate from the integer that is stored in `entity_history.op_id` to
+/// the symbolic `OperationType`
 impl Into<i32> for OperationType {
     fn into(self) -> i32 {
         match self {
@@ -95,12 +121,47 @@ mod public {
     joinable!(entity_history -> event_meta_data (event_id));
     allow_tables_to_appear_in_same_query!(entity_history, event_meta_data);
 
+    /// We support different storage schemes per subgraph. This enum is used
+    /// to track which scheme a given subgraph uses and corresponds to the
+    /// `deployment_schema_version` type in the database.
+    ///
+    /// The column `deployment_schemas.version` stores that information for
+    /// each subgraph. Subgraphs that use the `Public` scheme have their
+    /// entities stored in the monolithic `public.entities` table, subgraphs
+    /// that store their entities and history in a dedicated database schema
+    /// are marked with version `Split`.
+    ///
+    /// Migrating a subgraph amounts to changing the storage scheme for that
+    /// subgraph from one version to another. Whether a subgraph scheme needs
+    /// migrating is determined by `Table::needs_migrating`, the migration
+    /// machinery is kicked off with a call to `Connection::migrate`
     #[derive(DbEnum, Debug, Clone)]
     pub enum DeploymentSchemaVersion {
         Public,
         Split,
     }
 
+    /// Migrating a subgraph is broken into two steps: in the first step, the
+    /// schema for the new storage scheme is put into place; in the second
+    /// step data is moved from the old storage scheme to the new one. These
+    /// two steps happen in separate database transactions, since the first
+    /// step takes fairly strong locks, that can block other database work.
+    /// In the case of the `Public -> Split` migration, the schema changes
+    /// take a lock on `event_meta_data`, which, if held for too long, ends up
+    /// blocking any write access to the `public.entities` table because of
+    /// the way in which history is recorded. The second step, moving data,
+    /// only requires relatively weak locks that do not block write activity
+    /// to rows in `public.entities` that are not affected by the migration
+    /// of a different subgraph.
+    ///
+    /// The `Ready` state indicates that the subgraph is ready to use the
+    /// storage scheme indicated by `deployment_schemas.version`. After the
+    /// first step of the migration has been done, the `version` field remains
+    /// unchanged, but we indicate that we have put the new schema in place by
+    /// setting the state to `Tables`. At the end of the second migration
+    /// step, we change the `version` to the new version, and set the state to
+    /// `Ready` to indicate that the subgraph can now be used with the new
+    /// storage scheme.
     #[derive(DbEnum, Debug, Clone)]
     pub enum DeploymentSchemaState {
         Ready,
@@ -112,13 +173,21 @@ mod public {
             id -> Integer,
             subgraph -> Text,
             name -> Text,
+            /// The subgraph storage scheme used for this subgraph
             version -> crate::entities::public::DeploymentSchemaVersionMapping,
+            /// Whether this subgraph is in the process of being migrated to
+            /// a new storage scheme. This column functions as a lock (or
+            /// semaphore) and is used to limit the number of subgraphs that
+            /// are being migrated at any given time. The details of handling
+            /// this lock are in `Connection::should_migrate`
             migrating -> Bool,
+            /// Track which step of a subgraph migration has been done
             state -> crate::entities::public::DeploymentSchemaStateMapping,
         }
     }
 
-    // Migrate entities storage to a split entities table
+    // Migrate entities storage to a split entities table, one stored proc
+    // for each migration step
     sql_function!(fn migrate_entities_tables(schema_name: Varchar, schema_version: DeploymentSchemaVersionMapping, subgraph: Varchar));
     sql_function!(fn migrate_entities_data(schema_name: Varchar, schema_version: DeploymentSchemaVersionMapping, subgraph: Varchar) -> Integer);
 }
@@ -174,31 +243,12 @@ impl EntitySource for self::subgraphs::entities::table {}
 // This is a bit weak, as any DynamicTable<String> is now an EntitySource
 impl EntitySource for DynamicTable<String> {}
 
-/// Support for the management of the schemas and tables we create in
-/// the database for each deployment. The Postgres schemas for each
-/// deployment/subgraph are tracked in the `deployment_schemas` table.
-///
-/// The functions in this module are very low-level and should only be used
-/// directly by the Postgres store, and nowhere else. At the same time, all
-/// manipulation of entities in the database should go through this module
-/// to make it easier to handle future schema changes
-// We use Diesel's dynamic table support for querying the entities and history
-// tables of a subgraph. Unfortunately, this support is not good enough for
-// modifying data, and we fall back to generating literal SQL queries for that.
-// For the `entities` table of the subgraph of subgraphs, we do map the table
-// statically and use it in some cases to bridge the gap between dynamic and
-// static table support, in particular in the update operation for entities.
-// Diesel deeply embeds the assumption that all schema is known at compile time;
-// for example, the column for a dynamic table can not implement
-// `diesel::query_source::Column` since that must carry the column name as a
-// constant. As a consequence, a lot of Diesel functionality is not available
-// for dynamic tables.
 use public::deployment_schemas;
 
 /// Information about the database schema that stores the entities for a
 /// subgraph. The schemas are versioned by subgraph, which makes it possible
 /// to migrate subgraphs one at a time to newer storage schemes. Migrations
-/// can be split into multiple stages to make sure that intrusive locks are
+/// are split into two stages to make sure that intrusive locks are
 /// only held a very short amount of time. The overall goal is to pause
 /// indexing (write activity) for a subgraph while we migrate, but keep it
 /// possible to query the subgraph, and not affect other subgraph's operation.
@@ -219,24 +269,26 @@ struct Schema {
     /// Migrations should update this field as the very last operation they
     /// perform.
     version: public::DeploymentSchemaVersion,
-    /// True if the subgraph is currently running a migration
+    /// True if the subgraph is currently running a migration. The `migrating`
+    /// flags in the `deployment_schemas` table act as a semaphore that limits
+    /// the number of subgraphs that can undergo a migration at the same time.
     migrating: bool,
-    /// Track which parts of a migration we performed already. The `Ready` state
-    /// means no work to get to the next version has been performed yet. A
-    /// migration will first perform a transaction that purely does DDL; since
-    /// that generally requires fairly strong locks but is fast, that is done
-    /// in a separate transaction. Once we have done the necessary DDL, the
-    /// state goes to `Tables`. The final state of the migration is copying data,
-    /// which can be very slow, but should not require intrusive locks. Once the
-    /// data is in place, the migration updates `version` to the new version
-    /// we migrated to, and sets the state to `Ready`
+    /// Track which parts of a migration have already been performed. The
+    /// `Ready` state means no work to get to the next version has been done
+    /// yet. A migration will first perform a transaction that purely does DDL;
+    /// since that generally requires fairly strong locks but is fast, that
+    /// is done in its own transaction. Once we have done the necessary DDL,
+    /// the state goes to `Tables`. The final state of the migration is
+    /// copying data, which can be very slow, but should not require intrusive
+    /// locks. When the data is in place, the migration updates `version` to
+    /// the new version we migrated to, and sets the state to `Ready`
     state: public::DeploymentSchemaState,
 }
 
 type EntityColumn<ST> = Column<DynamicTable<String>, String, ST>;
 
 /// A table representing a split entities table, i.e. a setup where
-/// a subgraph deployment's entity are split into their own schema rather
+/// a subgraph deployment's entities are split into their own schema rather
 /// than residing in the entities table in the `public` database schema
 #[derive(Debug, Clone)]
 pub(crate) struct SplitTable {
@@ -251,6 +303,7 @@ pub(crate) struct SplitTable {
     event_source: EntityColumn<diesel::sql_types::Text>,
 }
 
+/// Helper struct to support a custom query for entity history
 #[derive(Debug, Queryable)]
 struct RawHistory {
     id: i32,
@@ -276,6 +329,9 @@ impl QueryableByName<Pg> for RawHistory {
     }
 }
 
+/// Represents a subgraph, and how it is stored in the database. The
+/// implementation of this enum masks which scheme is used to the rest of
+/// the code.
 #[derive(Clone, Debug)]
 pub(crate) enum Table {
     Public(SubgraphDeploymentId),
@@ -318,6 +374,12 @@ impl<'a> Connection<'a> {
     pub(crate) fn start_subgraph(&self, subgraph: &SubgraphDeploymentId) -> Result<(), StoreError> {
         use public::deployment_schemas as dsl;
 
+        // Clear the `migrating` lock on the subgraph; this flag must be
+        // visible to other db users before the migration starts and is
+        // therefore set in its own txn before migration actually starts.
+        // If the migration does not finish, e.g., because the server is shut
+        // down, `migrating` remains set to `true` even though no work for
+        // the migration is being done.
         Ok(
             diesel::update(dsl::table.filter(dsl::subgraph.eq(subgraph.to_string())))
                 .set(dsl::migrating.eq(false))
@@ -403,11 +465,15 @@ impl<'a> Connection<'a> {
         subgraph: &SubgraphDeploymentId,
         block_ptr: String,
     ) -> Result<(StoreEvent, i32), StoreError> {
-        // First revert the block in the subgraph itself
+        // Revert the block in the subgraph itself
         let table = self.table(subgraph)?;
         let (event, count) = table.revert_block(self.conn, block_ptr.clone())?;
 
-        // The revert the meta data changes that correspond to this subgraph
+        // Revert the meta data changes that correspond to this subgraph.
+        // Only certain meta data changes need to be reverted, most
+        // importantly creation of dynamic data sources. We ensure in the
+        // rest of the code that we only record history for those meta data
+        // changes that might need to be reverted
         let table = self.table(&SUBGRAPHS_ID)?;
         let (meta_event, _) = table.revert_block_meta(self.conn, subgraph, block_ptr)?;
         Ok((event.extend(meta_event), count))
@@ -438,7 +504,11 @@ impl<'a> Connection<'a> {
     }
 
     /// Check if the schema for `subgraph` needs to be migrated, and if so
-    /// if now (indicated by the block pointer) is the right time to do so
+    /// if now (indicated by the block pointer) is the right time to do so.
+    /// We try to spread the actual database work associated with checking
+    /// if a subgraph should be migrated out as much as possible. This
+    /// function does not query the database, and the actual check for
+    /// migrating should only be done if this function returns `true`
     pub(crate) fn should_migrate(
         &self,
         subgraph: &SubgraphDeploymentId,
@@ -709,9 +779,9 @@ impl Table {
     const DEFAULT_VERSION: public::DeploymentSchemaVersion = public::DeploymentSchemaVersion::Split;
 
     /// Look up the schema for `subgraph` and return its entity table.
-    /// If `subgraph` does not have an entry in `deployment_schemas`, we assume
-    /// it has not been migrated yet, and return the `entities` table
-    /// in the `public` schema
+    /// Returns an error if `subgraph` does not have an entry in
+    /// `deployment_schemas`, which can only happen if `create_schema` was not
+    /// called for that `subgraph`
     fn new(conn: &PgConnection, subgraph: &SubgraphDeploymentId) -> Result<Self, StoreError> {
         use public::DeploymentSchemaVersion as V;
 
@@ -724,6 +794,8 @@ impl Table {
         Ok(table)
     }
 
+    /// Return an entity key for the entity of the given type and id in the
+    /// subgraph stored in `self`
     fn entity_key(&self, entity_type: String, entity_id: String) -> EntityKey {
         let subgraph_id = match self {
             Table::Public(subgraph) => subgraph.clone(),
@@ -1383,7 +1455,7 @@ impl Table {
             ValueType::List => (String::from("gin"), String::from("jsonb_path_ops"), "->"),
         };
 
-        // It is not to be possible to use bind variables in this code,
+        // It is not possible to use bind variables in this code,
         // and we have to interpolate everything into the query directly.
         // We also have to use conn.batch_execute to issue the `create index`
         // commands; using `sql_query(..).execute(conn)` will make the database
@@ -1393,7 +1465,7 @@ impl Table {
         // Note that this code depends on `index.entity_number` and
         // `index.attribute_number` to be stable, i.e., that we always get the
         // same numbers for the same `(entity, attribute)` combination. If it is
-        // not stable, we will generate duplicate indexes
+        // not stable, we will create duplicate indexes
         match self {
             Table::Public(_) => {
                 let index_name = format!(
@@ -1611,6 +1683,12 @@ pub fn delete_all_entities_for_test_use_only(conn: &PgConnection) -> Result<usiz
     Ok(rows)
 }
 
+/// Create the database schema for a new subgraph, including a table for the
+/// entities and a table for entity history, plus the triggers needed to
+/// record history.
+///
+/// It is an error if `deployment_schemas` already has an entry for this
+/// `subgraph_id`
 pub(crate) fn create_schema(
     conn: &PgConnection,
     subgraph_id: &SubgraphDeploymentId,
@@ -1715,7 +1793,9 @@ pub(crate) fn create_schema(
     Ok(())
 }
 
-#[allow(dead_code)]
+/// Drop the schema for `subgraph`. This deletes all data for the subgraph,
+/// and can not be reversed. It does not remove any of the metadata in
+/// `subgraphs.entities` associated with the subgraph
 pub(crate) fn drop_schema(
     conn: &diesel::pg::PgConnection,
     subgraph: &SubgraphDeploymentId,
