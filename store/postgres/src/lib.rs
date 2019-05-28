@@ -17,13 +17,13 @@ extern crate serde;
 extern crate uuid;
 
 mod chain_head_listener;
-pub mod db_schema;
+mod db_schema;
 mod entities;
 mod filter;
-pub mod functions;
-pub mod jsonb;
+mod functions;
+mod jsonb;
 mod notification_listener;
-pub mod sql_value;
+mod sql_value;
 pub mod store;
 mod store_events;
 
