@@ -783,13 +783,34 @@ where
             let named_type = sast::get_named_type(&ctx.schema.document, name).unwrap();
 
             match named_type {
-                // Complete scalar values; we're assuming that the resolver has
-                // already returned a valid value for the scalar type
-                s::TypeDefinition::Scalar(_) => Ok(resolved_value),
+                // Complete scalar values
+                s::TypeDefinition::Scalar(scalar_type) => {
+                    resolved_value.coerce(scalar_type).ok_or_else(|| {
+                        vec![QueryExecutionError::ScalarCoercionError(
+                            field.position.clone(),
+                            field.name.to_owned(),
+                            resolved_value.clone(),
+                            scalar_type.name.to_owned(),
+                        )]
+                    })
+                }
 
-                // Complete enum values; we're assuming that the resolver has
-                // already returned a valid value for the enum type
-                s::TypeDefinition::Enum(_) => Ok(resolved_value),
+                // Complete enum values
+                s::TypeDefinition::Enum(enum_type) => {
+                    resolved_value.coerce(enum_type).ok_or_else(|| {
+                        vec![QueryExecutionError::EnumCoercionError(
+                            field.position.clone(),
+                            field.name.to_owned(),
+                            resolved_value.clone(),
+                            enum_type.name.to_owned(),
+                            enum_type
+                                .values
+                                .iter()
+                                .map(|value| value.name.to_owned())
+                                .collect(),
+                        )]
+                    })
+                }
 
                 // Complete object types recursively
                 s::TypeDefinition::Object(object_type) => execute_selection_set(
