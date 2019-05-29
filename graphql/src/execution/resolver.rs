@@ -95,78 +95,21 @@ pub trait Resolver: Clone + Send + Sync {
     /// Resolves a list of enum values for a given enum type.
     fn resolve_enum_values(
         &self,
-        field: &q::Field,
-        enum_type: &s::EnumType,
+        _field: &q::Field,
+        _enum_type: &s::EnumType,
         value: Option<&q::Value>,
     ) -> Result<q::Value, Vec<QueryExecutionError>> {
-        value
-            .and_then(|value| match value {
-                q::Value::List(values) => Some(values),
-                _ => None,
-            })
-            .map_or(Ok(q::Value::Null), |values| {
-                let mut coerced_values = vec![];
-                let mut errors = vec![];
-
-                for value in values.iter() {
-                    match value.coerce(enum_type) {
-                        Some(value) => coerced_values.push(value),
-                        None => errors.push(QueryExecutionError::EnumCoercionError(
-                            field.position.clone(),
-                            field.name.to_owned(),
-                            value.clone(),
-                            enum_type.name.to_owned(),
-                            enum_type
-                                .values
-                                .iter()
-                                .map(|value| value.name.to_owned())
-                                .collect(),
-                        )),
-                    }
-                }
-
-                if !errors.is_empty() {
-                    return Err(errors);
-                } else {
-                    return Ok(q::Value::List(coerced_values));
-                }
-            })
+        Ok(value.cloned().unwrap_or(q::Value::Null))
     }
 
     /// Resolves a list of scalar values for a given list type.
     fn resolve_scalar_values(
         &self,
-        field: &q::Field,
-        scalar_type: &s::ScalarType,
+        _field: &q::Field,
+        _scalar_type: &s::ScalarType,
         value: Option<&q::Value>,
     ) -> Result<q::Value, Vec<QueryExecutionError>> {
-        value
-            .and_then(|value| match value {
-                q::Value::List(values) => Some(values),
-                _ => None,
-            })
-            .map_or(Ok(q::Value::Null), |values| {
-                let mut coerced_values = vec![];
-                let mut errors = vec![];
-
-                for value in values.iter() {
-                    match value.coerce(scalar_type) {
-                        Some(value) => coerced_values.push(value),
-                        None => errors.push(QueryExecutionError::ScalarCoercionError(
-                            field.position.clone(),
-                            field.name.to_owned(),
-                            value.clone(),
-                            scalar_type.name.to_owned(),
-                        )),
-                    }
-                }
-
-                if !errors.is_empty() {
-                    return Err(errors);
-                } else {
-                    return Ok(q::Value::List(coerced_values));
-                }
-            })
+        Ok(value.cloned().unwrap_or(q::Value::Null))
     }
 
     // Resolves an abstract type into the specific type of an object.
