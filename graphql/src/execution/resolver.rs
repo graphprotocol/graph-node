@@ -73,25 +73,11 @@ pub trait Resolver: Clone + Send + Sync {
     /// Resolves an enum value for a given enum type.
     fn resolve_enum_value(
         &self,
-        field: &q::Field,
-        enum_type: &s::EnumType,
+        _field: &q::Field,
+        _enum_type: &s::EnumType,
         value: Option<&q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        value.map_or(Ok(q::Value::Null), |value| {
-            value.coerce(enum_type).ok_or_else(|| {
-                QueryExecutionError::EnumCoercionError(
-                    field.position.clone(),
-                    field.name.to_owned(),
-                    value.clone(),
-                    enum_type.name.to_owned(),
-                    enum_type
-                        .values
-                        .iter()
-                        .map(|value| value.name.to_owned())
-                        .collect(),
-                )
-            })
-        })
+        Ok(value.cloned().unwrap_or(q::Value::Null))
     }
 
     /// Resolves a scalar value for a given scalar type.
@@ -99,20 +85,11 @@ pub trait Resolver: Clone + Send + Sync {
         &self,
         _parent_object_type: &s::ObjectType,
         _parent: &BTreeMap<String, q::Value>,
-        field: &q::Field,
-        scalar_type: &s::ScalarType,
+        _field: &q::Field,
+        _scalar_type: &s::ScalarType,
         value: Option<&q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        value.map_or(Ok(q::Value::Null), |value| {
-            value.coerce(scalar_type).ok_or_else(|| {
-                QueryExecutionError::ScalarCoercionError(
-                    field.position.clone(),
-                    field.name.to_owned(),
-                    value.clone(),
-                    scalar_type.name.to_owned(),
-                )
-            })
-        })
+        Ok(value.cloned().unwrap_or(q::Value::Null))
     }
 
     /// Resolves a list of enum values for a given enum type.
