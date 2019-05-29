@@ -755,20 +755,21 @@ where
 
         // Complete list values
         s::Type::ListType(inner_type) => {
-            return match resolved_value {
+            match resolved_value {
                 // Complete list values individually
                 q::Value::List(values) => {
+                    let mut errors = Vec::new();
                     let mut out = Vec::with_capacity(values.len());
                     for value in values.into_iter() {
-                        out.push(complete_value(
-                            ctx,
-                            field,
-                            inner_type,
-                            fields.clone(),
-                            value,
-                        )?);
+                        match complete_value(ctx, field, inner_type, fields.clone(), value) {
+                            Ok(value) => out.push(value),
+                            Err(errs) => errors.extend(errs),
+                        }
                     }
-                    Ok(q::Value::List(out))
+                    match errors.is_empty() {
+                        true => Ok(q::Value::List(out)),
+                        false => Err(errors),
+                    }
                 }
 
                 // Return field error if the resolved value for the list is not a list
@@ -776,7 +777,7 @@ where
                     field.position,
                     field.name.to_string(),
                 )]),
-            };
+            }
         }
 
         s::Type::NamedType(name) => {
