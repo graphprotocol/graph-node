@@ -277,6 +277,20 @@ where
             name,
         )))
     }
+
+    fn reassign_subgraph(
+        &self,
+        name: SubgraphName,
+        hash: SubgraphDeploymentId,
+        node_id: NodeId,
+    ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
+        Box::new(future::result(reassign_subgraph(
+            self.store.clone(),
+            name,
+            hash,
+            node_id,
+        )))
+    }
 }
 
 fn handle_assignment_event<P>(
@@ -808,4 +822,50 @@ fn remove_subgraph_versions(
     );
 
     Ok(ops)
+}
+
+/// Reassign a subgraph deployment to a different node.
+///
+/// Reassigning to a nodeId that does not match any reachable graph-nodes will effectively pause the
+/// subgraph syncing process.
+fn reassign_subgraph(
+    store: Arc<impl Store>,
+    name: SubgraphName,
+    hash: SubgraphDeploymentId,
+    node_id: NodeId,
+) -> Result<(), SubgraphRegistrarError> {
+    let mut ops = vec![];
+
+    // Find all subgraph version entities that point to this hash.
+    let (version_summaries, read_summaries_abort_ops) =
+        store.read_subgraph_version_summaries(vec![hash.clone()])?;
+    ops.extend(read_summaries_abort_ops);
+
+    ops.push(EntityOperation::AbortUnless {
+        description: "Provided name-deploymentId pair must match an existing subgraph version"
+            .to_owned(),
+        query: SubgraphEntity::query()
+            .filter(EntityFilter::new_in("name", vec![name.clone().to_string()])),
+        entity_ids: version_summaries
+            .iter()
+            .map(move |summary| summary.clone().subgraph_id)
+            .collect(),
+    });
+
+    ops.push(EntityOperation::AbortUnless {
+        description: "Target node must be different from the currently assigned one".to_owned(),
+        query: SubgraphDeploymentAssignmentEntity::query().filter(EntityFilter::And(vec![
+            EntityFilter::new_equal("nodeId", node_id.to_string()),
+            EntityFilter::new_equal("id", hash.clone().to_string()),
+        ])),
+        entity_ids: vec![],
+    });
+
+    // Create the assignment update operations.
+    // Note: This will also generate a remove operation for the existing subgraph assignment.
+    ops.extend(SubgraphDeploymentAssignmentEntity::new(node_id).write_operations(&hash.clone()));
+
+    store.apply_entity_operations(ops, None)?;
+
+    Ok(())
 }

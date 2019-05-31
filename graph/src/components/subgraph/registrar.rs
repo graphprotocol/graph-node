@@ -34,4 +34,11 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
         &self,
         name: SubgraphName,
     ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static>;
+
+    fn reassign_subgraph(
+        &self,
+        name: SubgraphName,
+        hash: SubgraphDeploymentId,
+        node_id: NodeId,
+    ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static>;
 }

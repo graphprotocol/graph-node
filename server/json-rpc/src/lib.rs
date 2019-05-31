@@ -26,6 +26,7 @@ lazy_static! {
 const JSON_RPC_DEPLOY_ERROR: i64 = 0;
 const JSON_RPC_REMOVE_ERROR: i64 = 1;
 const JSON_RPC_CREATE_ERROR: i64 = 2;
+const JSON_RPC_REASSIGN_ERROR: i64 = 3;
 
 #[derive(Debug, Deserialize)]
 struct SubgraphCreateParams {
@@ -42,6 +43,13 @@ struct SubgraphDeployParams {
 #[derive(Debug, Deserialize)]
 struct SubgraphRemoveParams {
     name: SubgraphName,
+}
+
+#[derive(Debug, Deserialize)]
+struct SubgraphReassignParams {
+    name: SubgraphName,
+    ipfs_hash: SubgraphDeploymentId,
+    node_id: NodeId,
 }
 
 pub struct JsonRpcServer<R> {
@@ -133,6 +141,31 @@ where
                 .flatten(),
         )
     }
+
+    /// Handler for the `subgraph_assign` endpoint.
+    fn reassign_handler(
+        &self,
+        params: SubgraphReassignParams,
+    ) -> Box<Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
+        let logger = self.logger.clone();
+
+        info!(logger, "Received subgraph_reassignment request"; "params" => format!("{:?}", params));
+
+        Box::new(
+            self.registrar
+                .reassign_subgraph(params.name, params.ipfs_hash, params.node_id)
+                .map_err(move |e| {
+                    if let SubgraphRegistrarError::Unknown(e) = e {
+                        error!(logger, "subgraph_reassignment failed: {}", e);
+                        json_rpc_error(JSON_RPC_REASSIGN_ERROR, "internal error".to_owned())
+                    } else {
+                        json_rpc_error(JSON_RPC_REASSIGN_ERROR, e.to_string())
+                    }
+                })
+                .map(|_| Ok(Value::Null))
+                .flatten(),
+        )
+    }
 }
 
 impl<R> JsonRpcServerTrait<R> for JsonRpcServer<R>
@@ -193,6 +226,15 @@ where
                 .parse()
                 .into_future()
                 .and_then(move |params| me.remove_handler(params))
+        });
+
+        let me = arc_self.clone();
+        handler.add_method("subgraph_reassign", move |params: Params| {
+            let me = me.clone();
+            params
+                .parse()
+                .into_future()
+                .and_then(move |params| me.reassign_handler(params))
         });
 
         ServerBuilder::new(handler)
