@@ -328,7 +328,8 @@ where
 
         // Prepare an EthereumCall for the WASM runtime
         let arg = EthereumCallData {
-            address: call.to,
+            to: call.to,
+            from: call.from,
             block: EthereumBlockData::from(&self.ctx.block.block),
             transaction: EthereumTransactionData::from(transaction.deref()),
             inputs,

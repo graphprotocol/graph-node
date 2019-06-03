@@ -250,7 +250,8 @@ impl Clone for EthereumEventData {
 /// An Ethereum call executed within a transaction within a block to a contract address.
 #[derive(Debug)]
 pub struct EthereumCallData {
-    pub address: Address,
+    pub from: Address,
+    pub to: Address,
     pub block: EthereumBlockData,
     pub transaction: EthereumTransactionData,
     pub inputs: Vec<LogParam>,
@@ -260,7 +261,8 @@ pub struct EthereumCallData {
 impl Clone for EthereumCallData {
     fn clone(&self) -> Self {
         EthereumCallData {
-            address: self.address,
+            to: self.to,
+            from: self.from,
             block: self.block.clone(),
             transaction: self.transaction.clone(),
             inputs: self
