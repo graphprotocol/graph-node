@@ -842,12 +842,14 @@ fn reassign_subgraph(
     ops.extend(read_summaries_abort_ops);
 
     ops.push(EntityOperation::AbortUnless {
-        description: "Provided name-deploymentId pair must match an existing subgraph version"
-            .to_owned(),
+        description:
+            "Provided name-deploymentId pair must match an existing, current subgraph version"
+                .to_owned(),
         query: SubgraphEntity::query()
             .filter(EntityFilter::new_in("name", vec![name.clone().to_string()])),
         entity_ids: version_summaries
             .iter()
+            .filter(|version| version.current)
             .map(move |summary| summary.clone().subgraph_id)
             .collect(),
     });
