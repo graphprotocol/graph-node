@@ -565,7 +565,8 @@ where
                                             "receipt_block_hash" =>
                                                 receipt_block_hash.to_string(),
                                             "block_hash" =>
-                                                block_hash.to_string()
+                                                block_hash.to_string(),
+                                            "tx_hash" => tx_hash.to_string(),
                                         );
 
                                         // If the receipt came from a different block, then the
