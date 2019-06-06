@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
-use std::time::Duration;
 use uuid::Uuid;
 
 use graph::data::subgraph::schema::{
@@ -60,30 +59,29 @@ pub struct SubgraphInstanceManager {
 impl SubgraphInstanceManager {
     /// Creates a new runtime manager.
     pub fn new<B, S, T>(
-        logger: &Logger,
+        logger_factory: &LoggerFactory,
         store: Arc<S>,
         host_builder: T,
         block_stream_builder: B,
-        elastic_config: Option<ElasticLoggingConfig>,
     ) -> Self
     where
         S: Store + ChainStore,
         T: RuntimeHostBuilder,
         B: BlockStreamBuilder + 'static,
     {
-        let logger = logger.new(o!("component" => "SubgraphInstanceManager"));
+        let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
+        let logger_factory = logger_factory.with_parent(logger.clone());
 
         // Create channel for receiving subgraph provider events.
         let (subgraph_sender, subgraph_receiver) = channel(100);
 
         // Handle incoming events from the subgraph provider.
         Self::handle_subgraph_events(
-            logger.clone(),
+            logger_factory,
             subgraph_receiver,
             store,
             host_builder,
             block_stream_builder,
-            elastic_config,
         );
 
         SubgraphInstanceManager {
@@ -94,12 +92,11 @@ impl SubgraphInstanceManager {
 
     /// Handle incoming events from subgraph providers.
     fn handle_subgraph_events<B, S, T>(
-        logger: Logger,
+        logger_factory: LoggerFactory,
         receiver: Receiver<SubgraphAssignmentProviderEvent>,
         store: Arc<S>,
         host_builder: T,
         block_stream_builder: B,
-        elastic_config: Option<ElasticLoggingConfig>,
     ) where
         S: Store + ChainStore,
         T: RuntimeHostBuilder,
@@ -113,27 +110,7 @@ impl SubgraphInstanceManager {
 
             match event {
                 SubgraphStart(manifest) => {
-                    // Write subgraph logs to the terminal and, if enabled, Elasticsearch
-                    let term_logger = logger.new(o!("subgraph_id" => manifest.id.to_string()));
-                    let logger = elastic_config
-                        .clone()
-                        .map(|elastic_config| {
-                            split_logger(
-                                term_logger.clone(),
-                                elastic_logger(
-                                    ElasticDrainConfig {
-                                        general: elastic_config,
-                                        index: String::from("subgraph-logs"),
-                                        document_type: String::from("log"),
-                                        custom_id_key: String::from("subgraphId"),
-                                        custom_id_value: manifest.id.clone().deref().to_string(),
-                                        flush_interval: Duration::from_secs(5),
-                                    },
-                                    term_logger.clone(),
-                                ),
-                            )
-                        })
-                        .unwrap_or(term_logger);
+                    let logger = logger_factory.subgraph_logger(&manifest.id);
 
                     info!(
                         logger,
@@ -160,7 +137,9 @@ impl SubgraphInstanceManager {
                     .ok();
                 }
                 SubgraphStop(id) => {
-                    info!(logger, "Stopping subgraph"; "subgraph_id" => id.to_string());
+                    let logger = logger_factory.subgraph_logger(&id);
+                    info!(logger, "Stop subgraph");
+
                     Self::stop_subgraph(instances.clone(), id);
                 }
             };
@@ -297,9 +276,7 @@ where
     S: Store + ChainStore,
     T: RuntimeHostBuilder,
 {
-    // Log restarts as "updates" here to not freak people out thinking that
-    // those restarts could be crashes or similar; they are deliberate
-    let logger = ctx.state.logger.new(o!("updates" => ctx.state.restarts));
+    let logger = ctx.state.logger.clone();
 
     debug!(logger, "Starting or restarting subgraph");
 

@@ -506,11 +506,10 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let runtime_host_builder =
         WASMRuntimeHostBuilder::new(eth_adapter.clone(), ipfs_client.clone(), store.clone());
     let subgraph_instance_manager = SubgraphInstanceManager::new(
-        &logger,
+        &logger_factory,
         store.clone(),
         runtime_host_builder,
         block_stream_builder,
-        elastic_config.clone(),
     );
 
     // Create IPFS-based subgraph provider
