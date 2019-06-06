@@ -268,8 +268,11 @@ where
                     })
             })
             .map(move |state| {
-                trace!(timing_logger, "loaded dynamic data sources";
-                                      "ms" => start_time.elapsed().as_millis());
+                trace!(
+                    timing_logger,
+                    "Loaded dynamic data sources";
+                    "ms" => start_time.elapsed().as_millis()
+                );
                 state.data_sources
             }),
         )
