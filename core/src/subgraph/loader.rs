@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
+use std::time::Instant;
 
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::UnresolvedDataSource;
@@ -220,6 +221,7 @@ where
             skip: i32,
         }
 
+        let start_time = Instant::now();
         let initial_state = LoopState {
             data_sources: vec![],
             skip: 0,
@@ -228,6 +230,7 @@ where
         // Clones for async looping
         let self1 = self.clone();
         let deployment_id = deployment_id.clone();
+        let timing_logger = logger.clone();
 
         Box::new(
             future::loop_fn(initial_state, move |mut state| {
@@ -264,7 +267,11 @@ where
                         }
                     })
             })
-            .map(|state| state.data_sources),
+            .map(move |state| {
+                trace!(timing_logger, "loaded dynamic data sources";
+                                      "ms" => start_time.elapsed().as_millis());
+                state.data_sources
+            }),
         )
     }
 }
