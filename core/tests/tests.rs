@@ -179,6 +179,7 @@ fn multiple_data_sources_per_subgraph() {
                     link: subgraph_link,
                 },
                 resolver,
+                logger,
             )
             .map_err(|e| panic!("subgraph resolve error {:?}", e))
             .and_then(move |subgraph| {
