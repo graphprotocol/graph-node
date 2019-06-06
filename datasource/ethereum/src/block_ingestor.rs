@@ -27,30 +27,18 @@ where
         eth_adapter: Arc<E>,
         ancestor_count: u64,
         network_name: String,
-        logger: Logger,
+        logger_factory: &LoggerFactory,
         polling_interval: Duration,
-        elastic_config: Option<ElasticLoggingConfig>,
     ) -> Result<BlockIngestor<S, E>, Error> {
-        let term_logger = logger.new(o!("component" => "BlockIngestor"));
-        let logger = elastic_config
-            .clone()
-            .map(|elastic_config| {
-                split_logger(
-                    term_logger.clone(),
-                    elastic_logger(
-                        ElasticDrainConfig {
-                            general: elastic_config,
-                            index: String::from("block-ingestor-logs"),
-                            document_type: String::from("log"),
-                            custom_id_key: String::from("componentId"),
-                            custom_id_value: String::from("blockIngestor"),
-                            flush_interval: polling_interval,
-                        },
-                        term_logger.clone(),
-                    ),
-                )
-            })
-            .unwrap_or(term_logger);
+        let logger = logger_factory.component_logger(
+            "BlockIngestor",
+            Some(ComponentLoggerConfig {
+                elastic: Some(ElasticComponentLoggerConfig {
+                    index: String::from("block-ingestor-logs"),
+                }),
+            }),
+        );
+
         Ok(BlockIngestor {
             chain_store,
             eth_adapter,

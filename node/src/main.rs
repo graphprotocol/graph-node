@@ -484,9 +484,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             eth_adapter.clone(),
             *ANCESTOR_COUNT,
             ethereum_network_name.to_string(),
-            logger.clone(),
+            &logger_factory,
             block_polling_interval,
-            elastic_config.clone(),
         )
         .expect("failed to create Ethereum block ingestor");
 
