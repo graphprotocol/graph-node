@@ -6,6 +6,7 @@ use std::env;
 
 pub mod codes;
 pub mod elastic;
+pub mod factory;
 pub mod split;
 
 pub fn logger(show_debug: bool) -> Logger {
