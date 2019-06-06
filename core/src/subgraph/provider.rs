@@ -92,17 +92,24 @@ where
         let logger = self.logger_factory.subgraph_logger(&id);
         let logger_for_resolve = logger.clone();
         let logger_for_err = logger.clone();
+        let logger_for_data_sources = logger.clone();
 
         info!(logger, "Resolve subgraph files using IPFS");
 
         Box::new(
             SubgraphManifest::resolve(Link { link }, self.resolver.clone(), logger_for_resolve)
                 .map_err(SubgraphAssignmentProviderError::ResolveError)
-                .join(
-                    loader
-                        .load_dynamic_data_sources(&subgraph_id_for_data_sources, logger.clone())
-                        .map_err(SubgraphAssignmentProviderError::DynamicDataSourcesError),
-                )
+                .and_then(move |manifest| {
+                    (
+                        future::ok(manifest),
+                        loader
+                            .load_dynamic_data_sources(
+                                &subgraph_id_for_data_sources,
+                                logger_for_data_sources,
+                            )
+                            .map_err(SubgraphAssignmentProviderError::DynamicDataSourcesError),
+                    )
+                })
                 .and_then(
                     move |(mut subgraph, data_sources)| -> Box<Future<Item = _, Error = _> + Send> {
                         info!(logger, "Successfully resolved subgraph files using IPFS");
