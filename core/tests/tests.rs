@@ -249,7 +249,7 @@ fn subgraph_provider_events() {
             let node_id = NodeId::new("test").unwrap();
 
             let registrar = graph_core::SubgraphRegistrar::new(
-                logger.clone(),
+                &logger_factory,
                 resolver.clone(),
                 Arc::new(provider),
                 store.clone(),

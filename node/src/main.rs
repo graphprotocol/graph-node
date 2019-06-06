@@ -533,7 +533,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Create named subgraph provider for resolving subgraph name->ID mappings
     let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
-        logger.clone(),
+        &logger_factory,
         ipfs_client,
         Arc::new(subgraph_provider),
         store.clone(),
