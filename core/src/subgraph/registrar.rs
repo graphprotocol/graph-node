@@ -11,6 +11,7 @@ use graph::prelude::{
 
 pub struct SubgraphRegistrar<L, P, S, CS> {
     logger: Logger,
+    logger_factory: LoggerFactory,
     resolver: Arc<L>,
     provider: Arc<P>,
     store: Arc<S>,
@@ -28,7 +29,7 @@ where
     CS: ChainStore,
 {
     pub fn new(
-        logger: Logger,
+        logger_factory: &LoggerFactory,
         resolver: Arc<L>,
         provider: Arc<P>,
         store: Arc<S>,
@@ -36,10 +37,12 @@ where
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
     ) -> Self {
-        let logger = logger.new(o!("component" => "SubgraphRegistrar"));
+        let logger = logger_factory.component_logger("SubgraphRegistrar", None);
+        let logger_factory = logger_factory.with_parent(logger.clone());
 
         SubgraphRegistrar {
             logger,
+            logger_factory,
             resolver,
             provider,
             store,
@@ -244,10 +247,11 @@ where
         hash: SubgraphDeploymentId,
         node_id: NodeId,
     ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
-        let logger = self.logger.clone();
         let store = self.store.clone();
         let version_switching_mode = self.version_switching_mode;
         let chain_store = self.chain_store.clone();
+
+        let logger = self.logger_factory.subgraph_logger(&hash);
 
         Box::new(
             SubgraphManifest::resolve(hash.to_ipfs_link(), self.resolver.clone())
