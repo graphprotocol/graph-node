@@ -12,6 +12,7 @@ use crate::DataSourceLoader;
 
 pub struct SubgraphAssignmentProvider<L, Q, S> {
     logger: Logger,
+    logger_factory: LoggerFactory,
     event_stream: Option<Receiver<SubgraphAssignmentProviderEvent>>,
     event_sink: Sender<SubgraphAssignmentProviderEvent>,
     resolver: Arc<L>,
@@ -26,12 +27,21 @@ where
     Q: GraphQlRunner,
     S: Store,
 {
-    pub fn new(logger: Logger, resolver: Arc<L>, store: Arc<S>, graphql_runner: Arc<Q>) -> Self {
+    pub fn new(
+        logger_factory: &LoggerFactory,
+        resolver: Arc<L>,
+        store: Arc<S>,
+        graphql_runner: Arc<Q>,
+    ) -> Self {
         let (event_sink, event_stream) = channel(100);
+
+        let logger = logger_factory.component_logger("SubgraphAssignmentProvider", None);
+        let logger_factory = logger_factory.with_parent(logger.clone());
 
         // Create the subgraph provider
         SubgraphAssignmentProvider {
-            logger: logger.new(o!("component" => "SubgraphAssignmentProvider")),
+            logger,
+            logger_factory,
             event_stream: Some(event_stream),
             event_sink,
             resolver,
@@ -51,6 +61,7 @@ where
             subgraphs_running: self.subgraphs_running.clone(),
             store: self.store.clone(),
             graphql_runner: self.graphql_runner.clone(),
+            logger_factory: self.logger_factory.clone(),
         }
     }
 }
@@ -78,6 +89,11 @@ where
 
         let link = format!("/ipfs/{}", id);
 
+        let logger = self.logger_factory.subgraph_logger(&id);
+        let logger_for_err = logger.clone();
+
+        info!(logger, "Resolve subgraph files using IPFS");
+
         Box::new(
             SubgraphManifest::resolve(Link { link }, self.resolver.clone())
                 .map_err(SubgraphAssignmentProviderError::ResolveError)
@@ -88,6 +104,8 @@ where
                 )
                 .and_then(
                     move |(mut subgraph, data_sources)| -> Box<Future<Item = _, Error = _> + Send> {
+                        info!(logger, "Successfully resolved subgraph files using IPFS");
+
                         // Add dynamic data sources to the subgraph
                         subgraph.data_sources.extend(data_sources);
 
@@ -98,10 +116,14 @@ where
                             .unwrap()
                             .insert(subgraph.id.clone())
                         {
+                            info!(logger, "Subgraph deployment is already running");
+
                             return Box::new(future::err(
                                 SubgraphAssignmentProviderError::AlreadyRunning(subgraph.id),
                             ));
                         }
+
+                        info!(logger, "Create attribute indexes for subgraph entities");
 
                         // Build indexes for each entity attribute in the Subgraph
                         let index_definitions = attribute_index_definitions(
@@ -114,7 +136,7 @@ where
                             .build_entity_attribute_indexes(index_definitions)
                             .map(|_| {
                                 info!(
-                                    self_clone.logger,
+                                    logger,
                                     "Successfully created attribute indexes for subgraph entities"
                                 )
                             })
@@ -132,6 +154,12 @@ where
                     },
                 )
                 .map_err(move |e| {
+                    error!(
+                        logger_for_err,
+                        "Failed to resolve subgraph files using IPFS";
+                        "error" => format!("{}", e)
+                    );
+
                     let _ = store.apply_entity_operations(
                         SubgraphDeploymentEntity::update_failed_operations(&subgraph_id, true),
                         None,

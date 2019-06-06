@@ -514,7 +514,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Create IPFS-based subgraph provider
     let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
-        logger.clone(),
+        &logger_factory,
         ipfs_client.clone(),
         store.clone(),
         graphql_runner.clone(),
