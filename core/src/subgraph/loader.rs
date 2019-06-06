@@ -190,11 +190,12 @@ where
     fn resolve_data_sources(
         self: Arc<Self>,
         unresolved_data_sources: Vec<UnresolvedDataSource>,
+        logger: Logger,
     ) -> impl Future<Item = Vec<DataSource>, Error = Error> + Send {
         // Resolve the data sources and return them
         stream::iter_ok(unresolved_data_sources).fold(vec![], move |mut resolved, data_source| {
             data_source
-                .resolve(&*self.link_resolver)
+                .resolve(&*self.link_resolver, logger.clone())
                 .and_then(|data_source| {
                     resolved.push(data_source);
                     future::ok(resolved)
@@ -212,6 +213,7 @@ where
     fn load_dynamic_data_sources(
         self: Arc<Self>,
         deployment_id: &SubgraphDeploymentId,
+        logger: Logger,
     ) -> Box<Future<Item = Vec<DataSource>, Error = Error> + Send> {
         struct LoopState {
             data_sources: Vec<DataSource>,
@@ -229,6 +231,8 @@ where
 
         Box::new(
             future::loop_fn(initial_state, move |mut state| {
+                let logger = logger.clone();
+
                 let deployment_id1 = deployment_id.clone();
                 let deployment_id2 = deployment_id.clone();
                 let deployment_id3 = deployment_id.clone();
@@ -248,7 +252,7 @@ where
                         future::ok(self5.convert_to_unresolved_data_sources(typed_entities))
                     })
                     .and_then(move |unresolved_data_sources| {
-                        self6.resolve_data_sources(unresolved_data_sources)
+                        self6.resolve_data_sources(unresolved_data_sources, logger)
                     })
                     .map(move |data_sources| {
                         if data_sources.is_empty() {

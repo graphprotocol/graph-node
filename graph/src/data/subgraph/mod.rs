@@ -7,6 +7,7 @@ use parity_wasm::elements::Module;
 use serde::de;
 use serde::ser;
 use serde_yaml;
+use slog::{info, Logger};
 use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
@@ -348,7 +349,10 @@ impl SchemaData {
         self,
         id: SubgraphDeploymentId,
         resolver: &impl LinkResolver,
+        logger: Logger,
     ) -> impl Future<Item = Schema, Error = failure::Error> + Send {
+        info!(logger, "Resolve schema"; "link" => &self.file.link);
+
         resolver
             .cat(&self.file)
             .and_then(|schema_bytes| Schema::parse(&String::from_utf8(schema_bytes)?, id))
@@ -408,7 +412,15 @@ impl UnresolvedMappingABI {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
+        logger: Logger,
     ) -> impl Future<Item = MappingABI, Error = failure::Error> + Send {
+        info!(
+            logger,
+            "Resolve ABI";
+            "name" => &self.name,
+            "link" => &self.file.link
+        );
+
         resolver.cat(&self.file).and_then(|contract_bytes| {
             let contract = Contract::load(&*contract_bytes).map_err(SyncFailure::new)?;
             Ok(MappingABI {
@@ -513,6 +525,7 @@ impl UnresolvedMapping {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
+        logger: Logger,
     ) -> impl Future<Item = Mapping, Error = failure::Error> + Send {
         let UnresolvedMapping {
             kind,
@@ -526,10 +539,12 @@ impl UnresolvedMapping {
             file: link,
         } = self;
 
+        info!(logger, "Resolve mapping"; "link" => &link.link);
+
         // resolve each abi
         stream::futures_ordered(
             abis.into_iter()
-                .map(|unresolved_abi| unresolved_abi.resolve(resolver)),
+                .map(|unresolved_abi| unresolved_abi.resolve(resolver, logger.clone())),
         )
         .collect()
         .join(
@@ -591,6 +606,7 @@ impl UnresolvedDataSource {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
+        logger: Logger,
     ) -> impl Future<Item = DataSource, Error = failure::Error> {
         let UnresolvedDataSource {
             kind,
@@ -601,13 +617,15 @@ impl UnresolvedDataSource {
             templates,
         } = self;
 
+        info!(logger, "Resolve data source"; "name" => &name);
+
         mapping
-            .resolve(resolver)
+            .resolve(resolver, logger.clone())
             .join(templates.map(|templates| {
                 stream::futures_ordered(
                     templates
                         .into_iter()
-                        .map(|template| template.resolve(resolver)),
+                        .map(|template| template.resolve(resolver, logger.clone())),
                 )
                 .collect()
             }))
@@ -703,6 +721,7 @@ impl UnresolvedDataSourceTemplate {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
+        logger: Logger,
     ) -> impl Future<Item = DataSourceTemplate, Error = failure::Error> {
         let UnresolvedDataSourceTemplate {
             kind,
@@ -711,13 +730,18 @@ impl UnresolvedDataSourceTemplate {
             source,
             mapping,
         } = self;
-        mapping.resolve(resolver).map(|mapping| DataSourceTemplate {
-            kind,
-            network,
-            name,
-            source,
-            mapping,
-        })
+
+        info!(logger, "Resolve data source template"; "name" => &name);
+
+        mapping
+            .resolve(resolver, logger)
+            .map(|mapping| DataSourceTemplate {
+                kind,
+                network,
+                name,
+                source,
+                mapping,
+            })
     }
 }
 
@@ -774,7 +798,10 @@ impl SubgraphManifest {
     pub fn resolve(
         link: Link,
         resolver: Arc<impl LinkResolver>,
+        logger: Logger,
     ) -> impl Future<Item = Self, Error = SubgraphManifestResolveError> + Send {
+        info!(logger, "Resolve manifest"; "link" => &link.link);
+
         resolver
             .cat(&link)
             .map_err(SubgraphManifestResolveError::ResolveError)
@@ -807,7 +834,7 @@ impl SubgraphManifest {
             })
             .and_then(move |unresolved| {
                 unresolved
-                    .resolve(&*resolver)
+                    .resolve(&*resolver, logger)
                     .map_err(SubgraphManifestResolveError::ResolveError)
             })
     }
@@ -817,6 +844,7 @@ impl UnresolvedSubgraphManifest {
     pub fn resolve(
         self,
         resolver: &impl LinkResolver,
+        logger: Logger,
     ) -> impl Future<Item = SubgraphManifest, Error = failure::Error> {
         let UnresolvedSubgraphManifest {
             id,
@@ -830,12 +858,12 @@ impl UnresolvedSubgraphManifest {
 
         // resolve each data set
         schema
-            .resolve(id.clone(), resolver)
+            .resolve(id.clone(), resolver, logger.clone())
             .join(
                 stream::futures_ordered(
                     data_sources
                         .into_iter()
-                        .map(|data_set| data_set.resolve(resolver)),
+                        .map(|data_set| data_set.resolve(resolver, logger.clone())),
                 )
                 .collect(),
             )

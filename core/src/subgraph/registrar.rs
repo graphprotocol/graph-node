@@ -254,7 +254,7 @@ where
         let logger = self.logger_factory.subgraph_logger(&hash);
 
         Box::new(
-            SubgraphManifest::resolve(hash.to_ipfs_link(), self.resolver.clone())
+            SubgraphManifest::resolve(hash.to_ipfs_link(), self.resolver.clone(), logger.clone())
                 .map_err(SubgraphRegistrarError::ResolveError)
                 .and_then(validation::validate_manifest)
                 .and_then(move |manifest| {
