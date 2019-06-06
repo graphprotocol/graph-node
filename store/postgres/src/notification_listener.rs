@@ -255,11 +255,27 @@ impl JsonNotification {
 
             // Delete any notifications older than 5 minutes; this serves
             // as a regular cleanup so the table doesn't grow in size indefinitely
-            diesel::sql_query(
-                "DELETE FROM large_notifications
-                 WHERE created_at < current_timestamp - interval '300s'",
-            )
-            .execute(conn)?;
+            //
+            // We make sure that we do not wait for any locks when we do the
+            // cleanup to avoid stalling this transaction. There is not much
+            // danger in this cleanup sometimes leaving rows behind, as long
+            // as they get cleaned up eventually
+
+            // 'delete' locks the table in 'row exclusive' mode; see that we
+            // can get that lock without waiting
+            let lock =
+                diesel::sql_query("lock table large_notifications in row exclusive mode nowait")
+                    .execute(conn);
+            if lock.is_ok() {
+                diesel::sql_query(
+                    "delete from large_notifications
+                     where id in
+                        (select id from large_notifications
+                         where created_at < current_timestamp - interval '300s'
+                         for update skip locked)",
+                )
+                .execute(conn)?;
+            }
         }
         Ok(())
     }
