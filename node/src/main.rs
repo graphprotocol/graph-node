@@ -340,6 +340,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 password: matches.value_of("elasticsearch-password").map(|s| s.into()),
             });
 
+    // Create a component and subgraph logger factory
+    let logger_factory = LoggerFactory::new(logger.clone(), elastic_config);
+
     info!(
         logger,
         "Trying IPFS node at: {}",
@@ -460,11 +463,10 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     ));
     let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(&logger, store.clone()));
     let mut graphql_server = GraphQLQueryServer::new(
-        &logger,
+        &logger_factory,
         graphql_runner.clone(),
         store.clone(),
         node_id.clone(),
-        elastic_config.clone(),
     );
     let mut subscription_server =
         GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), store.clone());
