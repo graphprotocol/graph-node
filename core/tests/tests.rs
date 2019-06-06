@@ -162,15 +162,15 @@ fn multiple_data_sources_per_subgraph() {
         .block_on(future::lazy(|| {
             let resolver = Arc::new(IpfsClient::default());
             let logger = Logger::root(slog::Discard, o!());
+            let logger_factory = LoggerFactory::new(logger.clone(), None);
             let store = Arc::new(FakeStore);
             let host_builder = MockRuntimeHostBuilder::new();
             let block_stream_builder = MockBlockStreamBuilder::new();
             let manager = SubgraphInstanceManager::new(
-                &logger,
+                &logger_factory,
                 store,
                 host_builder.clone(),
                 block_stream_builder,
-                None,
             );
 
             // Load a subgraph with two data sources
