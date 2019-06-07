@@ -1,8 +1,10 @@
 use bytes::BytesMut;
 use futures::{stream::poll_fn, try_ready};
 use ipfs_api;
+use lru_time_cache::LruCache;
 use std::env;
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use graph::prelude::{LinkResolver as LinkResolverTrait, *};
@@ -70,11 +72,15 @@ where
 
 pub struct LinkResolver {
     client: ipfs_api::IpfsClient,
+    cache: Arc<Mutex<LruCache<String, Vec<u8>>>>,
 }
 
 impl From<ipfs_api::IpfsClient> for LinkResolver {
     fn from(client: ipfs_api::IpfsClient) -> Self {
-        Self { client }
+        Self {
+            client,
+            cache: Arc::new(Mutex::new(LruCache::with_capacity(50))),
+        }
     }
 }
 
@@ -87,6 +93,10 @@ impl LinkResolverTrait for LinkResolver {
         // Discard the `/ipfs/` prefix (if present) to get the hash.
         let path = link.link.trim_start_matches("/ipfs/").to_owned();
 
+        if let Some(data) = self.cache.lock().unwrap().get(&path) {
+            return Box::new(future::ok(data.clone()));
+        }
+
         let ipfs_timeout = ipfs_timeout();
         let cat = self
             .client
@@ -96,7 +106,19 @@ impl LinkResolverTrait for LinkResolver {
             .map(|x| x.to_vec())
             .map_err(|e| failure::err_msg(e.to_string()));
 
-        restrict_file_size(&self.client, path.clone(), max_file_bytes, Box::new(cat))
+        let cache_for_writing = self.cache.clone();
+
+        Box::new(
+            restrict_file_size(&self.client, path.clone(), max_file_bytes, Box::new(cat)).map(
+                move |data| {
+                    let mut cache = cache_for_writing.lock().unwrap();
+                    if !cache.contains_key(&path) {
+                        cache.insert(path, data.clone());
+                    }
+                    data
+                },
+            ),
+        )
     }
 
     fn json_stream(
