@@ -1,5 +1,6 @@
 use failure;
 use serde_json::Value;
+use slog::Logger;
 use tokio::prelude::*;
 
 use crate::data::subgraph::Link;
@@ -18,7 +19,11 @@ pub type JsonValueStream =
 /// Resolves links to subgraph manifests and resources referenced by them.
 pub trait LinkResolver: Send + Sync + 'static + Sized {
     /// Fetches the link contents as bytes.
-    fn cat(&self, link: &Link) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send>;
+    fn cat(
+        &self,
+        logger: &Logger,
+        link: &Link,
+    ) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send>;
 
     /// Read the contents of `link` and deserialize them into a stream of JSON
     /// values. The values must each be on a single line; newlines are significant

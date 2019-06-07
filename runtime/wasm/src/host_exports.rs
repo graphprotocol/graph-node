@@ -352,11 +352,12 @@ where
 
     pub(crate) fn ipfs_cat(
         &self,
+        logger: &Logger,
         link: String,
     ) -> Result<Vec<u8>, HostExportError<impl ExportError>> {
         self.block_on(
             self.link_resolver
-                .cat(&Link { link })
+                .cat(logger, &Link { link })
                 .map_err(HostExportError),
         )
     }
