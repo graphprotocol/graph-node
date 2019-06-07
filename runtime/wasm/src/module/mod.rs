@@ -601,7 +601,7 @@ where
     /// function ipfs.cat(link: String): Bytes
     fn ipfs_cat(&mut self, link_ptr: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
         let link = self.asc_get(link_ptr);
-        let ipfs_res = self.host_exports().ipfs_cat(link);
+        let ipfs_res = self.host_exports().ipfs_cat(&self.ctx.logger, link);
         match ipfs_res {
             Ok(bytes) => {
                 let bytes_obj: AscPtr<Uint8Array> = self.asc_new(&*bytes);

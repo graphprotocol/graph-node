@@ -354,7 +354,7 @@ impl SchemaData {
         info!(logger, "Resolve schema"; "link" => &self.file.link);
 
         resolver
-            .cat(&self.file)
+            .cat(&logger, &self.file)
             .and_then(|schema_bytes| Schema::parse(&String::from_utf8(schema_bytes)?, id))
     }
 }
@@ -421,14 +421,16 @@ impl UnresolvedMappingABI {
             "link" => &self.file.link
         );
 
-        resolver.cat(&self.file).and_then(|contract_bytes| {
-            let contract = Contract::load(&*contract_bytes).map_err(SyncFailure::new)?;
-            Ok(MappingABI {
-                name: self.name,
-                contract,
-                link: self.file,
+        resolver
+            .cat(&logger, &self.file)
+            .and_then(|contract_bytes| {
+                let contract = Contract::load(&*contract_bytes).map_err(SyncFailure::new)?;
+                Ok(MappingABI {
+                    name: self.name,
+                    contract,
+                    link: self.file,
+                })
             })
-        })
     }
 }
 
@@ -548,7 +550,7 @@ impl UnresolvedMapping {
         )
         .collect()
         .join(
-            resolver.cat(&link).and_then(|module_bytes| {
+            resolver.cat(&logger, &link).and_then(|module_bytes| {
                 Ok(Arc::new(parity_wasm::deserialize_buffer(&module_bytes)?))
             }),
         )
@@ -803,7 +805,7 @@ impl SubgraphManifest {
         info!(logger, "Resolve manifest"; "link" => &link.link);
 
         resolver
-            .cat(&link)
+            .cat(&logger, &link)
             .map_err(SubgraphManifestResolveError::ResolveError)
             .and_then(move |file_bytes| {
                 let file = String::from_utf8(file_bytes.to_vec())

@@ -86,7 +86,11 @@ impl From<ipfs_api::IpfsClient> for LinkResolver {
 
 impl LinkResolverTrait for LinkResolver {
     /// Supports links of the form `/ipfs/ipfs_hash` or just `ipfs_hash`.
-    fn cat(&self, link: &Link) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send> {
+    fn cat(
+        &self,
+        logger: &Logger,
+        link: &Link,
+    ) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send> {
         // Grab env vars.
         let max_file_bytes = read_u64_from_env(MAX_IPFS_FILE_BYTES_ENV_VAR);
 
@@ -94,7 +98,10 @@ impl LinkResolverTrait for LinkResolver {
         let path = link.link.trim_start_matches("/ipfs/").to_owned();
 
         if let Some(data) = self.cache.lock().unwrap().get(&path) {
+            trace!(logger, "IPFS cache hit"; "hash" => &path);
             return Box::new(future::ok(data.clone()));
+        } else {
+            trace!(logger, "IPFS cache miss"; "hash" => &path);
         }
 
         let ipfs_timeout = ipfs_timeout();
@@ -206,11 +213,14 @@ mod tests {
         let file: &[u8] = &[0u8; 201];
         let client = ipfs_api::IpfsClient::default();
 
+        let logger = Logger::root(slog::Discard, o!());
+
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         let link = runtime.block_on(client.add(file)).unwrap().hash;
         let err = runtime
             .block_on(LinkResolver::cat(
                 &client.into(),
+                &logger,
                 &Link { link: link.clone() },
             ))
             .unwrap_err();
