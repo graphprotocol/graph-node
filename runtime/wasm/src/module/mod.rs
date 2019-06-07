@@ -326,8 +326,7 @@ where
     ) -> Result<BlockState, FailureError> {
         self.start_time = Instant::now();
 
-        // Prepare an EthereumCall for the WASM runtime
-        let arg = EthereumCallData {
+        let call = EthereumCallData {
             to: call.to,
             from: call.from,
             block: EthereumBlockData::from(&self.ctx.block.block),
@@ -335,12 +334,16 @@ where
             inputs,
             outputs,
         };
+        let arg = if self.host_exports().api_version >= Version::new(0, 0, 3) {
+            RuntimeValue::from(self.asc_new::<AscEthereumCall_0_0_3, _>(&call))
+        } else {
+            RuntimeValue::from(self.asc_new::<AscEthereumCall, _>(&call))
+        };
 
-        let result = self.module.clone().invoke_export(
-            handler_name,
-            &[RuntimeValue::from(self.asc_new(&arg))],
-            &mut self,
-        );
+        let result = self
+            .module
+            .clone()
+            .invoke_export(handler_name, &[arg], &mut self);
 
         result.map(|_| self.ctx.state).map_err(|err| {
             format_err!(
