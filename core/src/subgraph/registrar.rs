@@ -214,10 +214,25 @@ where
                     .collect::<Result<HashSet<SubgraphDeploymentId>, _>>()
             })
             .and_then(move |subgraph_ids| {
-                let provider = provider.clone();
-                stream::iter_ok(subgraph_ids).for_each(move |id| {
-                    start_subgraph(id, &*provider, logger.clone()).map_err(|()| unreachable!())
-                })
+                // This operation should finish only after all subgraphs are
+                // started. We wait for the spawned tasks to complete by giving
+                // each a `sender` and waiting for all of them to be dropped, so
+                // the receiver terminates without receiving anything.
+                let (sender, receiver) = tokio::sync::mpsc::channel::<()>(1);
+                for id in subgraph_ids {
+                    let sender = sender.clone();
+                    tokio::spawn(
+                        graph::util::futures::blocking(start_subgraph(
+                            id,
+                            &*provider,
+                            logger.clone(),
+                        ))
+                        .map(move |()| drop(sender))
+                        .map_err(|()| unreachable!()),
+                    );
+                }
+                drop(sender);
+                receiver.collect().then(|_| future::ok(()))
             })
     }
 }
