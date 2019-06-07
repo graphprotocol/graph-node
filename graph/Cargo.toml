@@ -6,7 +6,6 @@ edition = "2018"
 [dependencies]
 backtrace = "0.3.9"
 bigdecimal = { version = "0.0.14", features = ["serde"] }
-bytes = "0.4.11"
 diesel = { version = "1.3.2", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 chrono = "0.4"
 itertools = "0.7"

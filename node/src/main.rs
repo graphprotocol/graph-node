@@ -28,14 +28,14 @@ use std::time::Duration;
 
 use graph::components::forward;
 use graph::log::logger;
-use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
+use graph::prelude::{JsonRpcServer as _, *};
 use graph::tokio_executor;
 use graph::tokio_timer;
 use graph::tokio_timer::timer::Timer;
 use graph::util::security::SafeDisplay;
 use graph_core::{
-    SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
-    SubgraphRegistrar as IpfsSubgraphRegistrar,
+    LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
+    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
@@ -351,7 +351,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Try to create an IPFS client for this URL
     let ipfs_client = match IpfsClient::new_from_uri(ipfs_address.as_ref()) {
-        Ok(ipfs_client) => Arc::new(ipfs_client),
+        Ok(ipfs_client) => ipfs_client,
         Err(e) => {
             error!(
                 logger,
@@ -387,6 +387,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 );
             }),
     );
+
+    // Convert the client into a link resolver
+    let link_resolver = Arc::new(LinkResolver::from(ipfs_client));
 
     // Parse the Ethereum URL
     let (ethereum_network_name, ethereum_node_url) = parse_ethereum_network_and_node(
@@ -504,7 +507,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     // Prepare for hosting WASM runtimes and managing subgraph instances
     let runtime_host_builder =
-        WASMRuntimeHostBuilder::new(eth_adapter.clone(), ipfs_client.clone(), store.clone());
+        WASMRuntimeHostBuilder::new(eth_adapter.clone(), link_resolver.clone(), store.clone());
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger_factory,
         store.clone(),
@@ -515,7 +518,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Create IPFS-based subgraph provider
     let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
         &logger_factory,
-        ipfs_client.clone(),
+        link_resolver.clone(),
         store.clone(),
         graphql_runner.clone(),
     );
@@ -534,7 +537,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Create named subgraph provider for resolving subgraph name->ID mappings
     let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
         &logger_factory,
-        ipfs_client,
+        link_resolver,
         Arc::new(subgraph_provider),
         store.clone(),
         store.clone(),
