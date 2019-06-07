@@ -486,3 +486,15 @@ mod tests {
         assert_eq!(result, Ok(10));
     }
 }
+
+/// Convenient way to annotate a future with `tokio_threadpool::blocking`.
+///
+/// Panics if called from outside a tokio runtime.
+pub fn blocking<T, E>(mut f: impl Future<Item = T, Error = E>) -> impl Future<Item = T, Error = E> {
+    future::poll_fn(move || match tokio_threadpool::blocking(|| f.poll()) {
+        Ok(Async::NotReady) | Ok(Async::Ready(Ok(Async::NotReady))) => Ok(Async::NotReady),
+        Ok(Async::Ready(Ok(Async::Ready(t)))) => Ok(Async::Ready(t)),
+        Ok(Async::Ready(Err(e))) => Err(e),
+        Err(_) => panic!("not inside a tokio thread pool"),
+    })
+}

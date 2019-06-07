@@ -234,17 +234,11 @@ impl SubgraphInstanceManager {
         // creates dynamic data sources. This allows us to recreate the
         // block stream and include events for the new data sources going
         // forward; this is easier than updating the existing block stream.
-        let mut subgraph_task = loop_fn(ctx, |ctx| run_subgraph(ctx));
-
+        //
         // This task has many calls to the store, so mark it as `blocking`.
-        tokio::spawn(future::poll_fn(move || {
-            match tokio_threadpool::blocking(|| subgraph_task.poll()) {
-                Ok(Async::NotReady) | Ok(Async::Ready(Ok(Async::NotReady))) => Ok(Async::NotReady),
-                Ok(Async::Ready(Ok(Async::Ready(())))) => Ok(Async::Ready(())),
-                Ok(Async::Ready(Err(()))) => Err(()),
-                Err(_) => panic!("not inside a tokio thread pool"),
-            }
-        }));
+        tokio::spawn(graph::util::futures::blocking(loop_fn(ctx, |ctx| {
+            run_subgraph(ctx)
+        })));
 
         Ok(())
     }

@@ -43,5 +43,6 @@ tokio = "0.1.20"
 tokio-executor = "0.1.5"
 tokio-retry = "0.2"
 tokio-timer = "0.2.7"
+tokio-threadpool = "0.1.14"
 url = "1.7.2"
 web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "trace-struct-pre-ethereum-types" }
