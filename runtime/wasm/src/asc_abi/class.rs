@@ -461,6 +461,16 @@ where
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEthereumCall {
+    pub address: AscPtr<AscAddress>,
+    pub block: AscPtr<AscEthereumBlock>,
+    pub transaction: AscPtr<AscEthereumTransaction>,
+    pub inputs: AscPtr<AscLogParamArray>,
+    pub outputs: AscPtr<AscLogParamArray>,
+}
+
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscEthereumCall_0_0_3 {
     pub to: AscPtr<AscAddress>,
     pub from: AscPtr<AscAddress>,
     pub block: AscPtr<AscEthereumBlock>,

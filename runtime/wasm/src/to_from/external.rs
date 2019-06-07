@@ -362,6 +362,18 @@ where
 impl ToAscObj<AscEthereumCall> for EthereumCallData {
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumCall {
         AscEthereumCall {
+            address: heap.asc_new(&self.to),
+            block: heap.asc_new(&self.block),
+            transaction: heap.asc_new(&self.transaction),
+            inputs: heap.asc_new(self.inputs.as_slice()),
+            outputs: heap.asc_new(self.outputs.as_slice()),
+        }
+    }
+}
+
+impl ToAscObj<AscEthereumCall_0_0_3> for EthereumCallData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumCall_0_0_3 {
+        AscEthereumCall_0_0_3 {
             to: heap.asc_new(&self.to),
             from: heap.asc_new(&self.from),
             block: heap.asc_new(&self.block),
