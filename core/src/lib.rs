@@ -12,9 +12,11 @@ extern crate serde_yaml;
 extern crate uuid;
 
 mod graphql;
+mod link_resolver;
 mod subgraph;
 
 pub use crate::graphql::GraphQlRunner;
+pub use crate::link_resolver::LinkResolver;
 pub use crate::subgraph::{
     DataSourceLoader, SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar,
 };

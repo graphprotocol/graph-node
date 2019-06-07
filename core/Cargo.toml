@@ -4,10 +4,15 @@ version = "0.12.0"
 edition = "2018"
 
 [dependencies]
+bytes = "0.4.11"
 futures = "0.1.21"
 graph = { path = "../graph" }
 graph-graphql = { path = "../graphql" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
+# We're using the latest ipfs-api for the HTTPS support that was merged in
+# https://github.com/ferristseng/rust-ipfs-api/commit/55902e98d868dcce047863859caf596a629d10ec
+# but has not been released yet.
+ipfs-api = { git = "https://github.com/ferristseng/rust-ipfs-api", branch = "master", features = ["hyper-tls"] }
 lazy_static = "1.2.0"
 semver = "0.9.0"
 serde = "1.0"
@@ -16,10 +21,6 @@ serde_yaml = "0.7"
 uuid = { version = "0.7.2", features = ["v4"] }
 
 [dev-dependencies]
-# We're using the latest ipfs-api for the HTTPS support that was merged in
-# https://github.com/ferristseng/rust-ipfs-api/commit/55902e98d868dcce047863859caf596a629d10ec
-# but has not been released yet.
-ipfs-api = { git = "https://github.com/ferristseng/rust-ipfs-api", branch = "master", features = ["hyper-tls"] }
 graph-mock = { path = "../mock" }
 walkdir = "2.2.5"
 test-store = { path = "../store/test-store" }

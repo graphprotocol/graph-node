@@ -77,7 +77,7 @@ pub mod prelude {
     pub use crate::components::graphql::{
         GraphQlRunner, QueryResultFuture, SubscriptionResultFuture,
     };
-    pub use crate::components::link_resolver::LinkResolver;
+    pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
     pub use crate::components::server::admin::JsonRpcServer;
     pub use crate::components::server::query::GraphQLServer;
     pub use crate::components::server::subscription::SubscriptionServer;

@@ -9,18 +9,20 @@ extern crate walkdir;
 use ipfs_api::IpfsClient;
 use walkdir::WalkDir;
 
-use crate::tokio::timer::Delay;
-use graph::components::ethereum::*;
-use graph::prelude::*;
-use graph::web3::types::*;
-use graph_core::SubgraphInstanceManager;
-use graph_mock::{FakeStore, MockBlockStreamBuilder, MockStore};
 use std::collections::HashSet;
 use std::fs::read_to_string;
 use std::io::Cursor;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
+
+use graph::components::ethereum::*;
+use graph::prelude::*;
+use graph::web3::types::*;
+use graph_core::{LinkResolver, SubgraphInstanceManager};
+use graph_mock::{FakeStore, MockBlockStreamBuilder, MockStore};
+
+use crate::tokio::timer::Delay;
 
 /// Adds subgraph located in `test/subgraphs/`, replacing "link to" placeholders
 /// in the subgraph manifest with links to files just added into a local IPFS
@@ -160,7 +162,7 @@ fn multiple_data_sources_per_subgraph() {
 
     runtime
         .block_on(future::lazy(|| {
-            let resolver = Arc::new(IpfsClient::default());
+            let resolver = Arc::new(LinkResolver::from(IpfsClient::default()));
             let logger = Logger::root(slog::Discard, o!());
             let logger_factory = LoggerFactory::new(logger.clone(), None);
             let store = Arc::new(FakeStore);
@@ -237,7 +239,8 @@ fn subgraph_provider_events() {
         .block_on(future::lazy(|| {
             let logger = Logger::root(slog::Discard, o!());
             let logger_factory = LoggerFactory::new(logger.clone(), None);
-            let resolver = Arc::new(IpfsClient::default());
+            let ipfs = Arc::new(IpfsClient::default());
+            let resolver = Arc::new(LinkResolver::from(IpfsClient::default()));
             let store = Arc::new(MockStore::new(vec![]));
             let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(&logger, store.clone()));
             let mut provider = graph_core::SubgraphAssignmentProvider::new(
@@ -261,8 +264,8 @@ fn subgraph_provider_events() {
             registrar
                 .start()
                 .and_then(move |_| {
-                    add_subgraph_to_ipfs(resolver.clone(), "two-datasources")
-                        .join(add_subgraph_to_ipfs(resolver, "dummy"))
+                    add_subgraph_to_ipfs(ipfs.clone(), "two-datasources")
+                        .join(add_subgraph_to_ipfs(ipfs, "dummy"))
                 })
                 .and_then(move |(subgraph1_link, subgraph2_link)| {
                     let registrar = Arc::new(registrar);

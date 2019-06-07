@@ -1,23 +1,27 @@
 extern crate graph_mock;
 extern crate ipfs_api;
 
-use self::graph_mock::FakeStore;
-use crate::failure::Error;
 use ethabi::Token;
 use futures::sync::mpsc::{channel, Sender};
-use graph::components::ethereum::*;
-use graph::components::store::*;
-use graph::data::store::scalar;
-use graph::data::subgraph::*;
-use graph::web3::types::{Address, Block, Transaction, H160, H256};
 use hex;
+use std::env;
 use std::io::Cursor;
 use std::str::FromStr;
 use wasmi::nan_preserving_float::F64;
 
-use std::env;
+use graph::components::ethereum::*;
+use graph::components::store::*;
+use graph::data::store::scalar;
+use graph::data::subgraph::*;
+use graph::prelude::LinkResolver;
+use graph::web3::types::{Address, Block, Transaction, H160, H256};
+use graph_core;
+
+use crate::failure::Error;
 
 use super::*;
+
+use self::graph_mock::FakeStore;
 
 mod abi;
 
@@ -143,7 +147,7 @@ fn test_valid_module(
 ) -> Arc<
     ValidModule<
         MockEthereumAdapter,
-        ipfs_api::IpfsClient,
+        graph_core::LinkResolver,
         FakeStore,
         Sender<Box<Future<Item = (), Error = ()> + Send>>,
     >,
@@ -161,7 +165,7 @@ fn test_valid_module(
                 subgraph_id: SubgraphDeploymentId::new("wasmModuleTest").unwrap(),
                 data_source,
                 ethereum_adapter: mock_ethereum_adapter,
-                link_resolver: Arc::new(ipfs_api::IpfsClient::default()),
+                link_resolver: Arc::new(ipfs_api::IpfsClient::default().into()),
                 store: Arc::new(FakeStore),
             },
             task_sender,
