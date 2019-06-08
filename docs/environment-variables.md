@@ -50,6 +50,10 @@ those.
   generated from that are kept in memory until the entire file is done
   processing. This setting therefore limits how much memory a call to `ipfs.map`
   may use. (in bytes, defaults to 256MB)
+* `GRAPH_MAX_IPFS_CACHE_SIZE`: maximum number of files cached in the the
+  `ipfs.cat` cache (defaults to 50).
+* `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`: maximum size of files that are cached in the
+  `ipfs.cat` cache (defaults to 1MiB)
 
 ## GraphQL
 
