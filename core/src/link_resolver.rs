@@ -18,6 +18,14 @@ lazy_static! {
     static ref MAX_IPFS_MAP_FILE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_MAP_FILE_SIZE")
         .unwrap_or(256 * 1024 * 1024);
 
+    // The default file size limit for the IPFS cahce is 1MiB.
+    static ref MAX_IPFS_CACHE_FILE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_CACHE_FILE_SIZE")
+        .unwrap_or(1024 * 1024);
+
+    // The default size limit for the IPFS cache is 50 items.
+    static ref MAX_IPFS_CACHE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_CACHE_SIZE")
+        .unwrap_or(50);
+
 }
 
 // The timeout for IPFS requests in seconds
@@ -81,7 +89,9 @@ impl From<ipfs_api::IpfsClient> for LinkResolver {
     fn from(client: ipfs_api::IpfsClient) -> Self {
         Self {
             client,
-            cache: Arc::new(Mutex::new(LruCache::with_capacity(50))),
+            cache: Arc::new(Mutex::new(LruCache::with_capacity(
+                *MAX_IPFS_CACHE_SIZE as usize,
+            ))),
         }
     }
 }
@@ -122,13 +132,15 @@ impl LinkResolverTrait for LinkResolver {
                 Box::new(cat),
             )
             .map(move |data| {
+                // Only cache files if they are not too large
+                if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
                     let mut cache = cache_for_writing.lock().unwrap();
                     if !cache.contains_key(&path) {
                         cache.insert(path, data.clone());
                     }
-                    data
-                },
-            ),
+                }
+                data
+            }),
         )
     }
 
