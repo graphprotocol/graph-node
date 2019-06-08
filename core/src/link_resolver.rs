@@ -1,6 +1,7 @@
 use bytes::BytesMut;
 use futures::{stream::poll_fn, try_ready};
 use ipfs_api;
+use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use std::env;
 use std::str::FromStr;
@@ -10,13 +11,14 @@ use std::time::Duration;
 use graph::prelude::{LinkResolver as LinkResolverTrait, *};
 use graph::serde_json::Value;
 
-const MAX_IPFS_FILE_BYTES_ENV_VAR: &str = "GRAPH_MAX_IPFS_FILE_BYTES";
+lazy_static! {
+    static ref MAX_IPFS_FILE_BYTES: Option<u64> = read_u64_from_env("GRAPH_MAX_IPFS_FILE_BYTES");
 
-const MAX_IPFS_MAP_FILE_SIZE_ENV_VAR: &str = "GRAPH_MAX_IPFS_MAP_FILE_SIZE";
+    // The default size limit for streaming files through ipfs_map is 256MB
+    static ref MAX_IPFS_MAP_FILE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_MAP_FILE_SIZE")
+        .unwrap_or(256 * 1024 * 1024);
 
-// Default size limitation for streaming files through ipfs_map is
-// 256MB
-const MAX_IPFS_MAP_FILE_SIZE: u64 = 256 * 1024 * 1024;
+}
 
 // The timeout for IPFS requests in seconds
 fn ipfs_timeout() -> Duration {
@@ -91,9 +93,6 @@ impl LinkResolverTrait for LinkResolver {
         logger: &Logger,
         link: &Link,
     ) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send> {
-        // Grab env vars.
-        let max_file_bytes = read_u64_from_env(MAX_IPFS_FILE_BYTES_ENV_VAR);
-
         // Discard the `/ipfs/` prefix (if present) to get the hash.
         let path = link.link.trim_start_matches("/ipfs/").to_owned();
 
@@ -116,8 +115,13 @@ impl LinkResolverTrait for LinkResolver {
         let cache_for_writing = self.cache.clone();
 
         Box::new(
-            restrict_file_size(&self.client, path.clone(), max_file_bytes, Box::new(cat)).map(
-                move |data| {
+            restrict_file_size(
+                &self.client,
+                path.clone(),
+                *MAX_IPFS_FILE_BYTES,
+                Box::new(cat),
+            )
+            .map(move |data| {
                     let mut cache = cache_for_writing.lock().unwrap();
                     if !cache.contains_key(&path) {
                         cache.insert(path, data.clone());
@@ -189,14 +193,11 @@ impl LinkResolverTrait for LinkResolver {
                 }
             },
         ));
-        // Check the size of the file
-        let max_file_bytes =
-            read_u64_from_env(MAX_IPFS_MAP_FILE_SIZE_ENV_VAR).unwrap_or(MAX_IPFS_MAP_FILE_SIZE);
 
         restrict_file_size(
             &self.client,
             path,
-            Some(max_file_bytes),
+            Some(*MAX_IPFS_MAP_FILE_SIZE),
             Box::new(future::ok(stream)),
         )
     }
