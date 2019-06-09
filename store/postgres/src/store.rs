@@ -1026,13 +1026,69 @@ impl StoreTrait for Store {
         subgraph_id: &SubgraphDeploymentId,
         ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError> {
+        // Various timing parameters, all in seconds
+        const INITIAL_DELAY: u64 = 2;
+        const MAX_DELAY: u64 = 64;
+        const LOCK_TIMEOUT: u64 = 2;
+
         let conn = self.get_conn().map_err(Error::from)?;
         let econn = e::Connection::new(&conn);
+        let mut delay = Duration::from_secs(INITIAL_DELAY);
 
-        conn.transaction(|| {
-            self.apply_entity_operations_with_conn(&econn, ops, None)?;
-            crate::entities::create_schema(&conn, subgraph_id)
-        })
+        // Creating a subgraph creates a table that references
+        // `event_meta_data`.  To validate that reference, Postgres takes a
+        // `share update exclusive` lock; for this lock, Postgres has to
+        // wait for all write activity that started before the lock was
+        // requested to finish, and it also has to hold all write activity
+        // that starts after the lock request. Usually, this is not a
+        // problem as the lock is only held for a very short amount of
+        // time.
+        //
+        // If there is other activity, like an autovacuum, happening
+        // already when the lock is requested though, we have to wait until
+        // that activity finishes, which in the case of an autovacuum can
+        // be an hour or longer. The autovacuum by itself is not a problem,
+        // as it still allows writes to happen, but once the lock request
+        // from this code gets into the lock queue, write activity also has
+        // to wait for the autovacuum to finish, effectively blocking all
+        // subgraph indexing until the autovacuum has finished.
+        //
+        // To avoid this, we set a lock timeout of 2s, which should be long
+        // enough to get the lock under normal conditions, but not so long
+        // that it materially impedes indexing in the above situation. If
+        // we can not get the lock within 2s, the subgraph creation fails,
+        // and we sleep an increasing amount of time (up to about a minute)
+        // and then retry the subgraph creation.
+        loop {
+            let start = Instant::now();
+            let result = conn.transaction(|| -> Result<(), StoreError> {
+                self.apply_entity_operations_with_conn(&econn, ops.clone(), None)?;
+                conn.batch_execute(&format!("set local lock_timeout to '{}s'", LOCK_TIMEOUT))?;
+                crate::entities::create_schema(&conn, subgraph_id)
+            });
+            if let Err(StoreError::Unknown(_)) = &result {
+                // There is no robust way to actually find out that we timed
+                // out on the lock from the error message; diesel shields us
+                // from these details too much. Rather than grep the error
+                // message, which would be very fragile, we assume that if a
+                // failure occurred after more than LOCK_TIMEOUT seconds that
+                // it was because we timed out on the lock and try again.
+                if start.elapsed() >= Duration::from_secs(LOCK_TIMEOUT) {
+                    debug!(
+                        self.logger,
+                        "could not acquire lock for creation of subgraph {}, trying again in {}s",
+                        &subgraph_id,
+                        delay.as_secs()
+                    );
+                    std::thread::sleep(delay);
+                    if delay.as_secs() < MAX_DELAY {
+                        delay *= 2;
+                    }
+                    continue;
+                }
+            }
+            break result;
+        }
     }
 
     fn start_subgraph_deployment(

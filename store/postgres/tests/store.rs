@@ -2145,3 +2145,50 @@ fn subgraph_schema_types_have_subgraph_id_directive() {
         Ok(())
     })
 }
+
+#[test]
+fn create_subgraph_deployment_tolerates_locks() {
+    run_test(|store| -> Result<(), ()> {
+        use diesel::connection::SimpleConnection;
+        use diesel::connection::TransactionManager;
+        use std::sync::Barrier;
+
+        const BLOCK_TIME: u64 = 3;
+
+        let url = postgres_test_url();
+        let barrier = Arc::new(Barrier::new(2));
+        let blocker_barrier = barrier.clone();
+        // Start a thread that will take a lock for BLOCK_TIME seconds and
+        // therefore block subgraph creation during that time
+        std::thread::spawn(move || {
+            let blocker =
+                PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
+            blocker
+                .transaction_manager()
+                .begin_transaction(&blocker)
+                .expect("Failed to set up transaction for blocker");
+            blocker
+                .batch_execute("lock table event_meta_data in share update exclusive mode")
+                .expect("Failed to lock event_meta_data");
+            blocker_barrier.wait();
+            std::thread::sleep(Duration::from_secs(BLOCK_TIME));
+            blocker
+                .transaction_manager()
+                .rollback_transaction(&blocker)
+                .expect("Failed to roll blocker transaction back");
+        });
+
+        // While we are blocking, try to create a subgraph. We don't really have
+        // a way to check from the outside that this does not block other write
+        // activity, but it is visible in the logs if this test is run with
+        // GRAPH_LOG=debug
+        let subgraph_id = SubgraphDeploymentId::new("DeploymentLocking").unwrap();
+        barrier.wait();
+        let start = std::time::Instant::now();
+        store
+            .create_subgraph_deployment(&subgraph_id, vec![])
+            .expect("Subgraph creation failed");
+        assert!(start.elapsed() >= Duration::from_secs(BLOCK_TIME));
+        Ok(())
+    })
+}
