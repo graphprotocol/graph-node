@@ -11,13 +11,16 @@ use std::time::Duration;
 use graph::prelude::{LinkResolver as LinkResolverTrait, *};
 use graph::serde_json::Value;
 
+// Environment variable for limiting the `ipfs.map` file size limit.
+const MAX_IPFS_MAP_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_MAP_FILE_SIZE";
+
+// The default file size limit for `ipfs.map` is 256MiB.
+const DEFAULT_MAX_IPFS_MAP_FILE_SIZE: u64 = 256 * 1024 * 1024;
+
+// Environment variable for limiting the `ipfs.cat` file size limit.
+const MAX_IPFS_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_FILE_BYTES";
+
 lazy_static! {
-    static ref MAX_IPFS_FILE_BYTES: Option<u64> = read_u64_from_env("GRAPH_MAX_IPFS_FILE_BYTES");
-
-    // The default size limit for streaming files through ipfs_map is 256MB
-    static ref MAX_IPFS_MAP_FILE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_MAP_FILE_SIZE")
-        .unwrap_or(256 * 1024 * 1024);
-
     // The default file size limit for the IPFS cahce is 1MiB.
     static ref MAX_IPFS_CACHE_FILE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_CACHE_FILE_SIZE")
         .unwrap_or(1024 * 1024);
@@ -124,23 +127,21 @@ impl LinkResolverTrait for LinkResolver {
 
         let cache_for_writing = self.cache.clone();
 
+        let max_file_size: Option<u64> = read_u64_from_env(MAX_IPFS_FILE_SIZE_VAR);
+
         Box::new(
-            restrict_file_size(
-                &self.client,
-                path.clone(),
-                *MAX_IPFS_FILE_BYTES,
-                Box::new(cat),
-            )
-            .map(move |data| {
-                // Only cache files if they are not too large
-                if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
-                    let mut cache = cache_for_writing.lock().unwrap();
-                    if !cache.contains_key(&path) {
-                        cache.insert(path, data.clone());
+            restrict_file_size(&self.client, path.clone(), max_file_size, Box::new(cat)).map(
+                move |data| {
+                    // Only cache files if they are not too large
+                    if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
+                        let mut cache = cache_for_writing.lock().unwrap();
+                        if !cache.contains_key(&path) {
+                            cache.insert(path, data.clone());
+                        }
                     }
-                }
-                data
-            }),
+                    data
+                },
+            ),
         )
     }
 
@@ -206,10 +207,13 @@ impl LinkResolverTrait for LinkResolver {
             },
         ));
 
+        let max_file_size =
+            read_u64_from_env(MAX_IPFS_MAP_FILE_SIZE_VAR).unwrap_or(DEFAULT_MAX_IPFS_MAP_FILE_SIZE);
+
         restrict_file_size(
             &self.client,
             path,
-            Some(*MAX_IPFS_MAP_FILE_SIZE),
+            Some(max_file_size),
             Box::new(future::ok(stream)),
         )
     }
@@ -222,7 +226,7 @@ mod tests {
 
     #[test]
     fn max_file_size() {
-        env::set_var(MAX_IPFS_FILE_BYTES_ENV_VAR, "200");
+        env::set_var(MAX_IPFS_FILE_SIZE_VAR, "200");
         let file: &[u8] = &[0u8; 201];
         let client = ipfs_api::IpfsClient::default();
 
@@ -237,7 +241,7 @@ mod tests {
                 &Link { link: link.clone() },
             ))
             .unwrap_err();
-        env::remove_var(MAX_IPFS_FILE_BYTES_ENV_VAR);
+        env::remove_var(MAX_IPFS_FILE_SIZE_VAR);
         assert_eq!(
             err.to_string(),
             format!(
@@ -279,10 +283,10 @@ mod tests {
     #[test]
     fn ipfs_map_file_size() {
         let file = "\"small test string that trips the size restriction\"";
-        env::set_var(MAX_IPFS_MAP_FILE_SIZE_ENV_VAR, (file.len() - 1).to_string());
+        env::set_var(MAX_IPFS_MAP_FILE_SIZE_VAR, (file.len() - 1).to_string());
 
         let err = json_round_trip(file).unwrap_err();
-        env::remove_var(MAX_IPFS_MAP_FILE_SIZE_ENV_VAR);
+        env::remove_var(MAX_IPFS_MAP_FILE_SIZE_VAR);
 
         assert!(err.to_string().contains(" is too large"));
 
