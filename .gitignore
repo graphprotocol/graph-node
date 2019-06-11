@@ -11,3 +11,6 @@
 /docker/data/
 /docker/parity/chains/
 /docker/parity/network/
+
+# Tmp files
+**/*.sw[op]

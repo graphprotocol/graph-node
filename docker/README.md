@@ -26,6 +26,14 @@ docker run -it \
   -e ethereum=mainnet:https://mainnet.infura.io
 ```
 
+## Docker Build
+
+To build the Docker image, run the following from the project root:
+
+```
+docker build --file docker/Dockerfile --tag graph_node:latest .
+```
+
 ## Docker Compose
 
 The Docker Compose setup requires an Ethereum network name and node

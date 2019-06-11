@@ -1,20 +1,21 @@
-FROM rust:latest
+FROM alpine:edge
 
 # Replace this with the graph-node branch you want to build the image from;
 # Note: Docker Hub substitutes this automatically using our hooks/post_checkout script.
 ENV SOURCE_BRANCH "master"
 
 # Install clang (required for dependencies)
-RUN apt-get update \
-    && apt-get install -y clang libclang-dev
+RUN apk add --update --no-cache clang-dev git postgresql-dev
 
 # Clone and build the graph-node repository
-RUN git clone https://github.com/graphprotocol/graph-node \
+RUN apk add --no-cache cargo \
+    && git clone https://github.com/graphprotocol/graph-node \
     && cd graph-node \
     && git checkout "$SOURCE_BRANCH" \
-    && cargo install --path node \
+    && cargo install --path node --root /usr/local \
     && cd .. \
-    && rm -rf graph-node
+    && rm -rf graph-node \
+    && apk del cargo
 
 # Clone and install wait-for-it
 RUN git clone https://github.com/vishnubob/wait-for-it \
