@@ -708,8 +708,8 @@ impl RuntimeHostTrait for RuntimeHost {
             }
         };
 
-        // Filter out handlers whose signatures don't exist in the contract ABI;
-        // map handlers to (handler, event ABI) pairs
+        // Map event handlers to (event handler, event ABI) pairs; fail if there are
+        // handlers that don't exist in the contract ABI
         let valid_handlers =
             potential_handlers
                 .into_iter()
