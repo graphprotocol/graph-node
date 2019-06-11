@@ -748,7 +748,7 @@ impl RuntimeHostTrait for RuntimeHost {
         // but have indexed vs. non-indexed params that are encoded differently).
         //
         // Map (handler, event ABI) pairs to (handler, decoded params) pairs.
-        let matching_handlers = valid_handlers
+        let mut matching_handlers = valid_handlers
             .into_iter()
             .filter_map(|(event_handler, event_abi)| {
                 event_abi
@@ -782,84 +782,82 @@ impl RuntimeHostTrait for RuntimeHost {
             )));
         }
 
-        // Process the event with all matching handlers; typically there is only one
-        Box::new(stream::iter_ok(matching_handlers).fold(
-            state,
-            move |state, (event_handler, params)| {
-                let logger = logger.clone();
-                let mapping_request_sender = mapping_request_sender.clone();
-                let data_source_name = data_source_name.clone();
+        // Process the event with the matching handler
+        let (event_handler, params) = matching_handlers.pop().unwrap();
 
-                let block = block.clone();
-                let transaction = transaction.clone();
+        // Fail if there is more than one matching handler
+        if !matching_handlers.is_empty() {
+            return Box::new(future::err(format_err!(
+                "Multiple handlers defined for event `{}`, only one is suported",
+                &event_handler.event
+            )));
+        }
 
-                debug!(
-                    logger, "Start processing Ethereum event";
-                    "signature" => &event_handler.event,
-                    "handler" => &event_handler.handler,
-                    "data_source" => &data_source_name,
-                    "address" => format!("{}", &log.address),
-                );
+        debug!(
+            logger, "Start processing Ethereum event";
+            "signature" => &event_handler.event,
+            "handler" => &event_handler.handler,
+            "data_source" => &data_source_name,
+            "address" => format!("{}", &log.address),
+        );
 
-                // Call the event handler and asynchronously wait for the result
-                let (result_sender, result_receiver) = oneshot::channel();
+        // Call the event handler and asynchronously wait for the result
+        let (result_sender, result_receiver) = oneshot::channel();
 
-                let before_event_signature = event_handler.event.clone();
-                let event_signature = event_handler.event.clone();
-                let start_time = Instant::now();
+        let before_event_signature = event_handler.event.clone();
+        let event_signature = event_handler.event.clone();
+        let start_time = Instant::now();
 
-                Box::new(
-                    mapping_request_sender
-                        .clone()
-                        .send(MappingRequest {
-                            logger: logger.clone(),
-                            block: block.clone(),
-                            trigger: MappingTrigger::Log {
-                                transaction: transaction.clone(),
-                                log: log.clone(),
-                                params,
-                                handler: event_handler.clone(),
-                            },
-                            state,
-                            result_sender,
-                        })
-                        .map_err(move |_| {
-                            format_err!(
-                                "Mapping terminated before passing in Ethereum event: {}",
-                                before_event_signature
-                            )
-                        })
-                        .and_then(|_| {
-                            result_receiver.map_err(move |_| {
-                                format_err!(
-                                    "Mapping terminated before finishing to handle \
-                                     Ethereum event: {}",
-                                    event_signature,
-                                )
-                            })
-                        })
-                        .and_then(move |(result, send_time)| {
-                            let logger = logger.clone();
-                            info!(
-                                logger, "Done processing Ethereum event";
-                                "signature" => &event_handler.event,
-                                "handler" => &event_handler.handler,
-                                "total_ms" => start_time.elapsed().as_millis(),
+        Box::new(
+            mapping_request_sender
+                .clone()
+                .send(MappingRequest {
+                    logger: logger.clone(),
+                    block: block.clone(),
+                    trigger: MappingTrigger::Log {
+                        transaction: transaction.clone(),
+                        log: log.clone(),
+                        params,
+                        handler: event_handler.clone(),
+                    },
+                    state,
+                    result_sender,
+                })
+                .map_err(move |_| {
+                    format_err!(
+                        "Mapping terminated before passing in Ethereum event: {}",
+                        before_event_signature
+                    )
+                })
+                .and_then(|_| {
+                    result_receiver.map_err(move |_| {
+                        format_err!(
+                            "Mapping terminated before finishing to handle \
+                             Ethereum event: {}",
+                            event_signature,
+                        )
+                    })
+                })
+                .and_then(move |(result, send_time)| {
+                    let logger = logger.clone();
+                    info!(
+                        logger, "Done processing Ethereum event";
+                        "signature" => &event_handler.event,
+                        "handler" => &event_handler.handler,
+                        "total_ms" => start_time.elapsed().as_millis(),
 
-                                // How much time the result spent in the channel,
-                                // waiting in the tokio threadpool queue. Anything
-                                // larger than 0 is bad here. The `.wait()` is instant.
-                                "waiting_ms" => send_time
-                                    .wait()
-                                    .unwrap()
-                                    .elapsed()
-                                    .as_millis(),
-                            );
+                        // How much time the result spent in the channel,
+                        // waiting in the tokio threadpool queue. Anything
+                        // larger than 0 is bad here. The `.wait()` is instant.
+                        "waiting_ms" => send_time
+                            .wait()
+                            .unwrap()
+                            .elapsed()
+                            .as_millis(),
+                    );
 
-                            result
-                        }),
-                )
-            },
-        ))
+                    result
+                }),
+        )
     }
 }
