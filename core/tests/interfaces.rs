@@ -24,9 +24,13 @@ fn insert_and_query(
         data_sources: vec![],
     };
 
+    let logger = Logger::root(slog::Discard, o!());
+
     let ops = SubgraphDeploymentEntity::new(&manifest, false, false, Default::default(), 1)
         .create_operations_replace(&subgraph_id);
-    STORE.create_subgraph_deployment(&subgraph_id, ops).unwrap();
+    STORE
+        .create_subgraph_deployment(&logger, &subgraph_id, ops)
+        .unwrap();
 
     let insert_ops = entities
         .into_iter()
@@ -41,7 +45,6 @@ fn insert_and_query(
 
     STORE.apply_entity_operations(insert_ops.collect(), None)?;
 
-    let logger = Logger::root(slog::Discard, o!());
     let resolver = StoreResolver::new(&logger, STORE.clone());
 
     let options = QueryExecutionOptions {

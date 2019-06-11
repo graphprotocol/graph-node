@@ -1023,6 +1023,7 @@ impl StoreTrait for Store {
 
     fn create_subgraph_deployment(
         &self,
+        subgraph_logger: &Logger,
         subgraph_id: &SubgraphDeploymentId,
         ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError> {
@@ -1075,9 +1076,8 @@ impl StoreTrait for Store {
                 // it was because we timed out on the lock and try again.
                 if start.elapsed() >= Duration::from_secs(LOCK_TIMEOUT) {
                     debug!(
-                        self.logger,
-                        "could not acquire lock for creation of subgraph {}, trying again in {}s",
-                        &subgraph_id,
+                        subgraph_logger,
+                        "Could not acquire lock for subgraph creation, trying again in {}s",
                         delay.as_secs()
                     );
                     std::thread::sleep(delay);

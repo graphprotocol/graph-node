@@ -331,6 +331,7 @@ impl Store for MockStore {
 
     fn create_subgraph_deployment(
         &self,
+        _logger: &Logger,
         _subgraph_id: &SubgraphDeploymentId,
         ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError> {
@@ -492,6 +493,7 @@ impl Store for FakeStore {
 
     fn create_subgraph_deployment(
         &self,
+        _logger: &Logger,
         _subgraph_id: &SubgraphDeploymentId,
         _ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError> {

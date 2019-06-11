@@ -1008,6 +1008,7 @@ pub trait Store: Send + Sync + 'static {
     /// version
     fn create_subgraph_deployment(
         &self,
+        subgraph_logger: &Logger,
         subgraph_id: &SubgraphDeploymentId,
         ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError>;

@@ -13,7 +13,8 @@ lazy_static! {
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId = {
         // Also populate the store when the ID is first accessed.
         let id = SubgraphDeploymentId::new("graphqlTestsQuery").unwrap();
-        STORE.create_subgraph_deployment(&id, vec![]).unwrap();
+        let logger = Logger::root(slog::Discard, o!());
+        STORE.create_subgraph_deployment(&logger, &id, vec![]).unwrap();
         insert_test_entities(&**STORE, id.clone());
         id
     };

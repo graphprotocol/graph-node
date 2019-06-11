@@ -117,7 +117,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
     let ops = SubgraphDeploymentEntity::new(&manifest, false, false, *TEST_BLOCK_0_PTR, 1)
         .create_operations(&*TEST_SUBGRAPH_ID);
     store
-        .create_subgraph_deployment(&TEST_SUBGRAPH_ID, ops)
+        .create_subgraph_deployment(&*LOGGER, &TEST_SUBGRAPH_ID, ops)
         .unwrap();
 
     let test_entity_1 = create_test_entity(
@@ -1868,7 +1868,9 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         // Create SubgraphDeploymentEntity
         let ops = SubgraphDeploymentEntity::new(&manifest, false, false, *TEST_BLOCK_0_PTR, 1)
             .create_operations(&subgraph_id);
-        store.create_subgraph_deployment(&subgraph_id, ops).unwrap();
+        store
+            .create_subgraph_deployment(&*LOGGER, &subgraph_id, ops)
+            .unwrap();
 
         // Create store subscriptions
         let meta_subscription =
@@ -2186,7 +2188,7 @@ fn create_subgraph_deployment_tolerates_locks() {
         barrier.wait();
         let start = std::time::Instant::now();
         store
-            .create_subgraph_deployment(&subgraph_id, vec![])
+            .create_subgraph_deployment(&*LOGGER, &subgraph_id, vec![])
             .expect("Subgraph creation failed");
         assert!(start.elapsed() >= Duration::from_secs(BLOCK_TIME));
         Ok(())
