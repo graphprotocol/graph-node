@@ -777,7 +777,12 @@ impl RuntimeHostTrait for RuntimeHost {
         // If none of the handlers match the event params, fail processing the event
         if matching_handlers.is_empty() {
             return Box::new(future::err(format_err!(
-                "No matching event handlers found for in data source \"{}\"",
+                "No matching handlers found for event with topic0 `{}` \
+                 in data source `{}`",
+                log.topics
+                    .iter()
+                    .next()
+                    .map_or(String::from("none"), |topic0| format!("{:x}", topic0)),
                 data_source_name,
             )));
         }
