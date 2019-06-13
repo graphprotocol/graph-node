@@ -149,7 +149,10 @@ impl SubgraphName {
             // Part should not start or end with a special character or start with a number.
             let first_char = part.chars().next().unwrap();
             let last_char = part.chars().last().unwrap();
-            if !first_char.is_ascii_alphabetic() || !last_char.is_ascii_alphanumeric() {
+            if !first_char.is_ascii_alphanumeric()
+                || !last_char.is_ascii_alphanumeric()
+                || !part.chars().any(|c| c.is_ascii_alphabetic())
+            {
                 return Err(());
             }
         }
@@ -194,6 +197,9 @@ fn test_subgraph_name_validation() {
     assert!(SubgraphName::new("A/Z-Z").is_ok());
     assert!(SubgraphName::new("a1/A-A").is_ok());
     assert!(SubgraphName::new("aaa/a1").is_ok());
+    assert!(SubgraphName::new("1a/aaaa").is_ok());
+    assert!(SubgraphName::new("aaaa/1a").is_ok());
+    assert!(SubgraphName::new("2nena4test/lala").is_ok());
 
     assert!(SubgraphName::new("").is_err());
     assert!(SubgraphName::new("/a").is_err());
@@ -203,8 +209,6 @@ fn test_subgraph_name_validation() {
     assert!(SubgraphName::new("a/_").is_err());
     assert!(SubgraphName::new("a/a_").is_err());
     assert!(SubgraphName::new("a/_a").is_err());
-    assert!(SubgraphName::new("1a/aaaa").is_err());
-    assert!(SubgraphName::new("aaaa/1a").is_err());
     assert!(SubgraphName::new("aaaa aaaaa").is_err());
     assert!(SubgraphName::new("aaaa!aaaaa").is_err());
     assert!(SubgraphName::new("aaaa+aaaaa").is_err());
