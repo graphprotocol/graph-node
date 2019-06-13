@@ -1454,7 +1454,15 @@ impl Table {
             ValueType::String => (String::from("gin"), String::from("gin_trgm_ops"), "->>"),
             ValueType::List => (String::from("gin"), String::from("jsonb_path_ops"), "->"),
         };
-
+        // Cast between the type we store in JSONB for the field and the type
+        // as which comparisons should be made. For example, we store BigInt
+        // as a string in JSONB, but the comparison needs to be made as
+        // a number
+        let type_cast = match index.field_value_type {
+            ValueType::BigInt | ValueType::BigDecimal => "::numeric",
+            ValueType::Boolean => "::bool",
+            _ => "",
+        };
         // It is not possible to use bind variables in this code,
         // and we have to interpolate everything into the query directly.
         // We also have to use conn.batch_execute to issue the `create index`
@@ -1476,7 +1484,7 @@ impl Table {
                     "create index if not exists {name}
                          on public.entities
                       using {index_type} (
-                              (data->'{attribute_name}'{jsonb_operator}'data')
+                              ((data->'{attribute_name}'{jsonb_operator}'data'){type_cast})
                               {index_operator}
                             )
                       where subgraph='{subgraph}'
@@ -1485,6 +1493,7 @@ impl Table {
                     index_type = index_type,
                     attribute_name = &index.attribute_name,
                     jsonb_operator = jsonb_operator,
+                    type_cast = type_cast,
                     index_operator = index_operator,
                     subgraph = index.subgraph_id.to_string(),
                     entity_name = &index.entity_name
@@ -1511,7 +1520,7 @@ impl Table {
                     "create index if not exists {name}
                          on {subgraph}.entities
                       using {index_type} (
-                              (data->'{attribute_name}'{jsonb_operator}'data')
+                              ((data->'{attribute_name}'{jsonb_operator}'data'){type_cast})
                               {index_operator}
                             )
                       where entity='{entity_name}'",
@@ -1520,6 +1529,7 @@ impl Table {
                     index_type = index_type,
                     attribute_name = &index.attribute_name,
                     jsonb_operator = jsonb_operator,
+                    type_cast = type_cast,
                     index_operator = index_operator,
                     entity_name = &index.entity_name
                 );
