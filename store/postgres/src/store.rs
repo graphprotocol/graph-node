@@ -270,11 +270,6 @@ impl Store {
         let subscriptions = self.subscriptions.clone();
 
         tokio::spawn(store_events.for_each(move |event| {
-            trace!(logger, "Received store event";
-                "tag" => event.tag,
-                "changes" => event.changes.len(),
-            );
-
             let senders = subscriptions.read().unwrap().clone();
             let logger = logger.clone();
             let subscriptions = subscriptions.clone();
@@ -685,10 +680,6 @@ impl Store {
             .collect();
         let event = StoreEvent::new(changes);
 
-        trace!(self.logger, "Emit store event";
-                "tag" => event.tag,
-                "changes" => event.changes.len());
-
         let v = serde_json::to_value(event)?;
         JsonNotification::send("store_events", &v, econn.conn)?;
 
@@ -987,10 +978,6 @@ impl StoreTrait for Store {
 
             let (event, count) = econn.revert_block(&subgraph_id, block_ptr_from.hash_hex())?;
             econn.update_entity_count(&Some(subgraph_id), count)?;
-
-            trace!(self.logger, "Emit store event for revert";
-                "tag" => event.tag,
-                "changes" => event.changes.len());
 
             let v = serde_json::to_value(event)?;
             JsonNotification::send("store_events", &v, &*conn)
