@@ -1,3 +1,4 @@
+use isatty;
 use slog::*;
 use slog_async;
 use slog_envlogger;
@@ -10,8 +11,9 @@ pub mod factory;
 pub mod split;
 
 pub fn logger(show_debug: bool) -> Logger {
+    let use_color = isatty::stdout_isatty();
     let decorator = slog_term::TermDecorator::new().build();
-    let drain = CustomFormat::new(decorator).fuse();
+    let drain = CustomFormat::new(decorator, use_color).fuse();
     let drain = slog_envlogger::LogBuilder::new(drain)
         .filter(
             None,
@@ -37,6 +39,7 @@ where
     D: Decorator,
 {
     decorator: D,
+    use_color: bool,
 }
 
 impl<D> Drain for CustomFormat<D>
@@ -55,8 +58,11 @@ impl<D> CustomFormat<D>
 where
     D: Decorator,
 {
-    pub fn new(decorator: D) -> Self {
-        CustomFormat { decorator }
+    pub fn new(decorator: D, use_color: bool) -> Self {
+        CustomFormat {
+            decorator,
+            use_color,
+        }
     }
 
     fn format_custom(&self, record: &Record, values: &OwnedKVList) -> io::Result<()> {
@@ -110,7 +116,11 @@ where
                 decorator.start_separator()?;
                 write!(decorator, ": ")?;
                 decorator.start_value()?;
-                write!(decorator, "\u{001b}[35m{}\u{001b}[0m", subgraph_id)?;
+                if self.use_color {
+                    write!(decorator, "\u{001b}[35m{}\u{001b}[0m", subgraph_id)?;
+                } else {
+                    write!(decorator, "{}", subgraph_id)?;
+                }
             }
 
             // Then log the component hierarchy
@@ -122,11 +132,15 @@ where
                 decorator.start_separator()?;
                 write!(decorator, ": ")?;
                 decorator.start_value()?;
-                write!(
-                    decorator,
-                    "\u{001b}[36m{}\u{001b}[0m",
-                    components.join(" > ")
-                )?;
+                if self.use_color {
+                    write!(
+                        decorator,
+                        "\u{001b}[36m{}\u{001b}[0m",
+                        components.join(" > ")
+                    )?;
+                } else {
+                    write!(decorator, "{}", components.join(" > "))?;
+                }
             }
 
             write!(decorator, "\n")?;
