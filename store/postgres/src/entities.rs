@@ -1450,8 +1450,8 @@ impl Table {
             | ValueType::Bytes
             | ValueType::BigDecimal
             | ValueType::ID
-            | ValueType::Int => (String::from("btree"), String::from(""), "->>"),
-            ValueType::String => (String::from("gin"), String::from("gin_trgm_ops"), "->>"),
+            | ValueType::Int
+            | ValueType::String => (String::from("btree"), String::from(""), "->>"),
             ValueType::List => (String::from("gin"), String::from("jsonb_path_ops"), "->"),
         };
         // Cast between the type we store in JSONB for the field and the type
