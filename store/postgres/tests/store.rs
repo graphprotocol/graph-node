@@ -538,7 +538,7 @@ fn find_string_contains() {
             entity_types: vec!["user".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Contains(
                 "name".into(),
-                "%ind%".into(),
+                "ind".into(),
             )])),
             order_by: None,
             order_direction: None,

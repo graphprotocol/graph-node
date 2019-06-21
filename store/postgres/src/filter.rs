@@ -185,8 +185,8 @@ where
             };
 
             match value {
-                Value::String(s) => Ok(s.into_filter(attribute, op)),
-                Value::Bytes(b) => Ok(b.to_string().into_filter(attribute, op)),
+                Value::String(s) => Ok(format!("%{}%", s).into_filter(attribute, op)),
+                Value::Bytes(b) => Ok(format!("%{}%", b.to_string()).into_filter(attribute, op)),
                 Value::List(lst) => {
                     let s = serde_json::to_string(&lst).expect("failed to serialize list value");
                     let predicate = sql("data -> ")
