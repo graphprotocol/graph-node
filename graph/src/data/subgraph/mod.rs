@@ -232,6 +232,10 @@ pub enum SubgraphRegistrarError {
     NameExists(String),
     #[fail(display = "subgraph name not found: {}", _0)]
     NameNotFound(String),
+    #[fail(display = "deployment not found: {}", _0)]
+    DeploymentNotFound(String),
+    #[fail(display = "deployment assignment unchanged: {}", _0)]
+    DeploymentAssignmentUnchanged(String),
     #[fail(display = "subgraph registrar internal query error: {}", _0)]
     QueryExecutionError(QueryExecutionError),
     #[fail(display = "subgraph registrar error with store: {}", _0)]

@@ -299,13 +299,11 @@ where
 
     fn reassign_subgraph(
         &self,
-        name: SubgraphName,
         hash: SubgraphDeploymentId,
         node_id: NodeId,
     ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
         Box::new(future::result(reassign_subgraph(
             self.store.clone(),
-            name,
             hash,
             node_id,
         )))
@@ -849,36 +847,34 @@ fn remove_subgraph_versions(
 /// subgraph syncing process.
 fn reassign_subgraph(
     store: Arc<impl Store>,
-    name: SubgraphName,
     hash: SubgraphDeploymentId,
     node_id: NodeId,
 ) -> Result<(), SubgraphRegistrarError> {
     let mut ops = vec![];
 
-    // Find all subgraph version entities that point to this hash.
-    let (version_summaries, read_summaries_abort_ops) =
-        store.read_subgraph_version_summaries(vec![hash.clone()])?;
-    ops.extend(read_summaries_abort_ops);
+    let current_deployment = store.find(
+        SubgraphDeploymentAssignmentEntity::query()
+            .filter(EntityFilter::new_equal("id", hash.clone().to_string())),
+    )?;
+
+    let current_node_id = current_deployment
+        .first()
+        .and_then(|d| d.get("nodeId"))
+        .ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.clone().to_string()))?;
+
+    if current_node_id.to_string() == node_id.to_string() {
+        return Err(SubgraphRegistrarError::DeploymentAssignmentUnchanged(
+            hash.clone().to_string(),
+        ));
+    }
 
     ops.push(EntityOperation::AbortUnless {
-        description: "Provided name-deploymentId pair must match an existing subgraph version"
-            .to_owned(),
-        query: SubgraphEntity::query()
-            .filter(EntityFilter::new_in("name", vec![name.clone().to_string()])),
-        entity_ids: version_summaries
-            .iter()
-            .filter(|version| version.deployment_id == hash)
-            .map(move |summary| summary.clone().subgraph_id)
-            .collect(),
-    });
-
-    ops.push(EntityOperation::AbortUnless {
-        description: "Target node must be different from the currently assigned one".to_owned(),
+        description: "Deployment assignment is unchanged".to_owned(),
         query: SubgraphDeploymentAssignmentEntity::query().filter(EntityFilter::And(vec![
-            EntityFilter::new_equal("nodeId", node_id.to_string()),
+            EntityFilter::new_equal("nodeId", current_node_id.to_string()),
             EntityFilter::new_equal("id", hash.clone().to_string()),
         ])),
-        entity_ids: vec![],
+        entity_ids: vec![hash.clone().to_string()],
     });
 
     // Create the assignment update operations.

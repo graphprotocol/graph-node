@@ -47,7 +47,6 @@ struct SubgraphRemoveParams {
 
 #[derive(Debug, Deserialize)]
 struct SubgraphReassignParams {
-    name: SubgraphName,
     ipfs_hash: SubgraphDeploymentId,
     node_id: NodeId,
 }
@@ -153,7 +152,7 @@ where
 
         Box::new(
             self.registrar
-                .reassign_subgraph(params.name, params.ipfs_hash, params.node_id)
+                .reassign_subgraph(params.ipfs_hash, params.node_id)
                 .map_err(move |e| {
                     if let SubgraphRegistrarError::Unknown(e) = e {
                         error!(logger, "subgraph_reassignment failed: {}", e);
