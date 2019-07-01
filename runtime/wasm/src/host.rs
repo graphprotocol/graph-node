@@ -774,17 +774,20 @@ impl RuntimeHostTrait for RuntimeHost {
             })
             .collect::<Vec<_>>();
 
-        // If none of the handlers match the event params, fail processing the event
+        // If none of the handlers match the event params, log a warning and
+        // skip the event. See #1021.
         if matching_handlers.is_empty() {
-            return Box::new(future::err(format_err!(
-                "No matching handlers found for event with topic0 `{}` \
-                 in data source `{}`",
+            warn!(
+                logger,
+                "No matching handlers found for event with topic0 `{}`",
                 log.topics
-                    .iter()
-                    .next()
-                    .map_or(String::from("none"), |topic0| format!("{:x}", topic0)),
-                data_source_name,
-            )));
+                   .iter()
+                   .next()
+                   .map_or(String::from("none"), |topic0| format!("{:x}", topic0));
+                "data_source" => &data_source_name,
+            );
+
+            return Box::new(future::ok(state));
         }
 
         // Process the event with the matching handler
