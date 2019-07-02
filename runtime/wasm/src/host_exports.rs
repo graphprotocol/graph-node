@@ -498,6 +498,11 @@ where
         x % y
     }
 
+    /// Limited to a small exponent to avoid creating huge BigInts.
+    pub(crate) fn big_int_pow(&self, x: BigInt, exponent: u8) -> BigInt {
+        x.pow(exponent)
+    }
+
     pub(crate) fn block_on<I: Send + 'static, ER: Send + 'static>(
         &self,
         future: impl Future<Item = I, Error = ER> + Send + 'static,
