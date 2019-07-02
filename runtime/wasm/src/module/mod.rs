@@ -14,7 +14,6 @@ use crate::MappingContext;
 use ethabi::LogParam;
 use graph::components::ethereum::*;
 use graph::data::store;
-use graph::data::subgraph::DataSource;
 use graph::prelude::{Error as FailureError, *};
 use web3::types::{Log, Transaction, U256};
 
@@ -79,7 +78,11 @@ fn format_wasmi_error(e: Error) -> String {
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
-    pub data_source: DataSource,
+    pub parsed_module: Arc<parity_wasm::elements::Module>,
+    pub api_version: Version,
+    pub data_source_name: String,
+    pub templates: Vec<DataSourceTemplate>,
+    pub abis: Vec<MappingABI>,
     pub ethereum_adapter: Arc<T>,
     pub link_resolver: Arc<L>,
     pub store: Arc<S>,
@@ -109,7 +112,7 @@ where
         let logger = logger.new(o!("component" => "WasmiModule"));
 
         // Clone the parsed module so we can create an instance of `Module` from it
-        let parsed_module = config.data_source.mapping.runtime.as_ref().clone();
+        let parsed_module = config.parsed_module.as_ref().clone();
 
         // Inject metering calls, which are used for checking timeouts.
         let parsed_module = pwasm_utils::inject_gas_counter(parsed_module, &Default::default())
@@ -135,15 +138,21 @@ where
             _ => return Err(err_msg("WASM module has multiple import sections")),
         };
 
-        let name = config.data_source.name.clone();
-        let module = Module::from_parity_wasm_module(parsed_module)
-            .map_err(|e| format_err!("Invalid module of data source `{}`: {}", name, e))?;
+        let module = Module::from_parity_wasm_module(parsed_module).map_err(|e| {
+            format_err!(
+                "Invalid module `{}`: {}",
+                user_module.as_ref().unwrap_or(&String::new()),
+                e
+            )
+        })?;
 
         // Create new instance of externally hosted functions invoker
         let host_exports = HostExports::new(
             config.subgraph_id,
-            Version::parse(&config.data_source.mapping.api_version)?,
-            config.data_source,
+            config.api_version,
+            config.data_source_name,
+            config.templates,
+            config.abis,
             config.ethereum_adapter.clone(),
             config.link_resolver.clone(),
             config.store.clone(),

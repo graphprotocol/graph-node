@@ -225,7 +225,11 @@ impl RuntimeHost {
             debug!(module_logger, "Start WASM runtime");
             let wasmi_config = WasmiModuleConfig {
                 subgraph_id: config.subgraph_id,
-                data_source: config.data_source,
+                api_version: Version::parse(&config.data_source.mapping.api_version).unwrap(),
+                parsed_module: config.data_source.mapping.runtime,
+                abis: config.data_source.mapping.abis,
+                data_source_name: config.data_source.name,
+                templates: config.data_source.templates.unwrap_or_default(),
                 ethereum_adapter: ethereum_adapter.clone(),
                 link_resolver: link_resolver.clone(),
                 store: store.clone(),

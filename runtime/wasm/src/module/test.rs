@@ -164,7 +164,11 @@ fn test_valid_module(
             &logger,
             WasmiModuleConfig {
                 subgraph_id: SubgraphDeploymentId::new("wasmModuleTest").unwrap(),
-                data_source,
+                api_version: Version::parse(&data_source.mapping.api_version).unwrap(),
+                parsed_module: data_source.mapping.runtime,
+                abis: data_source.mapping.abis,
+                data_source_name: data_source.name,
+                templates: data_source.templates.unwrap_or_default(),
                 ethereum_adapter: mock_ethereum_adapter,
                 link_resolver: Arc::new(ipfs_api::IpfsClient::default().into()),
                 store: Arc::new(FakeStore),
