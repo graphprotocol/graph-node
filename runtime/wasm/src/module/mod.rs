@@ -64,6 +64,7 @@ const IPFS_MAP_FUNC_INDEX: usize = 34;
 const DATA_SOURCE_CREATE_INDEX: usize = 35;
 const ENS_NAME_BY_HASH: usize = 36;
 const LOG_LOG: usize = 37;
+const BIG_INT_POW: usize = 38;
 
 /// A common error is a trap in the host, so simplify the message in that case.
 fn format_wasmi_error(e: Error) -> String {
@@ -783,6 +784,17 @@ where
         Ok(Some(RuntimeValue::from(result_ptr)))
     }
 
+    /// function bigInt.pow(x: BigInt, exp: u8): BigInt
+    fn big_int_pow(
+        &mut self,
+        x_ptr: AscPtr<AscBigInt>,
+        exp: u8,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let result = self.host_exports().big_int_pow(self.asc_get(x_ptr), exp);
+        let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
+        Ok(Some(RuntimeValue::from(result_ptr)))
+    }
+
     /// function typeConversion.bytesToBase58(bytes: Bytes): string
     fn bytes_to_base58(
         &mut self,
@@ -972,6 +984,7 @@ where
                 self.big_int_divided_by_decimal(args.nth_checked(0)?, args.nth_checked(1)?)
             }
             BIG_INT_MOD => self.big_int_mod(args.nth_checked(0)?, args.nth_checked(1)?),
+            BIG_INT_POW => self.big_int_pow(args.nth_checked(0)?, args.nth_checked(1)?),
             GAS_FUNC_INDEX => self.gas(args.nth_checked(0)?),
             TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX => self.bytes_to_base58(args.nth_checked(0)?),
             BIG_DECIMAL_PLUS => self.big_decimal_plus(args.nth_checked(0)?, args.nth_checked(1)?),
@@ -1082,6 +1095,7 @@ impl ModuleImportResolver for ModuleResolver {
                 FuncInstance::alloc_host(signature, BIG_INT_DIVIDED_BY_DECIMAL)
             }
             "bigInt.mod" => FuncInstance::alloc_host(signature, BIG_INT_MOD),
+            "bigInt.pow" => FuncInstance::alloc_host(signature, BIG_INT_POW),
 
             // bigDecimal
             "bigDecimal.plus" => FuncInstance::alloc_host(signature, BIG_DECIMAL_PLUS),

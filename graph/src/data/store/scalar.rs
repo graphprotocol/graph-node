@@ -110,6 +110,12 @@ impl BigInt {
         byte_array[..bytes.len()].copy_from_slice(&bytes);
         BigDecimal::new(self.0, -i64::from_le_bytes(byte_array))
     }
+
+    pub fn pow(self, exponent: u8) -> Self {
+        use num_traits::pow::Pow;
+
+        BigInt(self.0.pow(&exponent))
+    }
 }
 
 impl Display for BigInt {
