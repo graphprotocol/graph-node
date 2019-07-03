@@ -2,7 +2,7 @@ use graph::prelude::*;
 
 pub fn validate_manifest(
     manifest: SubgraphManifest,
-) -> Result<SubgraphManifest, SubgraphRegistrarError> {
+) -> Result<(String, SubgraphManifest), SubgraphRegistrarError> {
     let mut errors: Vec<SubgraphManifestValidationError> = Vec::new();
 
     // Validate that the manifest has a `source` address in each data source
@@ -57,8 +57,14 @@ pub fn validate_manifest(
         errors.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded)
     }
 
+    let mut network_name = String::from("none");
+    match manifest.network_name() {
+        Ok(n) => network_name = n,
+        Err(e) => errors.push(e),
+    };
+
     if errors.is_empty() {
-        return Ok(manifest);
+        return Ok((network_name, manifest));
     }
 
     return Err(SubgraphRegistrarError::ManifestValidationError(errors));

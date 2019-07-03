@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -15,7 +15,7 @@ pub struct SubgraphRegistrar<L, P, S, CS> {
     resolver: Arc<L>,
     provider: Arc<P>,
     store: Arc<S>,
-    chain_store: Arc<CS>,
+    chain_stores: HashMap<String, Arc<CS>>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
@@ -33,7 +33,7 @@ where
         resolver: Arc<L>,
         provider: Arc<P>,
         store: Arc<S>,
-        chain_store: Arc<CS>,
+        chain_stores: HashMap<String, Arc<CS>>,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
     ) -> Self {
@@ -46,7 +46,7 @@ where
             resolver,
             provider,
             store,
-            chain_store,
+            chain_stores,
             node_id,
             version_switching_mode,
             assignment_event_stream_cancel_guard: CancelGuard::new(),
@@ -269,8 +269,8 @@ where
         node_id: NodeId,
     ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
         let store = self.store.clone();
+        let chain_stores = self.chain_stores.clone();
         let version_switching_mode = self.version_switching_mode;
-        let chain_store = self.chain_store.clone();
 
         let logger = self.logger_factory.subgraph_logger(&hash);
 
@@ -278,13 +278,17 @@ where
             SubgraphManifest::resolve(hash.to_ipfs_link(), self.resolver.clone(), logger.clone())
                 .map_err(SubgraphRegistrarError::ResolveError)
                 .and_then(validation::validate_manifest)
-                .and_then(move |manifest| {
+                .and_then(move |(network_name, manifest)| {
+                    let chain_store = chain_stores.get(&network_name).expect(&format!(
+                        "subgraph deploy error: the ethereum network, {}, is not supported.",
+                        "mainnet"
+                    ));
                     create_subgraph_version(
                         &logger,
                         store,
-                        chain_store,
+                        chain_store.clone(),
                         name,
-                        manifest,
+                        manifest.clone(),
                         node_id,
                         version_switching_mode,
                     )
@@ -707,7 +711,7 @@ fn create_subgraph_version(
         logger,
         "Wrote new subgraph version to store";
         "subgraph_name" => name.to_string(),
-        "subgraph_hash" => manifest_id
+        "subgraph_hash" => manifest_id,
     );
 
     Ok(())

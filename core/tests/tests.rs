@@ -9,6 +9,7 @@ extern crate walkdir;
 use ipfs_api::IpfsClient;
 use walkdir::WalkDir;
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::read_to_string;
 use std::io::Cursor;
@@ -165,14 +166,19 @@ fn multiple_data_sources_per_subgraph() {
             let resolver = Arc::new(LinkResolver::from(IpfsClient::default()));
             let logger = Logger::root(slog::Discard, o!());
             let logger_factory = LoggerFactory::new(logger.clone(), None);
-            let store = Arc::new(FakeStore);
+            let mut stores = HashMap::new();
+            stores.insert("mainnet".to_string(), Arc::new(FakeStore));
             let host_builder = MockRuntimeHostBuilder::new();
+            let mut runtime_host_builders = HashMap::new();
+            runtime_host_builders.insert("mainnet".to_string(), host_builder.clone());
             let block_stream_builder = MockBlockStreamBuilder::new();
+            let mut block_stream_builders = HashMap::new();
+            block_stream_builders.insert("mainnet".to_string(), block_stream_builder);
             let manager = SubgraphInstanceManager::new(
                 &logger_factory,
-                store,
-                host_builder.clone(),
-                block_stream_builder,
+                stores,
+                runtime_host_builders,
+                block_stream_builders,
             );
 
             // Load a subgraph with two data sources
@@ -242,6 +248,10 @@ fn subgraph_provider_events() {
             let ipfs = Arc::new(IpfsClient::default());
             let resolver = Arc::new(LinkResolver::from(IpfsClient::default()));
             let store = Arc::new(MockStore::new(vec![]));
+            let stores: HashMap<String, Arc<MockStore>> = vec![store.clone()]
+                .into_iter()
+                .map(|s| ("mainnet".to_string(), s))
+                .collect();
             let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(&logger, store.clone()));
             let mut provider = graph_core::SubgraphAssignmentProvider::new(
                 &logger_factory,
@@ -257,7 +267,7 @@ fn subgraph_provider_events() {
                 resolver.clone(),
                 Arc::new(provider),
                 store.clone(),
-                store,
+                stores,
                 node_id.clone(),
                 SubgraphVersionSwitchingMode::Instant,
             );
