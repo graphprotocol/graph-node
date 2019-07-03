@@ -60,9 +60,9 @@ impl SubgraphInstanceManager {
     /// Creates a new runtime manager.
     pub fn new<B, S, T>(
         logger_factory: &LoggerFactory,
-        store: Arc<S>,
-        host_builder: T,
-        block_stream_builder: B,
+        stores: HashMap<String, Arc<S>>,
+        host_builders: HashMap<String, T>,
+        block_stream_builders: HashMap<String, B>,
     ) -> Self
     where
         S: Store + ChainStore,
@@ -79,9 +79,9 @@ impl SubgraphInstanceManager {
         Self::handle_subgraph_events(
             logger_factory,
             subgraph_receiver,
-            store,
-            host_builder,
-            block_stream_builder,
+            stores,
+            host_builders,
+            block_stream_builders,
         );
 
         SubgraphInstanceManager {
@@ -94,9 +94,9 @@ impl SubgraphInstanceManager {
     fn handle_subgraph_events<B, S, T>(
         logger_factory: LoggerFactory,
         receiver: Receiver<SubgraphAssignmentProviderEvent>,
-        store: Arc<S>,
-        host_builder: T,
-        block_stream_builder: B,
+        stores: HashMap<String, Arc<S>>,
+        host_builders: HashMap<String, T>,
+        block_stream_builders: HashMap<String, B>,
     ) where
         S: Store + ChainStore,
         T: RuntimeHostBuilder,
@@ -118,23 +118,51 @@ impl SubgraphInstanceManager {
                         "data_sources" => manifest.data_sources.len()
                     );
 
-                    Self::start_subgraph(
-                        logger.clone(),
-                        instances.clone(),
-                        host_builder.clone(),
-                        block_stream_builder.clone(),
-                        store.clone(),
-                        manifest,
-                    )
-                    .map_err(|err| {
-                        error!(
+                    match manifest.network_name() {
+                        Ok(n) => {
+                            Self::start_subgraph(
+                                logger.clone(),
+                                instances.clone(),
+                                host_builders
+                                    .get(&n)
+                                    .expect(&format!(
+                                        "expected host builder that matches subgraph network: {}",
+                                        &n
+                                    ))
+                                    .clone(),
+                                block_stream_builders
+                                    .get(&n)
+                                    .expect(&format!(
+                                        "expected block stream that matches subgraph network: {}",
+                                        &n
+                                    ))
+                                    .clone(),
+                                stores
+                                    .get(&n)
+                                    .expect(&format!(
+                                        "expected store that matches subgraph network: {}",
+                                        &n
+                                    ))
+                                    .clone(),
+                                manifest,
+                            )
+                            .map_err(|err| {
+                                error!(
+                                    logger,
+                                    "Failed to start subgraph: {}",
+                                    err;
+                                    "code" => LogCode::SubgraphStartFailure
+                                )
+                            })
+                            .ok();
+                        }
+                        Err(e) => error!(
                             logger,
                             "Failed to start subgraph: {}",
-                            err;
+                             e;
                             "code" => LogCode::SubgraphStartFailure
-                        )
-                    })
-                    .ok();
+                        ),
+                    };
                 }
                 SubgraphStop(id) => {
                     let logger = logger_factory.subgraph_logger(&id);

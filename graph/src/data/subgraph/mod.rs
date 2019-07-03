@@ -854,9 +854,7 @@ impl SubgraphManifest {
             })
     }
 
-    pub fn network_name(
-        &self,
-    ) -> Result<String, SubgraphManifestValidationError> {
+    pub fn network_name(&self) -> Result<String, SubgraphManifestValidationError> {
         let mut ethereum_networks: Vec<Option<String>> = self
             .data_sources
             .iter()

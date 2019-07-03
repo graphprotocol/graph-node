@@ -22,6 +22,7 @@ use futures::sync::mpsc;
 use git_testament::{git_testament, render_testament};
 use ipfs_api::IpfsClient;
 use lazy_static::lazy_static;
+use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
 use std::time::Duration;
@@ -68,6 +69,13 @@ lazy_static! {
 }
 
 git_testament!(TESTAMENT);
+
+#[derive(Debug, Clone)]
+enum ConnectionType {
+    IPC,
+    RPC,
+    WS,
+}
 
 fn main() {
     use std::sync::Mutex;
@@ -145,6 +153,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .arg(
             Arg::with_name("ethereum-rpc")
                 .takes_value(true)
+                .multiple(true)
+                .min_values(0)
                 .required_unless_one(&["ethereum-ws", "ethereum-ipc"])
                 .conflicts_with_all(&["ethereum-ws", "ethereum-ipc"])
                 .long("ethereum-rpc")
@@ -157,6 +167,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .arg(
             Arg::with_name("ethereum-ws")
                 .takes_value(true)
+                .multiple(true)
+                .min_values(0)
                 .required_unless_one(&["ethereum-rpc", "ethereum-ipc"])
                 .conflicts_with_all(&["ethereum-rpc", "ethereum-ipc"])
                 .long("ethereum-ws")
@@ -169,6 +181,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .arg(
             Arg::with_name("ethereum-ipc")
                 .takes_value(true)
+                .multiple(true)
+                .min_values(0)
                 .required_unless_one(&["ethereum-rpc", "ethereum-ws"])
                 .conflicts_with_all(&["ethereum-rpc", "ethereum-ws"])
                 .long("ethereum-ipc")
@@ -271,9 +285,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let subgraph = matches.value_of("subgraph").map(|s| s.to_owned());
 
     // Obtain the Ethereum parameters
-    let ethereum_rpc = matches.value_of("ethereum-rpc");
-    let ethereum_ipc = matches.value_of("ethereum-ipc");
-    let ethereum_ws = matches.value_of("ethereum-ws");
+    let ethereum_rpc = matches.values_of("ethereum-rpc");
+    let ethereum_ipc = matches.values_of("ethereum-ipc");
+    let ethereum_ws = matches.values_of("ethereum-ws");
 
     let block_polling_interval = Duration::from_millis(
         matches
@@ -391,26 +405,26 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Convert the client into a link resolver
     let link_resolver = Arc::new(LinkResolver::from(ipfs_client));
 
-    // Parse the Ethereum URL
-    let (ethereum_network_name, ethereum_node_url) = parse_ethereum_network_and_node(
-        [ethereum_ipc, ethereum_rpc, ethereum_ws]
-            .into_iter()
-            .filter_map(|x| x.to_owned())
-            .next()
-            .expect("one of --ethereum-ipc, --ethereum-rpc or --ethereum-ws must be provided"),
-    )
-    .expect("failed to parse Ethereum connection string");
-
-    // Set up Ethereum transport
-    let (transport_event_loop, transport) = ethereum_ipc
-        .map(|_| Transport::new_ipc(ethereum_node_url))
-        .or_else(|| ethereum_ws.map(|_| Transport::new_ws(ethereum_node_url)))
-        .or_else(|| ethereum_rpc.map(|_| Transport::new_rpc(ethereum_node_url)))
-        .expect("One of --ethereum-ipc, --ethereum-rpc or --ethereum-ws must be provided");
-
-    // If we drop the event loop the transport will stop working.
-    // For now it's fine to just leak it.
-    std::mem::forget(transport_event_loop);
+    let eth_adapters: Vec<(
+        &str,
+        Arc<graph_datasource_ethereum::EthereumAdapter<graph_datasource_ethereum::Transport>>,
+    )> = ethereum_rpc
+        .map(|arguments| parse_ethereum_networks_and_nodes(arguments, ConnectionType::RPC))
+        .or_else(|| {
+            ethereum_ipc
+                .map(|arguments| parse_ethereum_networks_and_nodes(arguments, ConnectionType::IPC))
+        })
+        .or_else(|| {
+            ethereum_ws
+                .map(|arguments| parse_ethereum_networks_and_nodes(arguments, ConnectionType::WS))
+        })
+        .expect("no ethereum network argument provided")
+        .unwrap_or_else(|e| {
+            panic!(
+                "Failed to parse ethereum networks and create ethereum adapters: {}",
+                e
+            );
+        });
 
     // Warn if the start block is != genesis
     if *ETHEREUM_START_BLOCK > 0 {
@@ -422,57 +436,63 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         );
     }
 
-    // Create Ethereum adapter
-    let eth_adapter = Arc::new(graph_datasource_ethereum::EthereumAdapter::new(
-        transport,
-        *ETHEREUM_START_BLOCK,
-    ));
-
-    // Ask Ethereum node for network identifiers
-    info!(
-        logger, "Connecting to Ethereum...";
-        "network" => &ethereum_network_name,
-        "node" => SafeDisplay(ethereum_node_url),
-    );
-    let eth_net_identifiers = match eth_adapter.net_identifiers(&logger).wait() {
-        Ok(net) => {
-            info!(
-                logger, "Connected to Ethereum";
-                "network" => &ethereum_network_name,
-                "node" => SafeDisplay(ethereum_node_url),
-            );
-            net
-        }
-        Err(e) => {
-            error!(logger, "Was a valid Ethereum node provided?");
-            panic!("Failed to connect to Ethereum node: {}", e);
-        }
-    };
-
     // Set up Store
     info!(
         logger,
         "Connecting to Postgres";
         "url" => SafeDisplay(postgres_url.as_str())
     );
-    let store = Arc::new(DieselStore::new(
-        StoreConfig {
-            postgres_url,
-            network_name: ethereum_network_name.to_owned(),
-            start_block: *ETHEREUM_START_BLOCK,
-        },
+
+    let stores: HashMap<String, Arc<DieselStore>> = eth_adapters
+        .clone()
+        .into_iter()
+        .map(|(network_name, eth_adapter)| {
+            info!(
+                logger, "Connecting to Ethereum...";
+                "network" => &network_name,
+            );
+            match eth_adapter.net_identifiers(&logger).wait() {
+                Ok(network_identifier) => {
+                    info!(
+                    logger, "Connected to Ethereum";
+                    "network" => &network_name,
+                    "network version" => &network_identifier.net_version,
+                    );
+                    (
+                        network_name.to_string(),
+                        Arc::new(DieselStore::new(
+                            StoreConfig {
+                                postgres_url: postgres_url.clone(),
+                                network_name: network_name.to_string(),
+                                start_block: *ETHEREUM_START_BLOCK,
+                            },
+                            &logger,
+                            network_identifier,
+                        )),
+                    )
+                }
+                Err(e) => {
+                    error!(logger, "Was a valid Ethereum node provided?");
+                    panic!("Failed to connect to Ethereum node: {}", e);
+                }
+            }
+        })
+        .collect();
+
+    let generic_store = stores.values().next().expect("error creating stores");
+
+    let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(
         &logger,
-        eth_net_identifiers,
+        generic_store.clone(),
     ));
-    let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(&logger, store.clone()));
     let mut graphql_server = GraphQLQueryServer::new(
         &logger_factory,
         graphql_runner.clone(),
-        store.clone(),
+        generic_store.clone(),
         node_id.clone(),
     );
     let mut subscription_server =
-        GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), store.clone());
+        GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), generic_store.clone());
 
     if env::var_os("DISABLE_BLOCK_INGESTOR").unwrap_or("".into()) != "true" {
         // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
@@ -481,45 +501,64 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         // database.
         assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
 
-        // Create Ethereum block ingestor
-        let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
-            store.clone(),
-            eth_adapter.clone(),
-            *ANCESTOR_COUNT,
-            ethereum_network_name.to_string(),
-            &logger_factory,
-            block_polling_interval,
-        )
-        .expect("failed to create Ethereum block ingestor");
+        // Create Ethereum block ingestors and spawn a thread to run each
+        eth_adapters
+            .iter()
+            .cloned()
+            .for_each(|(network_name, eth_adapter)| {
+                let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
+                    stores.get(network_name).expect("network with name").clone(),
+                    eth_adapter,
+                    *ANCESTOR_COUNT,
+                    network_name.to_string(),
+                    &logger_factory,
+                    block_polling_interval,
+                )
+                .expect("failed to create Ethereum block ingestor");
 
-        // Run the Ethereum block ingestor in the background
-        tokio::spawn(block_ingestor.into_polling_stream());
+                // Run the Ethereum block ingestor in the background
+                tokio::spawn(block_ingestor.into_polling_stream());
+            });
     }
 
-    // Prepare a block stream builder for subgraphs
-    let block_stream_builder = BlockStreamBuilder::new(
-        store.clone(),
-        store.clone(),
-        eth_adapter.clone(),
-        node_id.clone(),
-        *REORG_THRESHOLD,
-    );
+    let mut block_stream_builders = HashMap::new();
+    let mut runtime_host_builders = HashMap::new();
 
-    // Prepare for hosting WASM runtimes and managing subgraph instances
-    let runtime_host_builder =
-        WASMRuntimeHostBuilder::new(eth_adapter.clone(), link_resolver.clone(), store.clone());
+    // Create block stream and runtime hose builders
+    eth_adapters.iter().for_each(|(network_name, eth_adapter)| {
+        let chain_store = stores.get(*network_name).expect("network with name");
+        block_stream_builders.insert(
+            network_name.to_string(),
+            BlockStreamBuilder::new(
+                generic_store.clone(),
+                chain_store.clone(),
+                eth_adapter.clone(),
+                node_id.clone(),
+                *REORG_THRESHOLD,
+            ),
+        );
+        runtime_host_builders.insert(
+            network_name.to_string(),
+            WASMRuntimeHostBuilder::new(
+                eth_adapter.clone(),
+                link_resolver.clone(),
+                chain_store.clone(),
+            ),
+        );
+    });
+
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger_factory,
-        store.clone(),
-        runtime_host_builder,
-        block_stream_builder,
+        stores.clone(),
+        runtime_host_builders,
+        block_stream_builders,
     );
 
     // Create IPFS-based subgraph provider
     let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
         &logger_factory,
         link_resolver.clone(),
-        store.clone(),
+        generic_store.clone(),
         graphql_runner.clone(),
     );
 
@@ -539,8 +578,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         &logger_factory,
         link_resolver,
         Arc::new(subgraph_provider),
-        store.clone(),
-        store.clone(),
+        generic_store.clone(),
+        stores.clone(),
         node_id.clone(),
         version_switching_mode,
     ));
@@ -639,35 +678,67 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     future::empty()
 }
 
-/// Parses an Ethereum connection string and returns the network name and Ethereum node.
-fn parse_ethereum_network_and_node(s: &str) -> Result<(&str, &str), Error> {
-    // Check for common Ethereum node mistakes
-    if s.starts_with("wss://") || s.starts_with("http://") || s.starts_with("https://") {
-        return Err(format_err!(
-            "Is your Ethereum node string missing a network name? \
-             Try 'mainnet:' + the Ethereum node URL."
-        ));
-    }
+/// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
+fn parse_ethereum_networks_and_nodes(
+    networks: clap::Values,
+    connection_type: ConnectionType,
+) -> Result<
+    Vec<(
+        &str,
+        Arc<graph_datasource_ethereum::EthereumAdapter<graph_datasource_ethereum::Transport>>,
+    )>,
+    Error,
+> {
+    networks
+        .map(|network| {
+            if network.starts_with("wss://")
+                || network.starts_with("http://")
+                || network.starts_with("https://")
+            {
+                return Err(format_err!(
+                    "Is your Ethereum node string missing a network name? \
+                     Try 'mainnet:' + the Ethereum node URL."
+                ));
+            } else {
+                // Parse string (format is "NETWORK_NAME:URL")
+                let split_at = network.find(':').ok_or_else(|| {
+                    return format_err!(
+                        "A network name must be provided alongside the \
+                         Ethereum node location. Try e.g. 'mainnet:URL'."
+                    );
+                })?;
 
-    // Parse string (format is "NETWORK_NAME:URL")
-    let split_at = s.find(':').ok_or_else(|| {
-        format_err!(
-            "A network name must be provided alongside the \
-             Ethereum node location. Try e.g. 'mainnet:URL'."
-        )
-    })?;
-    let (name, loc_with_delim) = s.split_at(split_at);
-    let loc = &loc_with_delim[1..];
+                let (name, loc_with_delim) = network.split_at(split_at);
+                let loc = &loc_with_delim[1..];
 
-    if name.is_empty() {
-        return Err(format_err!(
-            "Ethereum network name cannot be an empty string"
-        ));
-    }
+                if name.is_empty() {
+                    return Err(format_err!(
+                        "Ethereum network name cannot be an empty string"
+                    ));
+                }
 
-    if loc.is_empty() {
-        return Err(format_err!("Ethereum node URL cannot be an empty string"));
-    }
+                if loc.is_empty() {
+                    return Err(format_err!("Ethereum node URL cannot be an empty string"));
+                }
 
-    Ok((name, loc))
+                let (transport_event_loop, transport) = match connection_type {
+                    ConnectionType::RPC => Transport::new_rpc(loc),
+                    ConnectionType::IPC => Transport::new_ipc(loc),
+                    ConnectionType::WS => Transport::new_ws(loc),
+                };
+
+                // If we drop the event loop the transport will stop working.
+                // For now it's fine to just leak it.
+                std::mem::forget(transport_event_loop);
+
+                Ok((
+                    name,
+                    Arc::new(graph_datasource_ethereum::EthereumAdapter::new(
+                        transport,
+                        *ETHEREUM_START_BLOCK,
+                    )),
+                ))
+            }
+        })
+        .collect()
 }
