@@ -101,7 +101,7 @@ where
                         handle_assignment_event(assignment_event, provider.clone(), &logger_clone1)
                     })
                     .map_err(move |e| match e {
-                        CancelableError::Cancel => {}
+                        CancelableError::Cancel => panic!("assignment event stream canceled"),
                         CancelableError::Error(e) => {
                             error!(logger_clone2, "Assignment event stream failed: {}", e);
                             panic!("assignment event stream failed: {}", e);
