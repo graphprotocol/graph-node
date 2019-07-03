@@ -312,6 +312,10 @@ pub enum SubgraphAssignmentProviderEvent {
 pub enum SubgraphManifestValidationError {
     #[fail(display = "subgraph source address is required")]
     SourceAddressRequired,
+    #[fail(display = "subgraph cannot index data from multiple different ethereum networks")]
+    MultipleEthereumNetworks,
+    #[fail(display = "subgraph must have at least one Ethereum network data source")]
+    EthereumNetworkRequired,
     #[fail(display = "subgraph data source has too many similar block handlers")]
     DataSourceBlockHandlerLimitExceeded,
 }
@@ -848,6 +852,28 @@ impl SubgraphManifest {
                     .resolve(&*resolver, logger)
                     .map_err(SubgraphManifestResolveError::ResolveError)
             })
+    }
+
+    pub fn network_name(
+        &self,
+    ) -> Result<String, SubgraphManifestValidationError> {
+        let mut ethereum_networks: Vec<Option<String>> = self
+            .data_sources
+            .iter()
+            .cloned()
+            .filter(|d| d.kind == "ethereum/contract".to_string())
+            .map(|d| d.network)
+            .collect();
+        ethereum_networks.sort();
+        ethereum_networks.dedup();
+        match ethereum_networks.len() {
+            0 => Err(SubgraphManifestValidationError::EthereumNetworkRequired),
+            1 => match ethereum_networks.first().and_then(|n| n.clone()) {
+                Some(n) => Ok(n),
+                None => Err(SubgraphManifestValidationError::EthereumNetworkRequired),
+            },
+            _ => Err(SubgraphManifestValidationError::MultipleEthereumNetworks),
+        }
     }
 }
 
