@@ -116,6 +116,7 @@ where
     pub fn assignment_events(&self) -> impl Stream<Item = AssignmentEvent, Error = Error> + Send {
         let store = self.store.clone();
         let node_id = self.node_id.clone();
+        let logger = self.logger.clone();
 
         store
             .subscribe(vec![
@@ -135,6 +136,8 @@ where
             .flatten()
             .and_then(
                 move |entity_change| -> Result<Box<Stream<Item = _, Error = _> + Send>, _> {
+                    trace!(logger, "Received assignment change";
+                                   "entity_change" => format!("{:?}", entity_change));
                     let subgraph_hash = SubgraphDeploymentId::new(entity_change.entity_id.clone())
                         .map_err(|()| {
                             format_err!(
