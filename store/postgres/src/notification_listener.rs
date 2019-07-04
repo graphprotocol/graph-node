@@ -78,7 +78,8 @@ impl NotificationListener {
         Arc<AtomicBool>,
         Arc<Barrier>,
     ) {
-        let logger = logger.new(o!("component" => "NotificationListener"));
+        let logger = logger.new(o!("component" => "NotificationListener",
+                    "channel" => channel_name.0.clone()));
 
         // Create two ends of a boolean variable for signalling when the worker
         // thread should be terminated
@@ -111,7 +112,14 @@ impl NotificationListener {
                 for notification in notifications
                     .timeout_iter(Duration::from_millis(500))
                     .iterator()
-                    .filter_map(Result::ok)
+                    .filter_map(|item| match item {
+                        Ok(msg) => Some(msg),
+                        Err(e) => {
+                            warn!(logger, "Error receiving message";
+                                          "error" => format!("{}", e));
+                            None
+                        }
+                    })
                     .filter(|notification| notification.channel == channel_name.0)
                 {
                     // Terminate the thread if desired
