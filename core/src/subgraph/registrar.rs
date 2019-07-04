@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::iter;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use super::validation;
 use graph::data::subgraph::schema::*;
@@ -235,7 +235,10 @@ where
                     );
                 }
                 drop(sender);
-                receiver.collect().then(|_| future::ok(()))
+                receiver.collect().then(move |_| {
+                    info!(logger, "Started all subgraphs");
+                    future::ok(())
+                })
             })
     }
 }
@@ -352,9 +355,15 @@ fn start_subgraph<P: SubgraphAssignmentProviderTrait>(
     provider: &P,
     logger: Logger,
 ) -> impl Future<Item = (), Error = ()> + 'static {
+    trace!(logger, "SubgraphRegistrar::start_subgraph";
+                   "subgraph_id" => subgraph_id.to_string());
+    let start_time = Instant::now();
     provider
         .start(subgraph_id.clone())
         .then(move |result| -> Result<(), _> {
+            debug!(logger, "subgraph started";
+                  "subgraph_id" => subgraph_id.to_string(),
+                  "start_ms" => start_time.elapsed().as_millis());
             match result {
                 Ok(()) => Ok(()),
                 Err(SubgraphAssignmentProviderError::AlreadyRunning(_)) => Ok(()),
