@@ -78,8 +78,10 @@ impl NotificationListener {
         Arc<AtomicBool>,
         Arc<Barrier>,
     ) {
-        let logger = logger.new(o!("component" => "NotificationListener",
-                    "channel" => channel_name.0.clone()));
+        let logger = logger.new(o!(
+            "component" => "NotificationListener",
+            "channel" => channel_name.0.clone()
+        ));
 
         // Create two ends of a boolean variable for signalling when the worker
         // thread should be terminated
@@ -115,8 +117,11 @@ impl NotificationListener {
                     .filter_map(|item| match item {
                         Ok(msg) => Some(msg),
                         Err(e) => {
-                            warn!(logger, "Error receiving message";
-                                          "error" => format!("{}", e));
+                            warn!(
+                                logger,
+                                "Error receiving message";
+                                "error" => format!("{}", e)
+                            );
                             None
                         }
                     })
