@@ -355,15 +355,23 @@ fn start_subgraph<P: SubgraphAssignmentProviderTrait>(
     provider: &P,
     logger: Logger,
 ) -> impl Future<Item = (), Error = ()> + 'static {
-    trace!(logger, "SubgraphRegistrar::start_subgraph";
-                   "subgraph_id" => subgraph_id.to_string());
+    trace!(
+        logger,
+        "Start subgraph";
+        "subgraph_id" => subgraph_id.to_string()
+    );
+
     let start_time = Instant::now();
     provider
         .start(subgraph_id.clone())
         .then(move |result| -> Result<(), _> {
-            debug!(logger, "subgraph started";
-                  "subgraph_id" => subgraph_id.to_string(),
-                  "start_ms" => start_time.elapsed().as_millis());
+            debug!(
+                logger,
+                "Subgraph started";
+                "subgraph_id" => subgraph_id.to_string(),
+                "start_ms" => start_time.elapsed().as_millis()
+            );
+
             match result {
                 Ok(()) => Ok(()),
                 Err(SubgraphAssignmentProviderError::AlreadyRunning(_)) => Ok(()),
