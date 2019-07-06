@@ -2,8 +2,11 @@ use crate::functions::pg_notify;
 use diesel::pg::PgConnection;
 use diesel::select;
 use fallible_iterator::FallibleIterator;
+use lazy_static::lazy_static;
 use postgres::notification::Notification;
 use postgres::{Connection, TlsMode};
+use std::env;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
@@ -12,6 +15,18 @@ use std::time::Duration;
 use futures::sync::mpsc::{channel, Receiver};
 use graph::prelude::*;
 use graph::serde_json;
+
+lazy_static! {
+    static ref LARGE_NOTIFICATION_CLEANUP_INTERVAL: Duration =
+        env::var("LARGE_NOTIFICATION_CLEANUP_INTERVAL")
+            .ok()
+            .map(
+                |s| Duration::from_secs(u64::from_str(&s).unwrap_or_else(|_| panic!(
+                    "failed to parse env var LARGE_NOTIFICATION_CLEANUP_INTERVAL"
+                )))
+            )
+            .unwrap_or(Duration::from_secs(300));
+}
 
 /// This newtype exists to make it hard to misuse the `NotificationListener` API in a way that
 /// could impact security.
@@ -82,6 +97,12 @@ impl NotificationListener {
             "component" => "NotificationListener",
             "channel" => channel_name.0.clone()
         ));
+
+        debug!(
+            logger,
+            "Cleaning up large notifications after about {}s",
+            LARGE_NOTIFICATION_CLEANUP_INTERVAL.as_secs()
+        );
 
         // Create two ends of a boolean variable for signalling when the worker
         // thread should be terminated
@@ -280,13 +301,14 @@ impl JsonNotification {
                 diesel::sql_query("lock table large_notifications in row exclusive mode nowait")
                     .execute(conn);
             if lock.is_ok() {
-                diesel::sql_query(
+                diesel::sql_query(format!(
                     "delete from large_notifications
                      where id in
                         (select id from large_notifications
-                         where created_at < current_timestamp - interval '300s'
+                         where created_at < current_timestamp - interval '{}s'
                          for update skip locked)",
-                )
+                    LARGE_NOTIFICATION_CLEANUP_INTERVAL.as_secs()
+                ))
                 .execute(conn)?;
             }
         }
