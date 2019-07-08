@@ -17,7 +17,7 @@ http = "0.1"
 ipfs-api = { git = "https://github.com/ferristseng/rust-ipfs-api", branch = "master", features = ["hyper-tls"] }
 itertools = "0.7"
 lazy_static = "1.2.0"
-sentry = "0.15.1"
+sentry = "0.15.5"
 url = "1.7.1"
 crossbeam-channel = "0.3.8"
 graph = { path = "../graph" }
