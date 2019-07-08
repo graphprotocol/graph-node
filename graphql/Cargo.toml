@@ -12,5 +12,5 @@ lazy_static = "1.2.0"
 uuid = { version = "0.7.2", features = ["v4"] }
 
 [dev-dependencies]
-pretty_assertions = "0.5.1"
+pretty_assertions = "0.6.1"
 test-store = { path = "../store/test-store" }
