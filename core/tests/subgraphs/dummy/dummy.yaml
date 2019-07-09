@@ -4,6 +4,7 @@ schema:
     /: 'link to schema.graphql'
 dataSources:
 - kind: ethereum/contract
+  network: mainnet
   name: ExampleDataSource
   source:
     address: "22843e74c59580b3eaf6c233fa67d8b7c561a835"
