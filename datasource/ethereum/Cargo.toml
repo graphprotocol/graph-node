@@ -5,6 +5,6 @@ version = "0.13.2"
 [dependencies]
 failure = "0.1.2"
 futures = "0.1.21"
-jsonrpc-core = "8.0.1"
+jsonrpc-core = "12.1.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
