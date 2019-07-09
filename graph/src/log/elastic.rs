@@ -6,9 +6,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::prelude::{SecondsFormat, Utc};
+use futures::future;
 use futures::{Future, Stream};
 use itertools;
 use reqwest;
+use reqwest::r#async::Client;
 use serde::ser::Serializer as SerdeSerializer;
 use serde_json;
 use slog::*;
@@ -42,7 +44,7 @@ where
 }
 
 // Log message meta data.
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ElasticLogMeta {
     module: String,
@@ -51,7 +53,7 @@ struct ElasticLogMeta {
 }
 
 // Log message to be written to Elasticsearch.
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ElasticLog {
     id: String,
@@ -185,18 +187,30 @@ impl ElasticDrain {
 
         tokio::spawn(
             Interval::new_interval(self.config.flush_interval)
+                .map_err(move |e| {
+                    error!(
+                        interval_error_logger,
+                        "Error in Elasticsearch logger flush interval: {}", e
+                    );
+                })
                 .for_each(move |_| {
-                    let mut logs = logs.lock().unwrap();
+                    let logs_to_send = {
+                        let mut logs = logs.lock().unwrap();
+                        let logs_to_send = (*logs).clone();
+                        // Clear the logs, so the next batch can be recorded
+                        logs.clear();
+                        logs_to_send
+                    };
 
                     // Do nothing if there are no logs to flush
-                    if logs.is_empty() {
-                        return Ok(());
+                    if logs_to_send.is_empty() {
+                        return Box::new(future::ok(())) as Box<Future<Item = _, Error = _> + Send>;
                     }
 
                     trace!(
                         flush_logger,
                         "Flushing {} logs to Elasticsearch",
-                        logs.len()
+                        logs_to_send.len()
                     );
 
                     // The Elasticsearch batch API takes requests with the following format:
@@ -210,7 +224,7 @@ impl ElasticDrain {
                     // https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html
                     //
                     // We're assembly the request body in the same way below:
-                    let batch_body = logs.iter().fold(String::from(""), |mut out, log| {
+                    let batch_body = logs_to_send.iter().fold(String::from(""), |mut out, log| {
                         // Try to serialize the log itself to a JSON string
                         match serde_json::to_string(log) {
                             Ok(log_line) => {
@@ -245,33 +259,28 @@ impl ElasticDrain {
                     batch_url.set_path("_bulk");
 
                     // Send batch of logs to Elasticsearch
-                    let client = reqwest::Client::new();
-                    client
-                        .post(batch_url)
-                        .header("Content-Type", "application/json")
-                        .basic_auth(
-                            config.general.username.clone().unwrap_or("".into()),
-                            config.general.password.clone(),
-                        )
-                        .body(batch_body)
-                        .send()
-                        .and_then(|response| response.error_for_status())
-                        .map_err(|e| {
-                            // Log if there was a problem sending the logs
-                            error!(flush_logger, "Failed to send logs to Elasticsearch: {}", e);
-                        })
-                        .ok();
-
-                    // Clear the logs, so the next batch can be recorded
-                    logs.clear();
-
-                    Ok(())
-                })
-                .map_err(move |e| {
-                    error!(
-                        interval_error_logger,
-                        "Error in Elasticsearch logger flush interval: {}", e
-                    );
+                    let client = Client::new();
+                    let logger_for_err = flush_logger.clone();
+                    Box::new(
+                        client
+                            .post(batch_url)
+                            .header("Content-Type", "application/json")
+                            .basic_auth(
+                                config.general.username.clone().unwrap_or("".into()),
+                                config.general.password.clone(),
+                            )
+                            .body(batch_body)
+                            .send()
+                            .and_then(|response| response.error_for_status())
+                            .map(|_| ())
+                            .map_err(move |e| {
+                                // Log if there was a problem sending the logs
+                                error!(
+                                    logger_for_err,
+                                    "Failed to send logs to Elasticsearch: {}", e
+                                );
+                            }),
+                    )
                 }),
         );
     }
