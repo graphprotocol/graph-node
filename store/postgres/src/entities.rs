@@ -875,6 +875,7 @@ impl Table {
                             .sql(" NULLS LAST"),
                     );
                 }
+                query = query.then_order_by(public::entities::id.asc());
 
                 // Add range filter to query
                 if let Some(first) = first {
@@ -925,6 +926,7 @@ impl Table {
                             .sql(" NULLS LAST"),
                     );
                 }
+                query = query.then_order_by(entities.id.asc());
 
                 if let Some(first) = first {
                     query = query.limit(first as i64);
