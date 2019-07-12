@@ -144,6 +144,7 @@ fn multiple_data_sources_per_subgraph() {
         fn build(
             &self,
             _: &Logger,
+            _: String,
             _: SubgraphDeploymentId,
             data_source: DataSource,
         ) -> Result<Self::Host, Error> {
@@ -169,16 +170,13 @@ fn multiple_data_sources_per_subgraph() {
             let mut stores = HashMap::new();
             stores.insert("mainnet".to_string(), Arc::new(FakeStore));
             let host_builder = MockRuntimeHostBuilder::new();
-            let mut runtime_host_builders = HashMap::new();
-            runtime_host_builders.insert("mainnet".to_string(), host_builder.clone());
             let block_stream_builder = MockBlockStreamBuilder::new();
-            let mut block_stream_builders = HashMap::new();
-            block_stream_builders.insert("mainnet".to_string(), block_stream_builder);
+
             let manager = SubgraphInstanceManager::new(
                 &logger_factory,
                 stores,
-                runtime_host_builders,
-                block_stream_builders,
+                host_builder.clone(),
+                block_stream_builder.clone(),
             );
 
             // Load a subgraph with two data sources

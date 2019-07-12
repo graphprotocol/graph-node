@@ -18,6 +18,7 @@ type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<SubgraphDeploymentId, Cance
 
 struct IndexingInputs<B, S, T> {
     pub deployment_id: SubgraphDeploymentId,
+    pub network_name: String,
     pub store: Arc<S>,
     pub stream_builder: B,
     pub host_builder: T,
@@ -61,8 +62,8 @@ impl SubgraphInstanceManager {
     pub fn new<B, S, T>(
         logger_factory: &LoggerFactory,
         stores: HashMap<String, Arc<S>>,
-        host_builders: HashMap<String, T>,
-        block_stream_builders: HashMap<String, B>,
+        host_builder: T,
+        block_stream_builder: B,
     ) -> Self
     where
         S: Store + ChainStore,
@@ -80,8 +81,8 @@ impl SubgraphInstanceManager {
             logger_factory,
             subgraph_receiver,
             stores,
-            host_builders,
-            block_stream_builders,
+            host_builder,
+            block_stream_builder,
         );
 
         SubgraphInstanceManager {
@@ -95,8 +96,8 @@ impl SubgraphInstanceManager {
         logger_factory: LoggerFactory,
         receiver: Receiver<SubgraphAssignmentProviderEvent>,
         stores: HashMap<String, Arc<S>>,
-        host_builders: HashMap<String, T>,
-        block_stream_builders: HashMap<String, B>,
+        host_builder: T,
+        block_stream_builder: B,
     ) where
         S: Store + ChainStore,
         T: RuntimeHostBuilder,
@@ -123,20 +124,8 @@ impl SubgraphInstanceManager {
                             Self::start_subgraph(
                                 logger.clone(),
                                 instances.clone(),
-                                host_builders
-                                    .get(&n)
-                                    .expect(&format!(
-                                        "expected host builder that matches subgraph network: {}",
-                                        &n
-                                    ))
-                                    .clone(),
-                                block_stream_builders
-                                    .get(&n)
-                                    .expect(&format!(
-                                        "expected block stream that matches subgraph network: {}",
-                                        &n
-                                    ))
-                                    .clone(),
+                                host_builder.clone(),
+                                block_stream_builder.clone(),
                                 stores
                                     .get(&n)
                                     .expect(&format!(
@@ -149,17 +138,17 @@ impl SubgraphInstanceManager {
                             .map_err(|err| {
                                 error!(
                                     logger,
-                                    "Failed to start subgraph: {}",
-                                    err;
+                                    "Failed to start subgraph";
+                                    "error" => format!("{}", err),
                                     "code" => LogCode::SubgraphStartFailure
                                 )
                             })
                             .ok();
                         }
-                        Err(e) => error!(
+                        Err(err) => error!(
                             logger,
-                            "Failed to start subgraph: {}",
-                             e;
+                            "Failed to start subgraph";
+                             "error" => format!("{}", err),
                             "code" => LogCode::SubgraphStartFailure
                         ),
                     };
@@ -215,6 +204,7 @@ impl SubgraphInstanceManager {
 
         // Clone the deployment ID for later
         let deployment_id = manifest.id.clone();
+        let network_name = manifest.network_name()?;
 
         // Obtain filters from the manifest
         let log_filter = EthereumLogFilter::from_data_sources_opt(manifest.data_sources.iter());
@@ -240,6 +230,7 @@ impl SubgraphInstanceManager {
         let ctx = IndexingContext {
             inputs: IndexingInputs {
                 deployment_id,
+                network_name,
                 templates,
                 store,
                 stream_builder,
@@ -317,6 +308,7 @@ where
         .build(
             logger.clone(),
             ctx.inputs.deployment_id.clone(),
+            ctx.inputs.network_name.clone(),
             ctx.state.log_filter.clone(),
             ctx.state.call_filter.clone(),
             ctx.state.block_filter.clone(),
@@ -724,6 +716,7 @@ where
             // Try to create a runtime host for the data source
             let host = match state.ctx.inputs.host_builder.build(
                 &logger,
+                state.ctx.inputs.network_name.clone(),
                 state.ctx.inputs.deployment_id.clone(),
                 data_source.clone(),
             ) {

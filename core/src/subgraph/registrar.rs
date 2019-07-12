@@ -278,17 +278,18 @@ where
             SubgraphManifest::resolve(hash.to_ipfs_link(), self.resolver.clone(), logger.clone())
                 .map_err(SubgraphRegistrarError::ResolveError)
                 .and_then(validation::validate_manifest)
-                .and_then(move |(network_name, manifest)| {
+                .and_then(move |manifest| {
+                    let network_name = manifest.network_name()?;
                     let chain_store = chain_stores.get(&network_name).expect(&format!(
-                        "subgraph deploy error: the ethereum network, {}, is not supported.",
-                        "mainnet"
+                        "Subgraph deployment failed: Ethereum network {}, is not supported.",
+                        &network_name
                     ));
                     create_subgraph_version(
                         &logger,
                         store,
                         chain_store.clone(),
                         name,
-                        manifest.clone(),
+                        manifest,
                         node_id,
                         version_switching_mode,
                     )

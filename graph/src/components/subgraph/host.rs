@@ -53,6 +53,7 @@ pub trait RuntimeHostBuilder: Clone + Send + Sync + 'static {
     fn build(
         &self,
         logger: &Logger,
+        network_name: String,
         subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
     ) -> Result<Self::Host, Error>;
