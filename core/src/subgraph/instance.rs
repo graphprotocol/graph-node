@@ -34,6 +34,7 @@ where
         host_builder: &T,
     ) -> Result<Self, Error> {
         let manifest_id = manifest.id.clone();
+        let network_name = manifest.network_name()?;
 
         // Create a new runtime host for each data source in the subgraph manifest;
         // we use the same order here as in the subgraph manifest to make the
@@ -41,7 +42,7 @@ where
         let (hosts, errors): (_, Vec<_>) = manifest
             .data_sources
             .into_iter()
-            .map(|d| host_builder.build(&logger, manifest_id.clone(), d))
+            .map(|d| host_builder.build(&logger, network_name.clone(), manifest_id.clone(), d))
             .partition(|res| res.is_ok());
 
         if !errors.is_empty() {

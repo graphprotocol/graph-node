@@ -1234,8 +1234,8 @@ where
 
 pub struct BlockStreamBuilder<S, C, E> {
     subgraph_store: Arc<S>,
-    chain_store: Arc<C>,
-    eth_adapter: Arc<E>,
+    chain_stores: HashMap<String, Arc<C>>,
+    eth_adapters: HashMap<String, Arc<E>>,
     node_id: NodeId,
     reorg_threshold: u64,
 }
@@ -1244,8 +1244,8 @@ impl<S, C, E> Clone for BlockStreamBuilder<S, C, E> {
     fn clone(&self) -> Self {
         BlockStreamBuilder {
             subgraph_store: self.subgraph_store.clone(),
-            chain_store: self.chain_store.clone(),
-            eth_adapter: self.eth_adapter.clone(),
+            chain_stores: self.chain_stores.clone(),
+            eth_adapters: self.eth_adapters.clone(),
             node_id: self.node_id.clone(),
             reorg_threshold: self.reorg_threshold,
         }
@@ -1260,15 +1260,15 @@ where
 {
     pub fn new(
         subgraph_store: Arc<S>,
-        chain_store: Arc<C>,
-        eth_adapter: Arc<E>,
+        chain_stores: HashMap<String, Arc<C>>,
+        eth_adapters: HashMap<String, Arc<E>>,
         node_id: NodeId,
         reorg_threshold: u64,
     ) -> Self {
         BlockStreamBuilder {
             subgraph_store,
-            chain_store,
-            eth_adapter,
+            chain_stores,
+            eth_adapters,
             node_id,
             reorg_threshold,
         }
@@ -1287,6 +1287,7 @@ where
         &self,
         logger: Logger,
         deployment_id: SubgraphDeploymentId,
+        network_name: String,
         log_filter: Option<EthereumLogFilter>,
         call_filter: Option<EthereumCallFilter>,
         block_filter: Option<EthereumBlockFilter>,
@@ -1296,11 +1297,28 @@ where
             "component" => "BlockStream",
         ));
 
+        let chain_store = self
+            .chain_stores
+            .get(&network_name)
+            .expect(&format!(
+                "no store that supports network: {}",
+                &network_name
+            ))
+            .clone();
+        let eth_adapter = self
+            .eth_adapters
+            .get(&network_name)
+            .expect(&format!(
+                "no eth adapter that supports network: {}",
+                &network_name
+            ))
+            .clone();
+
         // Create the actual subgraph-specific block stream
         BlockStream::new(
             self.subgraph_store.clone(),
-            self.chain_store.clone(),
-            self.eth_adapter.clone(),
+            chain_store,
+            eth_adapter,
             self.node_id.clone(),
             deployment_id,
             log_filter,

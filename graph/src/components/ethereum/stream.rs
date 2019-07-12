@@ -20,6 +20,7 @@ pub trait BlockStreamBuilder: Clone + Send + Sync {
         &self,
         logger: Logger,
         deployment_id: SubgraphDeploymentId,
+        network_name: String,
         log_filter: Option<EthereumLogFilter>,
         call_filter: Option<EthereumCallFilter>,
         block_filter: Option<EthereumBlockFilter>,

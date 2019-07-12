@@ -61,6 +61,7 @@ impl BlockStreamBuilder for MockBlockStreamBuilder {
         &self,
         _logger: Logger,
         _deployment_id: SubgraphDeploymentId,
+        _network_name: String,
         _log_filter: Option<EthereumLogFilter>,
         _call_filter: Option<EthereumCallFilter>,
         _block_filter: Option<EthereumBlockFilter>,

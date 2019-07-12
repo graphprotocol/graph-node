@@ -264,6 +264,12 @@ impl From<Error> for SubgraphRegistrarError {
     }
 }
 
+impl From<SubgraphManifestValidationError> for SubgraphRegistrarError {
+    fn from(e: SubgraphManifestValidationError) -> Self {
+        SubgraphRegistrarError::ManifestValidationError(vec![e])
+    }
+}
+
 #[derive(Fail, Debug)]
 pub enum SubgraphAssignmentProviderError {
     #[fail(display = "Subgraph resolve error: {}", _0)]
@@ -312,7 +318,7 @@ pub enum SubgraphAssignmentProviderEvent {
 pub enum SubgraphManifestValidationError {
     #[fail(display = "subgraph source address is required")]
     SourceAddressRequired,
-    #[fail(display = "subgraph cannot index data from multiple different ethereum networks")]
+    #[fail(display = "subgraph cannot index data from different Ethereum networks")]
     MultipleEthereumNetworks,
     #[fail(display = "subgraph must have at least one Ethereum network data source")]
     EthereumNetworkRequired,

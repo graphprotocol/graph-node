@@ -3,6 +3,7 @@ use futures::sync::oneshot;
 use semver::{Version, VersionReq};
 use tiny_keccak::keccak256;
 
+use std::collections::HashMap;
 use std::thread;
 use std::time::Instant;
 
@@ -24,9 +25,9 @@ pub struct RuntimeHostConfig {
 }
 
 pub struct RuntimeHostBuilder<T, L, S> {
-    ethereum_adapter: Arc<T>,
+    ethereum_adapters: HashMap<String, Arc<T>>,
     link_resolver: Arc<L>,
-    store: Arc<S>,
+    stores: HashMap<String, Arc<S>>,
 }
 
 impl<T, L, S> Clone for RuntimeHostBuilder<T, L, S>
@@ -37,9 +38,9 @@ where
 {
     fn clone(&self) -> Self {
         RuntimeHostBuilder {
-            ethereum_adapter: self.ethereum_adapter.clone(),
+            ethereum_adapters: self.ethereum_adapters.clone(),
             link_resolver: self.link_resolver.clone(),
-            store: self.store.clone(),
+            stores: self.stores.clone(),
         }
     }
 }
@@ -50,11 +51,15 @@ where
     L: LinkResolver,
     S: Store,
 {
-    pub fn new(ethereum_adapter: Arc<T>, link_resolver: Arc<L>, store: Arc<S>) -> Self {
+    pub fn new(
+        ethereum_adapters: HashMap<String, Arc<T>>,
+        link_resolver: Arc<L>,
+        stores: HashMap<String, Arc<S>>,
+    ) -> Self {
         RuntimeHostBuilder {
-            ethereum_adapter,
+            ethereum_adapters,
             link_resolver,
-            store,
+            stores,
         }
     }
 }
@@ -70,14 +75,33 @@ where
     fn build(
         &self,
         logger: &Logger,
+        network_name: String,
         subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
     ) -> Result<Self::Host, Error> {
+        let store = self
+            .stores
+            .get(&network_name)
+            .expect(&format!(
+                "expected store that matches subgraph network: {}",
+                &network_name
+            ))
+            .clone();
+
+        let ethereum_adapter = self
+            .ethereum_adapters
+            .get(&network_name)
+            .expect(&format!(
+                "expected Ethereum adapter that matches subgraph network: {}",
+                &network_name
+            ))
+            .clone();
+
         RuntimeHost::new(
             logger,
-            self.ethereum_adapter.clone(),
+            ethereum_adapter,
             self.link_resolver.clone(),
-            self.store.clone(),
+            store.clone(),
             RuntimeHostConfig {
                 subgraph_id,
                 data_source,
