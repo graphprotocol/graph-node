@@ -69,6 +69,9 @@ where
     D2::Err: Debug,
 {
     let split_drain = SplitDrain::new(drain1.fuse(), drain2.fuse()).fuse();
-    let async_drain = slog_async::Async::new(split_drain).build().fuse();
+    let async_drain = slog_async::Async::new(split_drain)
+        .chan_size(1000)
+        .build()
+        .fuse();
     Logger::root(async_drain, o!())
 }
