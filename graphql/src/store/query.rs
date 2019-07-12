@@ -1,9 +1,22 @@
+use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
+use lazy_static::lazy_static;
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::env;
+use std::mem::discriminant;
+use std::str::FromStr;
+
+use graph::prelude::*;
+
 use crate::execution::ObjectOrInterface;
 use crate::schema::ast as sast;
-use graph::prelude::*;
-use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-use std::mem::discriminant;
+
+lazy_static! {
+    static ref GRAPHQL_MAX_FIRST: u64 = env::var("GRAPHQL_MAX_FIRST")
+        .ok()
+        .map(|s| u64::from_str(&s)
+            .unwrap_or_else(|_| panic!("failed to parse env var GRAPHQL_MAX_FIRST")))
+        .unwrap_or(1000);
+}
 
 /// Builds a EntityQuery from GraphQL arguments.
 ///
@@ -38,7 +51,7 @@ fn build_range(
     let first = match arguments.get(&"first".to_string()) {
         Some(q::Value::Int(n)) => {
             let n = n.as_i64().expect("first is Int");
-            if n > 0 && n <= 100 {
+            if n > 0 && n <= (*GRAPHQL_MAX_FIRST as i64) {
                 Ok(n as u32)
             } else {
                 Err("first")
@@ -72,7 +85,10 @@ fn build_range(
                 .filter(|r| r.is_err())
                 .map(|e| e.unwrap_err())
                 .collect();
-            Err(QueryExecutionError::RangeArgumentsError(errors))
+            Err(QueryExecutionError::RangeArgumentsError(
+                errors,
+                *GRAPHQL_MAX_FIRST,
+            ))
         }
     }
 }
