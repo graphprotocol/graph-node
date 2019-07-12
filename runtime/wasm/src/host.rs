@@ -79,27 +79,23 @@ where
         subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
     ) -> Result<Self::Host, Error> {
-        let store = self
-            .stores
-            .get(&network_name)
-            .expect(&format!(
-                "expected store that matches subgraph network: {}",
+        let store = self.stores.get(&network_name).ok_or_else(|| {
+            format_err!(
+                "No Store found that matches subgraph network: \"{}\"",
                 &network_name
-            ))
-            .clone();
+            )
+        })?;
 
-        let ethereum_adapter = self
-            .ethereum_adapters
-            .get(&network_name)
-            .expect(&format!(
-                "expected Ethereum adapter that matches subgraph network: {}",
+        let ethereum_adapter = self.ethereum_adapters.get(&network_name).ok_or_else(|| {
+            format_err!(
+                "No Ethereum adapter found that matches subgraph network: \"{}\"",
                 &network_name
-            ))
-            .clone();
+            )
+        })?;
 
         RuntimeHost::new(
             logger,
-            ethereum_adapter,
+            ethereum_adapter.clone(),
             self.link_resolver.clone(),
             store.clone(),
             RuntimeHostConfig {

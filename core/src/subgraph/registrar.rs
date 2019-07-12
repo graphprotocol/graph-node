@@ -280,10 +280,9 @@ where
                 .and_then(validation::validate_manifest)
                 .and_then(move |manifest| {
                     let network_name = manifest.network_name()?;
-                    let chain_store = chain_stores.get(&network_name).expect(&format!(
-                        "Subgraph deployment failed: Ethereum network {}, is not supported.",
-                        &network_name
-                    ));
+                    let chain_store = chain_stores
+                        .get(&network_name)
+                        .ok_or(SubgraphRegistrarError::NetworkNotSupported(network_name))?;
                     create_subgraph_version(
                         &logger,
                         store,
