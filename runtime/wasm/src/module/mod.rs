@@ -636,24 +636,24 @@ where
                 .host_exports()
                 .ipfs_map(&self, link.clone(), &*callback, user_data, flags)
             {
-                Ok(ops) => {
+                Ok(output_states) => {
                     debug!(
                         self.logger,
                         "Successfully processed file with ipfs.map";
                         "link" => &link,
                         "callback" => &*callback,
-                        "entity_operations" => ops.len(),
+                        "n_calls" => output_states.len(),
                         "time" => format!("{}ms", start_time.elapsed().as_millis())
                     );
-                    for op in ops {
+                    for output_state in output_states {
                         self.ctx
                             .state
                             .entity_operations
-                            .extend(op.entity_operations);
+                            .extend(output_state.entity_operations);
                         self.ctx
                             .state
                             .created_data_sources
-                            .extend(op.created_data_sources);
+                            .extend(output_state.created_data_sources);
                     }
                     Ok(None)
                 }
