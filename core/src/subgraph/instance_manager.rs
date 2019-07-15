@@ -2,7 +2,6 @@ use futures::future::{loop_fn, Loop};
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 use uuid::Uuid;
 
@@ -297,7 +296,6 @@ where
     let id_for_err = ctx.inputs.deployment_id.clone();
     let store_for_err = ctx.inputs.store.clone();
     let logger_for_err = logger.clone();
-    let logger_for_restart_check = logger.clone();
     let logger_for_block_stream_errors = logger.clone();
 
     let block_stream_canceler = CancelGuard::new();
@@ -327,28 +325,14 @@ where
 
     debug!(logger, "Starting block stream");
 
-    // Flag that indicates when the subgraph needs to be
-    // restarted due to new dynamic data sources being added
-    let needs_restart_set = Arc::new(AtomicBool::new(false));
-
-    // Handle to the flag for checking it before every block
-    let needs_restart_check = needs_restart_set.clone();
+    // The processing stream may be end due to an error or for restarting to
+    // account for new data sources.
+    enum StreamEnd<B: BlockStreamBuilder, S: Store + ChainStore, T: RuntimeHostBuilder> {
+        Error(CancelableError<Error>),
+        NeedsRestart(IndexingContext<B, S, T>),
+    }
 
     block_stream
-        // Take blocks from the stream as long as no dynamic data sources
-        // have been created. Once that has happened, we need to restart
-        // the stream to include blocks for these data sources as well.
-        .take_while(move |_| {
-            if needs_restart_check.load(Ordering::SeqCst) {
-                debug!(
-                    logger_for_restart_check,
-                    "New data sources added, restart the subgraph",
-                );
-                Ok(false)
-            } else {
-                Ok(true)
-            }
-        })
         // Log and drop the errors from the block_stream
         // The block stream will continue attempting to produce blocks
         .then(move |result| match result {
@@ -365,49 +349,46 @@ where
         .filter_map(|block_opt| block_opt)
         // Process blocks from the stream as long as no restart is needed
         .fold(ctx, move |ctx, block| {
-            let needs_restart_set = needs_restart_set.clone();
-
             process_block(
                 logger.clone(),
                 ctx,
                 block_stream_cancel_handle.clone(),
                 block,
             )
-            .map(move |(ctx, needs_restart)| {
-                // If new data sources were detected in this block, set the
-                // needs restart flag. This will cause `take_while` to stop
-                // emitting blocks and finish this `fold` loop as well
-                if needs_restart {
-                    needs_restart_set.store(true, Ordering::SeqCst);
-                }
-                ctx
+            .map_err(|e| StreamEnd::Error(e))
+            .and_then(|(ctx, needs_restart)| match needs_restart {
+                false => Ok(ctx),
+                true => Err(StreamEnd::NeedsRestart(ctx)),
             })
         })
-        // A restart is needed
-        .and_then(move |mut ctx| {
-            // Increase the restart counter
-            ctx.state.restarts += 1;
+        .then(move |res| match res {
+            Ok(_) => unreachable!("block stream finished without error"),
+            Err(StreamEnd::NeedsRestart(mut ctx)) => {
+                // Increase the restart counter
+                ctx.state.restarts += 1;
 
-            // Cancel the stream for real
-            ctx.state
-                .instances
-                .write()
-                .unwrap()
-                .remove(&ctx.inputs.deployment_id);
+                // Cancel the stream for real
+                ctx.state
+                    .instances
+                    .write()
+                    .unwrap()
+                    .remove(&ctx.inputs.deployment_id);
 
-            // And restart the subgraph
-            Ok(Loop::Continue(ctx))
-        })
-        // Handle unexpected stream errors by marking the subgraph as failed
-        .map_err(move |e| match e {
-            CancelableError::Cancel => {
+                // And restart the subgraph
+                Ok(Loop::Continue(ctx))
+            }
+
+            Err(StreamEnd::Error(CancelableError::Cancel)) => {
                 debug!(
                     logger_for_err,
                     "Subgraph block stream shut down cleanly";
                     "id" => id_for_err.to_string(),
                 );
+                Err(())
             }
-            CancelableError::Error(e) => {
+
+            // Handle unexpected stream errors by marking the subgraph as failed.
+            Err(StreamEnd::Error(CancelableError::Error(e))) => {
                 error!(
                     logger_for_err,
                     "Subgraph instance failed to run: {}", e;
@@ -426,6 +407,7 @@ where
                         "code" => LogCode::SubgraphSyncingFailureNotRecorded
                     );
                 }
+                Err(())
             }
         })
 }
