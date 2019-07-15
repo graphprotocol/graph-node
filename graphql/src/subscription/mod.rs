@@ -160,18 +160,30 @@ where
     let selection_set = selection_set.to_owned();
     let variable_values = ctx.variable_values.clone();
 
-    Ok(Box::new(source_stream.map(move |event| {
-        execute_subscription_event(
-            logger.clone(),
-            resolver.clone(),
-            schema.clone(),
-            document.clone(),
-            &selection_set,
-            variable_values.clone(),
-            event,
-            timeout.clone(),
-        )
-    })))
+    // Create a stream with a single empty event. By chaining this in front
+    // of the real events, we trick the subscription into executing its query
+    // at least once. This satisfies the GraphQL over Websocket protocol
+    // requirement of "respond[ing] with at least one GQL_DATA message", see
+    // https://github.com/apollographql/subscriptions-transport-ws/blob/master/PROTOCOL.md#gql_data
+    let trigger_stream = stream::iter_ok(vec![StoreEvent {
+        tag: 0,
+        changes: Default::default(),
+    }]);
+
+    Ok(Box::new(trigger_stream.chain(source_stream).map(
+        move |event| {
+            execute_subscription_event(
+                logger.clone(),
+                resolver.clone(),
+                schema.clone(),
+                document.clone(),
+                &selection_set,
+                variable_values.clone(),
+                event,
+                timeout.clone(),
+            )
+        },
+    )))
 }
 
 fn execute_subscription_event<R1>(
