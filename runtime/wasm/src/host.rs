@@ -81,7 +81,7 @@ where
     ) -> Result<Self::Host, Error> {
         let store = self.stores.get(&network_name).ok_or_else(|| {
             format_err!(
-                "No Store found that matches subgraph network: \"{}\"",
+                "No store found that matches subgraph network: \"{}\"",
                 &network_name
             )
         })?;
