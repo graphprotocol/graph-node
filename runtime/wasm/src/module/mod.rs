@@ -295,7 +295,7 @@ where
         handler_name: &str,
         value: &graph::serde_json::Value,
         user_data: &store::Value,
-    ) -> Result<Vec<EntityOperation>, FailureError> {
+    ) -> Result<BlockState, FailureError> {
         let value = RuntimeValue::from(self.asc_new(value));
         let user_data = RuntimeValue::from(self.asc_new(user_data));
 
@@ -306,15 +306,13 @@ where
                 .invoke_export(handler_name, &[value, user_data], &mut self);
 
         // Return either the collected entity operations or an error
-        result
-            .map(|_| self.ctx.state.entity_operations)
-            .map_err(|e| {
-                format_err!(
-                    "Failed to handle callback with handler \"{}\": {}",
-                    handler_name,
-                    format_wasmi_error(e),
-                )
-            })
+        result.map(|_| self.ctx.state).map_err(|e| {
+            format_err!(
+                "Failed to handle callback with handler \"{}\": {}",
+                handler_name,
+                format_wasmi_error(e),
+            )
+        })
     }
 
     pub(crate) fn handle_ethereum_call(
@@ -647,7 +645,16 @@ where
                         "entity_operations" => ops.len(),
                         "time" => format!("{}ms", start_time.elapsed().as_millis())
                     );
-                    self.ctx.state.entity_operations.extend(ops);
+                    for op in ops {
+                        self.ctx
+                            .state
+                            .entity_operations
+                            .extend(op.entity_operations);
+                        self.ctx
+                            .state
+                            .created_data_sources
+                            .extend(op.created_data_sources);
+                    }
                     Ok(None)
                 }
                 Err(e) => Err(e.into()),

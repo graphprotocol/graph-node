@@ -377,7 +377,7 @@ where
         callback: &str,
         user_data: store::Value,
         flags: Vec<String>,
-    ) -> Result<Vec<EntityOperation>, HostExportError<impl ExportError>> {
+    ) -> Result<Vec<BlockState>, HostExportError<impl ExportError>> {
         const JSON_FLAG: &str = "json";
         if !flags.contains(&JSON_FLAG.to_string()) {
             return Err(HostExportError(format!("Flags must contain 'json'")));
@@ -395,7 +395,7 @@ where
         let start = Instant::now();
         let mut last_log = Instant::now();
         let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
-        let operations = self.block_on(
+        self.block_on(
             self.link_resolver
                 .json_stream(&Link { link })
                 .and_then(move |stream| {
@@ -422,9 +422,7 @@ where
                         .collect()
                 })
                 .map_err(move |e| HostExportError(format!("{}: {}", errmsg, e.to_string()))),
-        )?;
-        // Collect all results into one Vec
-        Ok(operations.into_iter().flatten().collect())
+        )
     }
 
     /// Expects a decimal string.
