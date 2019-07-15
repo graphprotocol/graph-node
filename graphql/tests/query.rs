@@ -1,12 +1,13 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-use graph::prelude::*;
-use graph_graphql::prelude::*;
 use graphql_parser::{query as q, Pos};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+use graph::prelude::*;
+use graph_graphql::prelude::*;
 use test_store::STORE;
 
 lazy_static! {
@@ -1124,4 +1125,54 @@ fn cannot_filter_by_derved_relationship_fields() {
         }
         e => panic!(format!("expected ResolveEntitiesError, got {}", e)),
     };
+}
+
+#[test]
+fn subscription_gets_result_even_without_events() {
+    let logger = Logger::root(slog::Discard, o!());
+    let store_resolver = StoreResolver::new(&logger, STORE.clone());
+
+    let query = Query {
+        schema: Arc::new(api_test_schema()),
+        document: graphql_parser::parse_query(
+            "subscription {
+              musicians(orderBy: id, first: 2) {
+                name
+              }
+            }",
+        )
+        .unwrap(),
+        variables: None,
+    };
+
+    let options = SubscriptionExecutionOptions {
+        logger: logger.clone(),
+        resolver: store_resolver.clone(),
+        timeout: None,
+        max_complexity: None,
+        max_depth: 100,
+    };
+
+    // Execute the subscription and expect at least one result to be
+    // available in the result stream
+    let stream = execute_subscription(&Subscription { query }, options).unwrap();
+    let mut runtime = tokio::runtime::Runtime::new().unwrap();
+    let results = runtime
+        .block_on(stream.take(1).collect().timeout(Duration::from_secs(3)))
+        .unwrap();
+
+    assert_eq!(results.len(), 1);
+    let result = &results[0];
+    assert!(result.errors.is_none());
+    assert!(result.data.is_some());
+    assert_eq!(
+        result.data,
+        Some(object_value(vec![(
+            "musicians",
+            q::Value::List(vec![
+                object_value(vec![("name", q::Value::String(String::from("John")))]),
+                object_value(vec![("name", q::Value::String(String::from("Lisa")))])
+            ])
+        )])),
+    );
 }
