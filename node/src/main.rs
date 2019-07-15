@@ -413,12 +413,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     .iter()
     .cloned()
     .filter(|(_, values)| values.is_some())
-    .fold(HashMap::new(), |networks, (connection_type, values)| {
+    .fold(HashMap::new(), |adapters, (connection_type, values)| {
         match parse_ethereum_networks_and_nodes(logger.clone(), values.unwrap(), connection_type) {
-            Ok(adapters) => networks.into_iter().chain(adapters).collect(),
+            Ok(adapter) => adapters.into_iter().chain(adapter).collect(),
             Err(e) => {
                 panic!(
-                    "Failed to parse ethereum networks and create ethereum adapters: {}",
+                    "Failed to parse Ethereum networks and create Ethereum adapters: {}",
                     e
                 );
             }
@@ -452,7 +452,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             match eth_adapter.net_identifiers(&logger).wait() {
                 Ok(network_identifier) => {
                     info!(
-                    logger, "Connected to Ethereum";
+                    logger,
+                    "Connected to Ethereum";
                     "network" => &network_name,
                     "network_version" => &network_identifier.net_version,
                     );
