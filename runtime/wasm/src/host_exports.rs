@@ -362,14 +362,13 @@ where
         )
     }
 
-    // Read the IPFS file `link`, split it into JSON objects, and invoke
-    // the exported function `callback` on each JSON object. The successful
-    // return value contains all entity operations that were produced by the
-    // callback invocations. Each invocation of `callback` happens in its own
-    // instance of a WASM module, which is identical to `module` when it was
-    // first started. The signature of the callback must be
-    // `callback(JSONValue, Value)`, and the `userData` parameter is passed
-    // to the callback without any changes
+    // Read the IPFS file `link`, split it into JSON objects, and invoke the
+    // exported function `callback` on each JSON object. The successful return
+    // value contains the block state produced by each callback invocation. Each
+    // invocation of `callback` happens in its own instance of a WASM module,
+    // which is identical to `module` when it was first started. The signature
+    // of the callback must be `callback(JSONValue, Value)`, and the `userData`
+    // parameter is passed to the callback without any changes
     pub(crate) fn ipfs_map(
         &self,
         module: &WasmiModule<E, L, S, U>,
