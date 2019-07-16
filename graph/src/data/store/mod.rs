@@ -37,7 +37,7 @@ impl NodeId {
         let s = s.into();
 
         // Enforce length limit
-        if s.len() > 31 {
+        if s.len() > 63 {
             return Err(());
         }
 
