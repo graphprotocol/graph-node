@@ -12,7 +12,7 @@ use crate::module::{ValidModule, WasmiModule, WasmiModuleConfig};
 use ethabi::{LogParam, RawLog};
 use graph::components::ethereum::*;
 use graph::components::store::Store;
-use graph::data::subgraph::{DataSource, Source};
+use graph::data::subgraph::{Mapping, Source};
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
@@ -21,7 +21,10 @@ use web3::types::{Log, Transaction};
 
 pub struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
-    data_source: DataSource,
+    mapping: Mapping,
+    data_source_name: String,
+    contract: Source,
+    templates: Vec<DataSourceTemplate>,
 }
 
 pub struct RuntimeHostBuilder<T, L, S> {
@@ -100,7 +103,10 @@ where
             store.clone(),
             RuntimeHostConfig {
                 subgraph_id,
-                data_source,
+                mapping: data_source.mapping,
+                data_source_name: data_source.name,
+                contract: data_source.source,
+                templates: data_source.templates.unwrap_or_default(),
             },
         )
     }
@@ -164,10 +170,10 @@ impl RuntimeHost {
     {
         let logger = logger.new(o!(
             "component" => "RuntimeHost",
-            "data_source" => config.data_source.name.clone(),
+            "data_source" => config.data_source_name.clone(),
         ));
 
-        let api_version = Version::parse(&config.data_source.mapping.api_version)?;
+        let api_version = Version::parse(&config.mapping.api_version)?;
         if !VersionReq::parse("<= 0.0.3").unwrap().matches(&api_version) {
             return Err(format_err!(
                 "This Graph Node only supports mapping API versions <= 0.0.3, but subgraph `{}` uses `{}`",
@@ -192,22 +198,21 @@ impl RuntimeHost {
 
         // Start the WASMI module runtime
         let module_logger = logger.clone();
-        let data_source_name = config.data_source.name.clone();
-        let data_source_contract = config.data_source.source.clone();
-        let data_source_event_handlers = config.data_source.mapping.event_handlers.clone();
-        let data_source_call_handlers = config.data_source.mapping.call_handlers.clone();
-        let data_source_block_handlers = config.data_source.mapping.block_handlers.clone();
+        let data_source_name = config.data_source_name.clone();
+        let data_source_contract = config.contract.clone();
+        let data_source_event_handlers = config.mapping.event_handlers.clone();
+        let data_source_call_handlers = config.mapping.call_handlers.clone();
+        let data_source_block_handlers = config.mapping.block_handlers.clone();
         let data_source_contract_abi = config
-            .data_source
             .mapping
             .abis
             .iter()
-            .find(|abi| abi.name == config.data_source.source.abi)
+            .find(|abi| abi.name == config.contract.abi)
             .ok_or_else(|| {
                 format_err!(
                     "No ABI entry found for the main contract of data source \"{}\": {}",
                     data_source_name,
-                    config.data_source.source.abi,
+                    config.contract.abi,
                 )
             })?
             .clone();
@@ -225,11 +230,11 @@ impl RuntimeHost {
             debug!(module_logger, "Start WASM runtime");
             let wasmi_config = WasmiModuleConfig {
                 subgraph_id: config.subgraph_id,
-                api_version: Version::parse(&config.data_source.mapping.api_version).unwrap(),
-                parsed_module: config.data_source.mapping.runtime,
-                abis: config.data_source.mapping.abis,
-                data_source_name: config.data_source.name,
-                templates: config.data_source.templates.unwrap_or_default(),
+                api_version: Version::parse(&config.mapping.api_version).unwrap(),
+                parsed_module: config.mapping.runtime,
+                abis: config.mapping.abis,
+                data_source_name: config.data_source_name,
+                templates: config.templates,
                 ethereum_adapter: ethereum_adapter.clone(),
                 link_resolver: link_resolver.clone(),
                 store: store.clone(),
