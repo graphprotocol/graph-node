@@ -147,7 +147,7 @@ impl SubgraphName {
                 return Err(());
             }
 
-            // Part should not start or end with a special character or start with a number.
+            // Part should not start or end with a special character.
             let first_char = part.chars().next().unwrap();
             let last_char = part.chars().last().unwrap();
             if !first_char.is_ascii_alphanumeric()
