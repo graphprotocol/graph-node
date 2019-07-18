@@ -245,8 +245,20 @@ impl JsonNotification {
                         "SELECT payload FROM large_notifications WHERE id = $1",
                         &[&(payload_id as i32)],
                     )
-                    .map_err(|_| format_err!("No payload found for notification {}", payload_id))?;
+                    .map_err(|e| {
+                        format_err!(
+                            "Error retrieving payload for notification {}: {}",
+                            payload_id,
+                            e
+                        )
+                    })?;
 
+                if payload_rows.is_empty() || payload_rows.get(0).is_empty() {
+                    return Err(format_err!(
+                        "No payload found for notification {}",
+                        payload_id
+                    ))?;
+                }
                 let payload: String = payload_rows.get(0).get(0);
 
                 Ok(JsonNotification {
