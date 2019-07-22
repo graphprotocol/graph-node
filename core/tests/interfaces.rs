@@ -22,6 +22,7 @@ fn insert_and_query(
         repository: None,
         schema: schema.clone(),
         data_sources: vec![],
+        templates: None,
     };
 
     let logger = Logger::root(slog::Discard, o!());
