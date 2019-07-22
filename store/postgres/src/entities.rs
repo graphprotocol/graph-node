@@ -20,6 +20,7 @@
 // for dynamic tables.
 
 use diesel::connection::SimpleConnection;
+use diesel::debug_query;
 use diesel::deserialize::QueryableByName;
 use diesel::dsl::{any, sql};
 use diesel::pg::{Pg, PgConnection};
@@ -27,7 +28,6 @@ use diesel::sql_types::{Bool, Integer, Jsonb, Nullable, Text};
 use diesel::BoolExpressionMethods;
 use diesel::Connection as _;
 use diesel::ExpressionMethods;
-use diesel::{debug_query, insert_into};
 use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
 use diesel_dynamic_schema::{schema, Column, Table as DynamicTable};
 use inflector::cases::snakecase::to_snake_case;
@@ -334,7 +334,6 @@ impl QueryableByName<Pg> for RawHistory {
 /// the code.
 #[derive(Clone, Debug)]
 pub(crate) enum Table {
-    Public(SubgraphDeploymentId),
     Split(SplitTable),
 }
 
@@ -788,7 +787,13 @@ impl Table {
         let schema = find_schema(conn, subgraph)?
             .ok_or_else(|| StoreError::Unknown(format_err!("unknown subgraph {}", subgraph)))?;
         let table = match schema.version {
-            V::Public => Table::Public(subgraph.clone()),
+            V::Public => {
+                return Err(StoreError::Unknown(format_err!(
+                    "subgraph {}: storage scheme {:?} is no longer supported",
+                    subgraph,
+                    schema.version
+                )))
+            }
             V::Split => Table::Split(SplitTable::new(schema.name, subgraph.clone())),
         };
         Ok(table)
@@ -798,7 +803,6 @@ impl Table {
     /// subgraph stored in `self`
     fn entity_key(&self, entity_type: String, entity_id: String) -> EntityKey {
         let subgraph_id = match self {
-            Table::Public(subgraph) => subgraph.clone(),
             Table::Split(entities) => entities.subgraph.clone(),
         };
         EntityKey {
@@ -815,11 +819,6 @@ impl Table {
         id: &String,
     ) -> Result<Option<serde_json::Value>, StoreError> {
         match self {
-            Table::Public(subgraph) => Ok(public::entities::table
-                .find((id, subgraph.to_string(), entity))
-                .select(public::entities::data)
-                .first::<serde_json::Value>(conn)
-                .optional()?),
             Table::Split(entities) => {
                 let entities = entities.clone();
                 Ok(entities
@@ -843,60 +842,6 @@ impl Table {
         skip: u32,
     ) -> Result<Vec<(serde_json::Value, String)>, QueryExecutionError> {
         match self {
-            Table::Public(subgraph) => {
-                // Create base boxed query; this will be added to based on the
-                // query parameters provided
-                let mut query = public::entities::table
-                    .filter(public::entities::entity.eq(any(entity_types)))
-                    .filter(public::entities::subgraph.eq(subgraph.to_string()))
-                    .select((public::entities::data, public::entities::entity))
-                    .into_boxed::<Pg>();
-
-                // Add specified filter to query
-                if let Some(filter) = filter {
-                    query =
-                        store_filter::<public::entities::table, _>(query, filter).map_err(|e| {
-                            QueryExecutionError::FilterNotSupportedError(
-                                format!("{}", e.value),
-                                e.filter,
-                            )
-                        })?;
-                }
-
-                // Add order by filters to query
-                if let Some((attribute, cast, direction)) = order {
-                    query = query.order(
-                        sql::<Text>("(data ->")
-                            .bind::<Text, _>(attribute)
-                            .sql("->> 'data')")
-                            .sql(cast)
-                            .sql(" ")
-                            .sql(direction)
-                            .sql(" NULLS LAST"),
-                    );
-                }
-                query = query.then_order_by(public::entities::id.asc());
-
-                // Add range filter to query
-                if let Some(first) = first {
-                    query = query.limit(first as i64);
-                }
-                if skip > 0 {
-                    query = query.offset(skip as i64);
-                }
-
-                let query_debug_info = debug_query(&query).to_string();
-
-                // Process results; deserialize JSON data
-                query
-                    .load::<(serde_json::Value, String)>(conn)
-                    .map_err(|e| {
-                        QueryExecutionError::ResolveEntitiesError(format!(
-                            "{}, query = {:?}",
-                            e, query_debug_info
-                        ))
-                    })
-            }
             Table::Split(entities) => {
                 let entities = entities.clone();
 
@@ -959,15 +904,6 @@ impl Table {
         let event_source = HistoryEvent::to_event_source_string(&history_event);
 
         match self {
-            Table::Public(subgraph) => Ok(insert_into(public::entities::table)
-                .values((
-                    public::entities::id.eq(&key.entity_id),
-                    public::entities::entity.eq(&key.entity_type),
-                    public::entities::subgraph.eq(subgraph.to_string()),
-                    public::entities::data.eq(data),
-                    public::entities::event_source.eq(&event_source),
-                ))
-                .execute(conn)?),
             Table::Split(entities) => {
                 // Since we are not using a subgraphs.entities table trigger for
                 // the history of the subgraph of subgraphs, write entity_history
@@ -1007,25 +943,6 @@ impl Table {
         let event_source = HistoryEvent::to_event_source_string(&history_event);
 
         match self {
-            Table::Public(subgraph) => Ok(insert_into(public::entities::table)
-                .values((
-                    public::entities::id.eq(&key.entity_id),
-                    public::entities::entity.eq(&key.entity_type),
-                    public::entities::subgraph.eq(subgraph.to_string()),
-                    public::entities::data.eq(data),
-                    public::entities::event_source.eq(&event_source),
-                ))
-                .on_conflict((
-                    public::entities::id,
-                    public::entities::entity,
-                    public::entities::subgraph,
-                ))
-                .do_update()
-                .set((
-                    public::entities::data.eq(data),
-                    public::entities::event_source.eq(&event_source),
-                ))
-                .execute(conn)?),
             Table::Split(entities) => {
                 let query = format!(
                     "insert into {}.entities(entity, id, data, event_source)
@@ -1053,53 +970,7 @@ impl Table {
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        let event_source = HistoryEvent::to_event_source_string(&history_event);
-
         match self {
-            Table::Public(subgraph) => {
-                let target = public::entities::table
-                    .filter(public::entities::subgraph.eq(subgraph.to_string()))
-                    .filter(public::entities::entity.eq(&key.entity_type))
-                    .filter(public::entities::id.eq(&key.entity_id));
-
-                if overwrite {
-                    let query = diesel::update(target).set((
-                        public::entities::data.eq(data),
-                        public::entities::event_source.eq(&event_source),
-                    ));
-
-                    match guard {
-                        Some(filter) => {
-                            let filter = build_filter(filter).map_err(|e| {
-                                TransactionAbortError::Other(format!(
-                                    "invalid filter '{}' for value '{}'",
-                                    e.filter, e.value
-                                ))
-                            })?;
-                            Ok(query.filter(filter).execute(conn)?)
-                        }
-                        None => Ok(query.execute(conn)?),
-                    }
-                } else {
-                    let query = diesel::update(target).set((
-                        public::entities::data.eq(public::entities::data.merge(data)),
-                        public::entities::event_source.eq(&event_source),
-                    ));
-
-                    match guard {
-                        Some(filter) => {
-                            let filter = build_filter(filter).map_err(|e| {
-                                TransactionAbortError::Other(format!(
-                                    "invalid filter '{}' for value '{}'",
-                                    e.filter, e.value
-                                ))
-                            })?;
-                            Ok(query.filter(filter).execute(conn)?)
-                        }
-                        None => Ok(query.execute(conn)?),
-                    }
-                }
-            }
             Table::Split(entities) => {
                 // Since we are not using a subgraphs.entities table trigger for
                 // the history of the subgraph of subgraphs, write entity_history
@@ -1136,13 +1007,6 @@ impl Table {
         .map(|_| ())?;
 
         match self {
-            Table::Public(subgraph) => Ok(diesel::delete(
-                public::entities::table
-                    .filter(public::entities::subgraph.eq(subgraph.to_string()))
-                    .filter(public::entities::entity.eq(&key.entity_type))
-                    .filter(public::entities::id.eq(&key.entity_id)),
-            )
-            .execute(conn)?),
             Table::Split(entities) => {
                 // Since we are not using a subgraphs.entities table trigger for
                 // the history of the subgraph of subgraphs, write entity_history
@@ -1182,10 +1046,6 @@ impl Table {
         count: i32,
     ) -> Result<(), StoreError> {
         let count_query = match self {
-            Table::Public(_) => format!(
-                "select count(*) from public.entities where subgraph = '{}'",
-                &subgraph
-            ),
             Table::Split(entities) => format!("select count(*) from {}.entities", entities.schema),
         };
         // The big complication in this query is how to determine what the
@@ -1231,13 +1091,6 @@ impl Table {
         entities: Vec<&String>,
     ) -> Result<Option<String>, StoreError> {
         match self {
-            Table::Public(subgraph) => Ok(public::entities::table
-                .select(public::entities::entity)
-                .filter(public::entities::subgraph.eq(subgraph.to_string()))
-                .filter(public::entities::entity.eq(any(entities)))
-                .filter(public::entities::id.eq(entity_id))
-                .first(conn)
-                .optional()?),
             Table::Split(ents) => {
                 let ents = ents.clone();
                 Ok(ents
@@ -1267,39 +1120,10 @@ impl Table {
         operation: OperationType,
     ) -> Result<(), Error> {
         let schema = match self {
-            Table::Public(_) => "public",
             Table::Split(split_table) => split_table.schema.as_str(),
         };
 
-        if schema == "public" {
-            diesel::sql_query(format!(
-                "insert into {}.entity_history(
-                   event_id,
-                   subgraph, entity, entity_id,
-                   data_before, reversion, op_id
-                 )
-                 select
-                   $1 as event_id,
-                   $2 as subgraph,
-                   $3 as entity,
-                   $4 as entity_id,
-                   (select data
-                      from {}.entities
-                     where subgraph = $2
-                       and entity = $3
-                       and id = $4) as data_before,
-                   $5 as reversion,
-                   $6 as op_id",
-                schema, schema,
-            ))
-            .bind::<Integer, _>(history_event.id)
-            .bind::<Text, _>(&*history_event.subgraph)
-            .bind::<Text, _>(&key.entity_type)
-            .bind::<Text, _>(&key.entity_id)
-            .bind::<Bool, _>(&reversion)
-            .bind::<Integer, i32>(operation.into())
-            .execute(conn)?;
-        } else if schema == SUBGRAPHS_ID.to_string() {
+        if schema == SUBGRAPHS_ID.to_string() {
             diesel::sql_query(format!(
                 "insert into {}.entity_history(
                    event_id,
@@ -1362,19 +1186,6 @@ impl Table {
         // Collect entity history events in the subgraph of subgraphs that
         // match the subgraph for which we're reverting the block
         let entries: Vec<RawHistory> = match self {
-            Table::Public(_) => {
-                use self::subgraphs::entity_history::dsl as h;
-                use self::subgraphs::event_meta_data as m;
-
-                h::entity_history
-                    .inner_join(m::table)
-                    .select((h::id, h::entity, h::entity_id, h::data_before, h::op_id))
-                    .filter(h::subgraph.eq(&**subgraph_id))
-                    .filter(m::source.eq(&block_ptr))
-                    .order(h::event_id.desc())
-                    .load(conn)?
-            }
-
             Table::Split(_) => {
                 use self::subgraphs::entity_history::dsl as h;
                 use self::subgraphs::event_meta_data as m;
@@ -1405,18 +1216,6 @@ impl Table {
         // Collect entity history events for the subgraph for which we're
         // reverting the block
         let entries: Vec<RawHistory> = match self {
-            Table::Public(subgraph) => {
-                use self::public::entity_history::dsl as h;
-                use self::public::event_meta_data as m;
-
-                h::entity_history
-                    .inner_join(m::table)
-                    .select((h::id, h::entity, h::entity_id, h::data_before, h::op_id))
-                    .filter(h::subgraph.eq(subgraph.to_string()))
-                    .filter(m::source.eq(&block_ptr))
-                    .order(h::event_id.desc())
-                    .load(conn)?
-            }
             Table::Split(entities) => {
                 // We can't use Diesel's JoinOnDsl here because DynamicTable
                 // does not implement AppearsInFromClause, so we have to run
@@ -1477,32 +1276,6 @@ impl Table {
         // same numbers for the same `(entity, attribute)` combination. If it is
         // not stable, we will create duplicate indexes
         match self {
-            Table::Public(_) => {
-                let index_name = format!(
-                    "{}_{}_{}_idx",
-                    &index.subgraph_id, index.entity_number, index.attribute_number,
-                );
-                let query = format!(
-                    "create index if not exists {name}
-                         on public.entities
-                      using {index_type} (
-                              ((data->'{attribute_name}'{jsonb_operator}'data'){type_cast})
-                              {index_operator}
-                            )
-                      where subgraph='{subgraph}'
-                        and entity='{entity_name}'",
-                    name = index_name,
-                    index_type = index_type,
-                    attribute_name = &index.attribute_name,
-                    jsonb_operator = jsonb_operator,
-                    type_cast = type_cast,
-                    index_operator = index_operator,
-                    subgraph = index.subgraph_id.to_string(),
-                    entity_name = &index.entity_name
-                );
-                conn.batch_execute(&*query)?;
-                Ok(1)
-            }
             Table::Split(entities) => {
                 // It is possible that the user's `entity_name` and
                 // `attribute_name` are so long that `name` becomes longer than
@@ -1547,7 +1320,6 @@ impl Table {
         records: Vec<RawHistory>,
     ) -> Result<(Vec<EntityChange>, i32), StoreError> {
         let subgraph_id = match self {
-            Table::Public(subgraph) => subgraph.clone(),
             Table::Split(entities) => entities.subgraph.clone(),
         };
 
@@ -1607,68 +1379,17 @@ impl Table {
         Ok((changes, count))
     }
 
-    fn migrate(self, conn: &PgConnection, logger: &Logger, schema: &Schema) -> Result<Self, Error> {
-        match self {
-            Table::Split(_) => Ok(self),
-            Table::Public(ref subgraph) => {
-                use self::public::deployment_schemas as d;
-                use self::public::DeploymentSchemaState as S;
-                use self::public::DeploymentSchemaVersion as V;
-
-                match schema.state {
-                    S::Ready => {
-                        // Do the actual work
-                        diesel::select(public::migrate_entities_tables(
-                            &schema.name,
-                            &schema.version,
-                            subgraph.to_string(),
-                        ))
-                        .execute(conn)?;
-                        // Update the migration state
-                        diesel::update(d::table.find(schema.id))
-                            .set(d::state.eq(S::Tables))
-                            .execute(conn)?;
-                        Ok(self)
-                    }
-                    S::Tables => {
-                        // Move data around
-                        let count: i32 = diesel::select(public::migrate_entities_data(
-                            &schema.name,
-                            &schema.version,
-                            subgraph.to_string(),
-                        ))
-                        .first(conn)?;
-                        // Update the migration state
-                        diesel::update(d::table.find(schema.id))
-                            .set((
-                                d::state.eq(S::Ready),
-                                d::migrating.eq(false),
-                                d::version.eq(V::Split),
-                            ))
-                            .execute(conn)?;
-
-                        debug!(
-                            logger,
-                            "migrated {} entities for subgraph {} ({})",
-                            count,
-                            schema.name,
-                            subgraph
-                        );
-                        Ok(Table::Split(SplitTable::new(
-                            schema.name.clone(),
-                            subgraph.clone(),
-                        )))
-                    }
-                }
-            }
-        }
+    fn migrate(
+        self,
+        _conn: &PgConnection,
+        _logger: &Logger,
+        _schema: &Schema,
+    ) -> Result<Self, Error> {
+        Ok(self)
     }
 
     fn needs_migrating(&self) -> bool {
-        match self {
-            Table::Public(_) => true,
-            Table::Split(_) => false,
-        }
+        false
     }
 }
 
