@@ -21,7 +21,6 @@ struct IndexingInputs<B, S, T> {
     pub store: Arc<S>,
     pub stream_builder: B,
     pub host_builder: T,
-    pub templates: Vec<(String, DataSourceTemplate)>,
     pub include_calls_in_blocks: bool,
 }
 
@@ -184,20 +183,10 @@ impl SubgraphInstanceManager {
         let status_ops = SubgraphDeploymentEntity::update_failed_operations(&manifest.id, false);
         store.start_subgraph_deployment(&manifest.id, status_ops)?;
 
-        // Create copies of the data source templates; this creates a vector of
-        // the form
-        // ```
-        // vec![
-        //   ("DataSource1", <template struct>),
-        //   ("DataSource2", <template struct>),
-        //   ("DataSource2", <template struct>),
-        // ]
-        // ```
-        // for easy filtering later
-        let mut templates: Vec<(String, DataSourceTemplate)> = vec![];
+        let mut templates: Vec<DataSourceTemplate> = vec![];
         for data_source in manifest.data_sources.iter() {
             for template in data_source.templates.iter().flatten() {
-                templates.push((data_source.name.clone(), template.clone()));
+                templates.push(template.clone());
             }
         }
 
@@ -216,7 +205,7 @@ impl SubgraphInstanceManager {
         // when new dynamic data sources are being created
         let include_calls_in_blocks = templates
             .iter()
-            .find(|(_, template)| {
+            .find(|template| {
                 template.has_call_handler() || template.has_block_handler_with_call_filter()
             })
             .is_some();
@@ -230,7 +219,6 @@ impl SubgraphInstanceManager {
             inputs: IndexingInputs {
                 deployment_id,
                 network_name,
-                templates,
                 store,
                 stream_builder,
                 host_builder,
@@ -666,31 +654,8 @@ where
 
     stream::iter_ok(initial_state.block_state.created_data_sources.clone())
         .fold(initial_state, move |mut state, info| {
-            // Find the template for this data source
-            let template = match state
-                .ctx
-                .inputs
-                .templates
-                .iter()
-                .find(|(data_source_name, template)| {
-                    data_source_name == &info.data_source && template.name == info.template
-                })
-                .map(|(_, template)| template)
-                .ok_or_else(|| {
-                    format_err!(
-                        "Failed to create data source with name `{}`. \
-                         No template with this name in parent data \
-                         source `{}`.",
-                        info.template,
-                        info.data_source
-                    )
-                }) {
-                Ok(template) => template,
-                Err(e) => return future::err(e),
-            };
-
             // Try to instantiate a data source from the template
-            let data_source = match DataSource::try_from_template(&template, &info.params) {
+            let data_source = match DataSource::try_from_template(info.template, &info.params) {
                 Ok(data_source) => data_source,
                 Err(e) => return future::err(e),
             };

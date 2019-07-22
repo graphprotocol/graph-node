@@ -1,10 +1,10 @@
 use crate::prelude::*;
 use web3::types::Log;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct DataSourceTemplateInfo {
     pub data_source: String,
-    pub template: String,
+    pub template: DataSourceTemplate,
     pub params: Vec<String>,
 }
 
