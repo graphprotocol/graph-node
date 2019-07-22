@@ -39,6 +39,7 @@ type SubgraphManifest @entity {
     repository: String
     schema: String!
     dataSources: [EthereumContractDataSource!]!
+    templates: [EthereumContractDataSourceTemplate!]
 }
 
 type EthereumContractDataSource @entity {

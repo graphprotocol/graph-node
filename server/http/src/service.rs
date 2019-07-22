@@ -469,6 +469,7 @@ mod tests {
             repository: None,
             schema: schema.clone(),
             data_sources: vec![],
+            templates: None,
         };
 
         let graphql_runner = Arc::new(TestGraphQlRunner);
@@ -539,6 +540,7 @@ mod tests {
             repository: None,
             schema: schema.clone(),
             data_sources: vec![],
+            templates: None,
         };
         let graphql_runner = Arc::new(TestGraphQlRunner);
         let store = Arc::new(MockStore::new(vec![(id.clone(), schema)]));

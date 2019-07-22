@@ -795,7 +795,7 @@ impl DataSourceTemplate {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BaseSubgraphManifest<S, D> {
+pub struct BaseSubgraphManifest<S, D, T> {
     pub id: SubgraphDeploymentId,
     pub location: String,
     pub spec_version: String,
@@ -803,17 +803,19 @@ pub struct BaseSubgraphManifest<S, D> {
     pub repository: Option<String>,
     pub schema: S,
     pub data_sources: Vec<D>,
+    pub templates: Option<Vec<T>>,
 }
 
 /// Consider two subgraphs to be equal if they come from the same IPLD link.
-impl<S, D> PartialEq for BaseSubgraphManifest<S, D> {
+impl<S, D, T> PartialEq for BaseSubgraphManifest<S, D, T> {
     fn eq(&self, other: &Self) -> bool {
         self.location == other.location
     }
 }
 
-pub type UnresolvedSubgraphManifest = BaseSubgraphManifest<SchemaData, UnresolvedDataSource>;
-pub type SubgraphManifest = BaseSubgraphManifest<Schema, DataSource>;
+pub type UnresolvedSubgraphManifest =
+    BaseSubgraphManifest<SchemaData, UnresolvedDataSource, UnresolvedDataSourceTemplate>;
+pub type SubgraphManifest = BaseSubgraphManifest<Schema, DataSource, DataSourceTemplate>;
 
 impl SubgraphManifest {
     /// Entry point for resolving a subgraph definition.
@@ -898,6 +900,7 @@ impl UnresolvedSubgraphManifest {
             repository,
             schema,
             data_sources,
+            templates,
         } = self;
 
         // resolve each data set
@@ -911,7 +914,15 @@ impl UnresolvedSubgraphManifest {
                 )
                 .collect(),
             )
-            .map(|(schema, data_sources)| SubgraphManifest {
+            .join(templates.map(|templates| {
+                stream::futures_ordered(
+                    templates
+                        .into_iter()
+                        .map(|template| template.resolve(resolver, logger.clone())),
+                )
+                .collect()
+            }))
+            .map(|((schema, data_sources), templates)| SubgraphManifest {
                 id,
                 location,
                 spec_version,
@@ -919,6 +930,7 @@ impl UnresolvedSubgraphManifest {
                 repository,
                 schema,
                 data_sources,
+                templates,
             })
     }
 }

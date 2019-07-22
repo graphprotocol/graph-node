@@ -121,6 +121,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         repository: None,
         schema: Schema::parse("scalar Foo", TEST_SUBGRAPH_ID.clone()).unwrap(),
         data_sources: vec![],
+        templates: None,
     };
 
     // Create SubgraphDeploymentEntity
@@ -1875,6 +1876,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             repository: None,
             schema: Schema::parse("scalar Foo", subgraph_id.clone()).unwrap(),
             data_sources: vec![],
+            templates: None,
         };
 
         // Create SubgraphDeploymentEntity
