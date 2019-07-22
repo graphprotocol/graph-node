@@ -29,7 +29,7 @@ use diesel::BoolExpressionMethods;
 use diesel::Connection as _;
 use diesel::ExpressionMethods;
 use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
-use diesel_dynamic_schema::{schema, Column, Table as DynamicTable};
+use diesel_dynamic_schema::{Column, Table as DynamicTable};
 use inflector::cases::snakecase::to_snake_case;
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
@@ -252,7 +252,7 @@ type EntityColumn<ST> = Column<DynamicTable<String>, String, ST>;
 /// a subgraph deployment's entities are split into their own schema rather
 /// than residing in the entities table in the `public` database schema
 #[derive(Debug, Clone)]
-pub(crate) struct SplitTable {
+pub(crate) struct Table {
     /// The name of the database schema
     schema: String,
     /// The subgraph id
@@ -288,14 +288,6 @@ impl QueryableByName<Pg> for RawHistory {
             op: row.get("op_id")?,
         })
     }
-}
-
-/// Represents a subgraph, and how it is stored in the database. The
-/// implementation of this enum masks which scheme is used to the rest of
-/// the code.
-#[derive(Clone, Debug)]
-pub(crate) enum Table {
-    Split(SplitTable),
 }
 
 /// A connection into the database to handle entities which caches the
@@ -621,28 +613,10 @@ fn find_schema(
         .optional()?)
 }
 
-impl SplitTable {
-    fn new(sc: String, subgraph: SubgraphDeploymentId) -> Self {
-        let table = schema(sc.clone()).table("entities".to_owned());
-        let id = table.column::<Text, _>("id".to_string());
-        let entity = table.column::<Text, _>("entity".to_string());
-        let data = table.column::<Jsonb, _>("data".to_string());
-        let event_source = table.column::<Text, _>("event_source".to_string());
-
-        SplitTable {
-            schema: sc,
-            subgraph: subgraph,
-            table,
-            id,
-            entity,
-            data,
-            event_source,
-        }
-    }
-
+impl Table {
     // Update for a split entities table, called from Table.update. It's lengthy,
     // so we split it into its own helper function
-    fn update(
+    fn update_data(
         &self,
         conn: &PgConnection,
         key: &EntityKey,
@@ -755,7 +729,24 @@ impl Table {
                     schema.version
                 )))
             }
-            V::Split => Table::Split(SplitTable::new(schema.name, subgraph.clone())),
+            V::Split => {
+                let table =
+                    diesel_dynamic_schema::schema(schema.name.clone()).table("entities".to_owned());
+                let id = table.column::<Text, _>("id".to_string());
+                let entity = table.column::<Text, _>("entity".to_string());
+                let data = table.column::<Jsonb, _>("data".to_string());
+                let event_source = table.column::<Text, _>("event_source".to_string());
+
+                Table {
+                    schema: schema.name,
+                    subgraph: subgraph.clone(),
+                    table,
+                    id,
+                    entity,
+                    data,
+                    event_source,
+                }
+            }
         };
         Ok(table)
     }
@@ -763,9 +754,7 @@ impl Table {
     /// Return an entity key for the entity of the given type and id in the
     /// subgraph stored in `self`
     fn entity_key(&self, entity_type: String, entity_id: String) -> EntityKey {
-        let subgraph_id = match self {
-            Table::Split(entities) => entities.subgraph.clone(),
-        };
+        let subgraph_id = self.subgraph.clone();
         EntityKey {
             subgraph_id,
             entity_type,
@@ -779,17 +768,13 @@ impl Table {
         entity: &str,
         id: &String,
     ) -> Result<Option<serde_json::Value>, StoreError> {
-        match self {
-            Table::Split(entities) => {
-                let entities = entities.clone();
-                Ok(entities
-                    .table
-                    .filter(entities.entity.eq(entity).and(entities.id.eq(id)))
-                    .select(entities.data)
-                    .first::<serde_json::Value>(conn)
-                    .optional()?)
-            }
-        }
+        let entities = self.clone();
+        Ok(entities
+            .table
+            .filter(entities.entity.eq(entity).and(entities.id.eq(id)))
+            .select(entities.data)
+            .first::<serde_json::Value>(conn)
+            .optional()?)
     }
 
     /// order is a tuple (attribute, cast, direction)
@@ -802,57 +787,49 @@ impl Table {
         first: Option<u32>,
         skip: u32,
     ) -> Result<Vec<(serde_json::Value, String)>, QueryExecutionError> {
-        match self {
-            Table::Split(entities) => {
-                let entities = entities.clone();
+        let entities = self.clone();
+        let mut query = entities
+            .table
+            .filter((&self.entity).eq(any(entity_types)))
+            .select((&self.data, &self.entity))
+            .into_boxed::<Pg>();
 
-                let mut query = entities
-                    .table
-                    .filter((&entities.entity).eq(any(entity_types)))
-                    .select((&entities.data, &entities.entity))
-                    .into_boxed::<Pg>();
-
-                if let Some(filter) = filter {
-                    query = store_filter(query, filter).map_err(|e| {
-                        QueryExecutionError::FilterNotSupportedError(
-                            format!("{}", e.value),
-                            e.filter,
-                        )
-                    })?;
-                }
-
-                if let Some((attribute, cast, direction)) = order {
-                    query = query.order(
-                        sql::<Text>("(data ->")
-                            .bind::<Text, _>(attribute)
-                            .sql("->> 'data')")
-                            .sql(cast)
-                            .sql(" ")
-                            .sql(direction)
-                            .sql(" NULLS LAST"),
-                    );
-                }
-                query = query.then_order_by(entities.id.asc());
-
-                if let Some(first) = first {
-                    query = query.limit(first as i64);
-                }
-                if skip > 0 {
-                    query = query.offset(skip as i64);
-                }
-
-                let query_debug_info = debug_query(&query).to_string();
-
-                query
-                    .load::<(serde_json::Value, String)>(conn)
-                    .map_err(|e| {
-                        QueryExecutionError::ResolveEntitiesError(format!(
-                            "{}, query = {:?}",
-                            e, query_debug_info
-                        ))
-                    })
-            }
+        if let Some(filter) = filter {
+            query = store_filter(query, filter).map_err(|e| {
+                QueryExecutionError::FilterNotSupportedError(format!("{}", e.value), e.filter)
+            })?;
         }
+
+        if let Some((attribute, cast, direction)) = order {
+            query = query.order(
+                sql::<Text>("(data ->")
+                    .bind::<Text, _>(attribute)
+                    .sql("->> 'data')")
+                    .sql(cast)
+                    .sql(" ")
+                    .sql(direction)
+                    .sql(" NULLS LAST"),
+            );
+        }
+        query = query.then_order_by(entities.id.asc());
+
+        if let Some(first) = first {
+            query = query.limit(first as i64);
+        }
+        if skip > 0 {
+            query = query.offset(skip as i64);
+        }
+
+        let query_debug_info = debug_query(&query).to_string();
+
+        query
+            .load::<(serde_json::Value, String)>(conn)
+            .map_err(|e| {
+                QueryExecutionError::ResolveEntitiesError(format!(
+                    "{}, query = {:?}",
+                    e, query_debug_info
+                ))
+            })
     }
 
     fn insert(
@@ -864,34 +841,30 @@ impl Table {
     ) -> Result<usize, StoreError> {
         let event_source = HistoryEvent::to_event_source_string(&history_event);
 
-        match self {
-            Table::Split(entities) => {
-                // Since we are not using a subgraphs.entities table trigger for
-                // the history of the subgraph of subgraphs, write entity_history
-                // data for the subgraph of subgraphs directly
-                if history_event.is_some() && key.subgraph_id == *SUBGRAPHS_ID {
-                    let history_event = history_event.unwrap();
-                    self.add_entity_history_record(
-                        conn,
-                        history_event,
-                        false,
-                        &key,
-                        OperationType::Insert,
-                    )?;
-                }
-
-                Ok(diesel::sql_query(format!(
-                    "insert into {}.entities(entity, id, data, event_source)
-                       values($1, $2, $3, $4)",
-                    entities.schema
-                ))
-                .bind::<Text, _>(&key.entity_type)
-                .bind::<Text, _>(&key.entity_id)
-                .bind::<Jsonb, _>(&data)
-                .bind::<Text, _>(&event_source)
-                .execute(conn)?)
-            }
+        // Since we are not using a subgraphs.entities table trigger for
+        // the history of the subgraph of subgraphs, write entity_history
+        // data for the subgraph of subgraphs directly
+        if history_event.is_some() && key.subgraph_id == *SUBGRAPHS_ID {
+            let history_event = history_event.unwrap();
+            self.add_entity_history_record(
+                conn,
+                history_event,
+                false,
+                &key,
+                OperationType::Insert,
+            )?;
         }
+
+        Ok(diesel::sql_query(format!(
+            "insert into {}.entities(entity, id, data, event_source)
+                       values($1, $2, $3, $4)",
+            self.schema
+        ))
+        .bind::<Text, _>(&key.entity_type)
+        .bind::<Text, _>(&key.entity_id)
+        .bind::<Jsonb, _>(&data)
+        .bind::<Text, _>(&event_source)
+        .execute(conn)?)
     }
 
     fn upsert(
@@ -903,23 +876,19 @@ impl Table {
     ) -> Result<usize, StoreError> {
         let event_source = HistoryEvent::to_event_source_string(&history_event);
 
-        match self {
-            Table::Split(entities) => {
-                let query = format!(
-                    "insert into {}.entities(entity, id, data, event_source)
+        let query = format!(
+            "insert into {}.entities(entity, id, data, event_source)
                        values($1, $2, $3, $4)
                      on conflict(entity, id)
                        do update set data = $3, event_source = $4",
-                    entities.schema
-                );
-                let query = diesel::sql_query(query)
-                    .bind::<Text, _>(&key.entity_type)
-                    .bind::<Text, _>(&key.entity_id)
-                    .bind::<Jsonb, _>(data)
-                    .bind::<Text, _>(event_source);
-                Ok(query.execute(conn)?)
-            }
-        }
+            self.schema
+        );
+        let query = diesel::sql_query(query)
+            .bind::<Text, _>(&key.entity_type)
+            .bind::<Text, _>(&key.entity_id)
+            .bind::<Jsonb, _>(data)
+            .bind::<Text, _>(event_source);
+        Ok(query.execute(conn)?)
     }
 
     fn update(
@@ -931,25 +900,21 @@ impl Table {
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        match self {
-            Table::Split(entities) => {
-                // Since we are not using a subgraphs.entities table trigger for
-                // the history of the subgraph of subgraphs, write entity_history
-                // data for the subgraph of subgraphs directly
-                if history_event.is_some() && key.subgraph_id == *SUBGRAPHS_ID {
-                    let history_event = history_event.unwrap();
-                    self.add_entity_history_record(
-                        conn,
-                        history_event,
-                        false,
-                        &key,
-                        OperationType::Update,
-                    )?;
-                }
-
-                entities.update(conn, key, data, overwrite, guard, history_event)
-            }
+        // Since we are not using a subgraphs.entities table trigger for
+        // the history of the subgraph of subgraphs, write entity_history
+        // data for the subgraph of subgraphs directly
+        if history_event.is_some() && key.subgraph_id == *SUBGRAPHS_ID {
+            let history_event = history_event.unwrap();
+            self.add_entity_history_record(
+                conn,
+                history_event,
+                false,
+                &key,
+                OperationType::Update,
+            )?;
         }
+
+        self.update_data(conn, key, data, overwrite, guard, history_event)
     }
 
     fn delete(
@@ -967,34 +932,30 @@ impl Table {
         .map_err(|e| format_err!("Failed to set event source for remove operation: {}", e))
         .map(|_| ())?;
 
-        match self {
-            Table::Split(entities) => {
-                // Since we are not using a subgraphs.entities table trigger for
-                // the history of the subgraph of subgraphs, write entity_history
-                // data for the subgraph of subgraphs directly
-                if history_event.is_some() && key.subgraph_id == *SUBGRAPHS_ID {
-                    let history_event = history_event.unwrap();
-                    self.add_entity_history_record(
-                        conn,
-                        history_event,
-                        false,
-                        &key,
-                        OperationType::Delete,
-                    )?;
-                }
+        // Since we are not using a subgraphs.entities table trigger for
+        // the history of the subgraph of subgraphs, write entity_history
+        // data for the subgraph of subgraphs directly
+        if history_event.is_some() && key.subgraph_id == *SUBGRAPHS_ID {
+            let history_event = history_event.unwrap();
+            self.add_entity_history_record(
+                conn,
+                history_event,
+                false,
+                &key,
+                OperationType::Delete,
+            )?;
+        }
 
-                let query = format!(
-                    "delete from {}.entities
+        let query = format!(
+            "delete from {}.entities
                       where entity = $1
                         and id = $2",
-                    entities.schema
-                );
-                let query = diesel::sql_query(query)
-                    .bind::<Text, _>(&key.entity_type)
-                    .bind::<Text, _>(&key.entity_id);
-                Ok(query.execute(conn)?)
-            }
-        }
+            self.schema
+        );
+        let query = diesel::sql_query(query)
+            .bind::<Text, _>(&key.entity_type)
+            .bind::<Text, _>(&key.entity_id);
+        Ok(query.execute(conn)?)
     }
 
     /// Adjust the `entityCount` property of the `SubgraphDeployment` for
@@ -1006,9 +967,7 @@ impl Table {
         subgraph: &SubgraphDeploymentId,
         count: i32,
     ) -> Result<(), StoreError> {
-        let count_query = match self {
-            Table::Split(entities) => format!("select count(*) from {}.entities", entities.schema),
-        };
+        let count_query = format!("select count(*) from {}.entities", self.schema);
         // The big complication in this query is how to determine what the
         // new entityCount should be. We want to make sure that if the entityCount
         // is NULL or the special value `00`, it gets recomputed. Using `00` here
@@ -1051,18 +1010,14 @@ impl Table {
         entity_id: &String,
         entities: Vec<&String>,
     ) -> Result<Option<String>, StoreError> {
-        match self {
-            Table::Split(ents) => {
-                let ents = ents.clone();
-                Ok(ents
-                    .table
-                    .select(ents.entity.clone())
-                    .filter(ents.entity.eq(any(entities)))
-                    .filter(ents.id.eq(entity_id))
-                    .first(conn)
-                    .optional()?)
-            }
-        }
+        let ents = self.clone();
+        Ok(ents
+            .table
+            .select(ents.entity.clone())
+            .filter(ents.entity.eq(any(entities)))
+            .filter(ents.id.eq(entity_id))
+            .first(conn)
+            .optional()?)
     }
 
     /// This takes a history event, a reversion flag, an entity key to create
@@ -1080,9 +1035,7 @@ impl Table {
         key: &EntityKey,
         operation: OperationType,
     ) -> Result<(), Error> {
-        let schema = match self {
-            Table::Split(split_table) => split_table.schema.as_str(),
-        };
+        let schema = self.schema.as_str();
 
         if schema == SUBGRAPHS_ID.to_string() {
             diesel::sql_query(format!(
@@ -1144,22 +1097,17 @@ impl Table {
         subgraph_id: &SubgraphDeploymentId,
         block_ptr: String,
     ) -> Result<(StoreEvent, i32), StoreError> {
+        use self::subgraphs::entity_history::dsl as h;
+        use self::subgraphs::event_meta_data as m;
         // Collect entity history events in the subgraph of subgraphs that
         // match the subgraph for which we're reverting the block
-        let entries: Vec<RawHistory> = match self {
-            Table::Split(_) => {
-                use self::subgraphs::entity_history::dsl as h;
-                use self::subgraphs::event_meta_data as m;
-
-                h::entity_history
-                    .inner_join(m::table)
-                    .select((h::id, h::entity, h::entity_id, h::data_before, h::op_id))
-                    .filter(h::subgraph.eq(&**subgraph_id))
-                    .filter(m::source.eq(&block_ptr))
-                    .order(h::event_id.desc())
-                    .load(conn)?
-            }
-        };
+        let entries: Vec<RawHistory> = h::entity_history
+            .inner_join(m::table)
+            .select((h::id, h::entity, h::entity_id, h::data_before, h::op_id))
+            .filter(h::subgraph.eq(&**subgraph_id))
+            .filter(m::source.eq(&block_ptr))
+            .order(h::event_id.desc())
+            .load(conn)?;
 
         // Apply revert operations
         self.revert_entity_history_records(conn, entries)
@@ -1174,27 +1122,23 @@ impl Table {
         conn: &PgConnection,
         block_ptr: String,
     ) -> Result<(StoreEvent, i32), StoreError> {
-        // Collect entity history events for the subgraph for which we're
-        // reverting the block
-        let entries: Vec<RawHistory> = match self {
-            Table::Split(entities) => {
-                // We can't use Diesel's JoinOnDsl here because DynamicTable
-                // does not implement AppearsInFromClause, so we have to run
-                // a raw SQL query
-                let query = format!(
-                    "select h.id, h.entity, h.entity_id, h.data_before, h.op_id
+        // We can't use Diesel's JoinOnDsl here because DynamicTable
+        // does not implement AppearsInFromClause, so we have to run
+        // a raw SQL query
+        let query = format!(
+            "select h.id, h.entity, h.entity_id, h.data_before, h.op_id
                        from {}.entity_history h, event_meta_data m
                       where m.id = h.event_id
                         and m.source = $1
                       order by h.event_id desc",
-                    entities.schema
-                );
+            self.schema
+        );
 
-                let query = diesel::sql_query(query).bind::<Text, _>(&block_ptr);
+        let query = diesel::sql_query(query).bind::<Text, _>(&block_ptr);
 
-                query.get_results(conn)?
-            }
-        };
+        // Collect entity history events for the subgraph for which we're
+        // reverting the block
+        let entries: Vec<RawHistory> = query.get_results(conn)?;
 
         // Apply revert operations
         self.revert_entity_history_records(conn, entries)
@@ -1236,43 +1180,40 @@ impl Table {
         // `index.attribute_number` to be stable, i.e., that we always get the
         // same numbers for the same `(entity, attribute)` combination. If it is
         // not stable, we will create duplicate indexes
-        match self {
-            Table::Split(entities) => {
-                // It is possible that the user's `entity_name` and
-                // `attribute_name` are so long that `name` becomes longer than
-                // 63 characters which is Postgres' length limit on identifiers.
-                // If we go over, Postgres will truncate the name to 63 characters;
-                // because of that we include the `entity_number` and
-                // `attribute_number` to ensure that a 63 character prefix
-                // of the name is guaranteed to be unique
-                let name = format!(
-                    "attr_{}_{}_{}_{}",
-                    index.entity_number,
-                    index.attribute_number,
-                    to_snake_case(&index.entity_name),
-                    to_snake_case(&index.attribute_name)
-                );
-                let query = format!(
-                    "create index if not exists {name}
+
+        // It is possible that the user's `entity_name` and
+        // `attribute_name` are so long that `name` becomes longer than
+        // 63 characters which is Postgres' length limit on identifiers.
+        // If we go over, Postgres will truncate the name to 63 characters;
+        // because of that we include the `entity_number` and
+        // `attribute_number` to ensure that a 63 character prefix
+        // of the name is guaranteed to be unique
+        let name = format!(
+            "attr_{}_{}_{}_{}",
+            index.entity_number,
+            index.attribute_number,
+            to_snake_case(&index.entity_name),
+            to_snake_case(&index.attribute_name)
+        );
+        let query = format!(
+            "create index if not exists {name}
                          on {subgraph}.entities
                       using {index_type} (
                               ((data->'{attribute_name}'{jsonb_operator}'data'){type_cast})
                               {index_operator}
                             )
                       where entity='{entity_name}'",
-                    name = name,
-                    subgraph = entities.schema,
-                    index_type = index_type,
-                    attribute_name = &index.attribute_name,
-                    jsonb_operator = jsonb_operator,
-                    type_cast = type_cast,
-                    index_operator = index_operator,
-                    entity_name = &index.entity_name
-                );
-                conn.batch_execute(&*query)?;
-                Ok(1)
-            }
-        }
+            name = name,
+            subgraph = self.schema,
+            index_type = index_type,
+            attribute_name = &index.attribute_name,
+            jsonb_operator = jsonb_operator,
+            type_cast = type_cast,
+            index_operator = index_operator,
+            entity_name = &index.entity_name
+        );
+        conn.batch_execute(&*query)?;
+        Ok(1)
     }
 
     fn revert_entity_history_records(
@@ -1280,9 +1221,7 @@ impl Table {
         conn: &PgConnection,
         records: Vec<RawHistory>,
     ) -> Result<(Vec<EntityChange>, i32), StoreError> {
-        let subgraph_id = match self {
-            Table::Split(entities) => entities.subgraph.clone(),
-        };
+        let subgraph_id = self.subgraph.clone();
 
         let mut changes = vec![];
         let mut count = 0;
