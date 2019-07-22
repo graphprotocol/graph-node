@@ -79,36 +79,6 @@ pub(crate) trait EntitySource {}
 // this module to make sure that nobody else gets access to them. All access
 // to these tables must go through functions in this module.
 mod public {
-    use diesel::sql_types::Varchar;
-
-    table! {
-        entities (id, subgraph, entity) {
-            id -> Varchar,
-            subgraph -> Varchar,
-            entity -> Varchar,
-            data -> Jsonb,
-            event_source -> Varchar,
-        }
-    }
-
-    table! {
-        entity_history (id) {
-            id -> Integer,
-            // This is a BigInt in the database, but if we mark it that
-            // diesel won't let us join event_meta_data and entity_history
-            // Since event_meta_data.id is Integer, it shouldn't matter
-            // that we call it Integer here
-            event_id -> Integer,
-            entity_id -> Varchar,
-            subgraph -> Varchar,
-            entity -> Varchar,
-            data_before -> Nullable<Jsonb>,
-            data_after -> Nullable<Jsonb>,
-            op_id -> SmallInt,
-            reversion -> Bool,
-        }
-    }
-
     table! {
         event_meta_data (id) {
             id -> Integer,
@@ -118,9 +88,6 @@ mod public {
         }
     }
 
-    joinable!(entity_history -> event_meta_data (event_id));
-    allow_tables_to_appear_in_same_query!(entity_history, event_meta_data);
-
     /// We support different storage schemes per subgraph. This enum is used
     /// to track which scheme a given subgraph uses and corresponds to the
     /// `deployment_schema_version` type in the database.
@@ -129,7 +96,8 @@ mod public {
     /// each subgraph. Subgraphs that use the `Public` scheme have their
     /// entities stored in the monolithic `public.entities` table, subgraphs
     /// that store their entities and history in a dedicated database schema
-    /// are marked with version `Split`.
+    /// are marked with version `Split`. The `Public` variant is not supported
+    /// any longer, and trying to access subgraphs using that schema will fail.
     ///
     /// Migrating a subgraph amounts to changing the storage scheme for that
     /// subgraph from one version to another. Whether a subgraph scheme needs
@@ -185,11 +153,6 @@ mod public {
             state -> crate::entities::public::DeploymentSchemaStateMapping,
         }
     }
-
-    // Migrate entities storage to a split entities table, one stored proc
-    // for each migration step
-    sql_function!(fn migrate_entities_tables(schema_name: Varchar, schema_version: DeploymentSchemaVersionMapping, subgraph: Varchar));
-    sql_function!(fn migrate_entities_data(schema_name: Varchar, schema_version: DeploymentSchemaVersionMapping, subgraph: Varchar) -> Integer);
 }
 
 // The entities table for the subgraph of subgraphs.
@@ -235,8 +198,6 @@ mod subgraphs {
     joinable!(entity_history -> event_meta_data (event_id));
     allow_tables_to_appear_in_same_query!(entity_history, event_meta_data);
 }
-
-impl EntitySource for self::public::entities::table {}
 
 impl EntitySource for self::subgraphs::entities::table {}
 
@@ -1398,9 +1359,7 @@ impl Table {
 /// it very hard to export items just for testing
 pub fn delete_all_entities_for_test_use_only(conn: &PgConnection) -> Result<usize, StoreError> {
     // Delete public entities and related data
-    let mut rows = diesel::delete(public::entities::table).execute(conn)?;
-    rows = rows + diesel::delete(public::entity_history::table).execute(conn)?;
-    rows = rows + diesel::delete(public::event_meta_data::table).execute(conn)?;
+    let mut rows = diesel::delete(public::event_meta_data::table).execute(conn)?;
     // Delete all subgraph schemas
     for subgraph in public::deployment_schemas::table
         .select(public::deployment_schemas::subgraph)
