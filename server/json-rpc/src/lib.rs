@@ -229,6 +229,7 @@ where
 
         let me = arc_self.clone();
         handler.add_method("subgraph_reassign", move |params: Params| {
+            dbg!(params);
             let me = me.clone();
             params
                 .parse()
