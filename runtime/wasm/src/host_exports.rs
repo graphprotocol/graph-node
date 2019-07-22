@@ -599,7 +599,8 @@ where
         );
 
         // Resolve the name into the right template
-        self.templates
+        let template = self
+            .templates
             .iter()
             .find(|template| template.name == name)
             .ok_or_else(|| {
@@ -615,12 +616,13 @@ where
                         .collect::<Vec<_>>()
                         .join(", ")
                 ))
-            })?;
+            })?
+            .clone();
 
         // Remember that we need to create this data source
         ctx.state.created_data_sources.push(DataSourceTemplateInfo {
             data_source: self.data_source_name.clone(),
-            template: name,
+            template,
             params,
         });
 

@@ -666,7 +666,7 @@ impl UnresolvedDataSource {
 
 impl DataSource {
     pub fn try_from_template(
-        template: &DataSourceTemplate,
+        template: DataSourceTemplate,
         params: &Vec<String>,
     ) -> Result<Self, failure::Error> {
         // Obtain the address from the parameters
@@ -689,14 +689,14 @@ impl DataSource {
         })?;
 
         Ok(DataSource {
-            kind: template.kind.clone(),
-            network: template.network.clone(),
-            name: template.name.clone(),
+            kind: template.kind,
+            network: template.network,
+            name: template.name,
             source: Source {
                 address: Some(address),
-                abi: template.source.abi.clone(),
+                abi: template.source.abi,
             },
-            mapping: template.mapping.clone(),
+            mapping: template.mapping,
             templates: None,
         })
     }

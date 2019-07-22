@@ -780,15 +780,11 @@ fn data_source_create() {
     let data_source = String::from("example data source");
     let template = String::from("example template");
     let params = vec![String::from("0xc0a47dFe034B400B47bDaD5FecDa2621de6c4d95")];
-    let result = run_data_source_create(template.clone(), params.clone());
-    assert_eq!(
-        result.expect("unexpected error returned from dataSourceCreate"),
-        vec![DataSourceTemplateInfo {
-            data_source: data_source.clone(),
-            template: template.clone(),
-            params: params.clone()
-        }]
-    );
+    let result = run_data_source_create(template.clone(), params.clone())
+        .expect("unexpected error returned from dataSourceCreate");
+    assert_eq!(result[0].data_source, data_source);
+    assert_eq!(result[0].params, params.clone());
+    assert_eq!(result[0].template.name, template);
 
     // Test with a template that doesn't exist
     let template = String::from("nonexistent template");
