@@ -147,6 +147,7 @@ fn multiple_data_sources_per_subgraph() {
             _: String,
             _: SubgraphDeploymentId,
             data_source: DataSource,
+            _: Vec<DataSourceTemplate>,
         ) -> Result<Self::Host, Error> {
             self.data_sources_received.lock().unwrap().push(data_source);
 

@@ -56,5 +56,6 @@ pub trait RuntimeHostBuilder: Clone + Send + Sync + 'static {
         network_name: String,
         subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
+        top_level_templates: Vec<DataSourceTemplate>,
     ) -> Result<Self::Host, Error>;
 }

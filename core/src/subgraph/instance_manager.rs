@@ -16,25 +16,26 @@ use super::SubgraphInstance;
 type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<SubgraphDeploymentId, CancelGuard>>>;
 
 struct IndexingInputs<B, S, T> {
-    pub deployment_id: SubgraphDeploymentId,
-    pub network_name: String,
-    pub store: Arc<S>,
-    pub stream_builder: B,
-    pub host_builder: T,
-    pub include_calls_in_blocks: bool,
+    deployment_id: SubgraphDeploymentId,
+    network_name: String,
+    store: Arc<S>,
+    stream_builder: B,
+    host_builder: T,
+    include_calls_in_blocks: bool,
+    top_level_templates: Vec<DataSourceTemplate>,
 }
 
 struct IndexingState<T>
 where
     T: RuntimeHostBuilder,
 {
-    pub logger: Logger,
-    pub instance: SubgraphInstance<T>,
-    pub instances: SharedInstanceKeepAliveMap,
-    pub log_filter: Option<EthereumLogFilter>,
-    pub call_filter: Option<EthereumCallFilter>,
-    pub block_filter: Option<EthereumBlockFilter>,
-    pub restarts: u64,
+    logger: Logger,
+    instance: SubgraphInstance<T>,
+    instances: SharedInstanceKeepAliveMap,
+    log_filter: Option<EthereumLogFilter>,
+    call_filter: Option<EthereumCallFilter>,
+    block_filter: Option<EthereumBlockFilter>,
+    restarts: u64,
 }
 
 struct IndexingContext<B, S, T>
@@ -210,6 +211,8 @@ impl SubgraphInstanceManager {
             })
             .is_some();
 
+        let top_level_templates = manifest.templates.clone();
+
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
         let instance = SubgraphInstance::from_manifest(&logger, manifest, &host_builder)?;
@@ -223,6 +226,7 @@ impl SubgraphInstanceManager {
                 stream_builder,
                 host_builder,
                 include_calls_in_blocks,
+                top_level_templates: top_level_templates.unwrap_or_default(),
             },
             state: IndexingState {
                 logger,
@@ -666,6 +670,7 @@ where
                 state.ctx.inputs.network_name.clone(),
                 state.ctx.inputs.deployment_id.clone(),
                 data_source.clone(),
+                state.ctx.inputs.top_level_templates.clone(),
             ) {
                 Ok(host) => Arc::new(host),
                 Err(e) => return future::err(e),
