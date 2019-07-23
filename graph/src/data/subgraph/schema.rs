@@ -336,6 +336,7 @@ pub struct SubgraphManifestEntity {
     repository: Option<String>,
     schema: String,
     data_sources: Vec<EthereumContractDataSourceEntity>,
+    templates: Option<Vec<EthereumContractDataSourceTemplateEntity>>,
 }
 
 impl TypedEntity for SubgraphManifestEntity {
@@ -358,6 +359,18 @@ impl SubgraphManifestEntity {
             data_source_ids.push(data_source_id.into());
         }
 
+        let template_ids: Option<Vec<Value>> = self.templates.map(|templates| {
+            templates
+                .into_iter()
+                .enumerate()
+                .map(|(i, template)| {
+                    let template_id = format!("{}-templates-{}", id, i);
+                    ops.extend(template.write_operations(&template_id));
+                    template_id.into()
+                })
+                .collect()
+        });
+
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("specVersion", self.spec_version);
@@ -365,6 +378,9 @@ impl SubgraphManifestEntity {
         entity.set("repository", self.repository);
         entity.set("schema", self.schema);
         entity.set("dataSources", data_source_ids);
+        if let Some(ids) = template_ids {
+            entity.set("templates", ids);
+        }
         ops.push(set_entity_operation(Self::TYPENAME, id, entity));
 
         ops
@@ -379,6 +395,12 @@ impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifestEntity {
             repository: manifest.repository.clone(),
             schema: manifest.schema.document.clone().to_string(),
             data_sources: manifest.data_sources.iter().map(Into::into).collect(),
+            templates: manifest.templates.as_ref().map(|templates| {
+                templates
+                    .iter()
+                    .map(|template| EthereumContractDataSourceTemplateEntity::from(template))
+                    .collect()
+            }),
         }
     }
 }
