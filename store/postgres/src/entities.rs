@@ -75,9 +75,9 @@ impl Into<i32> for OperationType {
 /// Marker trait for tables that store entities
 pub(crate) trait EntitySource {}
 
-// The entities and related tables in the public schema. We put them in
-// this module to make sure that nobody else gets access to them. All access
-// to these tables must go through functions in this module.
+// Tables in the public schema that are shared across subgraphs. We put them
+// in this module to make sure that nobody else gets access to them. All
+// access to these tables must go through functions in this module.
 mod public {
     table! {
         event_meta_data (id) {
@@ -114,13 +114,8 @@ mod public {
     /// step data is moved from the old storage scheme to the new one. These
     /// two steps happen in separate database transactions, since the first
     /// step takes fairly strong locks, that can block other database work.
-    /// In the case of the `Public -> Split` migration, the schema changes
-    /// take a lock on `event_meta_data`, which, if held for too long, ends up
-    /// blocking any write access to the `public.entities` table because of
-    /// the way in which history is recorded. The second step, moving data,
-    /// only requires relatively weak locks that do not block write activity
-    /// to rows in `public.entities` that are not affected by the migration
-    /// of a different subgraph.
+    /// The second step, moving data, only requires relatively weak locks
+    /// that do not block write activity in other subgraphs.
     ///
     /// The `Ready` state indicates that the subgraph is ready to use the
     /// storage scheme indicated by `deployment_schemas.version`. After the
@@ -249,8 +244,7 @@ struct Schema {
 type EntityColumn<ST> = Column<DynamicTable<String>, String, ST>;
 
 /// A table representing a split entities table, i.e. a setup where
-/// a subgraph deployment's entities are split into their own schema rather
-/// than residing in the entities table in the `public` database schema
+/// a subgraph deployment's entities are stored in their own schema
 #[derive(Debug, Clone)]
 pub(crate) struct Table {
     /// The name of the database schema
@@ -292,9 +286,8 @@ impl QueryableByName<Pg> for RawHistory {
 
 /// A connection into the database to handle entities which caches the
 /// mapping to actual database tables. Instances of this struct must not be
-/// cached across transactions as we do not track possible changes to
-/// entity storage, such as migrating a subgraph from the monolithic
-/// entities table to a split entities table
+/// cached across transactions as there is no mechanism in place to notify
+/// other index nodes that a subgraph has been migrated
 pub(crate) struct Connection<'a> {
     pub conn: &'a PgConnection,
     tables: RefCell<HashMap<SubgraphDeploymentId, Table>>,
@@ -1024,9 +1017,8 @@ impl Table {
     /// the history record for and an operation type (e.g. `OperationType::Insert`).
     /// It then creates an entry in the subgraph's `entity_history` table.
     ///
-    /// Special casing is applied for the "public.entities" and "subgraphs.entities"
-    /// tables, as their history records include the subgraph ID in the "subgraph"
-    /// column.
+    /// Special casing is applied for the `subgraphs.entities` table, as its
+    /// history records include the subgraph ID in the `subgraph` column.
     fn add_entity_history_record(
         &self,
         conn: &PgConnection,
