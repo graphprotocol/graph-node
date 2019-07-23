@@ -81,6 +81,7 @@ where
         network_name: String,
         subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
+        top_level_templates: Vec<DataSourceTemplate>,
     ) -> Result<Self::Host, Error> {
         let store = self.stores.get(&network_name).ok_or_else(|| {
             format_err!(
@@ -96,6 +97,13 @@ where
             )
         })?;
 
+        // Detect whether the subgraph uses templates in data sources, which are
+        // deprecated, or the top-level templates field.
+        let templates = match top_level_templates.is_empty() {
+            false => top_level_templates,
+            true => data_source.templates.unwrap_or_default(),
+        };
+
         RuntimeHost::new(
             logger,
             ethereum_adapter.clone(),
@@ -106,7 +114,7 @@ where
                 mapping: data_source.mapping,
                 data_source_name: data_source.name,
                 contract: data_source.source,
-                templates: data_source.templates.unwrap_or_default(),
+                templates,
             },
         )
     }
