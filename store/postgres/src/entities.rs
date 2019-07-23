@@ -24,7 +24,7 @@ use diesel::debug_query;
 use diesel::deserialize::QueryableByName;
 use diesel::dsl::{any, sql};
 use diesel::pg::{Pg, PgConnection};
-use diesel::sql_types::{Bool, Integer, Jsonb, Nullable, Text};
+use diesel::sql_types::{Integer, Jsonb, Nullable, Text};
 use diesel::BoolExpressionMethods;
 use diesel::Connection as _;
 use diesel::ExpressionMethods;
@@ -834,7 +834,7 @@ impl Table {
     ) -> Result<usize, StoreError> {
         let event_source = HistoryEvent::to_event_source_string(&history_event);
 
-        self.add_entity_history_record(conn, history_event, false, &key, OperationType::Insert)?;
+        self.add_entity_history_record(conn, history_event, &key, OperationType::Insert)?;
 
         Ok(diesel::sql_query(format!(
             "insert into {}.entities(entity, id, data, event_source)
@@ -881,7 +881,7 @@ impl Table {
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        self.add_entity_history_record(conn, history_event, false, &key, OperationType::Update)?;
+        self.add_entity_history_record(conn, history_event, &key, OperationType::Update)?;
 
         self.update_data(conn, key, data, overwrite, guard, history_event)
     }
@@ -901,7 +901,7 @@ impl Table {
         .map_err(|e| format_err!("Failed to set event source for remove operation: {}", e))
         .map(|_| ())?;
 
-        self.add_entity_history_record(conn, history_event, false, &key, OperationType::Delete)?;
+        self.add_entity_history_record(conn, history_event, &key, OperationType::Delete)?;
 
         let query = format!(
             "delete from {}.entities
@@ -987,7 +987,6 @@ impl Table {
         &self,
         conn: &PgConnection,
         history_event: Option<&HistoryEvent>,
-        reversion: bool,
         key: &EntityKey,
         operation: OperationType,
     ) -> Result<(), Error> {
@@ -1009,7 +1008,7 @@ impl Table {
                 "insert into {}.entity_history(
                    event_id,
                    subgraph, entity, entity_id,
-                   data_before, reversion, op_id
+                   data_before, op_id
                  )
                  select
                    $1 as event_id,
@@ -1020,15 +1019,13 @@ impl Table {
                       from {}.entities
                      where entity = $3
                        and id = $4) as data_before,
-                   $5 as reversion,
-                   $6 as op_id",
+                   $5 as op_id",
                 schema, schema,
             ))
             .bind::<Integer, _>(history_event.id)
             .bind::<Text, _>(&*history_event.subgraph)
             .bind::<Text, _>(&key.entity_type)
             .bind::<Text, _>(&key.entity_id)
-            .bind::<Bool, _>(&reversion)
             .bind::<Integer, i32>(operation.into())
             .execute(conn)?;
         } else {
@@ -1036,21 +1033,19 @@ impl Table {
                 "insert into {}.entity_history(
                    event_id,
                    entity, entity_id,
-                   data_before, reversion, op_id
+                   data_before, op_id
                  )
                  select
                    $1 as event_id,
                    $2 as entity,
                    $3 as entity_id,
                    (select data from {}.entities where entity = $2 and id = $3) as data_before,
-                   $4 as reversion,
-                   $5 as op_id",
+                   $4 as op_id",
                 schema, schema
             ))
             .bind::<Integer, _>(history_event.id)
             .bind::<Text, _>(&key.entity_type)
             .bind::<Text, _>(&key.entity_id)
-            .bind::<Bool, _>(&reversion)
             .bind::<Integer, i32>(operation.into())
             .execute(conn)?;
         }
