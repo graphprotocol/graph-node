@@ -834,19 +834,7 @@ impl Table {
     ) -> Result<usize, StoreError> {
         let event_source = HistoryEvent::to_event_source_string(&history_event);
 
-        // Since we are not using a subgraphs.entities table trigger for
-        // the history of the subgraph of subgraphs, write entity_history
-        // data for the subgraph of subgraphs directly
-        if history_event.is_some() && key.subgraph_id == *SUBGRAPHS_ID {
-            let history_event = history_event.unwrap();
-            self.add_entity_history_record(
-                conn,
-                history_event,
-                false,
-                &key,
-                OperationType::Insert,
-            )?;
-        }
+        self.add_entity_history_record(conn, history_event, false, &key, OperationType::Insert)?;
 
         Ok(diesel::sql_query(format!(
             "insert into {}.entities(entity, id, data, event_source)
@@ -893,19 +881,7 @@ impl Table {
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        // Since we are not using a subgraphs.entities table trigger for
-        // the history of the subgraph of subgraphs, write entity_history
-        // data for the subgraph of subgraphs directly
-        if history_event.is_some() && key.subgraph_id == *SUBGRAPHS_ID {
-            let history_event = history_event.unwrap();
-            self.add_entity_history_record(
-                conn,
-                history_event,
-                false,
-                &key,
-                OperationType::Update,
-            )?;
-        }
+        self.add_entity_history_record(conn, history_event, false, &key, OperationType::Update)?;
 
         self.update_data(conn, key, data, overwrite, guard, history_event)
     }
@@ -925,19 +901,7 @@ impl Table {
         .map_err(|e| format_err!("Failed to set event source for remove operation: {}", e))
         .map(|_| ())?;
 
-        // Since we are not using a subgraphs.entities table trigger for
-        // the history of the subgraph of subgraphs, write entity_history
-        // data for the subgraph of subgraphs directly
-        if history_event.is_some() && key.subgraph_id == *SUBGRAPHS_ID {
-            let history_event = history_event.unwrap();
-            self.add_entity_history_record(
-                conn,
-                history_event,
-                false,
-                &key,
-                OperationType::Delete,
-            )?;
-        }
+        self.add_entity_history_record(conn, history_event, false, &key, OperationType::Delete)?;
 
         let query = format!(
             "delete from {}.entities
@@ -1022,11 +986,22 @@ impl Table {
     fn add_entity_history_record(
         &self,
         conn: &PgConnection,
-        history_event: &HistoryEvent,
+        history_event: Option<&HistoryEvent>,
         reversion: bool,
         key: &EntityKey,
         operation: OperationType,
     ) -> Result<(), Error> {
+        // We only need to do work for the subgraph of subgraphs. All other
+        // entities tables have triggers that will populate a history record
+        // whenever we make a change to an entity
+        if key.subgraph_id != *SUBGRAPHS_ID {
+            return Ok(());
+        }
+        let history_event = match history_event {
+            None => return Ok(()),
+            Some(event) => event,
+        };
+
         let schema = self.schema.as_str();
 
         if schema == SUBGRAPHS_ID.to_string() {
