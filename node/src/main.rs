@@ -341,7 +341,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .parse()
         .expect("Invalid disable block ingestor value");
 
-    // Obtain MAX_CONN_STORE_POOL setting
+    // Obtain STORE_CONNECTION_POOL_SIZE setting
     let store_conn_pool_size = matches
         .value_of("store-connection-pool-size")
         .unwrap()
