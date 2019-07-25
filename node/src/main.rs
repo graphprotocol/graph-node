@@ -277,7 +277,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .value_name("STORE_CONNECTION_POOL_SIZE")
                 .default_value("10")
                 .env("STORE_CONNECTION_POOL_SIZE")
-                .help("Limits the maximum number of connections in the Store's connection pool"),
+                .help("Limits the number of connections in the store's connection pool"),
         )
         .get_matches();
 
@@ -318,12 +318,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .value_of("http-port")
         .unwrap()
         .parse()
-        .expect("Invalid GraphQL HTTP server port");
+        .expect("invalid GraphQL HTTP server port");
     let ws_port = matches
         .value_of("ws-port")
         .unwrap()
         .parse()
-        .expect("Invalid GraphQL WebSocket server port");
+        .expect("invalid GraphQL WebSocket server port");
 
     // Obtain JSON-RPC server port
     let json_rpc_port = matches
@@ -339,14 +339,14 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .value_of("disable-block-ingestor")
         .unwrap()
         .parse()
-        .expect("Invalid disable block ingestor value");
+        .expect("invalid --disable-block-ingestor/DISABLE_BLOCK_INGESTOR value");
 
     // Obtain STORE_CONNECTION_POOL_SIZE setting
     let store_conn_pool_size = matches
         .value_of("store-connection-pool-size")
         .unwrap()
         .parse()
-        .expect("Invalid store connection pool size value");
+        .expect("invalid --store-connection-pool-size/STORE_CONNECTION_POOL_SIZE value");
 
     // Minimum of two connections needed for the pool in order for the Store to bootstrap
     assert!(store_conn_pool_size > 1);
