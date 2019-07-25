@@ -335,7 +335,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     debug!(logger, "Setting up Sentry");
 
     // Obtain DISABLE_BLOCK_INGESTOR setting
-    let disable_block_ingestor = matches
+    let disable_block_ingestor: bool = matches
         .value_of("disable-block-ingestor")
         .unwrap()
         .parse()
@@ -524,7 +524,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let mut subscription_server =
         GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), generic_store.clone());
 
-    if disable_block_ingestor {
+    if !disable_block_ingestor {
         // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
         // otherwise BlockStream will not work properly.
         // BlockStream expects the blocks after the reorg threshold to be present in the
