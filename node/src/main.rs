@@ -469,7 +469,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     info!(
         logger,
         "Connecting to Postgres";
-        "url" => SafeDisplay(postgres_url.as_str())
+        "url" => SafeDisplay(postgres_url.as_str()),
+        "conn_pool_size" => store_conn_pool_size,
     );
 
     let stores: HashMap<String, Arc<DieselStore>> = eth_adapters
