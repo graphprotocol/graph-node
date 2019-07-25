@@ -263,6 +263,22 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .env("ETHEREUM_POLLING_INTERVAL")
                 .help("How often to poll the Ethereum node for new blocks"),
         )
+        .arg(
+            Arg::with_name("disable-block-ingestor")
+                .long("disable-block-ingestor")
+                .value_name("DISABLE_BLOCK_INGESTOR")
+                .env("DISABLE_BLOCK_INGESTOR")
+                .default_value("false")
+                .help("Ensures that the block ingestor component does not execute"),
+        )
+        .arg(
+            Arg::with_name("store-connection-pool-size")
+                .long("store-connection-pool-size")
+                .value_name("STORE_CONNECTION_POOL_SIZE")
+                .default_value("10")
+                .env("STORE_CONNECTION_POOL_SIZE")
+                .help("Limits the maximum number of connections in the Store's connection pool"),
+        )
         .get_matches();
 
     // Set up logger
@@ -302,12 +318,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .value_of("http-port")
         .unwrap()
         .parse()
-        .expect("invalid GraphQL HTTP server port");
+        .expect("Invalid GraphQL HTTP server port");
     let ws_port = matches
         .value_of("ws-port")
         .unwrap()
         .parse()
-        .expect("invalid GraphQL WebSocket server port");
+        .expect("Invalid GraphQL WebSocket server port");
 
     // Obtain JSON-RPC server port
     let json_rpc_port = matches
@@ -317,6 +333,20 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .expect("invalid admin port");
 
     debug!(logger, "Setting up Sentry");
+
+    // Obtain DISABLE_BLOCK_INGESTOR setting
+    let disable_block_ingestor = matches
+        .value_of("disable-block-ingestor")
+        .unwrap()
+        .parse()
+        .expect("Invalid disable block ingestor value");
+
+    // Obtain MAX_CONN_STORE_POOL setting
+    let store_conn_pool_size = matches
+        .value_of("store-connection-pool-size")
+        .unwrap()
+        .parse()
+        .expect("Invalid store connection pool size value");
 
     // Set up Sentry, with release tracking and panic handling;
     // fall back to an empty URL, which will result in no errors being reported
@@ -464,6 +494,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                                 postgres_url: postgres_url.clone(),
                                 network_name: network_name.to_string(),
                                 start_block: *ETHEREUM_START_BLOCK,
+                                conn_pool_size: store_conn_pool_size,
                             },
                             &logger,
                             network_identifier,
@@ -493,7 +524,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let mut subscription_server =
         GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), generic_store.clone());
 
-    if env::var_os("DISABLE_BLOCK_INGESTOR").unwrap_or("".into()) != "true" {
+    if disable_block_ingestor {
         // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
         // otherwise BlockStream will not work properly.
         // BlockStream expects the blocks after the reorg threshold to be present in the
