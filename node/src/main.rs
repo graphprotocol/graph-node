@@ -349,7 +349,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .expect("invalid --store-connection-pool-size/STORE_CONNECTION_POOL_SIZE value");
 
     // Minimum of two connections needed for the pool in order for the Store to bootstrap
-    assert!(store_conn_pool_size > 1);
+    if store_conn_pool_size <= 1 {
+        panic!("--store-connection-pool-size/STORE_CONNECTION_POOL_SIZE must be > 1")
+    }
 
     // Set up Sentry, with release tracking and panic handling;
     // fall back to an empty URL, which will result in no errors being reported
