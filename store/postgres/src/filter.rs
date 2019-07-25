@@ -1,7 +1,6 @@
 use diesel::dsl::{self, sql};
 use diesel::pg::Pg;
 use diesel::prelude::*;
-use diesel::query_builder::BoxedSelectStatement;
 use diesel::serialize::ToSql;
 use diesel::sql_types::{Array, Bool, Double, HasSqlType, Integer, Numeric, Text};
 use std::str::FromStr;
@@ -155,17 +154,6 @@ impl<QS> IntoArrayFilter<QS, SqlValue> for Vec<SqlValue> {
                 .sql(")"),
         ) as FilterExpression<QS>
     }
-}
-
-/// Adds `filter` to a `SELECT data FROM entities` statement.
-pub(crate) fn store_filter<QS, ST>(
-    query: BoxedSelectStatement<ST, QS, Pg>,
-    filter: EntityFilter,
-) -> Result<BoxedSelectStatement<ST, QS, Pg>, UnsupportedFilter>
-where
-    QS: EntitySource + 'static,
-{
-    Ok(query.filter(build_filter(filter)?))
 }
 
 pub(crate) fn build_filter<QS>(
