@@ -47,7 +47,7 @@ use graph::prelude::{
 };
 use graph::util::extend::Extend;
 
-use crate::filter::{build_filter, store_filter};
+use crate::filter::build_filter;
 use crate::functions::set_config;
 use crate::jsonb::PgJsonbExpressionMethods as _;
 
@@ -788,9 +788,10 @@ impl Table {
             .into_boxed::<Pg>();
 
         if let Some(filter) = filter {
-            query = store_filter(query, filter).map_err(|e| {
+            let filter = build_filter(filter).map_err(|e| {
                 QueryExecutionError::FilterNotSupportedError(format!("{}", e.value), e.filter)
             })?;
+            query = query.filter(filter);
         }
 
         if let Some((attribute, cast, direction)) = order {
