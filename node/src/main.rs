@@ -531,6 +531,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         // database.
         assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
 
+        info!(logger, "Starting block ingestor");
+
         // Create Ethereum block ingestors and spawn a thread to run each
         eth_adapters.iter().for_each(|(network_name, eth_adapter)| {
             let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
