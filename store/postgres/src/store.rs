@@ -102,6 +102,7 @@ pub struct StoreConfig {
     pub postgres_url: String,
     pub network_name: String,
     pub start_block: u64,
+    pub conn_pool_size: u32,
 }
 
 /// A Store based on Diesel and Postgres.
@@ -146,6 +147,7 @@ impl Store {
             // turns off this timeout and makes it possible that work needing
             // a database connection blocks for a very long time
             .connection_timeout(Duration::from_secs(6 * 60 * 60))
+            .max_size(config.conn_pool_size)
             .build(conn_manager)
             .unwrap();
         info!(
