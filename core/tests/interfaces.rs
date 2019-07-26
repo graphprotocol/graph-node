@@ -30,7 +30,7 @@ fn insert_and_query(
     let ops = SubgraphDeploymentEntity::new(&manifest, false, false, Default::default(), 1)
         .create_operations_replace(&subgraph_id);
     STORE
-        .create_subgraph_deployment(&logger, &subgraph_id, ops)
+        .create_subgraph_deployment(&logger, &schema, ops)
         .unwrap();
 
     let insert_ops = entities
