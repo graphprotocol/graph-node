@@ -19,14 +19,23 @@ pub struct EthereumAdapter<T: web3::Transport> {
 }
 
 lazy_static! {
-    static ref TRACE_STREAM_STEP_SIZE: u64 = ::std::env::var("ETHEREUM_TRACE_STREAM_STEP_SIZE")
+    static ref TRACE_STREAM_STEP_SIZE: u64 = std::env::var("ETHEREUM_TRACE_STREAM_STEP_SIZE")
         .unwrap_or("200".into())
         .parse::<u64>()
         .expect("invalid trace stream step size");
 
     /// Maximum number of chunks to request in parallel when streaming logs.
-    static ref LOG_STREAM_PARALLEL_CHUNKS: u64 = ::std::env::var("ETHEREUM_PARALLEL_BLOCK_RANGES")
+    static ref LOG_STREAM_PARALLEL_CHUNKS: u64 = std::env::var("ETHEREUM_PARALLEL_BLOCK_RANGES")
         .unwrap_or("100".into())
+        .parse::<u64>()
+        .expect("invalid number of parallel Ethereum block ranges to scan");
+
+    /// Maximum range size for `eth.getLogs` requests that dont filter on
+    /// contract address, only event signature, and are therefore expensive.
+    ///
+    /// According to Ethereum node operators, size 500 is reasonable here.
+    static ref MAX_EVENT_ONLY_RANGE: u64 = std::env::var("GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE")
+        .unwrap_or("500".into())
         .parse::<u64>()
         .expect("invalid number of parallel Ethereum block ranges to scan");
 }
@@ -254,14 +263,18 @@ where
         };
 
         let logger = logger.to_owned();
+        let step = match addresses.is_empty() {
+            // `to - from` is the size of the full range.
+            false => to - from,
+            true => (to - from).min(*MAX_EVENT_ONLY_RANGE),
+        };
 
-        stream::unfold((from, to - from), move |(start, step)| {
+        stream::unfold((from, step), move |(start, step)| {
             if start > to {
                 return None;
             }
 
-            // This will iterate more than once iff `step` has been reduced,
-            // making as many parallel requests of size `step` as necessary,
+            // Make as many parallel requests of size `step` as necessary,
             // respecting `LOG_STREAM_PARALLEL_CHUNKS`.
             let mut chunk_futures = vec![];
             let mut low = start;

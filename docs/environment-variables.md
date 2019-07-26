@@ -30,12 +30,14 @@ those.
   (defaults to 50)
 - `ETHEREUM_BLOCK_RANGE_SIZE`: number of blocks to scan for events in each
   request (defaults to 10000).
-- `ETHEREUM_PARALLEL_BLOCK_RANGES` - Maximum number of parallel `eth_getLogs`
+- `ETHEREUM_PARALLEL_BLOCK_RANGES`: Maximum number of parallel `eth_getLogs`
   calls to make when scanning logs for a subgraph. Defaults to 100.
 - `ETHEREUM_START_BLOCK`: the block number at which subgraphs should start
   indexing (defaults to the genesis block). Can save some time while debugging
   subgraphs locally. _Warning:_ Do not use this in production, as it may
   cause subgraphs to be only indexed partially.
+- `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`: Maximum range size for `eth.getLogs`
+requests that dont filter on contract address, only event signature.
 
 ## Running mapping handlers
 
