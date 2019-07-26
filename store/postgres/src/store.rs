@@ -1016,7 +1016,7 @@ impl StoreTrait for Store {
     fn create_subgraph_deployment(
         &self,
         subgraph_logger: &Logger,
-        subgraph_id: &SubgraphDeploymentId,
+        schema: &Schema,
         ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError> {
         // Various timing parameters, all in seconds
@@ -1057,7 +1057,7 @@ impl StoreTrait for Store {
             let result = conn.transaction(|| -> Result<(), StoreError> {
                 self.apply_entity_operations_with_conn(&econn, ops.clone(), None)?;
                 conn.batch_execute(&format!("set local lock_timeout to '{}s'", LOCK_TIMEOUT))?;
-                crate::entities::create_schema(&conn, subgraph_id)
+                crate::entities::create_schema(&conn, schema)
             });
             if let Err(StoreError::Unknown(_)) = &result {
                 // There is no robust way to actually find out that we timed

@@ -15,7 +15,8 @@ lazy_static! {
         // Also populate the store when the ID is first accessed.
         let id = SubgraphDeploymentId::new("graphqlTestsQuery").unwrap();
         let logger = Logger::root(slog::Discard, o!());
-        STORE.create_subgraph_deployment(&logger, &id, vec![]).unwrap();
+        let schema = Schema::parse("type Dummy @entity { id: ID! }", id.clone()).expect("Failed to parse dummy schema");
+        STORE.create_subgraph_deployment(&logger, &schema, vec![]).unwrap();
         insert_test_entities(&**STORE, id.clone());
         id
     };
