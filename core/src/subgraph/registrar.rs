@@ -699,7 +699,7 @@ fn create_subgraph_version(
     if deployment_exists {
         store.apply_entity_operations(ops, None)?
     } else {
-        store.create_subgraph_deployment(logger, &manifest.id, ops)?;
+        store.create_subgraph_deployment(logger, &manifest.schema, ops)?;
     }
 
     debug!(

@@ -36,7 +36,7 @@ fn insert_and_query(
     )
     .create_operations_replace(&subgraph_id);
     STORE
-        .create_subgraph_deployment(&logger, &subgraph_id, ops)
+        .create_subgraph_deployment(&logger, &schema, ops)
         .unwrap();
 
     let insert_ops = entities

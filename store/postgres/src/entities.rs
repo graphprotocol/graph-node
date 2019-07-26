@@ -37,13 +37,13 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::time::Instant;
 
+use graph::data::schema::Schema as SubgraphSchema;
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
-use graph::prelude::serde_json;
 use graph::prelude::{
-    debug, format_err, info, warn, AttributeIndexDefinition, EntityChange, EntityChangeOperation,
-    EntityFilter, EntityKey, Error, EthereumBlockPointer, EventSource, HistoryEvent, Logger,
-    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, TransactionAbortError,
-    ValueType,
+    debug, format_err, info, serde_json, warn, AttributeIndexDefinition, EntityChange,
+    EntityChangeOperation, EntityFilter, EntityKey, Error, EthereumBlockPointer, EventSource,
+    HistoryEvent, Logger, QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId,
+    TransactionAbortError, ValueType,
 };
 
 use crate::filter::build_filter;
@@ -1313,12 +1313,12 @@ pub fn delete_all_entities_for_test_use_only(conn: &PgConnection) -> Result<usiz
 /// `subgraph_id`
 pub(crate) fn create_schema(
     conn: &PgConnection,
-    subgraph_id: &SubgraphDeploymentId,
+    schema: &SubgraphSchema,
 ) -> Result<(), StoreError> {
     // Check if there already is an entry for this subgraph. If so, do
     // nothing
     let count = deployment_schemas::table
-        .filter(deployment_schemas::subgraph.eq(subgraph_id.to_string()))
+        .filter(deployment_schemas::subgraph.eq(schema.id.to_string()))
         .count()
         .first::<i64>(conn)?;
     if count > 0 {
@@ -1328,14 +1328,14 @@ pub(crate) fn create_schema(
     // Create a schema for the deployment.
     let schemas: Vec<String> = diesel::insert_into(deployment_schemas::table)
         .values((
-            deployment_schemas::subgraph.eq(subgraph_id.to_string()),
+            deployment_schemas::subgraph.eq(schema.id.to_string()),
             deployment_schemas::version.eq(Table::DEFAULT_VERSION),
         ))
         .returning(deployment_schemas::name)
         .get_results(conn)?;
     let schema_name = schemas
         .first()
-        .ok_or_else(|| format_err!("failed to read schema name for {} back", subgraph_id))?;
+        .ok_or_else(|| format_err!("failed to read schema name for {} back", &schema.id))?;
 
     // Note that we have to use conn.batch_execute to issue DDL commands; using
     // diesel::sql_query(..).execute(conn) can lead to cases where the command

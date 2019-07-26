@@ -16,10 +16,14 @@ use graph::prelude::*;
 use graph_store_postgres::Store as DieselStore;
 use web3::types::{Address, H256};
 
+const DUMMY_SCHEMA: &str = "type Dummy @entity { id: ID! }";
+
 lazy_static! {
     static ref TEST_SUBGRAPH_ID_STRING: String = String::from("testsubgraph");
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId =
         SubgraphDeploymentId::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
+    static ref TEST_SUBGRAPH_SCHEMA: Schema = Schema::parse(DUMMY_SCHEMA, TEST_SUBGRAPH_ID.clone())
+        .expect("Failed to parse dummy schema");
     static ref TEST_BLOCK_0_PTR: EthereumBlockPointer = (
         H256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
@@ -134,7 +138,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
     )
     .create_operations(&*TEST_SUBGRAPH_ID);
     store
-        .create_subgraph_deployment(&*LOGGER, &TEST_SUBGRAPH_ID, ops)
+        .create_subgraph_deployment(&*LOGGER, &TEST_SUBGRAPH_SCHEMA, ops)
         .unwrap();
 
     let test_entity_1 = create_test_entity(
@@ -1874,13 +1878,14 @@ fn revert_block_with_dynamic_data_source_operations() {
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store| {
         let subgraph_id = SubgraphDeploymentId::new("EntityChangeTestSubgraph").unwrap();
+        let schema = Schema::parse("scalar Foo", subgraph_id.clone()).unwrap();
         let manifest = SubgraphManifest {
             id: subgraph_id.clone(),
             location: "/ipfs/test".to_owned(),
             spec_version: "1".to_owned(),
             description: None,
             repository: None,
-            schema: Schema::parse("scalar Foo", subgraph_id.clone()).unwrap(),
+            schema: schema.clone(),
             data_sources: vec![],
             templates: vec![],
         };
@@ -1895,7 +1900,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         )
         .create_operations(&subgraph_id);
         store
-            .create_subgraph_deployment(&*LOGGER, &subgraph_id, ops)
+            .create_subgraph_deployment(&*LOGGER, &schema, ops)
             .unwrap();
 
         // Create store subscriptions
@@ -2215,10 +2220,12 @@ fn create_subgraph_deployment_tolerates_locks() {
         // activity, but it is visible in the logs if this test is run with
         // GRAPH_LOG=debug
         let subgraph_id = SubgraphDeploymentId::new("DeploymentLocking").unwrap();
+        let schema =
+            Schema::parse(DUMMY_SCHEMA, subgraph_id).expect("Failed to parse dummy schema");
         barrier.wait();
         let start = std::time::Instant::now();
         store
-            .create_subgraph_deployment(&*LOGGER, &subgraph_id, vec![])
+            .create_subgraph_deployment(&*LOGGER, &schema, vec![])
             .expect("Subgraph creation failed");
         assert!(start.elapsed() >= Duration::from_secs(BLOCK_TIME));
         Ok(())
