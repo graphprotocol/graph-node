@@ -18,7 +18,7 @@ reqwest = "0.9"
 # but long term we want to avoid forking off ethabi if possible
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "graph-patches" }
 hex = "0.3.2"
-futures = "0.1.21"
+futures = "0.1.28"
 graphql-parser = "0.2.1"
 # We're using the latest ipfs-api for the HTTPS support that was merged in
 # https://github.com/ferristseng/rust-ipfs-api/commit/55902e98d868dcce047863859caf596a629d10ec

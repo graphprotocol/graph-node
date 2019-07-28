@@ -10,7 +10,7 @@ edition = "2018"
 # to ethabi. Which we believe will not get merged. For now, we shall deviate from ethabi,
 # but long term we want to avoid forking off ethabi if possible
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "graph-patches" }
-futures = "0.1.21"
+futures = "0.1.28"
 hex = "0.3.2"
 graph = { path = "../../graph" }
 tiny-keccak = "1.4.2"

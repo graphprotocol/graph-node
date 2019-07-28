@@ -6,7 +6,7 @@ edition = "2018"
 [dependencies]
 clap = "2.31.2"
 env_logger = "0.5.10"
-futures = "0.1.21"
+futures = "0.1.28"
 git-testament = "0.1"
 graphql-parser = "0.2.1"
 http = "0.1"
