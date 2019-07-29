@@ -55,6 +55,8 @@ where
                         file
                         entities
                         abis { name file }
+                        blockHandlers { handler filter}
+                        callHandlers {  function handler}
                         eventHandlers { event handler }
                       }
                       templates {
@@ -69,6 +71,8 @@ where
                           file
                           entities
                           abis { name file }
+                          blockHandlers { handler filter}
+                          callHandlers { function handler}
                           eventHandlers { event handler }
                         }
                       }
@@ -163,7 +167,7 @@ where
         }?;
 
         // Parse the raw data sources into typed entities
-        let entities = values.into_iter().try_fold(vec![], |mut entities, value| {
+        let entities = values.iter().try_fold(vec![], |mut entities, value| {
             entities.push(EthereumContractDataSourceEntity::try_from_value(value)?);
             Ok(entities)
         }) as Result<Vec<_>, Error>;
