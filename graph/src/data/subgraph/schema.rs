@@ -17,6 +17,7 @@ use graphql_parser::schema::{Definition, Document, Field, Name, Type, TypeDefini
 use hex;
 use rand::rngs::OsRng;
 use rand::Rng;
+use std::collections::BTreeMap;
 use std::str::FromStr;
 use web3::types::*;
 
@@ -849,7 +850,7 @@ impl From<super::MappingBlockHandler> for EthereumBlockHandlerEntity {
             Some(filter) => match filter {
                 // TODO: Figure out how to use serde to get lowercase spelling here
                 super::BlockHandlerFilter::Call => Some(EthereumBlockHandlerFilterEntity {
-                    kind: "call".to_string(),
+                    kind: Some("call".to_string()),
                 }),
             },
             None => None,
@@ -880,7 +881,7 @@ impl TryFromValue for EthereumBlockHandlerEntity {
 
 #[derive(Debug)]
 pub struct EthereumBlockHandlerFilterEntity {
-    pub kind: String,
+    pub kind: Option<String>,
 }
 
 impl TypedEntity for EthereumBlockHandlerFilterEntity {
@@ -899,8 +900,10 @@ impl EthereumBlockHandlerFilterEntity {
 
 impl TryFromValue for EthereumBlockHandlerFilterEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        let empty_map = BTreeMap::new();
         let map = match value {
             q::Value::Object(map) => Ok(map),
+            q::Value::Null => Ok(&empty_map),
             _ => Err(format_err!(
                 "Cannot parse value into block handler filter entity: {:?}",
                 value,
@@ -908,7 +911,7 @@ impl TryFromValue for EthereumBlockHandlerFilterEntity {
         }?;
 
         Ok(Self {
-            kind: map.get_required("kind")?,
+            kind: map.get_optional("kind")?,
         })
     }
 }
