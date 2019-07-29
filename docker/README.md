@@ -29,7 +29,7 @@ docker run -it \
 ## Docker Compose
 
 The Docker Compose setup requires an Ethereum network name and node
-to connect to. By default, it will use `dev:http://host.docker.internal:8545`
+to connect to. By default, it will use `mainnet:http://host.docker.internal:8545`
 in order to connect to an Ethereum node running on your host machine.
 You can replace this with anything else in `docker-compose.yaml`.
 
