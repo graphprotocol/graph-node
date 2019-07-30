@@ -4,6 +4,7 @@ use graph::log;
 use graph::prelude::{Store as _, *};
 use graph::web3::types::H256;
 use graph_store_postgres::{Store, StoreConfig};
+use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::env;
 use std::sync::Mutex;
@@ -50,7 +51,7 @@ lazy_static! {
     };
 
     pub static ref GENESIS_PTR: EthereumBlockPointer = (
-        H256::from("0xbd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"),
+        H256::from(hex!("bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f")),
         0u64
     ).into();
 }

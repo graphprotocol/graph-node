@@ -27,3 +27,4 @@ graphql-parser = "0.2.0"
 hex = "0.3.2"
 parity-wasm = "0.31"
 test-store = { path = "../test-store" }
+hex-literal = "0.2"

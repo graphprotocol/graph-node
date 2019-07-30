@@ -9,3 +9,4 @@ description = "Provides static store instance for tests."
 graph = { path = "../../graph" }
 graph-store-postgres = { path = "../postgres" }
 lazy_static = "1.1"
+hex-literal = "0.2"

@@ -11,11 +11,12 @@ chrono = "0.4"
 isatty = "0.1"
 itertools = "0.7"
 reqwest = "0.9"
-# We would like to switch to upstream master once https://github.com/paritytech/ethabi/pull/145
-# is merged.
-# But, graph-patches also contains Jannis' https://github.com/paritytech/ethabi/pull/140 PR
-# to ethabi. Which we believe will not get merged. For now, we shall deviate from ethabi,
-# but long term we want to avoid forking off ethabi if possible
+
+# graph-patches contains changes such as
+# https://github.com/paritytech/ethabi/pull/140, which upstream does not want
+# and we should try to implement on top of ethabi instead of inside it, and
+# tuple support which isn't upstreamed yet. For now, we shall deviate from
+# ethabi, but long term we want to find a way to drop our fork.
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "graph-patches" }
 hex = "0.3.2"
 futures = "0.1.21"
@@ -46,4 +47,6 @@ tokio-retry = "0.2"
 tokio-timer = "0.2.7"
 tokio-threadpool = "0.1.14"
 url = "1.7.2"
-web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "trace-struct-pre-ethereum-types" }
+
+# Our fork contains a small but hacky patch.
+web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches" }
