@@ -254,7 +254,7 @@ where
                         logger,
                         "Trying again after {} timed out (attempt #{})",
                         &operation_name,
-                        attempt_count + 1,
+                        attempt_count,
                     );
                 }
 
@@ -277,7 +277,7 @@ where
                             logger,
                             "Trying again after {} failed (attempt #{}) with result {:?}",
                             &operation_name,
-                            attempt_count + 1,
+                            attempt_count,
                             result
                         );
                     }
