@@ -1,10 +1,12 @@
 [package]
 name = "graph-datasource-ethereum"
 version = "0.14.0"
+edition = "2018"
 
 [dependencies]
 failure = "0.1.2"
 futures = "0.1.21"
-jsonrpc-core = "8.0.1"
+jsonrpc-core = "13.0.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
+hex-literal = "0.2"

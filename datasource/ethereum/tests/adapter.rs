@@ -1,10 +1,6 @@
-extern crate futures;
-extern crate graph;
-extern crate graph_datasource_ethereum;
-extern crate jsonrpc_core;
-
 use futures::prelude::*;
 use futures::{failed, finished};
+use hex_literal::hex;
 use std::collections::VecDeque;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -141,7 +137,9 @@ fn contract_call() {
     transport.add_response(serde_json::to_value(mock_block()).unwrap());
     transport.add_response(jsonrpc_core::Value::String(format!(
         "{:?}",
-        H256::from(100000)
+        H256::from(hex!(
+            "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
+        )),
     )));
 
     let logger = Logger::root(slog::Discard, o!());
