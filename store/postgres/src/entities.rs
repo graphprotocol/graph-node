@@ -50,6 +50,7 @@ use graph::util::extend::Extend;
 use crate::filter::build_filter;
 use crate::functions::set_config;
 use crate::jsonb::PgJsonbExpressionMethods as _;
+use crate::mapping::IdType;
 
 /// The type of operation that led to a history entry. When we revert a block,
 /// we reverse the effects of that operation; e.g., an `Insert` entry in the
@@ -702,6 +703,7 @@ impl Table {
 impl Table {
     /// The version for newly created subgraph schemas. Changing this most
     /// likely also requires changing `create_schema`
+    #[allow(dead_code)]
     const DEFAULT_VERSION: public::DeploymentSchemaVersion = public::DeploymentSchemaVersion::Split;
 
     /// Look up the schema for `subgraph` and return its entity table.
@@ -938,7 +940,7 @@ impl Table {
             "
             update subgraphs.entities
             set data = data || (format('{{\"entityCount\":
-                                  {{ \"data\": \"%s\", 
+                                  {{ \"data\": \"%s\",
                                     \"type\": \"BigInt\"}}}}',
                                   coalesce({current_count} + $1,
                                            ({count_query}))))::jsonb
@@ -1290,11 +1292,19 @@ pub(crate) fn create_schema(
         return Ok(());
     }
 
+    // We temporarily use an environment variable to determine whether
+    // to create a relational or split schema. Utimately, we will default
+    // to always creating a relational schema
+    let scheme = match std::env::var_os("RELATIONAL_SCHEMA") {
+        Some(_) => self::public::DeploymentSchemaVersion::Relational,
+        None => self::public::DeploymentSchemaVersion::Split,
+    };
+
     // Create a schema for the deployment.
     let schemas: Vec<String> = diesel::insert_into(deployment_schemas::table)
         .values((
             deployment_schemas::subgraph.eq(schema.id.to_string()),
-            deployment_schemas::version.eq(Table::DEFAULT_VERSION),
+            deployment_schemas::version.eq(scheme),
         ))
         .returning(deployment_schemas::name)
         .get_results(conn)?;
@@ -1302,13 +1312,16 @@ pub(crate) fn create_schema(
         .first()
         .ok_or_else(|| format_err!("failed to read schema name for {} back", &schema.id))?;
 
-    // Note that we have to use conn.batch_execute to issue DDL commands; using
-    // diesel::sql_query(..).execute(conn) can lead to cases where the command
-    // is sent to the database, and shows up in the database logs, but has no
-    // effect at all, but also does not result in an error.
     let query = format!("create schema {}", schema_name);
     conn.batch_execute(&*query)?;
 
+    match std::env::var_os("RELATIONAL_SCHEMA") {
+        Some(_) => create_relational_schema(conn, &schema_name, schema),
+        None => create_split_schema(conn, &schema_name),
+    }
+}
+
+pub fn create_split_schema(conn: &PgConnection, schema_name: &str) -> Result<(), StoreError> {
     // The order of columns in the primary key matters a lot, since
     // we want the pk index to also support queries that do not have an id,
     // just an entity (like counting the number of entities of a certain type)
@@ -1377,6 +1390,25 @@ pub(crate) fn create_schema(
     );
     conn.batch_execute(&*query)?;
 
+    Ok(())
+}
+
+pub fn create_relational_schema(
+    conn: &PgConnection,
+    schema_name: &str,
+    schema: &SubgraphSchema,
+) -> Result<(), StoreError> {
+    #[allow(unused_variables)]
+    let mapping = crate::mapping::Mapping::new(
+        &schema.document,
+        IdType::String,
+        schema.id.to_string(),
+        schema_name,
+    )?;
+    let sql = mapping
+        .as_ddl()
+        .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for mapping")))?;
+    conn.batch_execute(&sql)?;
     Ok(())
 }
 
