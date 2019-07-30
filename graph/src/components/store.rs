@@ -605,6 +605,12 @@ pub enum StoreError {
         _0, _1, _2, _0
     )]
     ConflictingId(String, String, String), // (entity, id, conflicting_entity)
+    #[fail(display = "unknown field '{}'", _0)]
+    UnknownField(String),
+    #[fail(display = "unknown table '{}'", _0)]
+    UnknownTable(String),
+    #[fail(display = "malformed directive '{}'", _0)]
+    MalformedDirective(String),
 }
 
 impl From<TransactionAbortError> for StoreError {
