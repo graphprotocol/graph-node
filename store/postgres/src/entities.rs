@@ -97,11 +97,10 @@ mod public {
     /// `deployment_schema_version` type in the database.
     ///
     /// The column `deployment_schemas.version` stores that information for
-    /// each subgraph. Subgraphs that use the `Public` scheme have their
-    /// entities stored in the monolithic `public.entities` table, subgraphs
-    /// that store their entities and history in a dedicated database schema
-    /// are marked with version `Split`. The `Public` variant is not supported
-    /// any longer, and trying to access subgraphs using that schema will fail.
+    /// each subgraph. Subgraphs that store their entities and history as
+    /// JSONB blobs with a separate history table are marked with version
+    /// `Split`. Subgraphs that use a relational schema for entities, and
+    /// store their history in the same table are marked as 'Relational'
     ///
     /// Migrating a subgraph amounts to changing the storage scheme for that
     /// subgraph from one version to another. Whether a subgraph scheme needs
@@ -109,8 +108,8 @@ mod public {
     /// machinery is kicked off with a call to `Connection::migrate`
     #[derive(DbEnum, Debug, Clone)]
     pub enum DeploymentSchemaVersion {
-        Public,
         Split,
+        Relational,
     }
 
     /// Migrating a subgraph is broken into two steps: in the first step, the
@@ -719,13 +718,6 @@ impl Table {
         let schema = find_schema(conn, subgraph)?
             .ok_or_else(|| StoreError::Unknown(format_err!("unknown subgraph {}", subgraph)))?;
         let table = match schema.version {
-            V::Public => {
-                return Err(StoreError::Unknown(format_err!(
-                    "subgraph {}: storage scheme {:?} is no longer supported",
-                    subgraph,
-                    schema.version
-                )))
-            }
             V::Split => {
                 let table =
                     diesel_dynamic_schema::schema(schema.name.clone()).table("entities".to_owned());
@@ -744,6 +736,7 @@ impl Table {
                     event_source,
                 }
             }
+            V::Relational => unimplemented!(),
         };
         Ok(table)
     }
