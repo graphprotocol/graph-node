@@ -4,7 +4,7 @@ use std::fmt;
 
 use inflector::Inflector;
 
-use graph::prelude::StoreError;
+use graph::prelude::{format_err, StoreError};
 
 trait AsDdl {
     fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> Result<(), fmt::Error>;
@@ -71,6 +71,7 @@ pub struct Mapping {
     pub subgraph: String,
     /// The database schema for this subgraph
     pub schema: String,
+    pub interfaces: Vec<Interface>,
 }
 
 impl Mapping {
@@ -106,17 +107,31 @@ impl Mapping {
                 primary_key: "none".into(),
                 columns: Vec::new(),
             },
+            interfaces: Vec::new(),
         };
 
         for defn in &document.definitions {
             match defn {
-                TypeDefinition(type_def) => {
-                    // FIXME: What about other forms of type_def?
-                    if let Object(obj_type) = type_def {
-                        mapping.add_table(&obj_type)?;
+                TypeDefinition(type_def) => match type_def {
+                    Object(obj_type) => {
+                        mapping.add_table(obj_type)?;
                     }
+                    Interface(interface_type) => {
+                        mapping.add_interface(interface_type)?;
+                    }
+                    other => {
+                        return Err(StoreError::Unknown(format_err!(
+                            "can not handle {:?}",
+                            other
+                        )))
+                    }
+                },
+                other => {
+                    return Err(StoreError::Unknown(format_err!(
+                        "can not handle {:?}",
+                        other
+                    )))
                 }
-                other => panic!("can not handle {:?}", other),
             }
         }
         mapping.resolve_references()?;
@@ -152,9 +167,10 @@ impl Mapping {
     }
 
     fn add_table(&mut self, defn: &s::ObjectType) -> Result<(), StoreError> {
+        let table_name = Table::collection_name(&defn.name);
         let mut table = Table {
             object: defn.name.clone(),
-            name: Table::collection_name(&defn.name),
+            name: table_name.clone(),
             singular_name: Table::object_name(&defn.name),
             primary_key: PRIMARY_KEY_COLUMN.into(),
             columns: Vec::new(),
@@ -169,11 +185,34 @@ impl Mapping {
                 nullable: is_nullable(&field.field_type),
                 list: is_list(&field.field_type),
                 derived: derived_column(field)?,
-                reference: None,
+                references: vec![],
             };
             table.columns.push(column);
         }
         self.tables.push(table);
+        for interface_name in &defn.implements_interfaces {
+            match self
+                .interfaces
+                .iter_mut()
+                .find(|interface| &interface.name == interface_name)
+            {
+                Some(ref mut interface) => interface.tables.push(table_name.clone()),
+                None => {
+                    return Err(StoreError::Unknown(format_err!(
+                        "unknown interface {}",
+                        interface_name
+                    )))
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn add_interface(&mut self, defn: &s::InterfaceType) -> Result<(), StoreError> {
+        self.interfaces.push(Interface {
+            name: defn.name.clone(),
+            tables: vec![],
+        });
         Ok(())
     }
 
@@ -182,34 +221,37 @@ impl Mapping {
             for c in 0..self.tables[t].columns.len() {
                 let column = &self.tables[t].columns[c];
 
-                if let Some(sql_type) = self.scalar_sql_type(&column.sql_type) {
-                    self.tables[t].columns[c].sql_type = sql_type.to_owned();
-                } else {
-                    // If `column.sql_type` does not name a type defined in the
-                    // GraphQL schema, there's nothing to do here
-                    if !self
-                        .tables
+                let (sql_type, references) =
+                    if let Some(sql_type) = self.scalar_sql_type(&column.sql_type) {
+                        // sql_type is a scalar
+                        (sql_type.to_owned(), vec![])
+                    } else if let Some(interface) = self
+                        .interfaces
                         .iter()
-                        .any(|table| table.object == column.sql_type)
+                        .find(|interface| interface.name == column.sql_type)
                     {
-                        continue;
-                    }
-
-                    let other_table_name = Table::collection_name(&column.sql_type);
-                    let other_table = self.table(&other_table_name)?;
-                    let other_column = match &self.tables[t].columns[c].derived {
-                        Some(col) => col.trim_start_matches('"').trim_end_matches('"'),
-                        None => &other_table.primary_key.0,
-                    }
-                    .into();
-
-                    let column = &mut self.tables[t].columns[c];
-                    column.reference = Some(Reference {
-                        table: other_table_name,
-                        column: other_column,
-                    });
-                    column.sql_type = self.id_type.sql_type().to_owned();
-                }
+                        // sql_type is an interface; add each table that contains
+                        // a type that implements the interface into the references
+                        let references: Vec<_> = interface
+                            .tables
+                            .iter()
+                            .map(|table_name| self.table(table_name))
+                            .collect::<Result<Vec<_>, _>>()?
+                            .iter()
+                            .map(|table| Reference::to_column(table, column))
+                            .collect();
+                        (self.id_type.sql_type().to_owned(), references)
+                    } else {
+                        // sql_type is an object; add a single reference to the target
+                        // table and column
+                        let other_table_name = Table::collection_name(&column.sql_type);
+                        let other_table = self.table(&other_table_name)?;
+                        let reference = Reference::to_column(other_table, column);
+                        (self.id_type.sql_type().to_owned(), vec![reference])
+                    };
+                let column = &mut self.tables[t].columns[c];
+                column.references = references;
+                column.sql_type = sql_type;
             }
         }
         Ok(())
@@ -225,7 +267,7 @@ impl Mapping {
                 nullable: false,
                 list: true,
                 derived: None,
-                reference: Some(table.primary_key()),
+                references: vec![table.primary_key()],
             };
             self.root_table.columns.push(objects);
 
@@ -235,7 +277,7 @@ impl Mapping {
                 nullable: false,
                 list: false,
                 derived: None,
-                reference: Some(table.primary_key()),
+                references: vec![table.primary_key()],
             };
             self.root_table.columns.push(object);
         }
@@ -279,6 +321,21 @@ pub struct Reference {
     pub column: SqlName,
 }
 
+impl Reference {
+    fn to_column(table: &Table, column: &Column) -> Reference {
+        let column = match &column.derived {
+            Some(col) => col,
+            None => &*table.primary_key.0,
+        }
+        .into();
+
+        Reference {
+            table: table.name.clone(),
+            column,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Column {
     pub name: SqlName,
@@ -289,13 +346,13 @@ pub struct Column {
     pub nullable: bool,
     pub list: bool,
     pub derived: Option<String>,
-    pub reference: Option<Reference>,
+    pub references: Vec<Reference>,
 }
 
 #[allow(dead_code)]
 impl Column {
     pub fn is_reference(&self) -> bool {
-        self.reference.is_some()
+        !self.references.is_empty()
     }
 }
 
@@ -397,16 +454,19 @@ impl AsDdl for Table {
             for column in self.columns.iter().filter(|col| col.derived.is_some()) {
                 write!(f, "\n ")?;
                 column.fmt(f, mapping)?;
-                match column.reference {
-                    Some(ref reference) => {
-                        write!(f, " references {}({})", reference.table, reference.column)?
-                    }
-                    None => return Err(fmt::Error),
+                for reference in &column.references {
+                    write!(f, " references {}({})", reference.table, reference.column)?;
                 }
             }
         }
         write!(f, "\n);\n")
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct Interface {
+    pub name: String,
+    pub tables: Vec<SqlName>,
 }
 
 fn is_nullable(field_type: &q::Type) -> bool {
@@ -446,7 +506,13 @@ fn derived_column(field: &s::Field) -> Result<Option<String>, StoreError> {
             dir.arguments
                 .iter()
                 .find(|arg| arg.0 == "field")
-                .map(|arg| arg.1.to_string())
+                .map(|arg| {
+                    arg.1
+                        .to_string()
+                        .trim_start_matches('"')
+                        .trim_end_matches('"')
+                        .to_owned()
+                })
                 .ok_or(StoreError::MalformedDirective(
                     "derivedFrom requires a 'field' argument".to_owned(),
                 ))?,
@@ -486,7 +552,7 @@ mod tests {
         assert!(!id.nullable);
         assert!(!id.list);
         assert!(id.derived.is_none());
-        assert!(id.reference.is_none());
+        assert!(!id.is_reference());
 
         let big_thing = table
             .field(&"big_thing".into())
@@ -495,11 +561,11 @@ mod tests {
         assert!(!big_thing.nullable);
         assert!(big_thing.derived.is_none());
         assert_eq!(
-            Some(Reference {
+            vec![Reference {
                 table: "things".into(),
                 column: PRIMARY_KEY_COLUMN.into()
-            }),
-            big_thing.reference
+            }],
+            big_thing.references
         );
         // Field lookup happens by the SQL name, not the GraphQL name
         let bad_sql_name = SqlName("bigThing".to_owned());
@@ -515,7 +581,12 @@ mod tests {
         let mapping = test_mapping(MUSIC_GQL);
         let sql = mapping.as_ddl().expect("Failed to generate DDL");
         assert_eq!(MUSIC_DDL, sql);
+
+        let mapping = test_mapping(FOREST_GQL);
+        let sql = mapping.as_ddl().expect("Failed to generate DDL");
+        assert_eq!(FOREST_DDL, sql);
     }
+
     const THINGS_GQL: &str = "
         type Thing @entity {
             id: ID!
@@ -603,4 +674,42 @@ create table rel.song_stats (
      -- song                 text references songs(id)
 );
 ";
+
+    const FOREST_GQL: &str = "
+interface ForestDweller {
+    id: ID!,
+    forest: Forest
+}
+type Animal implements ForestDweller @entity {
+     id: ID!,
+     forest: Forest
+}
+type Forest @entity {
+    id: ID!,
+    # Array of interfaces as derived reference
+    dwellers: [ForestDweller!]! @derivedFrom(field: \"forest\")
+}
+type Habitat @entity {
+    id: ID!,
+    # Use interface as direct reference
+    most_common: ForestDweller!,
+    dwellers: [ForestDweller!]!
+}";
+
+    const FOREST_DDL: &str = "create table rel.animals (
+        id                   varchar primary key,
+        forest               varchar
+);
+create table rel.forests (
+        id                   varchar primary key
+     -- derived fields (not stored in this table)
+     -- dwellers             varchar[] not null references animals(forest)
+);
+create table rel.habitats (
+        id                   varchar primary key,
+        most_common          varchar not null,
+        dwellers             varchar[] not null
+);
+";
+
 }
