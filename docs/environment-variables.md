@@ -41,7 +41,7 @@ those.
 
 * `GRAPH_EVENT_HANDLER_TIMEOUT`: amount of time an event handler is allowed to
   take (in seconds, default is unlimited)
-* `GRAPH_IPFS_TIMEOUT`: timeout for ipfs requests. In seconds, default is 30
+* `GRAPH_IPFS_TIMEOUT`: timeout for ipfs requests. In seconds, default is 60.
   seconds.
 * `GRAPH_MAX_IPFS_FILE_BYTES`: maximum size for a file that can be retrieved
   with `ipfs.cat` (in bytes, default is unlimited)

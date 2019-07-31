@@ -36,7 +36,7 @@ fn ipfs_timeout() -> Duration {
     let timeout = env::var("GRAPH_IPFS_TIMEOUT").ok().map(|s| {
         u64::from_str(&s).unwrap_or_else(|_| panic!("failed to parse env var GRAPH_IPFS_TIMEOUT"))
     });
-    Duration::from_secs(timeout.unwrap_or(30))
+    Duration::from_secs(timeout.unwrap_or(60))
 }
 
 fn read_u64_from_env(name: &str) -> Option<u64> {
