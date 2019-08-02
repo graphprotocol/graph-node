@@ -28,5 +28,11 @@ mod sql_value;
 pub mod store;
 mod store_events;
 
+#[cfg(debug_assertions)]
+pub mod db_schema_for_tests {
+    pub use crate::db_schema::ethereum_blocks;
+    pub use crate::db_schema::ethereum_networks;
+}
+
 pub use self::chain_head_listener::ChainHeadUpdateListener;
 pub use self::store::{Store, StoreConfig};

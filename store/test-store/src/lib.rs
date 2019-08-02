@@ -16,6 +16,8 @@ pub fn postgres_test_url() -> String {
         .unwrap()
 }
 
+pub const NETWORK_NAME: &str = "fake_network";
+pub const NETWORK_VERSION: &str = "graph test suite";
 lazy_static! {
     pub static ref LOGGER:Logger = match env::var_os("GRAPH_LOG") {
         Some(_) => log::logger(false),
@@ -32,15 +34,14 @@ lazy_static! {
             let logger = &*LOGGER;
             let postgres_url = postgres_test_url();
             let net_identifiers = EthereumNetworkIdentifier {
-                net_version: "graph test suite".to_owned(),
+                net_version: NETWORK_VERSION.to_owned(),
                 genesis_block_hash: GENESIS_PTR.hash,
             };
-            let network_name = "fake_network".to_owned();
 
             Ok(Arc::new(Store::new(
                 StoreConfig {
                     postgres_url,
-                    network_name,
+                    network_name: NETWORK_NAME.to_owned(),
                     start_block: 0u64,
                     conn_pool_size: 10,
                 },
