@@ -503,9 +503,18 @@ where
         block: Block<Transaction>,
     ) -> Box<Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
         let logger = logger.clone();
-        let web3 = self.web3.clone();
-
         let block_hash = block.hash.expect("block is missing block hash");
+
+        // The early return is necessary for correctness, otherwise we'll
+        // request an empty batch which is not valid in JSON-RPC.
+        if block.transactions.is_empty() {
+            info!(logger, "Block {} contains no transactions", block_hash);
+            return Box::new(future::ok(EthereumBlock {
+                block,
+                transaction_receipts: Vec::new(),
+            }));
+        }
+        let web3 = self.web3.clone();
 
         // Retry, but eventually give up.
         // A receipt might be missing because the block was uncled, and the
