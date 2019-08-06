@@ -737,17 +737,7 @@ where
             .map(move |traces| {
                 traces
                     .iter()
-                    .filter(|trace| {
-                        let is_call = match trace.action {
-                            Action::Call(_) => true,
-                            _ => false,
-                        };
-                        if !is_call || trace.result.is_none() || trace.error.is_some() {
-                            return false;
-                        }
-                        true
-                    })
-                    .map(EthereumCall::from)
+                    .filter_map(EthereumCall::try_from_trace)
                     .collect()
             });
         Box::new(calls)
@@ -930,19 +920,7 @@ where
                             trace_chunks
                                 .iter()
                                 .flatten()
-                                .filter(|trace| {
-                                    let is_call = match trace.action {
-                                        Action::Call(_) => true,
-                                        _ => false,
-                                    };
-                                    // Remove traces that are not for a call, do not have a result, or
-                                    // are for a transaction which errored.
-                                    if !is_call || trace.result.is_none() || trace.error.is_some() {
-                                        return false;
-                                    }
-                                    true
-                                })
-                                .map(EthereumCall::from)
+                                .filter_map(EthereumCall::try_from_trace)
                                 .filter(|call| {
                                     // `trace_filter` can only filter by calls `to` an address and
                                     // a block range. Since subgraphs are subscribing to calls

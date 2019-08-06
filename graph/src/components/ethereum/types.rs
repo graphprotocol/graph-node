@@ -81,32 +81,59 @@ pub struct EthereumCall {
     pub transaction_hash: Option<H256>,
 }
 
-impl From<&Trace> for EthereumCall {
-    fn from(trace: &Trace) -> Self {
-        let (from, to, value, input) = match &trace.action {
-            Action::Call(call) => (call.from, call.to, call.value, call.input.clone()),
-            _ => (
-                Address::zero(),
-                Address::zero(),
-                U256::zero(),
-                Bytes::from(vec![]),
-            ),
+impl EthereumCall {
+    pub fn try_from_trace(trace: &Trace) -> Option<Self> {
+        if trace.result.is_none() || trace.error.is_some() {
+            return None;
+        }
+        let call = match &trace.action {
+            // Contract to contract value transfers compile to the CALL opcode
+            // and have no input. Call handlers are for triggering on explicit method calls right now.
+            Action::Call(call) if call.input.0.len() >= 4 => call,
+            _ => return None,
         };
         let (output, gas_used) = match &trace.result {
             Some(Res::Call(result)) => (result.output.clone(), result.gas_used),
-            _ => (Bytes::from(vec![]), U256::zero()),
+            _ => return None,
         };
-        Self {
-            from: from,
-            to: to,
-            value: value,
-            gas_used: gas_used,
-            input: input,
-            output: output,
-            block_number: trace.block_number,
-            block_hash: trace.block_hash,
-            transaction_hash: trace.transaction_hash,
+        Self::new(
+            call.from,
+            call.to,
+            call.value,
+            gas_used,
+            call.input.clone(),
+            output,
+            trace.block_number,
+            trace.block_hash,
+            trace.transaction_hash,
+        )
+    }
+
+    pub fn new(
+        from: Address,
+        to: Address,
+        value: U256,
+        gas_used: U256,
+        input: Bytes,
+        output: Bytes,
+        block_number: u64,
+        block_hash: H256,
+        transaction_hash: Option<H256>,
+    ) -> Option<EthereumCall> {
+        if input.0.len() < 4 {
+            return None;
         }
+        Some(EthereumCall {
+            from,
+            to,
+            value,
+            gas_used,
+            input,
+            output,
+            block_number,
+            block_hash,
+            transaction_hash,
+        })
     }
 }
 
