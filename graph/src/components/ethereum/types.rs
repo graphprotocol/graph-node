@@ -83,7 +83,8 @@ pub struct EthereumCall {
 
 impl EthereumCall {
     pub fn try_from_trace(trace: &Trace) -> Option<Self> {
-        // Filter out traces from operations which produced errors
+        // The parity-ethereum tracing api returns traces for operations which had execution errors.
+        // Filter errorful traces out, since call handlers should only run on successful CALLs.
         if trace.error.is_some() {
             return None;
         }
