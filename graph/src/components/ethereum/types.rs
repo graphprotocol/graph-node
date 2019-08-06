@@ -83,9 +83,11 @@ pub struct EthereumCall {
 
 impl EthereumCall {
     pub fn try_from_trace(trace: &Trace) -> Option<Self> {
-        if trace.result.is_none() || trace.error.is_some() {
+        // Filter out traces from operations which produced errors
+        if trace.error.is_some() {
             return None;
         }
+        // We are only interested in traces from CALLs
         let call = match &trace.action {
             // Contract to contract value transfers compile to the CALL opcode
             // and have no input. Call handlers are for triggering on explicit method calls right now.
