@@ -18,6 +18,7 @@ Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical For
 | **description**   | *String* | An optional description of the subgraph's purpose. |
 | **repository**   | *String* | An optional link to where the subgraph lives. |
 | **dataSources**| [*Data Source Spec*](#15-data-source)| Each data source spec defines the data that will be ingested as well as the transformation logic to derive the state of the subgraph's entities based on the source data.|
+| **templates** | [*Data Source Templates Spec*](#17-data-source-templates) | Each data source template defines a data source that can be created dynamically from the mappings. |
 
 ## 1.4 Schema
 
@@ -34,7 +35,6 @@ Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical For
 | **network** | *String* | For blockchains, this describes which network the subgraph targets. For Ethereum, this could be, for example, "mainnet" or "rinkeby". |
 | **source** | [*EthereumContractSource*](#151-ethereumcontractsource) | The source data on a blockchain such as Ethereum. |
 | **mapping** | [*Mapping*](#152-mapping) | The transformation logic applied to the data prior to being indexed. |
-| **templates** | [*Data Source Templates Spec*](#17-data-source-templates) | Each data source template defines a data source that can be created dynamically from the mappings. |
 
 ### 1.5.1 EthereumContractSource
 
@@ -80,27 +80,23 @@ When using the Graph-CLI, local paths may be used during development, and then, 
 A data source template has all of the fields of a normal data source, except it does not include a contract address under `source`. The address is a parameter that can later be provided when creating a dynamic data source from the template.
 ```yml
 # ...
-dataSources:
-  - kind: ethereum/contract
-    name: Factory
-    # ...
-    templates:
-      - name: Exchange
-        kind: ethereum/contract
-        network: mainnet
-        source:
-          abi: Exchange
-        mapping:
-          kind: ethereum/events
-          apiVersion: 0.0.1
-          language: wasm/assemblyscript
-          file: ./src/mappings/exchange.ts
-          entities:
-            - Exchange
-          abis:
-            - name: Exchange
-              file: ./abis/exchange.json
-          eventHandlers:
-            - event: TokenPurchase(address,uint256,uint256)
-              handler: handleTokenPurchase
+templates:
+  - name: Exchange
+    kind: ethereum/contract
+    network: mainnet
+    source:
+      abi: Exchange
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.1
+      language: wasm/assemblyscript
+      file: ./src/mappings/exchange.ts
+      entities:
+        - Exchange
+      abis:
+        - name: Exchange
+          file: ./abis/exchange.json
+      eventHandlers:
+        - event: TokenPurchase(address,uint256,uint256)
+          handler: handleTokenPurchase
 ```
