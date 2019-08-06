@@ -99,43 +99,17 @@ impl EthereumCall {
             Some(Res::Call(result)) => (result.output.clone(), result.gas_used),
             _ => return None,
         };
-        Self::new(
-            call.from,
-            call.to,
-            call.value,
-            gas_used,
-            call.input.clone(),
-            output,
-            trace.block_number,
-            trace.block_hash,
-            trace.transaction_hash,
-        )
-    }
 
-    pub fn new(
-        from: Address,
-        to: Address,
-        value: U256,
-        gas_used: U256,
-        input: Bytes,
-        output: Bytes,
-        block_number: u64,
-        block_hash: H256,
-        transaction_hash: Option<H256>,
-    ) -> Option<EthereumCall> {
-        if input.0.len() < 4 {
-            return None;
-        }
         Some(EthereumCall {
-            from,
-            to,
-            value,
+            from: call.from,
+            to: call.to,
+            value: call.value,
             gas_used,
-            input,
-            output,
-            block_number,
-            block_hash,
-            transaction_hash,
+            input: call.input.clone(),
+            output: output,
+            block_number: trace.block_number,
+            block_hash: trace.block_hash,
+            transaction_hash: trace.transaction_hash,
         })
     }
 }
