@@ -464,6 +464,7 @@ where
     .and_then(move |(ctx, block_state, data_sources, runtime_hosts)| {
         // Reprocess the triggers from this block that match the new data sources
 
+        let created_ds_count = block_state.created_data_sources.len();
         let block_with_calls = EthereumBlockWithCalls {
             ethereum_block: block.deref().clone(),
             calls,
@@ -500,7 +501,17 @@ where
                 block.clone(),
                 triggers,
             )
-            .map(move |block_state| (ctx, block_state, data_sources, runtime_hosts))
+            .and_then(move |block_state| {
+                match block_state.created_data_sources.len() > created_ds_count {
+                    false => Ok((ctx, block_state, data_sources, runtime_hosts)),
+                    true => Err(err_msg(
+                        "A dynamic data source, in the same block that it was created,
+                        attempted to create another dynamic data source.
+                        Let us know in graph-node issue #1105 that you hit this.",
+                    )
+                    .into()),
+                }
+            })
         })
     })
     .and_then(move |(ctx, block_state, data_sources, runtime_hosts)| {
