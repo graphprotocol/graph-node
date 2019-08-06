@@ -620,7 +620,7 @@ pub struct BaseDataSource<M, T> {
     pub name: String,
     pub source: Source,
     pub mapping: M,
-    pub templates: Option<Vec<T>>,
+    pub templates: Option<Vec<T>>, // Deprecated in manifest spec version 0.0.2
 }
 
 pub type UnresolvedDataSource = BaseDataSource<UnresolvedMapping, UnresolvedDataSourceTemplate>;
@@ -903,34 +903,48 @@ impl UnresolvedSubgraphManifest {
             templates,
         } = self;
 
+        match semver::Version::parse(&spec_version) {
+            Ok(ref ver) if *ver <= semver::Version::new(0, 0, 2) => {}
+            _ => {
+                return Box::new(future::err(format_err!(
+                    "This Graph Node only supports manifest spec versions <= 0.0.2,
+                but subgraph `{}` uses `{}`",
+                    id,
+                    spec_version
+                ))) as Box<dyn Future<Item = _, Error = _> + Send>;
+            }
+        }
+
         // resolve each data set
-        schema
-            .resolve(id.clone(), resolver, logger.clone())
-            .join(
-                stream::futures_ordered(
-                    data_sources
-                        .into_iter()
-                        .map(|data_set| data_set.resolve(resolver, logger.clone())),
+        Box::new(
+            schema
+                .resolve(id.clone(), resolver, logger.clone())
+                .join(
+                    stream::futures_ordered(
+                        data_sources
+                            .into_iter()
+                            .map(|data_set| data_set.resolve(resolver, logger.clone())),
+                    )
+                    .collect(),
                 )
-                .collect(),
-            )
-            .join(templates.map(|templates| {
-                stream::futures_ordered(
-                    templates
-                        .into_iter()
-                        .map(|template| template.resolve(resolver, logger.clone())),
-                )
-                .collect()
-            }))
-            .map(|((schema, data_sources), templates)| SubgraphManifest {
-                id,
-                location,
-                spec_version,
-                description,
-                repository,
-                schema,
-                data_sources,
-                templates,
-            })
+                .join(templates.map(|templates| {
+                    stream::futures_ordered(
+                        templates
+                            .into_iter()
+                            .map(|template| template.resolve(resolver, logger.clone())),
+                    )
+                    .collect()
+                }))
+                .map(|((schema, data_sources), templates)| SubgraphManifest {
+                    id,
+                    location,
+                    spec_version,
+                    description,
+                    repository,
+                    schema,
+                    data_sources,
+                    templates,
+                }),
+        )
     }
 }
