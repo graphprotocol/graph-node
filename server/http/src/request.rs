@@ -1,4 +1,4 @@
-use graph::serde_json;
+use graph::prelude::serde_json;
 use graphql_parser;
 use hyper::Chunk;
 

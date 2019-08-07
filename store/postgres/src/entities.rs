@@ -38,13 +38,13 @@ use std::hash::{Hash, Hasher};
 use std::time::Instant;
 
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
+use graph::prelude::serde_json;
 use graph::prelude::{
     debug, format_err, info, warn, AttributeIndexDefinition, EntityChange, EntityChangeOperation,
     EntityFilter, EntityKey, Error, EthereumBlockPointer, EventSource, HistoryEvent, Logger,
     QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, TransactionAbortError,
     ValueType,
 };
-use graph::serde_json;
 use graph::util::extend::Extend;
 
 use crate::filter::{build_filter, store_filter};

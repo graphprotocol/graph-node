@@ -1,6 +1,6 @@
 use serde::ser::*;
 
-use crate::prelude::QueryExecutionError;
+use crate::prelude::{Fail, QueryExecutionError};
 
 /// Error caused while processing a [Subscription](struct.Subscription.html) request.
 #[derive(Debug, Fail)]

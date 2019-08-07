@@ -30,9 +30,6 @@ use std::time::Duration;
 use graph::components::forward;
 use graph::log::logger;
 use graph::prelude::{JsonRpcServer as _, *};
-use graph::tokio_executor;
-use graph::tokio_timer;
-use graph::tokio_timer::timer::Timer;
 use graph::util::security::SafeDisplay;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
@@ -44,6 +41,7 @@ use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_json_rpc::JsonRpcServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
+use tokio_timer::timer::Timer;
 
 lazy_static! {
     // Default to an Ethereum reorg threshold to 50 blocks

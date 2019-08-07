@@ -1,38 +1,3 @@
-pub extern crate bigdecimal;
-extern crate chrono;
-extern crate diesel;
-pub extern crate ethabi;
-extern crate futures;
-extern crate graphql_parser;
-extern crate hex;
-extern crate itertools;
-extern crate reqwest;
-#[macro_use]
-extern crate lazy_static;
-extern crate num_bigint;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_yaml;
-pub extern crate slog;
-#[macro_use]
-pub extern crate failure;
-extern crate ipfs_api;
-extern crate parity_wasm;
-extern crate rand;
-extern crate semver;
-#[macro_use]
-pub extern crate serde_json;
-pub extern crate slog_async;
-extern crate slog_envlogger;
-extern crate slog_term;
-extern crate tiny_keccak;
-pub extern crate tokio;
-pub extern crate tokio_executor;
-extern crate tokio_retry;
-pub extern crate tokio_timer;
-pub extern crate web3;
-
 /// Traits and types for all system components.
 pub mod components;
 
@@ -56,14 +21,19 @@ pub mod log;
 /// use graph::prelude::*;
 /// ```
 pub mod prelude {
+    pub use ethabi;
     pub use failure::{self, bail, err_msg, format_err, Error, Fail, SyncFailure};
     pub use serde_derive::{Deserialize, Serialize};
+    pub use serde_json;
     pub use slog::{self, crit, debug, error, info, o, trace, warn, Logger};
     pub use std::fmt::Debug;
     pub use std::iter::FromIterator;
     pub use std::sync::Arc;
     pub use tokio;
     pub use tokio::prelude::*;
+    pub use tokio_executor;
+    pub use tokio_timer;
+    pub use web3;
 
     pub use crate::components::ethereum::{
         BlockStream, BlockStreamBuilder, ChainHeadUpdate, ChainHeadUpdateListener,

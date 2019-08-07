@@ -13,8 +13,8 @@ use std::thread;
 use std::time::Duration;
 
 use futures::sync::mpsc::{channel, Receiver};
+use graph::prelude::serde_json;
 use graph::prelude::*;
-use graph::serde_json;
 
 lazy_static! {
     static ref LARGE_NOTIFICATION_CLEANUP_INTERVAL: Duration =

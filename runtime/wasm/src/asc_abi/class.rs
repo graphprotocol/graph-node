@@ -1,8 +1,8 @@
 use super::{AscHeap, AscPtr, AscType, AscValue};
 use ethabi;
 use graph::data::store;
+use graph::prelude::serde_json;
 use graph::prelude::slog;
-use graph::serde_json;
 use graph_runtime_derive::AscType;
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
@@ -527,7 +527,7 @@ impl AscValue for JsonValueKind {}
 
 impl JsonValueKind {
     pub(crate) fn get_kind(token: &serde_json::Value) -> Self {
-        use graph::serde_json::Value;
+        use serde_json::Value;
 
         match token {
             Value::Null => JsonValueKind::Null,

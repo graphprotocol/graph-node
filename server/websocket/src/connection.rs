@@ -7,8 +7,8 @@ use tokio_tungstenite::tungstenite::{Error as WsError, Message as WsMessage};
 use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;
 
+use graph::prelude::serde_json;
 use graph::prelude::*;
-use graph::serde_json;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

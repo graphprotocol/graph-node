@@ -1,16 +1,16 @@
+use ethabi::Token;
 use futures::future;
 use futures::prelude::*;
-use graph::ethabi::Token;
 use lazy_static::lazy_static;
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::*;
-use graph::web3;
-use graph::web3::api::Web3;
-use graph::web3::transports::batch::Batch;
-use graph::web3::types::{Filter, *};
+use web3;
+use web3::api::Web3;
+use web3::transports::batch::Batch;
+use web3::types::{Filter, *};
 
 #[derive(Clone)]
 pub struct EthereumAdapter<T: web3::Transport> {
@@ -130,8 +130,7 @@ where
         addresses: Vec<H160>,
         event_signatures: Vec<H256>,
         too_many_logs_fingerprint: &'static str,
-    ) -> impl Future<Item = Vec<Log>, Error = graph::tokio_timer::timeout::Error<web3::error::Error>>
-    {
+    ) -> impl Future<Item = Vec<Log>, Error = tokio_timer::timeout::Error<web3::error::Error>> {
         let eth_adapter = self.clone();
 
         retry("eth_getLogs RPC call", &logger)

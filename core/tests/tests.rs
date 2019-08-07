@@ -19,9 +19,9 @@ use std::time::Instant;
 
 use graph::components::ethereum::*;
 use graph::prelude::*;
-use graph::web3::types::*;
 use graph_core::{LinkResolver, SubgraphInstanceManager};
 use graph_mock::{FakeStore, MockBlockStreamBuilder, MockStore};
+use web3::types::*;
 
 use crate::tokio::timer::Delay;
 

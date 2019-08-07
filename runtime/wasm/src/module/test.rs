@@ -15,8 +15,8 @@ use graph::components::store::*;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::prelude::LinkResolver;
-use graph::web3::types::{Address, Block, Transaction, H160, H256};
 use graph_core;
+use web3::types::{Address, Block, Transaction, H160, H256};
 
 use crate::failure::Error;
 

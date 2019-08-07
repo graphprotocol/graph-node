@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-
 use ethabi::LogParam;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use web3::types::*;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

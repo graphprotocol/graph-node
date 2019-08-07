@@ -6,16 +6,14 @@ use std::mem;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use futures::prelude::*;
-use graph::tokio::timer::Delay;
-
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphEntity, SubgraphVersionEntity,
 };
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
 };
-use graph::web3::types::*;
+use tokio::timer::Delay;
+use web3::types::*;
 
 const FAST_SCAN_SPEEDUP: u64 = 10;
 

@@ -1,5 +1,6 @@
 use futures::Stream;
-use serde::de::{Deserialize, Deserializer, Error as DeserializerError};
+use serde::de::{Deserializer, Error as DeserializerError};
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use web3::types::H256;
 

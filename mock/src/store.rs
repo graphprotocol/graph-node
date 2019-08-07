@@ -8,8 +8,8 @@ use std::sync::Mutex;
 use graph::components::store::*;
 use graph::data::subgraph::schema::*;
 use graph::prelude::*;
-use graph::web3::types::H256;
 use graph_graphql::prelude::api_schema;
+use web3::types::H256;
 
 /// A mock `ChainHeadUpdateListener`
 pub struct MockChainHeadUpdateListener {}

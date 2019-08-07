@@ -9,15 +9,15 @@ use std::time::Instant;
 
 use super::MappingContext;
 use crate::module::{ValidModule, WasmiModule, WasmiModuleConfig};
+use ethabi::{LogParam, RawLog};
 use graph::components::ethereum::*;
 use graph::components::store::Store;
 use graph::data::subgraph::{DataSource, Source};
-use graph::ethabi::{LogParam, RawLog};
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
 use graph::util;
-use graph::web3::types::{Log, Transaction};
+use web3::types::{Log, Transaction};
 
 pub struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,

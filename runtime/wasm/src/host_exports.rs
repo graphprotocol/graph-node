@@ -5,15 +5,15 @@ use futures::sync::oneshot;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
 use graph::data::store;
+use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
-use graph::serde_json;
-use graph::web3::types::H160;
 use semver::Version;
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
+use web3::types::H160;
 
 use crate::module::WasmiModule;
 

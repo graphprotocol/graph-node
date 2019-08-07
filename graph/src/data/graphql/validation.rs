@@ -1,4 +1,6 @@
+use crate::prelude::Fail;
 use graphql_parser::schema::*;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

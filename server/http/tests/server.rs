@@ -72,8 +72,8 @@ impl GraphQlRunner for TestGraphQlRunner {
 #[cfg(test)]
 mod test {
     use super::*;
-    use graph::web3::types::H256;
     use graph_mock::MockStore;
+    use web3::types::H256;
 
     fn mock_store(id: SubgraphDeploymentId) -> Arc<MockStore> {
         let schema = Schema::parse("scalar Foo", id.clone()).unwrap();

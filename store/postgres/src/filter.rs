@@ -8,8 +8,8 @@ use std::str::FromStr;
 
 use graph::components::store::EntityFilter;
 use graph::data::store::*;
+use graph::prelude::serde_json;
 use graph::prelude::{BigDecimal, BigInt};
-use graph::serde_json;
 
 use crate::entities::EntitySource;
 use crate::sql_value::SqlValue;

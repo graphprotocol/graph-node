@@ -13,12 +13,12 @@ use uuid::Uuid;
 use crate::notification_listener::JsonNotification;
 use graph::components::store::Store as StoreTrait;
 use graph::data::subgraph::schema::*;
+use graph::prelude::serde_json;
 use graph::prelude::{ChainHeadUpdateListener as _, *};
-use graph::serde_json;
 use graph::util::security::SafeDisplay;
-use graph::web3::types::H256;
-use graph::{tokio, tokio::timer::Interval};
 use graph_graphql::prelude::api_schema;
+use tokio::timer::Interval;
+use web3::types::H256;
 
 use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::entities as e;

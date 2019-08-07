@@ -11,10 +11,10 @@
 //!
 //! See `subgraphs.graphql` in the store for corresponding graphql schema.
 
-use failure::Error;
 use graphql_parser::query as q;
 use graphql_parser::schema::{Definition, Document, Field, Name, Type, TypeDefinition};
 use hex;
+use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
 use std::collections::BTreeMap;
@@ -29,6 +29,7 @@ use crate::components::store::{
 use crate::data::graphql::{TryFromValue, ValueMap};
 use crate::data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
 use crate::data::subgraph::{SubgraphManifest, SubgraphName};
+use crate::prelude::*;
 
 lazy_static! {
     /// ID of the subgraph of subgraphs.
