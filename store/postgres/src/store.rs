@@ -339,28 +339,14 @@ impl Store {
         op_entity: &String,
         op_id: &String,
     ) -> Result<Option<Entity>, QueryExecutionError> {
-        match conn.find(op_subgraph, op_entity, op_id).map_err(|e| {
+        conn.find(op_subgraph, op_entity, op_id).map_err(|e| {
             QueryExecutionError::ResolveEntityError(
                 op_subgraph.clone(),
                 op_entity.clone(),
                 op_id.clone(),
-                format!("{}", e),
+                format!("Invalid entity {}", e),
             )
-        })? {
-            Some(json) => {
-                let mut value = serde_json::from_value::<Entity>(json).map_err(|e| {
-                    QueryExecutionError::ResolveEntityError(
-                        op_subgraph.clone(),
-                        op_entity.clone(),
-                        op_id.clone(),
-                        format!("Invalid entity: {}", e),
-                    )
-                })?;
-                value.set("__typename", op_entity);
-                Ok(Some(value))
-            }
-            None => Ok(None),
-        }
+        })
     }
 
     fn execute_query(
@@ -405,18 +391,6 @@ impl Store {
             query.range.first,
             query.range.skip,
         )
-        .map(|values| {
-            values
-                .into_iter()
-                .map(|(value, entity_type)| {
-                    let parse_error_msg = format!("Error parsing entity JSON: {:?}", value);
-                    let mut value =
-                        serde_json::from_value::<Entity>(value).expect(&parse_error_msg);
-                    value.set("__typename", entity_type);
-                    value
-                })
-                .collect()
-        })
     }
 
     fn check_interface_entity_uniqueness(
@@ -494,22 +468,11 @@ impl Store {
         // Apply the operation to obtain the updated (or new) entity
         let updated_entity = operation.apply(existing_entity)?;
 
-        // Convert the entity data to JSON
-        let json_data: serde_json::Value = serde_json::to_value(updated_entity).map_err(|e| {
-            format_err!(
-                "Failed to set entity ({}, {}, {}) as setting it would break it: {}",
-                key.subgraph_id,
-                key.entity_type,
-                key.entity_id,
-                e
-            )
-        })?;
-
         // Either insert or update the entity in Postgres
         let result = if is_update {
-            conn.update(&key, &json_data, true, None, history_event)
+            conn.update(&key, &updated_entity, true, None, history_event)
         } else {
-            conn.insert(&key, &json_data, history_event)
+            conn.insert(&key, &updated_entity, history_event)
         };
 
         result.map(|_| count).map_err(|e| {
@@ -535,18 +498,8 @@ impl Store {
     ) -> Result<i32, StoreError> {
         self.check_interface_entity_uniqueness(conn, &key)?;
 
-        let json: serde_json::Value = serde_json::to_value(&data).map_err(|e| {
-            format_err!(
-                "Failed to update entity ({}, {}, {}) as updating it would break it: {}",
-                key.subgraph_id,
-                key.entity_type,
-                key.entity_id,
-                e
-            )
-        })?;
-
         // Update the entity in Postgres
-        match conn.update(&key, &json, false, guard, history_event)? {
+        match conn.update(&key, &Some(data), false, guard, history_event)? {
             0 => Err(TransactionAbortError::AbortUnless {
                 expected_entity_ids: vec![key.entity_id.clone()],
                 actual_entity_ids: vec![],
