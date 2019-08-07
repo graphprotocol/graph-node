@@ -629,100 +629,6 @@ fn entity_from_json(json: serde_json::Value, entity: &str) -> Result<Entity, Sto
 }
 
 impl Table {
-    // Update for a split entities table, called from Table.update. It's lengthy,
-    // so we split it into its own helper function
-    fn update_data(
-        &self,
-        conn: &PgConnection,
-        key: &EntityKey,
-        data: &serde_json::Value,
-        overwrite: bool,
-        guard: Option<EntityFilter>,
-        history_event: Option<&HistoryEvent>,
-    ) -> Result<usize, StoreError> {
-        if !guard.is_none() && key.subgraph_id != *SUBGRAPHS_ID {
-            // We can only make adding additional conditions to the update
-            // operation work for a query that is fully generated with
-            // Diesel's DSL. Trying to combine the result of build_filter
-            // with a direct query is too cumbersome because of various type
-            // system gyrations. For now, we also only need update guards for
-            // the subgraph of subgraphs
-            panic!("update guards are only possible for the 'subgraphs' subgraph");
-        }
-
-        let event_source = HistoryEvent::to_event_source_string(&history_event);
-
-        if let Some(filter) = guard {
-            // Update for subgraph of subgraphs with a guard
-            use self::subgraphs::entities;
-
-            let filter = build_filter(filter).map_err(|e| {
-                TransactionAbortError::Other(format!(
-                    "invalid filter '{}' for value '{}'",
-                    e.filter, e.value
-                ))
-            })?;
-
-            let target = entities::table
-                .filter(entities::entity.eq(&key.entity_type))
-                .filter(entities::id.eq(&key.entity_id));
-
-            if overwrite {
-                Ok(diesel::update(target)
-                    .set((
-                        entities::data.eq(&data),
-                        entities::event_source.eq(&event_source),
-                    ))
-                    .filter(filter)
-                    .execute(conn)?)
-            } else {
-                Ok(diesel::update(target)
-                    .set((
-                        entities::data.eq(entities::data.merge(&data)),
-                        entities::event_source.eq(&event_source),
-                    ))
-                    .filter(filter)
-                    .execute(conn)?)
-            }
-        } else {
-            // If there is no guard (which has to include all 'normal' subgraphs),
-            // we need to use a direct query since diesel::update does not like
-            // dynamic tables.
-            let query = if overwrite {
-                format!(
-                    "update {}.entities
-                       set data = $3, event_source = $4
-                       where entity = $1 and id = $2",
-                    self.schema
-                )
-            } else {
-                format!(
-                    "update {}.entities
-                       set data = data || $3, event_source = $4
-                       where entity = $1 and id = $2",
-                    self.schema
-                )
-            };
-            let query = diesel::sql_query(query)
-                .bind::<Text, _>(&key.entity_type)
-                .bind::<Text, _>(&key.entity_id)
-                .bind::<Jsonb, _>(data)
-                .bind::<Text, _>(&event_source);
-            query.execute(conn).map_err(|e| {
-                format_err!(
-                    "Failed to update entity ({}, {}, {}): {}",
-                    key.subgraph_id,
-                    key.entity_type,
-                    key.entity_id,
-                    e
-                )
-                .into()
-            })
-        }
-    }
-}
-
-impl Table {
     /// The version for newly created subgraph schemas. Changing this most
     /// likely also requires changing `create_schema`
     #[allow(dead_code)]
@@ -923,7 +829,85 @@ impl Table {
 
         self.add_entity_history_record(conn, history_event, &key, OperationType::Update)?;
 
-        self.update_data(conn, key, &data, overwrite, guard, history_event)
+        if !guard.is_none() && key.subgraph_id != *SUBGRAPHS_ID {
+            // We can only make adding additional conditions to the update
+            // operation work for a query that is fully generated with
+            // Diesel's DSL. Trying to combine the result of build_filter
+            // with a direct query is too cumbersome because of various type
+            // system gyrations. For now, we also only need update guards for
+            // the subgraph of subgraphs
+            panic!("update guards are only possible for the 'subgraphs' subgraph");
+        }
+
+        let event_source = HistoryEvent::to_event_source_string(&history_event);
+
+        if let Some(filter) = guard {
+            // Update for subgraph of subgraphs with a guard
+            use self::subgraphs::entities;
+
+            let filter = build_filter(filter).map_err(|e| {
+                TransactionAbortError::Other(format!(
+                    "invalid filter '{}' for value '{}'",
+                    e.filter, e.value
+                ))
+            })?;
+
+            let target = entities::table
+                .filter(entities::entity.eq(&key.entity_type))
+                .filter(entities::id.eq(&key.entity_id));
+
+            if overwrite {
+                Ok(diesel::update(target)
+                    .set((
+                        entities::data.eq(&data),
+                        entities::event_source.eq(&event_source),
+                    ))
+                    .filter(filter)
+                    .execute(conn)?)
+            } else {
+                Ok(diesel::update(target)
+                    .set((
+                        entities::data.eq(entities::data.merge(&data)),
+                        entities::event_source.eq(&event_source),
+                    ))
+                    .filter(filter)
+                    .execute(conn)?)
+            }
+        } else {
+            // If there is no guard (which has to include all 'normal' subgraphs),
+            // we need to use a direct query since diesel::update does not like
+            // dynamic tables.
+            let query = if overwrite {
+                format!(
+                    "update {}.entities
+                       set data = $3, event_source = $4
+                       where entity = $1 and id = $2",
+                    self.schema
+                )
+            } else {
+                format!(
+                    "update {}.entities
+                       set data = data || $3, event_source = $4
+                       where entity = $1 and id = $2",
+                    self.schema
+                )
+            };
+            let query = diesel::sql_query(query)
+                .bind::<Text, _>(&key.entity_type)
+                .bind::<Text, _>(&key.entity_id)
+                .bind::<Jsonb, _>(data)
+                .bind::<Text, _>(&event_source);
+            query.execute(conn).map_err(|e| {
+                format_err!(
+                    "Failed to update entity ({}, {}, {}): {}",
+                    key.subgraph_id,
+                    key.entity_type,
+                    key.entity_id,
+                    e
+                )
+                .into()
+            })
+        }
     }
 
     fn delete(
