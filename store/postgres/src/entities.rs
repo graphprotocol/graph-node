@@ -40,7 +40,7 @@ use std::time::Instant;
 use graph::data::schema::Schema as SubgraphSchema;
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{
-    debug, format_err, info, serde_json, warn, AttributeIndexDefinition, EntityChange,
+    debug, format_err, info, serde_json, warn, AttributeIndexDefinition, Entity, EntityChange,
     EntityChangeOperation, EntityFilter, EntityKey, Error, EthereumBlockPointer, EventSource,
     HistoryEvent, Logger, QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId,
     TransactionAbortError, ValueType,
@@ -342,7 +342,7 @@ impl<'a> Connection<'a> {
         subgraph: &SubgraphDeploymentId,
         entity: &String,
         id: &String,
-    ) -> Result<Option<serde_json::Value>, StoreError> {
+    ) -> Result<Option<Entity>, StoreError> {
         let table = self.table(subgraph)?;
         table.find(self.conn, entity, id)
     }
@@ -355,7 +355,7 @@ impl<'a> Connection<'a> {
         order: Option<(String, ValueType, &str, &str)>,
         first: Option<u32>,
         skip: u32,
-    ) -> Result<Vec<(serde_json::Value, String)>, QueryExecutionError> {
+    ) -> Result<Vec<Entity>, QueryExecutionError> {
         let table = self.table(subgraph)?;
         table.query(self.conn, entity_types, filter, order, first, skip)
     }
@@ -373,23 +373,23 @@ impl<'a> Connection<'a> {
     pub(crate) fn insert(
         &self,
         key: &EntityKey,
-        data: &serde_json::Value,
+        entity: &Option<Entity>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         let table = self.table(&key.subgraph_id)?;
-        table.insert(self.conn, key, data, history_event)
+        table.insert(self.conn, key, entity, history_event)
     }
 
     pub(crate) fn update(
         &self,
         key: &EntityKey,
-        data: &serde_json::Value,
+        entity: &Option<Entity>,
         overwrite: bool,
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         let table = self.table(&key.subgraph_id)?;
-        table.update(self.conn, key, data, overwrite, guard, history_event)
+        table.update(self.conn, key, entity, overwrite, guard, history_event)
     }
 
     pub(crate) fn delete(
@@ -610,6 +610,24 @@ fn find_schema(
         .optional()?)
 }
 
+fn entity_to_json(key: &EntityKey, entity: &Option<Entity>) -> Result<serde_json::Value, Error> {
+    serde_json::to_value(entity).map_err(|e| {
+        format_err!(
+            "Failed to convert entity ({}, {}, {}) to JSON: {}",
+            key.subgraph_id,
+            key.entity_type,
+            key.entity_id,
+            e
+        )
+    })
+}
+
+fn entity_from_json(json: serde_json::Value, entity: &str) -> Result<Entity, StoreError> {
+    let mut value = serde_json::from_value::<Entity>(json)?;
+    value.set("__typename", entity);
+    Ok(value)
+}
+
 impl Table {
     // Update for a split entities table, called from Table.update. It's lengthy,
     // so we split it into its own helper function
@@ -759,14 +777,16 @@ impl Table {
         conn: &PgConnection,
         entity: &str,
         id: &String,
-    ) -> Result<Option<serde_json::Value>, StoreError> {
+    ) -> Result<Option<Entity>, StoreError> {
         let entities = self.clone();
-        Ok(entities
+        entities
             .table
             .filter(entities.entity.eq(entity).and(entities.id.eq(id)))
             .select(entities.data)
             .first::<serde_json::Value>(conn)
-            .optional()?)
+            .optional()?
+            .map(|json| entity_from_json(json, entity))
+            .transpose()
     }
 
     /// order is a tuple (attribute, value_type, cast, direction)
@@ -778,7 +798,7 @@ impl Table {
         order: Option<(String, ValueType, &str, &str)>,
         first: Option<u32>,
         skip: u32,
-    ) -> Result<Vec<(serde_json::Value, String)>, QueryExecutionError> {
+    ) -> Result<Vec<Entity>, QueryExecutionError> {
         let entities = self.clone();
         let mut query = entities
             .table
@@ -826,23 +846,30 @@ impl Table {
 
         let query_debug_info = debug_query(&query).to_string();
 
-        query
+        let values = query
             .load::<(serde_json::Value, String)>(conn)
             .map_err(|e| {
                 QueryExecutionError::ResolveEntitiesError(format!(
                     "{}, query = {:?}",
                     e, query_debug_info
                 ))
+            })?;
+        values
+            .into_iter()
+            .map(|(value, entity_type)| {
+                entity_from_json(value, &entity_type).map_err(QueryExecutionError::from)
             })
+            .collect()
     }
 
     fn insert(
         &self,
         conn: &PgConnection,
         key: &EntityKey,
-        data: &serde_json::Value,
+        entity: &Option<Entity>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
+        let data = entity_to_json(key, entity)?;
         let event_source = HistoryEvent::to_event_source_string(&history_event);
 
         self.add_entity_history_record(conn, history_event, &key, OperationType::Insert)?;
@@ -887,14 +914,16 @@ impl Table {
         &self,
         conn: &PgConnection,
         key: &EntityKey,
-        data: &serde_json::Value,
+        entity: &Option<Entity>,
         overwrite: bool,
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
+        let data = entity_to_json(key, entity)?;
+
         self.add_entity_history_record(conn, history_event, &key, OperationType::Update)?;
 
-        self.update_data(conn, key, data, overwrite, guard, history_event)
+        self.update_data(conn, key, &data, overwrite, guard, history_event)
     }
 
     fn delete(
