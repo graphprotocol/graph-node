@@ -1,4 +1,3 @@
-extern crate backtrace;
 pub extern crate bigdecimal;
 extern crate chrono;
 extern crate diesel;
