@@ -629,55 +629,6 @@ fn entity_from_json(json: serde_json::Value, entity: &str) -> Result<Entity, Sto
 }
 
 impl Table {
-    /// The version for newly created subgraph schemas. Changing this most
-    /// likely also requires changing `create_schema`
-    #[allow(dead_code)]
-    const DEFAULT_VERSION: public::DeploymentSchemaVersion = public::DeploymentSchemaVersion::Split;
-
-    /// Look up the schema for `subgraph` and return its entity table.
-    /// Returns an error if `subgraph` does not have an entry in
-    /// `deployment_schemas`, which can only happen if `create_schema` was not
-    /// called for that `subgraph`
-    fn new(conn: &PgConnection, subgraph: &SubgraphDeploymentId) -> Result<Self, StoreError> {
-        use public::DeploymentSchemaVersion as V;
-
-        let schema = find_schema(conn, subgraph)?
-            .ok_or_else(|| StoreError::Unknown(format_err!("unknown subgraph {}", subgraph)))?;
-        let table = match schema.version {
-            V::Split => {
-                let table =
-                    diesel_dynamic_schema::schema(schema.name.clone()).table("entities".to_owned());
-                let id = table.column::<Text, _>("id".to_string());
-                let entity = table.column::<Text, _>("entity".to_string());
-                let data = table.column::<Jsonb, _>("data".to_string());
-                let event_source = table.column::<Text, _>("event_source".to_string());
-
-                Table {
-                    schema: schema.name,
-                    subgraph: subgraph.clone(),
-                    table,
-                    id,
-                    entity,
-                    data,
-                    event_source,
-                }
-            }
-            V::Relational => unimplemented!(),
-        };
-        Ok(table)
-    }
-
-    /// Return an entity key for the entity of the given type and id in the
-    /// subgraph stored in `self`
-    fn entity_key(&self, entity_type: String, entity_id: String) -> EntityKey {
-        let subgraph_id = self.subgraph.clone();
-        EntityKey {
-            subgraph_id,
-            entity_type,
-            entity_id,
-        }
-    }
-
     fn find(
         &self,
         conn: &PgConnection,
@@ -937,52 +888,6 @@ impl Table {
             .bind::<Text, _>(&key.entity_type)
             .bind::<Text, _>(&key.entity_id);
         Ok(query.execute(conn)?)
-    }
-
-    /// Adjust the `entityCount` property of the `SubgraphDeployment` for
-    /// `subgraph` by `count`. This needs to be performed after the changes
-    /// underlying `count` have been written to the store.
-    pub(crate) fn update_entity_count(
-        &self,
-        conn: &PgConnection,
-        subgraph: &SubgraphDeploymentId,
-        count: i32,
-    ) -> Result<(), StoreError> {
-        let count_query = format!("select count(*) from {}.entities", self.schema);
-        // The big complication in this query is how to determine what the
-        // new entityCount should be. We want to make sure that if the entityCount
-        // is NULL or the special value `00`, it gets recomputed. Using `00` here
-        // makes it possible to manually set the `entityCount` to that value
-        // to force a recount; setting it to `NULL` is not desirable since
-        // `entityCount` on the GraphQL level is not nullable, and so setting
-        // `entityCount` to `NULL` could cause errors at that layer; temporarily
-        // returning `0` is more palatable. To be exact, recounts have to be
-        // done here, from the subgraph writer.
-        //
-        // The first argument of `coalesce` will be `NULL` if the entity count
-        // is `NULL` or `00`, forcing `coalesce` to evaluate its second
-        // argument, the query to count entities. In all other cases,
-        // `coalesce` does not evaluate its second argument
-        let current_count = "(nullif(data->'entityCount'->>'data', '00'))::numeric";
-        let query = format!(
-            "
-            update subgraphs.entities
-            set data = data || (format('{{\"entityCount\":
-                                  {{ \"data\": \"%s\",
-                                    \"type\": \"BigInt\"}}}}',
-                                  coalesce({current_count} + $1,
-                                           ({count_query}))))::jsonb
-            where entity='SubgraphDeployment'
-              and id = $2
-            ",
-            current_count = current_count,
-            count_query = count_query
-        );
-        Ok(diesel::sql_query(query)
-            .bind::<Integer, _>(count)
-            .bind::<Text, _>(subgraph.to_string())
-            .execute(conn)
-            .map(|_| ())?)
     }
 
     fn conflicting_entity(
@@ -1276,6 +1181,103 @@ impl Table {
         }
 
         Ok((changes, count))
+    }
+}
+
+impl Table {
+    /// The version for newly created subgraph schemas. Changing this most
+    /// likely also requires changing `create_schema`
+    #[allow(dead_code)]
+    const DEFAULT_VERSION: public::DeploymentSchemaVersion = public::DeploymentSchemaVersion::Split;
+
+    /// Look up the schema for `subgraph` and return its entity table.
+    /// Returns an error if `subgraph` does not have an entry in
+    /// `deployment_schemas`, which can only happen if `create_schema` was not
+    /// called for that `subgraph`
+    fn new(conn: &PgConnection, subgraph: &SubgraphDeploymentId) -> Result<Self, StoreError> {
+        use public::DeploymentSchemaVersion as V;
+
+        let schema = find_schema(conn, subgraph)?
+            .ok_or_else(|| StoreError::Unknown(format_err!("unknown subgraph {}", subgraph)))?;
+        let table = match schema.version {
+            V::Split => {
+                let table =
+                    diesel_dynamic_schema::schema(schema.name.clone()).table("entities".to_owned());
+                let id = table.column::<Text, _>("id".to_string());
+                let entity = table.column::<Text, _>("entity".to_string());
+                let data = table.column::<Jsonb, _>("data".to_string());
+                let event_source = table.column::<Text, _>("event_source".to_string());
+
+                Table {
+                    schema: schema.name,
+                    subgraph: subgraph.clone(),
+                    table,
+                    id,
+                    entity,
+                    data,
+                    event_source,
+                }
+            }
+            V::Relational => unimplemented!(),
+        };
+        Ok(table)
+    }
+
+    /// Return an entity key for the entity of the given type and id in the
+    /// subgraph stored in `self`
+    fn entity_key(&self, entity_type: String, entity_id: String) -> EntityKey {
+        let subgraph_id = self.subgraph.clone();
+        EntityKey {
+            subgraph_id,
+            entity_type,
+            entity_id,
+        }
+    }
+
+    /// Adjust the `entityCount` property of the `SubgraphDeployment` for
+    /// `subgraph` by `count`. This needs to be performed after the changes
+    /// underlying `count` have been written to the store.
+    pub(crate) fn update_entity_count(
+        &self,
+        conn: &PgConnection,
+        subgraph: &SubgraphDeploymentId,
+        count: i32,
+    ) -> Result<(), StoreError> {
+        let count_query = format!("select count(*) from {}.entities", self.schema);
+        // The big complication in this query is how to determine what the
+        // new entityCount should be. We want to make sure that if the entityCount
+        // is NULL or the special value `00`, it gets recomputed. Using `00` here
+        // makes it possible to manually set the `entityCount` to that value
+        // to force a recount; setting it to `NULL` is not desirable since
+        // `entityCount` on the GraphQL level is not nullable, and so setting
+        // `entityCount` to `NULL` could cause errors at that layer; temporarily
+        // returning `0` is more palatable. To be exact, recounts have to be
+        // done here, from the subgraph writer.
+        //
+        // The first argument of `coalesce` will be `NULL` if the entity count
+        // is `NULL` or `00`, forcing `coalesce` to evaluate its second
+        // argument, the query to count entities. In all other cases,
+        // `coalesce` does not evaluate its second argument
+        let current_count = "(nullif(data->'entityCount'->>'data', '00'))::numeric";
+        let query = format!(
+            "
+            update subgraphs.entities
+            set data = data || (format('{{\"entityCount\":
+                                  {{ \"data\": \"%s\",
+                                    \"type\": \"BigInt\"}}}}',
+                                  coalesce({current_count} + $1,
+                                           ({count_query}))))::jsonb
+            where entity='SubgraphDeployment'
+              and id = $2
+            ",
+            current_count = current_count,
+            count_query = count_query
+        );
+        Ok(diesel::sql_query(query)
+            .bind::<Integer, _>(count)
+            .bind::<Text, _>(subgraph.to_string())
+            .execute(conn)
+            .map(|_| ())?)
     }
 
     fn migrate(
