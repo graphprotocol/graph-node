@@ -1,7 +1,7 @@
 use tokio::sync::watch;
 
+use graph::prelude::serde_json;
 use graph::prelude::{ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, *};
-use graph::serde_json;
 
 use crate::notification_listener::{NotificationListener, SafeChannelName};
 

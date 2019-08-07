@@ -2,12 +2,12 @@ use crate::tokio::runtime::Runtime;
 use graph::log;
 #[allow(unused_imports)]
 use graph::prelude::{Store as _, *};
-use graph::web3::types::H256;
 use graph_store_postgres::{Store, StoreConfig};
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::env;
 use std::sync::Mutex;
+use web3::types::H256;
 
 pub fn postgres_test_url() -> String {
     std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL")

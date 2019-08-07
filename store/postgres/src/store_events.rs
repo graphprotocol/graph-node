@@ -1,6 +1,6 @@
 use crate::notification_listener::{NotificationListener, SafeChannelName};
+use graph::prelude::serde_json;
 use graph::prelude::*;
-use graph::serde_json;
 
 pub struct StoreEventListener {
     notification_listener: NotificationListener,

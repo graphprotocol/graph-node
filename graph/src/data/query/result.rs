@@ -1,8 +1,8 @@
-use graphql_parser::query as q;
-use serde::ser::*;
-
 use super::error::{QueryError, QueryExecutionError};
 use crate::data::graphql::SerializableValue;
+use graphql_parser::query as q;
+use serde::ser::*;
+use serde::Serialize;
 
 fn serialize_data<S>(data: &Option<q::Value>, serializer: S) -> Result<S::Ok, S::Error>
 where

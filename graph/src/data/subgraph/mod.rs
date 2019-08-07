@@ -25,6 +25,7 @@ use crate::data::subgraph::schema::{
     EthereumContractDataSourceTemplateSourceEntity, EthereumContractEventHandlerEntity,
     EthereumContractMappingEntity, EthereumContractSourceEntity, SUBGRAPHS_ID,
 };
+use crate::prelude::{format_err, Deserialize, Fail, Serialize};
 use crate::util::ethereum::string_to_h256;
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.

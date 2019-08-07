@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use graph::prelude::{LinkResolver as LinkResolverTrait, *};
-use graph::serde_json::Value;
+use serde_json::Value;
 
 // Environment variable for limiting the `ipfs.map` file size limit.
 const MAX_IPFS_MAP_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_MAP_FILE_SIZE";

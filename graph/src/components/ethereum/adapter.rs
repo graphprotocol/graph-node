@@ -9,8 +9,7 @@ use web3::error::Error as Web3Error;
 use web3::types::*;
 
 use super::types::*;
-use crate::prelude::BlockHandlerFilter;
-use crate::prelude::DataSource;
+use crate::prelude::*;
 use crate::util::extend::Extend;
 
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.

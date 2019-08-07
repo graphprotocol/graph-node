@@ -3,7 +3,7 @@ use std::env;
 use std::str::FromStr;
 
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
-use graph::web3::types::Log;
+use web3::types::Log;
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")

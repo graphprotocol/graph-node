@@ -1,5 +1,6 @@
 use graphql_parser::query as q;
-use serde::de::{Deserialize, Deserializer};
+use serde::de::Deserializer;
+use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;

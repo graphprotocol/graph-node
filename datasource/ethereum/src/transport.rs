@@ -1,13 +1,12 @@
-use futures::prelude::*;
-use graph::serde_json::Value;
+use graph::prelude::*;
 use jsonrpc_core::types::Call;
+use serde_json::Value;
 use std::env;
 
-use graph::web3;
-use graph::web3::transports::{http, ipc, ws};
-use graph::web3::RequestId;
+use web3::transports::{http, ipc, ws};
+use web3::RequestId;
 
-pub use graph::web3::transports::EventLoopHandle;
+pub use web3::transports::EventLoopHandle;
 
 /// Abstraction over the different web3 transports.
 #[derive(Clone, Debug)]

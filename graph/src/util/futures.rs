@@ -27,7 +27,7 @@ use tokio_retry::Retry;
 /// ```
 /// # extern crate graph;
 /// # use graph::prelude::*;
-/// # use graph::tokio::timer::timeout;
+/// # use tokio::timer::timeout;
 /// #
 /// # type Memes = (); // the memes are a lie :(
 /// #

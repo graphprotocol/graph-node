@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::data::subgraph::SubgraphDeploymentId;
 use crate::log::elastic::*;
 use crate::log::split::*;
-use crate::slog::*;
+use slog::*;
 
 /// Configuration for component-specific logging to Elasticsearch.
 pub struct ElasticComponentLoggerConfig {

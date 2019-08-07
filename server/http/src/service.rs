@@ -406,13 +406,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use graph::web3::types::H256;
     use graph_mock::MockStore;
     use graphql_parser::query as q;
     use http::status::StatusCode;
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
     use std::collections::BTreeMap;
+    use web3::types::H256;
 
     use graph::data::subgraph::schema::*;
     use graph::prelude::*;

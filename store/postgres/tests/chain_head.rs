@@ -9,7 +9,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use graph::components::store::ChainStore;
-use graph::serde_json;
+use graph::prelude::serde_json;
 use graph_store_postgres::db_schema_for_tests as db_schema;
 use graph_store_postgres::Store as DieselStore;
 

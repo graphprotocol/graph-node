@@ -11,12 +11,12 @@ use wasmi::{
 
 use crate::host_exports::{self, HostExportError, HostExports};
 use crate::MappingContext;
+use ethabi::LogParam;
 use graph::components::ethereum::*;
 use graph::data::store;
 use graph::data::subgraph::DataSource;
-use graph::ethabi::LogParam;
 use graph::prelude::{Error as FailureError, *};
-use graph::web3::types::{Log, Transaction, U256};
+use web3::types::{Log, Transaction, U256};
 
 use crate::asc_abi::asc_ptr::*;
 use crate::asc_abi::class::*;
@@ -293,7 +293,7 @@ where
     pub(crate) fn handle_json_callback(
         mut self,
         handler_name: &str,
-        value: &graph::serde_json::Value,
+        value: &serde_json::Value,
         user_data: &store::Value,
     ) -> Result<BlockState, FailureError> {
         let value = RuntimeValue::from(self.asc_new(value));

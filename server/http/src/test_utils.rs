@@ -1,5 +1,5 @@
-use graph::serde_json;
-use graph::tokio::prelude::*;
+use graph::prelude::serde_json;
+use graph::prelude::*;
 use http::StatusCode;
 use hyper::{Body, Response};
 

@@ -1,6 +1,8 @@
 use failure::Error;
 use futures::stream::poll_fn;
 use futures::{Async, Future, Poll, Stream};
+use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::env;
 use std::fmt;

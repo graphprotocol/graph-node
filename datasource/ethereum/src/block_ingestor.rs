@@ -2,7 +2,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use graph::prelude::*;
-use graph::web3::types::*;
+use web3::types::*;
 
 pub struct BlockIngestor<S, E>
 where

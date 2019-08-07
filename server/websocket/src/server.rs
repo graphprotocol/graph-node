@@ -1,10 +1,9 @@
-use futures::prelude::*;
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
-use graph::tokio::net::TcpListener;
 use hyper::Uri;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Mutex;
+use tokio::net::TcpListener;
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::{handshake::server::Request, Error as WsError};
 

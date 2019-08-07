@@ -1,13 +1,13 @@
 use ethabi;
 use std::collections::HashMap;
 
+use crate::web3::types as web3;
 use graph::components::ethereum::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
 };
 use graph::data::store;
+use graph::prelude::serde_json;
 use graph::prelude::{BigDecimal, BigInt};
-use graph::serde_json;
-use graph::web3::types as web3;
 
 use crate::asc_abi::class::*;
 use crate::asc_abi::{AscHeap, AscPtr, AscType, FromAscObj, ToAscObj};
@@ -259,7 +259,7 @@ impl ToAscObj<AscEntity> for store::Entity {
 
 impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEnum<JsonValueKind> {
-        use graph::serde_json::Value;
+        use serde_json::Value;
 
         let payload = match self {
             Value::Null => EnumPayload(0),

@@ -4,8 +4,8 @@ use serde::ser::*;
 
 use graph::components::server::query::GraphQLServerError;
 use graph::data::query::QueryResult;
-use graph::serde_json;
-use graph::tokio::prelude::*;
+use graph::prelude::serde_json;
+use graph::prelude::*;
 
 /// Future for HTTP responses to GraphQL query requests.
 pub struct GraphQLResponse {

@@ -5,16 +5,15 @@ use std::collections::VecDeque;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
+use ethabi::{Function, Param, ParamType, Token};
 use graph::components::ethereum::EthereumContractCall;
-use graph::ethabi::{Function, Param, ParamType, Token};
 use graph::prelude::EthereumAdapter as EthereumAdapterTrait;
 use graph::prelude::*;
-use graph::serde_json;
-use graph::web3::error::Error;
-use graph::web3::helpers::*;
-use graph::web3::types::*;
-use graph::web3::{BatchTransport, RequestId, Transport};
 use graph_datasource_ethereum::EthereumAdapter;
+use web3::error::Error;
+use web3::helpers::*;
+use web3::types::*;
+use web3::{BatchTransport, RequestId, Transport};
 
 pub type Result<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
 

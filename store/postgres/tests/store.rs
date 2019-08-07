@@ -13,8 +13,8 @@ use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
-use graph::web3::types::{Address, H256};
 use graph_store_postgres::Store as DieselStore;
+use web3::types::{Address, H256};
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID_STRING: String = String::from("testsubgraph");
@@ -1384,7 +1384,7 @@ fn make_deployment_change(entity_id: &str, op: EntityChangeOperation) -> EntityC
 fn check_events(
     stream: StoreEventStream<impl Stream<Item = StoreEvent, Error = ()> + Send>,
     expected: Vec<StoreEvent>,
-) -> impl Future<Item = (), Error = graph::tokio_timer::timeout::Error<()>> {
+) -> impl Future<Item = (), Error = tokio_timer::timeout::Error<()>> {
     stream
         .take(expected.len() as u64)
         .collect()
@@ -1460,7 +1460,7 @@ fn check_basic_revert(
     expected: StoreEvent,
     subgraph_id: &SubgraphDeploymentId,
     entity_type: &str,
-) -> impl Future<Item = (), Error = graph::tokio_timer::timeout::Error<()>> {
+) -> impl Future<Item = (), Error = tokio_timer::timeout::Error<()>> {
     let this_query = EntityQuery {
         subgraph_id: TEST_SUBGRAPH_ID.clone(),
         entity_types: vec!["user".to_owned()],
@@ -2072,7 +2072,7 @@ fn throttle_subscription_delivers() {
 #[test]
 fn throttle_subscription_throttles() {
     run_test(
-        |store| -> Box<Future<Item = (), Error = graph::tokio_timer::timeout::Error<()>> + Send> {
+        |store| -> Box<Future<Item = (), Error = tokio_timer::timeout::Error<()>> + Send> {
             // Throttle for a very long time (30s)
             let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user")
                 .throttle_while_syncing(

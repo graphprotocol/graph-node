@@ -3,6 +3,7 @@ use failure::Error;
 use graphql_parser::query;
 use graphql_parser::schema;
 use serde::de;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::iter::FromIterator;
@@ -11,7 +12,7 @@ use std::str::FromStr;
 use web3::types::H256;
 
 use crate::data::subgraph::SubgraphDeploymentId;
-use crate::prelude::QueryExecutionError;
+use crate::prelude::{format_err, QueryExecutionError};
 
 /// Custom scalars in GraphQL.
 pub mod scalar;

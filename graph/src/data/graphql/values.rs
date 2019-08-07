@@ -3,7 +3,8 @@ use graphql_parser::query::Value;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
-use crate::web3::types::{H160, H256};
+use crate::prelude::format_err;
+use web3::types::{H160, H256};
 
 pub trait TryFromValue: Sized {
     fn try_from_value(value: &Value) -> Result<Self, Error>;
