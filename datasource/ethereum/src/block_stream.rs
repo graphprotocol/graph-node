@@ -892,11 +892,11 @@ where
 
         // Search for the block in the store first then use the ethereum adapter as a backup
         let block = future::result(ctx.chain_store.block(block_hash))
-            .and_then(
+            .then(
                 move |local_block_opt| -> Box<Future<Item = _, Error = _> + Send> {
                     match local_block_opt {
-                        Some(block) => Box::new(future::ok(block)),
-                        None => {
+                        Ok(Some(block)) => Box::new(future::ok(block)),
+                        Ok(None) | Err(_) => {
                             let logger = ctx.logger.clone();
                             let ctx_1 = ctx.clone();
                             let ctx_2 = ctx_1.clone();
