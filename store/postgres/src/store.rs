@@ -1271,15 +1271,13 @@ impl ChainStore for Store {
             .filter(network_name.eq(&self.network_name))
             .filter(hash.eq(format!("{:x}", block_hash)))
             .load::<serde_json::Value>(&*self.get_conn()?)
+            .map_err(Error::from)
             .map(|json_blocks| match json_blocks.len() {
-                0 => None,
-                1 => Some(
-                    serde_json::from_value::<EthereumBlock>(json_blocks[0].clone())
-                        .expect("Failed to deserialize block"),
-                ),
+                0 => Ok(None),
+                1 => Ok(Some(serde_json::from_value(json_blocks[0].clone())?)),
                 _ => unreachable!(),
             })
-            .map_err(Error::from)
+            .and_then(|x| x)
     }
 
     fn ancestor_block(
