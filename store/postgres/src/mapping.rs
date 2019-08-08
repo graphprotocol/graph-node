@@ -59,7 +59,7 @@ impl IdType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Mapping {
     /// The SQL type for columns with GRaphQL type `ID`
     id_type: IdType,
