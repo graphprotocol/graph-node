@@ -728,7 +728,7 @@ impl Store {
 
     fn get_entity_conn(&self) -> Result<e::Connection, Error> {
         let conn = self.get_conn()?;
-        Ok(e::Connection::new(conn))
+        Ok(e::Connection::new(conn, self))
     }
 
     /// Creates a history event to use when applying entity operations.

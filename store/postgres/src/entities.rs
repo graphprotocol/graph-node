@@ -50,7 +50,8 @@ use graph::prelude::{
 use crate::filter::build_filter;
 use crate::functions::set_config;
 use crate::jsonb::PgJsonbExpressionMethods as _;
-use crate::mapping::IdType;
+use crate::mapping::{IdType, Mapping};
+use crate::store::Store;
 
 /// The size of string prefixes that we index. This should be large enough
 /// that we catch most strings, but small enough so that we can still insert
@@ -248,10 +249,9 @@ struct Schema {
 
 type EntityColumn<ST> = Column<DynamicTable<String>, String, ST>;
 
-/// Storage representing a split entities table, i.e. a setup where
-/// a subgraph deployment's entities are stored in their own schema
+/// Storage using JSONB for entities. All entities are stored in one table
 #[derive(Debug, Clone)]
-pub(crate) struct Storage {
+pub(crate) struct JsonStorage {
     /// The name of the database schema
     schema: String,
     /// The subgraph id
@@ -261,6 +261,12 @@ pub(crate) struct Storage {
     entity: EntityColumn<diesel::sql_types::Text>,
     data: EntityColumn<diesel::sql_types::Jsonb>,
     event_source: EntityColumn<diesel::sql_types::Text>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum Storage {
+    Json(JsonStorage),
+    Relational(Mapping),
 }
 
 /// Helper struct to support a custom query for entity history
@@ -293,16 +299,21 @@ impl QueryableByName<Pg> for RawHistory {
 /// mapping to actual database tables. Instances of this struct must not be
 /// cached across transactions as there is no mechanism in place to notify
 /// other index nodes that a subgraph has been migrated
-pub(crate) struct Connection {
+pub(crate) struct Connection<'a> {
     pub conn: PooledConnection<ConnectionManager<PgConnection>>,
     cache: RefCell<HashMap<SubgraphDeploymentId, Storage>>,
+    store: &'a Store,
 }
 
-impl<'a> Connection {
-    pub(crate) fn new(conn: PooledConnection<ConnectionManager<PgConnection>>) -> Connection {
+impl<'a> Connection<'a> {
+    pub(crate) fn new(
+        conn: PooledConnection<ConnectionManager<PgConnection>>,
+        store: &'a Store,
+    ) -> Connection<'a> {
         Connection {
             conn,
             cache: RefCell::new(HashMap::new()),
+            store,
         }
     }
 
@@ -313,7 +324,7 @@ impl<'a> Connection {
         match cache.get(subgraph) {
             Some(storage) => Ok(storage.clone()),
             None => {
-                let storage = Storage::new(&self.conn, subgraph)?;
+                let storage = Storage::new(&self.conn, subgraph, self.store)?;
                 cache.insert(subgraph.clone(), storage.clone());
                 Ok(storage)
             }
@@ -344,8 +355,10 @@ impl<'a> Connection {
         entity: &String,
         id: &String,
     ) -> Result<Option<Entity>, StoreError> {
-        let storage = self.storage(subgraph)?;
-        storage.find(&self.conn, entity, id)
+        match self.storage(subgraph)? {
+            Storage::Json(json) => json.find(&self.conn, entity, id),
+            Storage::Relational(_) => unimplemented!(),
+        }
     }
 
     pub(crate) fn query(
@@ -357,8 +370,10 @@ impl<'a> Connection {
         first: Option<u32>,
         skip: u32,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        let storage = self.storage(subgraph)?;
-        storage.query(&self.conn, entity_types, filter, order, first, skip)
+        match self.storage(subgraph)? {
+            Storage::Json(json) => json.query(&self.conn, entity_types, filter, order, first, skip),
+            Storage::Relational(_) => unimplemented!(),
+        }
     }
 
     pub(crate) fn conflicting_entity(
@@ -367,8 +382,10 @@ impl<'a> Connection {
         entity_id: &String,
         entities: Vec<&String>,
     ) -> Result<Option<String>, StoreError> {
-        let storage = self.storage(subgraph)?;
-        storage.conflicting_entity(&self.conn, entity_id, entities)
+        match self.storage(subgraph)? {
+            Storage::Json(json) => json.conflicting_entity(&self.conn, entity_id, entities),
+            Storage::Relational(_) => unimplemented!(),
+        }
     }
 
     pub(crate) fn insert(
@@ -377,8 +394,10 @@ impl<'a> Connection {
         entity: &Option<Entity>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        let storage = self.storage(&key.subgraph_id)?;
-        storage.insert(&self.conn, key, entity, history_event)
+        match self.storage(&key.subgraph_id)? {
+            Storage::Json(json) => json.insert(&self.conn, key, entity, history_event),
+            Storage::Relational(_) => unimplemented!(),
+        }
     }
 
     pub(crate) fn update(
@@ -389,8 +408,12 @@ impl<'a> Connection {
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        let storage = self.storage(&key.subgraph_id)?;
-        storage.update(&self.conn, key, entity, overwrite, guard, history_event)
+        match self.storage(&key.subgraph_id)? {
+            Storage::Json(json) => {
+                json.update(&self.conn, key, entity, overwrite, guard, history_event)
+            }
+            Storage::Relational(_) => unimplemented!(),
+        }
     }
 
     pub(crate) fn delete(
@@ -398,16 +421,20 @@ impl<'a> Connection {
         key: &EntityKey,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        let storage = self.storage(&key.subgraph_id)?;
-        storage.delete(&self.conn, key, history_event)
+        match self.storage(&key.subgraph_id)? {
+            Storage::Json(json) => json.delete(&self.conn, key, history_event),
+            Storage::Relational(_) => unimplemented!(),
+        }
     }
 
     pub(crate) fn build_attribute_index(
         &self,
         index: &AttributeIndexDefinition,
     ) -> Result<usize, StoreError> {
-        let storage = self.storage(&index.subgraph_id)?;
-        storage.build_attribute_index(&self.conn, index)
+        match self.storage(&index.subgraph_id)? {
+            Storage::Json(json) => json.build_attribute_index(&self.conn, index),
+            Storage::Relational(_) => Ok(0),
+        }
     }
 
     pub(crate) fn revert_block(
@@ -416,17 +443,22 @@ impl<'a> Connection {
         block_ptr: String,
     ) -> Result<(StoreEvent, i32), StoreError> {
         // Revert the block in the subgraph itself
-        let storage = self.storage(subgraph)?;
-        let (event, count) = storage.revert_block(&self.conn, block_ptr.clone())?;
-
+        let (event, count) = match self.storage(subgraph)? {
+            Storage::Json(json) => json.revert_block(&self.conn, block_ptr.clone())?,
+            Storage::Relational(_) => unimplemented!(),
+        };
         // Revert the meta data changes that correspond to this subgraph.
         // Only certain meta data changes need to be reverted, most
         // importantly creation of dynamic data sources. We ensure in the
         // rest of the code that we only record history for those meta data
         // changes that might need to be reverted
-        let storage = self.storage(&SUBGRAPHS_ID)?;
-        let (meta_event, _) = storage.revert_block_meta(&self.conn, subgraph, block_ptr)?;
-        Ok((event.extend(meta_event), count))
+        match self.storage(&SUBGRAPHS_ID)? {
+            Storage::Json(json) => {
+                let (meta_event, _) = json.revert_block_meta(&self.conn, subgraph, block_ptr)?;
+                Ok((event.extend(meta_event), count))
+            }
+            Storage::Relational(_) => unimplemented!(),
+        }
     }
 
     pub(crate) fn update_entity_count(
@@ -629,7 +661,7 @@ fn entity_from_json(json: serde_json::Value, entity: &str) -> Result<Entity, Sto
     Ok(value)
 }
 
-impl Storage {
+impl JsonStorage {
     fn find(
         &self,
         conn: &PgConnection,
@@ -1133,7 +1165,11 @@ impl Storage {
 
         for history in records.into_iter() {
             // Perform the actual reversion
-            let key = self.entity_key(history.entity.clone(), history.entity_id.clone());
+            let key = EntityKey {
+                subgraph_id: self.subgraph.clone(),
+                entity_type: history.entity.clone(),
+                entity_id: history.entity_id.clone(),
+            };
             match history.op {
                 0 => {
                     // Reverse an insert
@@ -1195,7 +1231,11 @@ impl Storage {
     /// Returns an error if `subgraph` does not have an entry in
     /// `deployment_schemas`, which can only happen if `create_schema` was not
     /// called for that `subgraph`
-    fn new(conn: &PgConnection, subgraph: &SubgraphDeploymentId) -> Result<Self, StoreError> {
+    fn new(
+        conn: &PgConnection,
+        subgraph: &SubgraphDeploymentId,
+        store: &Store,
+    ) -> Result<Self, StoreError> {
         use public::DeploymentSchemaVersion as V;
 
         let schema = find_schema(conn, subgraph)?
@@ -1209,7 +1249,7 @@ impl Storage {
                 let data = table.column::<Jsonb, _>("data".to_string());
                 let event_source = table.column::<Text, _>("event_source".to_string());
 
-                Storage {
+                Storage::Json(JsonStorage {
                     schema: schema.name,
                     subgraph: subgraph.clone(),
                     table,
@@ -1217,21 +1257,26 @@ impl Storage {
                     entity,
                     data,
                     event_source,
-                }
+                })
             }
-            V::Relational => unimplemented!(),
+            V::Relational => {
+                let subgraph_schema = store.raw_subgraph_schema(subgraph)?;
+                let mapping = Mapping::new(
+                    &subgraph_schema.document,
+                    IdType::String,
+                    subgraph.to_string(),
+                    schema.name,
+                )?;
+                Storage::Relational(mapping)
+            }
         };
         Ok(storage)
     }
 
-    /// Return an entity key for the entity of the given type and id in the
-    /// subgraph stored in `self`
-    fn entity_key(&self, entity_type: String, entity_id: String) -> EntityKey {
-        let subgraph_id = self.subgraph.clone();
-        EntityKey {
-            subgraph_id,
-            entity_type,
-            entity_id,
+    fn schema(&self) -> &str {
+        match self {
+            Storage::Json(json) => &json.schema,
+            Storage::Relational(mapping) => &mapping.schema,
         }
     }
 
@@ -1244,7 +1289,7 @@ impl Storage {
         subgraph: &SubgraphDeploymentId,
         count: i32,
     ) -> Result<(), StoreError> {
-        let count_query = format!("select count(*) from {}.entities", self.schema);
+        let count_query = format!("select count(*) from {}.entities", self.schema());
         // The big complication in this query is how to determine what the
         // new entityCount should be. We want to make sure that if the entityCount
         // is NULL or the special value `00`, it gets recomputed. Using `00` here
