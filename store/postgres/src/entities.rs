@@ -247,10 +247,10 @@ struct Schema {
 
 type EntityColumn<ST> = Column<DynamicTable<String>, String, ST>;
 
-/// A table representing a split entities table, i.e. a setup where
+/// Storage representing a split entities table, i.e. a setup where
 /// a subgraph deployment's entities are stored in their own schema
 #[derive(Debug, Clone)]
-pub(crate) struct Table {
+pub(crate) struct Storage {
     /// The name of the database schema
     schema: String,
     /// The subgraph id
@@ -294,27 +294,27 @@ impl QueryableByName<Pg> for RawHistory {
 /// other index nodes that a subgraph has been migrated
 pub(crate) struct Connection<'a> {
     pub conn: &'a PgConnection,
-    tables: RefCell<HashMap<SubgraphDeploymentId, Table>>,
+    cache: RefCell<HashMap<SubgraphDeploymentId, Storage>>,
 }
 
 impl<'a> Connection<'a> {
     pub(crate) fn new(conn: &'a PgConnection) -> Connection<'a> {
         Connection {
             conn,
-            tables: RefCell::new(HashMap::new()),
+            cache: RefCell::new(HashMap::new()),
         }
     }
 
-    /// Return a table for the subgraph
-    fn table(&self, subgraph: &SubgraphDeploymentId) -> Result<Table, StoreError> {
-        let mut tables = self.tables.borrow_mut();
+    /// Return the storage for the subgraph
+    fn storage(&self, subgraph: &SubgraphDeploymentId) -> Result<Storage, StoreError> {
+        let mut cache = self.cache.borrow_mut();
 
-        match tables.get(subgraph) {
-            Some(table) => Ok(table.clone()),
+        match cache.get(subgraph) {
+            Some(storage) => Ok(storage.clone()),
             None => {
-                let table = Table::new(self.conn, subgraph)?;
-                tables.insert(subgraph.clone(), table.clone());
-                Ok(table)
+                let storage = Storage::new(self.conn, subgraph)?;
+                cache.insert(subgraph.clone(), storage.clone());
+                Ok(storage)
             }
         }
     }
@@ -343,8 +343,8 @@ impl<'a> Connection<'a> {
         entity: &String,
         id: &String,
     ) -> Result<Option<Entity>, StoreError> {
-        let table = self.table(subgraph)?;
-        table.find(self.conn, entity, id)
+        let storage = self.storage(subgraph)?;
+        storage.find(self.conn, entity, id)
     }
 
     pub(crate) fn query(
@@ -356,8 +356,8 @@ impl<'a> Connection<'a> {
         first: Option<u32>,
         skip: u32,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        let table = self.table(subgraph)?;
-        table.query(self.conn, entity_types, filter, order, first, skip)
+        let storage = self.storage(subgraph)?;
+        storage.query(self.conn, entity_types, filter, order, first, skip)
     }
 
     pub(crate) fn conflicting_entity(
@@ -366,8 +366,8 @@ impl<'a> Connection<'a> {
         entity_id: &String,
         entities: Vec<&String>,
     ) -> Result<Option<String>, StoreError> {
-        let table = self.table(subgraph)?;
-        table.conflicting_entity(self.conn, entity_id, entities)
+        let storage = self.storage(subgraph)?;
+        storage.conflicting_entity(self.conn, entity_id, entities)
     }
 
     pub(crate) fn insert(
@@ -376,8 +376,8 @@ impl<'a> Connection<'a> {
         entity: &Option<Entity>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        let table = self.table(&key.subgraph_id)?;
-        table.insert(self.conn, key, entity, history_event)
+        let storage = self.storage(&key.subgraph_id)?;
+        storage.insert(self.conn, key, entity, history_event)
     }
 
     pub(crate) fn update(
@@ -388,8 +388,8 @@ impl<'a> Connection<'a> {
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        let table = self.table(&key.subgraph_id)?;
-        table.update(self.conn, key, entity, overwrite, guard, history_event)
+        let storage = self.storage(&key.subgraph_id)?;
+        storage.update(self.conn, key, entity, overwrite, guard, history_event)
     }
 
     pub(crate) fn delete(
@@ -397,16 +397,16 @@ impl<'a> Connection<'a> {
         key: &EntityKey,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        let table = self.table(&key.subgraph_id)?;
-        table.delete(self.conn, key, history_event)
+        let storage = self.storage(&key.subgraph_id)?;
+        storage.delete(self.conn, key, history_event)
     }
 
     pub(crate) fn build_attribute_index(
         &self,
         index: &AttributeIndexDefinition,
     ) -> Result<usize, StoreError> {
-        let table = self.table(&index.subgraph_id)?;
-        table.build_attribute_index(self.conn, index)
+        let storage = self.storage(&index.subgraph_id)?;
+        storage.build_attribute_index(self.conn, index)
     }
 
     pub(crate) fn revert_block(
@@ -415,16 +415,16 @@ impl<'a> Connection<'a> {
         block_ptr: String,
     ) -> Result<(StoreEvent, i32), StoreError> {
         // Revert the block in the subgraph itself
-        let table = self.table(subgraph)?;
-        let (event, count) = table.revert_block(self.conn, block_ptr.clone())?;
+        let storage = self.storage(subgraph)?;
+        let (event, count) = storage.revert_block(self.conn, block_ptr.clone())?;
 
         // Revert the meta data changes that correspond to this subgraph.
         // Only certain meta data changes need to be reverted, most
         // importantly creation of dynamic data sources. We ensure in the
         // rest of the code that we only record history for those meta data
         // changes that might need to be reverted
-        let table = self.table(&SUBGRAPHS_ID)?;
-        let (meta_event, _) = table.revert_block_meta(self.conn, subgraph, block_ptr)?;
+        let storage = self.storage(&SUBGRAPHS_ID)?;
+        let (meta_event, _) = storage.revert_block_meta(self.conn, subgraph, block_ptr)?;
         Ok((event.extend(meta_event), count))
     }
 
@@ -437,8 +437,8 @@ impl<'a> Connection<'a> {
             return Ok(());
         }
         if let Some(subgraph) = subgraph {
-            let table = self.table(&subgraph)?;
-            table.update_entity_count(self.conn, subgraph, count)
+            let storage = self.storage(&subgraph)?;
+            storage.update_entity_count(self.conn, subgraph, count)
         } else {
             Ok(())
         }
@@ -468,9 +468,9 @@ impl<'a> Connection<'a> {
         // 5 minutes
         const MIGRATION_CHECK_FREQ: u64 = 20;
 
-        let table = self.table(subgraph)?;
+        let storage = self.storage(subgraph)?;
 
-        if table.needs_migrating() {
+        if storage.needs_migrating() {
             // We determine whether it is time for us to check if we should
             // migrate in a way that tries to splay the checks for different
             // subgraphs, using the hash of the subgraph id as a somewhat
@@ -567,7 +567,7 @@ impl<'a> Connection<'a> {
         subgraph: &SubgraphDeploymentId,
     ) -> Result<bool, Error> {
         self.conn.transaction(|| -> Result<bool, Error> {
-            let table = self.table(subgraph)?;
+            let storage = self.storage(subgraph)?;
             let errmsg = format_err!(
                 "subgraph {} has no entry in deployment_schemas and can not be migrated",
                 subgraph.to_string()
@@ -582,9 +582,9 @@ impl<'a> Connection<'a> {
                 "state" => format!("{:?}", schema.state)
             );
             let start = Instant::now();
-            let table = table.migrate(self.conn, logger, &schema)?;
-            let needs_migrating = table.needs_migrating();
-            self.tables.borrow_mut().insert(subgraph.clone(), table);
+            let storage = storage.migrate(self.conn, logger, &schema)?;
+            let needs_migrating = storage.needs_migrating();
+            self.cache.borrow_mut().insert(subgraph.clone(), storage);
             info!(
                 logger,
                 "finished migrating";
@@ -628,7 +628,7 @@ fn entity_from_json(json: serde_json::Value, entity: &str) -> Result<Entity, Sto
     Ok(value)
 }
 
-impl Table {
+impl Storage {
     fn find(
         &self,
         conn: &PgConnection,
@@ -1184,13 +1184,13 @@ impl Table {
     }
 }
 
-impl Table {
+impl Storage {
     /// The version for newly created subgraph schemas. Changing this most
     /// likely also requires changing `create_schema`
     #[allow(dead_code)]
     const DEFAULT_VERSION: public::DeploymentSchemaVersion = public::DeploymentSchemaVersion::Split;
 
-    /// Look up the schema for `subgraph` and return its entity table.
+    /// Look up the schema for `subgraph` and return its entity storage.
     /// Returns an error if `subgraph` does not have an entry in
     /// `deployment_schemas`, which can only happen if `create_schema` was not
     /// called for that `subgraph`
@@ -1199,7 +1199,7 @@ impl Table {
 
         let schema = find_schema(conn, subgraph)?
             .ok_or_else(|| StoreError::Unknown(format_err!("unknown subgraph {}", subgraph)))?;
-        let table = match schema.version {
+        let storage = match schema.version {
             V::Split => {
                 let table =
                     diesel_dynamic_schema::schema(schema.name.clone()).table("entities".to_owned());
@@ -1208,7 +1208,7 @@ impl Table {
                 let data = table.column::<Jsonb, _>("data".to_string());
                 let event_source = table.column::<Text, _>("event_source".to_string());
 
-                Table {
+                Storage {
                     schema: schema.name,
                     subgraph: subgraph.clone(),
                     table,
@@ -1220,7 +1220,7 @@ impl Table {
             }
             V::Relational => unimplemented!(),
         };
-        Ok(table)
+        Ok(storage)
     }
 
     /// Return an entity key for the entity of the given type and id in the
@@ -1315,9 +1315,7 @@ pub fn delete_all_entities_for_test_use_only(conn: &PgConnection) -> Result<usiz
     Ok(rows)
 }
 
-/// Create the database schema for a new subgraph, including a table for the
-/// entities and a table for entity history, plus the triggers needed to
-/// record history.
+/// Create the database schema for a new subgraph, including all tables etc.
 ///
 /// It is an error if `deployment_schemas` already has an entry for this
 /// `subgraph_id`
