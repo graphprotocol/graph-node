@@ -449,7 +449,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         from: u64,
         to: u64,
         call_filter: EthereumCallFilter,
-    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
+    ) -> Box<Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send>;
 
     fn blocks(
         &self,
