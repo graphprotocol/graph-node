@@ -24,6 +24,7 @@ use diesel::debug_query;
 use diesel::deserialize::QueryableByName;
 use diesel::dsl::{any, sql};
 use diesel::pg::{Pg, PgConnection};
+use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::{Integer, Jsonb, Nullable, Text};
 use diesel::BoolExpressionMethods;
 use diesel::Connection as _;
@@ -288,13 +289,13 @@ impl QueryableByName<Pg> for RawHistory {
 /// mapping to actual database tables. Instances of this struct must not be
 /// cached across transactions as there is no mechanism in place to notify
 /// other index nodes that a subgraph has been migrated
-pub(crate) struct Connection<'a> {
-    pub conn: &'a PgConnection,
+pub(crate) struct Connection {
+    pub conn: PooledConnection<ConnectionManager<PgConnection>>,
     cache: RefCell<HashMap<SubgraphDeploymentId, Storage>>,
 }
 
-impl<'a> Connection<'a> {
-    pub(crate) fn new(conn: &'a PgConnection) -> Connection<'a> {
+impl<'a> Connection {
+    pub(crate) fn new(conn: PooledConnection<ConnectionManager<PgConnection>>) -> Connection {
         Connection {
             conn,
             cache: RefCell::new(HashMap::new()),
@@ -308,7 +309,7 @@ impl<'a> Connection<'a> {
         match cache.get(subgraph) {
             Some(storage) => Ok(storage.clone()),
             None => {
-                let storage = Storage::new(self.conn, subgraph)?;
+                let storage = Storage::new(&self.conn, subgraph)?;
                 cache.insert(subgraph.clone(), storage.clone());
                 Ok(storage)
             }
@@ -328,7 +329,7 @@ impl<'a> Connection<'a> {
         Ok(
             diesel::update(dsl::table.filter(dsl::subgraph.eq(subgraph.to_string())))
                 .set(dsl::migrating.eq(false))
-                .execute(self.conn)
+                .execute(&self.conn)
                 .map(|_| ())?,
         )
     }
@@ -340,7 +341,7 @@ impl<'a> Connection<'a> {
         id: &String,
     ) -> Result<Option<Entity>, StoreError> {
         let storage = self.storage(subgraph)?;
-        storage.find(self.conn, entity, id)
+        storage.find(&self.conn, entity, id)
     }
 
     pub(crate) fn query(
@@ -353,7 +354,7 @@ impl<'a> Connection<'a> {
         skip: u32,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let storage = self.storage(subgraph)?;
-        storage.query(self.conn, entity_types, filter, order, first, skip)
+        storage.query(&self.conn, entity_types, filter, order, first, skip)
     }
 
     pub(crate) fn conflicting_entity(
@@ -363,7 +364,7 @@ impl<'a> Connection<'a> {
         entities: Vec<&String>,
     ) -> Result<Option<String>, StoreError> {
         let storage = self.storage(subgraph)?;
-        storage.conflicting_entity(self.conn, entity_id, entities)
+        storage.conflicting_entity(&self.conn, entity_id, entities)
     }
 
     pub(crate) fn insert(
@@ -373,7 +374,7 @@ impl<'a> Connection<'a> {
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         let storage = self.storage(&key.subgraph_id)?;
-        storage.insert(self.conn, key, entity, history_event)
+        storage.insert(&self.conn, key, entity, history_event)
     }
 
     pub(crate) fn update(
@@ -385,7 +386,7 @@ impl<'a> Connection<'a> {
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         let storage = self.storage(&key.subgraph_id)?;
-        storage.update(self.conn, key, entity, overwrite, guard, history_event)
+        storage.update(&self.conn, key, entity, overwrite, guard, history_event)
     }
 
     pub(crate) fn delete(
@@ -394,7 +395,7 @@ impl<'a> Connection<'a> {
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         let storage = self.storage(&key.subgraph_id)?;
-        storage.delete(self.conn, key, history_event)
+        storage.delete(&self.conn, key, history_event)
     }
 
     pub(crate) fn build_attribute_index(
@@ -402,7 +403,7 @@ impl<'a> Connection<'a> {
         index: &AttributeIndexDefinition,
     ) -> Result<usize, StoreError> {
         let storage = self.storage(&index.subgraph_id)?;
-        storage.build_attribute_index(self.conn, index)
+        storage.build_attribute_index(&self.conn, index)
     }
 
     pub(crate) fn revert_block(
@@ -412,7 +413,7 @@ impl<'a> Connection<'a> {
     ) -> Result<(StoreEvent, i32), StoreError> {
         // Revert the block in the subgraph itself
         let storage = self.storage(subgraph)?;
-        let (event, count) = storage.revert_block(self.conn, block_ptr.clone())?;
+        let (event, count) = storage.revert_block(&self.conn, block_ptr.clone())?;
 
         // Revert the meta data changes that correspond to this subgraph.
         // Only certain meta data changes need to be reverted, most
@@ -420,7 +421,7 @@ impl<'a> Connection<'a> {
         // rest of the code that we only record history for those meta data
         // changes that might need to be reverted
         let storage = self.storage(&SUBGRAPHS_ID)?;
-        let (meta_event, _) = storage.revert_block_meta(self.conn, subgraph, block_ptr)?;
+        let (meta_event, _) = storage.revert_block_meta(&self.conn, subgraph, block_ptr)?;
         Ok((event.extend(meta_event), count))
     }
 
@@ -434,7 +435,7 @@ impl<'a> Connection<'a> {
         }
         if let Some(subgraph) = subgraph {
             let storage = self.storage(&subgraph)?;
-            storage.update_entity_count(self.conn, subgraph, count)
+            storage.update_entity_count(&self.conn, subgraph, count)
         } else {
             Ok(())
         }
@@ -445,7 +446,7 @@ impl<'a> Connection<'a> {
         subgraph: SubgraphDeploymentId,
         event_source: EventSource,
     ) -> Result<HistoryEvent, Error> {
-        create_history_event(self.conn, subgraph, event_source)
+        create_history_event(&self.conn, subgraph, event_source)
     }
 
     /// Check if the schema for `subgraph` needs to be migrated, and if so
@@ -509,7 +510,7 @@ impl<'a> Connection<'a> {
         let do_migrate = self.conn.transaction(|| -> Result<bool, Error> {
             let lock =
                 diesel::sql_query("lock table public.deployment_schemas in exclusive mode nowait")
-                    .execute(self.conn);
+                    .execute(&self.conn);
             if lock.is_err() {
                 return Ok(false);
             }
@@ -522,7 +523,7 @@ impl<'a> Connection<'a> {
             let query = diesel::sql_query(query)
                 .bind::<Text, _>(subgraph.to_string())
                 .bind::<Integer, _>(MIGRATION_LIMIT);
-            Ok(query.execute(self.conn)? > 0)
+            Ok(query.execute(&self.conn)? > 0)
         })?;
 
         if do_migrate {
@@ -547,7 +548,7 @@ impl<'a> Connection<'a> {
             // the migration
             diesel::update(dsl::table.filter(dsl::subgraph.eq(subgraph.to_string())))
                 .set(dsl::migrating.eq(false))
-                .execute(self.conn)?;
+                .execute(&self.conn)?;
             result
         } else {
             Ok(false)
@@ -568,7 +569,7 @@ impl<'a> Connection<'a> {
                 "subgraph {} has no entry in deployment_schemas and can not be migrated",
                 subgraph.to_string()
             );
-            let schema = find_schema(self.conn, &subgraph)?.ok_or(errmsg)?;
+            let schema = find_schema(&self.conn, &subgraph)?.ok_or(errmsg)?;
 
             debug!(
                 logger,
@@ -578,7 +579,7 @@ impl<'a> Connection<'a> {
                 "state" => format!("{:?}", schema.state)
             );
             let start = Instant::now();
-            let storage = storage.migrate(self.conn, logger, &schema)?;
+            let storage = storage.migrate(&self.conn, logger, &schema)?;
             let needs_migrating = storage.needs_migrating();
             self.cache.borrow_mut().insert(subgraph.clone(), storage);
             info!(

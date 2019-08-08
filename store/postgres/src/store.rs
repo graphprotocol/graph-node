@@ -639,7 +639,7 @@ impl Store {
         let event = StoreEvent::new(changes);
 
         let v = serde_json::to_value(event)?;
-        JsonNotification::send("store_events", &v, econn.conn)?;
+        JsonNotification::send("store_events", &v, &econn.conn)?;
 
         // Actually apply the operations
         for operation in operations.into_iter() {
@@ -720,6 +720,11 @@ impl Store {
         conn.map_err(Error::from)
     }
 
+    fn get_entity_conn(&self) -> Result<e::Connection, Error> {
+        let conn = self.get_conn()?;
+        Ok(e::Connection::new(conn))
+    }
+
     /// Creates a history event to use when applying entity operations.
     pub fn create_history_event(
         &self,
@@ -727,10 +732,8 @@ impl Store {
         event_source: EventSource,
     ) -> Result<HistoryEvent, Error> {
         let conn = self
-            .conn
-            .get()
+            .get_entity_conn()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        let conn = e::Connection::new(&conn);
         conn.create_history_event(subgraph, event_source)
     }
 }
@@ -773,17 +776,15 @@ impl StoreTrait for Store {
 
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
         let conn = self
-            .get_conn()
+            .get_entity_conn()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        let conn = e::Connection::new(&conn);
         self.get_entity(&conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
     }
 
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
         let conn = self
-            .get_conn()
+            .get_entity_conn()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        let conn = e::Connection::new(&conn);
         self.execute_query(&conn, query)
     }
 
@@ -791,9 +792,8 @@ impl StoreTrait for Store {
         query.range = EntityRange::first(1);
 
         let conn = self
-            .get_conn()
+            .get_entity_conn()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        let conn = e::Connection::new(&conn);
 
         let mut results = self.execute_query(&conn, query)?;
         match results.len() {
@@ -834,11 +834,11 @@ impl StoreTrait for Store {
             block_ptr_from,
             block_ptr_to,
         );
-        let conn = self.get_conn().map_err(Error::from)?;
-        let econn = e::Connection::new(&conn);
-        conn.transaction(|| self.apply_entity_operations_with_conn(&econn, ops, None))?;
+        let conn = self.get_entity_conn().map_err(Error::from)?;
+        conn.conn
+            .transaction(|| self.apply_entity_operations_with_conn(&conn, ops, None))?;
 
-        econn.should_migrate(&subgraph_id, &block_ptr_to)
+        conn.should_migrate(&subgraph_id, &block_ptr_to)
     }
 
     fn transact_block_operations(
@@ -865,10 +865,9 @@ impl StoreTrait for Store {
             );
         }
 
-        let conn = self.conn.get().map_err(Error::from)?;
-        let econn = e::Connection::new(&conn);
+        let econn = self.get_entity_conn()?;
 
-        conn.transaction(|| {
+        econn.conn.transaction(|| {
             // Ensure the history event exists in the database
             let event_source = EventSource::EthereumBlock(block_ptr_to);
             let history_event = econn.create_history_event(subgraph_id.clone(), event_source)?;
@@ -896,9 +895,8 @@ impl StoreTrait for Store {
         operations: Vec<EntityOperation>,
         history_event: Option<HistoryEvent>,
     ) -> Result<(), StoreError> {
-        let conn = self.get_conn().map_err(Error::from)?;
-        let econn = e::Connection::new(&conn);
-        conn.transaction(|| {
+        let econn = self.get_entity_conn()?;
+        econn.conn.transaction(|| {
             self.apply_entity_operations_with_conn(&econn, operations, history_event.as_ref())
                 .map(|_| ())
         })
@@ -908,9 +906,10 @@ impl StoreTrait for Store {
         &self,
         indexes: Vec<AttributeIndexDefinition>,
     ) -> Result<(), SubgraphAssignmentProviderError> {
-        let conn = self.get_conn().map_err(Error::from)?;
-        let econn = e::Connection::new(&conn);
-        conn.transaction(|| self.build_entity_attribute_indexes_with_conn(&econn, indexes))
+        let econn = self.get_entity_conn()?;
+        econn
+            .conn
+            .transaction(|| self.build_entity_attribute_indexes_with_conn(&econn, indexes))
     }
 
     fn revert_block_operations(
@@ -924,9 +923,8 @@ impl StoreTrait for Store {
             panic!("revert_block_operations must revert a single block only");
         }
 
-        let conn = self.get_conn().map_err(Error::from)?;
-        let econn = e::Connection::new(&conn);
-        conn.transaction(|| {
+        let econn = self.get_entity_conn()?;
+        econn.conn.transaction(|| {
             let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
                 &subgraph_id,
                 block_ptr_from,
@@ -938,7 +936,7 @@ impl StoreTrait for Store {
             econn.update_entity_count(&Some(subgraph_id), count)?;
 
             let v = serde_json::to_value(event)?;
-            JsonNotification::send("store_events", &v, &*conn)
+            JsonNotification::send("store_events", &v, &*econn.conn)
         })
     }
 
@@ -977,8 +975,7 @@ impl StoreTrait for Store {
         const MAX_DELAY: u64 = 64;
         const LOCK_TIMEOUT: u64 = 2;
 
-        let conn = self.get_conn().map_err(Error::from)?;
-        let econn = e::Connection::new(&conn);
+        let econn = self.get_entity_conn()?;
         let mut delay = Duration::from_secs(INITIAL_DELAY);
 
         // Creating a subgraph creates a table that references
@@ -1007,10 +1004,12 @@ impl StoreTrait for Store {
         // and then retry the subgraph creation.
         loop {
             let start = Instant::now();
-            let result = conn.transaction(|| -> Result<(), StoreError> {
+            let result = econn.conn.transaction(|| -> Result<(), StoreError> {
                 self.apply_entity_operations_with_conn(&econn, ops.clone(), None)?;
-                conn.batch_execute(&format!("set local lock_timeout to '{}s'", LOCK_TIMEOUT))?;
-                crate::entities::create_schema(&conn, schema)
+                econn
+                    .conn
+                    .batch_execute(&format!("set local lock_timeout to '{}s'", LOCK_TIMEOUT))?;
+                crate::entities::create_schema(&econn.conn, schema)
             });
             if let Err(StoreError::Unknown(_)) = &result {
                 // There is no robust way to actually find out that we timed
@@ -1041,10 +1040,9 @@ impl StoreTrait for Store {
         subgraph_id: &SubgraphDeploymentId,
         ops: Vec<EntityOperation>,
     ) -> Result<(), StoreError> {
-        let conn = self.get_conn().map_err(Error::from)?;
-        let econn = e::Connection::new(&conn);
+        let econn = self.get_entity_conn()?;
 
-        conn.transaction(|| {
+        econn.conn.transaction(|| {
             self.apply_entity_operations_with_conn(&econn, ops, None)?;
             econn.start_subgraph(subgraph_id)
         })
@@ -1056,8 +1054,8 @@ impl StoreTrait for Store {
         subgraph_id: &SubgraphDeploymentId,
         block_ptr: &EthereumBlockPointer,
     ) {
-        let conn = match self.get_conn() {
-            Ok(conn) => conn,
+        let econn = match self.get_entity_conn() {
+            Ok(econn) => econn,
             Err(e) => {
                 warn!(logger, "failed to get connection to start migrating";
                                 "subgraph" => subgraph_id.to_string(),
@@ -1066,7 +1064,6 @@ impl StoreTrait for Store {
                 return;
             }
         };
-        let econn = e::Connection::new(&conn);
 
         if let Err(e) = econn.migrate(logger, subgraph_id, block_ptr) {
             // An error in a migration should not lead to the
