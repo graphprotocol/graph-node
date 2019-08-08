@@ -161,7 +161,7 @@ where
         from: u64,
         to: u64,
         addresses: Vec<H160>,
-    ) -> impl Stream<Item = Vec<Trace>, Error = Error> + Send {
+    ) -> impl Stream<Item = Trace, Error = Error> + Send {
         if from > to {
             panic!(
                 "Can not produce a call stream on a backwards block range: from = {}, to = {}",
@@ -187,6 +187,8 @@ where
                     .map(move |traces| (traces, new_start)),
             )
         })
+        .map(stream::iter_ok)
+        .flatten()
     }
 
     fn log_stream(
@@ -705,10 +707,6 @@ where
         let calls = eth
             .trace_stream(&logger, block_number, block_number, addresses)
             .collect()
-            .map(|trace_chunks| match trace_chunks.len() {
-                0 => vec![],
-                _ => trace_chunks.into_iter().flatten().collect(),
-            })
             .and_then(move |traces| {
                 // `trace_stream` returns all of the traces for the block, and this
                 // includes a trace for the block reward which every block should have.
@@ -761,21 +759,22 @@ where
         // and the blocks yielded need to be deduped. If any error occurs
         // while searching for a trigger type, the entire operation fails.
         let eth = self.clone();
-        let mut block_futs: Vec<
-            Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>,
-        > = vec![];
+        let mut block_futs: futures::stream::FuturesUnordered<
+            Box<Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send>,
+        > = futures::stream::FuturesUnordered::new();
         if block_filter_opt.is_some() && block_filter_opt.clone().unwrap().trigger_every_block {
             // All blocks in the range contain a trigger
-            block_futs.push(eth.blocks(&logger, from, to));
+            block_futs.push(Box::new(
+                eth.blocks(&logger, from, to)
+                    .map(|block_ptrs| block_ptrs.into_iter().collect()),
+            ));
         } else {
             // Scan the block range from triggers to find relevant blocks
             if log_filter_opt.is_some() {
-                block_futs.push(Box::new(eth.blocks_with_logs(
-                    &logger,
-                    from,
-                    to,
-                    log_filter_opt.unwrap(),
-                )));
+                block_futs.push(Box::new(
+                    eth.blocks_with_logs(&logger, from, to, log_filter_opt.unwrap())
+                        .map(|block_ptrs| block_ptrs.into_iter().collect()),
+                ));
             }
             if call_filter_opt.is_some() {
                 block_futs.push(Box::new(eth.blocks_with_calls(
@@ -804,19 +803,11 @@ where
                 }
             }
         }
-        Box::new(
-            future::join_all(block_futs).and_then(|block_pointer_chunks| {
-                let mut blocks = block_pointer_chunks
-                    .into_iter()
-                    .flatten()
-                    .collect::<Vec<EthereumBlockPointer>>();
-                blocks.sort_by(|a, b| a.number.cmp(&b.number));
-                // Dedup only remove consecutive duplicates, so it needs to be
-                // run after the vector is sorted
-                blocks.dedup();
-                future::ok(blocks)
-            }),
-        )
+        Box::new(block_futs.concat2().and_then(|block_ptrs| {
+            let mut blocks = block_ptrs.into_iter().collect::<Vec<_>>();
+            blocks.sort_by(|a, b| a.number.cmp(&b.number));
+            future::ok(blocks)
+        }))
     }
 
     fn blocks(
@@ -900,7 +891,7 @@ where
         from: u64,
         to: u64,
         call_filter: EthereumCallFilter,
-    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send> {
         let eth = self.clone();
 
         let addresses: Vec<H160> = call_filter
@@ -912,39 +903,20 @@ where
             .collect::<Vec<H160>>();
         Box::new(
             eth.trace_stream(&logger, from, to, addresses)
-                .collect()
-                .map(move |trace_chunks| {
-                    match trace_chunks.len() {
-                        0 => vec![],
-                        _ => {
-                            trace_chunks
-                                .iter()
-                                .flatten()
-                                .filter_map(EthereumCall::try_from_trace)
-                                .filter(|call| {
-                                    // `trace_filter` can only filter by calls `to` an address and
-                                    // a block range. Since subgraphs are subscribing to calls
-                                    // for a specific contract function an additional filter needs
-                                    // to be applied
-                                    call_filter.matches(&call)
-                                })
-                                .collect()
-                        }
-                    }
+                .filter_map(|trace| EthereumCall::try_from_trace(&trace))
+                .filter(move |call| {
+                    // `trace_filter` can only filter by calls `to` an address and
+                    // a block range. Since subgraphs are subscribing to calls
+                    // for a specific contract function an additional filter needs
+                    // to be applied
+                    call_filter.matches(&call)
                 })
-                .map(|calls| {
-                    let mut block_ptrs = vec![];
-                    for call in calls.iter() {
-                        let block_ptr =
-                            EthereumBlockPointer::from((call.block_hash, call.block_number));
-                        if !block_ptrs.contains(&block_ptr) {
-                            if let Some(prev) = block_ptrs.last() {
-                                assert!(prev.number < call.block_number);
-                            }
-                            block_ptrs.push(block_ptr);
-                        }
-                    }
-                    block_ptrs
+                .fold(HashSet::new(), |mut block_ptrs, call| {
+                    block_ptrs.insert(EthereumBlockPointer::from((
+                        call.block_hash,
+                        call.block_number,
+                    )));
+                    future::ok::<_, Error>(block_ptrs)
                 }),
         )
     }

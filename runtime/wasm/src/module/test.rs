@@ -4,6 +4,7 @@ extern crate ipfs_api;
 use ethabi::Token;
 use futures::sync::mpsc::{channel, Sender};
 use hex;
+use std::collections::HashSet;
 use std::env;
 use std::io::Cursor;
 use std::str::FromStr;
@@ -120,7 +121,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: u64,
         _: u64,
         _: EthereumCallFilter,
-    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send> {
         unimplemented!();
     }
 
