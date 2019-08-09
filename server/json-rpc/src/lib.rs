@@ -178,13 +178,16 @@ where
                 .map_err(move |e| {
                     if let SubgraphRegistrarError::Unknown(e) = e {
                         error!(logger, "subgraph_create failed: {}", e);
-                        json_rpc_error(JSON_RPC_DEPLOYED_SUBGRAPHS_ERROR, "internal error".to_owned())
+                        json_rpc_error(
+                            JSON_RPC_DEPLOYED_SUBGRAPHS_ERROR,
+                            "internal error".to_owned(),
+                        )
                     } else {
                         json_rpc_error(JSON_RPC_DEPLOYED_SUBGRAPHS_ERROR, e.to_string())
                     }
                 })
                 .map(move |result| {
-                    serde_json::to_value(result).expect("invalid subgraph creation result")
+                    serde_json::to_value(result).expect("invalid deployed_subgraphs result")
                 }),
         )
     }
