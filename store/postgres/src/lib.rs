@@ -1,4 +1,6 @@
 #[macro_use]
+extern crate derive_more;
+#[macro_use]
 extern crate diesel;
 extern crate diesel_dynamic_schema;
 #[macro_use]
@@ -25,6 +27,7 @@ mod filter;
 mod functions;
 mod jsonb;
 mod mapping;
+mod mapping_sql;
 mod notification_listener;
 mod sql_value;
 pub mod store;
@@ -34,6 +37,11 @@ mod store_events;
 pub mod db_schema_for_tests {
     pub use crate::db_schema::ethereum_blocks;
     pub use crate::db_schema::ethereum_networks;
+}
+
+#[cfg(debug_assertions)]
+pub mod mapping_for_tests {
+    pub use crate::mapping::*;
 }
 
 pub use self::chain_head_listener::ChainHeadUpdateListener;

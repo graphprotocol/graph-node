@@ -1,5 +1,5 @@
 use diesel::connection::SimpleConnection;
-use diesel::PgConnection;
+use diesel::{PgConnection, RunQueryDsl};
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
@@ -9,7 +9,9 @@ use std::fmt;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use graph::prelude::{format_err, StoreError, ValueType};
+use graph::prelude::{format_err, Entity, StoreError, ValueType};
+
+use crate::mapping_sql::{EntityData, FindQuery};
 
 trait AsDdl {
     fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> Result<(), fmt::Error>;
@@ -27,6 +29,12 @@ trait AsDdl {
 /// really use the SQL version 'big_thing'
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct SqlName(String);
+
+impl SqlName {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
 
 impl From<&str> for SqlName {
     fn from(name: &str) -> Self {
@@ -53,15 +61,6 @@ pub enum IdType {
     String,
     #[allow(dead_code)]
     Bytes,
-}
-
-impl IdType {
-    fn sql_type(&self) -> &'static str {
-        match self {
-            IdType::String => "text",
-            IdType::Bytes => "bytea",
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -124,7 +123,7 @@ impl Mapping {
         for defn in &document.definitions {
             match defn {
                 TypeDefinition(Object(obj_type)) => {
-                    let table = Table::new(obj_type, &mut interfaces)?;
+                    let table = Table::new(obj_type, &mut interfaces, id_type)?;
                     tables.push(table);
                 }
                 TypeDefinition(Interface(interface_type)) => {
@@ -143,7 +142,7 @@ impl Mapping {
         for table in tables.iter_mut() {
             for column in table.columns.iter_mut() {
                 let named_type = named_type(&column.field_type);
-                if scalar_sql_type(&column.field_type, id_type).is_some() {
+                if is_scalar_type(named_type) {
                     // We only care about references
                     continue;
                 }
@@ -169,7 +168,7 @@ impl Mapping {
             }
         }
 
-        let root_table = Mapping::make_root_table(&tables);
+        let root_table = Mapping::make_root_table(&tables, id_type);
 
         let tables: Vec<_> = tables.into_iter().map(|table| Rc::new(table)).collect();
         let interfaces = interfaces
@@ -236,6 +235,12 @@ impl Mapping {
             .ok_or_else(|| StoreError::UnknownTable(name.to_string()))
     }
 
+    pub fn table_for_entity(&self, entity: &str) -> Result<&Rc<Table>, StoreError> {
+        self.tables
+            .get(entity)
+            .ok_or_else(|| StoreError::UnknownTable(entity.to_owned()))
+    }
+
     #[allow(dead_code)]
     pub fn column(&self, reference: &Reference) -> Result<&Column, StoreError> {
         self.table(&reference.table)?.field(&reference.column)
@@ -243,13 +248,14 @@ impl Mapping {
 
     /// Construct a fake root table that has an attribute for each table
     /// we actually support
-    fn make_root_table(tables: &Vec<Table>) -> Table {
+    fn make_root_table(tables: &Vec<Table>, id_type: IdType) -> Table {
         let mut columns = Vec::new();
 
         for table in tables {
             let objects = Column {
                 name: table.name.clone(),
                 field: table.object.clone(),
+                column_type: ColumnType::from(id_type),
                 field_type: q::Type::NamedType(table.object.clone()),
                 derived: None,
                 references: vec![table.primary_key()],
@@ -259,6 +265,7 @@ impl Mapping {
             let object = Column {
                 name: SqlName::from(&*table.singular_name),
                 field: table.object.clone(),
+                column_type: ColumnType::from(id_type),
                 field_type: q::Type::NamedType(table.object.clone()),
                 derived: None,
                 references: vec![table.primary_key()],
@@ -276,6 +283,19 @@ impl Mapping {
     #[allow(dead_code)]
     pub fn root_table(&self) -> &Table {
         &self.root_table
+    }
+
+    pub fn find(
+        &self,
+        conn: &PgConnection,
+        entity: &str,
+        id: &str,
+    ) -> Result<Option<Entity>, StoreError> {
+        let mut values = FindQuery::new(self, entity, id).load::<EntityData>(conn)?;
+        values
+            .pop()
+            .map(|entity_data| entity_data.to_entity(self))
+            .transpose()
     }
 }
 
@@ -311,22 +331,74 @@ impl Reference {
     }
 }
 
+/// This is almost the same as graph::data::store::ValueType, but without
+/// ID and List; with this type, we only care about scalar types that directly
+/// correspond to Postgres scalar types
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ColumnType {
+    Boolean,
+    BigDecimal,
+    BigInt,
+    Bytes,
+    Int,
+    String,
+}
+
+impl From<IdType> for ColumnType {
+    fn from(id_type: IdType) -> Self {
+        match id_type {
+            IdType::Bytes => ColumnType::Bytes,
+            IdType::String => ColumnType::String,
+        }
+    }
+}
+
+impl ColumnType {
+    fn from_value_type(value_type: ValueType, id_type: IdType) -> Result<ColumnType, StoreError> {
+        match value_type {
+            ValueType::Boolean => Ok(ColumnType::Boolean),
+            ValueType::BigDecimal => Ok(ColumnType::BigDecimal),
+            ValueType::BigInt => Ok(ColumnType::BigInt),
+            ValueType::Bytes => Ok(ColumnType::Bytes),
+            ValueType::Int => Ok(ColumnType::Int),
+            ValueType::String => Ok(ColumnType::String),
+            ValueType::ID => Ok(ColumnType::from(id_type)),
+            ValueType::List => Err(StoreError::Unknown(format_err!(
+                "can not convert ValueType::List to ColumnType"
+            ))),
+        }
+    }
+
+    fn sql_type(&self) -> &str {
+        match self {
+            ColumnType::Boolean => "boolean",
+            ColumnType::BigDecimal => "numeric",
+            ColumnType::BigInt => "numeric",
+            ColumnType::Bytes => "bytea",
+            ColumnType::Int => "integer",
+            ColumnType::String => "text",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Column {
     pub name: SqlName,
     pub field: String,
     pub field_type: q::Type,
+    pub column_type: ColumnType,
     pub derived: Option<String>,
     pub references: Vec<Reference>,
 }
 
 #[allow(dead_code)]
 impl Column {
-    fn new(field: &s::Field) -> Result<Column, StoreError> {
+    fn new(field: &s::Field, id_type: IdType) -> Result<Column, StoreError> {
         let sql_name = SqlName::from(&*field.name);
         Ok(Column {
             name: sql_name,
             field: field.name.clone(),
+            column_type: ColumnType::from_value_type(base_type(&field.field_type), id_type)?,
             field_type: field.field_type.clone(),
             derived: derived_column(field)?,
             references: vec![],
@@ -337,27 +409,18 @@ impl Column {
         !self.references.is_empty()
     }
 
-    fn sql_type(&self, id_type: IdType) -> &str {
-        match base_type(&self.field_type) {
-            ValueType::Boolean => "boolean",
-            ValueType::BigDecimal => "numeric",
-            ValueType::BigInt => "numeric",
-            ValueType::Bytes => "bytea",
-            ValueType::ID => id_type.sql_type(),
-            ValueType::Int => "integer",
-            ValueType::String => "text",
-            ValueType::List => unreachable!(),
-        }
+    fn sql_type(&self) -> &str {
+        self.column_type.sql_type()
     }
 }
 
 impl AsDdl for Column {
-    fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> fmt::Result {
+    fn fmt(&self, f: &mut dyn fmt::Write, _: &Mapping) -> fmt::Result {
         write!(f, "    ")?;
         if self.derived.is_some() {
             write!(f, "-- ")?;
         }
-        write!(f, "{:20} {}", self.name, self.sql_type(mapping.id_type))?;
+        write!(f, "{:20} {}", self.name, self.sql_type())?;
         if is_list(&self.field_type) {
             write!(f, "[]")?;
         }
@@ -371,7 +434,7 @@ impl AsDdl for Column {
 }
 
 /// The name for the primary key column of a table; hardcoded for now
-const PRIMARY_KEY_COLUMN: &str = "id";
+pub(crate) const PRIMARY_KEY_COLUMN: &str = "id";
 
 #[allow(dead_code)]
 pub(crate) fn is_primary_key_column(col: &SqlName) -> bool {
@@ -395,12 +458,13 @@ impl Table {
     fn new(
         defn: &s::ObjectType,
         interfaces: &mut HashMap<String, Vec<SqlName>>,
+        id_type: IdType,
     ) -> Result<Table, StoreError> {
         let table_name = Table::collection_name(&defn.name);
         let columns = defn
             .fields
             .iter()
-            .map(|field| Column::new(field))
+            .map(|field| Column::new(field, id_type))
             .collect::<Result<Vec<_>, _>>()?;
         let table = Table {
             object: defn.name.clone(),
@@ -498,24 +562,17 @@ fn is_list(field_type: &q::Type) -> bool {
     }
 }
 
-/// Return the SQL type that corresponds to the scalar GraphQL type
-/// `name`. If `name` does not denote a known SQL type, return `None`
-fn scalar_sql_type(field_type: &q::Type, id_type: IdType) -> Option<&str> {
+/// Return `true` if `named_type` is one of the builtin scalar types, i.e.,
+/// does not refer to another object
+fn is_scalar_type(named_type: &str) -> bool {
     // This is pretty adhoc, and solely based on the example schema
-    match field_type {
-        q::Type::NamedType(name) => match name.as_str() {
-            "Boolean" => Some("boolean"),
-            "BigDecimal" => Some("numeric"),
-            "BigInt" => Some("numeric"),
-            "Bytes" => Some("bytea"),
-            "ID" => Some(id_type.sql_type()),
-            "Int" => Some("integer"),
-            "String" => Some("text"),
-            _ => None,
-        },
-        q::Type::ListType(inner) => scalar_sql_type(inner, id_type),
-        q::Type::NonNullType(inner) => scalar_sql_type(inner, id_type),
-    }
+    return named_type == "Boolean"
+        || named_type == "BigDecimal"
+        || named_type == "BigInt"
+        || named_type == "Bytes"
+        || named_type == "ID"
+        || named_type == "Int"
+        || named_type == "String";
 }
 
 /// Return the base type underlying the given field type, i.e., the type
@@ -567,12 +624,13 @@ mod tests {
     use super::*;
     use graphql_parser::parse_schema;
 
-    const ID_TYPE: IdType = IdType::String;
+    const ID_TYPE: ColumnType = ColumnType::String;
 
     fn test_mapping(gql: &str) -> Mapping {
         let schema = parse_schema(gql).expect("Test schema invalid");
 
-        Mapping::new(&schema, ID_TYPE, "subgraph", "rel").expect("Failed to construct Mapping")
+        Mapping::new(&schema, IdType::String, "subgraph", "rel")
+            .expect("Failed to construct Mapping")
     }
 
     #[test]
@@ -588,7 +646,7 @@ mod tests {
         let id = table
             .field(&PRIMARY_KEY_COLUMN.into())
             .expect("failed to get 'id' column for 'things' table");
-        assert_eq!(ID_TYPE.sql_type(), id.sql_type(mapping.id_type));
+        assert_eq!(ID_TYPE, id.column_type);
         assert!(!is_nullable(&id.field_type));
         assert!(!is_list(&id.field_type));
         assert!(id.derived.is_none());
@@ -597,7 +655,7 @@ mod tests {
         let big_thing = table
             .field(&"big_thing".into())
             .expect("failed to get 'big_thing' column for 'things' table");
-        assert_eq!(ID_TYPE.sql_type(), big_thing.sql_type(mapping.id_type));
+        assert_eq!(ID_TYPE, big_thing.column_type);
         assert!(!is_nullable(&big_thing.field_type));
         assert!(big_thing.derived.is_none());
         assert_eq!(

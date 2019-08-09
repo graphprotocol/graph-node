@@ -21,6 +21,7 @@ pub mod log;
 /// use graph::prelude::*;
 /// ```
 pub mod prelude {
+    pub use bigdecimal;
     pub use ethabi;
     pub use failure::{self, bail, err_msg, format_err, Error, Fail, SyncFailure};
     pub use hex;

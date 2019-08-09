@@ -327,6 +327,12 @@ impl From<scalar::BigDecimal> for Value {
     }
 }
 
+impl From<scalar::BigInt> for Value {
+    fn from(value: scalar::BigInt) -> Value {
+        Value::BigInt(value)
+    }
+}
+
 impl From<u64> for Value {
     fn from(value: u64) -> Value {
         Value::BigInt(value.into())
