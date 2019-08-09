@@ -27,6 +27,7 @@ const JSON_RPC_DEPLOY_ERROR: i64 = 0;
 const JSON_RPC_REMOVE_ERROR: i64 = 1;
 const JSON_RPC_CREATE_ERROR: i64 = 2;
 const JSON_RPC_REASSIGN_ERROR: i64 = 3;
+const JSON_RPC_DEPLOYED_SUBGRAPHS_ERROR: i64 = 4;
 
 #[derive(Debug, Deserialize)]
 struct SubgraphCreateParams {
@@ -177,9 +178,9 @@ where
                 .map_err(move |e| {
                     if let SubgraphRegistrarError::Unknown(e) = e {
                         error!(logger, "subgraph_create failed: {}", e);
-                        json_rpc_error(JSON_RPC_CREATE_ERROR, "internal error".to_owned())
+                        json_rpc_error(JSON_RPC_DEPLOYED_SUBGRAPHS_ERROR, "internal error".to_owned())
                     } else {
-                        json_rpc_error(JSON_RPC_CREATE_ERROR, e.to_string())
+                        json_rpc_error(JSON_RPC_DEPLOYED_SUBGRAPHS_ERROR, e.to_string())
                     }
                 })
                 .map(move |result| {
