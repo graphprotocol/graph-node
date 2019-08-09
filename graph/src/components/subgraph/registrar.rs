@@ -43,5 +43,7 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
 
     fn get_deployed_subgraphs(
         &self,
-    ) -> Box<Future<Item = Vec<SubgraphDeploymentId>, Error = SubgraphRegistrarError> + Send + 'static>;
+    ) -> Box<
+        Future<Item = Vec<SubgraphDeploymentId>, Error = SubgraphRegistrarError> + Send + 'static,
+    >;
 }
