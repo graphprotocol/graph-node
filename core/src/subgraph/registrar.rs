@@ -335,7 +335,7 @@ where
                 .find(assignment_query)
                 .map_err(|e| SubgraphRegistrarError::QueryExecutionError(e))
                 .and_then(move |assignment_entities| {
-                    let ids = assignment_entities
+                    Ok(assignment_entities
                         .into_iter()
                         .filter_map(|assignment_entity| {
                             // Parse as subgraph hash
@@ -346,8 +346,7 @@ where
                                 .map(|id| SubgraphDeploymentId::new(id).ok())
                                 .unwrap_or(None)
                         })
-                        .collect::<Vec<SubgraphDeploymentId>>();
-                    Ok(ids)
+                        .collect::<Vec<SubgraphDeploymentId>>())
                 }),
         ))
     }
