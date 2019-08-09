@@ -1,10 +1,11 @@
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use std::fmt;
+use std::str::FromStr;
 
 use inflector::Inflector;
 
-use graph::prelude::{format_err, StoreError};
+use graph::prelude::{format_err, StoreError, ValueType};
 
 trait AsDdl {
     fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> Result<(), fmt::Error>;
@@ -179,11 +180,7 @@ impl Mapping {
             let sql_name = SqlName::from(&*field.name);
             let column = Column {
                 name: sql_name,
-                // Leave the GraphQL type here for now, we'll deal with it
-                // in resolve_references
-                sql_type: base_type(&field.field_type).to_owned(),
-                nullable: is_nullable(&field.field_type),
-                list: is_list(&field.field_type),
+                field_type: field.field_type.clone(),
                 derived: derived_column(field)?,
                 references: vec![],
             };
@@ -220,38 +217,38 @@ impl Mapping {
         for t in 0..self.tables.len() {
             for c in 0..self.tables[t].columns.len() {
                 let column = &self.tables[t].columns[c];
+                let named_type = named_type(&column.field_type);
+                if self.scalar_sql_type(&column.field_type).is_some() {
+                    // We only care about references
+                    continue;
+                }
 
-                let (sql_type, references) =
-                    if let Some(sql_type) = self.scalar_sql_type(&column.sql_type) {
-                        // sql_type is a scalar
-                        (sql_type.to_owned(), vec![])
-                    } else if let Some(interface) = self
-                        .interfaces
+                let references = if let Some(interface) = self
+                    .interfaces
+                    .iter()
+                    .find(|interface| interface.name == named_type)
+                {
+                    // sql_type is an interface; add each table that contains
+                    // a type that implements the interface into the references
+                    let references: Vec<_> = interface
+                        .tables
                         .iter()
-                        .find(|interface| interface.name == column.sql_type)
-                    {
-                        // sql_type is an interface; add each table that contains
-                        // a type that implements the interface into the references
-                        let references: Vec<_> = interface
-                            .tables
-                            .iter()
-                            .map(|table_name| self.table(table_name))
-                            .collect::<Result<Vec<_>, _>>()?
-                            .iter()
-                            .map(|table| Reference::to_column(table, column))
-                            .collect();
-                        (self.id_type.sql_type().to_owned(), references)
-                    } else {
-                        // sql_type is an object; add a single reference to the target
-                        // table and column
-                        let other_table_name = Table::collection_name(&column.sql_type);
-                        let other_table = self.table(&other_table_name)?;
-                        let reference = Reference::to_column(other_table, column);
-                        (self.id_type.sql_type().to_owned(), vec![reference])
-                    };
+                        .map(|table_name| self.table(table_name))
+                        .collect::<Result<Vec<_>, _>>()?
+                        .iter()
+                        .map(|table| Reference::to_column(table, column))
+                        .collect();
+                    references
+                } else {
+                    // sql_type is an object; add a single reference to the target
+                    // table and column
+                    let other_table_name = Table::collection_name(named_type);
+                    let other_table = self.table(&other_table_name)?;
+                    let reference = Reference::to_column(other_table, column);
+                    vec![reference]
+                };
                 let column = &mut self.tables[t].columns[c];
                 column.references = references;
-                column.sql_type = sql_type;
             }
         }
         Ok(())
@@ -263,9 +260,7 @@ impl Mapping {
         for table in &self.tables {
             let objects = Column {
                 name: table.name.clone(),
-                sql_type: table.object.clone(),
-                nullable: false,
-                list: true,
+                field_type: q::Type::NamedType(table.object.clone()),
                 derived: None,
                 references: vec![table.primary_key()],
             };
@@ -273,9 +268,7 @@ impl Mapping {
 
             let object = Column {
                 name: SqlName::from(&*table.singular_name),
-                sql_type: table.object.clone(),
-                nullable: false,
-                list: false,
+                field_type: q::Type::NamedType(table.object.clone()),
                 derived: None,
                 references: vec![table.primary_key()],
             };
@@ -285,17 +278,21 @@ impl Mapping {
 
     /// Return the SQL type that corresponds to the scalar GraphQL type
     /// `name`. If `name` does not denote a known SQL type, return `None`
-    fn scalar_sql_type(&self, name: &str) -> Option<&str> {
+    fn scalar_sql_type(&self, field_type: &q::Type) -> Option<&str> {
         // This is pretty adhoc, and solely based on the example schema
-        match name {
-            "Boolean" => Some("boolean"),
-            "BigDecimal" => Some("numeric"),
-            "BigInt" => Some("numeric"),
-            "Bytes" => Some("bytea"),
-            "ID" => Some(&self.id_type.sql_type()),
-            "Int" => Some("integer"),
-            "String" => Some("text"),
-            _ => None,
+        match field_type {
+            q::Type::NamedType(name) => match name.as_str() {
+                "Boolean" => Some("boolean"),
+                "BigDecimal" => Some("numeric"),
+                "BigInt" => Some("numeric"),
+                "Bytes" => Some("bytea"),
+                "ID" => Some(&self.id_type.sql_type()),
+                "Int" => Some("integer"),
+                "String" => Some("text"),
+                _ => None,
+            },
+            q::Type::ListType(inner) => self.scalar_sql_type(inner),
+            q::Type::NonNullType(inner) => self.scalar_sql_type(inner),
         }
     }
 
@@ -339,12 +336,7 @@ impl Reference {
 #[derive(Clone, Debug)]
 pub struct Column {
     pub name: SqlName,
-    /// The SQL type for this column. For lists, this only provides the type
-    /// for the elements of the list; i.e., for a list of String, this is
-    /// 'text' rather than 'text[]'
-    pub sql_type: String,
-    pub nullable: bool,
-    pub list: bool,
+    pub field_type: q::Type,
     pub derived: Option<String>,
     pub references: Vec<Reference>,
 }
@@ -354,21 +346,34 @@ impl Column {
     pub fn is_reference(&self) -> bool {
         !self.references.is_empty()
     }
+
+    fn sql_type(&self, id_type: IdType) -> &str {
+        match base_type(&self.field_type) {
+            ValueType::Boolean => "boolean",
+            ValueType::BigDecimal => "numeric",
+            ValueType::BigInt => "numeric",
+            ValueType::Bytes => "bytea",
+            ValueType::ID => id_type.sql_type(),
+            ValueType::Int => "integer",
+            ValueType::String => "text",
+            ValueType::List => unreachable!(),
+        }
+    }
 }
 
 impl AsDdl for Column {
-    fn fmt(&self, f: &mut dyn fmt::Write, _: &Mapping) -> fmt::Result {
+    fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> fmt::Result {
         write!(f, "    ")?;
         if self.derived.is_some() {
             write!(f, "-- ")?;
         }
-        write!(f, "{:20} {}", self.name, self.sql_type)?;
-        if self.list {
+        write!(f, "{:20} {}", self.name, self.sql_type(mapping.id_type))?;
+        if is_list(&self.field_type) {
             write!(f, "[]")?;
         }
         if self.name.0 == PRIMARY_KEY_COLUMN {
             write!(f, " primary key")?;
-        } else if !self.nullable {
+        } else if !is_nullable(&self.field_type) {
             write!(f, " not null")?;
         }
         Ok(())
@@ -487,12 +492,21 @@ fn is_list(field_type: &q::Type) -> bool {
 }
 
 /// Return the base type underlying the given field type, i.e., the type
-/// after stripping List and NonNull
-fn base_type(field_type: &q::Type) -> &str {
+/// after stripping List and NonNull. For types that are not the builtin
+/// GraphQL scalar types, and therefore references to other GraphQL objects,
+/// use `ValueType::ID`
+fn base_type(field_type: &q::Type) -> ValueType {
+    let name = named_type(field_type);
+    ValueType::from_str(name).unwrap_or(ValueType::ID)
+}
+
+/// Return the enclosed named type for a field type, i.e., the type after
+/// stripping List and NonNull.
+fn named_type(field_type: &q::Type) -> &str {
     match field_type {
-        q::Type::NamedType(name) => name,
-        q::Type::ListType(child) => base_type(child),
-        q::Type::NonNullType(child) => base_type(child),
+        q::Type::NamedType(name) => name.as_str(),
+        q::Type::ListType(child) => named_type(child),
+        q::Type::NonNullType(child) => named_type(child),
     }
 }
 
@@ -548,17 +562,17 @@ mod tests {
         let id = table
             .field(&PRIMARY_KEY_COLUMN.into())
             .expect("failed to get 'id' column for 'things' table");
-        assert_eq!(ID_TYPE.sql_type(), id.sql_type);
-        assert!(!id.nullable);
-        assert!(!id.list);
+        assert_eq!(ID_TYPE.sql_type(), id.sql_type(mapping.id_type));
+        assert!(!is_nullable(&id.field_type));
+        assert!(!is_list(&id.field_type));
         assert!(id.derived.is_none());
         assert!(!id.is_reference());
 
         let big_thing = table
             .field(&"big_thing".into())
-            .expect("failed to get 'big_thing' column for 'things table");
-        assert_eq!(ID_TYPE.sql_type(), big_thing.sql_type);
-        assert!(!big_thing.nullable);
+            .expect("failed to get 'big_thing' column for 'things' table");
+        assert_eq!(ID_TYPE.sql_type(), big_thing.sql_type(mapping.id_type));
+        assert!(!is_nullable(&big_thing.field_type));
         assert!(big_thing.derived.is_none());
         assert_eq!(
             vec![Reference {
@@ -697,18 +711,18 @@ type Habitat @entity {
 }";
 
     const FOREST_DDL: &str = "create table rel.animals (
-        id                   varchar primary key,
-        forest               varchar
+        id                   text primary key,
+        forest               text
 );
 create table rel.forests (
-        id                   varchar primary key
+        id                   text primary key
      -- derived fields (not stored in this table)
-     -- dwellers             varchar[] not null references animals(forest)
+     -- dwellers             text[] not null references animals(forest)
 );
 create table rel.habitats (
-        id                   varchar primary key,
-        most_common          varchar not null,
-        dwellers             varchar[] not null
+        id                   text primary key,
+        most_common          text not null,
+        dwellers             text[] not null
 );
 ";
 
