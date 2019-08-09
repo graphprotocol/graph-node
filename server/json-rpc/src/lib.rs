@@ -165,6 +165,28 @@ where
                 .flatten(),
         )
     }
+
+    /// Handler for the `deployed_subgraphs` endpoint.
+    fn deployed_subgraphs_handler(
+        &self,
+    ) -> Box<Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
+        let logger = self.logger.clone();
+        Box::new(
+            self.registrar
+                .get_deployed_subgraphs()
+                .map_err(move |e| {
+                    if let SubgraphRegistrarError::Unknown(e) = e {
+                        error!(logger, "subgraph_create failed: {}", e);
+                        json_rpc_error(JSON_RPC_CREATE_ERROR, "internal error".to_owned())
+                    } else {
+                        json_rpc_error(JSON_RPC_CREATE_ERROR, e.to_string())
+                    }
+                })
+                .map(move |result| {
+                    serde_json::to_value(result).expect("invalid subgraph creation result")
+                }),
+        )
+    }
 }
 
 impl<R> JsonRpcServerTrait<R> for JsonRpcServer<R>
@@ -234,6 +256,12 @@ where
                 .parse()
                 .into_future()
                 .and_then(move |params| me.reassign_handler(params))
+        });
+
+        let me = arc_self.clone();
+        handler.add_method("deployed_subgraphs", move |params: Params| {
+            let me = me.clone();
+            me.deployed_subgraphs_handler()
         });
 
         ServerBuilder::new(handler)

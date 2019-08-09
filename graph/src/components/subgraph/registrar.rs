@@ -40,4 +40,8 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
         hash: SubgraphDeploymentId,
         node_id: NodeId,
     ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static>;
+
+    fn get_deployed_subgraphs(
+        &self,
+    ) -> Box<Future<Item = Vec<SubgraphDeploymentId>, Error = SubgraphRegistrarError> + Send + 'static>;
 }
