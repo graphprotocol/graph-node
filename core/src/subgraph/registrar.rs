@@ -321,36 +321,35 @@ where
 
     fn get_deployed_subgraphs(
         &self,
-    ) -> Box<Future<Item = Vec<SubgraphDeploymentId>, Error = SubgraphRegistrarError> + Send + 'static> {
-        let provider = self.provider.clone();
+    ) -> Box<
+        Future<Item = Vec<SubgraphDeploymentId>, Error = SubgraphRegistrarError> + Send + 'static,
+    > {
         let logger = self.logger.clone();
 
         // Create a query to find all assignments with this node ID
         let assignment_query = SubgraphDeploymentAssignmentEntity::query()
             .filter(EntityFilter::new_equal("nodeId", self.node_id.to_string()));
 
-        Box::new(
-            future::result(
-                self.store.find(assignment_query)
-                    .map_err(|e| SubgraphRegistrarError::QueryExecutionError(e))
-                    .and_then(move |assignment_entities| {
-                        Ok(assignment_entities
-                            .into_iter()
-                            .filter_map(|assignment_entity| {
-                                // Parse as subgraph hash
-                                match assignment_entity.id() {
-                                    Ok(id) => match SubgraphDeploymentId::new(id) {
-                                        Ok(id) => Some(id),
-                                        Err(e) => None,
-                                    },
-                                    Err(e) => {
-                                        None
-                                    }
-                                }
-                            })
-                            .collect::<Vec<SubgraphDeploymentId>>())
-            }))
-        )
+        Box::new(future::result(
+            self.store
+                .find(assignment_query)
+                .map_err(|e| SubgraphRegistrarError::QueryExecutionError(e))
+                .and_then(move |assignment_entities| {
+                    let ids = assignment_entities
+                        .into_iter()
+                        .filter_map(|assignment_entity| {
+                            // Parse as subgraph hash
+                            // Ignore assignment entities without ids or misformatted ids
+                            assignment_entity
+                                .id()
+                                .ok()
+                                .map(|id| SubgraphDeploymentId::new(id).ok())
+                                .unwrap_or(None)
+                        })
+                        .collect::<Vec<SubgraphDeploymentId>>();
+                    Ok(ids)
+                }),
+        ))
     }
 }
 
