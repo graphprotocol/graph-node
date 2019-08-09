@@ -30,7 +30,6 @@ use diesel::BoolExpressionMethods;
 use diesel::Connection as _;
 use diesel::ExpressionMethods;
 use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
-use diesel_dynamic_schema::{Column, Table as DynamicTable};
 use inflector::cases::snakecase::to_snake_case;
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
@@ -202,8 +201,12 @@ mod subgraphs {
 
 impl EntitySource for self::subgraphs::entities::table {}
 
+pub(crate) type EntityTable = diesel_dynamic_schema::Table<String>;
+
+pub(crate) type EntityColumn<ST> = diesel_dynamic_schema::Column<EntityTable, String, ST>;
+
 // This is a bit weak, as any DynamicTable<String> is now an EntitySource
-impl EntitySource for DynamicTable<String> {}
+impl EntitySource for EntityTable {}
 
 use public::deployment_schemas;
 
@@ -247,8 +250,6 @@ struct Schema {
     state: public::DeploymentSchemaState,
 }
 
-type EntityColumn<ST> = Column<DynamicTable<String>, String, ST>;
-
 /// Storage using JSONB for entities. All entities are stored in one table
 #[derive(Debug, Clone)]
 pub(crate) struct JsonStorage {
@@ -256,7 +257,7 @@ pub(crate) struct JsonStorage {
     schema: String,
     /// The subgraph id
     subgraph: SubgraphDeploymentId,
-    table: DynamicTable<String>,
+    table: EntityTable,
     id: EntityColumn<diesel::sql_types::Text>,
     entity: EntityColumn<diesel::sql_types::Text>,
     data: EntityColumn<diesel::sql_types::Jsonb>,
@@ -357,7 +358,7 @@ impl<'a> Connection<'a> {
     ) -> Result<Option<Entity>, StoreError> {
         match self.storage(subgraph)? {
             Storage::Json(json) => json.find(&self.conn, entity, id),
-            Storage::Relational(_) => unimplemented!(),
+            Storage::Relational(mapping) => mapping.find(&self.conn, entity, id),
         }
     }
 
