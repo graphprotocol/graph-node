@@ -263,7 +263,7 @@ where
         });
 
         let me = arc_self.clone();
-        handler.add_method("deployed_subgraphs", move |params: Params| {
+        handler.add_method("deployed_subgraphs", move |_params: Params| {
             let me = me.clone();
             me.deployed_subgraphs_handler()
         });
