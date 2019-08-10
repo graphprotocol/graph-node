@@ -1,9 +1,11 @@
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
-use std::fmt;
-use std::str::FromStr;
-
 use inflector::Inflector;
+use std::cmp::PartialOrd;
+use std::collections::HashMap;
+use std::fmt;
+use std::rc::Rc;
+use std::str::FromStr;
 
 use graph::prelude::{format_err, StoreError, ValueType};
 
@@ -21,7 +23,7 @@ trait AsDdl {
 /// is that SQL names are snake cased. Using this type makes it easier to
 /// spot cases where we use a GraphQL name like 'bigThing' when we should
 /// really use the SQL version 'big_thing'
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct SqlName(String);
 
 impl From<&str> for SqlName {
@@ -62,17 +64,20 @@ impl IdType {
 
 #[derive(Debug, Clone)]
 pub struct Mapping {
-    /// The SQL type for columns with GRaphQL type `ID`
+    /// The SQL type for columns with GraphQL type `ID`
     id_type: IdType,
     /// Maps the GraphQL name of a type to the relational table
-    tables: Vec<Table>,
+    tables: HashMap<String, Rc<Table>>,
     /// A fake table that mirrors the Query type for the schema
     root_table: Table,
     /// The subgraph id
     pub subgraph: String,
     /// The database schema for this subgraph
     pub schema: String,
-    pub interfaces: Vec<Interface>,
+    /// Map the entity names of interfaces to the list of
+    /// database tables that contain entities implementing
+    /// that interface
+    pub interfaces: HashMap<String, Vec<Rc<Table>>>,
 }
 
 impl Mapping {
@@ -96,37 +101,11 @@ impl Mapping {
 
         let subgraph = subgraph.into();
         let schema = schema.into();
-        let mut mapping = Mapping {
-            id_type,
-            subgraph,
-            schema,
-            tables: Vec::new(),
-            root_table: Table {
-                object: "$Root".to_owned(),
-                name: "$roots".into(),
-                singular_name: "$root".to_owned(),
-                primary_key: "none".into(),
-                columns: Vec::new(),
-            },
-            interfaces: Vec::new(),
-        };
 
+        // Check that we can handle all the definitions
         for defn in &document.definitions {
             match defn {
-                TypeDefinition(type_def) => match type_def {
-                    Object(obj_type) => {
-                        mapping.add_table(obj_type)?;
-                    }
-                    Interface(interface_type) => {
-                        mapping.add_interface(interface_type)?;
-                    }
-                    other => {
-                        return Err(StoreError::Unknown(format_err!(
-                            "can not handle {:?}",
-                            other
-                        )))
-                    }
-                },
+                TypeDefinition(Object(_)) | TypeDefinition(Interface(_)) => (),
                 other => {
                     return Err(StoreError::Unknown(format_err!(
                         "can not handle {:?}",
@@ -135,30 +114,108 @@ impl Mapping {
                 }
             }
         }
-        mapping.resolve_references()?;
-        mapping.fill_root_table();
-        Ok(mapping)
+
+        // Extract interfaces and tables
+        let mut interfaces: HashMap<String, Vec<SqlName>> = HashMap::new();
+        let mut tables = Vec::new();
+
+        for defn in &document.definitions {
+            match defn {
+                TypeDefinition(Object(obj_type)) => {
+                    let table = Table::new(obj_type, &mut interfaces)?;
+                    tables.push(table);
+                }
+                TypeDefinition(Interface(interface_type)) => {
+                    interfaces.insert(interface_type.name.clone(), vec![]);
+                }
+                other => {
+                    return Err(StoreError::Unknown(format_err!(
+                        "can not handle {:?}",
+                        other
+                    )))
+                }
+            }
+        }
+
+        // Resolve references
+        for table in tables.iter_mut() {
+            for column in table.columns.iter_mut() {
+                let named_type = named_type(&column.field_type);
+                if scalar_sql_type(&column.field_type, id_type).is_some() {
+                    // We only care about references
+                    continue;
+                }
+
+                let references = match interfaces.get(named_type) {
+                    Some(table_names) => {
+                        // sql_type is an interface; add each table that contains
+                        // a type that implements the interface into the references
+                        table_names
+                            .iter()
+                            .map(|table_name| Reference::to_column(table_name.clone(), column))
+                            .collect()
+                    }
+                    None => {
+                        // sql_type is an object; add a single reference to the target
+                        // table and column
+                        let other_table_name = Table::collection_name(named_type);
+                        let reference = Reference::to_column(other_table_name, column);
+                        vec![reference]
+                    }
+                };
+                column.references = references;
+            }
+        }
+
+        let root_table = Mapping::make_root_table(&tables);
+
+        let tables: Vec<_> = tables.into_iter().map(|table| Rc::new(table)).collect();
+        let interfaces = interfaces
+            .into_iter()
+            .map(|(k, v)| {
+                // The unwrap here is ok because tables only contains entries
+                // for which we know that a table exists
+                let v: Vec<_> = v
+                    .iter()
+                    .map(|name| {
+                        tables
+                            .iter()
+                            .find(|table| &table.name == name)
+                            .unwrap()
+                            .clone()
+                    })
+                    .collect();
+                (k, v)
+            })
+            .collect::<HashMap<_, _>>();
+        let tables: HashMap<_, _> = tables
+            .into_iter()
+            .fold(HashMap::new(), |mut tables, table| {
+                tables.insert(table.object.clone(), table);
+                tables
+            });
+
+        Ok(Mapping {
+            id_type,
+            subgraph,
+            schema,
+            tables,
+            root_table,
+            interfaces,
+        })
     }
 
     pub fn as_ddl(&self) -> Result<String, fmt::Error> {
         (self as &dyn AsDdl).as_ddl(self)
     }
 
-    #[allow(dead_code)]
-    pub fn table_for_field(&self, field: &q::Field) -> Option<&Table> {
-        // FIXME: We really need to consult GraphQL schema information here
-        let name = SqlName::from(&*field.name);
-        self.tables
-            .iter()
-            .find(|table| table.name == name || table.singular_name == field.name)
-    }
-
     /// Find the table with the provided `name`. The name must exactly match
     /// the name of an existing table. No conversions of the name are done
     pub fn table(&self, name: &SqlName) -> Result<&Table, StoreError> {
         self.tables
-            .iter()
+            .values()
             .find(|table| &table.name == name)
+            .map(|rc| rc.as_ref())
             .ok_or_else(|| StoreError::UnknownTable(name.to_string()))
     }
 
@@ -167,132 +224,35 @@ impl Mapping {
         self.table(&reference.table)?.field(&reference.column)
     }
 
-    fn add_table(&mut self, defn: &s::ObjectType) -> Result<(), StoreError> {
-        let table_name = Table::collection_name(&defn.name);
-        let mut table = Table {
-            object: defn.name.clone(),
-            name: table_name.clone(),
-            singular_name: Table::object_name(&defn.name),
-            primary_key: PRIMARY_KEY_COLUMN.into(),
-            columns: Vec::new(),
-        };
-        for field in &defn.fields {
-            let sql_name = SqlName::from(&*field.name);
-            let column = Column {
-                name: sql_name,
-                field_type: field.field_type.clone(),
-                derived: derived_column(field)?,
-                references: vec![],
-            };
-            table.columns.push(column);
-        }
-        self.tables.push(table);
-        for interface_name in &defn.implements_interfaces {
-            match self
-                .interfaces
-                .iter_mut()
-                .find(|interface| &interface.name == interface_name)
-            {
-                Some(ref mut interface) => interface.tables.push(table_name.clone()),
-                None => {
-                    return Err(StoreError::Unknown(format_err!(
-                        "unknown interface {}",
-                        interface_name
-                    )))
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn add_interface(&mut self, defn: &s::InterfaceType) -> Result<(), StoreError> {
-        self.interfaces.push(Interface {
-            name: defn.name.clone(),
-            tables: vec![],
-        });
-        Ok(())
-    }
-
-    fn resolve_references(&mut self) -> Result<(), StoreError> {
-        for t in 0..self.tables.len() {
-            for c in 0..self.tables[t].columns.len() {
-                let column = &self.tables[t].columns[c];
-                let named_type = named_type(&column.field_type);
-                if self.scalar_sql_type(&column.field_type).is_some() {
-                    // We only care about references
-                    continue;
-                }
-
-                let references = if let Some(interface) = self
-                    .interfaces
-                    .iter()
-                    .find(|interface| interface.name == named_type)
-                {
-                    // sql_type is an interface; add each table that contains
-                    // a type that implements the interface into the references
-                    let references: Vec<_> = interface
-                        .tables
-                        .iter()
-                        .map(|table_name| self.table(table_name))
-                        .collect::<Result<Vec<_>, _>>()?
-                        .iter()
-                        .map(|table| Reference::to_column(table, column))
-                        .collect();
-                    references
-                } else {
-                    // sql_type is an object; add a single reference to the target
-                    // table and column
-                    let other_table_name = Table::collection_name(named_type);
-                    let other_table = self.table(&other_table_name)?;
-                    let reference = Reference::to_column(other_table, column);
-                    vec![reference]
-                };
-                let column = &mut self.tables[t].columns[c];
-                column.references = references;
-            }
-        }
-        Ok(())
-    }
-
     /// Construct a fake root table that has an attribute for each table
     /// we actually support
-    fn fill_root_table(&mut self) {
-        for table in &self.tables {
+    fn make_root_table(tables: &Vec<Table>) -> Table {
+        let mut columns = Vec::new();
+
+        for table in tables {
             let objects = Column {
                 name: table.name.clone(),
+                field: table.object.clone(),
                 field_type: q::Type::NamedType(table.object.clone()),
                 derived: None,
                 references: vec![table.primary_key()],
             };
-            self.root_table.columns.push(objects);
+            columns.push(objects);
 
             let object = Column {
                 name: SqlName::from(&*table.singular_name),
+                field: table.object.clone(),
                 field_type: q::Type::NamedType(table.object.clone()),
                 derived: None,
                 references: vec![table.primary_key()],
             };
-            self.root_table.columns.push(object);
+            columns.push(object);
         }
-    }
-
-    /// Return the SQL type that corresponds to the scalar GraphQL type
-    /// `name`. If `name` does not denote a known SQL type, return `None`
-    fn scalar_sql_type(&self, field_type: &q::Type) -> Option<&str> {
-        // This is pretty adhoc, and solely based on the example schema
-        match field_type {
-            q::Type::NamedType(name) => match name.as_str() {
-                "Boolean" => Some("boolean"),
-                "BigDecimal" => Some("numeric"),
-                "BigInt" => Some("numeric"),
-                "Bytes" => Some("bytea"),
-                "ID" => Some(&self.id_type.sql_type()),
-                "Int" => Some("integer"),
-                "String" => Some("text"),
-                _ => None,
-            },
-            q::Type::ListType(inner) => self.scalar_sql_type(inner),
-            q::Type::NonNullType(inner) => self.scalar_sql_type(inner),
+        Table {
+            object: "$Root".to_owned(),
+            name: "$roots".into(),
+            singular_name: "$root".to_owned(),
+            columns,
         }
     }
 
@@ -304,8 +264,12 @@ impl Mapping {
 
 impl AsDdl for Mapping {
     fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> fmt::Result {
+        // We sort tables here solely because the unit tests rely on
+        // 'create table' statements appearing in a fixed order
+        let mut tables = self.tables.values().collect::<Vec<_>>();
+        tables.sort_by(|a, b| (&a.name).partial_cmp(&b.name).unwrap());
         // Output 'create table' statements for all tables
-        for table in &self.tables {
+        for table in tables {
             table.fmt(f, mapping)?;
         }
         Ok(())
@@ -319,23 +283,21 @@ pub struct Reference {
 }
 
 impl Reference {
-    fn to_column(table: &Table, column: &Column) -> Reference {
+    fn to_column(table: SqlName, column: &Column) -> Reference {
         let column = match &column.derived {
             Some(col) => col,
-            None => &*table.primary_key.0,
+            None => PRIMARY_KEY_COLUMN,
         }
         .into();
 
-        Reference {
-            table: table.name.clone(),
-            column,
-        }
+        Reference { table, column }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Column {
     pub name: SqlName,
+    pub field: String,
     pub field_type: q::Type,
     pub derived: Option<String>,
     pub references: Vec<Reference>,
@@ -343,6 +305,17 @@ pub struct Column {
 
 #[allow(dead_code)]
 impl Column {
+    fn new(field: &s::Field) -> Result<Column, StoreError> {
+        let sql_name = SqlName::from(&*field.name);
+        Ok(Column {
+            name: sql_name,
+            field: field.name.clone(),
+            field_type: field.field_type.clone(),
+            derived: derived_column(field)?,
+            references: vec![],
+        })
+    }
+
     pub fn is_reference(&self) -> bool {
         !self.references.is_empty()
     }
@@ -381,7 +354,6 @@ impl AsDdl for Column {
 }
 
 /// The name for the primary key column of a table; hardcoded for now
-#[allow(dead_code)]
 const PRIMARY_KEY_COLUMN: &str = "id";
 
 #[allow(dead_code)]
@@ -399,15 +371,39 @@ pub struct Table {
     /// queries ('thing')
     singular_name: String,
 
-    /// The name of the primary key column. This is only the name for the
-    /// 'id' column; for storage schemes with composite primary key, other
-    /// parts like the subgraph and the entity type are taken from this
-    /// table resp. the mapping the table belongs to
-    primary_key: SqlName,
     columns: Vec<Column>,
 }
 
 impl Table {
+    fn new(
+        defn: &s::ObjectType,
+        interfaces: &mut HashMap<String, Vec<SqlName>>,
+    ) -> Result<Table, StoreError> {
+        let table_name = Table::collection_name(&defn.name);
+        let columns = defn
+            .fields
+            .iter()
+            .map(|field| Column::new(field))
+            .collect::<Result<Vec<_>, _>>()?;
+        let table = Table {
+            object: defn.name.clone(),
+            name: table_name.clone(),
+            singular_name: Table::object_name(&defn.name),
+            columns,
+        };
+        for interface_name in &defn.implements_interfaces {
+            match interfaces.get_mut(interface_name) {
+                Some(tables) => tables.push(table.name.clone()),
+                None => {
+                    return Err(StoreError::Unknown(format_err!(
+                        "unknown interface {}",
+                        interface_name
+                    )))
+                }
+            }
+        }
+        Ok(table)
+    }
     /// Find the field `name` in this table. The name must be in snake case,
     /// i.e., use SQL conventions
     pub fn field(&self, name: &SqlName) -> Result<&Column, StoreError> {
@@ -420,7 +416,7 @@ impl Table {
     pub fn primary_key(&self) -> Reference {
         Reference {
             table: self.name.clone(),
-            column: self.primary_key.clone(),
+            column: PRIMARY_KEY_COLUMN.into(),
         }
     }
 
@@ -468,12 +464,6 @@ impl AsDdl for Table {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Interface {
-    pub name: String,
-    pub tables: Vec<SqlName>,
-}
-
 fn is_nullable(field_type: &q::Type) -> bool {
     match field_type {
         q::Type::NonNullType(_) => false,
@@ -488,6 +478,26 @@ fn is_list(field_type: &q::Type) -> bool {
         ListType(_) => true,
         NonNullType(inner) => is_list(inner),
         NamedType(_) => false,
+    }
+}
+
+/// Return the SQL type that corresponds to the scalar GraphQL type
+/// `name`. If `name` does not denote a known SQL type, return `None`
+fn scalar_sql_type(field_type: &q::Type, id_type: IdType) -> Option<&str> {
+    // This is pretty adhoc, and solely based on the example schema
+    match field_type {
+        q::Type::NamedType(name) => match name.as_str() {
+            "Boolean" => Some("boolean"),
+            "BigDecimal" => Some("numeric"),
+            "BigInt" => Some("numeric"),
+            "Bytes" => Some("bytea"),
+            "ID" => Some(id_type.sql_type()),
+            "Int" => Some("integer"),
+            "String" => Some("text"),
+            _ => None,
+        },
+        q::Type::ListType(inner) => scalar_sql_type(inner, id_type),
+        q::Type::NonNullType(inner) => scalar_sql_type(inner, id_type),
     }
 }
 
@@ -557,7 +567,6 @@ mod tests {
         assert_eq!(SqlName::from("things"), table.name);
         assert_eq!("Thing", table.object);
         assert_eq!("thing", table.singular_name);
-        assert!(is_primary_key_column(&table.primary_key));
 
         let id = table
             .field(&PRIMARY_KEY_COLUMN.into())
@@ -617,11 +626,7 @@ mod tests {
             bigInt: BigInt,
         }";
 
-    const THINGS_DDL: &str = "create table rel.things (
-        id                   text primary key,
-        big_thing            text not null
-);
-create table rel.scalars (
+    const THINGS_DDL: &str = "create table rel.scalars (
         id                   text primary key,
         bool                 boolean,
         int                  integer,
@@ -629,6 +634,10 @@ create table rel.scalars (
         string               text,
         bytes                bytea,
         big_int              numeric
+);
+create table rel.things (
+        id                   text primary key,
+        big_thing            text not null
 );
 ";
 
@@ -659,7 +668,14 @@ type SongStat @entity {
     song: Song @derivedFrom(field: \"id\")
     played: Int!
 }";
-    const MUSIC_DDL: &str = "create table rel.musicians (
+    const MUSIC_DDL: &str = "create table rel.bands (
+        id                   text primary key,
+        name                 text not null,
+        original_songs       text[] not null
+     -- derived fields (not stored in this table)
+     -- members              text[] not null references musicians(bands)
+);
+create table rel.musicians (
         id                   text primary key,
         name                 text not null,
         main_band            text,
@@ -667,12 +683,11 @@ type SongStat @entity {
      -- derived fields (not stored in this table)
      -- written_songs        text[] not null references songs(written_by)
 );
-create table rel.bands (
+create table rel.song_stats (
         id                   text primary key,
-        name                 text not null,
-        original_songs       text[] not null
+        played               integer not null
      -- derived fields (not stored in this table)
-     -- members              text[] not null references musicians(bands)
+     -- song                 text references songs(id)
 );
 create table rel.songs (
         id                   text primary key,
@@ -680,12 +695,6 @@ create table rel.songs (
         written_by           text not null
      -- derived fields (not stored in this table)
      -- band                 text references bands(original_songs)
-);
-create table rel.song_stats (
-        id                   text primary key,
-        played               integer not null
-     -- derived fields (not stored in this table)
-     -- song                 text references songs(id)
 );
 ";
 
