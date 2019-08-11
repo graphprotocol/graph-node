@@ -1,3 +1,5 @@
+use diesel::connection::SimpleConnection;
+use diesel::PgConnection;
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
@@ -203,6 +205,21 @@ impl Mapping {
             root_table,
             interfaces,
         })
+    }
+
+    pub fn create_relational_schema(
+        conn: &PgConnection,
+        schema_name: &str,
+        subgraph: &str,
+        document: &s::Document,
+    ) -> Result<Mapping, StoreError> {
+        let mapping =
+            crate::mapping::Mapping::new(document, IdType::String, subgraph, schema_name)?;
+        let sql = mapping
+            .as_ddl()
+            .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for mapping")))?;
+        conn.batch_execute(&sql)?;
+        Ok(mapping)
     }
 
     pub fn as_ddl(&self) -> Result<String, fmt::Error> {
