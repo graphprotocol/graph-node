@@ -1403,7 +1403,13 @@ pub(crate) fn create_schema(
     conn.batch_execute(&*query)?;
 
     match std::env::var_os("RELATIONAL_SCHEMA") {
-        Some(_) => create_relational_schema(conn, &schema_name, schema),
+        Some(_) => Mapping::create_relational_schema(
+            conn,
+            &schema_name,
+            schema.id.as_str(),
+            &schema.document,
+        )
+        .map(|_| ()),
         None => create_split_schema(conn, &schema_name),
     }
 }
@@ -1476,25 +1482,6 @@ pub fn create_split_schema(conn: &PgConnection, schema_name: &str) -> Result<(),
     );
     conn.batch_execute(&*query)?;
 
-    Ok(())
-}
-
-pub fn create_relational_schema(
-    conn: &PgConnection,
-    schema_name: &str,
-    schema: &SubgraphSchema,
-) -> Result<(), StoreError> {
-    #[allow(unused_variables)]
-    let mapping = crate::mapping::Mapping::new(
-        &schema.document,
-        IdType::String,
-        schema.id.to_string(),
-        schema_name,
-    )?;
-    let sql = mapping
-        .as_ddl()
-        .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for mapping")))?;
-    conn.batch_execute(&sql)?;
     Ok(())
 }
 
