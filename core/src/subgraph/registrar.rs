@@ -324,8 +324,6 @@ where
     ) -> Box<
         Future<Item = Vec<SubgraphDeploymentId>, Error = SubgraphRegistrarError> + Send + 'static,
     > {
-        let logger = self.logger.clone();
-
         // Create a query to find all assignments with this node ID
         let assignment_query = SubgraphDeploymentAssignmentEntity::query()
             .filter(EntityFilter::new_equal("nodeId", self.node_id.to_string()));
