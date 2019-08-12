@@ -455,33 +455,28 @@ impl Store {
         self.check_interface_entity_uniqueness(conn, &key)?;
 
         // Load the entity if exists
-        let existing_entity = self
+        let entity = self
             .get_entity(conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
             .map_err(Error::from)?;
 
-        // Identify whether this is an insert or an update operation.
-        let (is_update, count) = match existing_entity {
-            None => (false, 1),
-            Some(_) => (true, 0),
+        // Identify whether this is an insert or an update operation and
+        // merge the changes into the entity.
+        let result = match entity {
+            Some(mut entity) => {
+                entity.merge(data);
+                conn.update(&key, &entity, true, None, history_event)
+                    .map(|_| 0)
+            }
+            None => {
+                // Merge with a new entity since that removes values that
+                // were set to Value::Null
+                let mut entity = Entity::new();
+                entity.merge(data);
+                conn.insert(&key, &entity, history_event).map(|_| 1)
+            }
         };
 
-        // Create set operation
-        let operation = EntityOperation::Set {
-            key: key.clone(),
-            data,
-        };
-
-        // Apply the operation to obtain the updated (or new) entity
-        let updated_entity = operation.apply(existing_entity)?;
-
-        // Either insert or update the entity in Postgres
-        let result = if is_update {
-            conn.update(&key, &updated_entity, true, None, history_event)
-        } else {
-            conn.insert(&key, &updated_entity, history_event)
-        };
-
-        result.map(|_| count).map_err(|e| {
+        result.map_err(|e| {
             format_err!(
                 "Failed to set entity ({}, {}, {}): {}",
                 key.subgraph_id,
@@ -505,7 +500,7 @@ impl Store {
         self.check_interface_entity_uniqueness(conn, &key)?;
 
         // Update the entity in Postgres
-        match conn.update(&key, &Some(data), false, guard, history_event)? {
+        match conn.update(&key, &data, false, guard, history_event)? {
             0 => Err(TransactionAbortError::AbortUnless {
                 expected_entity_ids: vec![key.entity_id.clone()],
                 actual_entity_ids: vec![],

@@ -388,7 +388,7 @@ impl<'a> Connection<'a> {
     pub(crate) fn insert(
         &self,
         key: &EntityKey,
-        entity: &Option<Entity>,
+        entity: &Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         match self.storage(&key.subgraph_id)? {
@@ -400,7 +400,7 @@ impl<'a> Connection<'a> {
     pub(crate) fn update(
         &self,
         key: &EntityKey,
-        entity: &Option<Entity>,
+        entity: &Entity,
         overwrite: bool,
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
@@ -640,7 +640,7 @@ fn find_schema(
         .optional()?)
 }
 
-fn entity_to_json(key: &EntityKey, entity: &Option<Entity>) -> Result<serde_json::Value, Error> {
+fn entity_to_json(key: &EntityKey, entity: &Entity) -> Result<serde_json::Value, Error> {
     serde_json::to_value(entity).map_err(|e| {
         format_err!(
             "Failed to convert entity ({}, {}, {}) to JSON: {}",
@@ -742,7 +742,7 @@ impl JsonStorage {
         &self,
         conn: &PgConnection,
         key: &EntityKey,
-        entity: &Option<Entity>,
+        entity: &Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         let data = entity_to_json(key, entity)?;
@@ -790,7 +790,7 @@ impl JsonStorage {
         &self,
         conn: &PgConnection,
         key: &EntityKey,
-        entity: &Option<Entity>,
+        entity: &Entity,
         overwrite: bool,
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
