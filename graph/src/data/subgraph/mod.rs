@@ -908,14 +908,13 @@ impl UnresolvedSubgraphManifest {
             _ => {
                 return Box::new(future::err(format_err!(
                     "This Graph Node only supports manifest spec versions <= 0.0.2,
-                but subgraph `{}` uses `{}`",
+                    but subgraph `{}` uses `{}`",
                     id,
                     spec_version
                 ))) as Box<dyn Future<Item = _, Error = _> + Send>;
             }
         }
 
-        // resolve each data set
         Box::new(
             schema
                 .resolve(id.clone(), resolver, logger.clone())
@@ -923,7 +922,7 @@ impl UnresolvedSubgraphManifest {
                     stream::futures_ordered(
                         data_sources
                             .into_iter()
-                            .map(|data_set| data_set.resolve(resolver, logger.clone())),
+                            .map(|ds| ds.resolve(resolver, logger.clone())),
                     )
                     .collect(),
                 )
