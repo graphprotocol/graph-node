@@ -392,12 +392,12 @@ impl<'a> Connection<'a> {
     pub(crate) fn insert(
         &self,
         key: &EntityKey,
-        entity: &Entity,
+        entity: Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         match self.storage(&key.subgraph_id)? {
-            Storage::Json(json) => json.insert(&self.conn, key, entity, history_event),
-            Storage::Relational(_) => unimplemented!(),
+            Storage::Json(json) => json.insert(&self.conn, &key, &entity, history_event),
+            Storage::Relational(mapping) => mapping.insert(&self.conn, key, entity),
         }
     }
 
