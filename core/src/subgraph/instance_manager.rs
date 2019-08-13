@@ -507,7 +507,8 @@ where
                     true => Err(err_msg(
                         "A dynamic data source, in the same block that it was created,
                         attempted to create another dynamic data source.
-                        Let us know in graph-node issue #1105 that you hit this.",
+                        To let us know that you are affected by this bug, please comment in
+                        https://github.com/graphprotocol/graph-node/issues/1105",
                     )
                     .into()),
                 }
