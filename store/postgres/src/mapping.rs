@@ -412,6 +412,29 @@ impl Column {
     fn sql_type(&self) -> &str {
         self.column_type.sql_type()
     }
+
+    pub fn is_nullable(&self) -> bool {
+        fn is_nullable(field_type: &q::Type) -> bool {
+            match field_type {
+                q::Type::NonNullType(_) => false,
+                _ => true,
+            }
+        }
+        is_nullable(&self.field_type)
+    }
+
+    pub fn is_list(&self) -> bool {
+        fn is_list(field_type: &q::Type) -> bool {
+            use q::Type::*;
+
+            match field_type {
+                ListType(_) => true,
+                NonNullType(inner) => is_list(inner),
+                NamedType(_) => false,
+            }
+        }
+        is_list(&self.field_type)
+    }
 }
 
 impl AsDdl for Column {
@@ -421,12 +444,12 @@ impl AsDdl for Column {
             write!(f, "-- ")?;
         }
         write!(f, "{:20} {}", self.name, self.sql_type())?;
-        if is_list(&self.field_type) {
+        if self.is_list() {
             write!(f, "[]")?;
         }
         if self.name.0 == PRIMARY_KEY_COLUMN {
             write!(f, " primary key")?;
-        } else if !is_nullable(&self.field_type) {
+        } else if !self.is_nullable() {
             write!(f, " not null")?;
         }
         Ok(())
@@ -449,9 +472,9 @@ pub struct Table {
     pub name: SqlName,
     /// The name for a single object of elements of this type in GraphQL
     /// queries ('thing')
-    singular_name: String,
+    pub singular_name: String,
 
-    columns: Vec<Column>,
+    pub columns: Vec<Column>,
 }
 
 impl Table {
@@ -545,23 +568,6 @@ impl AsDdl for Table {
     }
 }
 
-fn is_nullable(field_type: &q::Type) -> bool {
-    match field_type {
-        q::Type::NonNullType(_) => false,
-        _ => true,
-    }
-}
-
-fn is_list(field_type: &q::Type) -> bool {
-    use q::Type::*;
-
-    match field_type {
-        ListType(_) => true,
-        NonNullType(inner) => is_list(inner),
-        NamedType(_) => false,
-    }
-}
-
 /// Return `true` if `named_type` is one of the builtin scalar types, i.e.,
 /// does not refer to another object
 fn is_scalar_type(named_type: &str) -> bool {
@@ -647,8 +653,8 @@ mod tests {
             .field(&PRIMARY_KEY_COLUMN.into())
             .expect("failed to get 'id' column for 'things' table");
         assert_eq!(ID_TYPE, id.column_type);
-        assert!(!is_nullable(&id.field_type));
-        assert!(!is_list(&id.field_type));
+        assert!(!id.is_nullable());
+        assert!(!id.is_list());
         assert!(id.derived.is_none());
         assert!(!id.is_reference());
 
@@ -656,7 +662,7 @@ mod tests {
             .field(&"big_thing".into())
             .expect("failed to get 'big_thing' column for 'things' table");
         assert_eq!(ID_TYPE, big_thing.column_type);
-        assert!(!is_nullable(&big_thing.field_type));
+        assert!(!big_thing.is_nullable());
         assert!(big_thing.derived.is_none());
         assert_eq!(
             vec![Reference {
