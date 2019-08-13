@@ -9,16 +9,17 @@ use diesel::pg::{Pg, PgConnection};
 use diesel::query_builder::{AstPass, QueryFragment, QueryId};
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::QueryResult;
-use diesel::sql_types::{Jsonb, Text};
+use diesel::sql_types::{Array, Binary, Bool, Integer, Jsonb, Nullable, Numeric, Text};
 use diesel::Connection;
 use failure::Fail;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
 use graph::data::store::scalar;
-use graph::prelude::{format_err, serde_json, Entity, StoreError, Value};
+use graph::prelude::{format_err, serde_json, Entity, EntityKey, StoreError, Value};
 
 use crate::mapping::{ColumnType, Mapping, SqlName, Table};
+use crate::sql_value::SqlValue;
 
 /// Helper struct for retrieving entities from the database. With diesel, we
 /// can only run queries that return columns whose number and type are known
@@ -200,3 +201,107 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FindQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
+
+#[derive(Debug, Clone, Constructor)]
+pub struct InsertQuery<'a> {
+    schema_name: &'a str,
+    table: &'a Table,
+    key: &'a EntityKey,
+    entity: Entity,
+}
+
+impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        // Construct a query
+        //   insert into schema.table(column, ...)
+        //   values ($1, ...)
+        // and convert and bind the entity's values into it
+        out.push_sql("insert into ");
+        out.push_identifier(self.schema_name)?;
+        out.push_sql(".");
+        out.push_identifier(self.table.name.as_str())?;
+
+        out.push_sql("(");
+        for (i, column) in self
+            .table
+            .columns
+            .iter()
+            .filter(|column| !column.is_derived())
+            .enumerate()
+        {
+            if self.entity.contains_key(&column.field) {
+                if i > 0 {
+                    out.push_sql(", ");
+                }
+                out.push_identifier(column.name.as_str())?;
+            } else {
+                if !column.is_nullable() {
+                    return Err(diesel::result::Error::QueryBuilderError(
+                        format!(
+                            "can not insert entity {}[{}] since value for {} is missing",
+                            self.key.entity_type, self.key.entity_id, column.field
+                        )
+                        .into(),
+                    ));
+                }
+            }
+        }
+
+        out.push_sql(")\nvalues(");
+        for (i, column) in self
+            .table
+            .columns
+            .iter()
+            .filter(|column| !column.is_derived())
+            .enumerate()
+        {
+            if let Some(value) = self.entity.get(&column.field) {
+                if i > 0 {
+                    out.push_sql(", ");
+                }
+                match value {
+                    Value::String(s) => out.push_bind_param::<Text, _>(s)?,
+                    Value::Int(i) => out.push_bind_param::<Integer, _>(i)?,
+                    Value::BigDecimal(d) => out.push_bind_param::<Numeric, _>(d)?,
+                    Value::Bool(b) => out.push_bind_param::<Bool, _>(b)?,
+                    Value::List(values) => {
+                        let values = SqlValue::new_array(values.clone());
+                        match column.column_type {
+                            ColumnType::BigDecimal | ColumnType::BigInt => {
+                                out.push_bind_param::<Array<Numeric>, _>(&values)?
+                            }
+                            ColumnType::Boolean => {
+                                out.push_bind_param::<Array<Bool>, _>(&values)?
+                            }
+                            ColumnType::Bytes => {
+                                out.push_bind_param::<Array<Binary>, _>(&values)?
+                            }
+                            ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(&values)?,
+                            ColumnType::String => out.push_bind_param::<Array<Text>, _>(&values)?,
+                        }
+                    }
+                    Value::Null => {
+                        let none: Option<&str> = None;
+                        out.push_bind_param::<Nullable<Text>, _>(&none)?
+                    }
+                    Value::Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice())?,
+                    Value::BigInt(i) => {
+                        out.push_bind_param::<Numeric, _>(&i.clone().to_big_decimal(0.into()))?
+                    }
+                }
+            }
+        }
+        out.push_sql(")");
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for InsertQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}

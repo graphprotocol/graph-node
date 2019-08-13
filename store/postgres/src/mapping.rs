@@ -9,9 +9,8 @@ use std::fmt;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use graph::prelude::{format_err, Entity, StoreError, ValueType};
-
-use crate::mapping_sql::{EntityData, FindQuery};
+use crate::mapping_sql::{EntityData, FindQuery, InsertQuery};
+use graph::prelude::{format_err, Entity, EntityKey, StoreError, ValueType};
 
 trait AsDdl {
     fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> Result<(), fmt::Error>;
@@ -297,6 +296,17 @@ impl Mapping {
             .map(|entity_data| entity_data.to_entity(self))
             .transpose()
     }
+
+    pub fn insert(
+        &self,
+        conn: &PgConnection,
+        key: &EntityKey,
+        entity: Entity,
+    ) -> Result<usize, StoreError> {
+        let table = self.table_for_entity(&key.entity_type)?;
+        let query = InsertQuery::new(&self.schema, table, key, entity);
+        Ok(query.execute(conn)?)
+    }
 }
 
 impl AsDdl for Mapping {
@@ -435,6 +445,10 @@ impl Column {
         }
         is_list(&self.field_type)
     }
+
+    pub fn is_derived(&self) -> bool {
+        self.derived.is_some()
+    }
 }
 
 impl AsDdl for Column {
@@ -539,6 +553,34 @@ impl Table {
 
     pub fn object_name(gql_type_name: &str) -> String {
         gql_type_name.to_snake_case()
+    }
+
+    pub fn insert(
+        &self,
+        conn: &PgConnection,
+        key: &EntityKey,
+        entity: Entity,
+        schema_name: &str,
+    ) -> Result<usize, StoreError> {
+        let mut columns = Vec::new();
+        let mut values = Vec::new();
+        for column in &self.columns {
+            if let Some(value) = entity.get(&column.field) {
+                columns.push(&column.name);
+                values.push(value);
+            } else {
+                if !column.is_nullable() {
+                    return Err(StoreError::Unknown(format_err!(
+                        "can not insert entity {}[{}] since value for {} is missing",
+                        key.entity_type,
+                        key.entity_id,
+                        column.field
+                    )));
+                }
+            }
+        }
+        let query = InsertQuery::new(schema_name, self, key, entity);
+        Ok(query.execute(conn)?)
     }
 }
 

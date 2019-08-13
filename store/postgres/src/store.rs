@@ -472,7 +472,7 @@ impl Store {
                 // were set to Value::Null
                 let mut entity = Entity::new();
                 entity.merge(data);
-                conn.insert(&key, &entity, history_event).map(|_| 1)
+                conn.insert(&key, entity, history_event).map(|_| 1)
             }
         };
 
