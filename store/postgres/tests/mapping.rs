@@ -8,7 +8,9 @@ use lazy_static::lazy_static;
 use std::fmt::Debug;
 
 use graph::data::store::scalar::{BigDecimal, BigInt};
-use graph::prelude::{bigdecimal::One, web3::types::H256, Entity, Schema, SubgraphDeploymentId};
+use graph::prelude::{
+    bigdecimal::One, web3::types::H256, Entity, EntityKey, Schema, SubgraphDeploymentId, Value,
+};
 use graph_store_postgres::mapping_for_tests::Mapping;
 
 use test_store::*;
@@ -25,7 +27,9 @@ const THINGS_GQL: &str = "
         int: Int,
         bigDecimal: BigDecimal,
         string: String,
+        strings: [String!],
         bytes: Bytes,
+        byteArray: [Bytes!],
         bigInt: BigInt,
     }";
 
@@ -40,14 +44,34 @@ lazy_static! {
     static ref BYTES_VALUE: H256 = H256::from(hex!(
         "e8b3b02b936c4a4a331ac691ac9a86e197fb7731f14e3108602c87d4dac55160"
     ));
+    static ref BYTES_VALUE2: H256 = H256::from(hex!(
+        "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1"
+    ));
+    static ref BYTES_VALUE3: H256 = H256::from(hex!(
+        "977c084229c72a0fa377cae304eda9099b6a2cb5d83b25cdf0f0969b69874255"
+    ));
     static ref SCALAR_ENTITY: Entity = {
         let mut entity = Entity::new();
+        let strings = Value::from(
+            vec!["left", "right", "middle"]
+                .into_iter()
+                .map(|s| Value::from(s))
+                .collect::<Vec<_>>(),
+        );
+        let byte_array = Value::from(
+            vec![*BYTES_VALUE, *BYTES_VALUE2, *BYTES_VALUE3]
+                .into_iter()
+                .map(|s| Value::from(s))
+                .collect::<Vec<_>>(),
+        );
         entity.set("id", "one");
         entity.set("bool", true);
         entity.set("int", std::i32::MAX);
         entity.set("bigDecimal", (*LARGE_DECIMAL).clone());
         entity.set("string", "scalar");
+        entity.set("strings", strings);
         entity.set("bytes", (*BYTES_VALUE).clone());
+        entity.set("byteArray", byte_array);
         entity.set("bigInt", (*LARGE_INT).clone());
         entity.set("__typename", "Scalar");
         entity
@@ -75,29 +99,16 @@ fn insert_test_data(conn: &PgConnection) -> Mapping {
     )
     .expect("Failed to create relational schema");
 
-    let query = format!(
-        "
-            insert into {}.scalars (id, bool, int, big_decimal, string, bytes, big_int)
-            values ('{}', {}, {}, {}, '{}', '\\x{}', {})",
-        mapping.schema,
-        SCALAR_ENTITY.get("id").unwrap(),
-        SCALAR_ENTITY.get("bool").unwrap(),
-        SCALAR_ENTITY.get("int").unwrap(),
-        SCALAR_ENTITY.get("bigDecimal").unwrap(),
-        SCALAR_ENTITY.get("string").unwrap(),
-        hex::encode(
-            SCALAR_ENTITY
-                .get("bytes")
-                .unwrap()
-                .clone()
-                .as_bytes()
-                .unwrap()
-                .as_slice()
-        ),
-        SCALAR_ENTITY.get("bigInt").unwrap(),
-    );
-    conn.batch_execute(&query)
+    let key = EntityKey {
+        subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+        entity_type: "Scalar".to_owned(),
+        entity_id: "one".to_owned(),
+    };
+
+    mapping
+        .insert(&conn, &key, SCALAR_ENTITY.clone())
         .expect("Failed to insert test row");
+
     mapping
 }
 
