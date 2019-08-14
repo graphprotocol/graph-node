@@ -64,6 +64,12 @@ lazy_static! {
         .map(|s| u64::from_str(&s)
              .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_START_BLOCK")))
         .unwrap_or(0);
+
+    static ref TOKIO_THREAD_COUNT: usize = env::var("TOKIO_THREAD_COUNT")
+        .ok()
+        .map(|s| usize::from_str(&s)
+             .unwrap_or_else(|_| panic!("failed to parse env var TOKIO_THREAD_COUNT")))
+        .unwrap_or(100);
 }
 
 git_testament!(TESTAMENT);
@@ -87,7 +93,7 @@ fn main() {
     let handler_runtime = runtime.clone();
     *runtime.lock().unwrap() = Some(
         runtime::Builder::new()
-            .core_threads(100)
+            .core_threads(*TOKIO_THREAD_COUNT)
             .panic_handler(move |_| {
                 let runtime = handler_runtime.clone();
                 std::thread::spawn(move || {
