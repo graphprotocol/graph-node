@@ -305,3 +305,61 @@ impl<'a> QueryId for InsertQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
+
+#[derive(Debug, Clone, Constructor)]
+pub struct ConflictingEntityQuery<'a> {
+    mapping: &'a Mapping,
+    entities: &'a Vec<&'a String>,
+    entity_id: &'a String,
+}
+
+impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        // Construct a query
+        //   select 'Type1' as entity from schema.table1 where id = $1
+        //   union all
+        //   select 'Type2' as entity from schema.table2 where id = $1
+        //   union all
+        //   ...
+        for (i, entity) in self.entities.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            out.push_sql("select ");
+            out.push_bind_param::<Text, _>(entity)?;
+            out.push_sql(" as entity from ");
+            out.push_identifier(&self.mapping.schema)?;
+            out.push_sql(".");
+            let table = self
+                .mapping
+                .table_for_entity(entity)
+                .map_err(|e| diesel::result::Error::QueryBuilderError(e.to_string().into()))?;
+            out.push_identifier(table.name.as_str())?;
+            out.push_sql(" where id = ");
+            out.push_bind_param::<Text, _>(self.entity_id)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for ConflictingEntityQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+#[derive(QueryableByName)]
+pub struct ConflictingEntityData {
+    #[sql_type = "Text"]
+    pub entity: String,
+}
+
+impl<'a> LoadQuery<PgConnection, ConflictingEntityData> for ConflictingEntityQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ConflictingEntityData>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for ConflictingEntityQuery<'a> {}

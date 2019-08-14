@@ -385,7 +385,9 @@ impl<'a> Connection<'a> {
     ) -> Result<Option<String>, StoreError> {
         match self.storage(subgraph)? {
             Storage::Json(json) => json.conflicting_entity(&self.conn, entity_id, entities),
-            Storage::Relational(_) => unimplemented!(),
+            Storage::Relational(mapping) => {
+                mapping.conflicting_entity(&self.conn, entity_id, entities)
+            }
         }
     }
 

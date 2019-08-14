@@ -31,6 +31,26 @@ const THINGS_GQL: &str = "
         bytes: Bytes,
         byteArray: [Bytes!],
         bigInt: BigInt,
+    }
+
+    interface Pet {
+        id: ID!,
+        name: String!
+    }
+
+    type Cat implements Pet @entity {
+        id: ID!,
+        name: String!
+    }
+
+    type Dog implements Pet @entity {
+        id: ID!,
+        name: String!
+    }
+
+    type Ferret implements Pet @entity {
+        id: ID!,
+        name: String!
     }";
 
 const SCHEMA_NAME: &str = "mapping";
@@ -85,6 +105,16 @@ fn remove_test_data(conn: &PgConnection) {
         .expect("Failed to drop test schema");
 }
 
+fn insert_entity(conn: &PgConnection, mapping: &Mapping, entity_type: &str, entity: Entity) {
+    let key = EntityKey {
+        subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+        entity_type: entity_type.to_owned(),
+        entity_id: entity.id().unwrap(),
+    };
+    let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
+    mapping.insert(&conn, &key, entity).expect(&errmsg);
+}
+
 fn insert_test_data(conn: &PgConnection) -> Mapping {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
@@ -98,16 +128,6 @@ fn insert_test_data(conn: &PgConnection) -> Mapping {
         &schema.document,
     )
     .expect("Failed to create relational schema");
-
-    let key = EntityKey {
-        subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-        entity_type: "Scalar".to_owned(),
-        entity_id: "one".to_owned(),
-    };
-
-    mapping
-        .insert(&conn, &key, SCALAR_ENTITY.clone())
-        .expect("Failed to insert test row");
 
     mapping
 }
@@ -146,6 +166,8 @@ where
 #[test]
 fn test_find() {
     run_test(|conn, mapping| -> Result<(), ()> {
+        insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
+
         // Happy path: find existing entity
         let entity = mapping
             .find(conn, "Scalar", "one")
@@ -170,4 +192,41 @@ fn test_find() {
         }
         Ok(())
     });
+}
+
+#[test]
+fn test_conflicting_entity() {
+    run_test(|conn, mapping| -> Result<(), ()> {
+        let id = "fred";
+        let cat = "Cat".to_owned();
+        let dog = "Dog".to_owned();
+        let ferret = "Ferret".to_owned();
+
+        let mut fred = Entity::new();
+        fred.set("id", id);
+        fred.set("name", id);
+        insert_entity(&conn, &mapping, "Cat", fred);
+
+        // If we wanted to create Fred the dog, which is forbidden, we'd run this:
+        let conflict = mapping
+            .conflicting_entity(&conn, &id.to_owned(), vec![&cat, &ferret])
+            .unwrap();
+        assert_eq!(Some("Cat".to_owned()), conflict);
+
+        // If we wanted to manipulate Fred the cat, which is ok, we'd run:
+        let conflict = mapping
+            .conflicting_entity(&conn, &id.to_owned(), vec![&dog, &ferret])
+            .unwrap();
+        assert_eq!(None, conflict);
+
+        // Chairs are not pets
+        let chair = "Chair".to_owned();
+        let result = mapping.conflicting_entity(&conn, &id.to_owned(), vec![&dog, &ferret, &chair]);
+        assert!(result.is_err());
+        assert_eq!(
+            "store error: unknown table 'Chair'",
+            result.err().unwrap().to_string()
+        );
+        Ok(())
+    })
 }

@@ -9,7 +9,7 @@ use std::fmt;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use crate::mapping_sql::{EntityData, FindQuery, InsertQuery};
+use crate::mapping_sql::{ConflictingEntityQuery, EntityData, FindQuery, InsertQuery};
 use graph::prelude::{format_err, Entity, EntityKey, StoreError, ValueType};
 
 trait AsDdl {
@@ -306,6 +306,18 @@ impl Mapping {
         let table = self.table_for_entity(&key.entity_type)?;
         let query = InsertQuery::new(&self.schema, table, key, entity);
         Ok(query.execute(conn)?)
+    }
+
+    pub fn conflicting_entity(
+        &self,
+        conn: &PgConnection,
+        entity_id: &String,
+        entities: Vec<&String>,
+    ) -> Result<Option<String>, StoreError> {
+        Ok(ConflictingEntityQuery::new(self, &entities, entity_id)
+            .load(conn)?
+            .pop()
+            .map(|data| data.entity))
     }
 }
 
