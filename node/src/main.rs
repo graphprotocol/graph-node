@@ -65,10 +65,10 @@ lazy_static! {
              .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_START_BLOCK")))
         .unwrap_or(0);
 
-    static ref TOKIO_THREAD_COUNT: usize = env::var("TOKIO_THREAD_COUNT")
+    static ref TOKIO_THREAD_COUNT: usize = env::var("GRAPH_TOKIO_THREAD_COUNT")
         .ok()
         .map(|s| usize::from_str(&s)
-             .unwrap_or_else(|_| panic!("failed to parse env var TOKIO_THREAD_COUNT")))
+             .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_TOKIO_THREAD_COUNT")))
         .unwrap_or(100);
 }
 
