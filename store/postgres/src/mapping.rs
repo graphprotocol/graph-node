@@ -242,7 +242,7 @@ impl Mapping {
 
     #[allow(dead_code)]
     pub fn column(&self, reference: &Reference) -> Result<&Column, StoreError> {
-        self.table(&reference.table)?.field(&reference.column)
+        self.table(&reference.table)?.column(&reference.column)
     }
 
     /// Construct a fake root table that has an attribute for each table
@@ -534,9 +534,9 @@ impl Table {
         }
         Ok(table)
     }
-    /// Find the field `name` in this table. The name must be in snake case,
+    /// Find the column `name` in this table. The name must be in snake case,
     /// i.e., use SQL conventions
-    pub fn field(&self, name: &SqlName) -> Result<&Column, StoreError> {
+    pub fn column(&self, name: &SqlName) -> Result<&Column, StoreError> {
         self.columns
             .iter()
             .find(|column| &column.name == name)
@@ -552,7 +552,7 @@ impl Table {
 
     #[allow(dead_code)]
     pub fn reference(&self, name: &SqlName) -> Result<Reference, StoreError> {
-        let attr = self.field(name)?;
+        let attr = self.column(name)?;
         Ok(Reference {
             table: self.name.clone(),
             column: attr.name.clone(),
@@ -704,7 +704,7 @@ mod tests {
         assert_eq!("thing", table.singular_name);
 
         let id = table
-            .field(&PRIMARY_KEY_COLUMN.into())
+            .column(&PRIMARY_KEY_COLUMN.into())
             .expect("failed to get 'id' column for 'things' table");
         assert_eq!(ID_TYPE, id.column_type);
         assert!(!id.is_nullable());
@@ -713,7 +713,7 @@ mod tests {
         assert!(!id.is_reference());
 
         let big_thing = table
-            .field(&"big_thing".into())
+            .column(&"big_thing".into())
             .expect("failed to get 'big_thing' column for 'things' table");
         assert_eq!(ID_TYPE, big_thing.column_type);
         assert!(!big_thing.is_nullable());
@@ -727,7 +727,7 @@ mod tests {
         );
         // Field lookup happens by the SQL name, not the GraphQL name
         let bad_sql_name = SqlName("bigThing".to_owned());
-        assert!(table.field(&bad_sql_name).is_err());
+        assert!(table.column(&bad_sql_name).is_err());
     }
 
     #[test]
