@@ -128,7 +128,7 @@ impl EntityData {
                     graph::prelude::Value::from(self.entity),
                 );
                 for (key, json) in map {
-                    let column = table.field(&SqlName::from(&*key))?;
+                    let column = table.column(&SqlName::from(&*key))?;
                     let value = Self::value_from_json(column.column_type, json)?;
                     if value != Value::Null {
                         entity.insert(column.field.clone(), value);
