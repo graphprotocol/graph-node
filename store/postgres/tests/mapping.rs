@@ -237,6 +237,46 @@ fn insert_test_data(conn: &PgConnection) -> Mapping {
     mapping
 }
 
+fn scrub(entity: &Entity) -> Entity {
+    let mut scrubbed = Entity::new();
+    // merge has the sideffect of removing any attribute
+    // that is Value::Null
+    scrubbed.merge(entity.clone());
+    scrubbed
+}
+
+macro_rules! assert_entity_eq {
+    ($left:expr, $right:expr) => {{
+        let (left, right) = (&($left), &($right));
+        let mut pass = true;
+
+        for (key, left_value) in left.iter() {
+            match right.get(key) {
+                None => {
+                    pass = false;
+                    println!("key '{}' missing from right", key);
+                }
+                Some(right_value) => {
+                    if left_value != right_value {
+                        pass = false;
+                        println!(
+                            "values for '{}' differ:\n     left: {:?}\n    right: {:?}",
+                            key, left_value, right_value
+                        );
+                    }
+                }
+            }
+        }
+        for key in right.keys() {
+            if left.get(key).is_none() {
+                pass = false;
+                println!("key '{}' missing from left", key);
+            }
+        }
+        assert!(pass, "left and right entities are different");
+    }};
+}
+
 /// Test harness for running database integration tests.
 fn run_test<R, F>(test: F)
 where
@@ -278,7 +318,7 @@ fn find() {
             .find(conn, "Scalar", "one")
             .expect("Failed to read Scalar[one]")
             .unwrap();
-        assert_eq!(&*SCALAR_ENTITY, &entity);
+        assert_entity_eq!(scrub(&*SCALAR_ENTITY), entity);
 
         // Find non-existing entity
         let entity = mapping
@@ -295,6 +335,129 @@ fn find() {
                 assert!(false)
             }
         }
+        Ok(())
+    });
+}
+
+#[test]
+fn update_overwrite() {
+    run_test(|conn, mapping| -> Result<(), ()> {
+        insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
+
+        // Update with overwrite
+        let mut entity = SCALAR_ENTITY.clone();
+        entity.set("string", "updated");
+        entity.remove("strings");
+        entity.set("bool", Value::Null);
+        let key = EntityKey {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_type: "Scalar".to_owned(),
+            entity_id: entity.id().unwrap().clone(),
+        };
+        let count = mapping
+            .update(&conn, &key, entity.clone(), true, None)
+            .expect("Failed to update");
+        assert_eq!(1, count);
+
+        // The missing 'strings' will show up as Value::Null in the
+        // loaded entity
+        entity.set("strings", Value::Null);
+
+        let actual = mapping
+            .find(conn, "Scalar", "one")
+            .expect("Failed to read Scalar[one]")
+            .unwrap();
+        assert_entity_eq!(scrub(&entity), actual);
+        Ok(())
+    });
+}
+
+#[test]
+fn update_no_overwrite() {
+    run_test(|conn, mapping| -> Result<(), ()> {
+        insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
+
+        // Update with overwrite
+        let mut entity = SCALAR_ENTITY.clone();
+        entity.set("string", "updated");
+        let strings = entity.remove("strings").unwrap();
+        let key = EntityKey {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_type: "Scalar".to_owned(),
+            entity_id: entity.id().unwrap().clone(),
+        };
+        let count = mapping
+            .update(&conn, &key, entity.clone(), false, None)
+            .expect("Failed to update");
+        assert_eq!(1, count);
+
+        // 'strings' will not have changed
+        entity.set("strings", strings);
+
+        let actual = mapping
+            .find(conn, "Scalar", "one")
+            .expect("Failed to read Scalar[one]")
+            .unwrap();
+        assert_entity_eq!(scrub(&entity), actual);
+        Ok(())
+    });
+}
+
+#[test]
+fn update_guard_no_match() {
+    run_test(|conn, mapping| -> Result<(), ()> {
+        insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
+
+        // Update where guard prevents the update
+        let mut entity = SCALAR_ENTITY.clone();
+        let string = entity.set("string", "updated").unwrap();
+        let key = EntityKey {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_type: "Scalar".to_owned(),
+            entity_id: entity.id().unwrap().clone(),
+        };
+        let guard = EntityFilter::Equal("string".into(), "does not match".into());
+        let count = mapping
+            .update(&conn, &key, entity.clone(), false, Some(guard))
+            .expect("Failed to update");
+        assert_eq!(0, count);
+
+        // The update will have done nothing
+        entity.set("string", string);
+        let actual = mapping
+            .find(conn, "Scalar", "one")
+            .expect("Failed to read Scalar[one]")
+            .unwrap();
+        assert_entity_eq!(scrub(&entity), actual);
+        Ok(())
+    });
+}
+
+#[test]
+fn update_guard_matches() {
+    run_test(|conn, mapping| -> Result<(), ()> {
+        insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
+
+        // Update where guard prevents the update
+        let mut entity = SCALAR_ENTITY.clone();
+        let string = entity.set("string", "updated").unwrap();
+        let key = EntityKey {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_type: "Scalar".to_owned(),
+            entity_id: entity.id().unwrap().clone(),
+        };
+        let guard = EntityFilter::Equal("string".into(), string.into());
+        let count = mapping
+            .update(&conn, &key, entity.clone(), false, Some(guard))
+            .expect("Failed to update");
+        assert_eq!(1, count);
+
+        // The update will have changed the entity
+        let actual = mapping
+            .find(conn, "Scalar", "one")
+            .expect("Failed to read Scalar[one]")
+            .unwrap();
+        assert_entity_eq!(scrub(&entity), actual);
         Ok(())
     });
 }

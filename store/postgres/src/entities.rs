@@ -405,10 +405,14 @@ impl<'a> Connection<'a> {
         }
     }
 
+    /// Update an existing entity. If `overwrite` is true, `entity` contains
+    /// the entire entity, and the existing entity should be completely
+    /// replaced by it. Otherwise, `entity` is only partial, and only the
+    /// attributes explicitly mentioned in `entity` should be changed.
     pub(crate) fn update(
         &self,
         key: &EntityKey,
-        entity: &Entity,
+        entity: Entity,
         overwrite: bool,
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
@@ -417,7 +421,9 @@ impl<'a> Connection<'a> {
             Storage::Json(json) => {
                 json.update(&self.conn, key, entity, overwrite, guard, history_event)
             }
-            Storage::Relational(_) => unimplemented!(),
+            Storage::Relational(mapping) => {
+                mapping.update(&self.conn, key, entity, overwrite, guard)
+            }
         }
     }
 
@@ -809,12 +815,12 @@ impl JsonStorage {
         &self,
         conn: &PgConnection,
         key: &EntityKey,
-        entity: &Entity,
+        entity: Entity,
         overwrite: bool,
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        let data = entity_to_json(key, entity)?;
+        let data = entity_to_json(key, &entity)?;
 
         self.add_entity_history_record(conn, history_event, &key, OperationType::Update)?;
 

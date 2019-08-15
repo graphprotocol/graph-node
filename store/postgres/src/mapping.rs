@@ -9,7 +9,9 @@ use std::fmt;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use crate::mapping_sql::{ConflictingEntityQuery, EntityData, FilterQuery, FindQuery, InsertQuery};
+use crate::mapping_sql::{
+    ConflictingEntityQuery, EntityData, FilterQuery, FindQuery, InsertQuery, UpdateQuery,
+};
 use graph::prelude::{
     format_err, Entity, EntityFilter, EntityKey, QueryExecutionError, StoreError, ValueType,
 };
@@ -359,6 +361,19 @@ impl Mapping {
             .map(|entity_data| entity_data.to_entity(self).map_err(|e| e.into()))
             .collect()
     }
+
+    pub fn update(
+        &self,
+        conn: &PgConnection,
+        key: &EntityKey,
+        entity: Entity,
+        overwrite: bool,
+        guard: Option<EntityFilter>,
+    ) -> Result<usize, StoreError> {
+        let table = self.table_for_entity(&key.entity_type)?;
+        let query = UpdateQuery::new(&self.schema, table, key, entity, overwrite, guard);
+        Ok(query.execute(conn)?)
+    }
 }
 
 impl AsDdl for Mapping {
@@ -471,6 +486,10 @@ impl Column {
         !self.references.is_empty()
     }
 
+    pub fn is_primary_key(&self) -> bool {
+        PRIMARY_KEY_COLUMN == self.name.as_str()
+    }
+
     fn sql_type(&self) -> &str {
         self.column_type.sql_type()
     }
@@ -524,11 +543,6 @@ impl AsDdl for Column {
 
 /// The name for the primary key column of a table; hardcoded for now
 pub(crate) const PRIMARY_KEY_COLUMN: &str = "id";
-
-#[allow(dead_code)]
-pub(crate) fn is_primary_key_column(col: &SqlName) -> bool {
-    PRIMARY_KEY_COLUMN == col.0
-}
 
 #[derive(Clone, Debug)]
 pub struct Table {
