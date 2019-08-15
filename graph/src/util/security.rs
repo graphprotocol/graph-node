@@ -33,7 +33,7 @@ impl<T: fmt::Display> slog::Value for SafeDisplay<T> {
         &self,
         _rec: &slog::Record,
         key: slog::Key,
-        serializer: &mut slog::Serializer,
+        serializer: &mut dyn slog::Serializer,
     ) -> slog::Result {
         serializer.emit_str(key, format!("{}", self).as_str())
     }

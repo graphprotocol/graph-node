@@ -14,7 +14,7 @@ pub struct JsonStreamValue {
 }
 
 pub type JsonValueStream =
-    Box<Stream<Item = JsonStreamValue, Error = failure::Error> + Send + 'static>;
+    Box<dyn Stream<Item = JsonStreamValue, Error = failure::Error> + Send + 'static>;
 
 /// Resolves links to subgraph manifests and resources referenced by them.
 pub trait LinkResolver: Send + Sync + 'static + Sized {
@@ -23,7 +23,7 @@ pub trait LinkResolver: Send + Sync + 'static + Sized {
         &self,
         logger: &Logger,
         link: &Link,
-    ) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send>;
+    ) -> Box<dyn Future<Item = Vec<u8>, Error = failure::Error> + Send>;
 
     /// Read the contents of `link` and deserialize them into a stream of JSON
     /// values. The values must each be on a single line; newlines are significant
@@ -32,5 +32,5 @@ pub trait LinkResolver: Send + Sync + 'static + Sized {
     fn json_stream(
         &self,
         link: &Link,
-    ) -> Box<Future<Item = JsonValueStream, Error = failure::Error> + Send + 'static>;
+    ) -> Box<dyn Future<Item = JsonValueStream, Error = failure::Error> + Send + 'static>;
 }

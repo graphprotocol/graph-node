@@ -101,7 +101,11 @@ where
     T: EthereumAdapter,
     L: LinkResolver,
     S: Store + Send + Sync + 'static,
-    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + Send + Sync + 'static,
+    U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     /// Pre-process and validate the module.
     pub fn new(
@@ -190,7 +194,11 @@ where
     T: EthereumAdapter,
     L: LinkResolver,
     S: Store + Send + Sync + 'static,
-    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + Send + Sync + 'static,
+    U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     /// Creates a new wasmi module
     pub fn from_valid_module_with_ctx(
@@ -392,7 +400,11 @@ where
     T: EthereumAdapter,
     L: LinkResolver,
     S: Store + Send + Sync + 'static,
-    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + Send + Sync + 'static,
+    U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, Error> {
         let address = self
@@ -426,7 +438,11 @@ where
     T: EthereumAdapter,
     L: LinkResolver,
     S: Store + Send + Sync + 'static,
-    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + Send + Sync + 'static,
+    U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     fn gas(&mut self, _gas_spent: u32) -> Result<Option<RuntimeValue>, Trap> {
         self.host_exports().check_timeout(self.start_time)?;
@@ -948,7 +964,11 @@ where
     T: EthereumAdapter,
     L: LinkResolver,
     S: Store + Send + Sync + 'static,
-    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + Send + Sync + 'static,
+    U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     fn invoke_index(
         &mut self,

@@ -71,7 +71,7 @@ where
     fn serve(
         &mut self,
         port: u16,
-    ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
+    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError> {
         let logger = self.logger.clone();
         let error_logger = self.logger.clone();
 

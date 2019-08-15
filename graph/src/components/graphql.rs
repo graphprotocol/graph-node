@@ -4,11 +4,11 @@ use crate::data::query::{Query, QueryError, QueryResult};
 use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
 
 /// Future for query results.
-pub type QueryResultFuture = Box<Future<Item = QueryResult, Error = QueryError> + Send>;
+pub type QueryResultFuture = Box<dyn Future<Item = QueryResult, Error = QueryError> + Send>;
 
 /// Future for subscription results.
 pub type SubscriptionResultFuture =
-    Box<Future<Item = SubscriptionResult, Error = SubscriptionError> + Send>;
+    Box<dyn Future<Item = SubscriptionResult, Error = SubscriptionError> + Send>;
 
 /// A component that can run GraphqL queries against a [Store](../store/trait.Store.html).
 pub trait GraphQlRunner: Send + Sync + 'static {

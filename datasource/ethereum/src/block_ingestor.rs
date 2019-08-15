@@ -97,7 +97,7 @@ where
                 // Ask for latest block from Ethereum node
                 self.eth_adapter.latest_block(&self.logger)
                     // Compare latest block with head ptr, alert user if far behind
-                    .and_then(move |latest_block: Block<Transaction>| -> Box<Future<Item=_, Error=_> + Send> {
+                    .and_then(move |latest_block: Block<Transaction>| -> Box<dyn Future<Item=_, Error=_> + Send> {
                         match head_block_ptr_opt {
                             None => {
                                 info!(
@@ -167,7 +167,7 @@ where
                                 // - Therefore, the loop will iterate at most ancestor_count times.
                                 future::loop_fn(
                                     missing_block_hashes,
-                                    move |missing_block_hashes| -> Box<Future<Item = _, Error = _> + Send> {
+                                    move |missing_block_hashes| -> Box<dyn Future<Item = _, Error = _> + Send> {
                                         if missing_block_hashes.is_empty() {
                                             // If no blocks were missing, then the block head pointer was updated
                                             // successfully, and this poll has completed.
@@ -210,7 +210,7 @@ where
     fn get_blocks<'a>(
         &'a self,
         block_hashes: &[H256],
-    ) -> Box<Stream<Item = EthereumBlock, Error = EthereumAdapterError> + Send + 'a> {
+    ) -> Box<dyn Stream<Item = EthereumBlock, Error = EthereumAdapterError> + Send + 'a> {
         let logger = self.logger.clone();
         let eth_adapter = self.eth_adapter.clone();
 

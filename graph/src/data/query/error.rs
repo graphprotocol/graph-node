@@ -60,7 +60,7 @@ impl Error for QueryExecutionError {
         "Query execution error"
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         None
     }
 }
@@ -257,7 +257,7 @@ impl Error for QueryError {
         "Query error"
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self {
             QueryError::EncodingError(ref e) => Some(e),
             QueryError::ExecutionError(ref e) => Some(e),

@@ -219,7 +219,7 @@ where
         self: Arc<Self>,
         deployment_id: &SubgraphDeploymentId,
         logger: Logger,
-    ) -> Box<Future<Item = Vec<DataSource>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<DataSource>, Error = Error> + Send> {
         struct LoopState {
             data_sources: Vec<DataSource>,
             skip: i32,

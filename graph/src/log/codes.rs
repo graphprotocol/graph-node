@@ -32,7 +32,7 @@ impl slog::Value for LogCode {
         &self,
         _rec: &slog::Record,
         key: slog::Key,
-        serializer: &mut slog::Serializer,
+        serializer: &mut dyn slog::Serializer,
     ) -> slog::Result {
         serializer.emit_str(key, format!("{}", self).as_str())
     }

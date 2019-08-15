@@ -47,7 +47,7 @@ impl Transport {
 }
 
 impl web3::Transport for Transport {
-    type Out = Box<Future<Item = Value, Error = web3::error::Error> + Send>;
+    type Out = Box<dyn Future<Item = Value, Error = web3::error::Error> + Send>;
 
     fn prepare(&self, method: &str, params: Vec<Value>) -> (RequestId, Call) {
         match self {
@@ -68,7 +68,8 @@ impl web3::Transport for Transport {
 
 impl web3::BatchTransport for Transport {
     type Batch = Box<
-        Future<Item = Vec<Result<Value, web3::error::Error>>, Error = web3::error::Error> + Send,
+        dyn Future<Item = Vec<Result<Value, web3::error::Error>>, Error = web3::error::Error>
+            + Send,
     >;
 
     fn send_batch<T>(&self, requests: T) -> Self::Batch

@@ -67,7 +67,7 @@ where
     fn create_handler(
         &self,
         params: SubgraphCreateParams,
-    ) -> Box<Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
+    ) -> Box<dyn Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
         let logger = self.logger.clone();
 
         info!(logger, "Received subgraph_create request"; "params" => format!("{:?}", params));
@@ -93,7 +93,7 @@ where
     fn deploy_handler(
         &self,
         params: SubgraphDeployParams,
-    ) -> Box<Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
+    ) -> Box<dyn Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
         let logger = self.logger.clone();
 
         info!(logger, "Received subgraph_deploy request"; "params" => format!("{:?}", params));
@@ -120,7 +120,7 @@ where
     fn remove_handler(
         &self,
         params: SubgraphRemoveParams,
-    ) -> Box<Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
+    ) -> Box<dyn Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
         let logger = self.logger.clone();
 
         info!(logger, "Received subgraph_remove request"; "params" => format!("{:?}", params));
@@ -145,7 +145,7 @@ where
     fn reassign_handler(
         &self,
         params: SubgraphReassignParams,
-    ) -> Box<Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
+    ) -> Box<dyn Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
         let logger = self.logger.clone();
 
         info!(logger, "Received subgraph_reassignment request"; "params" => format!("{:?}", params));

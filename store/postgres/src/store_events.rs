@@ -23,9 +23,11 @@ impl StoreEventListener {
 }
 
 impl EventProducer<StoreEvent> for StoreEventListener {
-    fn take_event_stream(&mut self) -> Option<Box<Stream<Item = StoreEvent, Error = ()> + Send>> {
+    fn take_event_stream(
+        &mut self,
+    ) -> Option<Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>> {
         self.notification_listener.take_event_stream().map(
-            |stream| -> Box<Stream<Item = _, Error = _> + Send> {
+            |stream| -> Box<dyn Stream<Item = _, Error = _> + Send> {
                 Box::new(stream.map(|notification| {
                     // Create StoreEvent from JSON
                     let change: StoreEvent = serde_json::from_value(notification.payload.clone())

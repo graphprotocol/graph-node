@@ -267,7 +267,10 @@ impl Store {
     /// Receive store events from Postgres and send them to all active
     /// subscriptions. Detect stale subscriptions in the process and
     /// close them.
-    fn handle_store_events(&self, store_events: Box<Stream<Item = StoreEvent, Error = ()> + Send>) {
+    fn handle_store_events(
+        &self,
+        store_events: Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>,
+    ) {
         let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
 
@@ -1181,7 +1184,10 @@ impl ChainStore for Store {
         Ok(self.genesis_block_ptr)
     }
 
-    fn upsert_blocks<'a, B, E>(&self, blocks: B) -> Box<Future<Item = (), Error = E> + Send + 'a>
+    fn upsert_blocks<'a, B, E>(
+        &self,
+        blocks: B,
+    ) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
     where
         B: Stream<Item = EthereumBlock, Error = E> + Send + 'a,
         E: From<Error> + Send + 'a,

@@ -5,5 +5,5 @@ pub trait DataSourceLoader {
         self: Arc<Self>,
         id: &SubgraphDeploymentId,
         logger: Logger,
-    ) -> Box<Future<Item = Vec<DataSource>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Vec<DataSource>, Error = Error> + Send>;
 }

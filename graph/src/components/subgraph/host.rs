@@ -24,7 +24,7 @@ pub trait RuntimeHost: Send + Sync + Debug {
         transaction: Arc<Transaction>,
         log: Arc<Log>,
         state: BlockState,
-    ) -> Box<Future<Item = BlockState, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
 
     /// Process an Ethereum call and return a vector of entity operations
     fn process_call(
@@ -34,7 +34,7 @@ pub trait RuntimeHost: Send + Sync + Debug {
         transaction: Arc<Transaction>,
         call: Arc<EthereumCall>,
         state: BlockState,
-    ) -> Box<Future<Item = BlockState, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
 
     /// Process an Ethereum block and return a vector of entity operations
     fn process_block(
@@ -43,7 +43,7 @@ pub trait RuntimeHost: Send + Sync + Debug {
         block: Arc<EthereumBlock>,
         trigger_type: EthereumBlockTriggerType,
         state: BlockState,
-    ) -> Box<Future<Item = BlockState, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
 }
 
 pub trait RuntimeHostBuilder: Clone + Send + Sync + 'static {

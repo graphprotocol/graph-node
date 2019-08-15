@@ -62,7 +62,7 @@ impl Error for GraphQLServerError {
         "Failed to process the GraphQL request"
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self {
             GraphQLServerError::Canceled(ref e) => Some(e),
             GraphQLServerError::ClientError(_) => None,
@@ -97,5 +97,5 @@ pub trait GraphQLServer {
         &mut self,
         port: u16,
         ws_port: u16,
-    ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError>;
+    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError>;
 }

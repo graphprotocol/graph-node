@@ -33,14 +33,14 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn net_identifiers(
         &self,
         _: &Logger,
-    ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
         unimplemented!();
     }
 
     fn latest_block(
         &self,
         _: &Logger,
-    ) -> Box<Future<Item = Block<Transaction>, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = Block<Transaction>, Error = EthereumAdapterError> + Send> {
         unimplemented!();
     }
 
@@ -48,7 +48,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         &self,
         _: &Logger,
         _: H256,
-    ) -> Box<Future<Item = Option<Block<Transaction>>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Option<Block<Transaction>>, Error = Error> + Send> {
         unimplemented!();
     }
 
@@ -56,7 +56,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         &self,
         _: &Logger,
         _: Block<Transaction>,
-    ) -> Box<Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
         unimplemented!();
     }
 
@@ -64,7 +64,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         &self,
         _: &Logger,
         _: H256,
-    ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
         unimplemented!();
     }
 
@@ -72,7 +72,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         &self,
         _: &Logger,
         _: u64,
-    ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
         unimplemented!();
     }
 
@@ -80,7 +80,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         &self,
         _: &Logger,
         _: EthereumBlockPointer,
-    ) -> Box<Future<Item = bool, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
         unimplemented!();
     }
 
@@ -89,7 +89,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: &Logger,
         _: u64,
         _: H256,
-    ) -> Box<Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
         unimplemented!();
     }
 
@@ -101,7 +101,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: Option<EthereumLogFilter>,
         _: Option<EthereumCallFilter>,
         _: Option<EthereumBlockFilter>,
-    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         unimplemented!();
     }
 
@@ -111,7 +111,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: u64,
         _: u64,
         _: EthereumLogFilter,
-    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         unimplemented!();
     }
 
@@ -121,7 +121,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: u64,
         _: u64,
         _: EthereumCallFilter,
-    ) -> Box<Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send> {
         unimplemented!();
     }
 
@@ -130,7 +130,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: &Logger,
         _: u64,
         _: u64,
-    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         unimplemented!();
     }
 
@@ -138,7 +138,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         &self,
         _: &Logger,
         _: EthereumContractCall,
-    ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
+    ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
         unimplemented!();
     }
 }
@@ -150,7 +150,7 @@ fn test_valid_module(
         MockEthereumAdapter,
         graph_core::LinkResolver,
         FakeStore,
-        Sender<Box<Future<Item = (), Error = ()> + Send>>,
+        Sender<Box<dyn Future<Item = (), Error = ()> + Send>>,
     >,
 > {
     let logger = Logger::root(slog::Discard, o!());
@@ -242,7 +242,11 @@ where
     T: EthereumAdapter,
     L: LinkResolver,
     S: Store + Send + Sync + 'static,
-    U: Sink<SinkItem = Box<Future<Item = (), Error = ()> + Send>> + Clone + Send + Sync + 'static,
+    U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: RuntimeValue) -> AscPtr<P> {
         self.module

@@ -196,10 +196,10 @@ impl Drop for NotificationListener {
 impl EventProducer<JsonNotification> for NotificationListener {
     fn take_event_stream(
         &mut self,
-    ) -> Option<Box<Stream<Item = JsonNotification, Error = ()> + Send>> {
+    ) -> Option<Box<dyn Stream<Item = JsonNotification, Error = ()> + Send>> {
         self.output
             .take()
-            .map(|s| Box::new(s) as Box<Stream<Item = JsonNotification, Error = ()> + Send>)
+            .map(|s| Box::new(s) as Box<dyn Stream<Item = JsonNotification, Error = ()> + Send>)
     }
 }
 

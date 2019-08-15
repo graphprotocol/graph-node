@@ -384,7 +384,7 @@ impl ChainStore for MockStore {
         })
     }
 
-    fn upsert_blocks<'a, B, E>(&self, _: B) -> Box<Future<Item = (), Error = E> + Send + 'a>
+    fn upsert_blocks<'a, B, E>(&self, _: B) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
     where
         B: Stream<Item = EthereumBlock, Error = E> + Send + 'a,
         E: From<Error> + Send + 'a,
@@ -525,7 +525,7 @@ impl ChainStore for FakeStore {
         unimplemented!();
     }
 
-    fn upsert_blocks<'a, B, E>(&self, _: B) -> Box<Future<Item = (), Error = E> + Send + 'a>
+    fn upsert_blocks<'a, B, E>(&self, _: B) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
     where
         B: Stream<Item = EthereumBlock, Error = E> + Send + 'a,
         E: From<Error> + Send + 'a,

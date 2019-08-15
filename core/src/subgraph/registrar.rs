@@ -135,7 +135,7 @@ where
             })
             .flatten()
             .and_then(
-                move |entity_change| -> Result<Box<Stream<Item = _, Error = _> + Send>, _> {
+                move |entity_change| -> Result<Box<dyn Stream<Item = _, Error = _> + Send>, _> {
                     trace!(logger, "Received assignment change";
                                    "entity_change" => format!("{:?}", entity_change));
                     let subgraph_hash = SubgraphDeploymentId::new(entity_change.entity_id.clone())
@@ -155,28 +155,33 @@ where
                                 .map_err(|e| {
                                     format_err!("Failed to get subgraph assignment entity: {}", e)
                                 })
-                                .map(|entity_opt| -> Box<Stream<Item = _, Error = _> + Send> {
-                                    if let Some(entity) = entity_opt {
-                                        if entity.get("nodeId") == Some(&node_id.to_string().into())
-                                        {
-                                            // Start subgraph on this node
-                                            Box::new(stream::once(Ok(AssignmentEvent::Add {
-                                                subgraph_id: subgraph_hash,
-                                                node_id: node_id.clone(),
-                                            })))
+                                .map(
+                                    |entity_opt| -> Box<dyn Stream<Item = _, Error = _> + Send> {
+                                        if let Some(entity) = entity_opt {
+                                            if entity.get("nodeId")
+                                                == Some(&node_id.to_string().into())
+                                            {
+                                                // Start subgraph on this node
+                                                Box::new(stream::once(Ok(AssignmentEvent::Add {
+                                                    subgraph_id: subgraph_hash,
+                                                    node_id: node_id.clone(),
+                                                })))
+                                            } else {
+                                                // Ensure it is removed from this node
+                                                Box::new(stream::once(Ok(
+                                                    AssignmentEvent::Remove {
+                                                        subgraph_id: subgraph_hash,
+                                                        node_id: node_id.clone(),
+                                                    },
+                                                )))
+                                            }
                                         } else {
-                                            // Ensure it is removed from this node
-                                            Box::new(stream::once(Ok(AssignmentEvent::Remove {
-                                                subgraph_id: subgraph_hash,
-                                                node_id: node_id.clone(),
-                                            })))
+                                            // Was added/updated, but is now gone.
+                                            // We will get a separate Removed event later.
+                                            Box::new(stream::empty())
                                         }
-                                    } else {
-                                        // Was added/updated, but is now gone.
-                                        // We will get a separate Removed event later.
-                                        Box::new(stream::empty())
-                                    }
-                                })
+                                    },
+                                )
                         }
                         EntityChangeOperation::Removed => {
                             // Send remove event without checking node ID.
@@ -253,7 +258,7 @@ where
     fn create_subgraph(
         &self,
         name: SubgraphName,
-    ) -> Box<Future<Item = CreateSubgraphResult, Error = SubgraphRegistrarError> + Send + 'static>
+    ) -> Box<dyn Future<Item = CreateSubgraphResult, Error = SubgraphRegistrarError> + Send + 'static>
     {
         Box::new(future::result(create_subgraph(
             &self.logger,
@@ -267,7 +272,7 @@ where
         name: SubgraphName,
         hash: SubgraphDeploymentId,
         node_id: NodeId,
-    ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
+    ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
         let store = self.store.clone();
         let chain_stores = self.chain_stores.clone();
         let version_switching_mode = self.version_switching_mode;
@@ -299,7 +304,7 @@ where
     fn remove_subgraph(
         &self,
         name: SubgraphName,
-    ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
+    ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
         Box::new(future::result(remove_subgraph(
             &self.logger,
             self.store.clone(),
@@ -311,7 +316,7 @@ where
         &self,
         hash: SubgraphDeploymentId,
         node_id: NodeId,
-    ) -> Box<Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
+    ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
         Box::new(future::result(reassign_subgraph(
             self.store.clone(),
             hash,
@@ -324,7 +329,7 @@ fn handle_assignment_event<P>(
     event: AssignmentEvent,
     provider: Arc<P>,
     logger: &Logger,
-) -> Box<Future<Item = (), Error = CancelableError<SubgraphAssignmentProviderError>> + Send>
+) -> Box<dyn Future<Item = (), Error = CancelableError<SubgraphAssignmentProviderError>> + Send>
 where
     P: SubgraphAssignmentProviderTrait,
 {

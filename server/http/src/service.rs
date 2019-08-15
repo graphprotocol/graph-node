@@ -13,7 +13,7 @@ use crate::response::GraphQLResponse;
 
 /// An asynchronous response to a GraphQL request.
 pub type GraphQLServiceResponse =
-    Box<Future<Item = Response<Body>, Error = GraphQLServerError> + Send>;
+    Box<dyn Future<Item = Response<Body>, Error = GraphQLServerError> + Send>;
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]

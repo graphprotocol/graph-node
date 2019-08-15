@@ -15,7 +15,7 @@ use web3::helpers::*;
 use web3::types::*;
 use web3::{BatchTransport, RequestId, Transport};
 
-pub type Result<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
+pub type Result<T> = Box<dyn Future<Item = T, Error = Error> + Send + 'static>;
 
 fn mock_block() -> Block<U256> {
     Block {

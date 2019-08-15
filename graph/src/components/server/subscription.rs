@@ -8,5 +8,5 @@ pub trait SubscriptionServer {
     fn serve(
         &mut self,
         port: u16,
-    ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError>;
+    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError>;
 }

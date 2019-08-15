@@ -19,7 +19,7 @@ impl Error for GraphQLServeError {
         "Failed to start the server"
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         None
     }
 }
@@ -83,7 +83,7 @@ where
         &mut self,
         port: u16,
         ws_port: u16,
-    ) -> Result<Box<Future<Item = (), Error = ()> + Send>, Self::ServeError> {
+    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError> {
         let logger = self.logger.clone();
 
         info!(

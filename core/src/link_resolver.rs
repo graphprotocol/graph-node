@@ -57,8 +57,8 @@ fn restrict_file_size<T>(
     client: &ipfs_api::IpfsClient,
     path: String,
     max_file_bytes: Option<u64>,
-    fut: Box<Future<Item = T, Error = failure::Error> + Send>,
-) -> Box<Future<Item = T, Error = failure::Error> + Send>
+    fut: Box<dyn Future<Item = T, Error = failure::Error> + Send>,
+) -> Box<dyn Future<Item = T, Error = failure::Error> + Send>
 where
     T: Send + 'static,
 {
@@ -105,7 +105,7 @@ impl LinkResolverTrait for LinkResolver {
         &self,
         logger: &Logger,
         link: &Link,
-    ) -> Box<Future<Item = Vec<u8>, Error = failure::Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<u8>, Error = failure::Error> + Send> {
         // Discard the `/ipfs/` prefix (if present) to get the hash.
         let path = link.link.trim_start_matches("/ipfs/").to_owned();
 
@@ -148,7 +148,7 @@ impl LinkResolverTrait for LinkResolver {
     fn json_stream(
         &self,
         link: &Link,
-    ) -> Box<Future<Item = JsonValueStream, Error = failure::Error> + Send + 'static> {
+    ) -> Box<dyn Future<Item = JsonValueStream, Error = failure::Error> + Send + 'static> {
         // Discard the `/ipfs/` prefix (if present) to get the hash.
         let path = link.link.trim_start_matches("/ipfs/").to_owned();
         let mut stream = self.client.cat(&path).fuse();

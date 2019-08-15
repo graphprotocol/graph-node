@@ -400,7 +400,7 @@ where
     fn net_identifiers(
         &self,
         logger: &Logger,
-    ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
         let logger = logger.clone();
         let start_block = self.start_block;
 
@@ -459,7 +459,7 @@ where
     fn latest_block(
         &self,
         logger: &Logger,
-    ) -> Box<Future<Item = Block<Transaction>, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = Block<Transaction>, Error = EthereumAdapterError> + Send> {
         let web3 = self.web3.clone();
 
         Box::new(
@@ -489,7 +489,7 @@ where
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<Future<Item = Option<Block<Transaction>>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Option<Block<Transaction>>, Error = Error> + Send> {
         let web3 = self.web3.clone();
         let logger = logger.clone();
 
@@ -515,7 +515,7 @@ where
         &self,
         logger: &Logger,
         block: Block<Transaction>,
-    ) -> Box<Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
         let logger = logger.clone();
         let block_hash = block.hash.expect("block is missing block hash");
 
@@ -637,7 +637,7 @@ where
         &self,
         logger: &Logger,
         descendant_block_hash: H256,
-    ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
         let web3 = self.web3.clone();
 
         Box::new(
@@ -666,7 +666,7 @@ where
         &self,
         logger: &Logger,
         block_number: u64,
-    ) -> Box<Future<Item = Option<H256>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
         let web3 = self.web3.clone();
 
         Box::new(
@@ -695,7 +695,7 @@ where
         &self,
         logger: &Logger,
         block_ptr: EthereumBlockPointer,
-    ) -> Box<Future<Item = bool, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
         Box::new(
             self.block_hash_by_block_number(&logger, block_ptr.number)
                 .and_then(move |block_hash_opt| {
@@ -713,7 +713,7 @@ where
         logger: &Logger,
         block_number: u64,
         block_hash: H256,
-    ) -> Box<Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
         let eth = self.clone();
         let addresses = Vec::new();
         let calls = eth
@@ -761,7 +761,7 @@ where
         log_filter_opt: Option<EthereumLogFilter>,
         call_filter_opt: Option<EthereumCallFilter>,
         block_filter_opt: Option<EthereumBlockFilter>,
-    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         // If no filters are provided, return an empty vector of blocks.
         if log_filter_opt.is_none() && call_filter_opt.is_none() && block_filter_opt.is_none() {
             return Box::new(future::ok(vec![]));
@@ -772,7 +772,7 @@ where
         // while searching for a trigger type, the entire operation fails.
         let eth = self.clone();
         let mut block_futs: futures::stream::FuturesUnordered<
-            Box<Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send>,
+            Box<dyn Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send>,
         > = futures::stream::FuturesUnordered::new();
         if block_filter_opt.is_some() && block_filter_opt.clone().unwrap().trigger_every_block {
             // All blocks in the range contain a trigger
@@ -827,7 +827,7 @@ where
         logger: &Logger,
         from: u64,
         to: u64,
-    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         let eth = self.clone();
         let logger = logger.clone();
 
@@ -870,7 +870,7 @@ where
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         let eth = self.clone();
         Box::new(
             // Get a stream of all relevant logs in range
@@ -903,7 +903,7 @@ where
         from: u64,
         to: u64,
         call_filter: EthereumCallFilter,
-    ) -> Box<Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send> {
         let eth = self.clone();
 
         let addresses: Vec<H160> = call_filter
@@ -937,7 +937,7 @@ where
         &self,
         logger: &Logger,
         call: EthereumContractCall,
-    ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
+    ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
         // Emit custom error for type mismatches.
         for (token, kind) in call
             .args

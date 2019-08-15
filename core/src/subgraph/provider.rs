@@ -75,7 +75,7 @@ where
     fn start(
         &self,
         id: SubgraphDeploymentId,
-    ) -> Box<Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static> {
+    ) -> Box<dyn Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static> {
         let self_clone = self.clone();
         let store = self.store.clone();
         let subgraph_id = id.clone();
@@ -111,7 +111,7 @@ where
                     )
                 })
                 .and_then(
-                    move |(mut subgraph, data_sources)| -> Box<Future<Item = _, Error = _> + Send> {
+                    move |(mut subgraph, data_sources)| -> Box<dyn Future<Item = _, Error = _> + Send> {
                         info!(logger, "Successfully resolved subgraph files using IPFS");
 
                         // Add dynamic data sources to the subgraph
@@ -180,7 +180,7 @@ where
     fn stop(
         &self,
         id: SubgraphDeploymentId,
-    ) -> Box<Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static> {
+    ) -> Box<dyn Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static> {
         // If subgraph ID was in set
         if self.subgraphs_running.lock().unwrap().remove(&id) {
             // Shut down subgraph processing
@@ -202,9 +202,10 @@ impl<L, Q, S> EventProducer<SubgraphAssignmentProviderEvent>
 {
     fn take_event_stream(
         &mut self,
-    ) -> Option<Box<Stream<Item = SubgraphAssignmentProviderEvent, Error = ()> + Send>> {
+    ) -> Option<Box<dyn Stream<Item = SubgraphAssignmentProviderEvent, Error = ()> + Send>> {
         self.event_stream.take().map(|s| {
-            Box::new(s) as Box<Stream<Item = SubgraphAssignmentProviderEvent, Error = ()> + Send>
+            Box::new(s)
+                as Box<dyn Stream<Item = SubgraphAssignmentProviderEvent, Error = ()> + Send>
         })
     }
 }

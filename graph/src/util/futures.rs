@@ -302,7 +302,7 @@ where
     })
 }
 
-fn retry_strategy(limit_opt: Option<usize>) -> Box<Iterator<Item = Duration> + Send> {
+fn retry_strategy(limit_opt: Option<usize>) -> Box<dyn Iterator<Item = Duration> + Send> {
     // Exponential backoff, but with a maximum
     let max_delay_ms = 30_000;
     let backoff = ExponentialBackoff::from_millis(2)
@@ -322,7 +322,7 @@ fn retry_strategy(limit_opt: Option<usize>) -> Box<Iterator<Item = Duration> + S
 
 enum RetryIf<I, E> {
     Error,
-    Predicate(Box<Fn(&Result<I, E>) -> bool + Send + Sync>),
+    Predicate(Box<dyn Fn(&Result<I, E>) -> bool + Send + Sync>),
 }
 
 impl<I, E> RetryIf<I, E> {

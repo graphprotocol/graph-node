@@ -28,7 +28,7 @@ impl Stream for MockBlockStream {
 }
 
 impl EventConsumer<ChainHeadUpdate> for MockBlockStream {
-    fn event_sink(&self) -> Box<Sink<SinkItem = ChainHeadUpdate, SinkError = ()> + Send> {
+    fn event_sink(&self) -> Box<dyn Sink<SinkItem = ChainHeadUpdate, SinkError = ()> + Send> {
         Box::new(self.chain_head_update_sink.clone().sink_map_err(|_| ()))
     }
 }

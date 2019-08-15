@@ -345,34 +345,34 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn net_identifiers(
         &self,
         logger: &Logger,
-    ) -> Box<Future<Item = EthereumNetworkIdentifier, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send>;
 
     /// Find the most recent block.
     fn latest_block(
         &self,
         logger: &Logger,
-    ) -> Box<Future<Item = Block<Transaction>, Error = EthereumAdapterError> + Send>;
+    ) -> Box<dyn Future<Item = Block<Transaction>, Error = EthereumAdapterError> + Send>;
 
     /// Find a block by its hash.
     fn block_by_hash(
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<Future<Item = Option<Block<Transaction>>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Option<Block<Transaction>>, Error = Error> + Send>;
 
     /// Load full information for the specified `block` (in particular, transaction receipts).
     fn load_full_block(
         &self,
         logger: &Logger,
         block: Block<Transaction>,
-    ) -> Box<Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send>;
+    ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send>;
 
     /// Find the hash for the parent block of the provided block hash
     fn block_parent_hash(
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<Future<Item = Option<H256>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
     /// Find a block by its number.
     ///
@@ -387,7 +387,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block_number: u64,
-    ) -> Box<Future<Item = Option<H256>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
     /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
     /// node.
@@ -403,14 +403,14 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block_ptr: EthereumBlockPointer,
-    ) -> Box<Future<Item = bool, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = bool, Error = Error> + Send>;
 
     fn calls_in_block(
         &self,
         logger: &Logger,
         block_number: u64,
         block_hash: H256,
-    ) -> Box<Future<Item = Vec<EthereumCall>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send>;
 
     fn blocks_with_triggers(
         &self,
@@ -420,7 +420,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         log_filter: Option<EthereumLogFilter>,
         call_filter: Option<EthereumCallFilter>,
         block_filter: Option<EthereumBlockFilter>,
-    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
 
     /// Find the first few blocks in the specified range containing at least one transaction with
     /// at least one log entry matching the specified `log_filter`.
@@ -440,7 +440,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
 
     fn blocks_with_calls(
         &self,
@@ -448,19 +448,19 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         from: u64,
         to: u64,
         call_filter: EthereumCallFilter,
-    ) -> Box<Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send>;
 
     fn blocks(
         &self,
         logger: &Logger,
         from: u64,
         to: u64,
-    ) -> Box<Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
 
     /// Call the function of a smart contract.
     fn contract_call(
         &self,
         logger: &Logger,
         call: EthereumContractCall,
-    ) -> Box<Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send>;
+    ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send>;
 }

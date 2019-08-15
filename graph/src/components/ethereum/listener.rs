@@ -24,7 +24,7 @@ pub struct ChainHeadUpdate {
 
 /// The updates have no payload, receivers should call `Store::chain_head_ptr`
 /// to check what the latest block is.
-pub type ChainHeadUpdateStream = Box<Stream<Item = (), Error = ()> + Send>;
+pub type ChainHeadUpdateStream = Box<dyn Stream<Item = (), Error = ()> + Send>;
 
 pub trait ChainHeadUpdateListener {
     // Subscribe to chain head updates.

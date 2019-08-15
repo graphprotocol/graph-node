@@ -7,10 +7,10 @@ pub trait SubgraphAssignmentProvider:
     fn start(
         &self,
         id: SubgraphDeploymentId,
-    ) -> Box<Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static>;
+    ) -> Box<dyn Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static>;
 
     fn stop(
         &self,
         id: SubgraphDeploymentId,
-    ) -> Box<Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static>;
+    ) -> Box<dyn Future<Item = (), Error = SubgraphAssignmentProviderError> + Send + 'static>;
 }

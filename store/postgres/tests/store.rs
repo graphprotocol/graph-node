@@ -2074,7 +2074,7 @@ fn throttle_subscription_delivers() {
 #[test]
 fn throttle_subscription_throttles() {
     run_test(
-        |store| -> Box<Future<Item = (), Error = tokio_timer::timeout::Error<()>> + Send> {
+        |store| -> Box<dyn Future<Item = (), Error = tokio_timer::timeout::Error<()>> + Send> {
             // Throttle for a very long time (30s)
             let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user")
                 .throttle_while_syncing(

@@ -338,7 +338,7 @@ where
     Q: GraphQlRunner,
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
-    type Future = Box<Future<Item = Self::Item, Error = Self::Error> + Send>;
+    type Future = Box<dyn Future<Item = Self::Item, Error = Self::Error> + Send>;
     type Item = ();
     type Error = ();
 

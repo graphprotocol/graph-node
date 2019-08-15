@@ -43,7 +43,7 @@ fn add_subgraph_to_ipfs(
     let dir = format!("tests/subgraphs/{}", subgraph);
     let subgraph_string = std::fs::read_to_string(format!("{}/{}.yaml", dir, subgraph)).unwrap();
     let mut ipfs_upload = Box::new(future::ok(subgraph_string.clone()))
-        as Box<Future<Item = String, Error = Error> + Send>;
+        as Box<dyn Future<Item = String, Error = Error> + Send>;
     // Search for files linked by the subgraph, upload and update the sugraph
     // with their link.
     for file in WalkDir::new(&dir)
@@ -93,7 +93,7 @@ fn multiple_data_sources_per_subgraph() {
             _: Arc<Transaction>,
             _: Arc<Log>,
             _: BlockState,
-        ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
+        ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
             unimplemented!();
         }
 
@@ -104,7 +104,7 @@ fn multiple_data_sources_per_subgraph() {
             _transaction: Arc<Transaction>,
             _call: Arc<EthereumCall>,
             _state: BlockState,
-        ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
+        ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
             unimplemented!();
         }
 
@@ -114,7 +114,7 @@ fn multiple_data_sources_per_subgraph() {
             _block: Arc<EthereumBlock>,
             _trigger_type: EthereumBlockTriggerType,
             _state: BlockState,
-        ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
+        ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
             unimplemented!();
         }
     }

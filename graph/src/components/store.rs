@@ -288,7 +288,8 @@ pub struct StoreEventStream<S> {
 }
 
 /// A boxed `StoreEventStream`
-pub type StoreEventStreamBox = StoreEventStream<Box<Stream<Item = StoreEvent, Error = ()> + Send>>;
+pub type StoreEventStreamBox =
+    StoreEventStream<Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>>;
 
 impl<S> Stream for StoreEventStream<S>
 where
@@ -353,7 +354,7 @@ where
         // Check whether a deployment is marked as synced in the store. The
         // special 'subgraphs' subgraph is never considered synced so that
         // we always throttle it
-        let check_synced = |store: &Store, deployment: &SubgraphDeploymentId| {
+        let check_synced = |store: &dyn Store, deployment: &SubgraphDeploymentId| {
             deployment != &*SUBGRAPHS_ID
                 && store
                     .is_deployment_synced(deployment.clone())
@@ -1052,7 +1053,10 @@ pub trait ChainStore: Send + Sync + 'static {
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
 
     /// Insert blocks into the store (or update if they are already present).
-    fn upsert_blocks<'a, B, E>(&self, blocks: B) -> Box<Future<Item = (), Error = E> + Send + 'a>
+    fn upsert_blocks<'a, B, E>(
+        &self,
+        blocks: B,
+    ) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
     where
         B: Stream<Item = EthereumBlock, Error = E> + Send + 'a,
         E: From<Error> + Send + 'a;

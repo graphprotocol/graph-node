@@ -264,7 +264,7 @@ impl EventConsumer<SubgraphAssignmentProviderEvent> for SubgraphInstanceManager 
     /// Get the wrapped event sink.
     fn event_sink(
         &self,
-    ) -> Box<Sink<SinkItem = SubgraphAssignmentProviderEvent, SinkError = ()> + Send> {
+    ) -> Box<dyn Sink<SinkItem = SubgraphAssignmentProviderEvent, SinkError = ()> + Send> {
         let logger = self.logger.clone();
         Box::new(self.input.clone().sink_map_err(move |e| {
             error!(logger, "Component was dropped: {}", e);

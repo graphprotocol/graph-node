@@ -525,7 +525,7 @@ impl RuntimeHostTrait for RuntimeHost {
         transaction: Arc<Transaction>,
         call: Arc<EthereumCall>,
         state: BlockState,
-    ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
         // Identify the call handler for this call
         let call_handler = match self.handler_for_call(&call) {
             Ok(handler) => handler,
@@ -668,7 +668,7 @@ impl RuntimeHostTrait for RuntimeHost {
         block: Arc<EthereumBlock>,
         trigger_type: EthereumBlockTriggerType,
         state: BlockState,
-    ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
         let block_handler = match self.handler_for_block(trigger_type) {
             Ok(handler) => handler,
             Err(e) => return Box::new(future::err(e)),
@@ -725,7 +725,7 @@ impl RuntimeHostTrait for RuntimeHost {
         transaction: Arc<Transaction>,
         log: Arc<Log>,
         state: BlockState,
-    ) -> Box<Future<Item = BlockState, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
         let logger = logger.clone();
         let mapping_request_sender = self.mapping_request_sender.clone();
 

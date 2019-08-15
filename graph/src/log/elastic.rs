@@ -205,7 +205,8 @@ impl ElasticDrain {
 
                     // Do nothing if there are no logs to flush
                     if logs_to_send.is_empty() {
-                        return Box::new(future::ok(())) as Box<Future<Item = _, Error = _> + Send>;
+                        return Box::new(future::ok(()))
+                            as Box<dyn Future<Item = _, Error = _> + Send>;
                     }
 
                     trace!(

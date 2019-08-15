@@ -20,7 +20,7 @@ pub(crate) struct UnsupportedFilter {
     pub value: Value,
 }
 
-type FilterExpression<QS> = Box<BoxableExpression<QS, Pg, SqlType = Bool>>;
+type FilterExpression<QS> = Box<dyn BoxableExpression<QS, Pg, SqlType = Bool>>;
 
 trait IntoFilter<QS> {
     fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS>;
