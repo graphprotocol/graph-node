@@ -1,5 +1,5 @@
 use diesel::connection::SimpleConnection;
-use diesel::{PgConnection, RunQueryDsl};
+use diesel::{debug_query, PgConnection, RunQueryDsl};
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
@@ -9,8 +9,10 @@ use std::fmt;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use crate::mapping_sql::{ConflictingEntityQuery, EntityData, FindQuery, InsertQuery};
-use graph::prelude::{format_err, Entity, EntityKey, StoreError, ValueType};
+use crate::mapping_sql::{ConflictingEntityQuery, EntityData, FilterQuery, FindQuery, InsertQuery};
+use graph::prelude::{
+    format_err, Entity, EntityFilter, EntityKey, QueryExecutionError, StoreError, ValueType,
+};
 
 trait AsDdl {
     fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> Result<(), fmt::Error>;
@@ -318,6 +320,44 @@ impl Mapping {
             .load(conn)?
             .pop()
             .map(|data| data.entity))
+    }
+
+    /// order is a tuple (attribute, cast, direction)
+    pub fn query(
+        &self,
+        conn: &PgConnection,
+        entity_types: Vec<String>,
+        filter: Option<EntityFilter>,
+        order: Option<(String, ValueType, &str, &str)>,
+        first: Option<u32>,
+        skip: u32,
+    ) -> Result<Vec<Entity>, QueryExecutionError> {
+        let tables = entity_types
+            .into_iter()
+            .map(|entity| self.table_for_entity(&entity).map(|rc| rc.as_ref()))
+            .collect::<Result<Vec<_>, _>>()?;
+        let first = first.map(|first| first.to_string());
+        let skip = if skip == 0 {
+            None
+        } else {
+            Some(skip.to_string())
+        };
+
+        let query = FilterQuery::new(&self.schema, tables, filter, order, first, skip);
+        let query_debug_info = query.clone();
+
+        let values = query.load::<EntityData>(conn).map_err(|e| {
+            QueryExecutionError::ResolveEntitiesError(format!(
+                "{}, query = {:?}",
+                e,
+                debug_query(&query_debug_info).to_string()
+            ))
+        })?;
+
+        values
+            .into_iter()
+            .map(|entity_data| entity_data.to_entity(self).map_err(|e| e.into()))
+            .collect()
     }
 }
 
