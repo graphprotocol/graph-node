@@ -9,7 +9,7 @@ use diesel::pg::{Pg, PgConnection};
 use diesel::query_builder::{AstPass, QueryFragment, QueryId};
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::QueryResult;
-use diesel::sql_types::{Array, Binary, Bool, Integer, Jsonb, Nullable, Numeric, Text};
+use diesel::sql_types::{Array, Binary, Bool, Integer, Jsonb, Numeric, Text};
 use diesel::Connection;
 use failure::Fail;
 use std::convert::TryFrom;
@@ -177,8 +177,8 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                 }
             }
             Value::Null => {
-                let none: Option<&str> = None;
-                out.push_bind_param::<Nullable<Text>, _>(&none)
+                out.push_sql("null");
+                Ok(())
             }
             Value::Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice()),
             Value::BigInt(i) => {
@@ -784,3 +784,90 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FilterQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
+
+#[derive(Debug, Clone, Constructor)]
+pub struct UpdateQuery<'a> {
+    schema: &'a str,
+    table: &'a Table,
+    key: &'a EntityKey,
+    entity: Entity,
+    overwrite: bool,
+    guard: Option<EntityFilter>,
+}
+
+impl<'a> QueryFragment<Pg> for UpdateQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        let updateable = { |column: &Column| !column.is_primary_key() && !column.is_derived() };
+
+        // Construct a query
+        //   update schema.table1
+        //      set col = $1
+        //          ...
+        //    where id = $n
+        //      and guard
+        out.push_sql("update ");
+        out.push_identifier(self.schema)?;
+        out.push_sql(".");
+        out.push_identifier(self.table.name.as_str())?;
+        out.push_sql("\n   set ");
+        if !self.table.columns.iter().any(updateable) {
+            // If we do not have any columns to update, we still need
+            // to produce a syntactically correct update statement. This
+            // is syntactically correct, even though it won't change anything
+            out.push_identifier(PRIMARY_KEY_COLUMN)?;
+            out.push_sql(" = null where ");
+            out.push_identifier(PRIMARY_KEY_COLUMN)?;
+            out.push_sql(" is null");
+            return Ok(());
+        }
+        // We never change the primary key
+        for (i, column) in self
+            .table
+            .columns
+            .iter()
+            .filter(|col| updateable(*col))
+            .enumerate()
+        {
+            if let Some(value) = self.entity.get(&column.field) {
+                if i > 0 {
+                    out.push_sql(",\n   ");
+                }
+                out.push_identifier(column.name.as_str())?;
+                out.push_sql(" = ");
+                QueryValue(value, column.column_type).walk_ast(out.reborrow())?;
+            } else if self.overwrite {
+                if !column.is_nullable() {
+                    return Err(query_builder_error(format!(
+                        "can not update entity {}[{}] since value for {} is missing",
+                        self.key.entity_type, self.key.entity_id, column.field
+                    )));
+                } else {
+                    if i > 0 {
+                        out.push_sql(",\n   ");
+                    }
+                    out.push_identifier(column.name.as_str())?;
+                    out.push_sql(" = null");
+                }
+            }
+        }
+        out.push_sql("\n where ");
+        out.push_identifier(crate::mapping::PRIMARY_KEY_COLUMN)?;
+        out.push_sql(" = ");
+        out.push_bind_param::<Text, _>(&self.key.entity_id)?;
+        if let Some(guard) = &self.guard {
+            out.push_sql(" and ");
+            QueryFilter::new(guard, &self.table).walk_ast(out.reborrow())?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for UpdateQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for UpdateQuery<'a> {}

@@ -464,7 +464,7 @@ impl Store {
         let result = match entity {
             Some(mut entity) => {
                 entity.merge(data);
-                conn.update(&key, &entity, true, None, history_event)
+                conn.update(&key, entity, true, None, history_event)
                     .map(|_| 0)
             }
             None => {
@@ -500,7 +500,7 @@ impl Store {
         self.check_interface_entity_uniqueness(conn, &key)?;
 
         // Update the entity in Postgres
-        match conn.update(&key, &data, false, guard, history_event)? {
+        match conn.update(&key, data, false, guard, history_event)? {
             0 => Err(TransactionAbortError::AbortUnless {
                 expected_entity_ids: vec![key.entity_id.clone()],
                 actual_entity_ids: vec![],
