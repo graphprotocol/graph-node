@@ -543,6 +543,15 @@ impl Table {
             .ok_or_else(|| StoreError::UnknownField(name.to_string()))
     }
 
+    /// Find the column for `field` in this table. The name must be the
+    /// GraphQL name of an entity field
+    pub fn column_for_field(&self, field: &str) -> Result<&Column, StoreError> {
+        self.columns
+            .iter()
+            .find(|column| &column.field == field)
+            .ok_or_else(|| StoreError::UnknownField(field.to_string()))
+    }
+
     pub fn primary_key(&self) -> Reference {
         Reference {
             table: self.name.clone(),
