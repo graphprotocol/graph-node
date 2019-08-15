@@ -3,6 +3,8 @@ use diesel::pg::Pg;
 use diesel::prelude::*;
 use diesel::serialize::ToSql;
 use diesel::sql_types::{Array, Bool, Double, HasSqlType, Integer, Numeric, Text};
+use std::error::Error as StdError;
+use std::fmt::{self, Display};
 use std::str::FromStr;
 
 use graph::components::store::EntityFilter;
@@ -17,6 +19,24 @@ use crate::sql_value::SqlValue;
 pub(crate) struct UnsupportedFilter {
     pub filter: String,
     pub value: Value,
+}
+
+impl Display for UnsupportedFilter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "unsupported filter `{}` for value `{}`",
+            self.filter, self.value
+        )
+    }
+}
+
+impl StdError for UnsupportedFilter {}
+
+impl From<UnsupportedFilter> for diesel::result::Error {
+    fn from(error: UnsupportedFilter) -> Self {
+        diesel::result::Error::QueryBuilderError(Box::new(error))
+    }
 }
 
 type FilterExpression<QS> = Box<dyn BoxableExpression<QS, Pg, SqlType = Bool>>;

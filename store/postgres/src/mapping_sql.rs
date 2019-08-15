@@ -16,9 +16,12 @@ use std::convert::TryFrom;
 use std::str::FromStr;
 
 use graph::data::store::scalar;
-use graph::prelude::{format_err, serde_json, Entity, EntityKey, StoreError, Value};
+use graph::prelude::{
+    format_err, serde_json, Attribute, Entity, EntityFilter, EntityKey, StoreError, Value,
+};
 
-use crate::mapping::{ColumnType, Mapping, SqlName, Table};
+use crate::filter::UnsupportedFilter;
+use crate::mapping::{Column, ColumnType, Mapping, SqlName, Table};
 use crate::sql_value::SqlValue;
 
 /// Helper struct for retrieving entities from the database. With diesel, we
@@ -138,6 +141,355 @@ impl EntityData {
             }
             _ => unreachable!(),
         }
+    }
+}
+
+fn query_builder_error(msg: String) -> diesel::result::Error {
+    diesel::result::Error::QueryBuilderError(Box::new(
+        StoreError::Unknown(format_err!("{}", msg)).compat(),
+    ))
+}
+
+/// A `QueryValue` makes it possible to bind a `Value` into a SQL query
+/// where the needed SQL type is `ColumnType`
+struct QueryValue<'a>(&'a Value, ColumnType);
+
+impl<'a> QueryFragment<Pg> for QueryValue<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        match self.0 {
+            Value::String(s) => out.push_bind_param::<Text, _>(s),
+            Value::Int(i) => out.push_bind_param::<Integer, _>(i),
+            Value::BigDecimal(d) => out.push_bind_param::<Numeric, _>(d),
+            Value::Bool(b) => out.push_bind_param::<Bool, _>(b),
+            Value::List(values) => {
+                let values = SqlValue::new_array(values.clone());
+                match self.1 {
+                    ColumnType::BigDecimal | ColumnType::BigInt => {
+                        out.push_bind_param::<Array<Numeric>, _>(&values)
+                    }
+                    ColumnType::Boolean => out.push_bind_param::<Array<Bool>, _>(&values),
+                    ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(&values),
+                    ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(&values),
+                    ColumnType::String => out.push_bind_param::<Array<Text>, _>(&values),
+                }
+            }
+            Value::Null => {
+                let none: Option<&str> = None;
+                out.push_bind_param::<Nullable<Text>, _>(&none)
+            }
+            Value::Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice()),
+            Value::BigInt(i) => {
+                out.push_bind_param::<Numeric, _>(&i.clone().to_big_decimal(0.into()))
+            }
+        }
+    }
+}
+
+/// A `QueryFilter` adds the conditions represented by the `filter` to
+/// the `where` clause of a SQL query. The attributes mentioned in
+/// the `filter` must all come from the given `table`, which is used to
+/// map GraphQL names to column names, and to determine the type of the
+/// column an attribute refers to
+#[derive(Constructor)]
+struct QueryFilter<'a> {
+    filter: &'a EntityFilter,
+    table: &'a Table,
+}
+
+impl<'a> QueryFilter<'a> {
+    fn with(&self, filter: &'a EntityFilter) -> Self {
+        QueryFilter {
+            filter,
+            table: self.table,
+        }
+    }
+
+    fn column(&self, attribute: &Attribute) -> QueryResult<&'a Column> {
+        self.table
+            .column_for_field(attribute)
+            .map_err(|e| query_builder_error(e.to_string()))
+    }
+
+    fn binary_op(
+        &self,
+        filters: &Vec<EntityFilter>,
+        op: &str,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        out.push_sql(" (");
+        for (i, filter) in filters.iter().enumerate() {
+            if i > 0 {
+                out.push_sql(op);
+            }
+            self.with(&filter).walk_ast(out.reborrow())?;
+        }
+        out.push_sql(") ");
+        Ok(())
+    }
+
+    fn contains(
+        &self,
+        attribute: &Attribute,
+        value: &Value,
+        negated: bool,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        let column = self.column(attribute)?;
+
+        match value {
+            Value::String(s) => {
+                out.push_identifier(column.name.as_str())?;
+                if negated {
+                    out.push_sql(" not like ");
+                } else {
+                    out.push_sql(" like ")
+                };
+                if s.starts_with('%') || s.ends_with('%') {
+                    out.push_bind_param::<Text, _>(s)?;
+                } else {
+                    let s = format!("%{}%", s);
+                    out.push_bind_param::<Text, _>(&s)?;
+                }
+            }
+            Value::Bytes(b) => {
+                out.push_sql("position(");
+                out.push_bind_param::<Binary, _>(&b.as_slice())?;
+                out.push_sql(" in ");
+                out.push_identifier(column.name.as_str())?;
+                if negated {
+                    out.push_sql(") = 0")
+                } else {
+                    out.push_sql(") > 0");
+                }
+            }
+            Value::List(_) => unimplemented!(
+                "not clear from the JSONB implementation what that is supposed to do"
+            ),
+            Value::Null
+            | Value::BigDecimal(_)
+            | Value::Int(_)
+            | Value::Bool(_)
+            | Value::BigInt(_) => {
+                let filter = match negated {
+                    false => "contains",
+                    true => "not_contains",
+                };
+                return Err(UnsupportedFilter {
+                    filter: filter.to_owned(),
+                    value: value.clone(),
+                }
+                .into());
+            }
+        }
+        Ok(())
+    }
+
+    fn equals(
+        &self,
+        attribute: &Attribute,
+        value: &Value,
+        negated: bool,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        let column = self.column(attribute)?;
+
+        out.push_identifier(column.name.as_str())?;
+
+        match value {
+            Value::String(_)
+            | Value::BigInt(_)
+            | Value::Bool(_)
+            | Value::Bytes(_)
+            | Value::BigDecimal(_)
+            | Value::Int(_)
+            | Value::List(_) => {
+                if negated {
+                    out.push_sql(" != ");
+                } else {
+                    out.push_sql(" = ");
+                };
+
+                QueryValue(value, column.column_type).walk_ast(out)?;
+            }
+            Value::Null => {
+                if negated {
+                    out.push_sql(" is not null");
+                } else {
+                    out.push_sql(" is null");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn compare(
+        &self,
+        attribute: &Attribute,
+        value: &Value,
+        op: &str,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        let column = self.column(attribute)?;
+
+        out.push_identifier(column.name.as_str())?;
+        out.push_sql(op);
+        match value {
+            Value::BigInt(_) | Value::BigDecimal(_) | Value::Int(_) | Value::String(_) => {
+                QueryValue(value, column.column_type).walk_ast(out)?
+            }
+            Value::Bool(_) | Value::Bytes(_) | Value::List(_) | Value::Null => {
+                return Err(UnsupportedFilter {
+                    filter: op.to_owned(),
+                    value: value.clone(),
+                }
+                .into());
+            }
+        }
+        Ok(())
+    }
+
+    fn in_array(
+        &self,
+        attribute: &Attribute,
+        values: &Vec<Value>,
+        negated: bool,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        let column = self.column(attribute)?;
+
+        // NULLs in SQL are very special creatures, and we need to treat
+        // them special. For non-NULL values, we generate
+        //   attribute {in|not in} (value1, value2, ...)
+        // and for NULL values we generate
+        //   attribute {is|is not} null
+        // If we have both NULL and non-NULL values we join these
+        // two clauses with OR.
+        //
+        // Note that when we have no non-NULL values at all, we must
+        // not generate `attribute {in|not in} ()` since the empty `()`
+        // is a syntax error
+        let have_nulls = values.iter().any(|value| value == &Value::Null);
+        let have_non_nulls = values.iter().any(|value| value != &Value::Null);
+
+        if have_nulls && have_non_nulls {
+            out.push_sql("(");
+        }
+
+        if have_nulls {
+            out.push_identifier(column.name.as_str())?;
+            if negated {
+                out.push_sql(" is not null");
+            } else {
+                out.push_sql(" is null")
+            }
+        }
+
+        if have_nulls && have_non_nulls {
+            out.push_sql(" or ");
+        }
+
+        if have_non_nulls {
+            out.push_identifier(column.name.as_str())?;
+            if negated {
+                out.push_sql(" not in (");
+            } else {
+                out.push_sql(" in (");
+            }
+            for (i, value) in values
+                .iter()
+                .filter(|value| value != &&Value::Null)
+                .enumerate()
+            {
+                if i > 0 {
+                    out.push_sql(", ");
+                }
+                QueryValue(&value, column.column_type).walk_ast(out.reborrow())?;
+            }
+            out.push_sql(")");
+        }
+
+        if have_nulls && have_non_nulls {
+            out.push_sql(")");
+        }
+        Ok(())
+    }
+
+    fn starts_or_ends_with(
+        &self,
+        attribute: &Attribute,
+        value: &Value,
+        op: &str,
+        starts_with: bool,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        let column = self.column(attribute)?;
+
+        out.push_identifier(column.name.as_str())?;
+        out.push_sql(op);
+        match value {
+            Value::String(s) => {
+                let s = if starts_with {
+                    format!("{}%", s)
+                } else {
+                    format!("%{}", s)
+                };
+                out.push_bind_param::<Text, _>(&s)?
+            }
+            Value::Bool(_)
+            | Value::BigInt(_)
+            | Value::Bytes(_)
+            | Value::BigDecimal(_)
+            | Value::Int(_)
+            | Value::List(_)
+            | Value::Null => {
+                return Err(UnsupportedFilter {
+                    filter: op.to_owned(),
+                    value: value.clone(),
+                }
+                .into());
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        use EntityFilter::*;
+        match &self.filter {
+            And(filters) => self.binary_op(filters, " and ", out)?,
+            Or(filters) => self.binary_op(filters, " or ", out)?,
+
+            Contains(attr, value) => self.contains(attr, value, false, out)?,
+            NotContains(attr, value) => self.contains(attr, value, true, out)?,
+
+            Equal(attr, value) => self.equals(attr, value, false, out)?,
+            Not(attr, value) => self.equals(attr, value, true, out)?,
+
+            GreaterThan(attr, value) => self.compare(attr, value, " > ", out)?,
+            LessThan(attr, value) => self.compare(attr, value, " < ", out)?,
+            GreaterOrEqual(attr, value) => self.compare(attr, value, " >= ", out)?,
+            LessOrEqual(attr, value) => self.compare(attr, value, " <= ", out)?,
+
+            In(attr, values) => self.in_array(attr, values, false, out)?,
+            NotIn(attr, values) => self.in_array(attr, values, true, out)?,
+
+            StartsWith(attr, value) => {
+                self.starts_or_ends_with(attr, value, " like ", true, out)?
+            }
+            NotStartsWith(attr, value) => {
+                self.starts_or_ends_with(attr, value, " not like ", true, out)?
+            }
+            EndsWith(attr, value) => self.starts_or_ends_with(attr, value, " like ", false, out)?,
+            NotEndsWith(attr, value) => {
+                self.starts_or_ends_with(attr, value, " not like ", false, out)?
+            }
+        }
+        Ok(())
     }
 }
 
@@ -261,36 +613,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 if i > 0 {
                     out.push_sql(", ");
                 }
-                match value {
-                    Value::String(s) => out.push_bind_param::<Text, _>(s)?,
-                    Value::Int(i) => out.push_bind_param::<Integer, _>(i)?,
-                    Value::BigDecimal(d) => out.push_bind_param::<Numeric, _>(d)?,
-                    Value::Bool(b) => out.push_bind_param::<Bool, _>(b)?,
-                    Value::List(values) => {
-                        let values = SqlValue::new_array(values.clone());
-                        match column.column_type {
-                            ColumnType::BigDecimal | ColumnType::BigInt => {
-                                out.push_bind_param::<Array<Numeric>, _>(&values)?
-                            }
-                            ColumnType::Boolean => {
-                                out.push_bind_param::<Array<Bool>, _>(&values)?
-                            }
-                            ColumnType::Bytes => {
-                                out.push_bind_param::<Array<Binary>, _>(&values)?
-                            }
-                            ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(&values)?,
-                            ColumnType::String => out.push_bind_param::<Array<Text>, _>(&values)?,
-                        }
-                    }
-                    Value::Null => {
-                        let none: Option<&str> = None;
-                        out.push_bind_param::<Nullable<Text>, _>(&none)?
-                    }
-                    Value::Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice())?,
-                    Value::BigInt(i) => {
-                        out.push_bind_param::<Numeric, _>(&i.clone().to_big_decimal(0.into()))?
-                    }
-                }
+                QueryValue(value, column.column_type).walk_ast(out.reborrow())?;
             }
         }
         out.push_sql(")");
