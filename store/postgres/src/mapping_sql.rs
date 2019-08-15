@@ -18,10 +18,11 @@ use std::str::FromStr;
 use graph::data::store::scalar;
 use graph::prelude::{
     format_err, serde_json, Attribute, Entity, EntityFilter, EntityKey, StoreError, Value,
+    ValueType,
 };
 
 use crate::filter::UnsupportedFilter;
-use crate::mapping::{Column, ColumnType, Mapping, SqlName, Table};
+use crate::mapping::{Column, ColumnType, Mapping, SqlName, Table, PRIMARY_KEY_COLUMN};
 use crate::sql_value::SqlValue;
 
 /// Helper struct for retrieving entities from the database. With diesel, we
@@ -218,14 +219,14 @@ impl<'a> QueryFilter<'a> {
         op: &str,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
-        out.push_sql(" (");
+        out.push_sql("(");
         for (i, filter) in filters.iter().enumerate() {
             if i > 0 {
                 out.push_sql(op);
             }
             self.with(&filter).walk_ast(out.reborrow())?;
         }
-        out.push_sql(") ");
+        out.push_sql(")");
         Ok(())
     }
 
@@ -264,9 +265,11 @@ impl<'a> QueryFilter<'a> {
                     out.push_sql(") > 0");
                 }
             }
-            Value::List(_) => unimplemented!(
-                "not clear from the JSONB implementation what that is supposed to do"
-            ),
+            Value::List(_) => {
+                out.push_identifier(column.name.as_str())?;
+                out.push_sql(" @> ");
+                QueryValue(value, column.column_type).walk_ast(out)?;
+            }
             Value::Null
             | Value::BigDecimal(_)
             | Value::Int(_)
@@ -512,7 +515,7 @@ impl<'a> FindQuery<'a> {
         out.push_sql(".");
         out.push_identifier(table.name.as_str())?;
         out.push_sql(" e\n where ");
-        out.push_identifier(crate::mapping::PRIMARY_KEY_COLUMN)?;
+        out.push_identifier(PRIMARY_KEY_COLUMN)?;
         out.push_sql(" = ");
         out.push_bind_param::<Text, _>(&self.id)
     }
@@ -686,3 +689,98 @@ impl<'a> LoadQuery<PgConnection, ConflictingEntityData> for ConflictingEntityQue
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for ConflictingEntityQuery<'a> {}
+
+#[derive(Debug, Clone, Constructor)]
+pub struct FilterQuery<'a> {
+    schema: &'a str,
+    tables: Vec<&'a Table>,
+    filter: Option<EntityFilter>,
+    order: Option<(String, ValueType, &'a str, &'a str)>,
+    first: Option<String>,
+    skip: Option<String>,
+}
+
+impl<'a> FilterQuery<'a> {
+    fn object_query(&self, table: &'a Table, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.push_sql("select ");
+        out.push_bind_param::<Text, _>(&table.object)?;
+        out.push_sql(" as entity, to_jsonb(e.*) as data");
+        if let Some((attribute, _, _, _)) = &self.order {
+            let column = table
+                .column_for_field(&attribute)
+                .map_err(|e| diesel::result::Error::QueryBuilderError(Box::new(e.compat())))?;
+
+            out.push_sql(", e.");
+            out.push_identifier(column.name.as_str())?;
+            out.push_sql(" as sort_key, e.");
+            out.push_identifier(PRIMARY_KEY_COLUMN)?;
+        }
+        out.push_sql("\n  from ");
+        out.push_identifier(&self.schema)?;
+        out.push_sql(".");
+        out.push_identifier(table.name.as_str())?;
+        out.push_sql(" e");
+        if let Some(filter) = &self.filter {
+            out.push_sql("\n where ");
+            QueryFilter::new(filter, table).walk_ast(out.reborrow())?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+        if self.tables.is_empty() {
+            return Ok(());
+        }
+
+        // For each table, construct a query
+        //   select '...' as entity, to_jsonb(e.*) as data
+        //     from schema.table
+        //    where entity_filter
+        //    order by e.order, e.id
+        //    limit first offset skip
+        //      set col = $1
+        //          ...
+        //    where id = $n
+        // and join them with 'union all'
+        for (i, table) in self.tables.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            self.object_query(table, out.reborrow())?;
+        }
+        out.push_sql("\n order by ");
+        if let Some((_, _, _, direction)) = &self.order {
+            out.push_sql("sort_key ");
+            out.push_sql(direction);
+            out.push_sql(", ");
+        }
+        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+
+        if let Some(first) = &self.first {
+            out.push_sql("\n limit ");
+            out.push_sql(first);
+        }
+        if let Some(skip) = &self.skip {
+            out.push_sql("\noffset ");
+            out.push_sql(skip);
+        }
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for FilterQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, EntityData> for FilterQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}

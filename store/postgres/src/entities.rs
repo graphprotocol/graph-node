@@ -373,7 +373,9 @@ impl<'a> Connection<'a> {
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         match self.storage(subgraph)? {
             Storage::Json(json) => json.query(&self.conn, entity_types, filter, order, first, skip),
-            Storage::Relational(_) => unimplemented!(),
+            Storage::Relational(mapping) => {
+                mapping.query(&self.conn, entity_types, filter, order, first, skip)
+            }
         }
     }
 
