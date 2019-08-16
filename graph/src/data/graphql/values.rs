@@ -10,6 +10,24 @@ pub trait TryFromValue: Sized {
     fn try_from_value(value: &Value) -> Result<Self, Error>;
 }
 
+impl TryFromValue for Value {
+    fn try_from_value(value: &Value) -> Result<Self, Error> {
+        Ok(value.clone())
+    }
+}
+
+impl TryFromValue for bool {
+    fn try_from_value(value: &Value) -> Result<Self, Error> {
+        match value {
+            Value::Boolean(b) => Ok(*b),
+            _ => Err(format_err!(
+                "Cannot parse value into a boolean: {:?}",
+                value
+            )),
+        }
+    }
+}
+
 impl TryFromValue for String {
     fn try_from_value(value: &Value) -> Result<Self, Error> {
         match value {
