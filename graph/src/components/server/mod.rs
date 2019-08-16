@@ -6,3 +6,6 @@ pub mod subscription;
 
 /// Component for the JSON-RPC admin API.
 pub mod admin;
+
+/// Component for the index node server.
+pub mod index_node;
