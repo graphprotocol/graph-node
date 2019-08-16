@@ -76,6 +76,28 @@ pub trait ValueMap {
         T: TryFromValue;
 }
 
+impl ValueMap for Value {
+    fn get_required<T>(&self, key: &str) -> Result<T, Error>
+    where
+        T: TryFromValue,
+    {
+        match self {
+            Value::Object(map) => map.get_required(key),
+            _ => Err(format_err!("value is not a map: {:?}", self)),
+        }
+    }
+
+    fn get_optional<T>(&self, key: &str) -> Result<Option<T>, Error>
+    where
+        T: TryFromValue,
+    {
+        match self {
+            Value::Object(map) => map.get_optional(key),
+            _ => Err(format_err!("value is not a map: {:?}", self)),
+        }
+    }
+}
+
 impl ValueMap for &BTreeMap<String, Value> {
     fn get_required<T>(&self, key: &str) -> Result<T, Error>
     where
