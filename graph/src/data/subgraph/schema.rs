@@ -167,8 +167,12 @@ pub struct SubgraphDeploymentEntity {
     manifest: SubgraphManifestEntity,
     failed: bool,
     synced: bool,
+    earliest_ethereum_block_hash: Option<H256>,
+    earliest_ethereum_block_number: Option<u64>,
     latest_ethereum_block_hash: H256,
     latest_ethereum_block_number: u64,
+    ethereum_head_block_hash: Option<H256>,
+    ethereum_head_block_number: Option<u64>,
     total_ethereum_blocks_count: u64,
 }
 
@@ -182,16 +186,23 @@ impl SubgraphDeploymentEntity {
         source_manifest: &SubgraphManifest,
         failed: bool,
         synced: bool,
-        latest_ethereum_block: EthereumBlockPointer,
-        total_ethereum_blocks_count: u64,
+        earliest_ethereum_block: EthereumBlockPointer,
+        latest_ethereum_block: Option<EthereumBlockPointer>,
     ) -> Self {
+        let latest_ethereum_block =
+            latest_ethereum_block.unwrap_or(earliest_ethereum_block.clone());
+
         Self {
             manifest: SubgraphManifestEntity::from(source_manifest),
             failed,
             synced,
+            earliest_ethereum_block_hash: Some(earliest_ethereum_block.hash),
+            earliest_ethereum_block_number: Some(earliest_ethereum_block.number),
             latest_ethereum_block_hash: latest_ethereum_block.hash,
             latest_ethereum_block_number: latest_ethereum_block.number,
-            total_ethereum_blocks_count,
+            ethereum_head_block_hash: Some(latest_ethereum_block.hash),
+            ethereum_head_block_number: Some(latest_ethereum_block.number),
+            total_ethereum_blocks_count: latest_ethereum_block.number,
         }
     }
 
@@ -227,12 +238,32 @@ impl SubgraphDeploymentEntity {
         entity.set("failed", self.failed);
         entity.set("synced", self.synced);
         entity.set(
+            "earliestEthereumBlockHash",
+            self.earliest_ethereum_block_hash
+                .map_or(Value::Null, |hash| Value::from(format!("{:x}", hash))),
+        );
+        entity.set(
+            "earliestEthereumBlockNumber",
+            self.earliest_ethereum_block_number
+                .map_or(Value::Null, Value::from),
+        );
+        entity.set(
             "latestEthereumBlockHash",
             format!("{:x}", self.latest_ethereum_block_hash),
         );
         entity.set(
             "latestEthereumBlockNumber",
             self.latest_ethereum_block_number,
+        );
+        entity.set(
+            "ethereumHeadBlockHash",
+            self.ethereum_head_block_hash
+                .map_or(Value::Null, |hash| Value::from(format!("{:x}", hash))),
+        );
+        entity.set(
+            "ethereumHeadBlockNumber",
+            self.ethereum_head_block_number
+                .map_or(Value::Null, Value::from),
         );
         entity.set("totalEthereumBlocksCount", self.total_ethereum_blocks_count);
         entity.set("entityCount", 0 as u64);
@@ -261,12 +292,14 @@ impl SubgraphDeploymentEntity {
         }]
     }
 
-    pub fn update_ethereum_blocks_count_operations(
+    pub fn update_ethereum_head_block_operations(
         id: &SubgraphDeploymentId,
-        total_blocks_count: u64,
+        block_ptr: EthereumBlockPointer,
     ) -> Vec<EntityOperation> {
         let mut entity = Entity::new();
-        entity.set("totalEthereumBlocksCount", total_blocks_count);
+        entity.set("totalEthereumBlocksCount", block_ptr.number);
+        entity.set("ethereumHeadBlockHash", block_ptr.hash_hex());
+        entity.set("ethereumHeadBlockNumber", block_ptr.number);
 
         vec![EntityOperation::Update {
             key: Self::key(id.clone()),

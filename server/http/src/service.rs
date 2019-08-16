@@ -484,7 +484,10 @@ mod tests {
                         hash: H256::zero(),
                         number: 0,
                     },
-                    0,
+                    Some(EthereumBlockPointer {
+                        hash: H256::zero(),
+                        number: 0,
+                    }),
                 )
                 .create_operations(&id),
                 None,
@@ -559,7 +562,10 @@ mod tests {
                                     hash: H256::zero(),
                                     number: 0,
                                 },
-                                0,
+                                Some(EthereumBlockPointer {
+                                    hash: H256::zero(),
+                                    number: 0,
+                                }),
                             )
                             .create_operations(&id),
                             None,
