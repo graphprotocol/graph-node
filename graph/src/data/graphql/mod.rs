@@ -13,6 +13,9 @@ pub use self::values::{
     // Trait for converting from GraphQL values into other types.
     TryFromValue,
 
+    // Trait for plucking typed values from a GraphQL list.
+    ValueList,
+
     // Trait for plucking typed values out of a GraphQL value maps.
     ValueMap,
 };
