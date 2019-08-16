@@ -434,7 +434,7 @@ impl<'a> Connection<'a> {
     ) -> Result<usize, StoreError> {
         match self.storage(&key.subgraph_id)? {
             Storage::Json(json) => json.delete(&self.conn, key, history_event),
-            Storage::Relational(_) => unimplemented!(),
+            Storage::Relational(mapping) => mapping.delete(&self.conn, key),
         }
     }
 
