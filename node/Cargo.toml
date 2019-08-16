@@ -26,6 +26,7 @@ graph-datasource-ethereum = { path = "../datasource/ethereum" }
 graph-mock = { path = "../mock" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-http = { path = "../server/http" }
+graph-server-index-node = { path = "../server/index-node" }
 graph-server-json-rpc = { path = "../server/json-rpc"}
 graph-server-websocket = { path = "../server/websocket" }
 graph-store-postgres = { path = "../store/postgres" }
