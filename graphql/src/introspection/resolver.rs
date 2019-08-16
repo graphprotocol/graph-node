@@ -463,6 +463,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         match field.as_str() {
             "possibleTypes" => {

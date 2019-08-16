@@ -1,22 +1,11 @@
 use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
-use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-use std::env;
 use std::mem::discriminant;
-use std::str::FromStr;
 
 use graph::prelude::*;
 
 use crate::execution::ObjectOrInterface;
 use crate::schema::ast as sast;
-
-lazy_static! {
-    static ref GRAPHQL_MAX_FIRST: u64 = env::var("GRAPHQL_MAX_FIRST")
-        .ok()
-        .map(|s| u64::from_str(&s)
-            .unwrap_or_else(|_| panic!("failed to parse env var GRAPHQL_MAX_FIRST")))
-        .unwrap_or(1000);
-}
 
 /// Builds a EntityQuery from GraphQL arguments.
 ///
@@ -25,6 +14,7 @@ pub fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     arguments: &HashMap<&q::Name, q::Value>,
     types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+    max_first: u32,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = match &entity {
@@ -37,7 +27,7 @@ pub fn build_query<'a>(
     Ok(EntityQuery {
         subgraph_id: parse_subgraph_id(entity)?,
         entity_types,
-        range: build_range(arguments)?,
+        range: build_range(arguments, max_first)?,
         filter: build_filter(entity, arguments)?,
         order_by: build_order_by(entity, arguments)?,
         order_direction: build_order_direction(arguments)?,
@@ -47,11 +37,12 @@ pub fn build_query<'a>(
 /// Parses GraphQL arguments into a EntityRange, if present.
 fn build_range(
     arguments: &HashMap<&q::Name, q::Value>,
+    max_first: u32,
 ) -> Result<EntityRange, QueryExecutionError> {
     let first = match arguments.get(&"first".to_string()) {
         Some(q::Value::Int(n)) => {
             let n = n.as_i64().expect("first is Int");
-            if n > 0 && n <= (*GRAPHQL_MAX_FIRST as i64) {
+            if n > 0 && n <= (max_first as i64) {
                 Ok(n as u32)
             } else {
                 Err("first")
@@ -85,10 +76,7 @@ fn build_range(
                 .filter(|r| r.is_err())
                 .map(|e| e.unwrap_err())
                 .collect();
-            Err(QueryExecutionError::RangeArgumentsError(
-                errors,
-                *GRAPHQL_MAX_FIRST,
-            ))
+            Err(QueryExecutionError::RangeArgumentsError(errors, max_first))
         }
     }
 }
@@ -376,15 +364,25 @@ mod tests {
     #[test]
     fn build_query_uses_the_entity_name() {
         assert_eq!(
-            build_query(&object("Entity1"), &default_arguments(), &BTreeMap::new())
-                .unwrap()
-                .entity_types,
+            build_query(
+                &object("Entity1"),
+                &default_arguments(),
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .entity_types,
             vec!["Entity1".to_string()]
         );
         assert_eq!(
-            build_query(&object("Entity2"), &default_arguments(), &BTreeMap::new())
-                .unwrap()
-                .entity_types,
+            build_query(
+                &object("Entity2"),
+                &default_arguments(),
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .entity_types,
             vec!["Entity2".to_string()]
         );
     }
@@ -392,15 +390,25 @@ mod tests {
     #[test]
     fn build_query_yields_no_order_if_order_arguments_are_missing() {
         assert_eq!(
-            build_query(&default_object(), &default_arguments(), &BTreeMap::new())
-                .unwrap()
-                .order_by,
+            build_query(
+                &default_object(),
+                &default_arguments(),
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .order_by,
             None,
         );
         assert_eq!(
-            build_query(&default_object(), &default_arguments(), &BTreeMap::new())
-                .unwrap()
-                .order_direction,
+            build_query(
+                &default_object(),
+                &default_arguments(),
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .order_direction,
             None,
         );
     }
@@ -411,7 +419,7 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_by, q::Value::Enum("name".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(),)
+            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
                 .unwrap()
                 .order_by,
             Some(("name".to_string(), ValueType::String))
@@ -420,7 +428,7 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_by, q::Value::Enum("email".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(),)
+            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
                 .unwrap()
                 .order_by,
             Some(("email".to_string(), ValueType::String))
@@ -433,7 +441,7 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_by, q::Value::String("name".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(),)
+            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
                 .unwrap()
                 .order_by,
             None,
@@ -442,7 +450,7 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_by, q::Value::String("email".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(),)
+            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
                 .unwrap()
                 .order_by,
             None,
@@ -455,7 +463,7 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_direction, q::Value::Enum("asc".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(),)
+            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
                 .unwrap()
                 .order_direction,
             Some(EntityOrder::Ascending)
@@ -464,7 +472,7 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_direction, q::Value::Enum("desc".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(),)
+            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
                 .unwrap()
                 .order_direction,
             Some(EntityOrder::Descending)
@@ -473,7 +481,7 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_direction, q::Value::Enum("ascending...".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(),)
+            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
                 .unwrap()
                 .order_direction,
             None,
@@ -486,7 +494,7 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_direction, q::Value::String("asc".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(),)
+            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
                 .unwrap()
                 .order_direction,
             None,
@@ -495,7 +503,7 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_direction, q::Value::String("desc".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new())
+            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
                 .unwrap()
                 .order_direction,
             None,
@@ -505,9 +513,14 @@ mod tests {
     #[test]
     fn build_query_yields_default_range_if_none_is_present() {
         assert_eq!(
-            build_query(&default_object(), &default_arguments(), &BTreeMap::new())
-                .unwrap()
-                .range,
+            build_query(
+                &default_object(),
+                &default_arguments(),
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .range,
             EntityRange::first(100)
         );
     }
@@ -518,7 +531,7 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&skip, q::Value::Int(q::Number::from(50)));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(),)
+            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
                 .unwrap()
                 .range,
             EntityRange {
@@ -546,7 +559,8 @@ mod tests {
                     ..default_object()
                 },
                 &args,
-                &BTreeMap::new()
+                &BTreeMap::new(),
+                std::u32::MAX,
             )
             .unwrap()
             .filter,

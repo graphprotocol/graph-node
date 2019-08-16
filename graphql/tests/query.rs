@@ -221,6 +221,7 @@ fn execute_query_document_with_variables(
         deadline: None,
         max_complexity: None,
         max_depth: 100,
+        max_first: std::u32::MAX,
     };
 
     execute_query(&query, options)
@@ -714,6 +715,7 @@ fn query_complexity() {
         deadline: None,
         max_complexity,
         max_depth: 100,
+        max_first: std::u32::MAX,
     };
 
     // This query is exactly at the maximum complexity.
@@ -750,6 +752,7 @@ fn query_complexity() {
         deadline: None,
         max_complexity,
         max_depth: 100,
+        max_first: std::u32::MAX,
     };
 
     // The extra introspection causes the complexity to go over.
@@ -790,6 +793,7 @@ fn query_complexity_subscriptions() {
         timeout: None,
         max_complexity,
         max_depth: 100,
+        max_first: std::u32::MAX,
     };
 
     // This query is exactly at the maximum complexity.
@@ -825,6 +829,7 @@ fn query_complexity_subscriptions() {
         timeout: None,
         max_complexity,
         max_depth: 100,
+        max_first: std::u32::MAX,
     };
 
     // The extra introspection causes the complexity to go over.
@@ -854,6 +859,7 @@ fn instant_timeout() {
         deadline: Some(Instant::now()),
         max_complexity: None,
         max_depth: 100,
+        max_first: std::u32::MAX,
     };
 
     match execute_query(&query, options).errors.unwrap()[0] {
@@ -1158,6 +1164,7 @@ fn subscription_gets_result_even_without_events() {
         timeout: None,
         max_complexity: None,
         max_depth: 100,
+        max_first: std::u32::MAX,
     };
 
     // Execute the subscription and expect at least one result to be

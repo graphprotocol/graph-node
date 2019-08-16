@@ -36,7 +36,7 @@ pub enum QueryExecutionError {
     EmptyQuery,
     MultipleSubscriptionFields,
     SubgraphDeploymentIdError(String),
-    RangeArgumentsError(Vec<&'static str>, u64),
+    RangeArgumentsError(Vec<&'static str>, u32),
     InvalidFilterError,
     EntityFieldError(String, String),
     ListTypesError(String, Vec<String>),

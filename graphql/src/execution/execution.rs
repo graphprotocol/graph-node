@@ -40,6 +40,9 @@ where
 
     /// Time at which the query times out.
     pub deadline: Option<Instant>,
+
+    /// Max value for `first`.
+    pub max_first: u32,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -73,6 +76,7 @@ where
             fields: vec![],
             variable_values: self.variable_values.clone(),
             deadline: self.deadline,
+            max_first: std::u32::MAX,
         }
     }
 
@@ -672,6 +676,7 @@ where
                         t.into(),
                         argument_values,
                         ctx.schema.types_for_interface(),
+                        ctx.max_first,
                     )
                     .map_err(|e| vec![e]),
 
@@ -704,6 +709,7 @@ where
                         t.into(),
                         argument_values,
                         ctx.schema.types_for_interface(),
+                        ctx.max_first,
                     )
                     .map_err(|e| vec![e]),
 

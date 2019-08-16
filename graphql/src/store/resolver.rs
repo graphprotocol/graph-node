@@ -168,9 +168,10 @@ where
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         let object_type = object_type.into();
-        let mut query = build_query(object_type, arguments, types_for_interface)?;
+        let mut query = build_query(object_type, arguments, types_for_interface, max_first)?;
 
         // Add matching filter for derived fields
         let derived_from_field = sast::get_derived_from_field(object_type, field_definition);
@@ -250,7 +251,7 @@ where
 
                 let skip_arg_name = q::Name::from("skip");
                 arguments.insert(&skip_arg_name, q::Value::Int(q::Number::from(0)));
-                let mut query = build_query(object_type, &arguments, types_for_interface)?;
+                let mut query = build_query(object_type, &arguments, types_for_interface, 2)?;
                 Self::add_filter_for_derived_field(&mut query, parent, derived_from_field);
 
                 // Find the entity or entities that reference the parent entity

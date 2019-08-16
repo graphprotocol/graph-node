@@ -20,6 +20,8 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         &self,
         query: Query,
         max_complexity: Option<u64>,
+        max_depth: Option<u8>,
+        max_first: Option<u32>,
     ) -> QueryResultFuture;
 
     /// Runs a GraphQL subscription and returns a stream of results.

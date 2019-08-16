@@ -20,6 +20,7 @@ impl Resolver for MockResolver {
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }
@@ -551,6 +552,7 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
             deadline: None,
             max_complexity: None,
             max_depth: 100,
+            max_first: std::u32::MAX,
         },
     )
 }
