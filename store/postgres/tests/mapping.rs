@@ -462,6 +462,51 @@ fn update_guard_matches() {
     });
 }
 
+fn count_scalar_entities(conn: &PgConnection, mapping: &Mapping) -> usize {
+    let filter = EntityFilter::Or(vec![
+        EntityFilter::Equal("bool".into(), true.into()),
+        EntityFilter::Equal("bool".into(), false.into()),
+    ]);
+    mapping
+        .query(
+            &conn,
+            vec!["Scalar".to_owned()],
+            Some(filter),
+            None,
+            None,
+            0,
+        )
+        .expect("Count query failed")
+        .len()
+}
+
+#[test]
+fn delete() {
+    run_test(|conn, mapping| -> Result<(), ()> {
+        insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
+        let mut two = SCALAR_ENTITY.clone();
+        two.set("id", "two");
+        insert_entity(&conn, &mapping, "Scalar", two);
+
+        // Delete where nothing is getting deleted
+        let mut key = EntityKey {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_type: "Scalar".to_owned(),
+            entity_id: "no such entity".to_owned(),
+        };
+        let count = mapping.delete(&conn, &key).expect("Failed to delete");
+        assert_eq!(0, count);
+        assert_eq!(2, count_scalar_entities(conn, mapping));
+
+        // Delete entity two
+        key.entity_id = "two".to_owned();
+        let count = mapping.delete(&conn, &key).expect("Failed to delete");
+        assert_eq!(1, count);
+        assert_eq!(1, count_scalar_entities(conn, mapping));
+        Ok(())
+    });
+}
+
 #[test]
 fn conflicting_entity() {
     run_test(|conn, mapping| -> Result<(), ()> {
