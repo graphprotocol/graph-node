@@ -9,6 +9,7 @@ members = [
     "runtime/derive",
     "server/http",
     "server/json-rpc",
+    "server/index-node",
     "store/postgres",
     "store/test-store",
     "graph",
