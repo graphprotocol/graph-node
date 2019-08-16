@@ -5,7 +5,7 @@ use crate::prelude::*;
 use crate::schema::ast::get_named_type;
 use graph::prelude::{QueryExecutionError, StoreEventStreamBox};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum ObjectOrInterface<'a> {
     Object(&'a s::ObjectType),
     Interface(&'a s::InterfaceType),
