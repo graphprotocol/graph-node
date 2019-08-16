@@ -644,21 +644,11 @@ fn create_subgraph_version(
 
     // Create deployment only if it does not exist already
     if !deployment_exists {
-        let chain_head_ptr_opt = chain_store.chain_head_ptr()?;
-        let chain_head_block_number = match chain_head_ptr_opt {
-            Some(chain_head_ptr) => chain_head_ptr.number,
-            None => 0,
-        };
-        let genesis_block_ptr = chain_store.genesis_block_ptr()?;
+        let chain_head_block = chain_store.chain_head_ptr()?;
+        let genesis_block = chain_store.genesis_block_ptr()?;
         ops.extend(
-            SubgraphDeploymentEntity::new(
-                &manifest,
-                false,
-                false,
-                genesis_block_ptr,
-                chain_head_block_number,
-            )
-            .create_operations(&manifest.id),
+            SubgraphDeploymentEntity::new(&manifest, false, false, genesis_block, chain_head_block)
+                .create_operations(&manifest.id),
         );
     }
 

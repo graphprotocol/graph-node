@@ -829,9 +829,9 @@ where
         match head_ptr_opt {
             None => Ok(()),
             Some(head_ptr) => {
-                let ops = SubgraphDeploymentEntity::update_ethereum_blocks_count_operations(
+                let ops = SubgraphDeploymentEntity::update_ethereum_head_block_operations(
                     &self.subgraph_id,
-                    head_ptr.number,
+                    head_ptr,
                 );
                 self.subgraph_store
                     .apply_entity_operations(ops, None)

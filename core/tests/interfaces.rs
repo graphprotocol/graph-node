@@ -27,8 +27,14 @@ fn insert_and_query(
 
     let logger = Logger::root(slog::Discard, o!());
 
-    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, Default::default(), 1)
-        .create_operations_replace(&subgraph_id);
+    let ops = SubgraphDeploymentEntity::new(
+        &manifest,
+        false,
+        false,
+        Default::default(),
+        Default::default(),
+    )
+    .create_operations_replace(&subgraph_id);
     STORE
         .create_subgraph_deployment(&logger, &subgraph_id, ops)
         .unwrap();
