@@ -60,6 +60,7 @@ fn insert_and_query(
         deadline: None,
         max_complexity: None,
         max_depth: 100,
+        max_first: std::u32::MAX,
     };
     let document = graphql_parser::parse_query(query).unwrap();
     let query = Query {

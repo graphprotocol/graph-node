@@ -29,6 +29,9 @@ where
 
     /// Maximum depth for a query.
     pub max_depth: u8,
+
+    /// Maximum value for the `first` argument.
+    pub max_first: u32,
 }
 
 /// Executes a query and returns a result.
@@ -64,6 +67,7 @@ where
         fields: vec![],
         variable_values: Arc::new(coerced_variable_values),
         deadline: options.deadline,
+        max_first: options.max_first,
     };
 
     let result = match operation {

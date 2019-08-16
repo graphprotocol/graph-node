@@ -28,6 +28,9 @@ where
 
     /// Maximum depth for a subscription query.
     pub max_depth: u8,
+
+    /// Maximum value for the `first` argument.
+    pub max_first: u32,
 }
 
 pub fn execute_subscription<R>(
@@ -59,6 +62,7 @@ where
         fields: vec![],
         variable_values: Arc::new(coerced_variable_values),
         deadline: None,
+        max_first: options.max_first,
     };
 
     match operation {
@@ -159,6 +163,7 @@ where
     let document = ctx.document.clone();
     let selection_set = selection_set.to_owned();
     let variable_values = ctx.variable_values.clone();
+    let max_first = ctx.max_first;
 
     // Create a stream with a single empty event. By chaining this in front
     // of the real events, we trick the subscription into executing its query
@@ -181,6 +186,7 @@ where
                 variable_values.clone(),
                 event,
                 timeout.clone(),
+                max_first,
             )
         },
     )))
@@ -195,6 +201,7 @@ fn execute_subscription_event<R1>(
     variable_values: Arc<HashMap<q::Name, q::Value>>,
     event: StoreEvent,
     timeout: Option<Duration>,
+    max_first: u32,
 ) -> QueryResult
 where
     R1: Resolver + 'static,
@@ -210,6 +217,7 @@ where
         fields: vec![],
         variable_values,
         deadline: timeout.map(|t| Instant::now() + t),
+        max_first,
     };
 
     // We have established that this exists earlier in the subscription execution

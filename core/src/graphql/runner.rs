@@ -30,6 +30,11 @@ lazy_static! {
         .map(|s| u8::from_str(&s)
             .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_DEPTH")))
         .unwrap_or(u8::max_value());
+    static ref GRAPHQL_MAX_FIRST: u32 = env::var("GRAPH_GRAPHQL_MAX_FIRST")
+        .ok()
+        .map(|s| u32::from_str(&s)
+            .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_FIRST")))
+        .unwrap_or(1000);
 }
 
 impl<S> GraphQlRunner<S>
@@ -58,6 +63,7 @@ where
                 deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
                 max_complexity: *GRAPHQL_MAX_COMPLEXITY,
                 max_depth: *GRAPHQL_MAX_DEPTH,
+                max_first: *GRAPHQL_MAX_FIRST,
             },
         );
         Box::new(future::ok(result))
@@ -67,6 +73,8 @@ where
         &self,
         query: Query,
         max_complexity: Option<u64>,
+        max_depth: Option<u8>,
+        max_first: Option<u32>,
     ) -> QueryResultFuture {
         let result = execute_query(
             &query,
@@ -75,7 +83,8 @@ where
                 resolver: StoreResolver::new(&self.logger, self.store.clone()),
                 deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
                 max_complexity: max_complexity,
-                max_depth: *GRAPHQL_MAX_DEPTH,
+                max_depth: max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH),
+                max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
             },
         );
         Box::new(future::ok(result))
@@ -90,6 +99,7 @@ where
                 timeout: GRAPHQL_QUERY_TIMEOUT.clone(),
                 max_complexity: *GRAPHQL_MAX_COMPLEXITY,
                 max_depth: *GRAPHQL_MAX_DEPTH,
+                max_first: *GRAPHQL_MAX_FIRST,
             },
         );
 

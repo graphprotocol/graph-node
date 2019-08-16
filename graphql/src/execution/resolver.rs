@@ -57,6 +57,7 @@ pub trait Resolver: Clone + Send + Sync {
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        max_first: u32,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an entity referenced by a parent object.
