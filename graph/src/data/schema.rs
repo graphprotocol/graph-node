@@ -20,10 +20,10 @@ pub struct Schema {
     pub document: schema::Document,
 
     // Maps type name to implemented interfaces.
-    interfaces_for_type: BTreeMap<Name, Vec<InterfaceType>>,
+    pub interfaces_for_type: BTreeMap<Name, Vec<InterfaceType>>,
 
     // Maps an interface name to the list of entities that implement it.
-    types_for_interface: BTreeMap<Name, Vec<ObjectType>>,
+    pub types_for_interface: BTreeMap<Name, Vec<ObjectType>>,
 }
 
 impl Schema {
@@ -39,10 +39,15 @@ impl Schema {
         }
     }
 
-    pub fn parse(raw: &str, id: SubgraphDeploymentId) -> Result<Self, Error> {
-        let document = graphql_parser::parse_schema(&raw)?;
-        validate_schema(&document)?;
-
+    pub fn collect_interfaces(
+        document: &schema::Document,
+    ) -> Result<
+        (
+            BTreeMap<Name, Vec<InterfaceType>>,
+            BTreeMap<Name, Vec<ObjectType>>,
+        ),
+        SchemaValidationError,
+    > {
         // Initialize with an empty vec for each interface, so we don't
         // miss interfaces that have no implementors.
         let mut types_for_interface =
@@ -83,6 +88,15 @@ impl Schema {
                     .push(object_type.clone());
             }
         }
+
+        return Ok((interfaces_for_type, types_for_interface));
+    }
+
+    pub fn parse(raw: &str, id: SubgraphDeploymentId) -> Result<Self, Error> {
+        let document = graphql_parser::parse_schema(&raw)?;
+        validate_schema(&document)?;
+
+        let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
 
         let mut schema = Schema {
             id: id.clone(),
