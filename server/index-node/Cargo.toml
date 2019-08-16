@@ -1,0 +1,14 @@
+[package]
+name = "graph-server-index-node"
+version = "0.14.0"
+edition = "2018"
+
+[dependencies]
+futures = "0.1.21"
+graph = { path = "../../graph" }
+graph-graphql = { path = "../../graphql" }
+graphql-parser = "0.2.0"
+http = "0.1.5"
+hyper = "0.12.31"
+lazy_static = "1.2.0"
+serde = "1.0"
