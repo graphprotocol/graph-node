@@ -1,22 +1,11 @@
 use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
-use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-use std::env;
 use std::mem::discriminant;
-use std::str::FromStr;
 
 use graph::prelude::*;
 
 use crate::execution::ObjectOrInterface;
 use crate::schema::ast as sast;
-
-lazy_static! {
-    static ref GRAPHQL_MAX_FIRST: u64 = env::var("GRAPHQL_MAX_FIRST")
-        .ok()
-        .map(|s| u64::from_str(&s)
-            .unwrap_or_else(|_| panic!("failed to parse env var GRAPHQL_MAX_FIRST")))
-        .unwrap_or(1000);
-}
 
 /// Builds a EntityQuery from GraphQL arguments.
 ///
@@ -25,6 +14,7 @@ pub fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     arguments: &HashMap<&q::Name, q::Value>,
     types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+    max_first: i64,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = match &entity {
@@ -37,7 +27,7 @@ pub fn build_query<'a>(
     Ok(EntityQuery {
         subgraph_id: parse_subgraph_id(entity)?,
         entity_types,
-        range: build_range(arguments)?,
+        range: build_range(arguments, max_first)?,
         filter: build_filter(entity, arguments)?,
         order_by: build_order_by(entity, arguments)?,
         order_direction: build_order_direction(arguments)?,
@@ -47,11 +37,12 @@ pub fn build_query<'a>(
 /// Parses GraphQL arguments into a EntityRange, if present.
 fn build_range(
     arguments: &HashMap<&q::Name, q::Value>,
+    max_first: i64,
 ) -> Result<EntityRange, QueryExecutionError> {
     let first = match arguments.get(&"first".to_string()) {
         Some(q::Value::Int(n)) => {
             let n = n.as_i64().expect("first is Int");
-            if n > 0 && n <= (*GRAPHQL_MAX_FIRST as i64) {
+            if n > 0 && n <= max_first {
                 Ok(n as u32)
             } else {
                 Err("first")
@@ -85,10 +76,7 @@ fn build_range(
                 .filter(|r| r.is_err())
                 .map(|e| e.unwrap_err())
                 .collect();
-            Err(QueryExecutionError::RangeArgumentsError(
-                errors,
-                *GRAPHQL_MAX_FIRST,
-            ))
+            Err(QueryExecutionError::RangeArgumentsError(errors, max_first))
         }
     }
 }

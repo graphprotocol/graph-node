@@ -100,7 +100,7 @@ where
         let deployment_id1 = deployment_id.clone();
 
         self.graphql_runner
-            .run_query_with_complexity(query, None)
+            .run_query_with_complexity(query, None, None, None)
             .map_err(move |e| {
                 format_err!(
                     "Failed to query subgraph deployment `{}`: {}",
