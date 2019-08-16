@@ -997,6 +997,7 @@ dependencies = [
  "graph-mock 0.14.0",
  "graph-runtime-wasm 0.14.0",
  "graph-server-http 0.14.0",
+ "graph-server-index-node 0.14.0",
  "graph-server-json-rpc 0.14.0",
  "graph-server-websocket 0.14.0",
  "graph-store-postgres 0.14.0",
