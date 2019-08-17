@@ -72,7 +72,7 @@ pub struct Mapping {
     /// The SQL type for columns with GraphQL type `ID`
     id_type: IdType,
     /// Maps the GraphQL name of a type to the relational table
-    tables: HashMap<String, Rc<Table>>,
+    pub tables: HashMap<String, Rc<Table>>,
     /// A fake table that mirrors the Query type for the schema
     root_table: Table,
     /// The subgraph id
@@ -83,6 +83,8 @@ pub struct Mapping {
     /// database tables that contain entities implementing
     /// that interface
     pub interfaces: HashMap<String, Vec<Rc<Table>>>,
+    /// The query to count all entities
+    pub count_query: String,
 }
 
 impl Mapping {
@@ -193,6 +195,14 @@ impl Mapping {
                 (k, v)
             })
             .collect::<HashMap<_, _>>();
+
+        let count_query = tables
+            .iter()
+            .map(|table| format!("select count(*) from \"{}\".\"{}\"", schema, table.name))
+            .collect::<Vec<_>>()
+            .join("\nunion all\n");
+        let count_query = format!("select sum(e.count) from ({}) e", count_query);
+
         let tables: HashMap<_, _> = tables
             .into_iter()
             .fold(HashMap::new(), |mut tables, table| {
@@ -207,6 +217,7 @@ impl Mapping {
             tables,
             root_table,
             interfaces,
+            count_query,
         })
     }
 

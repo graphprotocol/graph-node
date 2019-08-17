@@ -262,6 +262,8 @@ pub(crate) struct JsonStorage {
     entity: EntityColumn<diesel::sql_types::Text>,
     data: EntityColumn<diesel::sql_types::Jsonb>,
     event_source: EntityColumn<diesel::sql_types::Text>,
+    // The query to count all entities
+    count_query: String,
 }
 
 #[derive(Debug, Clone)]
@@ -1259,6 +1261,7 @@ impl Storage {
                 let entity = table.column::<Text, _>("entity".to_string());
                 let data = table.column::<Jsonb, _>("data".to_string());
                 let event_source = table.column::<Text, _>("event_source".to_string());
+                let count_query = format!("select count(*) from \"{}\".entities", schema.name);
 
                 Storage::Json(JsonStorage {
                     schema: schema.name,
@@ -1268,6 +1271,7 @@ impl Storage {
                     entity,
                     data,
                     event_source,
+                    count_query,
                 })
             }
             V::Relational => {
@@ -1284,13 +1288,6 @@ impl Storage {
         Ok(storage)
     }
 
-    fn schema(&self) -> &str {
-        match self {
-            Storage::Json(json) => &json.schema,
-            Storage::Relational(mapping) => &mapping.schema,
-        }
-    }
-
     /// Adjust the `entityCount` property of the `SubgraphDeployment` for
     /// `subgraph` by `count`. This needs to be performed after the changes
     /// underlying `count` have been written to the store.
@@ -1300,7 +1297,10 @@ impl Storage {
         subgraph: &SubgraphDeploymentId,
         count: i32,
     ) -> Result<(), StoreError> {
-        let count_query = format!("select count(*) from {}.entities", self.schema());
+        let count_query = match self {
+            Storage::Json(json) => json.count_query.as_str(),
+            Storage::Relational(mapping) => mapping.count_query.as_str(),
+        };
         // The big complication in this query is how to determine what the
         // new entityCount should be. We want to make sure that if the entityCount
         // is NULL or the special value `00`, it gets recomputed. Using `00` here
