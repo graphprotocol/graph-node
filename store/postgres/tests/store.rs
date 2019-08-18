@@ -16,14 +16,28 @@ use graph::prelude::*;
 use graph_store_postgres::Store as DieselStore;
 use web3::types::{Address, H256};
 
-const DUMMY_SCHEMA: &str = "type Dummy @entity { id: ID! }";
+const USER_GQL: &str = "
+    type User @entity {
+        id: ID!,
+        name: String,
+        bin_name: Bytes,
+        email: String,
+        age: Int,
+        seconds_age: BigInt,
+        weight: BigDecimal,
+        coffee: Boolean,
+        favorite_color: String
+    }
+";
+
+const USER: &str = "User";
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID_STRING: String = String::from("testsubgraph");
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId =
         SubgraphDeploymentId::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
-    static ref TEST_SUBGRAPH_SCHEMA: Schema = Schema::parse(DUMMY_SCHEMA, TEST_SUBGRAPH_ID.clone())
-        .expect("Failed to parse dummy schema");
+    static ref TEST_SUBGRAPH_SCHEMA: Schema =
+        Schema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone()).expect("Failed to parse user schema");
     static ref TEST_BLOCK_0_PTR: EthereumBlockPointer = (
         H256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
@@ -123,7 +137,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         spec_version: "1".to_owned(),
         description: None,
         repository: None,
-        schema: Schema::parse("scalar Foo", TEST_SUBGRAPH_ID.clone()).unwrap(),
+        schema: TEST_SUBGRAPH_SCHEMA.clone(),
         data_sources: vec![],
         templates: vec![],
     };
@@ -137,7 +151,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
 
     let test_entity_1 = create_test_entity(
         "1",
-        "user",
+        USER,
         "Johnton",
         "tonofjohn@email.com",
         67 as i32,
@@ -156,7 +170,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
 
     let test_entity_2 = create_test_entity(
         "2",
-        "user",
+        USER,
         "Cindini",
         "dinici@email.com",
         43 as i32,
@@ -166,7 +180,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
     );
     let test_entity_3_1 = create_test_entity(
         "3",
-        "user",
+        USER,
         "Shaqueeena",
         "queensha@email.com",
         28 as i32,
@@ -185,7 +199,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
 
     let test_entity_3_2 = create_test_entity(
         "3",
-        "user",
+        USER,
         "Shaqueeena",
         "teeko@email.com",
         28 as i32,
@@ -273,7 +287,7 @@ fn delete_entity() {
     run_test(|store| -> Result<(), ()> {
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: "user".to_owned(),
+            entity_type: USER.to_owned(),
             entity_id: "3".to_owned(),
         };
 
@@ -309,14 +323,14 @@ fn get_entity_1() {
     run_test(|store| -> Result<(), ()> {
         let key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: "user".to_owned(),
+            entity_type: USER.to_owned(),
             entity_id: "1".to_owned(),
         };
         let result = store.get(key).unwrap();
 
         let mut expected_entity = Entity::new();
 
-        expected_entity.insert("__typename".to_owned(), "user".into());
+        expected_entity.insert("__typename".to_owned(), USER.into());
         expected_entity.insert("id".to_owned(), "1".into());
         expected_entity.insert("name".to_owned(), "Johnton".into());
         expected_entity.insert(
@@ -346,14 +360,14 @@ fn get_entity_3() {
     run_test(|store| -> Result<(), ()> {
         let key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: "user".to_owned(),
+            entity_type: USER.to_owned(),
             entity_id: "3".to_owned(),
         };
         let result = store.get(key).unwrap();
 
         let mut expected_entity = Entity::new();
 
-        expected_entity.insert("__typename".to_owned(), "user".into());
+        expected_entity.insert("__typename".to_owned(), USER.into());
         expected_entity.insert("id".to_owned(), "3".into());
         expected_entity.insert("name".to_owned(), "Shaqueeena".into());
         expected_entity.insert(
@@ -382,12 +396,12 @@ fn insert_entity() {
     run_test(|store| -> Result<(), ()> {
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: "user".to_owned(),
+            entity_type: USER.to_owned(),
             entity_id: "7".to_owned(),
         };
         let test_entity = create_test_entity(
             "7",
-            "user",
+            USER,
             "Wanjon",
             "wanawana@email.com",
             76 as i32,
@@ -421,13 +435,13 @@ fn update_existing() {
     run_test(|store| -> Result<(), ()> {
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: "user".to_owned(),
+            entity_type: USER.to_owned(),
             entity_id: "1".to_owned(),
         };
 
         let op = create_test_entity(
             "1",
-            "user",
+            USER,
             "Wanjon",
             "wanawana@email.com",
             76 as i32,
@@ -461,7 +475,7 @@ fn update_existing() {
             _ => unreachable!(),
         };
 
-        new_data.insert("__typename".to_owned(), "user".into());
+        new_data.insert("__typename".to_owned(), USER.into());
         new_data.insert("bin_name".to_owned(), Value::Bytes(bin_name));
         assert_eq!(store.get(entity_key).unwrap(), Some(new_data));
 
@@ -474,7 +488,7 @@ fn partially_update_existing() {
     run_test(|store| -> Result<(), ()> {
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: "user".to_owned(),
+            entity_type: USER.to_owned(),
             entity_id: "1".to_owned(),
         };
 
@@ -508,7 +522,7 @@ fn partially_update_existing() {
         // Verify that the values of all attributes we have set were either unset
         // (in the case of Value::Null) or updated to the new values
         assert_eq!(updated_entity.get("id"), partial_entity.get("id"));
-        assert_eq!(updated_entity.get("user"), partial_entity.get("user"));
+        assert_eq!(updated_entity.get(USER), partial_entity.get(USER));
         assert_eq!(updated_entity.get("email"), None);
 
         // Verify that all attributes we have not set have remained at their old values
@@ -550,7 +564,7 @@ fn find_string_contains() {
         vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Contains(
                 "name".into(),
                 "ind".into(),
@@ -568,7 +582,7 @@ fn find_string_equal() {
         vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "name".to_owned(),
                 "Cindini".into(),
@@ -586,7 +600,7 @@ fn find_string_not_equal() {
         vec!["1", "3"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 "name".to_owned(),
                 "Cindini".into(),
@@ -604,7 +618,7 @@ fn find_string_greater_than() {
         vec!["3"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
                 "name".to_owned(),
                 "Kundi".into(),
@@ -622,7 +636,7 @@ fn find_string_less_than_order_by_asc() {
         vec!["2", "1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "name".to_owned(),
                 "Kundi".into(),
@@ -640,7 +654,7 @@ fn find_string_less_than_order_by_desc() {
         vec!["1", "2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "name".to_owned(),
                 "Kundi".into(),
@@ -658,7 +672,7 @@ fn find_string_less_than_range() {
         vec!["1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "name".to_owned(),
                 "ZZZ".into(),
@@ -679,7 +693,7 @@ fn find_string_multiple_and() {
         vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![
                 EntityFilter::LessThan("name".to_owned(), "Cz".into()),
                 EntityFilter::Equal("name".to_owned(), "Cindini".into()),
@@ -697,7 +711,7 @@ fn find_string_ends_with() {
         vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::EndsWith(
                 "name".to_owned(),
                 "ini".into(),
@@ -715,7 +729,7 @@ fn find_string_not_ends_with() {
         vec!["3", "1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::NotEndsWith(
                 "name".to_owned(),
                 "ini".into(),
@@ -733,7 +747,7 @@ fn find_string_in() {
         vec!["1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 "name".to_owned(),
                 vec!["Johnton".into()],
@@ -751,7 +765,7 @@ fn find_string_not_in() {
         vec!["1", "2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 "name".to_owned(),
                 vec!["Shaqueeena".into()],
@@ -769,7 +783,7 @@ fn find_float_equal() {
         vec!["1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "weight".to_owned(),
                 Value::BigDecimal(184.4.into()),
@@ -787,7 +801,7 @@ fn find_float_not_equal() {
         vec!["3", "2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 "weight".to_owned(),
                 Value::BigDecimal(184.4.into()),
@@ -805,7 +819,7 @@ fn find_float_greater_than() {
         vec!["1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
                 "weight".to_owned(),
                 Value::BigDecimal(160.0.into()),
@@ -823,7 +837,7 @@ fn find_float_less_than() {
         vec!["2", "3"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "weight".to_owned(),
                 Value::BigDecimal(160.0.into()),
@@ -841,7 +855,7 @@ fn find_float_less_than_order_by_desc() {
         vec!["3", "2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "weight".to_owned(),
                 Value::BigDecimal(160.0.into()),
@@ -859,7 +873,7 @@ fn find_float_less_than_range() {
         vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "weight".to_owned(),
                 Value::BigDecimal(161.0.into()),
@@ -880,7 +894,7 @@ fn find_float_in() {
         vec!["3", "1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 "weight".to_owned(),
                 vec![
@@ -901,7 +915,7 @@ fn find_float_not_in() {
         vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 "weight".to_owned(),
                 vec![
@@ -922,7 +936,7 @@ fn find_int_equal() {
         vec!["1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "age".to_owned(),
                 Value::Int(67 as i32),
@@ -940,7 +954,7 @@ fn find_int_not_equal() {
         vec!["3", "2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 "age".to_owned(),
                 Value::Int(67 as i32),
@@ -958,7 +972,7 @@ fn find_int_greater_than() {
         vec!["1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
                 "age".to_owned(),
                 Value::Int(43 as i32),
@@ -976,7 +990,7 @@ fn find_int_greater_or_equal() {
         vec!["2", "1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::GreaterOrEqual(
                 "age".to_owned(),
                 Value::Int(43 as i32),
@@ -994,7 +1008,7 @@ fn find_int_less_than() {
         vec!["2", "3"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "age".to_owned(),
                 Value::Int(50 as i32),
@@ -1012,7 +1026,7 @@ fn find_int_less_or_equal() {
         vec!["2", "3"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessOrEqual(
                 "age".to_owned(),
                 Value::Int(43 as i32),
@@ -1030,7 +1044,7 @@ fn find_int_less_than_order_by_desc() {
         vec!["3", "2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "age".to_owned(),
                 Value::Int(50 as i32),
@@ -1048,7 +1062,7 @@ fn find_int_less_than_range() {
         vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "age".to_owned(),
                 Value::Int(67 as i32),
@@ -1069,7 +1083,7 @@ fn find_int_in() {
         vec!["1", "2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 "age".to_owned(),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
@@ -1087,7 +1101,7 @@ fn find_int_not_in() {
         vec!["3"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 "age".to_owned(),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
@@ -1105,7 +1119,7 @@ fn find_bool_equal() {
         vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "coffee".to_owned(),
                 Value::Bool(true),
@@ -1123,7 +1137,7 @@ fn find_bool_not_equal() {
         vec!["1", "3"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 "coffee".to_owned(),
                 Value::Bool(true),
@@ -1141,7 +1155,7 @@ fn find_bool_in() {
         vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 "coffee".to_owned(),
                 vec![Value::Bool(true)],
@@ -1159,7 +1173,7 @@ fn find_bool_not_in() {
         vec!["3", "1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 "coffee".to_owned(),
                 vec![Value::Bool(true)],
@@ -1177,7 +1191,7 @@ fn find_bytes_equal() {
         vec!["1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "bin_name".to_owned(),
                 Value::Bytes("Johnton".as_bytes().into()),
@@ -1195,7 +1209,7 @@ fn find_null_equal() {
         vec!["3", "1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::Equal(
                 "favorite_color".to_owned(),
                 Value::Null,
@@ -1213,7 +1227,7 @@ fn find_null_not_equal() {
         vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::Not("favorite_color".to_owned(), Value::Null)),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
@@ -1228,7 +1242,7 @@ fn find_null_not_in() {
         vec!["2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::NotIn(
                 "favorite_color".to_owned(),
                 vec![Value::Null],
@@ -1246,7 +1260,7 @@ fn find_order_by_float() {
         vec!["3", "2", "1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: None,
             order_by: Some(("weight".to_owned(), ValueType::BigDecimal)),
             order_direction: Some(EntityOrder::Ascending),
@@ -1257,7 +1271,7 @@ fn find_order_by_float() {
         vec!["1", "2", "3"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: None,
             order_by: Some(("weight".to_owned(), ValueType::BigDecimal)),
             order_direction: Some(EntityOrder::Descending),
@@ -1272,7 +1286,7 @@ fn find_order_by_id() {
         vec!["1", "2", "3"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: None,
             order_by: Some(("id".to_owned(), ValueType::ID)),
             order_direction: Some(EntityOrder::Ascending),
@@ -1283,7 +1297,7 @@ fn find_order_by_id() {
         vec!["3", "2", "1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: None,
             order_by: Some(("id".to_owned(), ValueType::ID)),
             order_direction: Some(EntityOrder::Descending),
@@ -1298,7 +1312,7 @@ fn find_order_by_int() {
         vec!["3", "2", "1"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: None,
             order_by: Some(("age".to_owned(), ValueType::Int)),
             order_direction: Some(EntityOrder::Ascending),
@@ -1309,7 +1323,7 @@ fn find_order_by_int() {
         vec!["1", "2", "3"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: None,
             order_by: Some(("age".to_owned(), ValueType::Int)),
             order_direction: Some(EntityOrder::Descending),
@@ -1324,7 +1338,7 @@ fn find_order_by_string() {
         vec!["2", "1", "3"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: None,
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
@@ -1335,7 +1349,7 @@ fn find_order_by_string() {
         vec!["3", "1", "2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: None,
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
@@ -1350,7 +1364,7 @@ fn find_where_nested_and_or() {
         vec!["1", "2"],
         EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Or(vec![
                 EntityFilter::Equal("id".to_owned(), Value::from("1")),
                 EntityFilter::Equal("id".to_owned(), Value::from("2")),
@@ -1468,7 +1482,7 @@ fn check_basic_revert(
 ) -> impl Future<Item = (), Error = tokio_timer::timeout::Error<()>> {
     let this_query = EntityQuery {
         subgraph_id: TEST_SUBGRAPH_ID.clone(),
-        entity_types: vec!["user".to_owned()],
+        entity_types: vec![USER.to_owned()],
         filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
             "name".to_owned(),
             Value::String("Shaqueeena".to_owned()),
@@ -1509,13 +1523,13 @@ fn check_basic_revert(
 fn revert_block_basic_user() {
     run_test(|store| {
         let expected = StoreEvent::new(vec![make_entity_change(
-            "user",
+            USER,
             "3",
             EntityChangeOperation::Set,
         )]);
 
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
-        check_basic_revert(store.clone(), expected, &TEST_SUBGRAPH_ID, "user").and_then(move |x| {
+        check_basic_revert(store.clone(), expected, &TEST_SUBGRAPH_ID, USER).and_then(move |x| {
             assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
             Ok(x)
         })
@@ -1540,7 +1554,7 @@ fn revert_block_with_delete() {
     run_test(|store| {
         let this_query = EntityQuery {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec![USER.to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "name".to_owned(),
                 Value::String("Cindini".to_owned()),
@@ -1553,7 +1567,7 @@ fn revert_block_with_delete() {
         // Delete entity with id=2
         let del_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: "user".to_owned(),
+            entity_type: USER.to_owned(),
             entity_id: "2".to_owned(),
         };
 
@@ -1567,7 +1581,7 @@ fn revert_block_with_delete() {
             )
             .unwrap();
 
-        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user");
+        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER);
 
         // Revert deletion
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
@@ -1599,7 +1613,7 @@ fn revert_block_with_delete() {
 
         // Check that the subscription notified us of the changes
         let expected = StoreEvent::new(vec![make_entity_change(
-            "user",
+            USER,
             "2",
             EntityChangeOperation::Set,
         )]);
@@ -1614,7 +1628,7 @@ fn revert_block_with_partial_update() {
     run_test(|store| {
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: "user".to_owned(),
+            entity_type: USER.to_owned(),
             entity_id: "1".to_owned(),
         };
 
@@ -1642,7 +1656,7 @@ fn revert_block_with_partial_update() {
             )
             .unwrap();
 
-        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user");
+        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER);
 
         // Perform revert operation, reversing the partial update
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
@@ -1666,7 +1680,7 @@ fn revert_block_with_partial_update() {
 
         // Check that the subscription notified us of the changes
         let expected = StoreEvent::new(vec![make_entity_change(
-            "user",
+            USER,
             "1",
             EntityChangeOperation::Set,
         )]);
@@ -1731,7 +1745,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         // Create operations to add a user
         let user_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: "user".to_owned(),
+            entity_type: USER.to_owned(),
             entity_id: "1".to_owned(),
         };
         let partial_entity = Entity::from(vec![
@@ -1790,7 +1804,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             .unwrap()
             .expect("dynamic data source entity wasn't written to store");
 
-        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user");
+        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER);
 
         // Revert block that added the user and the dynamic data source
         store
@@ -1820,7 +1834,7 @@ fn revert_block_with_dynamic_data_source_operations() {
                 vec![
                     EntityChange {
                         subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
-                        entity_type: "user".into(),
+                        entity_type: USER.into(),
                         entity_id: "1".into(),
                         operation: EntityChangeOperation::Set,
                     },
@@ -1872,7 +1886,8 @@ fn revert_block_with_dynamic_data_source_operations() {
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store| {
         let subgraph_id = SubgraphDeploymentId::new("EntityChangeTestSubgraph").unwrap();
-        let schema = Schema::parse("scalar Foo", subgraph_id.clone()).unwrap();
+        let schema =
+            Schema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
         let manifest = SubgraphManifest {
             id: subgraph_id.clone(),
             location: "/ipfs/test".to_owned(),
@@ -1894,7 +1909,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         // Create store subscriptions
         let meta_subscription =
             subscribe_and_consume(store.clone(), &SUBGRAPHS_ID, "SubgraphDeployment");
-        let subscription = subscribe_and_consume(store.clone(), &subgraph_id, "User");
+        let subscription = subscribe_and_consume(store.clone(), &subgraph_id, USER);
 
         // Add two entities to the store
         let added_entities = vec![
@@ -1923,7 +1938,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                     .map(|(id, data)| EntityOperation::Set {
                         key: EntityKey {
                             subgraph_id: subgraph_id.clone(),
-                            entity_type: "User".to_owned(),
+                            entity_type: USER.to_owned(),
                             entity_id: id.to_owned(),
                         },
                         data: data.to_owned(),
@@ -1940,7 +1955,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         let update_op = EntityOperation::Set {
             key: EntityKey {
                 subgraph_id: subgraph_id.clone(),
-                entity_type: "User".to_owned(),
+                entity_type: USER.to_owned(),
                 entity_id: "1".to_owned(),
             },
             data: updated_entity.clone(),
@@ -1950,7 +1965,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         let delete_op = EntityOperation::Remove {
             key: EntityKey {
                 subgraph_id: subgraph_id.clone(),
-                entity_type: "User".to_owned(),
+                entity_type: USER.to_owned(),
                 entity_id: "2".to_owned(),
             },
         };
@@ -1988,13 +2003,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             StoreEvent::new(vec![
                 EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: "User".to_owned(),
+                    entity_type: USER.to_owned(),
                     entity_id: added_entities[0].clone().0,
                     operation: EntityChangeOperation::Set,
                 },
                 EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: "User".to_owned(),
+                    entity_type: USER.to_owned(),
                     entity_id: added_entities[1].clone().0,
                     operation: EntityChangeOperation::Set,
                 },
@@ -2002,13 +2017,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             StoreEvent::new(vec![
                 EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: "User".to_owned(),
+                    entity_type: USER.to_owned(),
                     entity_id: "1".to_owned(),
                     operation: EntityChangeOperation::Set,
                 },
                 EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: "User".to_owned(),
+                    entity_type: USER.to_owned(),
                     entity_id: added_entities[1].clone().0,
                     operation: EntityChangeOperation::Removed,
                 },
@@ -2031,7 +2046,7 @@ fn throttle_subscription_delivers() {
                     Duration::from_millis(500),
                 );
 
-        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user")
+        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER)
             .throttle_while_syncing(
                 &*LOGGER,
                 store.clone(),
@@ -2041,7 +2056,7 @@ fn throttle_subscription_delivers() {
 
         let user4 = create_test_entity(
             "4",
-            "user",
+            USER,
             "Steve",
             "nieve@email.com",
             72 as i32,
@@ -2067,7 +2082,7 @@ fn throttle_subscription_delivers() {
         check_events(meta_subscription, vec![meta_expected]);
 
         let expected = StoreEvent::new(vec![make_entity_change(
-            "user",
+            USER,
             "4",
             EntityChangeOperation::Set,
         )]);
@@ -2081,7 +2096,7 @@ fn throttle_subscription_throttles() {
     run_test(
         |store| -> Box<dyn Future<Item = (), Error = tokio_timer::timeout::Error<()>> + Send> {
             // Throttle for a very long time (30s)
-            let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, "user")
+            let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER)
                 .throttle_while_syncing(
                     &*LOGGER,
                     store.clone(),
@@ -2091,7 +2106,7 @@ fn throttle_subscription_throttles() {
 
             let user4 = create_test_entity(
                 "4",
-                "user",
+                USER,
                 "Steve",
                 "nieve@email.com",
                 72 as i32,
@@ -2168,6 +2183,7 @@ fn subgraph_schema_types_have_subgraph_id_directive() {
 }
 
 #[test]
+#[cfg(not(relational_schema))]
 fn create_subgraph_deployment_tolerates_locks() {
     run_test(|store| -> Result<(), ()> {
         use diesel::connection::SimpleConnection;
@@ -2204,14 +2220,17 @@ fn create_subgraph_deployment_tolerates_locks() {
         // activity, but it is visible in the logs if this test is run with
         // GRAPH_LOG=debug
         let subgraph_id = SubgraphDeploymentId::new("DeploymentLocking").unwrap();
-        let schema =
-            Schema::parse(DUMMY_SCHEMA, subgraph_id).expect("Failed to parse dummy schema");
+        let schema = Schema::parse(USER_GQL, subgraph_id).expect("Failed to parse dummy schema");
         barrier.wait();
         let start = std::time::Instant::now();
         store
             .create_subgraph_deployment(&*LOGGER, &schema, vec![])
             .expect("Subgraph creation failed");
-        assert!(start.elapsed() >= Duration::from_secs(BLOCK_TIME));
+        if std::env::var_os("RELATIONAL_SCHEMA").is_none() {
+            // This test makes no sense for relational schemas as we do
+            // not reference the event_meta_data table
+            assert!(start.elapsed() >= Duration::from_secs(BLOCK_TIME));
+        }
         Ok(())
     })
 }
