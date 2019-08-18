@@ -105,6 +105,12 @@ pub struct StoreConfig {
     pub conn_pool_size: u32,
 }
 
+#[derive(Clone)]
+struct SchemaPair {
+    raw: Arc<Schema>,
+    api: Arc<Schema>,
+}
+
 /// A Store based on Diesel and Postgres.
 pub struct Store {
     logger: Logger,
@@ -115,7 +121,7 @@ pub struct Store {
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
-    schema_cache: Mutex<LruCache<SubgraphDeploymentId, Arc<Schema>>>,
+    schema_cache: Mutex<LruCache<SubgraphDeploymentId, SchemaPair>>,
 }
 
 impl Store {
@@ -736,6 +742,64 @@ impl Store {
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         conn.create_history_event(subgraph, event_source)
     }
+
+    fn cached_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SchemaPair, Error> {
+        if let Some(pair) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
+            trace!(self.logger, "schema cache hit"; "id" => subgraph_id.to_string());
+            return Ok(pair.clone());
+        }
+        trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
+
+        let raw_schema = if *subgraph_id == *SUBGRAPHS_ID {
+            // The subgraph of subgraphs schema is built-in.
+            include_str!("subgraphs.graphql").to_owned()
+        } else {
+            let manifest_entity = self
+                .get(EntityKey {
+                    subgraph_id: SUBGRAPHS_ID.clone(),
+                    entity_type: SubgraphManifestEntity::TYPENAME.to_owned(),
+                    entity_id: SubgraphManifestEntity::id(&subgraph_id),
+                })?
+                .ok_or_else(|| format_err!("Subgraph entity not found {}", subgraph_id))?;
+
+            match manifest_entity.get("schema") {
+                Some(Value::String(raw)) => raw.clone(),
+                _ => {
+                    return Err(format_err!(
+                        "Schema not present or has wrong type, subgraph: {}",
+                        subgraph_id
+                    ));
+                }
+            }
+        };
+
+        // Parse the schema and add @subgraphId directives
+        let raw_schema = Schema::parse(&raw_schema, subgraph_id.clone())?;
+        let mut schema = raw_schema.clone();
+
+        // Generate an API schema for the subgraph and make sure all types in the
+        // API schema have a @subgraphId directive as well
+        schema.document = api_schema(&schema.document)?;
+        schema.add_subgraph_id_directives(subgraph_id.clone());
+
+        let pair = SchemaPair {
+            raw: Arc::new(raw_schema),
+            api: Arc::new(schema),
+        };
+
+        // Insert the schema into the cache.
+        let mut cache = self.schema_cache.lock().unwrap();
+        cache.insert(subgraph_id.clone(), pair);
+
+        Ok(cache.get(&subgraph_id).unwrap().clone())
+    }
+
+    pub(crate) fn raw_subgraph_schema(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<Arc<Schema>, Error> {
+        Ok(self.cached_schema(subgraph_id)?.raw)
+    }
 }
 
 impl StoreTrait for Store {
@@ -1078,52 +1142,7 @@ impl StoreTrait for Store {
 
 impl SubgraphDeploymentStore for Store {
     fn subgraph_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
-        if let Some(schema) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
-            trace!(self.logger, "schema cache hit"; "id" => subgraph_id.to_string());
-            return Ok(schema.clone());
-        }
-        trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
-
-        let raw_schema = if *subgraph_id == *SUBGRAPHS_ID {
-            // The subgraph of subgraphs schema is built-in.
-            include_str!("subgraphs.graphql").to_owned()
-        } else {
-            let manifest_entity = self
-                .get(EntityKey {
-                    subgraph_id: SUBGRAPHS_ID.clone(),
-                    entity_type: SubgraphManifestEntity::TYPENAME.to_owned(),
-                    entity_id: SubgraphManifestEntity::id(&subgraph_id),
-                })?
-                .ok_or_else(|| format_err!("Subgraph entity not found {}", subgraph_id))?;
-
-            match manifest_entity.get("schema") {
-                Some(Value::String(raw)) => raw.clone(),
-                _ => {
-                    return Err(format_err!(
-                        "Schema not present or has wrong type, subgraph: {}",
-                        subgraph_id
-                    ));
-                }
-            }
-        };
-
-        // Parse the schema and add @subgraphId directives
-        let mut schema = Schema::parse(&raw_schema, subgraph_id.clone())?;
-
-        // Generate an API schema for the subgraph and make sure all types in the
-        // API schema have a @subgraphId directive as well
-        schema.document = api_schema(&schema.document)?;
-        schema.add_subgraph_id_directives(subgraph_id.clone());
-
-        let schema = Arc::new(schema);
-
-        // Insert the schema into the cache.
-        self.schema_cache
-            .lock()
-            .unwrap()
-            .insert(subgraph_id.clone(), schema.clone());
-
-        Ok(schema)
+        Ok(self.cached_schema(subgraph_id)?.api)
     }
 }
 
