@@ -14,9 +14,6 @@ lazy_static! {
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId = {
         // Also populate the store when the ID is first accessed.
         let id = SubgraphDeploymentId::new("graphqlTestsQuery").unwrap();
-        let logger = Logger::root(slog::Discard, o!());
-        let schema = Schema::parse("type Dummy @entity { id: ID! }", id.clone()).expect("Failed to parse dummy schema");
-        STORE.create_subgraph_deployment(&logger, &schema, vec![]).unwrap();
         insert_test_entities(&**STORE, id.clone());
         id
     };
@@ -66,6 +63,8 @@ fn api_test_schema() -> Schema {
 }
 
 fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
+    let schema = test_schema(id.clone());
+
     // First insert the manifest.
     let manifest = SubgraphManifest {
         id: id.clone(),
@@ -73,23 +72,17 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         spec_version: "1".to_owned(),
         description: None,
         repository: None,
-        schema: test_schema(id.clone()),
+        schema: schema.clone(),
         data_sources: vec![],
         templates: vec![],
     };
 
+    let logger = Logger::root(slog::Discard, o!());
+
+    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, Default::default(), Default::default())
+        .create_operations_replace(&id);
     store
-        .apply_entity_operations(
-            SubgraphDeploymentEntity::new(
-                &manifest,
-                false,
-                false,
-                Default::default(),
-                Default::default(),
-            )
-            .create_operations_replace(&id),
-            None,
-        )
+        .create_subgraph_deployment(&logger, &schema, ops)
         .unwrap();
 
     let entities = vec![
