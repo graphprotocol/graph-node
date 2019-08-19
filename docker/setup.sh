@@ -2,6 +2,21 @@
 
 set -e
 
+if ! which docker 2>&1 > /dev/null; then
+    echo "Please install 'docker' first"
+    exit 1
+fi
+
+if ! which docker-compose 2>&1 > /dev/null; then
+    echo "Please install 'docker-compose' first"
+    exit 1
+fi
+
+if ! which jq 2>&1 > /dev/null; then
+    echo "Please install 'jq' first"
+    exit 1
+fi
+
 # Start graph-node so we can inspect it
 docker-compose start graph-node
 
