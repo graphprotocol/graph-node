@@ -28,6 +28,11 @@ const USER_GQL: &str = "
         coffee: Boolean,
         favorite_color: String
     }
+
+    type Manual @entity {
+        id: ID!,
+        text: String
+    }
 ";
 
 const USER: &str = "User";
