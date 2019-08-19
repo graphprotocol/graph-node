@@ -546,15 +546,13 @@ impl AsDdl for Column {
     fn fmt(&self, f: &mut dyn fmt::Write, _: &Mapping) -> fmt::Result {
         write!(f, "    ")?;
         if self.derived.is_some() {
-            write!(f, "-- ")?;
+            write!(f, " -- ")?;
         }
         write!(f, "{:20} {}", self.name, self.sql_type())?;
         if self.is_list() {
             write!(f, "[]")?;
         }
-        if self.name.0 == PRIMARY_KEY_COLUMN {
-            write!(f, " primary key")?;
-        } else if !self.is_nullable() {
+        if self.name.0 == PRIMARY_KEY_COLUMN || !self.is_nullable() {
             write!(f, " not null")?;
         }
         Ok(())
@@ -563,6 +561,8 @@ impl AsDdl for Column {
 
 /// The name for the primary key column of a table; hardcoded for now
 pub(crate) const PRIMARY_KEY_COLUMN: &str = "id";
+
+pub(crate) const BLOCK_RANGE: &str = "block_range";
 
 #[derive(Clone, Debug)]
 pub struct Table {
@@ -688,26 +688,29 @@ impl Table {
 impl AsDdl for Table {
     fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> fmt::Result {
         write!(f, "create table {}.{} (\n", mapping.schema, self.name)?;
-        let mut first = true;
         for column in self.columns.iter().filter(|col| !col.is_derived()) {
-            if !first {
-                write!(f, ",\n")?;
-            }
-            first = false;
             write!(f, "    ")?;
             column.fmt(f, mapping)?;
+            write!(f, ",\n")?;
         }
+        // Add block_range column and constraint
+        write!(
+            f,
+            "\n        {block_range}          int4range not null,
+        exclude using gist   (id with =, {block_range} with &&)\n",
+            block_range = BLOCK_RANGE
+        )?;
         if self.columns.iter().any(|col| col.is_derived()) {
-            write!(f, "\n     -- derived fields (not stored in this table)")?;
+            write!(f, "\n     -- derived fields (not stored in this table)\n")?;
             for column in self.columns.iter().filter(|col| col.is_derived()) {
-                write!(f, "\n ")?;
                 column.fmt(f, mapping)?;
                 for reference in &column.references {
                     write!(f, " references {}({})", reference.table, reference.column)?;
                 }
+                write!(f, "\n")?;
             }
         }
-        write!(f, "\n);\n")?;
+        write!(f, ");\n")?;
 
         for (i, column) in self
             .columns
@@ -887,8 +890,11 @@ mod tests {
         }";
 
     const THINGS_DDL: &str = "create table rel.things (
-        id                   text primary key,
-        big_thing            text not null
+        id                   text not null,
+        big_thing            text not null,
+
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
 );
 create index attr_1_1_things_id
     on rel.things using btree(id);
@@ -896,13 +902,16 @@ create index attr_1_2_things_big_thing
     on rel.things using btree(big_thing);
 
 create table rel.scalars (
-        id                   text primary key,
+        id                   text not null,
         bool                 boolean,
         int                  integer,
         big_decimal          numeric,
         string               text,
         bytes                bytea,
-        big_int              numeric
+        big_int              numeric,
+
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
 );
 create index attr_2_1_scalars_id
     on rel.scalars using btree(id);
@@ -949,10 +958,14 @@ type SongStat @entity {
     played: Int!
 }";
     const MUSIC_DDL: &str = "create table rel.musicians (
-        id                   text primary key,
+        id                   text not null,
         name                 text not null,
         main_band            text,
-        bands                text[] not null
+        bands                text[] not null,
+
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
+
      -- derived fields (not stored in this table)
      -- written_songs        text[] not null references songs(written_by)
 );
@@ -966,9 +979,13 @@ create index attr_1_4_musicians_bands
     on rel.musicians using gin(bands);
 
 create table rel.bands (
-        id                   text primary key,
+        id                   text not null,
         name                 text not null,
-        original_songs       text[] not null
+        original_songs       text[] not null,
+
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
+
      -- derived fields (not stored in this table)
      -- members              text[] not null references musicians(bands)
 );
@@ -980,9 +997,13 @@ create index attr_2_3_bands_original_songs
     on rel.bands using gin(original_songs);
 
 create table rel.songs (
-        id                   text primary key,
+        id                   text not null,
         title                text not null,
-        written_by           text not null
+        written_by           text not null,
+
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
+
      -- derived fields (not stored in this table)
      -- band                 text references bands(original_songs)
 );
@@ -994,8 +1015,12 @@ create index attr_3_3_songs_written_by
     on rel.songs using btree(written_by);
 
 create table rel.song_stats (
-        id                   text primary key,
-        played               integer not null
+        id                   text not null,
+        played               integer not null,
+
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
+
      -- derived fields (not stored in this table)
      -- song                 text references songs(id)
 );
@@ -1028,8 +1053,11 @@ type Habitat @entity {
 }";
 
     const FOREST_DDL: &str = "create table rel.animals (
-        id                   text primary key,
-        forest               text
+        id                   text not null,
+        forest               text,
+
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
 );
 create index attr_1_1_animals_id
     on rel.animals using btree(id);
@@ -1037,7 +1065,11 @@ create index attr_1_2_animals_forest
     on rel.animals using btree(forest);
 
 create table rel.forests (
-        id                   text primary key
+        id                   text not null,
+
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
+
      -- derived fields (not stored in this table)
      -- dwellers             text[] not null references animals(forest)
 );
@@ -1045,9 +1077,12 @@ create index attr_2_1_forests_id
     on rel.forests using btree(id);
 
 create table rel.habitats (
-        id                   text primary key,
+        id                   text not null,
         most_common          text not null,
-        dwellers             text[] not null
+        dwellers             text[] not null,
+
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
 );
 create index attr_3_1_habitats_id
     on rel.habitats using btree(id);
