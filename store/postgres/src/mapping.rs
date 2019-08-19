@@ -17,6 +17,8 @@ use graph::prelude::{
     format_err, Entity, EntityFilter, EntityKey, QueryExecutionError, StoreError, ValueType,
 };
 
+use crate::entities::STRING_PREFIX_SIZE;
+
 trait AsDdl {
     fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> Result<(), fmt::Error>;
 
@@ -125,11 +127,13 @@ impl Mapping {
         // Extract interfaces and tables
         let mut interfaces: HashMap<String, Vec<SqlName>> = HashMap::new();
         let mut tables = Vec::new();
+        let mut position = 0;
 
         for defn in &document.definitions {
             match defn {
                 TypeDefinition(Object(obj_type)) => {
-                    let table = Table::new(obj_type, &mut interfaces, id_type)?;
+                    position += 1;
+                    let table = Table::new(obj_type, &mut interfaces, id_type, position)?;
                     tables.push(table);
                 }
                 TypeDefinition(Interface(interface_type)) => {
@@ -292,6 +296,7 @@ impl Mapping {
             name: "$roots".into(),
             singular_name: "$root".to_owned(),
             columns,
+            position: 0,
         }
     }
 
@@ -404,7 +409,7 @@ impl AsDdl for Mapping {
         // We sort tables here solely because the unit tests rely on
         // 'create table' statements appearing in a fixed order
         let mut tables = self.tables.values().collect::<Vec<_>>();
-        tables.sort_by(|a, b| (&a.name).partial_cmp(&b.name).unwrap());
+        tables.sort_by(|a, b| (&a.position).partial_cmp(&b.position).unwrap());
         // Output 'create table' statements for all tables
         for table in tables {
             table.fmt(f, mapping)?;
@@ -578,6 +583,10 @@ pub struct Table {
     pub singular_name: String,
 
     pub columns: Vec<Column>,
+    /// The position of this table in all the tables for this mapping; this
+    /// is really only needed for the tests to make the names of indexes
+    /// predictable
+    position: u32,
 }
 
 impl Table {
@@ -585,6 +594,7 @@ impl Table {
         defn: &s::ObjectType,
         interfaces: &mut HashMap<String, Vec<SqlName>>,
         id_type: IdType,
+        position: u32,
     ) -> Result<Table, StoreError> {
         let table_name = Table::collection_name(&defn.name);
         let columns = defn
@@ -597,6 +607,7 @@ impl Table {
             name: table_name.clone(),
             singular_name: Table::object_name(&defn.name),
             columns,
+            position,
         };
         for interface_name in &defn.implements_interfaces {
             match interfaces.get_mut(interface_name) {
@@ -686,7 +697,7 @@ impl AsDdl for Table {
     fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> fmt::Result {
         write!(f, "create table {}.{} (\n", mapping.schema, self.name)?;
         let mut first = true;
-        for column in self.columns.iter().filter(|col| col.derived.is_none()) {
+        for column in self.columns.iter().filter(|col| !col.is_derived()) {
             if !first {
                 write!(f, ",\n")?;
             }
@@ -694,9 +705,9 @@ impl AsDdl for Table {
             write!(f, "    ")?;
             column.fmt(f, mapping)?;
         }
-        if self.columns.iter().any(|col| col.derived.is_some()) {
+        if self.columns.iter().any(|col| col.is_derived()) {
             write!(f, "\n     -- derived fields (not stored in this table)")?;
-            for column in self.columns.iter().filter(|col| col.derived.is_some()) {
+            for column in self.columns.iter().filter(|col| col.is_derived()) {
                 write!(f, "\n ")?;
                 column.fmt(f, mapping)?;
                 for reference in &column.references {
@@ -704,7 +715,44 @@ impl AsDdl for Table {
                 }
             }
         }
-        write!(f, "\n);\n")
+        write!(f, "\n);\n")?;
+
+        for (i, column) in self
+            .columns
+            .iter()
+            .filter(|col| !col.is_derived())
+            .enumerate()
+        {
+            if !column.is_primary_key()
+                && !column.is_reference()
+                && !column.is_list()
+                && column.column_type == ColumnType::String
+            {
+                write!(
+                f,
+                "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.{table_name} using btree(left({column_name}, {prefix_size}));\n",
+                table_index=self.position,
+                table_name=self.name,
+                column_index=i + 1,
+                column_name=column.name,
+                schema_name=mapping.schema,
+                prefix_size=STRING_PREFIX_SIZE,
+            )?;
+            } else {
+                let method = if column.is_list() { "gin" } else { "btree" };
+                write!(
+                f,
+                "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.{table_name} using {method}({column_name});\n",
+                table_index=self.position,
+                table_name=self.name,
+                column_index=i + 1,
+                column_name=column.name,
+                schema_name=mapping.schema,
+                method=method
+            )?;
+            }
+        }
+        write!(f, "\n")
     }
 }
 
@@ -847,7 +895,16 @@ mod tests {
             bigInt: BigInt,
         }";
 
-    const THINGS_DDL: &str = "create table rel.scalars (
+    const THINGS_DDL: &str = "create table rel.things (
+        id                   text primary key,
+        big_thing            text not null
+);
+create index attr_1_1_things_id
+    on rel.things using btree(id);
+create index attr_1_2_things_big_thing
+    on rel.things using btree(big_thing);
+
+create table rel.scalars (
         id                   text primary key,
         bool                 boolean,
         int                  integer,
@@ -856,10 +913,21 @@ mod tests {
         bytes                bytea,
         big_int              numeric
 );
-create table rel.things (
-        id                   text primary key,
-        big_thing            text not null
-);
+create index attr_2_1_scalars_id
+    on rel.scalars using btree(id);
+create index attr_2_2_scalars_bool
+    on rel.scalars using btree(bool);
+create index attr_2_3_scalars_int
+    on rel.scalars using btree(int);
+create index attr_2_4_scalars_big_decimal
+    on rel.scalars using btree(big_decimal);
+create index attr_2_5_scalars_string
+    on rel.scalars using btree(left(string, 2048));
+create index attr_2_6_scalars_bytes
+    on rel.scalars using btree(bytes);
+create index attr_2_7_scalars_big_int
+    on rel.scalars using btree(big_int);
+
 ";
 
     const MUSIC_GQL: &str = "type Musician @entity {
@@ -889,14 +957,7 @@ type SongStat @entity {
     song: Song @derivedFrom(field: \"id\")
     played: Int!
 }";
-    const MUSIC_DDL: &str = "create table rel.bands (
-        id                   text primary key,
-        name                 text not null,
-        original_songs       text[] not null
-     -- derived fields (not stored in this table)
-     -- members              text[] not null references musicians(bands)
-);
-create table rel.musicians (
+    const MUSIC_DDL: &str = "create table rel.musicians (
         id                   text primary key,
         name                 text not null,
         main_band            text,
@@ -904,12 +965,29 @@ create table rel.musicians (
      -- derived fields (not stored in this table)
      -- written_songs        text[] not null references songs(written_by)
 );
-create table rel.song_stats (
+create index attr_1_1_musicians_id
+    on rel.musicians using btree(id);
+create index attr_1_2_musicians_name
+    on rel.musicians using btree(left(name, 2048));
+create index attr_1_3_musicians_main_band
+    on rel.musicians using btree(main_band);
+create index attr_1_4_musicians_bands
+    on rel.musicians using gin(bands);
+
+create table rel.bands (
         id                   text primary key,
-        played               integer not null
+        name                 text not null,
+        original_songs       text[] not null
      -- derived fields (not stored in this table)
-     -- song                 text references songs(id)
+     -- members              text[] not null references musicians(bands)
 );
+create index attr_2_1_bands_id
+    on rel.bands using btree(id);
+create index attr_2_2_bands_name
+    on rel.bands using btree(left(name, 2048));
+create index attr_2_3_bands_original_songs
+    on rel.bands using gin(original_songs);
+
 create table rel.songs (
         id                   text primary key,
         title                text not null,
@@ -917,6 +995,24 @@ create table rel.songs (
      -- derived fields (not stored in this table)
      -- band                 text references bands(original_songs)
 );
+create index attr_3_1_songs_id
+    on rel.songs using btree(id);
+create index attr_3_2_songs_title
+    on rel.songs using btree(left(title, 2048));
+create index attr_3_3_songs_written_by
+    on rel.songs using btree(written_by);
+
+create table rel.song_stats (
+        id                   text primary key,
+        played               integer not null
+     -- derived fields (not stored in this table)
+     -- song                 text references songs(id)
+);
+create index attr_4_1_song_stats_id
+    on rel.song_stats using btree(id);
+create index attr_4_2_song_stats_played
+    on rel.song_stats using btree(played);
+
 ";
 
     const FOREST_GQL: &str = "
@@ -944,16 +1040,31 @@ type Habitat @entity {
         id                   text primary key,
         forest               text
 );
+create index attr_1_1_animals_id
+    on rel.animals using btree(id);
+create index attr_1_2_animals_forest
+    on rel.animals using btree(forest);
+
 create table rel.forests (
         id                   text primary key
      -- derived fields (not stored in this table)
      -- dwellers             text[] not null references animals(forest)
 );
+create index attr_2_1_forests_id
+    on rel.forests using btree(id);
+
 create table rel.habitats (
         id                   text primary key,
         most_common          text not null,
         dwellers             text[] not null
 );
+create index attr_3_1_habitats_id
+    on rel.habitats using btree(id);
+create index attr_3_2_habitats_most_common
+    on rel.habitats using btree(most_common);
+create index attr_3_3_habitats_dwellers
+    on rel.habitats using gin(dwellers);
+
 ";
 
 }

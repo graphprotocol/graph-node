@@ -446,7 +446,7 @@ impl<'a> Connection<'a> {
     ) -> Result<usize, StoreError> {
         match self.storage(&index.subgraph_id)? {
             Storage::Json(json) => json.build_attribute_index(&self.conn, index),
-            Storage::Relational(_) => Ok(0),
+            Storage::Relational(_) => Ok(1),
         }
     }
 
