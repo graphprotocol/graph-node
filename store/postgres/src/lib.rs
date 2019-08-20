@@ -20,6 +20,7 @@ extern crate postgres;
 extern crate serde;
 extern crate uuid;
 
+mod block_range;
 mod chain_head_listener;
 mod db_schema;
 mod entities;
@@ -41,6 +42,7 @@ pub mod db_schema_for_tests {
 
 #[cfg(debug_assertions)]
 pub mod mapping_for_tests {
+    pub use crate::block_range::*;
     pub use crate::mapping::*;
 }
 

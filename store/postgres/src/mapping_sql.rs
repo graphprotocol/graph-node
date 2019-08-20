@@ -9,7 +9,7 @@ use diesel::pg::{Pg, PgConnection};
 use diesel::query_builder::{AstPass, QueryFragment, QueryId};
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::QueryResult;
-use diesel::sql_types::{Array, Binary, Bool, Integer, Jsonb, Numeric, Text};
+use diesel::sql_types::{Array, Binary, Bool, Integer, Jsonb, Numeric, Range, Text};
 use diesel::Connection;
 use failure::Fail;
 use std::convert::TryFrom;
@@ -21,8 +21,11 @@ use graph::prelude::{
     ValueType,
 };
 
+use crate::block_range::{BlockNumber, BlockRange};
 use crate::filter::UnsupportedFilter;
-use crate::mapping::{Column, ColumnType, Mapping, SqlName, Table, PRIMARY_KEY_COLUMN};
+use crate::mapping::{
+    Column, ColumnType, Mapping, SqlName, Table, BLOCK_RANGE, PRIMARY_KEY_COLUMN,
+};
 use crate::sql_value::SqlValue;
 
 /// Helper struct for retrieving entities from the database. With diesel, we
@@ -132,10 +135,14 @@ impl EntityData {
                     graph::prelude::Value::from(self.entity),
                 );
                 for (key, json) in map {
-                    let column = table.column(&SqlName::from(&*key))?;
-                    let value = Self::value_from_json(column.column_type, json)?;
-                    if value != Value::Null {
-                        entity.insert(column.field.clone(), value);
+                    // Simply ignore keys that do not have an underlying table
+                    // column; those will be things like the block_range that
+                    // is used internally for versioning
+                    if let Some(column) = table.column(&SqlName::from(&*key)).ok() {
+                        let value = Self::value_from_json(column.column_type, json)?;
+                        if value != Value::Null {
+                            entity.insert(column.field.clone(), value);
+                        }
                     }
                 }
                 Ok(entity)
@@ -501,6 +508,7 @@ pub struct FindQuery<'a> {
     mapping: &'a Mapping,
     entity: &'a str,
     id: &'a str,
+    block: BlockNumber,
 }
 
 impl<'a> FindQuery<'a> {
@@ -517,7 +525,9 @@ impl<'a> FindQuery<'a> {
         out.push_sql(" e\n where ");
         out.push_identifier(PRIMARY_KEY_COLUMN)?;
         out.push_sql(" = ");
-        out.push_bind_param::<Text, _>(&self.id)
+        out.push_bind_param::<Text, _>(&self.id)?;
+        out.push_sql(" and ");
+        BlockRange::contains(self.block).walk_ast(out)
     }
 }
 
@@ -563,6 +573,7 @@ pub struct InsertQuery<'a> {
     table: &'a Table,
     key: &'a EntityKey,
     entity: Entity,
+    block: BlockNumber,
 }
 
 impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
@@ -579,18 +590,15 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         out.push_identifier(self.table.name.as_str())?;
 
         out.push_sql("(");
-        for (i, column) in self
+        for column in self
             .table
             .columns
             .iter()
             .filter(|column| !column.is_derived())
-            .enumerate()
         {
             if self.entity.contains_key(&column.field) {
-                if i > 0 {
-                    out.push_sql(", ");
-                }
                 out.push_identifier(column.name.as_str())?;
+                out.push_sql(", ");
             } else {
                 if !column.is_nullable() {
                     return Err(diesel::result::Error::QueryBuilderError(
@@ -603,22 +611,22 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 }
             }
         }
+        out.push_identifier(BLOCK_RANGE)?;
 
         out.push_sql(")\nvalues(");
-        for (i, column) in self
+        for column in self
             .table
             .columns
             .iter()
             .filter(|column| !column.is_derived())
-            .enumerate()
         {
             if let Some(value) = self.entity.get(&column.field) {
-                if i > 0 {
-                    out.push_sql(", ");
-                }
                 QueryValue(value, column.column_type).walk_ast(out.reborrow())?;
+                out.push_sql(", ");
             }
         }
+        let block_range: BlockRange = (self.block..).into();
+        out.push_bind_param::<Range<Integer>, _>(&block_range)?;
         out.push_sql(")");
         Ok(())
     }
@@ -631,6 +639,74 @@ impl<'a> QueryId for InsertQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
+
+/// Copy the version of the given entity that is valid at `block-1` to a new
+/// entry that is valid from `block` and becomes the current version.
+/// Attributes mentioned in `entity` will be set to the value from that; all
+/// other attributes are copied from the previous version
+#[derive(Debug, Clone, Constructor)]
+pub struct CopyQuery<'a> {
+    schema_name: &'a str,
+    table: &'a Table,
+    key: &'a EntityKey,
+    entity: Entity,
+    block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for CopyQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        // Construct a query
+        //   insert into schema.table
+        //   select column, ... from schema.table
+        //   where id = $id
+        //     and block_range @> $block-1
+        out.push_sql("insert into ");
+        out.push_identifier(self.schema_name)?;
+        out.push_sql(".");
+        out.push_identifier(self.table.name.as_str())?;
+
+        out.push_sql("\nselect ");
+        for column in self
+            .table
+            .columns
+            .iter()
+            .filter(|column| !column.is_derived())
+        {
+            if let Some(value) = self.entity.get(&column.field) {
+                QueryValue(value, column.column_type).walk_ast(out.reborrow())?;
+                out.push_sql(" as ");
+            }
+            out.push_identifier(column.name.as_str())?;
+            out.push_sql(", ");
+        }
+        let block_range: BlockRange = (self.block..).into();
+        out.push_bind_param::<Range<Integer>, _>(&block_range)?;
+        out.push_sql(" as ");
+        out.push_identifier(BLOCK_RANGE)?;
+
+        out.push_sql("\n  from ");
+        out.push_identifier(self.schema_name)?;
+        out.push_sql(".");
+        out.push_identifier(self.table.name.as_str())?;
+
+        out.push_sql("\n where ");
+        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+        out.push_sql(" = ");
+        out.push_bind_param::<Text, _>(&self.key.entity_id)?;
+        out.push_sql(" and ");
+        BlockRange::contains(self.block - 1).walk_ast(out)
+    }
+}
+
+impl<'a> QueryId for CopyQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for CopyQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct ConflictingEntityQuery<'a> {
@@ -698,6 +774,7 @@ pub struct FilterQuery<'a> {
     order: Option<(String, ValueType, &'a str, &'a str)>,
     first: Option<String>,
     skip: Option<String>,
+    block: BlockNumber,
 }
 
 impl<'a> FilterQuery<'a> {
@@ -720,9 +797,11 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(".");
         out.push_identifier(table.name.as_str())?;
         out.push_sql(" e");
+        out.push_sql("\n where ");
+        BlockRange::contains(self.block).walk_ast(out.reborrow())?;
         if let Some(filter) = &self.filter {
-            out.push_sql("\n where ");
-            QueryFilter::new(filter, table).walk_ast(out.reborrow())?;
+            out.push_sql(" and ");
+            QueryFilter::new(filter, table).walk_ast(out)?;
         }
         Ok(())
     }
@@ -793,6 +872,7 @@ pub struct UpdateQuery<'a> {
     entity: Entity,
     overwrite: bool,
     guard: Option<EntityFilter>,
+    block: BlockNumber,
 }
 
 impl<'a> QueryFragment<Pg> for UpdateQuery<'a> {
@@ -831,12 +911,10 @@ impl<'a> QueryFragment<Pg> for UpdateQuery<'a> {
             .enumerate()
         {
             if let Some(value) = self.entity.get(&column.field) {
-                if i > 0 {
-                    out.push_sql(",\n   ");
-                }
                 out.push_identifier(column.name.as_str())?;
                 out.push_sql(" = ");
                 QueryValue(value, column.column_type).walk_ast(out.reborrow())?;
+                out.push_sql(",\n   ");
             } else if self.overwrite {
                 if !column.is_nullable() {
                     return Err(query_builder_error(format!(
@@ -856,6 +934,7 @@ impl<'a> QueryFragment<Pg> for UpdateQuery<'a> {
         out.push_identifier(crate::mapping::PRIMARY_KEY_COLUMN)?;
         out.push_sql(" = ");
         out.push_bind_param::<Text, _>(&self.key.entity_id)?;
+        out.push_sql(" and ");
         if let Some(guard) = &self.guard {
             out.push_sql(" and ");
             QueryFilter::new(guard, &self.table).walk_ast(out.reborrow())?;
@@ -872,31 +951,53 @@ impl<'a> QueryId for UpdateQuery<'a> {
 
 impl<'a, Conn> RunQueryDsl<Conn> for UpdateQuery<'a> {}
 
+/// Reduce the upper bound of the current entry's block range to `block` as
+/// long as that does not result in an empty block range
 #[derive(Debug, Clone, Constructor)]
-pub struct DeleteQuery<'a> {
+pub struct ClampRangeQuery<'a> {
     schema: &'a str,
     table: &'a Table,
     key: &'a EntityKey,
+    guard: Option<EntityFilter>,
+    block: BlockNumber,
 }
 
-impl<'a> QueryFragment<Pg> for DeleteQuery<'a> {
+impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        // update table
+        //    set block_range = int4range(lower(block_range), $block)
+        //  where id = $id
+        //    and upper_inf(block_range)
         out.unsafe_to_cache_prepared();
-        out.push_sql("delete from ");
+        out.push_sql("update ");
         out.push_identifier(self.schema)?;
         out.push_sql(".");
         out.push_identifier(self.table.name.as_str())?;
-        out.push_sql("\n where ");
+        out.push_sql("\n   set ");
+        out.push_identifier(BLOCK_RANGE)?;
+        out.push_sql(" = int4range(lower(");
+        out.push_identifier(BLOCK_RANGE)?;
+        out.push_sql("), ");
+        out.push_bind_param::<Integer, _>(&self.block)?;
+        out.push_sql(")\n where ");
         out.push_identifier(PRIMARY_KEY_COLUMN)?;
         out.push_sql(" = ");
-        out.push_bind_param::<Text,_>(&self.key.entity_id)
+        out.push_bind_param::<Text, _>(&self.key.entity_id)?;
+        out.push_sql(" and upper_inf(");
+        out.push_identifier(BLOCK_RANGE)?;
+        out.push_sql(")");
+        if let Some(guard) = &self.guard {
+            out.push_sql(" and ");
+            QueryFilter::new(guard, &self.table).walk_ast(out)?;
+        }
+        Ok(())
     }
 }
 
-impl<'a> QueryId for DeleteQuery<'a> {
+impl<'a> QueryId for ClampRangeQuery<'a> {
     type QueryId = ();
 
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a, Conn> RunQueryDsl<Conn> for DeleteQuery<'a> {}
+impl<'a, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a> {}

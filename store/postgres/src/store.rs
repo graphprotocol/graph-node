@@ -20,6 +20,7 @@ use graph_graphql::prelude::api_schema;
 use tokio::timer::Interval;
 use web3::types::H256;
 
+use crate::block_range::{BlockNumber, BlockNumberConsts};
 use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::entities as e;
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
@@ -345,14 +346,19 @@ impl Store {
         op_entity: &String,
         op_id: &String,
     ) -> Result<Option<Entity>, QueryExecutionError> {
-        conn.find(op_subgraph, op_entity, op_id).map_err(|e| {
-            QueryExecutionError::ResolveEntityError(
-                op_subgraph.clone(),
-                op_entity.clone(),
-                op_id.clone(),
-                format!("Invalid entity {}", e),
-            )
-        })
+        // We should really have callers pass in a block number; but until
+        // that is fully plumbed in, we just use the biggest possible block
+        // number so that we will always return the latest version,
+        // i.e., the one with an infinite upper bound
+        conn.find(op_subgraph, op_entity, op_id, BlockNumber::LAST)
+            .map_err(|e| {
+                QueryExecutionError::ResolveEntityError(
+                    op_subgraph.clone(),
+                    op_entity.clone(),
+                    op_id.clone(),
+                    format!("Invalid entity {}", e),
+                )
+            })
     }
 
     fn execute_query(
@@ -396,6 +402,7 @@ impl Store {
             order,
             query.range.first,
             query.range.skip,
+            BlockNumber::LAST,
         )
     }
 
