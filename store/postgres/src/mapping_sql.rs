@@ -871,3 +871,32 @@ impl<'a> QueryId for UpdateQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for UpdateQuery<'a> {}
+
+#[derive(Debug, Clone, Constructor)]
+pub struct DeleteQuery<'a> {
+    schema: &'a str,
+    table: &'a Table,
+    key: &'a EntityKey,
+}
+
+impl<'a> QueryFragment<Pg> for DeleteQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+        out.push_sql("delete from ");
+        out.push_identifier(self.schema)?;
+        out.push_sql(".");
+        out.push_identifier(self.table.name.as_str())?;
+        out.push_sql("\n where ");
+        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+        out.push_sql(" = ");
+        out.push_bind_param::<Text,_>(&self.key.entity_id)
+    }
+}
+
+impl<'a> QueryId for DeleteQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for DeleteQuery<'a> {}

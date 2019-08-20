@@ -1,5 +1,4 @@
 use diesel::connection::SimpleConnection;
-use diesel::sql_types::Text;
 use diesel::{debug_query, PgConnection, RunQueryDsl};
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
@@ -11,7 +10,7 @@ use std::rc::Rc;
 use std::str::FromStr;
 
 use crate::mapping_sql::{
-    ConflictingEntityQuery, EntityData, FilterQuery, FindQuery, InsertQuery, UpdateQuery,
+    DeleteQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindQuery, InsertQuery, UpdateQuery,
 };
 use graph::prelude::{
     format_err, Entity, EntityFilter, EntityKey, QueryExecutionError, StoreError, ValueType,
@@ -394,12 +393,7 @@ impl Mapping {
 
     pub fn delete(&self, conn: &PgConnection, key: &EntityKey) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        let query = format!(
-            "delete from \"{}\".\"{}\"
-                      where id = $1",
-            self.schema, table.name
-        );
-        let query = diesel::sql_query(query).bind::<Text, _>(&key.entity_id);
+        let query = DeleteQuery::new(&self.schema, table, key);
         Ok(query.execute(conn)?)
     }
 }
