@@ -46,6 +46,7 @@ use graph::prelude::{
     TransactionAbortError, ValueType,
 };
 
+use crate::block_range::{block_number, BlockNumber};
 use crate::filter::build_filter;
 use crate::functions::set_config;
 use crate::jsonb::PgJsonbExpressionMethods as _;
@@ -357,10 +358,11 @@ impl<'a> Connection<'a> {
         subgraph: &SubgraphDeploymentId,
         entity: &String,
         id: &String,
+        block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
         match self.storage(subgraph)? {
             Storage::Json(json) => json.find(&self.conn, entity, id),
-            Storage::Relational(mapping) => mapping.find(&self.conn, entity, id),
+            Storage::Relational(mapping) => mapping.find(&self.conn, entity, id, block),
         }
     }
 
@@ -372,11 +374,12 @@ impl<'a> Connection<'a> {
         order: Option<(String, ValueType, &str, &str)>,
         first: Option<u32>,
         skip: u32,
+        block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         match self.storage(subgraph)? {
             Storage::Json(json) => json.query(&self.conn, entity_types, filter, order, first, skip),
             Storage::Relational(mapping) => {
-                mapping.query(&self.conn, entity_types, filter, order, first, skip)
+                mapping.query(&self.conn, entity_types, filter, order, first, skip, block)
             }
         }
     }
@@ -403,7 +406,9 @@ impl<'a> Connection<'a> {
     ) -> Result<usize, StoreError> {
         match self.storage(&key.subgraph_id)? {
             Storage::Json(json) => json.insert(&self.conn, &key, &entity, history_event),
-            Storage::Relational(mapping) => mapping.insert(&self.conn, key, entity),
+            Storage::Relational(mapping) => {
+                mapping.insert(&self.conn, key, entity, block_number(&history_event))
+            }
         }
     }
 
@@ -423,9 +428,14 @@ impl<'a> Connection<'a> {
             Storage::Json(json) => {
                 json.update(&self.conn, key, entity, overwrite, guard, history_event)
             }
-            Storage::Relational(mapping) => {
-                mapping.update(&self.conn, key, entity, overwrite, guard)
-            }
+            Storage::Relational(mapping) => mapping.update(
+                &self.conn,
+                key,
+                entity,
+                overwrite,
+                guard,
+                block_number(&history_event),
+            ),
         }
     }
 
@@ -436,7 +446,9 @@ impl<'a> Connection<'a> {
     ) -> Result<usize, StoreError> {
         match self.storage(&key.subgraph_id)? {
             Storage::Json(json) => json.delete(&self.conn, key, history_event),
-            Storage::Relational(mapping) => mapping.delete(&self.conn, key),
+            Storage::Relational(mapping) => {
+                mapping.delete(&self.conn, key, block_number(&history_event))
+            }
         }
     }
 

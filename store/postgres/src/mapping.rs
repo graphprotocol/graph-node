@@ -10,12 +10,15 @@ use std::rc::Rc;
 use std::str::FromStr;
 
 use crate::mapping_sql::{
-    DeleteQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindQuery, InsertQuery, UpdateQuery,
+    ClampRangeQuery, ConflictingEntityQuery, CopyQuery, EntityData, FilterQuery, FindQuery,
+    InsertQuery,
 };
 use graph::prelude::{
-    format_err, Entity, EntityFilter, EntityKey, QueryExecutionError, StoreError, SubgraphDeploymentId, ValueType,
+    format_err, Entity, EntityFilter, EntityKey, QueryExecutionError, StoreError,
+    SubgraphDeploymentId, ValueType,
 };
 
+use crate::block_range::BlockNumber;
 use crate::entities::STRING_PREFIX_SIZE;
 
 trait AsDdl {
@@ -307,8 +310,9 @@ impl Mapping {
         conn: &PgConnection,
         entity: &str,
         id: &str,
+        block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
-        let mut values = FindQuery::new(self, entity, id).load::<EntityData>(conn)?;
+        let mut values = FindQuery::new(self, entity, id, block).load::<EntityData>(conn)?;
         values
             .pop()
             .map(|entity_data| entity_data.to_entity(self))
@@ -320,9 +324,10 @@ impl Mapping {
         conn: &PgConnection,
         key: &EntityKey,
         entity: Entity,
+        block: BlockNumber,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        let query = InsertQuery::new(&self.schema, table, key, entity);
+        let query = InsertQuery::new(&self.schema, table, key, entity, block);
         Ok(query.execute(conn)?)
     }
 
@@ -347,6 +352,7 @@ impl Mapping {
         order: Option<(String, ValueType, &str, &str)>,
         first: Option<u32>,
         skip: u32,
+        block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let tables = entity_types
             .into_iter()
@@ -359,7 +365,7 @@ impl Mapping {
             Some(skip.to_string())
         };
 
-        let query = FilterQuery::new(&self.schema, tables, filter, order, first, skip);
+        let query = FilterQuery::new(&self.schema, tables, filter, order, first, skip, block);
         let query_debug_info = query.clone();
 
         let values = query.load::<EntityData>(conn).map_err(|e| {
@@ -383,16 +389,28 @@ impl Mapping {
         entity: Entity,
         overwrite: bool,
         guard: Option<EntityFilter>,
+        block: BlockNumber,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        let query = UpdateQuery::new(&self.schema, table, key, entity, overwrite, guard);
-        Ok(query.execute(conn)?)
+        let count = ClampRangeQuery::new(&self.schema, table, key, guard, block).execute(conn)?;
+        if count > 0 {
+            if overwrite {
+                InsertQuery::new(&self.schema, table, key, entity, block).execute(conn)?;
+            } else {
+                CopyQuery::new(&self.schema, table, key, entity, block).execute(conn)?;
+            }
+        }
+        Ok(count)
     }
 
-    pub fn delete(&self, conn: &PgConnection, key: &EntityKey) -> Result<usize, StoreError> {
+    pub fn delete(
+        &self,
+        conn: &PgConnection,
+        key: &EntityKey,
+        block: BlockNumber,
+    ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        let query = DeleteQuery::new(&self.schema, table, key);
-        Ok(query.execute(conn)?)
+        Ok(ClampRangeQuery::new(&self.schema, table, key, None, block).execute(conn)?)
     }
 }
 
@@ -654,34 +672,6 @@ impl Table {
 
     pub fn object_name(gql_type_name: &str) -> String {
         gql_type_name.to_snake_case()
-    }
-
-    pub fn insert(
-        &self,
-        conn: &PgConnection,
-        key: &EntityKey,
-        entity: Entity,
-        schema_name: &str,
-    ) -> Result<usize, StoreError> {
-        let mut columns = Vec::new();
-        let mut values = Vec::new();
-        for column in &self.columns {
-            if let Some(value) = entity.get(&column.field) {
-                columns.push(&column.name);
-                values.push(value);
-            } else {
-                if !column.is_nullable() {
-                    return Err(StoreError::Unknown(format_err!(
-                        "can not insert entity {}[{}] since value for {} is missing",
-                        key.entity_type,
-                        key.entity_id,
-                        column.field
-                    )));
-                }
-            }
-        }
-        let query = InsertQuery::new(schema_name, self, key, entity);
-        Ok(query.execute(conn)?)
     }
 }
 
