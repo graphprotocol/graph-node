@@ -229,7 +229,7 @@ fn insert_test_data(conn: &PgConnection) -> Mapping {
     let mapping = Mapping::create_relational_schema(
         &conn,
         SCHEMA_NAME,
-        &*THINGS_SUBGRAPH_ID,
+        THINGS_SUBGRAPH_ID.clone(),
         &schema.document,
     )
     .expect("Failed to create relational schema");

@@ -13,7 +13,7 @@ use crate::mapping_sql::{
     DeleteQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindQuery, InsertQuery, UpdateQuery,
 };
 use graph::prelude::{
-    format_err, Entity, EntityFilter, EntityKey, QueryExecutionError, StoreError, ValueType,
+    format_err, Entity, EntityFilter, EntityKey, QueryExecutionError, StoreError, SubgraphDeploymentId, ValueType,
 };
 
 use crate::entities::STRING_PREFIX_SIZE;
@@ -77,7 +77,7 @@ pub struct Mapping {
     /// A fake table that mirrors the Query type for the schema
     root_table: Table,
     /// The subgraph id
-    pub subgraph: String,
+    pub subgraph: SubgraphDeploymentId,
     /// The database schema for this subgraph
     pub schema: String,
     /// Map the entity names of interfaces to the list of
@@ -94,20 +94,18 @@ impl Mapping {
     /// SQL type `id_type`. The subgraph ID is passed in `subgraph`, and
     /// the name of the database schema in which the subgraph's tables live
     /// is in `schema`.
-    pub fn new<U, V>(
+    pub fn new<V>(
         document: &s::Document,
         id_type: IdType,
-        subgraph: U,
+        subgraph: SubgraphDeploymentId,
         schema: V,
     ) -> Result<Mapping, StoreError>
     where
-        U: Into<String>,
         V: Into<String>,
     {
         use s::Definition::*;
         use s::TypeDefinition::*;
 
-        let subgraph = subgraph.into();
         let schema = schema.into();
 
         // Check that we can handle all the definitions
@@ -227,7 +225,7 @@ impl Mapping {
     pub fn create_relational_schema(
         conn: &PgConnection,
         schema_name: &str,
-        subgraph: &str,
+        subgraph: SubgraphDeploymentId,
         document: &s::Document,
     ) -> Result<Mapping, StoreError> {
         let mapping =
@@ -816,9 +814,8 @@ mod tests {
 
     fn test_mapping(gql: &str) -> Mapping {
         let schema = parse_schema(gql).expect("Test schema invalid");
-
-        Mapping::new(&schema, IdType::String, "subgraph", "rel")
-            .expect("Failed to construct Mapping")
+        let subgraph = SubgraphDeploymentId::new("subgraph").unwrap();
+        Mapping::new(&schema, IdType::String, subgraph, "rel").expect("Failed to construct Mapping")
     }
 
     #[test]
