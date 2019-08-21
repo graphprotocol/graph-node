@@ -1279,7 +1279,7 @@ impl Storage {
                 let mapping = Mapping::new(
                     &subgraph_schema.document,
                     IdType::String,
-                    subgraph.to_string(),
+                    subgraph.clone(),
                     schema.name,
                 )?;
                 Storage::Relational(mapping)
@@ -1417,7 +1417,7 @@ pub(crate) fn create_schema(
         Some(_) => Mapping::create_relational_schema(
             conn,
             &schema_name,
-            schema.id.as_str(),
+            schema.id.clone(),
             &schema.document,
         )
         .map(|_| ()),
