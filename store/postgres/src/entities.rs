@@ -34,6 +34,7 @@ use inflector::cases::snakecase::to_snake_case;
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::hash::{Hash, Hasher};
 use std::time::Instant;
 
@@ -465,12 +466,15 @@ impl<'a> Connection<'a> {
     pub(crate) fn revert_block(
         &self,
         subgraph: &SubgraphDeploymentId,
-        block_ptr: String,
+        block_ptr: &EthereumBlockPointer,
     ) -> Result<(StoreEvent, i32), StoreError> {
         // Revert the block in the subgraph itself
         let (event, count) = match self.storage(subgraph)? {
-            Storage::Json(json) => json.revert_block(&self.conn, block_ptr.clone())?,
-            Storage::Relational(_) => unimplemented!(),
+            Storage::Json(json) => json.revert_block(&self.conn, block_ptr.hash_hex())?,
+            Storage::Relational(mapping) => {
+                let block = block_ptr.number.try_into().unwrap();
+                mapping.revert_block(&self.conn, block)?
+            }
         };
         // Revert the meta data changes that correspond to this subgraph.
         // Only certain meta data changes need to be reverted, most
@@ -479,10 +483,13 @@ impl<'a> Connection<'a> {
         // changes that might need to be reverted
         match self.storage(&SUBGRAPHS_ID)? {
             Storage::Json(json) => {
-                let (meta_event, _) = json.revert_block_meta(&self.conn, subgraph, block_ptr)?;
+                let (meta_event, _) =
+                    json.revert_block_meta(&self.conn, subgraph, block_ptr.hash_hex())?;
                 Ok((event.extend(meta_event), count))
             }
-            Storage::Relational(_) => unimplemented!(),
+            Storage::Relational(_) => unreachable!(
+                "Storing the subgraph of subgraphs in a relational schema is not supported"
+            ),
         }
     }
 

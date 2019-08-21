@@ -4,18 +4,18 @@ use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
 use std::cmp::PartialOrd;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
 use std::str::FromStr;
 
 use crate::mapping_sql::{
     ClampRangeQuery, ConflictingEntityQuery, CopyQuery, EntityData, FilterQuery, FindQuery,
-    InsertQuery,
+    InsertQuery, RevertClampQuery, RevertRemoveQuery,
 };
 use graph::prelude::{
-    format_err, Entity, EntityFilter, EntityKey, QueryExecutionError, StoreError,
-    SubgraphDeploymentId, ValueType,
+    format_err, Entity, EntityChange, EntityChangeOperation, EntityFilter, EntityKey,
+    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, ValueType,
 };
 
 use crate::block_range::BlockNumber;
@@ -411,6 +411,61 @@ impl Mapping {
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
         Ok(ClampRangeQuery::new(&self.schema, table, key, None, block).execute(conn)?)
+    }
+
+    pub fn revert_block(
+        &self,
+        conn: &PgConnection,
+        block: BlockNumber,
+    ) -> Result<(StoreEvent, i32), StoreError> {
+        let mut changes: Vec<EntityChange> = Vec::new();
+        let mut count: i32 = 0;
+
+        for table in self.tables.values() {
+            // Remove all versions whose entire block range lies beyond
+            // `block`
+            let removed = RevertRemoveQuery::new(&self.schema, table, block)
+                .get_results(conn)?
+                .into_iter()
+                .map(|data| data.id)
+                .collect::<HashSet<_>>();
+            // Make the versions current that existed at `block - 1` but that
+            // are not current yet. Those are the ones that were updated or
+            // deleted at `block`
+            let unclamped = RevertClampQuery::new(&self.schema, table, block - 1)
+                .get_results(conn)?
+                .into_iter()
+                .map(|data| data.id)
+                .collect::<HashSet<_>>();
+            // Adjust the entity count; we can tell which operation was
+            // initially performed by
+            //   id in (unset - unclamped)  => insert (we now deleted)
+            //   id in (unset && unclamped) => update (we reversed the update)
+            //   id in (unclamped - unset)  => delete (we now inserted)
+            let deleted = removed.difference(&unclamped).count() as i32;
+            let inserted = unclamped.difference(&removed).count() as i32;
+            count += inserted - deleted;
+            // EntityChange for versions we just deleted
+            let deleted = removed
+                .into_iter()
+                .filter(|id| !unclamped.contains(id))
+                .map(|id| EntityChange {
+                    subgraph_id: self.subgraph.clone(),
+                    entity_type: table.object.clone(),
+                    entity_id: id,
+                    operation: EntityChangeOperation::Removed,
+                });
+            changes.extend(deleted);
+            // EntityChange for versions that we just updated or inserted
+            let set = unclamped.into_iter().map(|id| EntityChange {
+                subgraph_id: self.subgraph.clone(),
+                entity_type: table.object.clone(),
+                entity_id: id,
+                operation: EntityChangeOperation::Set,
+            });
+            changes.extend(set);
+        }
+        Ok((StoreEvent::new(changes), count))
     }
 }
 
