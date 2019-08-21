@@ -998,7 +998,7 @@ impl StoreTrait for Store {
             );
             self.apply_entity_operations_with_conn(&econn, ops, None)?;
 
-            let (event, count) = econn.revert_block(&subgraph_id, block_ptr_from.hash_hex())?;
+            let (event, count) = econn.revert_block(&subgraph_id, &block_ptr_from)?;
             econn.update_entity_count(&Some(subgraph_id), count)?;
 
             let v = serde_json::to_value(event)?;

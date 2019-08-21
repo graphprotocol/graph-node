@@ -1001,3 +1001,107 @@ impl<'a> QueryId for ClampRangeQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a> {}
+
+/// Helper struct for returning the id's touched by the RevertRemove and
+/// RevertExtend queries
+#[derive(QueryableByName, PartialEq, Eq, Hash)]
+pub struct RevertEntityData {
+    #[sql_type = "Text"]
+    pub id: String,
+}
+
+/// A query that removes all versions whose block range lies entirely
+/// beyond `block`
+#[derive(Debug, Clone, Constructor)]
+pub struct RevertRemoveQuery<'a> {
+    schema: &'a str,
+    table: &'a Table,
+    block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        // Construct a query
+        //   delete from table
+        //   where lower(block_range) >= $block
+        //   returning id
+        out.push_sql("delete from ");
+        out.push_identifier(&self.schema)?;
+        out.push_sql(".");
+        out.push_identifier(self.table.name.as_str())?;
+        out.push_sql("\n where lower(");
+        out.push_identifier(BLOCK_RANGE)?;
+        out.push_sql(") >= ");
+        out.push_bind_param::<Integer, _>(&self.block)?;
+        out.push_sql("\nreturning ");
+        out.push_identifier(PRIMARY_KEY_COLUMN)
+    }
+}
+
+impl<'a> QueryId for RevertRemoveQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, RevertEntityData> for RevertRemoveQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<RevertEntityData>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for RevertRemoveQuery<'a> {}
+
+/// A query that unclamps the block range of all versions that contain
+/// `block` by setting the upper bound of the block range to infinity
+#[derive(Debug, Clone, Constructor)]
+pub struct RevertClampQuery<'a> {
+    schema: &'a str,
+    table: &'a Table,
+    block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        // Construct a query
+        //   update table
+        //     set block_range = int4range(lower(block_range), null)
+        //   where block_range @> $block
+        //     and not upper_inf(block_range)
+        //   returning id
+        out.push_sql("update ");
+        out.push_identifier(&self.schema)?;
+        out.push_sql(".");
+        out.push_identifier(self.table.name.as_str())?;
+        out.push_sql("\n   set ");
+        out.push_identifier(BLOCK_RANGE)?;
+        out.push_sql(" = int4range(lower(");
+        out.push_identifier(BLOCK_RANGE)?;
+        out.push_sql("), null)\n where");
+        out.push_identifier(BLOCK_RANGE)?;
+        out.push_sql(" @> ");
+        out.push_bind_param::<Integer, _>(&self.block)?;
+        out.push_sql(" and not upper_inf(");
+        out.push_identifier(BLOCK_RANGE)?;
+        out.push_sql(")\nreturning ");
+        out.push_identifier(PRIMARY_KEY_COLUMN)
+    }
+}
+
+impl<'a> QueryId for RevertClampQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, RevertEntityData> for RevertClampQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<RevertEntityData>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for RevertClampQuery<'a> {}
