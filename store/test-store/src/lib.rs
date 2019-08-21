@@ -55,4 +55,23 @@ lazy_static! {
         H256::from(hex!("bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f")),
         0u64
     ).into();
+
+    pub static ref BLOCK_ONE: EthereumBlockPointer = (
+        H256::from(hex!(
+            "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13"
+        )),
+        1u64
+    ).into();
+}
+
+pub fn make_history_event(
+    block_ptr: &EthereumBlockPointer,
+    subgraph: &SubgraphDeploymentId,
+) -> HistoryEvent {
+    let source = EventSource::EthereumBlock(block_ptr.to_owned());
+    HistoryEvent {
+        id: 0,
+        subgraph: subgraph.clone(),
+        source,
+    }
 }
