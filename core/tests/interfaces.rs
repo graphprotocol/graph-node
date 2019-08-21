@@ -50,7 +50,8 @@ fn insert_and_query(
             data,
         });
 
-    STORE.apply_entity_operations(insert_ops.collect(), None)?;
+    let history_event = make_history_event(&*BLOCK_ONE, &subgraph_id);
+    STORE.apply_entity_operations(insert_ops.collect(), Some(history_event))?;
 
     let resolver = StoreResolver::new(&logger, STORE.clone());
 

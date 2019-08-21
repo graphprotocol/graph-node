@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use graph::prelude::*;
 use graph_graphql::prelude::*;
-use test_store::STORE;
+use test_store::{make_history_event, BLOCK_ONE, STORE};
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId = {
@@ -187,8 +187,9 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         data,
     });
 
+    let history_event = make_history_event(&*BLOCK_ONE, &id);
     store
-        .apply_entity_operations(insert_ops.collect(), None)
+        .apply_entity_operations(insert_ops.collect(), Some(history_event))
         .unwrap();
 }
 
