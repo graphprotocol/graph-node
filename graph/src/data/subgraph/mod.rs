@@ -904,7 +904,12 @@ impl UnresolvedSubgraphManifest {
         } = self;
 
         match semver::Version::parse(&spec_version) {
-            Ok(ref ver) if *ver <= semver::Version::new(0, 0, 2) => {}
+            // Before this check was introduced, there were already subgraphs in
+            // the wild with spec version 0.0.3, due to confusion with the api
+            // version. To avoid breaking those, we accept 0.0.3 though it
+            // doesn't exist. In the future we should not use 0.0.3 as version
+            // and skip to 0.0.4 to avoid ambiguity.
+            Ok(ref ver) if *ver <= semver::Version::new(0, 0, 3) => {}
             _ => {
                 return Box::new(future::err(format_err!(
                     "This Graph Node only supports manifest spec versions <= 0.0.2,
