@@ -104,7 +104,6 @@ where
                         }
                         traces
                     })
-                    .from_err::<EthereumContractCallError>()
                     .from_err()
                     .then(move |result| {
                         if result.is_err() {
@@ -377,10 +376,7 @@ where
                             value: None,
                             data: Some(call_data.clone()),
                         };
-                        web3.eth()
-                            .call(req, block_number_opt)
-                            .from_err::<EthereumContractCallError>()
-                            .from_err()
+                        web3.eth().call(req, block_number_opt).from_err()
                     })
                     .map_err(|e| {
                         e.into_inner().unwrap_or_else(|| {
@@ -408,12 +404,7 @@ where
         let net_version_future = retry("net_version RPC call", &logger)
             .no_limit()
             .timeout_secs(20)
-            .run(move || {
-                web3.net()
-                    .version()
-                    .from_err::<EthereumContractCallError>()
-                    .from_err()
-            });
+            .run(move || web3.net().version().from_err());
 
         let web3 = self.web3.clone();
         let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
@@ -426,7 +417,6 @@ where
                     } else {
                         BlockNumber::Earliest.into()
                     })
-                    .from_err::<EthereumContractCallError>()
                     .from_err()
                     .and_then(|gen_block_opt| {
                         future::result(
@@ -500,7 +490,6 @@ where
                 .run(move || {
                     web3.eth()
                         .block_with_txs(BlockId::Hash(block_hash))
-                        .from_err::<EthereumContractCallError>()
                         .from_err()
                 })
                 .map_err(move |e| {
@@ -552,7 +541,6 @@ where
                             batching_web3
                                 .eth()
                                 .transaction_receipt(tx_hash)
-                                .from_err::<EthereumContractCallError>()
                                 .from_err()
                                 .map_err(EthereumAdapterError::Unknown)
                                 .and_then(move |receipt_opt| {
@@ -609,7 +597,6 @@ where
                     batching_web3
                         .transport()
                         .submit_batch()
-                        .from_err::<EthereumContractCallError>()
                         .from_err()
                         .map_err(EthereumAdapterError::Unknown)
                         .and_then(move |_| {
@@ -647,7 +634,6 @@ where
                 .run(move || {
                     web3.eth()
                         .block(BlockId::Hash(descendant_block_hash))
-                        .from_err::<EthereumContractCallError>()
                         .from_err()
                         .map(|block_opt| block_opt.map(|block| block.parent_hash))
                 })
@@ -676,7 +662,6 @@ where
                 .run(move || {
                     web3.eth()
                         .block(BlockId::Number(block_number.into()))
-                        .from_err::<EthereumContractCallError>()
                         .from_err()
                         .map(|block_opt| block_opt.map(|block| block.hash.unwrap()))
                 })
@@ -956,7 +941,7 @@ where
                 Bytes(call_data),
                 Some(call.block_ptr.number.into()),
             )
-            .map_err(EthereumContractCallError::from)
+            .map_err(EthereumContractCallError::Error)
             .and_then(move |output| {
                 // Decode the return values according to the ABI
                 call.function
