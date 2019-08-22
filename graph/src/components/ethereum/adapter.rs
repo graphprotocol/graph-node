@@ -5,7 +5,6 @@ use slog::Logger;
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use tiny_keccak::keccak256;
-use web3::error::Error as Web3Error;
 use web3::types::*;
 
 use super::types::*;
@@ -45,8 +44,6 @@ pub struct EthereumContractCall {
 
 #[derive(Fail, Debug)]
 pub enum EthereumContractCallError {
-    #[fail(display = "call error: {}", _0)]
-    CallError(Error),
     #[fail(display = "ABI error: {}", _0)]
     ABIError(SyncFailure<ABIError>),
     /// `Token` is not of expected `ParamType`
@@ -56,21 +53,9 @@ pub enum EthereumContractCallError {
     Error(Error),
 }
 
-impl From<Web3Error> for EthereumContractCallError {
-    fn from(e: Web3Error) -> Self {
-        EthereumContractCallError::CallError(failure::err_msg(e.to_string()))
-    }
-}
-
 impl From<ABIError> for EthereumContractCallError {
     fn from(e: ABIError) -> Self {
         EthereumContractCallError::ABIError(SyncFailure::new(e))
-    }
-}
-
-impl From<Error> for EthereumContractCallError {
-    fn from(e: Error) -> Self {
-        EthereumContractCallError::Error(e)
     }
 }
 
