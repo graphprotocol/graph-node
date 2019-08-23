@@ -323,7 +323,7 @@ impl Mapping {
         &self,
         conn: &PgConnection,
         key: &EntityKey,
-        entity: Entity,
+        entity: &Entity,
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
@@ -386,7 +386,7 @@ impl Mapping {
         &self,
         conn: &PgConnection,
         key: &EntityKey,
-        entity: Entity,
+        entity: &Entity,
         overwrite: bool,
         guard: Option<EntityFilter>,
         block: BlockNumber,

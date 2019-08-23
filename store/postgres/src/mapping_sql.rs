@@ -572,7 +572,7 @@ pub struct InsertQuery<'a> {
     schema_name: &'a str,
     table: &'a Table,
     key: &'a EntityKey,
-    entity: Entity,
+    entity: &'a Entity,
     block: BlockNumber,
 }
 
@@ -649,7 +649,7 @@ pub struct CopyQuery<'a> {
     schema_name: &'a str,
     table: &'a Table,
     key: &'a EntityKey,
-    entity: Entity,
+    entity: &'a Entity,
     block: BlockNumber,
 }
 

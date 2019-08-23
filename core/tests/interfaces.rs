@@ -212,11 +212,18 @@ fn conflicting_implementors_id() {
     let query = "query { leggeds(first: 100) { legs } }";
 
     let res = insert_and_query(subgraph_id, schema, vec![animal, furniture], query);
-    assert_eq!(
-        res.unwrap_err().to_string(),
+
+    let msg = res.unwrap_err().to_string();
+    // We don't know in which order the two entities get inserted; the two
+    // error messages only differ in who gets inserted first
+    const EXPECTED1: &str =
         "tried to set entity of type `Furniture` with ID \"1\" but an entity of type `Animal`, \
-         which has an interface in common with `Furniture`, exists with the same ID"
-    );
+         which has an interface in common with `Furniture`, exists with the same ID";
+    const EXPECTED2: &str =
+        "tried to set entity of type `Animal` with ID \"1\" but an entity of type `Furniture`, \
+         which has an interface in common with `Animal`, exists with the same ID";
+
+    assert!(msg == EXPECTED1 || msg == EXPECTED2);
 }
 
 #[test]

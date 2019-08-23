@@ -128,7 +128,7 @@ fn insert_entity(conn: &PgConnection, mapping: &Mapping, entity_type: &str, enti
         entity_id: entity.id().unwrap(),
     };
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
-    mapping.insert(&conn, &key, entity, 0).expect(&errmsg);
+    mapping.insert(&conn, &key, &entity, 0).expect(&errmsg);
 }
 
 fn insert_user_entity(
@@ -355,7 +355,7 @@ fn update_overwrite() {
             entity_id: entity.id().unwrap().clone(),
         };
         let count = mapping
-            .update(&conn, &key, entity.clone(), true, None, 1)
+            .update(&conn, &key, &entity, true, None, 1)
             .expect("Failed to update");
         assert_eq!(1, count);
 
@@ -387,7 +387,7 @@ fn update_no_overwrite() {
             entity_id: entity.id().unwrap().clone(),
         };
         let count = mapping
-            .update(&conn, &key, entity.clone(), false, None, 1)
+            .update(&conn, &key, &entity, false, None, 1)
             .expect("Failed to update");
         assert_eq!(1, count);
 
@@ -418,7 +418,7 @@ fn update_guard_no_match() {
         };
         let guard = EntityFilter::Equal("string".into(), "does not match".into());
         let count = mapping
-            .update(&conn, &key, entity.clone(), false, Some(guard), 1)
+            .update(&conn, &key, &entity, false, Some(guard), 1)
             .expect("Failed to update");
         assert_eq!(0, count);
 
@@ -448,7 +448,7 @@ fn update_guard_matches() {
         };
         let guard = EntityFilter::Equal("string".into(), string.into());
         let count = mapping
-            .update(&conn, &key, entity.clone(), false, Some(guard), 1)
+            .update(&conn, &key, &entity, false, Some(guard), 1)
             .expect("Failed to update");
         assert_eq!(1, count);
 
