@@ -471,7 +471,7 @@ impl Store {
         let result = match entity {
             Some(mut entity) => {
                 entity.merge(data);
-                conn.update(&key, entity, true, None, history_event)
+                conn.update(&key, &entity, true, None, history_event)
                     .map(|_| 0)
             }
             None => {
@@ -479,7 +479,7 @@ impl Store {
                 // were set to Value::Null
                 let mut entity = Entity::new();
                 entity.merge(data);
-                conn.insert(&key, entity, history_event).map(|_| 1)
+                conn.insert(&key, &entity, history_event).map(|_| 1)
             }
         };
 
@@ -506,7 +506,7 @@ impl Store {
         self.check_interface_entity_uniqueness(conn, &key)?;
 
         // Update the entity in Postgres
-        match conn.update(&key, data, false, guard, None)? {
+        match conn.update(&key, &data, false, guard, None)? {
             0 => Err(TransactionAbortError::AbortUnless {
                 expected_entity_ids: vec![key.entity_id.clone()],
                 actual_entity_ids: vec![],
@@ -610,20 +610,48 @@ impl Store {
         }
     }
 
-    fn apply_entity_operation(
+    fn apply_entity_cache(
         &self,
         conn: &e::Connection,
-        operation: EntityOperation,
-        history_event: &HistoryEvent,
+        entity_cache: EntityCache,
+        history_event: Option<&HistoryEvent>,
     ) -> Result<i32, StoreError> {
-        match operation {
-            EntityOperation::Set { key, data } => {
-                self.apply_set_operation(conn, key, data, Some(history_event))
-            }
-            EntityOperation::Remove { key } => {
-                self.apply_remove_operation(conn, key, Some(history_event))
+        let mut count = 0;
+
+        for modification in entity_cache.as_modifications(self)? {
+            use EntityModification::*;
+
+            let do_count = !modification.entity_key().subgraph_id.is_meta();
+            let n = match modification {
+                Overwrite { key, data } => {
+                    self.check_interface_entity_uniqueness(conn, &key)?;
+                    conn.update(&key, &data, true, None, history_event)
+                        .map(|_| 0)
+                }
+                Insert { key, data } => {
+                    self.check_interface_entity_uniqueness(conn, &key)?;
+                    conn.insert(&key, &data, history_event).map(|_| 1)
+                }
+                Remove { key } => conn
+                    .delete(&key, history_event)
+                    // This conversion is ok since n will only be 0 or 1
+                    .map(|n| -(n as i32))
+                    .map_err(|e| {
+                        format_err!(
+                            "Failed to remove entity ({}, {}, {}): {}",
+                            key.subgraph_id,
+                            key.entity_type,
+                            key.entity_id,
+                            e
+                        )
+                        .into()
+                    }),
+            }?;
+            if do_count {
+                count += n;
             }
         }
+        Ok(count)
     }
 
     /// Apply a series of entity operations in Postgres. Return `true` if
@@ -636,28 +664,15 @@ impl Store {
         operations: Vec<EntityOperation>,
         history_event: &HistoryEvent,
     ) -> Result<bool, StoreError> {
-        // Keep a count of how many entities have been added/removed. This
-        // crucially depends on the fact that all operations are about one
-        // subgraph, with the possible exception that some might touch
-        // the subgraph of subgraphs
-        let mut count = 0;
-
         // Emit a store event for the changes we are about to make
         let event: StoreEvent = operations.clone().into();
         let v = serde_json::to_value(event)?;
         JsonNotification::send("store_events", &v, &econn.conn)?;
 
-        // Actually apply the operations
-        for operation in operations.into_iter() {
-            let do_count = operation
-                .subgraph()
-                .map(|subgraph| !subgraph.is_meta())
-                .unwrap_or(false);
-            let n = self.apply_entity_operation(econn, operation, history_event)?;
-            if do_count {
-                count += n;
-            }
-        }
+        let mut entity_cache = EntityCache::new();
+        entity_cache.append(operations);
+        let count = self.apply_entity_cache(econn, entity_cache, Some(history_event))?;
+
         econn.update_entity_count(&subgraph, count)?;
         match history_event {
             HistoryEvent {
@@ -703,6 +718,7 @@ impl Store {
                     }
                 }
             }
+
             let do_count = operation
                 .subgraph()
                 .map(|subgraph| !subgraph.is_meta())

@@ -3,11 +3,12 @@ use futures::stream::poll_fn;
 use futures::{Async, Future, Poll, Stream};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use web3::types::H256;
 
@@ -27,7 +28,7 @@ lazy_static! {
 }
 
 /// Key by which an individual entity in the store can be accessed.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityKey {
     /// ID of the subgraph.
     pub subgraph_id: SubgraphDeploymentId,
@@ -748,6 +749,8 @@ pub enum StoreError {
     UnknownTable(String),
     #[fail(display = "malformed directive '{}'", _0)]
     MalformedDirective(String),
+    #[fail(display = "query execution failed: {}", _0)]
+    QueryExecutionError(String),
 }
 
 impl From<TransactionAbortError> for StoreError {
@@ -771,6 +774,12 @@ impl From<Error> for StoreError {
 impl From<serde_json::Error> for StoreError {
     fn from(e: serde_json::Error) -> Self {
         StoreError::Unknown(e.into())
+    }
+}
+
+impl From<QueryExecutionError> for StoreError {
+    fn from(e: QueryExecutionError) -> Self {
+        StoreError::QueryExecutionError(e.to_string())
     }
 }
 
@@ -1241,4 +1250,171 @@ pub trait ChainStore: Send + Sync + 'static {
         block_ptr: EthereumBlockPointer,
         offset: u64,
     ) -> Result<Option<EthereumBlock>, Error>;
+}
+
+/// An entity operation that can be transacted into the store; as opposed to
+/// `EntityOperation`, we already know whether a `Set` should be an `Insert`
+/// or `Update`
+#[derive(Clone, Debug, PartialEq)]
+pub enum EntityModification {
+    /// Insert the entity
+    Insert { key: EntityKey, data: Entity },
+    /// Update the entity by overwriting it
+    Overwrite { key: EntityKey, data: Entity },
+    /// Remove the entity
+    Remove { key: EntityKey },
+}
+
+impl EntityModification {
+    pub fn entity_key(&self) -> &EntityKey {
+        use EntityModification::*;
+        match self {
+            Insert { key, .. } | Overwrite { key, .. } | Remove { key } => key,
+        }
+    }
+}
+
+impl From<EntityModification> for EntityOperation {
+    fn from(modification: EntityModification) -> Self {
+        use EntityModification::*;
+
+        match modification {
+            Insert { key, data } | Overwrite { key, data } => EntityOperation::Set { key, data },
+            Remove { key } => EntityOperation::Remove { key },
+        }
+    }
+}
+
+/// A cache for entities from the store that provides the basic functionality
+/// needed for the store interactions in the host exports. This struct tracks
+/// how entities are modified, and caches all entities looked up from the
+/// store. The cache makes
+/// sure that
+///   (1) no entity appears in more than one operations
+///   (2) only entities that will actually be changed from what they
+///       are in the store are changed
+#[derive(Clone, Debug, Default)]
+pub struct EntityCache {
+    /// The state of entities in the store. An entry of `None`
+    /// means that the entity is not present in the store
+    current: HashMap<EntityKey, Option<Entity>>,
+    /// The accumulated changes to an entity. An entry of `None`
+    /// means that the entity should be deleted
+    updates: HashMap<EntityKey, Option<Entity>>,
+}
+
+impl EntityCache {
+    pub fn new() -> EntityCache {
+        EntityCache {
+            current: HashMap::new(),
+            updates: HashMap::new(),
+        }
+    }
+
+    pub fn get(
+        &mut self,
+        store: &dyn Store,
+        key: EntityKey,
+    ) -> Result<Option<Entity>, QueryExecutionError> {
+        let current = match self.current.get(&key) {
+            None => {
+                let entity = store.get(key.clone())?;
+                self.current.insert(key.clone(), entity.clone());
+                entity
+            }
+            Some(data) => data.to_owned(),
+        };
+        match (&current, self.updates.get(&key)) {
+            // Entity is unchanged
+            (_, None) => Ok(current),
+            // Entity was deleted
+            (_, Some(None)) => Ok(None),
+            // Entity created
+            (None, Some(updates)) => Ok(updates.clone()),
+            // Entity updated
+            (Some(current), Some(Some(updates))) => {
+                let mut data = current.clone();
+                data.merge(updates.clone());
+                Ok(Some(data))
+            }
+        }
+    }
+
+    pub fn remove(&mut self, key: EntityKey) {
+        self.updates.insert(key, None);
+    }
+
+    pub fn set(&mut self, key: EntityKey, entity: Entity) {
+        let update = match self.updates.remove(&key) {
+            // Previously removed
+            Some(None) => entity,
+            // Previously changed
+            Some(Some(mut update)) => {
+                update.merge(entity);
+                update
+            }
+            // Never changed
+            None => entity,
+        };
+        self.updates.insert(key, Some(update));
+    }
+
+    pub fn append(&mut self, operations: Vec<EntityOperation>) {
+        for operation in operations {
+            match operation {
+                EntityOperation::Set { key, data } => {
+                    self.set(key, data);
+                }
+                EntityOperation::Remove { key } => {
+                    self.remove(key);
+                }
+            }
+        }
+    }
+
+    pub fn as_modifications(
+        mut self,
+        store: &dyn Store,
+    ) -> Result<Vec<EntityModification>, QueryExecutionError> {
+        let missing = self
+            .updates
+            .keys()
+            .map(|key| key.to_owned())
+            .filter(|key| !self.current.contains_key(&key))
+            .collect::<Vec<_>>();
+        for key in missing {
+            self.get(store, key)?;
+        }
+
+        let mut mods = Vec::new();
+        for (key, update) in self.updates.into_iter() {
+            use EntityModification::*;
+            let current = self
+                .current
+                .remove(&key)
+                .expect("we should have already loaded all needed entities");
+            let modification = match (current, update) {
+                (None, Some(updates)) => {
+                    let mut data = Entity::new();
+                    data.merge(updates);
+                    Some(Insert { key, data })
+                }
+                (Some(current), Some(updates)) => {
+                    let mut data = current.clone();
+                    data.merge(updates);
+                    if current != data {
+                        Some(Overwrite { key, data })
+                    } else {
+                        None
+                    }
+                }
+                (Some(_), None) => Some(Remove { key }),
+                (None, None) => None,
+            };
+            if let Some(modification) = modification {
+                mods.push(modification)
+            }
+        }
+        Ok(mods)
+    }
 }

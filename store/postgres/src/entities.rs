@@ -402,11 +402,11 @@ impl<'a> Connection<'a> {
     pub(crate) fn insert(
         &self,
         key: &EntityKey,
-        entity: Entity,
+        entity: &Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         match self.storage(&key.subgraph_id)? {
-            Storage::Json(json) => json.insert(&self.conn, &key, &entity, history_event),
+            Storage::Json(json) => json.insert(&self.conn, &key, entity, history_event),
             Storage::Relational(mapping) => {
                 mapping.insert(&self.conn, key, entity, block_number(&history_event))
             }
@@ -420,7 +420,7 @@ impl<'a> Connection<'a> {
     pub(crate) fn update(
         &self,
         key: &EntityKey,
-        entity: Entity,
+        entity: &Entity,
         overwrite: bool,
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
@@ -833,7 +833,7 @@ impl JsonStorage {
         &self,
         conn: &PgConnection,
         key: &EntityKey,
-        entity: Entity,
+        entity: &Entity,
         overwrite: bool,
         guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
