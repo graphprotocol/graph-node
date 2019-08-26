@@ -10,3 +10,4 @@ jsonrpc-core = "13.0.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
 hex-literal = "0.2"
+tiny-keccak = "1.5.0"
