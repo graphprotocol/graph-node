@@ -477,7 +477,7 @@ mod tests {
         let graphql_runner = Arc::new(TestGraphQlRunner);
         let store = Arc::new(MockStore::new(vec![(id.clone(), schema)]));
         store
-            .apply_entity_operations(
+            .apply_metadata_operations(
                 SubgraphDeploymentEntity::new(
                     &manifest,
                     false,
@@ -555,7 +555,7 @@ mod tests {
             .block_on(future::lazy(move || {
                 let res: Result<_, ()> = Ok({
                     store
-                        .apply_entity_operations(
+                        .apply_metadata_operations(
                             SubgraphDeploymentEntity::new(
                                 &manifest,
                                 false,

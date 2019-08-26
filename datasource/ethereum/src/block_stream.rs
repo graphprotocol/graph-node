@@ -709,7 +709,7 @@ where
                 .map(|entity| entity.id().unwrap())
                 .collect::<Vec<_>>();
             let version_id_values = version_ids.iter().map(Value::from).collect::<Vec<_>>();
-            ops.push(EntityOperation::AbortUnless {
+            ops.push(MetadataOperation::AbortUnless {
                 description: "The same subgraph version entities must point to this deployment"
                     .to_owned(),
                 query: SubgraphVersionEntity::query().filter(EntityFilter::Equal(
@@ -730,7 +730,7 @@ where
                 .iter()
                 .map(|entity| entity.id().unwrap())
                 .collect();
-            ops.push(EntityOperation::AbortUnless {
+            ops.push(MetadataOperation::AbortUnless {
                 description: "The same subgraph entities must have these versions pending"
                     .to_owned(),
                 query: SubgraphEntity::query().filter(EntityFilter::In(
@@ -793,12 +793,17 @@ where
                 .collect::<Vec<_>>();
 
             // Apply changes to assignments
-            ops.extend(self.subgraph_store.reconcile_assignments(
-                &self.logger,
-                versions_before,
-                versions_after,
-                None, // no new assignments will be added
-            ));
+            ops.extend(
+                self.subgraph_store
+                    .reconcile_assignments(
+                        &self.logger,
+                        versions_before,
+                        versions_after,
+                        None, // no new assignments will be added
+                    )
+                    .into_iter()
+                    .map(|op| op.into()),
+            );
 
             // Update subgraph entities to promote pending versions to current
             for subgraph in subgraphs_to_update {
@@ -809,14 +814,14 @@ where
                     "currentVersion",
                     subgraph.get("pendingVersion").unwrap().to_owned(),
                 );
-                ops.push(EntityOperation::Set {
+                ops.push(MetadataOperation::Set {
                     key: SubgraphEntity::key(subgraph.id().unwrap()),
                     data,
                 });
             }
 
             self.subgraph_store
-                .apply_entity_operations(ops, None)
+                .apply_metadata_operations(ops, None)
                 .map_err(|e| format_err!("Failed to set deployment synced flag: {}", e))
         }
     }
@@ -834,7 +839,7 @@ where
                     head_ptr,
                 );
                 self.subgraph_store
-                    .apply_entity_operations(ops, None)
+                    .apply_metadata_operations(ops, None)
                     .map_err(|e| format_err!("Failed to set subgraph block count: {}", e))
             }
         }

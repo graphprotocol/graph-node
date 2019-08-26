@@ -1454,7 +1454,7 @@ fn subscribe_and_consume(
         entity_type: entity_type.to_owned(),
         entity_id: MARKER_ID.to_owned(),
     };
-    let op = EntityOperation::Remove { key };
+    let op = MetadataOperation::Remove { key };
 
     let block_ptr = EthereumBlockPointer::from((
         H256::from(hex!(
@@ -1468,7 +1468,7 @@ fn subscribe_and_consume(
         .expect("failed to create history event");
 
     store
-        .apply_entity_operations(vec![op], Some(history_event))
+        .apply_metadata_operations(vec![op], Some(history_event))
         .expect("Failed to apply marker operation");
 
     let source = subscription
@@ -2296,9 +2296,11 @@ fn handle_large_string_with_index() {
         let other_text = long_text.clone() + "X";
 
         store
-            .apply_entity_operations(
+            .transact_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_4_PTR,
                 vec![make_set_op(ONE, &long_text), make_set_op(TWO, &other_text)],
-                None,
             )
             .expect("Failed to insert large text");
 

@@ -592,24 +592,24 @@ impl Store {
         Ok(0)
     }
 
-    /// Apply an entity operation in Postgres.
-    fn apply_entity_operation(
+    /// Apply a metadata operation in Postgres.
+    fn apply_metadata_operation(
         &self,
         conn: &e::Connection,
-        operation: EntityOperation,
+        operation: MetadataOperation,
         history_event: Option<&HistoryEvent>,
     ) -> Result<i32, StoreError> {
         match operation {
-            EntityOperation::Set { key, data } => {
+            MetadataOperation::Set { key, data } => {
                 self.apply_set_operation(conn, key, data, history_event)
             }
-            EntityOperation::Update { key, data, guard } => {
+            MetadataOperation::Update { key, data, guard } => {
                 self.apply_update_operation(conn, key, data, guard, history_event)
             }
-            EntityOperation::Remove { key } => {
+            MetadataOperation::Remove { key } => {
                 self.apply_remove_operation(conn, key, history_event)
             }
-            EntityOperation::AbortUnless {
+            MetadataOperation::AbortUnless {
                 description,
                 query,
                 entity_ids,
@@ -620,6 +620,22 @@ impl Store {
                 entity_ids,
                 history_event,
             ),
+        }
+    }
+
+    fn apply_entity_operation(
+        &self,
+        conn: &e::Connection,
+        operation: EntityOperation,
+        history_event: Option<&HistoryEvent>,
+    ) -> Result<i32, StoreError> {
+        match operation {
+            EntityOperation::Set { key, data } => {
+                self.apply_set_operation(conn, key, data, history_event)
+            }
+            EntityOperation::Remove { key } => {
+                self.apply_remove_operation(conn, key, history_event)
+            }
         }
     }
 
@@ -640,12 +656,7 @@ impl Store {
         let mut subgraph = None;
 
         // Emit a store event for the changes we are about to make
-        let changes: Vec<_> = operations
-            .iter()
-            .filter_map(|op| EntityChange::from_entity_operation(op.clone()))
-            .collect();
-        let event = StoreEvent::new(changes);
-
+        let event: StoreEvent = operations.clone().into();
         let v = serde_json::to_value(event)?;
         JsonNotification::send("store_events", &v, &econn.conn)?;
 
@@ -672,6 +683,64 @@ impl Store {
                 None => false,
             };
             let n = self.apply_entity_operation(econn, operation, history_event.clone())?;
+            if do_count {
+                count += n;
+            }
+        }
+        econn.update_entity_count(&subgraph, count)?;
+        match history_event {
+            Some(HistoryEvent {
+                source: EventSource::EthereumBlock(block_ptr),
+                subgraph,
+                ..
+            }) => Ok(econn.should_migrate(&subgraph, block_ptr)?),
+            _ => Ok(false),
+        }
+    }
+
+    fn apply_metadata_operations_with_conn(
+        &self,
+        econn: &e::Connection,
+        operations: Vec<MetadataOperation>,
+        history_event: Option<&HistoryEvent>,
+    ) -> Result<bool, StoreError> {
+        // Keep a count of how many entities have been added/removed. This
+        // crucially depends on the fact that all operations are about one
+        // subgraph, with the possible exception that some might touch
+        // the subgraph of subgraphs
+        let mut count = 0;
+        let mut subgraph = None;
+
+        //self.check_entity_operations(econn, &operations);
+
+        // Emit a store event for the changes we are about to make
+        let event: StoreEvent = operations.clone().into();
+        let v = serde_json::to_value(event)?;
+        JsonNotification::send("store_events", &v, &econn.conn)?;
+
+        // Actually apply the operations
+        for operation in operations.into_iter() {
+            if subgraph.is_none() {
+                subgraph = operation
+                    .subgraph()
+                    .filter(|s| !s.is_meta())
+                    .map(|s| s.clone());
+            } else {
+                // Verify that we only have one non-meta subgraph in operations
+                if let Some(other) = operation.subgraph() {
+                    if !other.is_meta() && operation.subgraph() != subgraph.as_ref() {
+                        panic!(
+                            "applying entity operations to two non-metadata subgraphs {:?} and {}",
+                            subgraph, other
+                        );
+                    }
+                }
+            }
+            let do_count = match operation.subgraph() {
+                Some(subgraph) => !subgraph.is_meta(),
+                None => false,
+            };
+            let n = self.apply_metadata_operation(econn, operation, history_event.clone())?;
             if do_count {
                 count += n;
             }
@@ -902,7 +971,7 @@ impl StoreTrait for Store {
         );
         let conn = self.get_entity_conn().map_err(Error::from)?;
         conn.conn
-            .transaction(|| self.apply_entity_operations_with_conn(&conn, ops, None))?;
+            .transaction(|| self.apply_metadata_operations_with_conn(&conn, ops, None))?;
 
         conn.should_migrate(&subgraph_id, &block_ptr_to)
     }
@@ -949,21 +1018,21 @@ impl StoreTrait for Store {
                 block_ptr_from,
                 block_ptr_to,
             );
-            self.apply_entity_operations_with_conn(&econn, block_ptr_ops, None)?;
+            self.apply_metadata_operations_with_conn(&econn, block_ptr_ops, None)?;
             Ok(should_migrate)
         })
     }
 
     /// Apply a series of entity operations. Return `true` if the subgraph
     /// mentioned in `history_event` should have its schema migrated
-    fn apply_entity_operations(
+    fn apply_metadata_operations(
         &self,
-        operations: Vec<EntityOperation>,
+        operations: Vec<MetadataOperation>,
         history_event: Option<HistoryEvent>,
     ) -> Result<(), StoreError> {
         let econn = self.get_entity_conn()?;
         econn.conn.transaction(|| {
-            self.apply_entity_operations_with_conn(&econn, operations, history_event.as_ref())
+            self.apply_metadata_operations_with_conn(&econn, operations, history_event.as_ref())
                 .map(|_| ())
         })
     }
@@ -996,7 +1065,7 @@ impl StoreTrait for Store {
                 block_ptr_from,
                 block_ptr_to,
             );
-            self.apply_entity_operations_with_conn(&econn, ops, None)?;
+            self.apply_metadata_operations_with_conn(&econn, ops, None)?;
 
             let (event, count) = econn.revert_block(&subgraph_id, &block_ptr_from)?;
             econn.update_entity_count(&Some(subgraph_id), count)?;
@@ -1034,7 +1103,7 @@ impl StoreTrait for Store {
         &self,
         subgraph_logger: &Logger,
         schema: &Schema,
-        ops: Vec<EntityOperation>,
+        ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         // Various timing parameters, all in seconds
         const INITIAL_DELAY: u64 = 2;
@@ -1071,7 +1140,7 @@ impl StoreTrait for Store {
         loop {
             let start = Instant::now();
             let result = econn.conn.transaction(|| -> Result<(), StoreError> {
-                self.apply_entity_operations_with_conn(&econn, ops.clone(), None)?;
+                self.apply_metadata_operations_with_conn(&econn, ops.clone(), None)?;
                 econn
                     .conn
                     .batch_execute(&format!("set local lock_timeout to '{}s'", LOCK_TIMEOUT))?;
@@ -1104,12 +1173,12 @@ impl StoreTrait for Store {
     fn start_subgraph_deployment(
         &self,
         subgraph_id: &SubgraphDeploymentId,
-        ops: Vec<EntityOperation>,
+        ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         let econn = self.get_entity_conn()?;
 
         econn.conn.transaction(|| {
-            self.apply_entity_operations_with_conn(&econn, ops, None)?;
+            self.apply_metadata_operations_with_conn(&econn, ops, None)?;
             econn.start_subgraph(subgraph_id)
         })
     }

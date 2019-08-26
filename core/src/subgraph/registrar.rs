@@ -3,7 +3,10 @@ use std::iter;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use super::validation;
-use graph::data::subgraph::schema::*;
+use graph::data::subgraph::schema::{
+    generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity,
+    SubgraphEntity, SubgraphVersionEntity, TypedEntity,
+};
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
@@ -418,7 +421,7 @@ fn create_subgraph(
         return Err(SubgraphRegistrarError::NameExists(name.to_string()));
     }
 
-    ops.push(EntityOperation::AbortUnless {
+    ops.push(MetadataOperation::AbortUnless {
         description: "Subgraph entity should not exist".to_owned(),
         query: SubgraphEntity::query().filter(EntityFilter::new_equal("name", name.to_string())),
         entity_ids: vec![],
@@ -430,9 +433,14 @@ fn create_subgraph(
         .as_secs();
     let entity = SubgraphEntity::new(name.clone(), None, None, created_at);
     let entity_id = generate_entity_id();
-    ops.extend(entity.write_operations(&entity_id));
+    ops.extend(
+        entity
+            .write_operations(&entity_id)
+            .into_iter()
+            .map(|op| op.into()),
+    );
 
-    store.apply_entity_operations(ops, None)?;
+    store.apply_metadata_operations(ops, None)?;
 
     debug!(logger, "Created subgraph"; "subgraph_name" => name.to_string());
 
@@ -475,7 +483,7 @@ fn create_subgraph_version(
         None => None,
         Some(_) => panic!("subgraph entity has invalid type in pendingVersion field"),
     };
-    ops.push(EntityOperation::AbortUnless {
+    ops.push(MetadataOperation::AbortUnless {
         description:
             "Subgraph entity must still exist, have same name/currentVersion/pendingVersion"
                 .to_owned(),
@@ -528,7 +536,9 @@ fn create_subgraph_version(
         .as_secs();
     ops.extend(
         SubgraphVersionEntity::new(subgraph_entity_id.clone(), manifest.id.clone(), created_at)
-            .write_operations(&version_entity_id),
+            .write_operations(&version_entity_id)
+            .into_iter()
+            .map(|op| op.into()),
     );
 
     // Simulate the creation of the new version and updating of Subgraph.pending/current
@@ -631,7 +641,7 @@ fn create_subgraph_version(
         .get(SubgraphDeploymentEntity::key(manifest.id.clone()))?
         .is_some();
 
-    ops.push(EntityOperation::AbortUnless {
+    ops.push(MetadataOperation::AbortUnless {
         description: "Subgraph deployment entity must continue to exist/not exist".to_owned(),
         query: SubgraphDeploymentEntity::query()
             .filter(EntityFilter::new_equal("id", manifest.id.to_string())),
@@ -654,12 +664,17 @@ fn create_subgraph_version(
 
     // Possibly add assignment for new deployment hash, and possibly remove assignments for old
     // current/pending
-    ops.extend(store.reconcile_assignments(
-        logger,
-        version_summaries_before,
-        version_summaries_after,
-        Some(node_id),
-    ));
+    ops.extend(
+        store
+            .reconcile_assignments(
+                logger,
+                version_summaries_before,
+                version_summaries_after,
+                Some(node_id),
+            )
+            .into_iter()
+            .map(|op| op.into()),
+    );
 
     // Update current/pending versions in Subgraph entity
     match version_switching_mode {
@@ -697,7 +712,7 @@ fn create_subgraph_version(
     // Commit entity ops
     let manifest_id = manifest.id.to_string();
     if deployment_exists {
-        store.apply_entity_operations(ops, None)?
+        store.apply_metadata_operations(ops, None)?
     } else {
         store.create_subgraph_deployment(logger, &manifest.schema, ops)?;
     }
@@ -746,7 +761,7 @@ fn remove_subgraph(
     let subgraph_entity = subgraph_entity_opt
         .ok_or_else(|| SubgraphRegistrarError::NameNotFound(name.to_string()))?;
 
-    ops.push(EntityOperation::AbortUnless {
+    ops.push(MetadataOperation::AbortUnless {
         description: "Subgraph entity must still exist".to_owned(),
         query: SubgraphEntity::query().filter(EntityFilter::new_equal("name", name.to_string())),
         entity_ids: vec![subgraph_entity.id().unwrap()],
@@ -757,7 +772,7 @@ fn remove_subgraph(
         EntityFilter::new_equal("subgraph", subgraph_entity.id().unwrap()),
     ))?;
 
-    ops.push(EntityOperation::AbortUnless {
+    ops.push(MetadataOperation::AbortUnless {
         description: "Subgraph must have same set of versions".to_owned(),
         query: SubgraphVersionEntity::query().filter(EntityFilter::new_equal(
             "subgraph",
@@ -770,18 +785,18 @@ fn remove_subgraph(
     });
 
     // Remove subgraph version entities, and their deployment/assignment when applicable
-    ops.extend(remove_subgraph_versions(
-        logger,
-        store.clone(),
-        subgraph_version_entities,
-    )?);
+    ops.extend(
+        remove_subgraph_versions(logger, store.clone(), subgraph_version_entities)?
+            .into_iter()
+            .map(|op| op.into()),
+    );
 
     // Remove the subgraph entity
-    ops.push(EntityOperation::Remove {
+    ops.push(MetadataOperation::Remove {
         key: SubgraphEntity::key(subgraph_entity.id()?),
     });
 
-    store.apply_entity_operations(ops, None)?;
+    store.apply_metadata_operations(ops, None)?;
 
     debug!(logger, "Removed subgraph"; "subgraph_name" => name.to_string());
 
@@ -799,7 +814,7 @@ fn remove_subgraph_versions(
     logger: &Logger,
     store: Arc<impl Store>,
     version_entities_to_delete: Vec<Entity>,
-) -> Result<Vec<EntityOperation>, SubgraphRegistrarError> {
+) -> Result<Vec<MetadataOperation>, SubgraphRegistrarError> {
     let mut ops = vec![];
 
     let version_entity_ids_to_delete = version_entities_to_delete
@@ -839,12 +854,17 @@ fn remove_subgraph_versions(
     // Create/remove assignments based on the subgraph version changes.
     // We are only deleting versions here, so no assignments will be created,
     // and we can safely pass None for the node ID.
-    ops.extend(store.reconcile_assignments(
-        logger,
-        version_summaries,
-        version_summaries_after_delete,
-        None,
-    ));
+    ops.extend(
+        store
+            .reconcile_assignments(
+                logger,
+                version_summaries,
+                version_summaries_after_delete,
+                None,
+            )
+            .into_iter()
+            .map(|op| op.into()),
+    );
 
     // Actually remove the subgraph version entities.
     // Note: we do this last because earlier AbortUnless ops depend on these entities still
@@ -852,7 +872,7 @@ fn remove_subgraph_versions(
     ops.extend(
         version_entities_to_delete
             .iter()
-            .map(|version_entity| EntityOperation::Remove {
+            .map(|version_entity| MetadataOperation::Remove {
                 key: SubgraphVersionEntity::key(version_entity.id().unwrap()),
             }),
     );
@@ -887,7 +907,7 @@ fn reassign_subgraph(
         ));
     }
 
-    ops.push(EntityOperation::AbortUnless {
+    ops.push(MetadataOperation::AbortUnless {
         description: "Deployment assignment is unchanged".to_owned(),
         query: SubgraphDeploymentAssignmentEntity::query().filter(EntityFilter::And(vec![
             EntityFilter::new_equal("nodeId", current_node_id.to_string()),
@@ -898,9 +918,14 @@ fn reassign_subgraph(
 
     // Create the assignment update operations.
     // Note: This will also generate a remove operation for the existing subgraph assignment.
-    ops.extend(SubgraphDeploymentAssignmentEntity::new(node_id).write_operations(&hash.clone()));
+    ops.extend(
+        SubgraphDeploymentAssignmentEntity::new(node_id)
+            .write_operations(&hash.clone())
+            .into_iter()
+            .map(|op| op.into()),
+    );
 
-    store.apply_entity_operations(ops, None)?;
+    store.apply_metadata_operations(ops, None)?;
 
     Ok(())
 }

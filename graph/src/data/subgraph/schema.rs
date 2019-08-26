@@ -25,6 +25,7 @@ use super::SubgraphDeploymentId;
 use crate::components::ethereum::EthereumBlockPointer;
 use crate::components::store::{
     AttributeIndexDefinition, EntityFilter, EntityKey, EntityOperation, EntityQuery, EntityRange,
+    MetadataOperation,
 };
 use crate::data::graphql::{TryFromValue, ValueMap};
 use crate::data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
@@ -105,11 +106,11 @@ impl SubgraphEntity {
     pub fn update_current_version_operations(
         id: &str,
         version_id_opt: Option<String>,
-    ) -> Vec<EntityOperation> {
+    ) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("currentVersion", version_id_opt);
 
-        vec![EntityOperation::Update {
+        vec![MetadataOperation::Update {
             key: Self::key(id.to_owned()),
             data: entity,
             guard: None,
@@ -119,11 +120,11 @@ impl SubgraphEntity {
     pub fn update_pending_version_operations(
         id: &str,
         version_id_opt: Option<String>,
-    ) -> Vec<EntityOperation> {
+    ) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("pendingVersion", version_id_opt);
 
-        vec![EntityOperation::Update {
+        vec![MetadataOperation::Update {
             key: Self::key(id.to_owned()),
             data: entity,
             guard: None,
@@ -212,17 +213,21 @@ impl SubgraphDeploymentEntity {
         self.private_create_operations(id)
     }
 
-    pub fn create_operations(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
-        let mut ops = vec![];
+    pub fn create_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
+        let mut ops: Vec<MetadataOperation> = vec![];
 
         // Abort unless no entity exists with this ID
-        ops.push(EntityOperation::AbortUnless {
+        ops.push(MetadataOperation::AbortUnless {
             description: "Subgraph deployment entity must not exist yet to be created".to_owned(),
             query: Self::query().filter(EntityFilter::new_equal("id", id.to_string())),
             entity_ids: vec![],
         });
 
-        ops.extend(self.private_create_operations(id));
+        ops.extend(
+            self.private_create_operations(id)
+                .into_iter()
+                .map(|op| op.into()),
+        );
         ops
     }
 
@@ -276,7 +281,7 @@ impl SubgraphDeploymentEntity {
         id: &SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
-    ) -> Vec<EntityOperation> {
+    ) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("latestEthereumBlockHash", block_ptr_to.hash_hex());
         entity.set("latestEthereumBlockNumber", block_ptr_to.number);
@@ -285,7 +290,7 @@ impl SubgraphDeploymentEntity {
             EntityFilter::new_equal("latestEthereumBlockHash", block_ptr_from.hash_hex()),
             EntityFilter::new_equal("latestEthereumBlockNumber", block_ptr_from.number),
         ]);
-        vec![EntityOperation::Update {
+        vec![MetadataOperation::Update {
             key: Self::key(id.clone()),
             data: entity,
             guard: Some(guard),
@@ -295,13 +300,13 @@ impl SubgraphDeploymentEntity {
     pub fn update_ethereum_head_block_operations(
         id: &SubgraphDeploymentId,
         block_ptr: EthereumBlockPointer,
-    ) -> Vec<EntityOperation> {
+    ) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("totalEthereumBlocksCount", block_ptr.number);
         entity.set("ethereumHeadBlockHash", block_ptr.hash_hex());
         entity.set("ethereumHeadBlockNumber", block_ptr.number);
 
-        vec![EntityOperation::Update {
+        vec![MetadataOperation::Update {
             key: Self::key(id.clone()),
             data: entity,
             guard: None,
@@ -311,11 +316,11 @@ impl SubgraphDeploymentEntity {
     pub fn update_failed_operations(
         id: &SubgraphDeploymentId,
         failed: bool,
-    ) -> Vec<EntityOperation> {
+    ) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("failed", failed);
 
-        vec![EntityOperation::Update {
+        vec![MetadataOperation::Update {
             key: Self::key(id.clone()),
             data: entity,
             guard: None,
@@ -325,11 +330,11 @@ impl SubgraphDeploymentEntity {
     pub fn update_synced_operations(
         id: &SubgraphDeploymentId,
         synced: bool,
-    ) -> Vec<EntityOperation> {
+    ) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("synced", synced);
 
-        vec![EntityOperation::Update {
+        vec![MetadataOperation::Update {
             key: Self::key(id.clone()),
             data: entity,
             guard: None,

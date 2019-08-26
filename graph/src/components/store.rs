@@ -204,17 +204,36 @@ impl EntityChange {
         use self::EntityOperation::*;
 
         match operation {
-            Set { key, .. } | Update { key, .. } => {
-                Some(Self::from_key(key, EntityChangeOperation::Set))
-            }
+            Set { key, .. } => Some(Self::from_key(key, EntityChangeOperation::Set)),
             Remove { key } => Some(Self::from_key(key, EntityChangeOperation::Removed)),
-            // AbortUnless is uninteresting for when we need an EntityChange
-            AbortUnless { .. } => None,
         }
     }
 
     pub fn subgraph_entity_pair(&self) -> SubgraphEntityPair {
         (self.subgraph_id.clone(), self.entity_type.clone())
+    }
+}
+
+impl From<EntityOperation> for EntityChange {
+    fn from(operation: EntityOperation) -> Self {
+        use self::EntityOperation::*;
+        match operation {
+            Set { key, .. } => Self::from_key(key, EntityChangeOperation::Set),
+            Remove { key } => Self::from_key(key, EntityChangeOperation::Removed),
+        }
+    }
+}
+
+impl From<MetadataOperation> for Option<EntityChange> {
+    fn from(operation: MetadataOperation) -> Self {
+        use self::MetadataOperation::*;
+        match operation {
+            Set { key, .. } | Update { key, .. } => {
+                Some(EntityChange::from_key(key, EntityChangeOperation::Set))
+            }
+            Remove { key } => Some(EntityChange::from_key(key, EntityChangeOperation::Removed)),
+            AbortUnless { .. } => None,
+        }
     }
 }
 
@@ -232,6 +251,20 @@ pub struct StoreEvent {
     // logs as they flow through the system
     pub tag: usize,
     pub changes: HashSet<EntityChange>,
+}
+
+impl From<Vec<EntityOperation>> for StoreEvent {
+    fn from(operations: Vec<EntityOperation>) -> Self {
+        let changes: Vec<_> = operations.into_iter().map(|op| op.into()).collect();
+        StoreEvent::new(changes)
+    }
+}
+
+impl From<Vec<MetadataOperation>> for StoreEvent {
+    fn from(operations: Vec<MetadataOperation>) -> Self {
+        let changes: Vec<_> = operations.into_iter().filter_map(|op| op.into()).collect();
+        StoreEvent::new(changes)
+    }
 }
 
 impl StoreEvent {
@@ -438,27 +471,6 @@ pub enum EntityOperation {
 
     /// Removes an entity with the specified key, if one exists.
     Remove { key: EntityKey },
-
-    /// Aborts and rolls back the transaction unless `query` returns entities exactly matching
-    /// `entity_ids`.  The equality test is only sensitive to the order of the results if `query`
-    /// contains an `order_by`.
-    AbortUnless {
-        description: String, // Programmer-friendly debug message to explain reason for abort
-        query: EntityQuery,  // The query to run
-        entity_ids: Vec<String>, // What entities the query should return
-    },
-
-    /// Update an entity. The `data` should only contain the attributes that
-    /// need to be changed, not the entire entity. The update will only happen
-    /// if the given entity matches `guard` when the update is made. `Update`
-    /// provides a way to atomically do a check-and-set change to an entity.
-    /// This operation can currently only be performed on the subgraph of
-    /// subgraphs
-    Update {
-        key: EntityKey,
-        data: Entity,
-        guard: Option<EntityFilter>,
-    },
 }
 
 impl EntityOperation {
@@ -486,9 +498,8 @@ impl EntityOperation {
         use self::EntityOperation::*;
 
         match self {
-            Set { ref key, .. } | Update { ref key, .. } => key,
+            Set { ref key, .. } => key,
             Remove { ref key } => key,
-            AbortUnless { .. } => panic!("cannot get entity key from AbortUnless entity operation"),
         }
     }
 
@@ -497,8 +508,7 @@ impl EntityOperation {
         use self::EntityOperation::*;
 
         match self {
-            Set { key, .. } | Update { key, .. } | Remove { key } => Some(&key.subgraph_id),
-            AbortUnless { .. } => None,
+            Set { key, .. } | Remove { key } => Some(&key.subgraph_id),
         }
     }
 
@@ -520,6 +530,133 @@ impl EntityOperation {
         use self::EntityOperation::*;
 
         match self {
+            Set { data, .. } => {
+                let mut entity = entity.unwrap_or(Entity::new());
+                entity.merge(data.clone());
+                Ok(Some(entity))
+            }
+            Remove { .. } => Ok(None),
+        }
+    }
+
+    /// Applies all entity operations to the given entity in order.
+    /// `ops` must not contain any `AbortUnless` operations.
+    pub fn apply_all(
+        entity: Option<Entity>,
+        ops: &[&EntityOperation],
+    ) -> Result<Option<Entity>, Error> {
+        // If there is a remove operations, we only need to consider the operations after that
+        ops.iter()
+            .rev()
+            .take_while(|op| !op.is_remove())
+            .collect::<Vec<_>>()
+            .iter()
+            .rev()
+            .try_fold(entity, |entity, op| op.apply(entity))
+    }
+}
+
+/// An operation on subgraph metadata. All operations implictly only concern
+/// the subgraph of subgraphs.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MetadataOperation {
+    /// Locates the entity specified by `key` and sets its attributes according to the contents of
+    /// `data`.  If no entity exists with this key, creates a new entity.
+    Set { key: EntityKey, data: Entity },
+
+    /// Removes an entity with the specified key, if one exists.
+    Remove { key: EntityKey },
+
+    /// Aborts and rolls back the transaction unless `query` returns entities exactly matching
+    /// `entity_ids`.  The equality test is only sensitive to the order of the results if `query`
+    /// contains an `order_by`.
+    AbortUnless {
+        description: String, // Programmer-friendly debug message to explain reason for abort
+        query: EntityQuery,  // The query to run
+        entity_ids: Vec<String>, // What entities the query should return
+    },
+
+    /// Update an entity. The `data` should only contain the attributes that
+    /// need to be changed, not the entire entity. The update will only happen
+    /// if the given entity matches `guard` when the update is made. `Update`
+    /// provides a way to atomically do a check-and-set change to an entity.
+    /// This operation can currently only be performed on the subgraph of
+    /// subgraphs
+    Update {
+        key: EntityKey,
+        data: Entity,
+        guard: Option<EntityFilter>,
+    },
+}
+
+impl From<EntityOperation> for MetadataOperation {
+    fn from(op: EntityOperation) -> MetadataOperation {
+        match op {
+            EntityOperation::Set { key, data } => MetadataOperation::Set { key, data },
+            EntityOperation::Remove { key } => MetadataOperation::Remove { key },
+        }
+    }
+}
+
+impl MetadataOperation {
+    /// Returns true if the operation is of variant `Set`.
+    pub fn is_set(&self) -> bool {
+        use self::MetadataOperation::*;
+
+        match self {
+            Set { .. } => true,
+            _ => false,
+        }
+    }
+
+    /// Returns true if the operation is an entity removal.
+    pub fn is_remove(&self) -> bool {
+        use self::MetadataOperation::*;
+
+        match self {
+            Remove { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn entity_key(&self) -> &EntityKey {
+        use self::MetadataOperation::*;
+
+        match self {
+            Set { ref key, .. } | Update { ref key, .. } => key,
+            Remove { ref key } => key,
+            AbortUnless { .. } => panic!("cannot get entity key from AbortUnless entity operation"),
+        }
+    }
+
+    /// Return the subgraph that this operation applies to
+    pub fn subgraph(&self) -> Option<&SubgraphDeploymentId> {
+        use self::MetadataOperation::*;
+
+        match self {
+            Set { key, .. } | Update { key, .. } | Remove { key } => Some(&key.subgraph_id),
+            AbortUnless { .. } => None,
+        }
+    }
+
+    /// Returns true if the operation matches a given store key.
+    pub fn matches_entity(&self, key: &EntityKey) -> bool {
+        self.entity_key() == key
+    }
+
+    /// Returns true if the two operations match the same entity.
+    pub fn matches_same_entity(&self, other: &MetadataOperation) -> bool {
+        self.entity_key() == other.entity_key()
+    }
+
+    /// Applies the operation to an existing entity (may be None).
+    ///
+    /// Returns `Some(entity)` with an updated entity if the operation is a `Set`.
+    /// Returns `None` if the operation is a `Remove`.
+    pub fn apply(&self, entity: Option<Entity>) -> Result<Option<Entity>, Error> {
+        use self::MetadataOperation::*;
+
+        match self {
             Set { data, .. } | Update { data, .. } => {
                 let mut entity = entity.unwrap_or(Entity::new());
                 entity.merge(data.clone());
@@ -536,9 +673,9 @@ impl EntityOperation {
     /// `ops` must not contain any `AbortUnless` operations.
     pub fn apply_all(
         entity: Option<Entity>,
-        ops: &[&EntityOperation],
+        ops: &[&MetadataOperation],
     ) -> Result<Option<Entity>, Error> {
-        use self::EntityOperation::*;
+        use self::MetadataOperation::*;
 
         // Only continue if all operations are Set/Remove.
         ops.iter().try_for_each(|op| match op {
@@ -700,10 +837,10 @@ pub trait Store: Send + Sync + 'static {
         operations: Vec<EntityOperation>,
     ) -> Result<bool, StoreError>;
 
-    /// Apply the specified entity operations.
-    fn apply_entity_operations(
+    /// Apply the specified metadata operations.
+    fn apply_metadata_operations(
         &self,
-        operations: Vec<EntityOperation>,
+        operations: Vec<MetadataOperation>,
         history_event: Option<HistoryEvent>,
     ) -> Result<(), StoreError>;
 
@@ -804,7 +941,7 @@ pub trait Store: Send + Sync + 'static {
     fn read_subgraph_version_summaries(
         &self,
         deployment_ids: Vec<SubgraphDeploymentId>,
-    ) -> Result<(Vec<SubgraphVersionSummary>, Vec<EntityOperation>), Error> {
+    ) -> Result<(Vec<SubgraphVersionSummary>, Vec<MetadataOperation>), Error> {
         let version_filter = EntityFilter::new_in(
             "deployment",
             deployment_ids.iter().map(|id| id.to_string()).collect(),
@@ -817,7 +954,7 @@ pub trait Store: Send + Sync + 'static {
             .iter()
             .map(|version_entity| version_entity.id().unwrap())
             .collect::<Vec<_>>();
-        ops.push(EntityOperation::AbortUnless {
+        ops.push(MetadataOperation::AbortUnless {
             description: "Same set of subgraph versions must match filter".to_owned(),
             query: SubgraphVersionEntity::query().filter(version_filter),
             entity_ids: version_ids.clone(),
@@ -834,7 +971,7 @@ pub trait Store: Send + Sync + 'static {
                 .iter()
                 .map(|subgraph_entity| subgraph_entity.id().unwrap())
                 .collect::<HashSet<_>>();
-        ops.push(EntityOperation::AbortUnless {
+        ops.push(MetadataOperation::AbortUnless {
             description: "Same set of subgraphs must have these versions as current or pending"
                 .to_owned(),
             query: SubgraphEntity::query().filter(EntityFilter::Or(vec![
@@ -1016,7 +1153,7 @@ pub trait Store: Send + Sync + 'static {
         &self,
         subgraph_logger: &Logger,
         schema: &Schema,
-        ops: Vec<EntityOperation>,
+        ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError>;
 
     /// Start an existing subgraph deployment. This will reset the state of
@@ -1026,7 +1163,7 @@ pub trait Store: Send + Sync + 'static {
     fn start_subgraph_deployment(
         &self,
         subgraph_id: &SubgraphDeploymentId,
-        ops: Vec<EntityOperation>,
+        ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError>;
 
     /// Try to perform a pending migration for a subgraph schema. Even if a

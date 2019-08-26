@@ -34,14 +34,17 @@ fn insert_and_query(
         Default::default(),
         Default::default(),
     )
-    .create_operations_replace(&subgraph_id);
+    .create_operations_replace(&subgraph_id)
+    .into_iter()
+    .map(|op| op.into())
+    .collect();
     STORE
         .create_subgraph_deployment(&logger, &schema, ops)
         .unwrap();
 
     let insert_ops = entities
         .into_iter()
-        .map(|(data, entity_type)| EntityOperation::Set {
+        .map(|(data, entity_type)| MetadataOperation::Set {
             key: EntityKey {
                 subgraph_id: subgraph_id.clone(),
                 entity_type: entity_type.to_owned(),
@@ -51,7 +54,7 @@ fn insert_and_query(
         });
 
     let history_event = make_history_event(&*BLOCK_ONE, &subgraph_id);
-    STORE.apply_entity_operations(insert_ops.collect(), Some(history_event))?;
+    STORE.apply_metadata_operations(insert_ops.collect(), Some(history_event))?;
 
     let resolver = StoreResolver::new(&logger, STORE.clone());
 

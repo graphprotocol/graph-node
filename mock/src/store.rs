@@ -166,9 +166,9 @@ impl Store for MockStore {
         unimplemented!();
     }
 
-    fn apply_entity_operations(
+    fn apply_metadata_operations(
         &self,
-        ops: Vec<EntityOperation>,
+        ops: Vec<MetadataOperation>,
         _: Option<HistoryEvent>,
     ) -> Result<(), StoreError> {
         let mut entities_ref = self.entities.lock().unwrap();
@@ -177,7 +177,7 @@ impl Store for MockStore {
         let mut entity_changes = vec![];
         for op in ops {
             match op {
-                EntityOperation::Set { key, data } => {
+                MetadataOperation::Set { key, data } => {
                     let entities_of_type = entities
                         .entry(key.subgraph_id.clone())
                         .or_default()
@@ -200,7 +200,7 @@ impl Store for MockStore {
                             .push(EntityChange::from_key(key, EntityChangeOperation::Set));
                     }
                 }
-                EntityOperation::Update { key, data, guard } => {
+                MetadataOperation::Update { key, data, guard } => {
                     let entities_of_type = entities
                         .entry(key.subgraph_id.clone())
                         .or_default()
@@ -234,7 +234,7 @@ impl Store for MockStore {
                         .into());
                     }
                 }
-                EntityOperation::Remove { key } => {
+                MetadataOperation::Remove { key } => {
                     if let Some(in_subgraph) = entities.get_mut(&key.subgraph_id) {
                         if let Some(of_type) = in_subgraph.get_mut(&key.entity_type) {
                             if of_type.remove(&key.entity_id).is_some() {
@@ -246,7 +246,7 @@ impl Store for MockStore {
                         }
                     }
                 }
-                EntityOperation::AbortUnless {
+                MetadataOperation::AbortUnless {
                     description,
                     query,
                     entity_ids: mut expected_entity_ids,
@@ -333,17 +333,17 @@ impl Store for MockStore {
         &self,
         _logger: &Logger,
         _schema: &Schema,
-        ops: Vec<EntityOperation>,
+        ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
-        self.apply_entity_operations(ops, None)
+        self.apply_metadata_operations(ops, None)
     }
 
     fn start_subgraph_deployment(
         &self,
         _subgraph_id: &SubgraphDeploymentId,
-        ops: Vec<EntityOperation>,
+        ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
-        self.apply_entity_operations(ops, None)
+        self.apply_metadata_operations(ops, None)
     }
 
     fn migrate_subgraph_deployment(
@@ -463,9 +463,9 @@ impl Store for FakeStore {
         unimplemented!();
     }
 
-    fn apply_entity_operations(
+    fn apply_metadata_operations(
         &self,
-        _: Vec<EntityOperation>,
+        _: Vec<MetadataOperation>,
         _: Option<HistoryEvent>,
     ) -> Result<(), StoreError> {
         Ok(())
@@ -495,7 +495,7 @@ impl Store for FakeStore {
         &self,
         _logger: &Logger,
         _schema: &Schema,
-        _ops: Vec<EntityOperation>,
+        _ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }
@@ -503,7 +503,7 @@ impl Store for FakeStore {
     fn start_subgraph_deployment(
         &self,
         _subgraph_id: &SubgraphDeploymentId,
-        _ops: Vec<EntityOperation>,
+        _ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }
