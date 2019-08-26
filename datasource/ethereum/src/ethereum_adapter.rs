@@ -382,16 +382,17 @@ where
                             data: Some(call_data.clone()),
                         };
                         web3.eth().call(req, block_number_opt).then(|result| {
-                            // Try to check if the call was reverted. The JSON-RPC response
-                            // for reverts is not standardized, the current situation for
-                            // the tested clients is:
+                            // Try to check if the call was reverted. The JSON-RPC response for
+                            // reverts is not standardized, the current situation for the tested
+                            // clients is:
                             //
-                            // - Parity/Alchemy returns a specific RPC error for reverts.
-                            // - Geth/Infura will return an `0x` RPC result on a revert,
-                            //   which cannot be differentiated from random failures.
-                            //   However for Solidity `revert` and `require` calls with a
-                            //   reason string can be detected.
+                            // - Parity/Alchemy returns a reliable RPC error response for reverts.
+                            // - Ganache also returns a reliable RPC error.
+                            // - Geth/Infura will return an `0x` RPC result on a revert, which
+                            //   cannot be differentiated from random failures. However Solidity
+                            //   `revert` and `require` calls with a reason string can be detected.
 
+                            const GANACHE_VM_EXECUTION_ERROR: i64 = -32000;
                             const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
                             const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
 
@@ -399,7 +400,9 @@ where
                                 let solidity_revert_function_selector =
                                     &tiny_keccak::keccak256(b"Error(string)")[..4];
 
-                                match &bytes[..4] == solidity_revert_function_selector {
+                                match bytes.len() >= 4
+                                    && &bytes[..4] == solidity_revert_function_selector
+                                {
                                     false => None,
                                     true => ethabi::decode(&[ParamType::String], &bytes[4..])
                                         .ok()
@@ -431,11 +434,24 @@ where
                                                     .unwrap_or("no reason".to_owned()),
                                             ))
                                         }
+
+                                        // The VM execution error was not identified as a revert.
                                         _ => Err(EthereumContractCallError::Web3Error(
                                             web3::Error::Rpc(rpc_error.clone()),
                                         )),
                                     }
                                 }
+
+                                // Check for Ganache revert.
+                                Err(web3::Error::Rpc(ref rpc_error))
+                                    if rpc_error.code.code() == GANACHE_VM_EXECUTION_ERROR =>
+                                {
+                                    Err(EthereumContractCallError::Revert(
+                                        rpc_error.message.clone(),
+                                    ))
+                                }
+
+                                // The error was not identified as a revert.
                                 Err(err) => Err(EthereumContractCallError::Web3Error(err)),
                             }
                         })

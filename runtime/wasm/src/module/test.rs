@@ -828,5 +828,7 @@ fn ens_name_by_hash() {
     assert_eq!(data, "dealdrafts");
 
     let hash = module.asc_new("impossible keccak hash");
-    assert!(dbg!(module.takes_ptr_returns_ptr::<_, AscString>("nameByHash", hash,)).is_null());
+    assert!(module
+        .takes_ptr_returns_ptr::<_, AscString>("nameByHash", hash)
+        .is_null());
 }
