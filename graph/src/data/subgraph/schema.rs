@@ -1192,7 +1192,7 @@ pub fn attribute_index_definitions(
                     // Skip derived fields since they are not stored in objects
                     // of this type. We can not put this check into the filter
                     // above since that changes how indexes are numbered
-                    if is_derived_field(&entity_field) {
+                    if no_index(&entity_field) {
                         continue;
                     }
                     indexing_ops.push(AttributeIndexDefinition {
@@ -1216,11 +1216,13 @@ pub fn attribute_index_definitions(
     indexing_ops
 }
 
-fn is_derived_field(field: &Field) -> bool {
+/// Determine if we should build an index for `field`. All fields are
+/// indexed, except for derived fields and fields annotated with `@noindex`
+fn no_index(field: &Field) -> bool {
     field
         .directives
         .iter()
-        .any(|dir| dir.name == Name::from("derivedFrom"))
+        .any(|dir| dir.name == Name::from("derivedFrom") || dir.name == Name::from("noindex"))
 }
 
 // This largely duplicates graphql::schema::ast::is_entity_type_definition
@@ -1270,4 +1272,55 @@ fn inner_type_name(field_type: &Type, definitions: &[Definition]) -> Result<Valu
         Type::NonNullType(inner) => inner_type_name(&inner, definitions),
         Type::ListType(inner) => inner_type_name(inner, definitions).and(Ok(ValueType::List)),
     }
+}
+
+#[test]
+fn attribute_index_generation() {
+    const SCHEMA: &str = "
+        type Car @entity {
+            id: ID!,
+            radio: Radio!
+        }
+
+        type Radio @entity {
+            id: ID!,
+            name: String!,
+            color: Color!,
+            car: Car! @derivedFrom(field: \"radio\"),
+            text: String! @noindex
+        }
+
+        type Color @entity {
+            id: ID!,
+            name: String!
+        }";
+
+    fn check_index(
+        ops: &Vec<AttributeIndexDefinition>,
+        entity: &str,
+        attribute: &str,
+        entity_number: usize,
+        attribute_number: usize,
+    ) {
+        let msg = format!("Error checking index for {}.{}", entity, attribute);
+        if let Some(index) = ops
+            .iter()
+            .find(|index| index.entity_name == entity && index.attribute_name == attribute)
+        {
+            assert_eq!(entity_number, index.entity_number, "{}", msg);
+            assert_eq!(attribute_number, index.attribute_number, "{}", msg);
+        } else {
+            assert!(false, "{}", msg);
+        }
+    };
+
+    let schema = Schema::parse(SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+
+    let ops = attribute_index_definitions(schema.id, schema.document);
+
+    assert_eq!(4, ops.len());
+    check_index(&ops, "Car", "radio", 0, 0);
+    check_index(&ops, "Radio", "name", 1, 0);
+    check_index(&ops, "Radio", "color", 1, 1);
+    check_index(&ops, "Color", "name", 2, 0);
 }
