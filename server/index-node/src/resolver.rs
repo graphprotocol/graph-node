@@ -152,6 +152,10 @@ impl TryFromValue for IndexingStatus {
 impl From<IndexingStatus> for q::Value {
     fn from(status: IndexingStatus) -> Self {
         object_value(vec![
+            (
+                "__typename",
+                q::Value::String(String::from("SubgraphIndexingStatus")),
+            ),
             ("subgraph", q::Value::String(status.subgraph)),
             ("synced", q::Value::Boolean(status.synced)),
             ("failed", q::Value::Boolean(status.failed)),
