@@ -390,7 +390,7 @@ where
                 // Set subgraph status to Failed
                 let status_ops =
                     SubgraphDeploymentEntity::update_failed_operations(&id_for_err, true);
-                if let Err(e) = store_for_err.apply_entity_operations(status_ops, None) {
+                if let Err(e) = store_for_err.apply_metadata_operations(status_ops, None) {
                     error!(
                         logger_for_err,
                         "Failed to set subgraph status to Failed: {}", e;

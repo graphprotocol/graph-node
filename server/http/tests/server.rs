@@ -90,7 +90,7 @@ mod test {
 
         let store = Arc::new(MockStore::new(vec![(id, schema)]));
         store
-            .apply_entity_operations(
+            .apply_metadata_operations(
                 SubgraphDeploymentEntity::new(
                     &manifest,
                     false,

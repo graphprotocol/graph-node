@@ -80,7 +80,10 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
     let logger = Logger::root(slog::Discard, o!());
 
     let ops = SubgraphDeploymentEntity::new(&manifest, false, false, Default::default(), 1)
-        .create_operations_replace(&id);
+        .create_operations_replace(&id)
+        .into_iter()
+        .map(|op| op.into())
+        .collect();
     store
         .create_subgraph_deployment(&logger, &schema, ops)
         .unwrap();
@@ -178,7 +181,7 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         ]),
     ];
 
-    let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
+    let insert_ops = entities.into_iter().map(|data| MetadataOperation::Set {
         key: EntityKey {
             subgraph_id: id.clone(),
             entity_type: data["__typename"].clone().as_string().unwrap(),
@@ -189,7 +192,7 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
 
     let history_event = make_history_event(&*BLOCK_ONE, &id);
     store
-        .apply_entity_operations(insert_ops.collect(), Some(history_event))
+        .apply_metadata_operations(insert_ops.collect(), Some(history_event))
         .unwrap();
 }
 
