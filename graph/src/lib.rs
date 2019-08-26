@@ -23,6 +23,7 @@ pub mod log;
 pub mod prelude {
     pub use ethabi;
     pub use failure::{self, bail, err_msg, format_err, Error, Fail, SyncFailure};
+    pub use hex;
     pub use serde_derive::{Deserialize, Serialize};
     pub use serde_json;
     pub use slog::{self, crit, debug, error, info, o, trace, warn, Logger};

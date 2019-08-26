@@ -50,7 +50,11 @@ pub enum EthereumContractCallError {
     #[fail(display = "type mismatch, token {:?} is not of kind {:?}", _0, _1)]
     TypeError(Token, ParamType),
     #[fail(display = "call error: {}", _0)]
-    Error(Error),
+    Web3Error(web3::Error),
+    #[fail(display = "call reverted: {}", _0)]
+    Revert(String),
+    #[fail(display = "ethereum node took too long to perform call")]
+    Timeout,
 }
 
 impl From<ABIError> for EthereumContractCallError {

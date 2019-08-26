@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use ethabi::ParamType;
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::*;
 use web3;
@@ -339,7 +340,7 @@ where
         contract_address: Address,
         call_data: Bytes,
         block_number_opt: Option<BlockNumber>,
-    ) -> impl Future<Item = Bytes, Error = Error> + Send {
+    ) -> impl Future<Item = Bytes, Error = EthereumContractCallError> + Send {
         let web3 = self.web3.clone();
         let logger = logger.clone();
 
@@ -365,6 +366,10 @@ where
                 let call_data = call_data.clone();
 
                 retry("eth_call RPC call", &logger)
+                    .when(|result| match result {
+                        Ok(_) | Err(EthereumContractCallError::Revert(_)) => false,
+                        Err(_) => true,
+                    })
                     .no_limit()
                     .timeout_secs(60)
                     .run(move || {
@@ -376,13 +381,66 @@ where
                             value: None,
                             data: Some(call_data.clone()),
                         };
-                        web3.eth().call(req, block_number_opt).from_err()
-                    })
-                    .map_err(|e| {
-                        e.into_inner().unwrap_or_else(|| {
-                            format_err!("Ethereum node took too long to perform function call")
+                        web3.eth().call(req, block_number_opt).then(|result| {
+                            // Try to check if the call was reverted. The JSON-RPC response
+                            // for reverts is not standardized, the current situation for
+                            // the tested clients is:
+                            //
+                            // - Parity/Alchemy returns a specific RPC error for reverts.
+                            // - Geth/Infura will return an `0x` RPC result on a revert,
+                            //   which cannot be differentiated from random failures.
+                            //   However for Solidity `revert` and `require` calls with a
+                            //   reason string can be detected.
+
+                            const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
+                            const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
+
+                            let as_solidity_revert_with_reason = |bytes: &[u8]| {
+                                let solidity_revert_function_selector =
+                                    &tiny_keccak::keccak256(b"Error(string)")[..4];
+
+                                match &bytes[..4] == solidity_revert_function_selector {
+                                    false => None,
+                                    true => ethabi::decode(&[ParamType::String], &bytes[4..])
+                                        .ok()
+                                        .and_then(|tokens| tokens[0].clone().to_string()),
+                                }
+                            };
+
+                            match result {
+                                // Check for Geth revert.
+                                Ok(bytes) => match as_solidity_revert_with_reason(&bytes.0) {
+                                    None => Ok(bytes),
+                                    Some(reason) => Err(EthereumContractCallError::Revert(reason)),
+                                },
+
+                                // Check for Parity revert.
+                                Err(web3::Error::Rpc(ref rpc_error))
+                                    if rpc_error.code.code() == PARITY_VM_EXECUTION_ERROR =>
+                                {
+                                    match rpc_error.data.as_ref().and_then(|d| d.as_str()) {
+                                        Some(data) if data.starts_with(PARITY_REVERT_PREFIX) => {
+                                            let payload =
+                                                data.trim_start_matches(PARITY_REVERT_PREFIX);
+                                            Err(EthereumContractCallError::Revert(
+                                                hex::decode(payload)
+                                                    .ok()
+                                                    .and_then(|payload| {
+                                                        as_solidity_revert_with_reason(&payload)
+                                                    })
+                                                    .unwrap_or("no reason".to_owned()),
+                                            ))
+                                        }
+                                        _ => Err(EthereumContractCallError::Web3Error(
+                                            web3::Error::Rpc(rpc_error.clone()),
+                                        )),
+                                    }
+                                }
+                                Err(err) => Err(EthereumContractCallError::Web3Error(err)),
+                            }
                         })
                     })
+                    .map_err(|e| e.into_inner().unwrap_or(EthereumContractCallError::Timeout))
             })
     }
 }
@@ -941,7 +999,6 @@ where
                 Bytes(call_data),
                 Some(call.block_ptr.number.into()),
             )
-            .map_err(EthereumContractCallError::Error)
             .and_then(move |output| {
                 // Decode the return values according to the ABI
                 call.function
