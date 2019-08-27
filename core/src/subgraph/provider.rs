@@ -170,7 +170,6 @@ where
 
                     let _ = store.apply_metadata_operations(
                         SubgraphDeploymentEntity::update_failed_operations(&subgraph_id, true),
-                        None,
                     );
                     e
                 }),

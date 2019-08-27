@@ -487,7 +487,6 @@ mod tests {
                     0,
                 )
                 .create_operations(&id),
-                None,
             )
             .unwrap();
 
@@ -562,7 +561,6 @@ mod tests {
                                 0,
                             )
                             .create_operations(&id),
-                            None,
                         )
                         .unwrap();
 
