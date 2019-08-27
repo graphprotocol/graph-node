@@ -51,6 +51,11 @@ use crate::filter::{build_filter, store_filter};
 use crate::functions::set_config;
 use crate::jsonb::PgJsonbExpressionMethods as _;
 
+/// The size of string prefixes that we index. This should be large enough
+/// that we catch most strings, but small enough so that we can still insert
+/// it into a Postgres BTree index
+pub(crate) const STRING_PREFIX_SIZE: usize = 2048;
+
 /// The type of operation that led to a history entry. When we revert a block,
 /// we reverse the effects of that operation; e.g., an `Insert` entry in the
 /// history will cause us to delete the underlying entity
@@ -944,7 +949,7 @@ impl Table {
             "
             update subgraphs.entities
             set data = data || (format('{{\"entityCount\":
-                                  {{ \"data\": \"%s\", 
+                                  {{ \"data\": \"%s\",
                                     \"type\": \"BigInt\"}}}}',
                                   coalesce({current_count} + $1,
                                            ({count_query}))))::jsonb
@@ -1157,23 +1162,36 @@ impl Table {
             to_snake_case(&index.entity_name),
             to_snake_case(&index.attribute_name)
         );
-        let query = format!(
-            "create index if not exists {name}
+        let query = match index.field_value_type {
+            ValueType::String => format!(
+                "create index if not exists {name}
+                         on {subgraph}.entities
+                      using btree(left(data->'{attribute_name}'->>'data', {prefix_size}))
+                      where entity='{entity_name}'",
+                name = name,
+                subgraph = self.schema,
+                attribute_name = &index.attribute_name,
+                entity_name = &index.entity_name,
+                prefix_size = STRING_PREFIX_SIZE,
+            ),
+            _ => format!(
+                "create index if not exists {name}
                          on {subgraph}.entities
                       using {index_type} (
                               ((data->'{attribute_name}'{jsonb_operator}'data'){type_cast})
                               {index_operator}
                             )
                       where entity='{entity_name}'",
-            name = name,
-            subgraph = self.schema,
-            index_type = index_type,
-            attribute_name = &index.attribute_name,
-            jsonb_operator = jsonb_operator,
-            type_cast = type_cast,
-            index_operator = index_operator,
-            entity_name = &index.entity_name
-        );
+                name = name,
+                subgraph = self.schema,
+                index_type = index_type,
+                attribute_name = &index.attribute_name,
+                jsonb_operator = jsonb_operator,
+                type_cast = type_cast,
+                index_operator = index_operator,
+                entity_name = &index.entity_name
+            ),
+        };
         conn.batch_execute(&*query)?;
         Ok(1)
     }
