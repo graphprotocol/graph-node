@@ -353,7 +353,7 @@ impl<'a> Connection<'a> {
         subgraph: &SubgraphDeploymentId,
         entity_types: Vec<String>,
         filter: Option<EntityFilter>,
-        order: Option<(String, &str, &str)>,
+        order: Option<(String, ValueType, &str, &str)>,
         first: Option<u32>,
         skip: u32,
     ) -> Result<Vec<(serde_json::Value, String)>, QueryExecutionError> {
@@ -775,13 +775,13 @@ impl Table {
             .optional()?)
     }
 
-    /// order is a tuple (attribute, cast, direction)
+    /// order is a tuple (attribute, value_type, cast, direction)
     fn query(
         &self,
         conn: &PgConnection,
         entity_types: Vec<String>,
         filter: Option<EntityFilter>,
-        order: Option<(String, &str, &str)>,
+        order: Option<(String, ValueType, &str, &str)>,
         first: Option<u32>,
         skip: u32,
     ) -> Result<Vec<(serde_json::Value, String)>, QueryExecutionError> {
@@ -798,16 +798,27 @@ impl Table {
             })?;
         }
 
-        if let Some((attribute, cast, direction)) = order {
-            query = query.order(
-                sql::<Text>("(data ->")
-                    .bind::<Text, _>(attribute)
-                    .sql("->> 'data')")
-                    .sql(cast)
-                    .sql(" ")
-                    .sql(direction)
-                    .sql(" NULLS LAST"),
-            );
+        if let Some((attribute, value_type, cast, direction)) = order {
+            query = match value_type {
+                ValueType::String => query.order(
+                    sql::<Text>("left(data ->")
+                        .bind::<Text, _>(attribute)
+                        .sql("->> 'data', ")
+                        .sql(&STRING_PREFIX_SIZE.to_string())
+                        .sql(") ")
+                        .sql(direction)
+                        .sql(" NULLS LAST"),
+                ),
+                _ => query.order(
+                    sql::<Text>("(data ->")
+                        .bind::<Text, _>(attribute)
+                        .sql("->> 'data')")
+                        .sql(cast)
+                        .sql(" ")
+                        .sql(direction)
+                        .sql(" NULLS LAST"),
+                ),
+            };
         }
         query = query.then_order_by(entities.id.asc());
 

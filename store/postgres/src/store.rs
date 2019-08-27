@@ -391,7 +391,7 @@ impl Store {
                         ));
                     }
                 };
-                Some((attribute, cast_type, direction))
+                Some((attribute, value_type, cast_type, direction))
             }
             None => None,
         };

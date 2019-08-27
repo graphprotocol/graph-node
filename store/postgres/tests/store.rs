@@ -2262,7 +2262,8 @@ fn handle_large_string_with_index() {
             vec![MANUAL.to_owned()],
             EntityRange::first(5),
         )
-        .filter(EntityFilter::Equal(TEXT.to_owned(), long_text.into()));
+        .filter(EntityFilter::Equal(TEXT.to_owned(), long_text.into()))
+        .order_by((TEXT.to_owned(), ValueType::String), EntityOrder::Ascending);
 
         let ids = store
             .find(query)
