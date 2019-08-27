@@ -2210,12 +2210,27 @@ fn create_subgraph_deployment_tolerates_locks() {
 }
 
 #[test]
-fn insert_large_string_with_index() {
-    run_test(|store| -> Result<(), ()> {
-        const MANUAL: &str = "Manual";
-        const TEXT: &str = "text";
-        const ONE: &str = "one";
+fn handle_large_string_with_index() {
+    const MANUAL: &str = "Manual";
+    const TEXT: &str = "text";
+    const ONE: &str = "one";
+    const TWO: &str = "two";
 
+    fn make_set_op(id: &str, text: &str) -> EntityOperation {
+        let mut data = Entity::new();
+        data.set("id", id);
+        data.set(TEXT, text);
+
+        let key = EntityKey {
+            subgraph_id: TEST_SUBGRAPH_ID.clone(),
+            entity_type: MANUAL.to_owned(),
+            entity_id: id.to_owned(),
+        };
+
+        EntityOperation::Set { key, data }
+    };
+
+    run_test(|store| -> Result<(), ()> {
         let index = AttributeIndexDefinition {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_number: 0,
@@ -2233,22 +2248,31 @@ fn insert_large_string_with_index() {
         let long_text = std::iter::repeat("Quo usque tandem")
             .take(62500)
             .collect::<String>();
-
-        let mut data = Entity::new();
-        data.set("id", ONE);
-        data.set(TEXT, long_text);
-
-        let key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: MANUAL.to_owned(),
-            entity_id: ONE.to_owned(),
-        };
-
-        let op = EntityOperation::Set { key, data };
+        let other_text = long_text.clone() + "X";
 
         store
-            .apply_entity_operations(vec![op], None)
+            .apply_entity_operations(
+                vec![make_set_op(ONE, &long_text), make_set_op(TWO, &other_text)],
+                None,
+            )
             .expect("Failed to insert large text");
+
+        let query = EntityQuery::new(
+            TEST_SUBGRAPH_ID.clone(),
+            vec![MANUAL.to_owned()],
+            EntityRange::first(5),
+        )
+        .filter(EntityFilter::Equal(TEXT.to_owned(), long_text.into()));
+
+        let ids = store
+            .find(query)
+            .expect("Could not find entity")
+            .iter()
+            .map(|e| e.id())
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Found entities without an id");
+
+        assert_eq!(vec!["one"], ids);
         Ok(())
     })
 }

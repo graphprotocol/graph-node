@@ -11,7 +11,7 @@ use graph::data::store::*;
 use graph::prelude::serde_json;
 use graph::prelude::{BigDecimal, BigInt};
 
-use crate::entities::EntitySource;
+use crate::entities::{EntitySource, STRING_PREFIX_SIZE};
 use crate::sql_value::SqlValue;
 
 #[derive(Debug)]
@@ -28,12 +28,27 @@ trait IntoFilter<QS> {
 
 impl<QS> IntoFilter<QS> for String {
     fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
+        // Generate
+        //  (left(attribute, prefix_size) op left(self, prefix_size) and attribute op self)
+        // The first condition is there to make the index on attribute usable,
+        // the second so that we only return correct results
         Box::new(
-            sql("data -> ")
-                .bind::<Text, _>(attribute)
-                .sql("->> 'data'")
+            sql("(left(data -> ")
+                .bind::<Text, _>(attribute.clone())
+                .sql("->> 'data', ")
+                .sql(&STRING_PREFIX_SIZE.to_string())
+                .sql(") ")
                 .sql(op)
-                .bind::<Text, _>(self),
+                .sql(" left(")
+                .bind::<Text, _>(self.clone())
+                .sql(", ")
+                .sql(&STRING_PREFIX_SIZE.to_string())
+                .sql(") and data -> ")
+                .bind::<Text, _>(attribute)
+                .sql("->> 'data' ")
+                .sql(op)
+                .bind::<Text, _>(self)
+                .sql(")"),
         ) as FilterExpression<QS>
     }
 }
