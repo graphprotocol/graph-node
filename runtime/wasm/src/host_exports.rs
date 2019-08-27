@@ -219,11 +219,12 @@ where
         result
     }
 
+    /// Returns `Ok(None)` if the call was reverted.
     pub(crate) fn ethereum_call(
         &self,
         ctx: &MappingContext,
         unresolved_call: UnresolvedContractCall,
-    ) -> Result<Vec<Token>, HostExportError<impl ExportError>> {
+    ) -> Result<Option<Vec<Token>>, HostExportError<impl ExportError>> {
         let start_time = Instant::now();
 
         // Obtain the path to the contract ABI
@@ -258,18 +259,21 @@ where
         };
 
         // Run Ethereum call in tokio runtime
-        let function_name = unresolved_call.function_name.clone();
-        let contract_name = unresolved_call.contract_name.clone();
         let eth_adapter = self.ethereum_adapter.clone();
         let logger = ctx.logger.clone();
-        let result = self.block_on(future::lazy(move || {
-            eth_adapter.contract_call(&logger, call).map_err(move |e| {
-                HostExportError(format!(
-                    "Failed to call function \"{}\" of contract \"{}\": {}",
-                    function_name, contract_name, e
-                ))
-            })
-        }));
+        let result = match self.block_on(future::lazy(move || {
+            eth_adapter.contract_call(&logger, call)
+        })) {
+            Ok(tokens) => Ok(Some(tokens)),
+            Err(EthereumContractCallError::Revert(reason)) => {
+                info!(ctx.logger, "Contract call reverted"; "reason" => reason);
+                Ok(None)
+            }
+            Err(e) => Err(HostExportError(format!(
+                "Failed to call function \"{}\" of contract \"{}\": {}",
+                unresolved_call.function_name, unresolved_call.contract_name, e
+            ))),
+        };
 
         debug!(ctx.logger, "Contract call finished";
               "address" => &unresolved_call.contract_address.to_string(),

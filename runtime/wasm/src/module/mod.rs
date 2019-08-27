@@ -535,7 +535,7 @@ where
         }))
     }
 
-    /// function ethereum.call(call: SmartContractCall): Array<Token>
+    /// function ethereum.call(call: SmartContractCall): Array<Token> | null
     fn ethereum_call(
         &mut self,
         call_ptr: AscPtr<AscUnresolvedContractCall>,
@@ -545,7 +545,10 @@ where
             .valid_module
             .host_exports
             .ethereum_call(&mut self.ctx, call)?;
-        Ok(Some(RuntimeValue::from(self.asc_new(&*result))))
+        Ok(Some(match result {
+            Some(tokens) => RuntimeValue::from(self.asc_new(tokens.as_slice())),
+            None => RuntimeValue::from(0),
+        }))
     }
 
     /// function typeConversion.bytesToString(bytes: Bytes): string
