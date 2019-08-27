@@ -502,12 +502,11 @@ impl Store {
         key: EntityKey,
         data: Entity,
         guard: Option<EntityFilter>,
-        history_event: Option<&HistoryEvent>,
     ) -> Result<i32, StoreError> {
         self.check_interface_entity_uniqueness(conn, &key)?;
 
         // Update the entity in Postgres
-        match conn.update(&key, data, false, guard, history_event)? {
+        match conn.update(&key, data, false, guard, None)? {
             0 => Err(TransactionAbortError::AbortUnless {
                 expected_entity_ids: vec![key.entity_id.clone()],
                 actual_entity_ids: vec![],
@@ -552,7 +551,6 @@ impl Store {
         description: String,
         query: EntityQuery,
         mut expected_entity_ids: Vec<String>,
-        _history_event: Option<&HistoryEvent>,
     ) -> Result<i32, StoreError> {
         // Execute query
         let actual_entities = self.execute_query(conn, query.clone()).map_err(|e| {
@@ -597,29 +595,18 @@ impl Store {
         &self,
         conn: &e::Connection,
         operation: MetadataOperation,
-        history_event: Option<&HistoryEvent>,
     ) -> Result<i32, StoreError> {
         match operation {
-            MetadataOperation::Set { key, data } => {
-                self.apply_set_operation(conn, key, data, history_event)
-            }
+            MetadataOperation::Set { key, data } => self.apply_set_operation(conn, key, data, None),
             MetadataOperation::Update { key, data, guard } => {
-                self.apply_update_operation(conn, key, data, guard, history_event)
+                self.apply_update_operation(conn, key, data, guard)
             }
-            MetadataOperation::Remove { key } => {
-                self.apply_remove_operation(conn, key, history_event)
-            }
+            MetadataOperation::Remove { key } => self.apply_remove_operation(conn, key, None),
             MetadataOperation::AbortUnless {
                 description,
                 query,
                 entity_ids,
-            } => self.apply_abort_unless_operation(
-                conn,
-                description,
-                query,
-                entity_ids,
-                history_event,
-            ),
+            } => self.apply_abort_unless_operation(conn, description, query, entity_ids),
         }
     }
 
@@ -702,7 +689,6 @@ impl Store {
         &self,
         econn: &e::Connection,
         operations: Vec<MetadataOperation>,
-        history_event: Option<&HistoryEvent>,
     ) -> Result<bool, StoreError> {
         // Keep a count of how many entities have been added/removed. This
         // crucially depends on the fact that all operations are about one
@@ -740,20 +726,13 @@ impl Store {
                 Some(subgraph) => !subgraph.is_meta(),
                 None => false,
             };
-            let n = self.apply_metadata_operation(econn, operation, history_event.clone())?;
+            let n = self.apply_metadata_operation(econn, operation)?;
             if do_count {
                 count += n;
             }
         }
         econn.update_entity_count(&subgraph, count)?;
-        match history_event {
-            Some(HistoryEvent {
-                source: EventSource::EthereumBlock(block_ptr),
-                subgraph,
-                ..
-            }) => Ok(econn.should_migrate(&subgraph, block_ptr)?),
-            _ => Ok(false),
-        }
+        Ok(false)
     }
 
     /// Build a partial Postgres index on a Subgraph-Entity-Attribute
@@ -971,7 +950,7 @@ impl StoreTrait for Store {
         );
         let conn = self.get_entity_conn().map_err(Error::from)?;
         conn.conn
-            .transaction(|| self.apply_metadata_operations_with_conn(&conn, ops, None))?;
+            .transaction(|| self.apply_metadata_operations_with_conn(&conn, ops))?;
 
         conn.should_migrate(&subgraph_id, &block_ptr_to)
     }
@@ -1018,7 +997,7 @@ impl StoreTrait for Store {
                 block_ptr_from,
                 block_ptr_to,
             );
-            self.apply_metadata_operations_with_conn(&econn, block_ptr_ops, None)?;
+            self.apply_metadata_operations_with_conn(&econn, block_ptr_ops)?;
             Ok(should_migrate)
         })
     }
@@ -1028,11 +1007,10 @@ impl StoreTrait for Store {
     fn apply_metadata_operations(
         &self,
         operations: Vec<MetadataOperation>,
-        history_event: Option<HistoryEvent>,
     ) -> Result<(), StoreError> {
         let econn = self.get_entity_conn()?;
         econn.conn.transaction(|| {
-            self.apply_metadata_operations_with_conn(&econn, operations, history_event.as_ref())
+            self.apply_metadata_operations_with_conn(&econn, operations)
                 .map(|_| ())
         })
     }
@@ -1065,7 +1043,7 @@ impl StoreTrait for Store {
                 block_ptr_from,
                 block_ptr_to,
             );
-            self.apply_metadata_operations_with_conn(&econn, ops, None)?;
+            self.apply_metadata_operations_with_conn(&econn, ops)?;
 
             let (event, count) = econn.revert_block(&subgraph_id, &block_ptr_from)?;
             econn.update_entity_count(&Some(subgraph_id), count)?;
@@ -1140,7 +1118,7 @@ impl StoreTrait for Store {
         loop {
             let start = Instant::now();
             let result = econn.conn.transaction(|| -> Result<(), StoreError> {
-                self.apply_metadata_operations_with_conn(&econn, ops.clone(), None)?;
+                self.apply_metadata_operations_with_conn(&econn, ops.clone())?;
                 econn
                     .conn
                     .batch_execute(&format!("set local lock_timeout to '{}s'", LOCK_TIMEOUT))?;
@@ -1178,7 +1156,7 @@ impl StoreTrait for Store {
         let econn = self.get_entity_conn()?;
 
         econn.conn.transaction(|| {
-            self.apply_metadata_operations_with_conn(&econn, ops, None)?;
+            self.apply_metadata_operations_with_conn(&econn, ops)?;
             econn.start_subgraph(subgraph_id)
         })
     }

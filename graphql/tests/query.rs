@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use graph::prelude::*;
 use graph_graphql::prelude::*;
-use test_store::{make_history_event, BLOCK_ONE, STORE};
+use test_store::{BLOCK_ONE, GENESIS_PTR, STORE};
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId = {
@@ -79,17 +79,11 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
 
     let logger = Logger::root(slog::Discard, o!());
 
-    let ops = SubgraphDeploymentEntity::new(
-        &manifest,
-        false,
-        false,
-        Default::default(),
-        Default::default(),
-    )
-    .create_operations_replace(&id)
-    .into_iter()
-    .map(|op| op.into())
-    .collect();
+    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, GENESIS_PTR.clone(), None)
+        .create_operations_replace(&id)
+        .into_iter()
+        .map(|op| op.into())
+        .collect();
     store
         .create_subgraph_deployment(&logger, &schema, ops)
         .unwrap();
@@ -187,7 +181,7 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         ]),
     ];
 
-    let insert_ops = entities.into_iter().map(|data| MetadataOperation::Set {
+    let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
         key: EntityKey {
             subgraph_id: id.clone(),
             entity_type: data["__typename"].clone().as_string().unwrap(),
@@ -196,9 +190,13 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         data,
     });
 
-    let history_event = make_history_event(&*BLOCK_ONE, &id);
     store
-        .apply_metadata_operations(insert_ops.collect(), Some(history_event))
+        .transact_block_operations(
+            id.clone(),
+            GENESIS_PTR.clone(),
+            BLOCK_ONE.clone(),
+            insert_ops.collect(),
+        )
         .unwrap();
 }
 

@@ -27,24 +27,18 @@ fn insert_and_query(
 
     let logger = Logger::root(slog::Discard, o!());
 
-    let ops = SubgraphDeploymentEntity::new(
-        &manifest,
-        false,
-        false,
-        Default::default(),
-        Default::default(),
-    )
-    .create_operations_replace(&subgraph_id)
-    .into_iter()
-    .map(|op| op.into())
-    .collect();
+    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, GENESIS_PTR.clone(), None)
+        .create_operations_replace(&subgraph_id)
+        .into_iter()
+        .map(|op| op.into())
+        .collect();
     STORE
         .create_subgraph_deployment(&logger, &schema, ops)
         .unwrap();
 
     let insert_ops = entities
         .into_iter()
-        .map(|(data, entity_type)| MetadataOperation::Set {
+        .map(|(data, entity_type)| EntityOperation::Set {
             key: EntityKey {
                 subgraph_id: subgraph_id.clone(),
                 entity_type: entity_type.to_owned(),
@@ -53,8 +47,12 @@ fn insert_and_query(
             data,
         });
 
-    let history_event = make_history_event(&*BLOCK_ONE, &subgraph_id);
-    STORE.apply_metadata_operations(insert_ops.collect(), Some(history_event))?;
+    STORE.transact_block_operations(
+        subgraph_id.clone(),
+        GENESIS_PTR.clone(),
+        BLOCK_ONE.clone(),
+        insert_ops.collect(),
+    )?;
 
     let resolver = StoreResolver::new(&logger, STORE.clone());
 

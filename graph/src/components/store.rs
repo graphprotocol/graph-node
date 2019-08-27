@@ -841,7 +841,6 @@ pub trait Store: Send + Sync + 'static {
     fn apply_metadata_operations(
         &self,
         operations: Vec<MetadataOperation>,
-        history_event: Option<HistoryEvent>,
     ) -> Result<(), StoreError>;
 
     /// Build indexes for a set of subgraph entity attributes

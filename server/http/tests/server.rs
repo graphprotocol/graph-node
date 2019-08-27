@@ -107,7 +107,6 @@ mod test {
                     }),
                 )
                 .create_operations(&manifest.id),
-                None,
             )
             .unwrap();
 

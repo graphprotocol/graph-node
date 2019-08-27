@@ -166,11 +166,7 @@ impl Store for MockStore {
         unimplemented!();
     }
 
-    fn apply_metadata_operations(
-        &self,
-        ops: Vec<MetadataOperation>,
-        _: Option<HistoryEvent>,
-    ) -> Result<(), StoreError> {
+    fn apply_metadata_operations(&self, ops: Vec<MetadataOperation>) -> Result<(), StoreError> {
         let mut entities_ref = self.entities.lock().unwrap();
 
         let mut entities: HashMap<_, _> = entities_ref.clone();
@@ -335,7 +331,7 @@ impl Store for MockStore {
         _schema: &Schema,
         ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
-        self.apply_metadata_operations(ops, None)
+        self.apply_metadata_operations(ops)
     }
 
     fn start_subgraph_deployment(
@@ -343,7 +339,7 @@ impl Store for MockStore {
         _subgraph_id: &SubgraphDeploymentId,
         ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
-        self.apply_metadata_operations(ops, None)
+        self.apply_metadata_operations(ops)
     }
 
     fn migrate_subgraph_deployment(
@@ -463,11 +459,7 @@ impl Store for FakeStore {
         unimplemented!();
     }
 
-    fn apply_metadata_operations(
-        &self,
-        _: Vec<MetadataOperation>,
-        _: Option<HistoryEvent>,
-    ) -> Result<(), StoreError> {
+    fn apply_metadata_operations(&self, _: Vec<MetadataOperation>) -> Result<(), StoreError> {
         Ok(())
     }
 

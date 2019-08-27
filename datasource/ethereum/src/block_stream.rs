@@ -821,7 +821,7 @@ where
             }
 
             self.subgraph_store
-                .apply_metadata_operations(ops, None)
+                .apply_metadata_operations(ops)
                 .map_err(|e| format_err!("Failed to set deployment synced flag: {}", e))
         }
     }
@@ -839,7 +839,7 @@ where
                     head_ptr,
                 );
                 self.subgraph_store
-                    .apply_metadata_operations(ops, None)
+                    .apply_metadata_operations(ops)
                     .map_err(|e| format_err!("Failed to set subgraph block count: {}", e))
             }
         }

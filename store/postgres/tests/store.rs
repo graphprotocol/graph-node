@@ -1456,19 +1456,8 @@ fn subscribe_and_consume(
     };
     let op = MetadataOperation::Remove { key };
 
-    let block_ptr = EthereumBlockPointer::from((
-        H256::from(hex!(
-            "f1ead03f5811aa2eacbb14e90cc62bd23003086562be21fcea4292a7aa6d9d85"
-        )),
-        42u64,
-    ));
-
-    let history_event = store
-        .create_history_event(subgraph.clone(), EventSource::EthereumBlock(block_ptr))
-        .expect("failed to create history event");
-
     store
-        .apply_metadata_operations(vec![op], Some(history_event))
+        .apply_metadata_operations(vec![op])
         .expect("Failed to apply marker operation");
 
     let source = subscription
