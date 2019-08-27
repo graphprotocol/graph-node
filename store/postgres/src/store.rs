@@ -632,6 +632,7 @@ impl Store {
     fn apply_entity_operations_with_conn(
         &self,
         econn: &e::Connection,
+        subgraph: &SubgraphDeploymentId,
         operations: Vec<EntityOperation>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<bool, StoreError> {
@@ -640,7 +641,6 @@ impl Store {
         // subgraph, with the possible exception that some might touch
         // the subgraph of subgraphs
         let mut count = 0;
-        let mut subgraph = None;
 
         // Emit a store event for the changes we are about to make
         let event: StoreEvent = operations.clone().into();
@@ -649,22 +649,6 @@ impl Store {
 
         // Actually apply the operations
         for operation in operations.into_iter() {
-            if subgraph.is_none() {
-                subgraph = operation
-                    .subgraph()
-                    .filter(|s| !s.is_meta())
-                    .map(|s| s.clone());
-            } else {
-                // Verify that we only have one non-meta subgraph in operations
-                if let Some(other) = operation.subgraph() {
-                    if !other.is_meta() && operation.subgraph() != subgraph.as_ref() {
-                        panic!(
-                            "applying entity operations to two non-metadata subgraphs {:?} and {}",
-                            subgraph, other
-                        );
-                    }
-                }
-            }
             let do_count = match operation.subgraph() {
                 Some(subgraph) => !subgraph.is_meta(),
                 None => false,
@@ -731,7 +715,9 @@ impl Store {
                 count += n;
             }
         }
-        econn.update_entity_count(&subgraph, count)?;
+        if let Some(subgraph) = subgraph {
+            econn.update_entity_count(&subgraph, count)?;
+        }
         Ok(false)
     }
 
@@ -987,8 +973,12 @@ impl StoreTrait for Store {
             let history_event = econn.create_history_event(subgraph_id.clone(), event_source)?;
 
             // Apply the entity operations with the new block as the event source
-            let should_migrate =
-                self.apply_entity_operations_with_conn(&econn, operations, Some(&history_event))?;
+            let should_migrate = self.apply_entity_operations_with_conn(
+                &econn,
+                &subgraph_id,
+                operations,
+                Some(&history_event),
+            )?;
 
             // Update the subgraph block pointer, without an event source; this way
             // no entity history is recorded for the block pointer update itself
@@ -1046,7 +1036,7 @@ impl StoreTrait for Store {
             self.apply_metadata_operations_with_conn(&econn, ops)?;
 
             let (event, count) = econn.revert_block(&subgraph_id, &block_ptr_from)?;
-            econn.update_entity_count(&Some(subgraph_id), count)?;
+            econn.update_entity_count(&subgraph_id, count)?;
 
             let v = serde_json::to_value(event)?;
             JsonNotification::send("store_events", &v, &*econn.conn)

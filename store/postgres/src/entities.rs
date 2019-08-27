@@ -495,18 +495,15 @@ impl<'a> Connection<'a> {
 
     pub(crate) fn update_entity_count(
         &self,
-        subgraph: &Option<SubgraphDeploymentId>,
+        subgraph: &SubgraphDeploymentId,
         count: i32,
     ) -> Result<(), StoreError> {
         if count == 0 {
             return Ok(());
         }
-        if let Some(subgraph) = subgraph {
-            let storage = self.storage(&subgraph)?;
-            storage.update_entity_count(&self.conn, subgraph, count)
-        } else {
-            Ok(())
-        }
+
+        let storage = self.storage(&subgraph)?;
+        storage.update_entity_count(&self.conn, subgraph, count)
     }
 
     pub(crate) fn create_history_event(
