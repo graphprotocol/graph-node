@@ -77,6 +77,9 @@ requests that dont filter on contract address, only event signature.
 
 ## Miscellaneous
 
+- `GRAPH_NODE_ID`: sets the node ID, allowing to run multiple Graph Nodes
+  in parallel and deploy to specific nodes; each ID must be unique among the set
+  of nodes.
 - `GRAPH_LOG`: control log levels, the same way that `RUST_LOG` is described
   [here](https://docs.rs/env_logger/0.6.0/env_logger/)
 - `THEGRAPH_SENTRY_URL`:
