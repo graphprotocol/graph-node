@@ -815,7 +815,8 @@ where
                     subgraph.get("pendingVersion").unwrap().to_owned(),
                 );
                 ops.push(MetadataOperation::Set {
-                    key: SubgraphEntity::key(subgraph.id().unwrap()),
+                    entity: SubgraphEntity::TYPENAME.to_owned(),
+                    id: subgraph.id().unwrap(),
                     data,
                 });
             }

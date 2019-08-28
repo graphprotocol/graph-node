@@ -596,12 +596,17 @@ impl Store {
         conn: &e::Connection,
         operation: MetadataOperation,
     ) -> Result<i32, StoreError> {
+        let key = operation.entity_key();
         match operation {
-            MetadataOperation::Set { key, data } => self.apply_set_operation(conn, key, data, None),
-            MetadataOperation::Update { key, data, guard } => {
-                self.apply_update_operation(conn, key, data, guard)
+            MetadataOperation::Set { data, .. } => {
+                self.apply_set_operation(conn, key.unwrap(), data, None)
             }
-            MetadataOperation::Remove { key } => self.apply_remove_operation(conn, key, None),
+            MetadataOperation::Update { data, guard, .. } => {
+                self.apply_update_operation(conn, key.unwrap(), data, guard)
+            }
+            MetadataOperation::Remove { .. } => {
+                self.apply_remove_operation(conn, key.unwrap(), None)
+            }
             MetadataOperation::AbortUnless {
                 description,
                 query,
@@ -688,13 +693,6 @@ impl Store {
         econn: &e::Connection,
         operations: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
-        // Keep a count of how many entities have been added/removed. This
-        // crucially depends on the fact that all operations are about one
-        // subgraph, with the possible exception that some might touch
-        // the subgraph of subgraphs
-        let mut count = 0;
-        let mut subgraph = None;
-
         // Emit a store event for the changes we are about to make
         let event: StoreEvent = operations.clone().into();
         let v = serde_json::to_value(event)?;
@@ -702,34 +700,7 @@ impl Store {
 
         // Actually apply the operations
         for operation in operations.into_iter() {
-            if subgraph.is_none() {
-                subgraph = operation
-                    .subgraph()
-                    .filter(|s| !s.is_meta())
-                    .map(|s| s.clone());
-            } else {
-                // Verify that we only have one non-meta subgraph in operations
-                if let Some(other) = operation.subgraph() {
-                    if !other.is_meta() && operation.subgraph() != subgraph.as_ref() {
-                        panic!(
-                            "applying entity operations to two non-metadata subgraphs {:?} and {}",
-                            subgraph, other
-                        );
-                    }
-                }
-            }
-
-            let do_count = operation
-                .subgraph()
-                .map(|subgraph| !subgraph.is_meta())
-                .unwrap_or(false);
-            let n = self.apply_metadata_operation(econn, operation)?;
-            if do_count {
-                count += n;
-            }
-        }
-        if let Some(subgraph) = subgraph {
-            econn.update_entity_count(&subgraph, count)?;
+            self.apply_metadata_operation(econn, operation)?;
         }
         Ok(())
     }

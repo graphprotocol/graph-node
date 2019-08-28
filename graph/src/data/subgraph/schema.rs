@@ -93,14 +93,14 @@ impl SubgraphEntity {
         }
     }
 
-    pub fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    pub fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("name", self.name.to_string());
         entity.set("currentVersion", self.current_version_id);
         entity.set("pendingVersion", self.pending_version_id);
         entity.set("createdAt", self.created_at);
-        vec![set_entity_operation(Self::TYPENAME, id, entity)]
+        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
     }
 
     pub fn update_current_version_operations(
@@ -110,11 +110,7 @@ impl SubgraphEntity {
         let mut entity = Entity::new();
         entity.set("currentVersion", version_id_opt);
 
-        vec![MetadataOperation::Update {
-            key: Self::key(id.to_owned()),
-            data: entity,
-            guard: None,
-        }]
+        vec![update_metadata_operation(Self::TYPENAME, id, entity, None)]
     }
 
     pub fn update_pending_version_operations(
@@ -124,11 +120,7 @@ impl SubgraphEntity {
         let mut entity = Entity::new();
         entity.set("pendingVersion", version_id_opt);
 
-        vec![MetadataOperation::Update {
-            key: Self::key(id.to_owned()),
-            data: entity,
-            guard: None,
-        }]
+        vec![update_metadata_operation(Self::TYPENAME, id, entity, None)]
     }
 }
 
@@ -153,13 +145,13 @@ impl SubgraphVersionEntity {
         }
     }
 
-    pub fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    pub fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("id", id.to_owned());
         entity.set("subgraph", self.subgraph_id);
         entity.set("deployment", self.deployment_id.to_string());
         entity.set("createdAt", self.created_at);
-        vec![set_entity_operation(Self::TYPENAME, id, entity)]
+        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
     }
 }
 
@@ -209,7 +201,7 @@ impl SubgraphDeploymentEntity {
 
     // Overwrite entity if it exists. Only in debug builds so it's not used outside tests.
     #[cfg(debug_assertions)]
-    pub fn create_operations_replace(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
+    pub fn create_operations_replace(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
         self.private_create_operations(id)
     }
 
@@ -223,15 +215,11 @@ impl SubgraphDeploymentEntity {
             entity_ids: vec![],
         });
 
-        ops.extend(
-            self.private_create_operations(id)
-                .into_iter()
-                .map(|op| op.into()),
-        );
+        ops.extend(self.private_create_operations(id));
         ops
     }
 
-    fn private_create_operations(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
+    fn private_create_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
         let mut ops = vec![];
 
         let manifest_id = SubgraphManifestEntity::id(&id);
@@ -272,7 +260,11 @@ impl SubgraphDeploymentEntity {
         );
         entity.set("totalEthereumBlocksCount", self.total_ethereum_blocks_count);
         entity.set("entityCount", 0 as u64);
-        ops.push(set_entity_operation(Self::TYPENAME, id.to_string(), entity));
+        ops.push(set_metadata_operation(
+            Self::TYPENAME,
+            id.to_string(),
+            entity,
+        ));
 
         ops
     }
@@ -290,11 +282,12 @@ impl SubgraphDeploymentEntity {
             EntityFilter::new_equal("latestEthereumBlockHash", block_ptr_from.hash_hex()),
             EntityFilter::new_equal("latestEthereumBlockNumber", block_ptr_from.number),
         ]);
-        vec![MetadataOperation::Update {
-            key: Self::key(id.clone()),
-            data: entity,
-            guard: Some(guard),
-        }]
+        vec![update_metadata_operation(
+            Self::TYPENAME,
+            id.to_string(),
+            entity,
+            Some(guard),
+        )]
     }
 
     pub fn update_ethereum_head_block_operations(
@@ -306,11 +299,12 @@ impl SubgraphDeploymentEntity {
         entity.set("ethereumHeadBlockHash", block_ptr.hash_hex());
         entity.set("ethereumHeadBlockNumber", block_ptr.number);
 
-        vec![MetadataOperation::Update {
-            key: Self::key(id.clone()),
-            data: entity,
-            guard: None,
-        }]
+        vec![update_metadata_operation(
+            Self::TYPENAME,
+            id.to_string(),
+            entity,
+            None,
+        )]
     }
 
     pub fn update_failed_operations(
@@ -320,11 +314,12 @@ impl SubgraphDeploymentEntity {
         let mut entity = Entity::new();
         entity.set("failed", failed);
 
-        vec![MetadataOperation::Update {
-            key: Self::key(id.clone()),
-            data: entity,
-            guard: None,
-        }]
+        vec![update_metadata_operation(
+            Self::TYPENAME,
+            id.as_str(),
+            entity,
+            None,
+        )]
     }
 
     pub fn update_synced_operations(
@@ -334,11 +329,12 @@ impl SubgraphDeploymentEntity {
         let mut entity = Entity::new();
         entity.set("synced", synced);
 
-        vec![MetadataOperation::Update {
-            key: Self::key(id.clone()),
-            data: entity,
-            guard: None,
-        }]
+        vec![update_metadata_operation(
+            Self::TYPENAME,
+            id.as_str(),
+            entity,
+            None,
+        )]
     }
 }
 
@@ -358,12 +354,12 @@ impl SubgraphDeploymentAssignmentEntity {
         Self { node_id, cost: 1 }
     }
 
-    pub fn write_operations(self, id: &SubgraphDeploymentId) -> Vec<EntityOperation> {
+    pub fn write_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("id", id.to_string());
         entity.set("nodeId", self.node_id.to_string());
         entity.set("cost", self.cost);
-        vec![set_entity_operation(Self::TYPENAME, id.to_string(), entity)]
+        vec![set_metadata_operation(Self::TYPENAME, id.as_str(), entity)]
     }
 }
 
@@ -387,7 +383,7 @@ impl SubgraphManifestEntity {
         format!("{}-manifest", subgraph_id)
     }
 
-    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
         let mut ops = vec![];
 
         let mut data_source_ids: Vec<Value> = vec![];
@@ -417,7 +413,7 @@ impl SubgraphManifestEntity {
         entity.set("dataSources", data_source_ids);
         entity.set("templates", template_ids);
 
-        ops.push(set_entity_operation(Self::TYPENAME, id, entity));
+        ops.push(set_metadata_operation(Self::TYPENAME, id, entity));
 
         ops
     }
@@ -456,7 +452,7 @@ impl TypedEntity for EthereumContractDataSourceEntity {
 }
 
 impl EthereumContractDataSourceEntity {
-    pub fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    pub fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
         let mut ops = vec![];
 
         let source_id = format!("{}-source", id);
@@ -485,7 +481,7 @@ impl EthereumContractDataSourceEntity {
         entity.set("mapping", mapping_id);
         entity.set("templates", template_ids);
 
-        ops.push(set_entity_operation(Self::TYPENAME, id, entity));
+        ops.push(set_metadata_operation(Self::TYPENAME, id, entity));
 
         ops
     }
@@ -552,10 +548,10 @@ impl DynamicEthereumContractDataSourceEntity {
         let mut ops = vec![];
 
         let source_id = format!("{}-source", id);
-        ops.extend(self.source.write_operations(&source_id));
+        ops.extend(self.source.write_entity_operations(&source_id));
 
         let mapping_id = format!("{}-mapping", id);
-        ops.extend(self.mapping.write_operations(&mapping_id));
+        ops.extend(self.mapping.write_entity_operations(&mapping_id));
 
         let template_ids: Vec<Value> = self
             .templates
@@ -563,7 +559,7 @@ impl DynamicEthereumContractDataSourceEntity {
             .enumerate()
             .map(|(i, template)| {
                 let template_id = format!("{}-templates-{}", id, i);
-                ops.extend(template.write_operations(&template_id));
+                ops.extend(template.write_entity_operations(&template_id));
                 template_id.into()
             })
             .collect();
@@ -631,12 +627,22 @@ impl TypedEntity for EthereumContractSourceEntity {
 }
 
 impl EthereumContractSourceEntity {
-    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
+        let entity = self.make_entity(id);
+        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
+    }
+
+    fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
+        let entity = self.make_entity(id);
+        vec![set_entity_operation(Self::TYPENAME, id, entity)]
+    }
+
+    fn make_entity(self, id: &str) -> Entity {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("address", self.address);
         entity.set("abi", self.abi);
-        vec![set_entity_operation(Self::TYPENAME, id, entity)]
+        entity
     }
 }
 
@@ -685,7 +691,7 @@ impl TypedEntity for EthereumContractMappingEntity {
 }
 
 impl EthereumContractMappingEntity {
-    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
         let mut ops = vec![];
 
         let mut abi_ids: Vec<Value> = vec![];
@@ -748,9 +754,13 @@ impl EthereumContractMappingEntity {
         entity.set("callHandlers", call_handler_ids);
         entity.set("blockHandlers", block_handler_ids);
 
-        ops.push(set_entity_operation(Self::TYPENAME, id, entity));
+        ops.push(set_metadata_operation(Self::TYPENAME, id, entity));
 
         ops
+    }
+
+    fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
+        metadata_operations_to_entity_operations(self.write_operations(id))
     }
 }
 
@@ -821,12 +831,12 @@ impl TypedEntity for EthereumContractAbiEntity {
 }
 
 impl EthereumContractAbiEntity {
-    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("name", self.name);
         entity.set("file", self.file);
-        vec![set_entity_operation(Self::TYPENAME, id, entity)]
+        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
     }
 }
 
@@ -863,7 +873,7 @@ pub struct EthereumBlockHandlerEntity {
 }
 
 impl EthereumBlockHandlerEntity {
-    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
         let mut ops = vec![];
 
         let filter_id: Option<Value> = self.filter.map(|filter| {
@@ -881,7 +891,7 @@ impl EthereumBlockHandlerEntity {
             }
             None => {}
         }
-        ops.push(set_entity_operation(Self::TYPENAME, id, entity));
+        ops.push(set_metadata_operation(Self::TYPENAME, id, entity));
 
         ops
     }
@@ -938,11 +948,11 @@ impl TypedEntity for EthereumBlockHandlerFilterEntity {
 }
 
 impl EthereumBlockHandlerFilterEntity {
-    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("kind", self.kind);
-        vec![set_entity_operation(Self::TYPENAME, id, entity)]
+        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
     }
 }
 
@@ -976,12 +986,12 @@ impl TypedEntity for EthereumCallHandlerEntity {
 }
 
 impl EthereumCallHandlerEntity {
-    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("function", self.function);
         entity.set("handler", self.handler);
-        vec![set_entity_operation(Self::TYPENAME, id, entity)]
+        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
     }
 }
 
@@ -1024,13 +1034,13 @@ impl TypedEntity for EthereumContractEventHandlerEntity {
 }
 
 impl EthereumContractEventHandlerEntity {
-    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("event", self.event);
         entity.set("topic0", self.topic0.map_or(Value::Null, Value::from));
         entity.set("handler", self.handler);
-        vec![set_entity_operation(Self::TYPENAME, id, entity)]
+        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
     }
 }
 
@@ -1077,7 +1087,7 @@ impl TypedEntity for EthereumContractDataSourceTemplateEntity {
 }
 
 impl EthereumContractDataSourceTemplateEntity {
-    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
         let mut ops = vec![];
 
         let source_id = format!("{}-source", id);
@@ -1093,9 +1103,13 @@ impl EthereumContractDataSourceTemplateEntity {
         entity.set("name", self.name);
         entity.set("source", source_id);
         entity.set("mapping", mapping_id);
-        ops.push(set_entity_operation(Self::TYPENAME, id, entity));
+        ops.push(set_metadata_operation(Self::TYPENAME, id, entity));
 
         ops
+    }
+
+    fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
+        metadata_operations_to_entity_operations(self.write_operations(id))
     }
 }
 
@@ -1142,11 +1156,11 @@ impl TypedEntity for EthereumContractDataSourceTemplateSourceEntity {
 }
 
 impl EthereumContractDataSourceTemplateSourceEntity {
-    fn write_operations(self, id: &str) -> Vec<EntityOperation> {
+    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("abi", self.abi);
-        vec![set_entity_operation(Self::TYPENAME, id, entity)]
+        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
     }
 }
 
@@ -1185,6 +1199,49 @@ fn set_entity_operation(
         },
         data: data.into(),
     }
+}
+
+fn set_metadata_operation(
+    entity_type_name: impl Into<String>,
+    entity_id: impl Into<String>,
+    data: impl Into<Entity>,
+) -> MetadataOperation {
+    MetadataOperation::Set {
+        entity: entity_type_name.into(),
+        id: entity_id.into(),
+        data: data.into(),
+    }
+}
+
+fn update_metadata_operation(
+    entity_type_name: impl Into<String>,
+    entity_id: impl Into<String>,
+    data: impl Into<Entity>,
+    guard: Option<EntityFilter>,
+) -> MetadataOperation {
+    MetadataOperation::Update {
+        entity: entity_type_name.into(),
+        id: entity_id.into(),
+        data: data.into(),
+        guard,
+    }
+}
+
+// This helper assumes that all the `MetadataOperaion` are `Set`
+fn metadata_operations_to_entity_operations(ops: Vec<MetadataOperation>) -> Vec<EntityOperation> {
+    ops.into_iter()
+        .map(|op| match op {
+            MetadataOperation::Set { entity, id, data } => EntityOperation::Set {
+                key: EntityKey {
+                    subgraph_id: SUBGRAPHS_ID.clone(),
+                    entity_type: entity,
+                    entity_id: id,
+                },
+                data,
+            },
+            _ => unreachable!(),
+        })
+        .collect()
 }
 
 pub fn generate_entity_id() -> String {

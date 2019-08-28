@@ -229,10 +229,14 @@ impl From<MetadataOperation> for Option<EntityChange> {
     fn from(operation: MetadataOperation) -> Self {
         use self::MetadataOperation::*;
         match operation {
-            Set { key, .. } | Update { key, .. } => {
-                Some(EntityChange::from_key(key, EntityChangeOperation::Set))
-            }
-            Remove { key } => Some(EntityChange::from_key(key, EntityChangeOperation::Removed)),
+            Set { .. } | Update { .. } => Some(EntityChange::from_key(
+                operation.entity_key().unwrap(),
+                EntityChangeOperation::Set,
+            )),
+            Remove { .. } => Some(EntityChange::from_key(
+                operation.entity_key().unwrap(),
+                EntityChangeOperation::Removed,
+            )),
             AbortUnless { .. } => None,
         }
     }
@@ -561,16 +565,21 @@ impl EntityOperation {
 /// the subgraph of subgraphs.
 #[derive(Clone, Debug, PartialEq)]
 pub enum MetadataOperation {
-    /// Locates the entity specified by `key` and sets its attributes according to the contents of
-    /// `data`.  If no entity exists with this key, creates a new entity.
-    Set { key: EntityKey, data: Entity },
+    /// Locates the entity with type `entity` and the given `id` in the
+    /// subgraph of subgraphs and sets its attributes according to the
+    /// contents of `data`.  If no such entity exists, creates a new entity.
+    Set {
+        entity: String,
+        id: String,
+        data: Entity,
+    },
 
-    /// Removes an entity with the specified key, if one exists.
-    Remove { key: EntityKey },
+    /// Removes an entity with the specified entity type and id if one exists.
+    Remove { entity: String, id: String },
 
-    /// Aborts and rolls back the transaction unless `query` returns entities exactly matching
-    /// `entity_ids`.  The equality test is only sensitive to the order of the results if `query`
-    /// contains an `order_by`.
+    /// Aborts and rolls back the transaction unless `query` returns entities
+    /// exactly matching `entity_ids`.  The equality test is only sensitive
+    /// to the order of the results if `query` contains an `order_by`.
     AbortUnless {
         description: String, // Programmer-friendly debug message to explain reason for abort
         query: EntityQuery,  // The query to run
@@ -581,22 +590,12 @@ pub enum MetadataOperation {
     /// need to be changed, not the entire entity. The update will only happen
     /// if the given entity matches `guard` when the update is made. `Update`
     /// provides a way to atomically do a check-and-set change to an entity.
-    /// This operation can currently only be performed on the subgraph of
-    /// subgraphs
     Update {
-        key: EntityKey,
+        entity: String,
+        id: String,
         data: Entity,
         guard: Option<EntityFilter>,
     },
-}
-
-impl From<EntityOperation> for MetadataOperation {
-    fn from(op: EntityOperation) -> MetadataOperation {
-        match op {
-            EntityOperation::Set { key, data } => MetadataOperation::Set { key, data },
-            EntityOperation::Remove { key } => MetadataOperation::Remove { key },
-        }
-    }
 }
 
 impl MetadataOperation {
@@ -620,78 +619,19 @@ impl MetadataOperation {
         }
     }
 
-    pub fn entity_key(&self) -> &EntityKey {
+    pub fn entity_key(&self) -> Option<EntityKey> {
         use self::MetadataOperation::*;
 
         match self {
-            Set { ref key, .. } | Update { ref key, .. } => key,
-            Remove { ref key } => key,
-            AbortUnless { .. } => panic!("cannot get entity key from AbortUnless entity operation"),
-        }
-    }
-
-    /// Return the subgraph that this operation applies to
-    pub fn subgraph(&self) -> Option<&SubgraphDeploymentId> {
-        use self::MetadataOperation::*;
-
-        match self {
-            Set { key, .. } | Update { key, .. } | Remove { key } => Some(&key.subgraph_id),
+            Set { entity, id, .. } | Update { entity, id, .. } | Remove { entity, id } => {
+                Some(EntityKey {
+                    subgraph_id: SUBGRAPHS_ID.clone(),
+                    entity_type: entity.to_owned(),
+                    entity_id: id.to_owned(),
+                })
+            }
             AbortUnless { .. } => None,
         }
-    }
-
-    /// Returns true if the operation matches a given store key.
-    pub fn matches_entity(&self, key: &EntityKey) -> bool {
-        self.entity_key() == key
-    }
-
-    /// Returns true if the two operations match the same entity.
-    pub fn matches_same_entity(&self, other: &MetadataOperation) -> bool {
-        self.entity_key() == other.entity_key()
-    }
-
-    /// Applies the operation to an existing entity (may be None).
-    ///
-    /// Returns `Some(entity)` with an updated entity if the operation is a `Set`.
-    /// Returns `None` if the operation is a `Remove`.
-    pub fn apply(&self, entity: Option<Entity>) -> Result<Option<Entity>, Error> {
-        use self::MetadataOperation::*;
-
-        match self {
-            Set { data, .. } | Update { data, .. } => {
-                let mut entity = entity.unwrap_or(Entity::new());
-                entity.merge(data.clone());
-                Ok(Some(entity))
-            }
-            Remove { .. } => Ok(None),
-            AbortUnless { .. } => Err(format_err!(
-                "Cannot apply AbortUnless entity operation to an entity"
-            )),
-        }
-    }
-
-    /// Applies all entity operations to the given entity in order.
-    /// `ops` must not contain any `AbortUnless` operations.
-    pub fn apply_all(
-        entity: Option<Entity>,
-        ops: &[&MetadataOperation],
-    ) -> Result<Option<Entity>, Error> {
-        use self::MetadataOperation::*;
-
-        // Only continue if all operations are Set/Remove.
-        ops.iter().try_for_each(|op| match op {
-            Set { .. } | Remove { .. } | Update { .. } => Ok(()),
-            AbortUnless { .. } => Err(format_err!("Cannot apply {:?} to an Entity", op)),
-        })?;
-
-        // If there is a remove operations, we only need to consider the operations after that
-        ops.iter()
-            .rev()
-            .take_while(|op| !op.is_remove())
-            .collect::<Vec<_>>()
-            .iter()
-            .rev()
-            .try_fold(entity, |entity, op| op.apply(entity))
     }
 }
 
@@ -1062,7 +1002,7 @@ pub trait Store: Send + Sync + 'static {
         versions_before: Vec<SubgraphVersionSummary>,
         versions_after: Vec<SubgraphVersionSummary>,
         node_id: Option<NodeId>,
-    ) -> Vec<EntityOperation> {
+    ) -> Vec<MetadataOperation> {
         fn should_have_assignment(version: &SubgraphVersionSummary) -> bool {
             version.pending || version.current
         }
@@ -1107,13 +1047,12 @@ pub trait Store: Send + Sync + 'static {
             );
         }
 
-        ops.extend(
-            removed_assignments
-                .into_iter()
-                .map(|deployment_id| EntityOperation::Remove {
-                    key: SubgraphDeploymentAssignmentEntity::key(deployment_id),
-                }),
-        );
+        ops.extend(removed_assignments.into_iter().map(|deployment_id| {
+            MetadataOperation::Remove {
+                entity: SubgraphDeploymentAssignmentEntity::TYPENAME.to_owned(),
+                id: deployment_id.to_string(),
+            }
+        }));
         ops.extend(added_assignments.iter().flat_map(|deployment_id| {
             SubgraphDeploymentAssignmentEntity::new(
                 node_id

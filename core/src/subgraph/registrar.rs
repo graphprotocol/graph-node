@@ -793,7 +793,8 @@ fn remove_subgraph(
 
     // Remove the subgraph entity
     ops.push(MetadataOperation::Remove {
-        key: SubgraphEntity::key(subgraph_entity.id()?),
+        entity: SubgraphEntity::TYPENAME.to_owned(),
+        id: subgraph_entity.id()?,
     });
 
     store.apply_metadata_operations(ops)?;
@@ -873,7 +874,8 @@ fn remove_subgraph_versions(
         version_entities_to_delete
             .iter()
             .map(|version_entity| MetadataOperation::Remove {
-                key: SubgraphVersionEntity::key(version_entity.id().unwrap()),
+                entity: SubgraphVersionEntity::TYPENAME.to_owned(),
+                id: version_entity.id().unwrap(),
             }),
     );
 
