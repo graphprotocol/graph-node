@@ -138,19 +138,17 @@ impl EthereumLogFilter {
         iter.into_iter().fold(None, |filter_opt, data_source| {
             let contract_addr = data_source.source.address;
 
-            if let Some(ref handlers) = data_source.mapping.event_handlers {
-                filter_opt.extend(
-                    handlers
-                        .iter()
-                        .map(move |event_handler| {
-                            let event_sig = event_handler.topic0();
-                            (contract_addr, event_sig)
-                        })
-                        .collect::<EthereumLogFilter>(),
-                )
-            } else {
-                filter_opt
-            }
+            filter_opt.extend(
+                data_source
+                    .mapping
+                    .event_handlers
+                    .iter()
+                    .map(move |event_handler| {
+                        let event_sig = event_handler.topic0();
+                        (contract_addr, event_sig)
+                    })
+                    .collect::<EthereumLogFilter>(),
+            )
         })
     }
 }
@@ -217,19 +215,17 @@ impl EthereumCallFilter {
             .fold(None, |filter_opt, data_source| {
                 let contract_addr = data_source.source.address.unwrap();
 
-                if let Some(ref handlers) = data_source.mapping.call_handlers {
-                    filter_opt.extend(
-                        handlers
-                            .iter()
-                            .map(move |call_handler| {
-                                let sig = keccak256(call_handler.function.as_bytes());
-                                (contract_addr, [sig[0], sig[1], sig[2], sig[3]])
-                            })
-                            .collect::<EthereumCallFilter>(),
-                    )
-                } else {
-                    filter_opt
-                }
+                filter_opt.extend(
+                    data_source
+                        .mapping
+                        .call_handlers
+                        .iter()
+                        .map(move |call_handler| {
+                            let sig = keccak256(call_handler.function.as_bytes());
+                            (contract_addr, [sig[0], sig[1], sig[2], sig[3]])
+                        })
+                        .collect::<EthereumCallFilter>(),
+                )
             })
     }
 }
@@ -294,7 +290,6 @@ impl EthereumBlockFilter {
                     .mapping
                     .block_handlers
                     .clone()
-                    .unwrap_or(vec![])
                     .into_iter()
                     .any(|block_handler| match block_handler.filter {
                         Some(ref filter) if *filter == BlockHandlerFilter::Call => return true,
@@ -305,7 +300,6 @@ impl EthereumBlockFilter {
                     .mapping
                     .block_handlers
                     .clone()
-                    .unwrap_or(vec![])
                     .into_iter()
                     .any(|block_handler| block_handler.filter.is_none());
 

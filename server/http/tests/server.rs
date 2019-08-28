@@ -85,7 +85,7 @@ mod test {
             repository: None,
             schema: schema.clone(),
             data_sources: vec![],
-            templates: None,
+            templates: vec![],
         };
 
         let store = Arc::new(MockStore::new(vec![(id, schema)]));

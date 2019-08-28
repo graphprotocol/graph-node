@@ -9,16 +9,8 @@ pub fn validate_manifest(
     // which has call or block handlers
     let has_invalid_data_source = manifest.data_sources.iter().any(|data_source| {
         let no_source_address = data_source.source.address.is_none();
-        let has_call_handlers = data_source
-            .mapping
-            .call_handlers
-            .as_ref()
-            .map_or(false, |handlers| !handlers.is_empty());
-        let has_block_handlers = data_source
-            .mapping
-            .block_handlers
-            .as_ref()
-            .map_or(false, |handlers| handlers.is_empty());
+        let has_call_handlers = !data_source.mapping.call_handlers.is_empty();
+        let has_block_handlers = !data_source.mapping.block_handlers.is_empty();
 
         no_source_address && (has_call_handlers || has_block_handlers)
     });
@@ -30,26 +22,23 @@ pub fn validate_manifest(
     // Validate that there are no more than one of each type of
     // block_handler in each data source.
     let has_too_many_block_handlers = manifest.data_sources.iter().any(|data_source| {
-        if data_source
-            .mapping
-            .block_handlers
-            .as_ref()
-            .map_or(true, |handlers| handlers.is_empty())
-        {
+        if data_source.mapping.block_handlers.is_empty() {
             return false;
         }
 
         let mut non_filtered_block_handler_count = 0;
         let mut call_filtered_block_handler_count = 0;
-        if let Some(ref handlers) = data_source.mapping.block_handlers {
-            handlers.iter().for_each(|block_handler| {
+        data_source
+            .mapping
+            .block_handlers
+            .iter()
+            .for_each(|block_handler| {
                 if block_handler.filter.is_none() {
                     non_filtered_block_handler_count += 1
                 } else {
                     call_filtered_block_handler_count += 1
                 }
             });
-        }
         return non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1;
     });
 

@@ -121,7 +121,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         repository: None,
         schema: Schema::parse("scalar Foo", TEST_SUBGRAPH_ID.clone()).unwrap(),
         data_sources: vec![],
-        templates: None,
+        templates: vec![],
     };
 
     // Create SubgraphDeploymentEntity
@@ -1688,15 +1688,15 @@ fn mock_data_source(path: &str) -> DataSource {
             language: String::from("wasm/assemblyscript"),
             entities: vec![],
             abis: vec![],
-            event_handlers: Some(vec![]),
-            call_handlers: Some(vec![]),
-            block_handlers: Some(vec![]),
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
             link: Link {
                 link: "link".to_owned(),
             },
             runtime: Arc::new(runtime.clone()),
         },
-        templates: Some(vec![DataSourceTemplate {
+        templates: vec![DataSourceTemplate {
             kind: String::from("ethereum/contract"),
             name: String::from("example template"),
             network: Some(String::from("mainnet")),
@@ -1709,15 +1709,15 @@ fn mock_data_source(path: &str) -> DataSource {
                 language: String::from("wasm/assemblyscript"),
                 entities: vec![],
                 abis: vec![],
-                event_handlers: Some(vec![]),
-                call_handlers: Some(vec![]),
-                block_handlers: Some(vec![]),
+                event_handlers: vec![],
+                call_handlers: vec![],
+                block_handlers: vec![],
                 link: Link {
                     link: "link".to_owned(),
                 },
                 runtime: Arc::new(runtime),
             },
-        }]),
+        }],
     }
 }
 
@@ -1876,7 +1876,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             repository: None,
             schema: Schema::parse("scalar Foo", subgraph_id.clone()).unwrap(),
             data_sources: vec![],
-            templates: None,
+            templates: vec![],
         };
 
         // Create SubgraphDeploymentEntity

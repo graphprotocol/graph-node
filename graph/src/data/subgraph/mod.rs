@@ -348,7 +348,7 @@ impl From<serde_yaml::Error> for SubgraphManifestResolveError {
 }
 
 /// IPLD link.
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 pub struct Link {
     #[serde(rename = "/")]
     pub link: String,
@@ -396,7 +396,7 @@ impl From<EthereumContractSourceEntity> for Source {
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 pub struct TemplateSource {
     pub abi: String,
 }
@@ -517,7 +517,7 @@ impl From<EthereumContractEventHandlerEntity> for MappingEventHandler {
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnresolvedMapping {
     pub kind: String,
@@ -525,9 +525,12 @@ pub struct UnresolvedMapping {
     pub language: String,
     pub entities: Vec<String>,
     pub abis: Vec<UnresolvedMappingABI>,
-    pub block_handlers: Option<Vec<MappingBlockHandler>>,
-    pub call_handlers: Option<Vec<MappingCallHandler>>,
-    pub event_handlers: Option<Vec<MappingEventHandler>>,
+    #[serde(default)]
+    pub block_handlers: Vec<MappingBlockHandler>,
+    #[serde(default)]
+    pub call_handlers: Vec<MappingCallHandler>,
+    #[serde(default)]
+    pub event_handlers: Vec<MappingEventHandler>,
     pub file: Link,
 }
 
@@ -538,9 +541,9 @@ pub struct Mapping {
     pub language: String,
     pub entities: Vec<String>,
     pub abis: Vec<MappingABI>,
-    pub block_handlers: Option<Vec<MappingBlockHandler>>,
-    pub call_handlers: Option<Vec<MappingCallHandler>>,
-    pub event_handlers: Option<Vec<MappingEventHandler>>,
+    pub block_handlers: Vec<MappingBlockHandler>,
+    pub call_handlers: Vec<MappingCallHandler>,
+    pub event_handlers: Vec<MappingEventHandler>,
     pub runtime: Arc<Module>,
     pub link: Link,
 }
@@ -599,15 +602,9 @@ impl From<EthereumContractMappingEntity> for UnresolvedMapping {
             language: entity.language,
             entities: entity.entities,
             abis: entity.abis.into_iter().map(Into::into).collect(),
-            event_handlers: entity
-                .event_handlers
-                .map(|event_handlers| event_handlers.into_iter().map(Into::into).collect()),
-            call_handlers: entity
-                .call_handlers
-                .map(|call_handlers| call_handlers.into_iter().map(Into::into).collect()),
-            block_handlers: entity
-                .block_handlers
-                .map(|block_handlers| block_handlers.into_iter().map(Into::into).collect()),
+            event_handlers: entity.event_handlers.into_iter().map(Into::into).collect(),
+            call_handlers: entity.call_handlers.into_iter().map(Into::into).collect(),
+            block_handlers: entity.block_handlers.into_iter().map(Into::into).collect(),
             file: entity.file.into(),
         }
     }
@@ -620,7 +617,8 @@ pub struct BaseDataSource<M, T> {
     pub name: String,
     pub source: Source,
     pub mapping: M,
-    pub templates: Option<Vec<T>>, // Deprecated in manifest spec version 0.0.2
+    #[serde(default)]
+    pub templates: Vec<T>, // Deprecated in manifest spec version 0.0.2
 }
 
 pub type UnresolvedDataSource = BaseDataSource<UnresolvedMapping, UnresolvedDataSourceTemplate>;
@@ -645,14 +643,14 @@ impl UnresolvedDataSource {
 
         mapping
             .resolve(resolver, logger.clone())
-            .join(templates.map(|templates| {
+            .join(
                 stream::futures_ordered(
                     templates
                         .into_iter()
                         .map(|template| template.resolve(resolver, logger.clone())),
                 )
-                .collect()
-            }))
+                .collect(),
+            )
             .map(|(mapping, templates)| DataSource {
                 kind,
                 network,
@@ -697,7 +695,7 @@ impl DataSource {
                 abi: template.source.abi,
             },
             mapping: template.mapping,
-            templates: None,
+            templates: Vec::new(),
         })
     }
 }
@@ -710,14 +708,12 @@ impl From<EthereumContractDataSourceEntity> for UnresolvedDataSource {
             name: entity.name,
             source: entity.source.into(),
             mapping: entity.mapping.into(),
-            templates: entity
-                .templates
-                .map(|templates| templates.into_iter().map(Into::into).collect()),
+            templates: entity.templates.into_iter().map(Into::into).collect(),
         }
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 pub struct BaseDataSourceTemplate<M> {
     pub kind: String,
     pub network: Option<String>,
@@ -771,25 +767,18 @@ impl UnresolvedDataSourceTemplate {
 
 impl DataSourceTemplate {
     pub fn has_call_handler(&self) -> bool {
-        self.mapping
-            .call_handlers
-            .as_ref()
-            .map_or(false, |handlers| !handlers.is_empty())
+        !self.mapping.call_handlers.is_empty()
     }
 
     pub fn has_block_handler_with_call_filter(&self) -> bool {
         self.mapping
             .block_handlers
-            .as_ref()
-            .map_or(false, |handlers| {
-                handlers
-                    .iter()
-                    .find(|handler| match handler.filter {
-                        Some(BlockHandlerFilter::Call) => true,
-                        _ => false,
-                    })
-                    .is_some()
+            .iter()
+            .find(|handler| match handler.filter {
+                Some(BlockHandlerFilter::Call) => true,
+                _ => false,
             })
+            .is_some()
     }
 }
 
@@ -803,7 +792,8 @@ pub struct BaseSubgraphManifest<S, D, T> {
     pub repository: Option<String>,
     pub schema: S,
     pub data_sources: Vec<D>,
-    pub templates: Option<Vec<T>>,
+    #[serde(default)]
+    pub templates: Vec<T>,
 }
 
 /// Consider two subgraphs to be equal if they come from the same IPLD link.
@@ -931,14 +921,14 @@ impl UnresolvedSubgraphManifest {
                     )
                     .collect(),
                 )
-                .join(templates.map(|templates| {
+                .join(
                     stream::futures_ordered(
                         templates
                             .into_iter()
                             .map(|template| template.resolve(resolver, logger.clone())),
                     )
-                    .collect()
-                }))
+                    .collect(),
+                )
                 .map(|((schema, data_sources), templates)| SubgraphManifest {
                     id,
                     location,

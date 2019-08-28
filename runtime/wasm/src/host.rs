@@ -101,7 +101,7 @@ where
         // deprecated, or the top-level templates field.
         let templates = match top_level_templates.is_empty() {
             false => top_level_templates,
-            true => data_source.templates.unwrap_or_default(),
+            true => data_source.templates,
         };
 
         RuntimeHost::new(
@@ -156,9 +156,9 @@ pub struct RuntimeHost {
     data_source_name: String,
     data_source_contract: Source,
     data_source_contract_abi: MappingABI,
-    data_source_event_handlers: Option<Vec<MappingEventHandler>>,
-    data_source_call_handlers: Option<Vec<MappingCallHandler>>,
-    data_source_block_handlers: Option<Vec<MappingBlockHandler>>,
+    data_source_event_handlers: Vec<MappingEventHandler>,
+    data_source_call_handlers: Vec<MappingCallHandler>,
+    data_source_block_handlers: Vec<MappingBlockHandler>,
     mapping_request_sender: Sender<MappingRequest>,
     _guard: oneshot::Sender<()>,
 }
@@ -344,15 +344,11 @@ impl RuntimeHost {
 
     fn matches_call_function(&self, call: &EthereumCall) -> bool {
         let target_method_id = &call.input.0[..4];
-        self.data_source_call_handlers
-            .as_ref()
-            .map_or(false, |handlers| {
-                handlers.iter().any(|handler| {
-                    let fhash = keccak256(handler.function.as_bytes());
-                    let actual_method_id = [fhash[0], fhash[1], fhash[2], fhash[3]];
-                    target_method_id == actual_method_id
-                })
-            })
+        self.data_source_call_handlers.iter().any(|handler| {
+            let fhash = keccak256(handler.function.as_bytes());
+            let actual_method_id = [fhash[0], fhash[1], fhash[2], fhash[3]];
+            target_method_id == actual_method_id
+        })
     }
 
     fn matches_log_address(&self, log: &Log) -> bool {
@@ -371,10 +367,8 @@ impl RuntimeHost {
         };
 
         self.data_source_event_handlers
-            .as_ref()
-            .map_or(false, |handlers| {
-                handlers.iter().any(|handler| *topic0 == handler.topic0())
-            })
+            .iter()
+            .any(|handler| *topic0 == handler.topic0())
     }
 
     fn matches_block_trigger(&self, block_trigger_type: EthereumBlockTriggerType) -> bool {
@@ -399,13 +393,6 @@ impl RuntimeHost {
 
         let handlers = self
             .data_source_event_handlers
-            .as_ref()
-            .ok_or_else(|| {
-                format_err!(
-                    "No event handlers found in data source \"{}\"",
-                    self.data_source_name
-                )
-            })?
             .iter()
             .filter(|handler| *topic0 == handler.topic0())
             .cloned()
@@ -433,13 +420,6 @@ impl RuntimeHost {
         let target_method_id = &call.input.0[..4];
 
         self.data_source_call_handlers
-            .as_ref()
-            .ok_or_else(|| {
-                format_err!(
-                    "No call handlers found in data source \"{}\"",
-                    self.data_source_name
-                )
-            })?
             .iter()
             .find(move |handler| {
                 let fhash = keccak256(handler.function.as_bytes());
@@ -462,13 +442,6 @@ impl RuntimeHost {
         match trigger_type {
             EthereumBlockTriggerType::Every => self
                 .data_source_block_handlers
-                .as_ref()
-                .ok_or_else(|| {
-                    format_err!(
-                        "No block handlers found in data source \"{}\"",
-                        self.data_source_name
-                    )
-                })?
                 .iter()
                 .find(move |handler| handler.filter == None)
                 .cloned()
@@ -481,13 +454,6 @@ impl RuntimeHost {
                 }),
             EthereumBlockTriggerType::WithCallTo(_address) => self
                 .data_source_block_handlers
-                .as_ref()
-                .ok_or_else(|| {
-                    format_err!(
-                        "No block handlers found in data source \"{}\"",
-                        self.data_source_name
-                    )
-                })?
                 .iter()
                 .find(move |handler| {
                     handler.filter.is_some()
