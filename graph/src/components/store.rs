@@ -14,7 +14,6 @@ use web3::types::H256;
 use crate::data::store::*;
 use crate::data::subgraph::schema::*;
 use crate::prelude::*;
-use crate::util::extend::Extend;
 
 lazy_static! {
     pub static ref SUBSCRIPTION_THROTTLE_INTERVAL: Duration =
@@ -254,10 +253,8 @@ impl StoreEvent {
             *ev1 = Some(ev2);
         }
     }
-}
 
-impl Extend<StoreEvent> for StoreEvent {
-    fn extend(mut self, other: StoreEvent) -> Self {
+    pub fn extend(mut self, other: StoreEvent) -> Self {
         self.changes.extend(other.changes);
         self
     }
