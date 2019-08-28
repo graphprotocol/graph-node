@@ -614,14 +614,14 @@ impl Store {
         &self,
         conn: &e::Connection,
         operation: EntityOperation,
-        history_event: Option<&HistoryEvent>,
+        history_event: &HistoryEvent,
     ) -> Result<i32, StoreError> {
         match operation {
             EntityOperation::Set { key, data } => {
-                self.apply_set_operation(conn, key, data, history_event)
+                self.apply_set_operation(conn, key, data, Some(history_event))
             }
             EntityOperation::Remove { key } => {
-                self.apply_remove_operation(conn, key, history_event)
+                self.apply_remove_operation(conn, key, Some(history_event))
             }
         }
     }
@@ -634,7 +634,7 @@ impl Store {
         econn: &e::Connection,
         subgraph: &SubgraphDeploymentId,
         operations: Vec<EntityOperation>,
-        history_event: Option<&HistoryEvent>,
+        history_event: &HistoryEvent,
     ) -> Result<bool, StoreError> {
         // Keep a count of how many entities have been added/removed. This
         // crucially depends on the fact that all operations are about one
@@ -649,23 +649,22 @@ impl Store {
 
         // Actually apply the operations
         for operation in operations.into_iter() {
-            let do_count = match operation.subgraph() {
-                Some(subgraph) => !subgraph.is_meta(),
-                None => false,
-            };
-            let n = self.apply_entity_operation(econn, operation, history_event.clone())?;
+            let do_count = operation
+                .subgraph()
+                .map(|subgraph| !subgraph.is_meta())
+                .unwrap_or(false);
+            let n = self.apply_entity_operation(econn, operation, history_event)?;
             if do_count {
                 count += n;
             }
         }
         econn.update_entity_count(&subgraph, count)?;
         match history_event {
-            Some(HistoryEvent {
+            HistoryEvent {
                 source: EventSource::EthereumBlock(block_ptr),
                 subgraph,
                 ..
-            }) => Ok(econn.should_migrate(&subgraph, block_ptr)?),
-            _ => Ok(false),
+            } => Ok(econn.should_migrate(&subgraph, block_ptr)?),
         }
     }
 
@@ -673,15 +672,13 @@ impl Store {
         &self,
         econn: &e::Connection,
         operations: Vec<MetadataOperation>,
-    ) -> Result<bool, StoreError> {
+    ) -> Result<(), StoreError> {
         // Keep a count of how many entities have been added/removed. This
         // crucially depends on the fact that all operations are about one
         // subgraph, with the possible exception that some might touch
         // the subgraph of subgraphs
         let mut count = 0;
         let mut subgraph = None;
-
-        //self.check_entity_operations(econn, &operations);
 
         // Emit a store event for the changes we are about to make
         let event: StoreEvent = operations.clone().into();
@@ -706,10 +703,10 @@ impl Store {
                     }
                 }
             }
-            let do_count = match operation.subgraph() {
-                Some(subgraph) => !subgraph.is_meta(),
-                None => false,
-            };
+            let do_count = operation
+                .subgraph()
+                .map(|subgraph| !subgraph.is_meta())
+                .unwrap_or(false);
             let n = self.apply_metadata_operation(econn, operation)?;
             if do_count {
                 count += n;
@@ -718,7 +715,7 @@ impl Store {
         if let Some(subgraph) = subgraph {
             econn.update_entity_count(&subgraph, count)?;
         }
-        Ok(false)
+        Ok(())
     }
 
     /// Build a partial Postgres index on a Subgraph-Entity-Attribute
@@ -977,7 +974,7 @@ impl StoreTrait for Store {
                 &econn,
                 &subgraph_id,
                 operations,
-                Some(&history_event),
+                &history_event,
             )?;
 
             // Update the subgraph block pointer, without an event source; this way
