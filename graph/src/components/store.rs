@@ -479,16 +479,6 @@ pub enum EntityOperation {
 }
 
 impl EntityOperation {
-    /// Returns true if the operation is of variant `Set`.
-    pub fn is_set(&self) -> bool {
-        use self::EntityOperation::*;
-
-        match self {
-            Set { .. } => true,
-            _ => false,
-        }
-    }
-
     /// Returns true if the operation is an entity removal.
     pub fn is_remove(&self) -> bool {
         use self::EntityOperation::*;
@@ -508,23 +498,9 @@ impl EntityOperation {
         }
     }
 
-    /// Return the subgraph that this operation applies to
-    pub fn subgraph(&self) -> Option<&SubgraphDeploymentId> {
-        use self::EntityOperation::*;
-
-        match self {
-            Set { key, .. } | Remove { key } => Some(&key.subgraph_id),
-        }
-    }
-
     /// Returns true if the operation matches a given store key.
     pub fn matches_entity(&self, key: &EntityKey) -> bool {
         self.entity_key() == key
-    }
-
-    /// Returns true if the two operations match the same entity.
-    pub fn matches_same_entity(&self, other: &EntityOperation) -> bool {
-        self.entity_key() == other.entity_key()
     }
 
     /// Applies the operation to an existing entity (may be None).
@@ -599,26 +575,6 @@ pub enum MetadataOperation {
 }
 
 impl MetadataOperation {
-    /// Returns true if the operation is of variant `Set`.
-    pub fn is_set(&self) -> bool {
-        use self::MetadataOperation::*;
-
-        match self {
-            Set { .. } => true,
-            _ => false,
-        }
-    }
-
-    /// Returns true if the operation is an entity removal.
-    pub fn is_remove(&self) -> bool {
-        use self::MetadataOperation::*;
-
-        match self {
-            Remove { .. } => true,
-            _ => false,
-        }
-    }
-
     pub fn entity_key(&self) -> Option<EntityKey> {
         use self::MetadataOperation::*;
 
