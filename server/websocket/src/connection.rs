@@ -141,6 +141,7 @@ impl Drop for Operations {
             // Discard errors, the connection is being shutdown anyways.
             let _ = self.stop(id);
         }
+        self.msg_sink.close().expect("failed to close msg sink");
     }
 }
 
