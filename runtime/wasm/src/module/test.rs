@@ -98,9 +98,9 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: &Logger,
         _: u64,
         _: u64,
-        _: Option<EthereumLogFilter>,
-        _: Option<EthereumCallFilter>,
-        _: Option<EthereumBlockFilter>,
+        _: EthereumLogFilter,
+        _: EthereumCallFilter,
+        _: EthereumBlockFilter,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         unimplemented!();
     }
