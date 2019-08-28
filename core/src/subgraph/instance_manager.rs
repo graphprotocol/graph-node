@@ -736,7 +736,7 @@ where
             &block_ptr,
         ));
         let id = format!("{}-dynamic", Uuid::new_v4().to_simple());
-        let operations = entity.write_operations(id.as_ref());
+        let operations = entity.write_entity_operations(id.as_ref());
         block_state.entity_operations.extend(operations);
     }
 
