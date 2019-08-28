@@ -10,7 +10,6 @@ use web3::types::*;
 
 use super::types::*;
 use crate::prelude::*;
-use crate::util::extend::Extend;
 
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
 pub struct EthereumNetworkIdentifier {
@@ -131,14 +130,11 @@ impl EthereumLogFilter {
         }
     }
 
-    pub fn from_data_sources_opt<'a, I>(iter: I) -> Option<Self>
-    where
-        I: IntoIterator<Item = &'a DataSource>,
-    {
-        iter.into_iter().fold(None, |filter_opt, data_source| {
-            let contract_addr = data_source.source.address;
+    pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
+        iter.into_iter()
+            .map(|data_source| {
+                let contract_addr = data_source.source.address;
 
-            filter_opt.extend(
                 data_source
                     .mapping
                     .event_handlers
@@ -147,18 +143,24 @@ impl EthereumLogFilter {
                         let event_sig = event_handler.topic0();
                         (contract_addr, event_sig)
                     })
-                    .collect::<EthereumLogFilter>(),
-            )
-        })
+            })
+            .flatten()
+            .collect()
     }
-}
 
-impl Extend<EthereumLogFilter> for EthereumLogFilter {
     /// Extends this log filter with another one.
-    fn extend(mut self, other: EthereumLogFilter) -> Self {
+    pub fn extend(&mut self, other: EthereumLogFilter) {
         self.contract_address_and_event_sig_pairs
             .extend(other.contract_address_and_event_sig_pairs.iter());
-        self
+    }
+
+    /// An empty filter is one that never matches.
+    pub fn is_empty(&self) -> bool {
+        // Destructure to make sure we're checking all fields.
+        let EthereumLogFilter {
+            contract_address_and_event_sig_pairs,
+        } = self;
+        contract_address_and_event_sig_pairs.is_empty()
     }
 }
 
@@ -206,36 +208,36 @@ impl EthereumCallFilter {
             .contains(&call.input.0[..4])
     }
 
-    pub fn from_data_sources_opt<'a, I>(iter: I) -> Option<Self>
-    where
-        I: IntoIterator<Item = &'a DataSource>,
-    {
+    pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
         iter.into_iter()
-            .filter(|data_source| data_source.source.address.is_some())
-            .fold(None, |filter_opt, data_source| {
-                let contract_addr = data_source.source.address.unwrap();
-
-                filter_opt.extend(
-                    data_source
-                        .mapping
-                        .call_handlers
-                        .iter()
-                        .map(move |call_handler| {
-                            let sig = keccak256(call_handler.function.as_bytes());
-                            (contract_addr, [sig[0], sig[1], sig[2], sig[3]])
-                        })
-                        .collect::<EthereumCallFilter>(),
-                )
+            .filter_map(|data_source| data_source.source.address.map(|addr| (addr, data_source)))
+            .map(|(contract_addr, data_source)| {
+                data_source
+                    .mapping
+                    .call_handlers
+                    .iter()
+                    .map(move |call_handler| {
+                        let sig = keccak256(call_handler.function.as_bytes());
+                        (contract_addr, [sig[0], sig[1], sig[2], sig[3]])
+                    })
             })
+            .flatten()
+            .collect()
     }
-}
 
-impl Extend<EthereumCallFilter> for EthereumCallFilter {
     /// Extends this call filter with another one.
-    fn extend(mut self, other: EthereumCallFilter) -> Self {
+    pub fn extend(&mut self, other: EthereumCallFilter) {
         self.contract_addresses_function_signatures
             .extend(other.contract_addresses_function_signatures.into_iter());
-        self
+    }
+
+    /// An empty filter is one that never matches.
+    pub fn is_empty(&self) -> bool {
+        // Destructure to make sure we're checking all fields.
+        let EthereumCallFilter {
+            contract_addresses_function_signatures,
+        } = self;
+        contract_addresses_function_signatures.is_empty()
     }
 }
 
@@ -272,20 +274,17 @@ impl From<EthereumBlockFilter> for EthereumCallFilter {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct EthereumBlockFilter {
     pub contract_addresses: HashSet<Address>,
     pub trigger_every_block: bool,
 }
 
 impl EthereumBlockFilter {
-    pub fn from_data_sources_opt<'a, I>(iter: I) -> Option<Self>
-    where
-        I: IntoIterator<Item = &'a DataSource>,
-    {
+    pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
         iter.into_iter()
             .filter(|data_source| data_source.source.address.is_some())
-            .fold(None, |filter_opt, data_source| {
+            .fold(Self::default(), |mut filter_opt, data_source| {
                 let has_block_handler_with_call_filter = data_source
                     .mapping
                     .block_handlers
@@ -303,29 +302,23 @@ impl EthereumBlockFilter {
                     .into_iter()
                     .any(|block_handler| block_handler.filter.is_none());
 
-                if has_block_handler_without_filter || has_block_handler_with_call_filter {
-                    filter_opt.extend(Self {
-                        trigger_every_block: has_block_handler_without_filter,
-                        contract_addresses: if has_block_handler_with_call_filter {
-                            vec![data_source.source.address.unwrap().to_owned()]
-                                .into_iter()
-                                .collect()
-                        } else {
-                            HashSet::default()
-                        },
-                    })
-                } else {
-                    filter_opt
-                }
+                filter_opt.extend(Self {
+                    trigger_every_block: has_block_handler_without_filter,
+                    contract_addresses: if has_block_handler_with_call_filter {
+                        vec![data_source.source.address.unwrap().to_owned()]
+                            .into_iter()
+                            .collect()
+                    } else {
+                        HashSet::default()
+                    },
+                });
+                filter_opt
             })
     }
-}
 
-impl Extend<EthereumBlockFilter> for EthereumBlockFilter {
-    fn extend(mut self, other: EthereumBlockFilter) -> Self {
+    pub fn extend(&mut self, other: EthereumBlockFilter) {
         self.trigger_every_block = self.trigger_every_block || other.trigger_every_block;
         self.contract_addresses.extend(other.contract_addresses);
-        self
     }
 }
 
@@ -411,9 +404,9 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         from: u64,
         to: u64,
-        log_filter: Option<EthereumLogFilter>,
-        call_filter: Option<EthereumCallFilter>,
-        block_filter: Option<EthereumBlockFilter>,
+        log_filter: EthereumLogFilter,
+        call_filter: EthereumCallFilter,
+        block_filter: EthereumBlockFilter,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
 
     /// Find the first few blocks in the specified range containing at least one transaction with

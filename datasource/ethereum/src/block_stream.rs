@@ -81,9 +81,9 @@ enum ReconciliationStep {
     /// Move forwards, processing one or more blocks.
     ProcessDescendantBlocks {
         from: EthereumBlockPointer,
-        log_filter: Option<EthereumLogFilter>,
-        call_filter: Option<EthereumCallFilter>,
-        block_filter: Option<EthereumBlockFilter>,
+        log_filter: EthereumLogFilter,
+        call_filter: EthereumCallFilter,
+        block_filter: EthereumBlockFilter,
         descendant_blocks: Box<dyn Stream<Item = EthereumBlockWithCalls, Error = Error> + Send>,
     },
 
@@ -121,9 +121,9 @@ struct BlockStreamContext<S, C, E> {
     node_id: NodeId,
     subgraph_id: SubgraphDeploymentId,
     reorg_threshold: u64,
-    log_filter: Option<EthereumLogFilter>,
-    call_filter: Option<EthereumCallFilter>,
-    block_filter: Option<EthereumBlockFilter>,
+    log_filter: EthereumLogFilter,
+    call_filter: EthereumCallFilter,
+    block_filter: EthereumBlockFilter,
     include_calls_in_blocks: bool,
     logger: Logger,
 }
@@ -165,9 +165,9 @@ where
         eth_adapter: Arc<E>,
         node_id: NodeId,
         subgraph_id: SubgraphDeploymentId,
-        log_filter: Option<EthereumLogFilter>,
-        call_filter: Option<EthereumCallFilter>,
-        block_filter: Option<EthereumBlockFilter>,
+        log_filter: EthereumLogFilter,
+        call_filter: EthereumCallFilter,
+        block_filter: EthereumBlockFilter,
         include_calls_in_blocks: bool,
         reorg_threshold: u64,
         logger: Logger,
@@ -202,12 +202,7 @@ where
     /// Analyze the trigger filters to determine if we need to query the blocks calls
     /// and populate them in the blocks
     fn include_calls_in_blocks(&self) -> bool {
-        let call_filter_requirement = self.call_filter.as_ref().map_or(false, |_call_filter| true);
-        let block_filter_requirement = self
-            .block_filter
-            .as_ref()
-            .map_or(false, |filter| filter.contract_addresses.len() > 0);
-        call_filter_requirement || block_filter_requirement
+        !self.call_filter.is_empty() || self.block_filter.contract_addresses.len() > 0
     }
 
     /// Update the block pointer for `self.subgraph_id`, and, if needed,
@@ -388,7 +383,7 @@ where
                         // It isn't safe to go any farther due to race conditions.
                         let to_limit = head_ptr.number - reorg_threshold;
 
-                        let to = if block_filter.as_ref().map_or(false, |b| b.trigger_every_block) {
+                        let to = if block_filter.trigger_every_block {
                             // If there is a block trigger on every block, go
                             // one block at a time.
                             from
@@ -954,22 +949,19 @@ where
     }
 
     pub fn parse_triggers(
-        log_filter_opt: Option<EthereumLogFilter>,
-        call_filter_opt: Option<EthereumCallFilter>,
-        block_filter_opt: Option<EthereumBlockFilter>,
+        log_filter: EthereumLogFilter,
+        call_filter: EthereumCallFilter,
+        block_filter: EthereumBlockFilter,
         include_calls_in_blocks: bool,
         descendant_block: EthereumBlockWithCalls,
     ) -> Result<EthereumBlockWithTriggers, Error> {
         let mut triggers = Vec::new();
         triggers.append(&mut parse_log_triggers(
-            log_filter_opt,
+            log_filter,
             &descendant_block.ethereum_block,
         ));
-        triggers.append(&mut parse_call_triggers(call_filter_opt, &descendant_block));
-        triggers.append(&mut parse_block_triggers(
-            block_filter_opt,
-            &descendant_block,
-        ));
+        triggers.append(&mut parse_call_triggers(call_filter, &descendant_block));
+        triggers.append(&mut parse_block_triggers(block_filter, &descendant_block));
 
         let tx_hash_indexes = descendant_block
             .ethereum_block
@@ -1040,16 +1032,16 @@ where
     E: EthereumAdapter,
 {
     fn parse_triggers(
-        log_filter_opt: Option<EthereumLogFilter>,
-        call_filter_opt: Option<EthereumCallFilter>,
-        block_filter_opt: Option<EthereumBlockFilter>,
+        log_filter: EthereumLogFilter,
+        call_filter: EthereumCallFilter,
+        block_filter: EthereumBlockFilter,
         include_calls_in_blocks: bool,
         descendant_block: EthereumBlockWithCalls,
     ) -> Result<EthereumBlockWithTriggers, Error> {
         BlockStreamContext::<S, C, E>::parse_triggers(
-            log_filter_opt,
-            call_filter_opt,
-            block_filter_opt,
+            log_filter,
+            call_filter,
+            block_filter,
             include_calls_in_blocks,
             descendant_block,
         )
@@ -1290,9 +1282,9 @@ where
         logger: Logger,
         deployment_id: SubgraphDeploymentId,
         network_name: String,
-        log_filter: Option<EthereumLogFilter>,
-        call_filter: Option<EthereumCallFilter>,
-        block_filter: Option<EthereumBlockFilter>,
+        log_filter: EthereumLogFilter,
+        call_filter: EthereumCallFilter,
+        block_filter: EthereumBlockFilter,
         include_calls_in_blocks: bool,
     ) -> Self::Stream {
         let logger = logger.new(o!(
@@ -1334,59 +1326,51 @@ where
 }
 
 fn parse_log_triggers(
-    log_filter: Option<EthereumLogFilter>,
+    log_filter: EthereumLogFilter,
     block: &EthereumBlock,
 ) -> Vec<EthereumTrigger> {
-    log_filter.map_or(vec![], |log_filter| {
-        block
-            .transaction_receipts
+    block
+        .transaction_receipts
+        .iter()
+        .flat_map(move |receipt| {
+            let log_filter = log_filter.clone();
+            receipt
+                .logs
+                .iter()
+                .filter(move |log| log_filter.matches(log))
+                .map(move |log| EthereumTrigger::Log(log.clone()))
+        })
+        .collect()
+}
+
+fn parse_call_triggers(
+    call_filter: EthereumCallFilter,
+    block: &EthereumBlockWithCalls,
+) -> Vec<EthereumTrigger> {
+    block.calls.as_ref().map_or(vec![], |calls| {
+        calls
             .iter()
-            .flat_map(move |receipt| {
-                let log_filter = log_filter.clone();
-                receipt
-                    .logs
-                    .iter()
-                    .filter(move |log| log_filter.matches(log))
-                    .map(move |log| EthereumTrigger::Log(log.clone()))
-            })
+            .filter(move |call| call_filter.matches(call))
+            .map(move |call| EthereumTrigger::Call(call.clone()))
             .collect()
     })
 }
 
-fn parse_call_triggers(
-    call_filter: Option<EthereumCallFilter>,
-    block: &EthereumBlockWithCalls,
-) -> Vec<EthereumTrigger> {
-    call_filter.map_or(vec![], move |call_filter| {
-        block.calls.as_ref().map_or(vec![], |calls| {
-            calls
-                .iter()
-                .filter(move |call| call_filter.matches(call))
-                .map(move |call| EthereumTrigger::Call(call.clone()))
-                .collect()
-        })
-    })
-}
-
 fn parse_block_triggers(
-    block_filter: Option<EthereumBlockFilter>,
+    block_filter: EthereumBlockFilter,
     block: &EthereumBlockWithCalls,
 ) -> Vec<EthereumTrigger> {
-    block_filter.map_or(vec![], move |block_filter| {
-        let trigger_every_block = block_filter.trigger_every_block;
-        let call_filter = EthereumCallFilter::from(block_filter);
-        let mut triggers = block.calls.as_ref().map_or(vec![], |calls| {
-            calls
-                .iter()
-                .filter(move |call| call_filter.matches(call))
-                .map(move |call| {
-                    EthereumTrigger::Block(EthereumBlockTriggerType::WithCallTo(call.to))
-                })
-                .collect::<Vec<EthereumTrigger>>()
-        });
-        if trigger_every_block {
-            triggers.push(EthereumTrigger::Block(EthereumBlockTriggerType::Every));
-        }
-        triggers
-    })
+    let trigger_every_block = block_filter.trigger_every_block;
+    let call_filter = EthereumCallFilter::from(block_filter);
+    let mut triggers = block.calls.as_ref().map_or(vec![], |calls| {
+        calls
+            .iter()
+            .filter(move |call| call_filter.matches(call))
+            .map(move |call| EthereumTrigger::Block(EthereumBlockTriggerType::WithCallTo(call.to)))
+            .collect::<Vec<EthereumTrigger>>()
+    });
+    if trigger_every_block {
+        triggers.push(EthereumTrigger::Block(EthereumBlockTriggerType::Every));
+    }
+    triggers
 }

@@ -35,9 +35,9 @@ impl EventConsumer<ChainHeadUpdate> for MockBlockStream {
 
 impl BlockStream for MockBlockStream {
     fn parse_triggers(
-        _log_filter_opt: Option<EthereumLogFilter>,
-        _call_filter_opt: Option<EthereumCallFilter>,
-        _block_filter_opt: Option<EthereumBlockFilter>,
+        _: EthereumLogFilter,
+        _: EthereumCallFilter,
+        _: EthereumBlockFilter,
         _include_calls_in_blocks: bool,
         _descendant_block: EthereumBlockWithCalls,
     ) -> Result<EthereumBlockWithTriggers, Error> {
@@ -62,9 +62,9 @@ impl BlockStreamBuilder for MockBlockStreamBuilder {
         _logger: Logger,
         _deployment_id: SubgraphDeploymentId,
         _network_name: String,
-        _log_filter: Option<EthereumLogFilter>,
-        _call_filter: Option<EthereumCallFilter>,
-        _block_filter: Option<EthereumBlockFilter>,
+        _: EthereumLogFilter,
+        _: EthereumCallFilter,
+        _: EthereumBlockFilter,
         _include_calls_in_blocks: bool,
     ) -> Self::Stream {
         MockBlockStream::new()

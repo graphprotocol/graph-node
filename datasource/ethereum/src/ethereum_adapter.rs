@@ -758,15 +758,10 @@ where
         logger: &Logger,
         from: u64,
         to: u64,
-        log_filter_opt: Option<EthereumLogFilter>,
-        call_filter_opt: Option<EthereumCallFilter>,
-        block_filter_opt: Option<EthereumBlockFilter>,
+        log_filter: EthereumLogFilter,
+        call_filter: EthereumCallFilter,
+        block_filter: EthereumBlockFilter,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
-        // If no filters are provided, return an empty vector of blocks.
-        if log_filter_opt.is_none() && call_filter_opt.is_none() && block_filter_opt.is_none() {
-            return Box::new(future::ok(vec![]));
-        }
-
         // Each trigger filter needs to be queried for the same block range
         // and the blocks yielded need to be deduped. If any error occurs
         // while searching for a trigger type, the entire operation fails.
@@ -774,7 +769,7 @@ where
         let mut block_futs: futures::stream::FuturesUnordered<
             Box<dyn Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send>,
         > = futures::stream::FuturesUnordered::new();
-        if block_filter_opt.is_some() && block_filter_opt.clone().unwrap().trigger_every_block {
+        if block_filter.trigger_every_block {
             // All blocks in the range contain a trigger
             block_futs.push(Box::new(
                 eth.blocks(&logger, from, to)
@@ -782,36 +777,34 @@ where
             ));
         } else {
             // Scan the block range from triggers to find relevant blocks
-            if log_filter_opt.is_some() {
+            if !log_filter.is_empty() {
                 block_futs.push(Box::new(
-                    eth.blocks_with_logs(&logger, from, to, log_filter_opt.unwrap())
+                    eth.blocks_with_logs(&logger, from, to, log_filter)
                         .map(|block_ptrs| block_ptrs.into_iter().collect()),
                 ));
             }
-            if call_filter_opt.is_some() {
+            if !call_filter.is_empty() {
                 block_futs.push(Box::new(eth.blocks_with_calls(
                     &logger,
                     from,
                     to,
-                    call_filter_opt.unwrap(),
+                    call_filter,
                 )));
             }
-            if block_filter_opt.is_some() {
-                let block_filter = block_filter_opt.unwrap();
-                match block_filter.contract_addresses.len() {
-                    0 => (),
-                    _ => {
-                        // To determine which blocks include a call to addresses
-                        // in the block filter, transform the `block_filter` into
-                        // a `call_filter` and run `blocks_with_calls`
-                        let call_filter = EthereumCallFilter::from(block_filter);
-                        block_futs.push(Box::new(eth.blocks_with_calls(
-                            &logger,
-                            from,
-                            to,
-                            call_filter,
-                        )));
-                    }
+
+            match block_filter.contract_addresses.len() {
+                0 => (),
+                _ => {
+                    // To determine which blocks include a call to addresses
+                    // in the block filter, transform the `block_filter` into
+                    // a `call_filter` and run `blocks_with_calls`
+                    let call_filter = EthereumCallFilter::from(block_filter);
+                    block_futs.push(Box::new(eth.blocks_with_calls(
+                        &logger,
+                        from,
+                        to,
+                        call_filter,
+                    )));
                 }
             }
         }

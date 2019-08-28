@@ -9,7 +9,6 @@ use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity,
 };
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
-use graph::util::extend::Extend;
 
 use super::SubgraphInstance;
 
@@ -32,9 +31,9 @@ where
     logger: Logger,
     instance: SubgraphInstance<T>,
     instances: SharedInstanceKeepAliveMap,
-    log_filter: Option<EthereumLogFilter>,
-    call_filter: Option<EthereumCallFilter>,
-    block_filter: Option<EthereumBlockFilter>,
+    log_filter: EthereumLogFilter,
+    call_filter: EthereumCallFilter,
+    block_filter: EthereumBlockFilter,
     restarts: u64,
 }
 
@@ -196,9 +195,9 @@ impl SubgraphInstanceManager {
         let network_name = manifest.network_name()?;
 
         // Obtain filters from the manifest
-        let log_filter = EthereumLogFilter::from_data_sources_opt(manifest.data_sources.iter());
-        let call_filter = EthereumCallFilter::from_data_sources_opt(manifest.data_sources.iter());
-        let block_filter = EthereumBlockFilter::from_data_sources_opt(manifest.data_sources.iter());
+        let log_filter = EthereumLogFilter::from_data_sources(&manifest.data_sources);
+        let call_filter = EthereumCallFilter::from_data_sources(&manifest.data_sources);
+        let block_filter = EthereumBlockFilter::from_data_sources(&manifest.data_sources);
 
         // Identify whether there are templates with call handlers or
         // block handlers with call filters; in this case, we need to
@@ -471,9 +470,9 @@ where
         };
 
         future::result(<B>::Stream::parse_triggers(
-            EthereumLogFilter::from_data_sources_opt(&data_sources),
-            EthereumCallFilter::from_data_sources_opt(&data_sources),
-            EthereumBlockFilter::from_data_sources_opt(&data_sources),
+            EthereumLogFilter::from_data_sources(data_sources.iter()),
+            EthereumCallFilter::from_data_sources(data_sources.iter()),
+            EthereumBlockFilter::from_data_sources(data_sources.iter()),
             false,
             block_with_calls,
         ))
@@ -742,19 +741,19 @@ where
     }
 
     // Merge log filters from data sources into the block stream builder
-    if let Some(filter) = EthereumLogFilter::from_data_sources_opt(data_sources.iter()) {
-        ctx.state.log_filter = ctx.state.log_filter.extend(filter);
-    }
+    ctx.state
+        .log_filter
+        .extend(EthereumLogFilter::from_data_sources(&data_sources));
 
     // Merge call filters from data sources into the block stream builder
-    if let Some(filter) = EthereumCallFilter::from_data_sources_opt(data_sources.iter()) {
-        ctx.state.call_filter = ctx.state.call_filter.extend(filter);
-    }
+    ctx.state
+        .call_filter
+        .extend(EthereumCallFilter::from_data_sources(&data_sources));
 
     // Merge block filters from data sources into the block stream builder
-    if let Some(filter) = EthereumBlockFilter::from_data_sources_opt(data_sources.iter()) {
-        ctx.state.block_filter = ctx.state.block_filter.extend(filter);
-    }
+    ctx.state
+        .block_filter
+        .extend(EthereumBlockFilter::from_data_sources(&data_sources));
 
     // Add the new data sources to the subgraph instance
     ctx.state
