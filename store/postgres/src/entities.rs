@@ -45,7 +45,6 @@ use graph::prelude::{
     QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, TransactionAbortError,
     ValueType,
 };
-use graph::util::extend::Extend;
 
 use crate::filter::{build_filter, store_filter};
 use crate::functions::set_config;
