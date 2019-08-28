@@ -1790,7 +1790,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             key: user_key.clone(),
             data: partial_entity.clone(),
         }];
-        ops.extend(dynamic_ds.write_operations("dynamic-data-source"));
+        ops.extend(dynamic_ds.write_entity_operations("dynamic-data-source"));
 
         // Add user and dynamic data source to the store
         store

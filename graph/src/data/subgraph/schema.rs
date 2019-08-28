@@ -78,6 +78,53 @@ impl TypedEntity for SubgraphEntity {
     type IdType = String;
 }
 
+trait OperationList {
+    fn add(&mut self, entity: &str, id: String, entity: Entity);
+}
+
+struct MetadataOperationList(Vec<MetadataOperation>);
+
+impl OperationList for MetadataOperationList {
+    fn add(&mut self, entity: &str, id: String, data: Entity) {
+        self.0.push(MetadataOperation::Set {
+            entity: entity.to_owned(),
+            id,
+            data,
+        })
+    }
+}
+
+struct EntityOperationList(Vec<EntityOperation>);
+
+impl OperationList for EntityOperationList {
+    fn add(&mut self, entity: &str, id: String, data: Entity) {
+        self.0.push(EntityOperation::Set {
+            key: EntityKey {
+                subgraph_id: SUBGRAPHS_ID.clone(),
+                entity_type: entity.to_owned(),
+                entity_id: id.to_owned(),
+            },
+            data,
+        })
+    }
+}
+
+trait WriteOperations: Sized {
+    fn generate(self, id: &str, ops: &mut dyn OperationList);
+
+    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
+        let mut ops = MetadataOperationList(Vec::new());
+        self.generate(id, &mut ops);
+        ops.0
+    }
+
+    fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
+        let mut ops = EntityOperationList(Vec::new());
+        self.generate(id, &mut ops);
+        ops.0
+    }
+}
+
 impl SubgraphEntity {
     pub fn new(
         name: SubgraphName,
@@ -538,20 +585,24 @@ pub struct DynamicEthereumContractDataSourceEntity {
     templates: Vec<EthereumContractDataSourceTemplateEntity>,
 }
 
+impl DynamicEthereumContractDataSourceEntity {
+    pub fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
+        WriteOperations::write_entity_operations(self, id)
+    }
+}
+
 impl TypedEntity for DynamicEthereumContractDataSourceEntity {
     const TYPENAME: &'static str = "DynamicEthereumContractDataSource";
     type IdType = String;
 }
 
-impl DynamicEthereumContractDataSourceEntity {
-    pub fn write_operations(self, id: &str) -> Vec<EntityOperation> {
-        let mut ops = vec![];
-
+impl WriteOperations for DynamicEthereumContractDataSourceEntity {
+    fn generate(self, id: &str, ops: &mut dyn OperationList) {
         let source_id = format!("{}-source", id);
-        ops.extend(self.source.write_entity_operations(&source_id));
+        self.source.generate(&source_id, ops);
 
         let mapping_id = format!("{}-mapping", id);
-        ops.extend(self.mapping.write_entity_operations(&mapping_id));
+        self.mapping.generate(&mapping_id, ops);
 
         let template_ids: Vec<Value> = self
             .templates
@@ -559,7 +610,7 @@ impl DynamicEthereumContractDataSourceEntity {
             .enumerate()
             .map(|(i, template)| {
                 let template_id = format!("{}-templates-{}", id, i);
-                ops.extend(template.write_entity_operations(&template_id));
+                template.generate(&template_id, ops);
                 template_id.into()
             })
             .collect();
@@ -575,9 +626,7 @@ impl DynamicEthereumContractDataSourceEntity {
         entity.set("deployment", self.deployment);
         entity.set("ethereumBlockHash", self.ethereum_block_hash);
         entity.set("ethereumBlockNumber", self.ethereum_block_number);
-        ops.push(set_entity_operation(Self::TYPENAME, id, entity));
-
-        ops
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -626,23 +675,13 @@ impl TypedEntity for EthereumContractSourceEntity {
     type IdType = String;
 }
 
-impl EthereumContractSourceEntity {
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
-        let entity = self.make_entity(id);
-        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
-    }
-
-    fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
-        let entity = self.make_entity(id);
-        vec![set_entity_operation(Self::TYPENAME, id, entity)]
-    }
-
-    fn make_entity(self, id: &str) -> Entity {
+impl WriteOperations for EthereumContractSourceEntity {
+    fn generate(self, id: &str, ops: &mut dyn OperationList) {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("address", self.address);
         entity.set("abi", self.abi);
-        entity
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -690,14 +729,12 @@ impl TypedEntity for EthereumContractMappingEntity {
     type IdType = String;
 }
 
-impl EthereumContractMappingEntity {
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
-        let mut ops = vec![];
-
+impl WriteOperations for EthereumContractMappingEntity {
+    fn generate(self, id: &str, ops: &mut dyn OperationList) {
         let mut abi_ids: Vec<Value> = vec![];
         for (i, abi) in self.abis.into_iter().enumerate() {
             let abi_id = format!("{}-abi-{}", id, i);
-            ops.extend(abi.write_operations(&abi_id));
+            abi.generate(&abi_id, ops);
             abi_ids.push(abi_id.into());
         }
 
@@ -707,7 +744,7 @@ impl EthereumContractMappingEntity {
             .enumerate()
             .map(|(i, event_handler)| {
                 let handler_id = format!("{}-event-handler-{}", id, i);
-                ops.extend(event_handler.write_operations(&handler_id));
+                event_handler.generate(&handler_id, ops);
                 handler_id
             })
             .map(Into::into)
@@ -718,7 +755,7 @@ impl EthereumContractMappingEntity {
             .enumerate()
             .map(|(i, call_handler)| {
                 let handler_id = format!("{}-call-handler-{}", id, i);
-                ops.extend(call_handler.write_operations(&handler_id));
+                call_handler.generate(&handler_id, ops);
                 handler_id
             })
             .map(Into::into)
@@ -730,7 +767,7 @@ impl EthereumContractMappingEntity {
             .enumerate()
             .map(|(i, block_handler)| {
                 let handler_id = format!("{}-block-handler-{}", id, i);
-                ops.extend(block_handler.write_operations(&handler_id));
+                block_handler.generate(&handler_id, ops);
                 handler_id
             })
             .map(Into::into)
@@ -754,13 +791,7 @@ impl EthereumContractMappingEntity {
         entity.set("callHandlers", call_handler_ids);
         entity.set("blockHandlers", block_handler_ids);
 
-        ops.push(set_metadata_operation(Self::TYPENAME, id, entity));
-
-        ops
-    }
-
-    fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
-        metadata_operations_to_entity_operations(self.write_operations(id))
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -830,13 +861,13 @@ impl TypedEntity for EthereumContractAbiEntity {
     type IdType = String;
 }
 
-impl EthereumContractAbiEntity {
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
+impl WriteOperations for EthereumContractAbiEntity {
+    fn generate(self, id: &str, ops: &mut dyn OperationList) {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("name", self.name);
         entity.set("file", self.file);
-        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
+        ops.add(Self::TYPENAME, id.to_owned(), entity)
     }
 }
 
@@ -872,13 +903,11 @@ pub struct EthereumBlockHandlerEntity {
     pub filter: Option<EthereumBlockHandlerFilterEntity>,
 }
 
-impl EthereumBlockHandlerEntity {
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
-        let mut ops = vec![];
-
+impl WriteOperations for EthereumBlockHandlerEntity {
+    fn generate(self, id: &str, ops: &mut dyn OperationList) {
         let filter_id: Option<Value> = self.filter.map(|filter| {
             let filter_id = format!("{}-filter", id);
-            ops.extend(filter.write_operations(&filter_id));
+            filter.generate(&filter_id, ops);
             filter_id.into()
         });
 
@@ -891,9 +920,7 @@ impl EthereumBlockHandlerEntity {
             }
             None => {}
         }
-        ops.push(set_metadata_operation(Self::TYPENAME, id, entity));
-
-        ops
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -947,12 +974,12 @@ impl TypedEntity for EthereumBlockHandlerFilterEntity {
     type IdType = String;
 }
 
-impl EthereumBlockHandlerFilterEntity {
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
+impl WriteOperations for EthereumBlockHandlerFilterEntity {
+    fn generate(self, id: &str, ops: &mut dyn OperationList) {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("kind", self.kind);
-        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
+        ops.add(Self::TYPENAME, id.to_owned(), entity)
     }
 }
 
@@ -985,13 +1012,13 @@ impl TypedEntity for EthereumCallHandlerEntity {
     type IdType = String;
 }
 
-impl EthereumCallHandlerEntity {
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
+impl WriteOperations for EthereumCallHandlerEntity {
+    fn generate(self, id: &str, ops: &mut dyn OperationList) {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("function", self.function);
         entity.set("handler", self.handler);
-        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1033,14 +1060,14 @@ impl TypedEntity for EthereumContractEventHandlerEntity {
     type IdType = String;
 }
 
-impl EthereumContractEventHandlerEntity {
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
+impl WriteOperations for EthereumContractEventHandlerEntity {
+    fn generate(self, id: &str, ops: &mut dyn OperationList) {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("event", self.event);
         entity.set("topic0", self.topic0.map_or(Value::Null, Value::from));
         entity.set("handler", self.handler);
-        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1086,15 +1113,13 @@ impl TypedEntity for EthereumContractDataSourceTemplateEntity {
     type IdType = String;
 }
 
-impl EthereumContractDataSourceTemplateEntity {
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
-        let mut ops = vec![];
-
+impl WriteOperations for EthereumContractDataSourceTemplateEntity {
+    fn generate(self, id: &str, ops: &mut dyn OperationList) {
         let source_id = format!("{}-source", id);
-        ops.extend(self.source.write_operations(&source_id));
+        self.source.generate(&source_id, ops);
 
         let mapping_id = format!("{}-mapping", id);
-        ops.extend(self.mapping.write_operations(&mapping_id));
+        self.mapping.generate(&mapping_id, ops);
 
         let mut entity = Entity::new();
         entity.set("id", id);
@@ -1103,13 +1128,7 @@ impl EthereumContractDataSourceTemplateEntity {
         entity.set("name", self.name);
         entity.set("source", source_id);
         entity.set("mapping", mapping_id);
-        ops.push(set_metadata_operation(Self::TYPENAME, id, entity));
-
-        ops
-    }
-
-    fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
-        metadata_operations_to_entity_operations(self.write_operations(id))
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1155,12 +1174,12 @@ impl TypedEntity for EthereumContractDataSourceTemplateSourceEntity {
     type IdType = String;
 }
 
-impl EthereumContractDataSourceTemplateSourceEntity {
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
+impl WriteOperations for EthereumContractDataSourceTemplateSourceEntity {
+    fn generate(self, id: &str, ops: &mut dyn OperationList) {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("abi", self.abi);
-        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1183,21 +1202,6 @@ impl TryFromValue for EthereumContractDataSourceTemplateSourceEntity {
         Ok(Self {
             abi: map.get_required("abi")?,
         })
-    }
-}
-
-fn set_entity_operation(
-    entity_type_name: impl Into<String>,
-    entity_id: impl Into<String>,
-    data: impl Into<Entity>,
-) -> EntityOperation {
-    EntityOperation::Set {
-        key: EntityKey {
-            subgraph_id: SUBGRAPHS_ID.clone(),
-            entity_type: entity_type_name.into(),
-            entity_id: entity_id.into(),
-        },
-        data: data.into(),
     }
 }
 
@@ -1225,23 +1229,6 @@ fn update_metadata_operation(
         data: data.into(),
         guard,
     }
-}
-
-// This helper assumes that all the `MetadataOperaion` are `Set`
-fn metadata_operations_to_entity_operations(ops: Vec<MetadataOperation>) -> Vec<EntityOperation> {
-    ops.into_iter()
-        .map(|op| match op {
-            MetadataOperation::Set { entity, id, data } => EntityOperation::Set {
-                key: EntityKey {
-                    subgraph_id: SUBGRAPHS_ID.clone(),
-                    entity_type: entity,
-                    entity_id: id,
-                },
-                data,
-            },
-            _ => unreachable!(),
-        })
-        .collect()
 }
 
 pub fn generate_entity_id() -> String {
