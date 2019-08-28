@@ -336,7 +336,7 @@ pub struct SubgraphManifestEntity {
     repository: Option<String>,
     schema: String,
     data_sources: Vec<EthereumContractDataSourceEntity>,
-    templates: Option<Vec<EthereumContractDataSourceTemplateEntity>>,
+    templates: Vec<EthereumContractDataSourceTemplateEntity>,
 }
 
 impl TypedEntity for SubgraphManifestEntity {
@@ -359,17 +359,16 @@ impl SubgraphManifestEntity {
             data_source_ids.push(data_source_id.into());
         }
 
-        let template_ids: Option<Vec<Value>> = self.templates.map(|templates| {
-            templates
-                .into_iter()
-                .enumerate()
-                .map(|(i, template)| {
-                    let template_id = format!("{}-templates-{}", id, i);
-                    ops.extend(template.write_operations(&template_id));
-                    template_id.into()
-                })
-                .collect()
-        });
+        let template_ids: Vec<Value> = self
+            .templates
+            .into_iter()
+            .enumerate()
+            .map(|(i, template)| {
+                let template_id = format!("{}-templates-{}", id, i);
+                ops.extend(template.write_operations(&template_id));
+                template_id.into()
+            })
+            .collect();
 
         let mut entity = Entity::new();
         entity.set("id", id);
@@ -378,9 +377,8 @@ impl SubgraphManifestEntity {
         entity.set("repository", self.repository);
         entity.set("schema", self.schema);
         entity.set("dataSources", data_source_ids);
-        if let Some(ids) = template_ids {
-            entity.set("templates", ids);
-        }
+        entity.set("templates", template_ids);
+
         ops.push(set_entity_operation(Self::TYPENAME, id, entity));
 
         ops
@@ -395,12 +393,11 @@ impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifestEntity {
             repository: manifest.repository.clone(),
             schema: manifest.schema.document.clone().to_string(),
             data_sources: manifest.data_sources.iter().map(Into::into).collect(),
-            templates: manifest.templates.as_ref().map(|templates| {
-                templates
-                    .iter()
-                    .map(|template| EthereumContractDataSourceTemplateEntity::from(template))
-                    .collect()
-            }),
+            templates: manifest
+                .templates
+                .iter()
+                .map(EthereumContractDataSourceTemplateEntity::from)
+                .collect(),
         }
     }
 }
@@ -412,7 +409,7 @@ pub struct EthereumContractDataSourceEntity {
     pub name: String,
     pub source: EthereumContractSourceEntity,
     pub mapping: EthereumContractMappingEntity,
-    pub templates: Option<Vec<EthereumContractDataSourceTemplateEntity>>,
+    pub templates: Vec<EthereumContractDataSourceTemplateEntity>,
 }
 
 impl TypedEntity for EthereumContractDataSourceEntity {
@@ -430,17 +427,16 @@ impl EthereumContractDataSourceEntity {
         let mapping_id = format!("{}-mapping", id);
         ops.extend(self.mapping.write_operations(&mapping_id));
 
-        let template_ids: Option<Vec<Value>> = self.templates.map(|templates| {
-            templates
-                .into_iter()
-                .enumerate()
-                .map(|(i, template)| {
-                    let template_id = format!("{}-templates-{}", id, i);
-                    ops.extend(template.write_operations(&template_id));
-                    template_id.into()
-                })
-                .collect()
-        });
+        let template_ids: Vec<Value> = self
+            .templates
+            .into_iter()
+            .enumerate()
+            .map(|(i, template)| {
+                let template_id = format!("{}-templates-{}", id, i);
+                ops.extend(template.write_operations(&template_id));
+                template_id.into()
+            })
+            .collect();
 
         let mut entity = Entity::new();
         entity.set("id", id);
@@ -449,12 +445,8 @@ impl EthereumContractDataSourceEntity {
         entity.set("name", self.name);
         entity.set("source", source_id);
         entity.set("mapping", mapping_id);
-        match template_ids {
-            Some(ids) => {
-                entity.set("templates", ids);
-            }
-            None => {}
-        }
+        entity.set("templates", template_ids);
+
         ops.push(set_entity_operation(Self::TYPENAME, id, entity));
 
         ops
@@ -469,12 +461,11 @@ impl<'a> From<&'a super::DataSource> for EthereumContractDataSourceEntity {
             network: data_source.network.clone(),
             source: data_source.source.clone().into(),
             mapping: EthereumContractMappingEntity::from(&data_source.mapping),
-            templates: data_source.templates.as_ref().map(|templates| {
-                templates
-                    .iter()
-                    .map(|template| EthereumContractDataSourceTemplateEntity::from(template))
-                    .collect()
-            }),
+            templates: data_source
+                .templates
+                .iter()
+                .map(|template| EthereumContractDataSourceTemplateEntity::from(template))
+                .collect(),
         }
     }
 }
@@ -495,7 +486,7 @@ impl TryFromValue for EthereumContractDataSourceEntity {
             network: map.get_optional("network")?,
             source: map.get_required("source")?,
             mapping: map.get_required("mapping")?,
-            templates: map.get_optional("templates")?,
+            templates: map.get_optional("templates")?.unwrap_or_default(),
         })
     }
 }
@@ -510,7 +501,7 @@ pub struct DynamicEthereumContractDataSourceEntity {
     name: String,
     source: EthereumContractSourceEntity,
     mapping: EthereumContractMappingEntity,
-    templates: Option<Vec<EthereumContractDataSourceTemplateEntity>>,
+    templates: Vec<EthereumContractDataSourceTemplateEntity>,
 }
 
 impl TypedEntity for DynamicEthereumContractDataSourceEntity {
@@ -528,17 +519,16 @@ impl DynamicEthereumContractDataSourceEntity {
         let mapping_id = format!("{}-mapping", id);
         ops.extend(self.mapping.write_operations(&mapping_id));
 
-        let template_ids: Option<Vec<Value>> = self.templates.map(|templates| {
-            templates
-                .into_iter()
-                .enumerate()
-                .map(|(i, template)| {
-                    let template_id = format!("{}-templates-{}", id, i);
-                    ops.extend(template.write_operations(&template_id));
-                    template_id.into()
-                })
-                .collect()
-        });
+        let template_ids: Vec<Value> = self
+            .templates
+            .into_iter()
+            .enumerate()
+            .map(|(i, template)| {
+                let template_id = format!("{}-templates-{}", id, i);
+                ops.extend(template.write_operations(&template_id));
+                template_id.into()
+            })
+            .collect();
 
         let mut entity = Entity::new();
         entity.set("id", id);
@@ -547,12 +537,7 @@ impl DynamicEthereumContractDataSourceEntity {
         entity.set("name", self.name);
         entity.set("source", source_id);
         entity.set("mapping", mapping_id);
-        match template_ids {
-            Some(ids) => {
-                entity.set("templates", ids);
-            }
-            None => {}
-        }
+        entity.set("templates", template_ids);
         entity.set("deployment", self.deployment);
         entity.set("ethereumBlockHash", self.ethereum_block_hash);
         entity.set("ethereumBlockNumber", self.ethereum_block_number);
@@ -587,12 +572,11 @@ impl<'a, 'b, 'c>
             network: data_source.network.clone(),
             source: data_source.source.clone().into(),
             mapping: EthereumContractMappingEntity::from(&data_source.mapping),
-            templates: data_source.templates.as_ref().map(|templates| {
-                templates
-                    .iter()
-                    .map(|template| EthereumContractDataSourceTemplateEntity::from(template))
-                    .collect()
-            }),
+            templates: data_source
+                .templates
+                .iter()
+                .map(|template| EthereumContractDataSourceTemplateEntity::from(template))
+                .collect(),
         }
     }
 }
@@ -652,9 +636,9 @@ pub struct EthereumContractMappingEntity {
     pub file: String,
     pub entities: Vec<String>,
     pub abis: Vec<EthereumContractAbiEntity>,
-    pub block_handlers: Option<Vec<EthereumBlockHandlerEntity>>,
-    pub call_handlers: Option<Vec<EthereumCallHandlerEntity>>,
-    pub event_handlers: Option<Vec<EthereumContractEventHandlerEntity>>,
+    pub block_handlers: Vec<EthereumBlockHandlerEntity>,
+    pub call_handlers: Vec<EthereumCallHandlerEntity>,
+    pub event_handlers: Vec<EthereumContractEventHandlerEntity>,
 }
 
 impl TypedEntity for EthereumContractMappingEntity {
@@ -673,43 +657,40 @@ impl EthereumContractMappingEntity {
             abi_ids.push(abi_id.into());
         }
 
-        let event_handler_ids: Option<Vec<Value>> = self.event_handlers.map(|event_handlers| {
-            event_handlers
-                .into_iter()
-                .enumerate()
-                .map(|(i, event_handler)| {
-                    let handler_id = format!("{}-event-handler-{}", id, i);
-                    ops.extend(event_handler.write_operations(&handler_id));
-                    handler_id
-                })
-                .map(Into::into)
-                .collect()
-        });
-        let call_handler_ids: Option<Vec<Value>> = self.call_handlers.map(|call_handlers| {
-            call_handlers
-                .into_iter()
-                .enumerate()
-                .map(|(i, call_handler)| {
-                    let handler_id = format!("{}-call-handler-{}", id, i);
-                    ops.extend(call_handler.write_operations(&handler_id));
-                    handler_id
-                })
-                .map(Into::into)
-                .collect()
-        });
+        let event_handler_ids: Vec<Value> = self
+            .event_handlers
+            .into_iter()
+            .enumerate()
+            .map(|(i, event_handler)| {
+                let handler_id = format!("{}-event-handler-{}", id, i);
+                ops.extend(event_handler.write_operations(&handler_id));
+                handler_id
+            })
+            .map(Into::into)
+            .collect();
+        let call_handler_ids: Vec<Value> = self
+            .call_handlers
+            .into_iter()
+            .enumerate()
+            .map(|(i, call_handler)| {
+                let handler_id = format!("{}-call-handler-{}", id, i);
+                ops.extend(call_handler.write_operations(&handler_id));
+                handler_id
+            })
+            .map(Into::into)
+            .collect();
 
-        let block_handler_ids: Option<Vec<Value>> = self.block_handlers.map(|block_handlers| {
-            block_handlers
-                .into_iter()
-                .enumerate()
-                .map(|(i, block_handler)| {
-                    let handler_id = format!("{}-block-handler-{}", id, i);
-                    ops.extend(block_handler.write_operations(&handler_id));
-                    handler_id
-                })
-                .map(Into::into)
-                .collect()
-        });
+        let block_handler_ids: Vec<Value> = self
+            .block_handlers
+            .into_iter()
+            .enumerate()
+            .map(|(i, block_handler)| {
+                let handler_id = format!("{}-block-handler-{}", id, i);
+                ops.extend(block_handler.write_operations(&handler_id));
+                handler_id
+            })
+            .map(Into::into)
+            .collect();
 
         let mut entity = Entity::new();
         entity.set("id", id);
@@ -725,9 +706,9 @@ impl EthereumContractMappingEntity {
                 .map(Value::from)
                 .collect::<Vec<Value>>(),
         );
-        event_handler_ids.map(|event_handler_ids| entity.set("eventHandlers", event_handler_ids));
-        call_handler_ids.map(|call_handler_ids| entity.set("callHandlers", call_handler_ids));
-        block_handler_ids.map(|block_handler_ids| entity.set("blockHandlers", block_handler_ids));
+        entity.set("eventHandlers", event_handler_ids);
+        entity.set("callHandlers", call_handler_ids);
+        entity.set("blockHandlers", block_handler_ids);
 
         ops.push(set_entity_operation(Self::TYPENAME, id, entity));
 
@@ -747,15 +728,21 @@ impl<'a> From<&'a super::Mapping> for EthereumContractMappingEntity {
             block_handlers: mapping
                 .block_handlers
                 .clone()
-                .map(|block_handlers| block_handlers.clone().into_iter().map(Into::into).collect()),
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             call_handlers: mapping
                 .call_handlers
                 .clone()
-                .map(|call_handlers| call_handlers.clone().into_iter().map(Into::into).collect()),
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             event_handlers: mapping
                 .event_handlers
                 .clone()
-                .map(|event_handlers| event_handlers.clone().into_iter().map(Into::into).collect()),
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         }
     }
 }
@@ -777,9 +764,9 @@ impl TryFromValue for EthereumContractMappingEntity {
             file: map.get_required("file")?,
             entities: map.get_required("entities")?,
             abis: map.get_required("abis")?,
-            event_handlers: map.get_optional("eventHandlers")?,
-            call_handlers: map.get_optional("callHandlers")?,
-            block_handlers: map.get_optional("blockHandlers")?,
+            event_handlers: map.get_optional("eventHandlers")?.unwrap_or_default(),
+            call_handlers: map.get_optional("callHandlers")?.unwrap_or_default(),
+            block_handlers: map.get_optional("blockHandlers")?.unwrap_or_default(),
         })
     }
 }

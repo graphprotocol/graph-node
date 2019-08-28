@@ -186,7 +186,7 @@ impl SubgraphInstanceManager {
 
         let mut templates: Vec<DataSourceTemplate> = vec![];
         for data_source in manifest.data_sources.iter() {
-            for template in data_source.templates.iter().flatten() {
+            for template in data_source.templates.iter() {
                 templates.push(template.clone());
             }
         }
@@ -226,7 +226,7 @@ impl SubgraphInstanceManager {
                 stream_builder,
                 host_builder,
                 include_calls_in_blocks,
-                top_level_templates: top_level_templates.unwrap_or_default(),
+                top_level_templates,
             },
             state: IndexingState {
                 logger,

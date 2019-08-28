@@ -168,7 +168,7 @@ fn test_valid_module(
                 parsed_module: data_source.mapping.runtime,
                 abis: data_source.mapping.abis,
                 data_source_name: data_source.name,
-                templates: data_source.templates.unwrap_or_default(),
+                templates: data_source.templates,
                 ethereum_adapter: mock_ethereum_adapter,
                 link_resolver: Arc::new(ipfs_api::IpfsClient::default().into()),
                 store: Arc::new(FakeStore),
@@ -196,15 +196,15 @@ fn mock_data_source(path: &str) -> DataSource {
             language: String::from("wasm/assemblyscript"),
             entities: vec![],
             abis: vec![],
-            event_handlers: Some(vec![]),
-            call_handlers: Some(vec![]),
-            block_handlers: Some(vec![]),
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
             link: Link {
                 link: "link".to_owned(),
             },
             runtime: Arc::new(runtime.clone()),
         },
-        templates: Some(vec![DataSourceTemplate {
+        templates: vec![DataSourceTemplate {
             kind: String::from("ethereum/contract"),
             name: String::from("example template"),
             network: Some(String::from("mainnet")),
@@ -217,15 +217,15 @@ fn mock_data_source(path: &str) -> DataSource {
                 language: String::from("wasm/assemblyscript"),
                 entities: vec![],
                 abis: vec![],
-                event_handlers: Some(vec![]),
-                call_handlers: Some(vec![]),
-                block_handlers: Some(vec![]),
+                event_handlers: vec![],
+                call_handlers: vec![],
+                block_handlers: vec![],
                 link: Link {
                     link: "link".to_owned(),
                 },
                 runtime: Arc::new(runtime),
             },
-        }]),
+        }],
     }
 }
 
