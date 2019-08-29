@@ -143,6 +143,53 @@ impl EthereumAdapter for MockEthereumAdapter {
     }
 }
 
+fn test_valid_module_and_store(
+    data_source: DataSource,
+) -> (
+    Arc<
+        ValidModule<
+            MockEthereumAdapter,
+            graph_core::LinkResolver,
+            FakeStore,
+            Sender<Box<dyn Future<Item = (), Error = ()> + Send>>,
+        >,
+    >,
+    Arc<FakeStore>,
+) {
+    let logger = Logger::root(slog::Discard, o!());
+    let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
+    let (task_sender, task_receiver) = channel(100);
+    let fake_store = Arc::new(FakeStore);
+    let mut runtime = tokio::runtime::Runtime::new().unwrap();
+    runtime.spawn(task_receiver.for_each(tokio::spawn));
+    ::std::mem::forget(runtime);
+    (
+        Arc::new(
+            ValidModule::new(
+                &logger,
+                WasmiModuleConfig {
+                    subgraph_id: SubgraphDeploymentId::new("wasmModuleTest").unwrap(),
+                    api_version: Version::parse(&data_source.mapping.api_version).unwrap(),
+                    parsed_module: data_source.mapping.runtime,
+                    abis: data_source.mapping.abis,
+                    data_source_name: data_source.name,
+                    templates: data_source.templates,
+                    ethereum_adapter: mock_ethereum_adapter,
+                    link_resolver: Arc::new(ipfs_api::IpfsClient::default().into()),
+                    store: fake_store.clone(),
+                    handler_timeout: std::env::var(crate::host::TIMEOUT_ENV_VAR)
+                        .ok()
+                        .and_then(|s| u64::from_str(&s).ok())
+                        .map(Duration::from_secs),
+                },
+                task_sender,
+            )
+            .unwrap(),
+        ),
+        fake_store,
+    )
+}
+
 fn test_valid_module(
     data_source: DataSource,
 ) -> Arc<
@@ -153,34 +200,7 @@ fn test_valid_module(
         Sender<Box<dyn Future<Item = (), Error = ()> + Send>>,
     >,
 > {
-    let logger = Logger::root(slog::Discard, o!());
-    let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
-    let (task_sender, task_receiver) = channel(100);
-    let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    runtime.spawn(task_receiver.for_each(tokio::spawn));
-    ::std::mem::forget(runtime);
-    Arc::new(
-        ValidModule::new(
-            &logger,
-            WasmiModuleConfig {
-                subgraph_id: SubgraphDeploymentId::new("wasmModuleTest").unwrap(),
-                api_version: Version::parse(&data_source.mapping.api_version).unwrap(),
-                parsed_module: data_source.mapping.runtime,
-                abis: data_source.mapping.abis,
-                data_source_name: data_source.name,
-                templates: data_source.templates,
-                ethereum_adapter: mock_ethereum_adapter,
-                link_resolver: Arc::new(ipfs_api::IpfsClient::default().into()),
-                store: Arc::new(FakeStore),
-                handler_timeout: std::env::var(crate::host::TIMEOUT_ENV_VAR)
-                    .ok()
-                    .and_then(|s| u64::from_str(&s).ok())
-                    .map(Duration::from_secs),
-            },
-            task_sender,
-        )
-        .unwrap(),
-    )
+    test_valid_module_and_store(data_source).0
 }
 
 fn mock_data_source(path: &str) -> DataSource {
@@ -406,7 +426,8 @@ fn make_thing(id: &str, value: &str) -> (String, EntityOperation) {
 fn ipfs_map() {
     const BAD_IPFS_HASH: &str = "bad-ipfs-hash";
 
-    let valid_module = test_valid_module(mock_data_source("wasm_test/ipfs_map.wasm"));
+    let (valid_module, store) =
+        test_valid_module_and_store(mock_data_source("wasm_test/ipfs_map.wasm"));
     let ipfs = Arc::new(ipfs_api::IpfsClient::default());
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
 
@@ -428,7 +449,20 @@ fn ipfs_map() {
             &mut module,
         )?;
         assert_eq!(None, converted);
-        Ok(module.ctx.state.entity_operations)
+        let mut mods = module
+            .ctx
+            .state
+            .entity_cache
+            .into_inner()
+            .as_modifications(store.as_ref())?;
+        // Bring the modifications into a predictable order (by entity_id)
+        mods.sort_by(|a, b| {
+            a.entity_key()
+                .entity_id
+                .partial_cmp(&b.entity_key().entity_id)
+                .unwrap()
+        });
+        Ok(mods.into_iter().map(|op| op.into()).collect())
     };
 
     // Try it with two valid objects

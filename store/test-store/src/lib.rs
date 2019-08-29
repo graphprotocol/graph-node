@@ -75,3 +75,19 @@ pub fn make_history_event(
         source,
     }
 }
+
+/// Convenience to transact EntityOperation instead of EntityModification
+pub fn transact_entity_operations(
+    store: &Arc<Store>,
+    subgraph_id: SubgraphDeploymentId,
+    block_ptr_from: EthereumBlockPointer,
+    block_ptr_to: EthereumBlockPointer,
+    ops: Vec<EntityOperation>,
+) -> Result<bool, StoreError> {
+    let mut entity_cache = EntityCache::new();
+    entity_cache.append(ops);
+    let mods = entity_cache
+        .as_modifications(store.as_ref())
+        .expect("failed to convert to modifications");
+    store.transact_block_operations(subgraph_id, block_ptr_from, block_ptr_to, mods)
+}

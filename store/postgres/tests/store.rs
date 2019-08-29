@@ -170,14 +170,14 @@ fn insert_test_data(store: Arc<DieselStore>) {
         false,
         None,
     );
-    store
-        .transact_block_operations(
-            TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_0_PTR,
-            *TEST_BLOCK_1_PTR,
-            vec![test_entity_1],
-        )
-        .unwrap();
+    transact_entity_operations(
+        &store,
+        TEST_SUBGRAPH_ID.clone(),
+        *TEST_BLOCK_0_PTR,
+        *TEST_BLOCK_1_PTR,
+        vec![test_entity_1],
+    )
+    .unwrap();
 
     let test_entity_2 = create_test_entity(
         "2",
@@ -199,14 +199,14 @@ fn insert_test_data(store: Arc<DieselStore>) {
         false,
         Some("blue"),
     );
-    store
-        .transact_block_operations(
-            TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_1_PTR,
-            *TEST_BLOCK_2_PTR,
-            vec![test_entity_2, test_entity_3_1],
-        )
-        .unwrap();
+    transact_entity_operations(
+        &store,
+        TEST_SUBGRAPH_ID.clone(),
+        *TEST_BLOCK_1_PTR,
+        *TEST_BLOCK_2_PTR,
+        vec![test_entity_2, test_entity_3_1],
+    )
+    .unwrap();
 
     let test_entity_3_2 = create_test_entity(
         "3",
@@ -218,14 +218,14 @@ fn insert_test_data(store: Arc<DieselStore>) {
         false,
         None,
     );
-    store
-        .transact_block_operations(
-            TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_2_PTR,
-            *TEST_BLOCK_3_PTR,
-            vec![test_entity_3_2],
-        )
-        .unwrap();
+    transact_entity_operations(
+        &store,
+        TEST_SUBGRAPH_ID.clone(),
+        *TEST_BLOCK_2_PTR,
+        *TEST_BLOCK_3_PTR,
+        vec![test_entity_3_2],
+    )
+    .unwrap();
 }
 
 /// Creates a test entity.
@@ -306,16 +306,16 @@ fn delete_entity() {
         store.get(entity_key.clone()).unwrap().unwrap();
 
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
-        store
-            .transact_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_4_PTR,
-                vec![EntityOperation::Remove {
-                    key: entity_key.clone(),
-                }],
-            )
-            .unwrap();
+        transact_entity_operations(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            *TEST_BLOCK_4_PTR,
+            vec![EntityOperation::Remove {
+                key: entity_key.clone(),
+            }],
+        )
+        .unwrap();
         assert_eq!(
             count,
             get_entity_count(store.clone(), &TEST_SUBGRAPH_ID) + 1
@@ -421,14 +421,14 @@ fn insert_entity() {
             Some("green"),
         );
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
-        store
-            .transact_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_4_PTR,
-                vec![test_entity],
-            )
-            .unwrap();
+        transact_entity_operations(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            *TEST_BLOCK_4_PTR,
+            vec![test_entity],
+        )
+        .unwrap();
         assert_eq!(
             count + 1,
             get_entity_count(store.clone(), &TEST_SUBGRAPH_ID)
@@ -470,14 +470,14 @@ fn update_existing() {
 
         // Set test entity; as the entity already exists an update should be performed
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
-        store
-            .transact_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_4_PTR,
-                vec![op],
-            )
-            .unwrap();
+        transact_entity_operations(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            *TEST_BLOCK_4_PTR,
+            vec![op],
+        )
+        .unwrap();
         assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
 
         // Verify that the entity in the store has changed to what we have set.
@@ -515,17 +515,17 @@ fn partially_update_existing() {
             .expect("entity not found");
 
         // Set test entity; as the entity already exists an update should be performed
-        store
-            .transact_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_4_PTR,
-                vec![EntityOperation::Set {
-                    key: entity_key.clone(),
-                    data: partial_entity.clone(),
-                }],
-            )
-            .unwrap();
+        transact_entity_operations(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            *TEST_BLOCK_4_PTR,
+            vec![EntityOperation::Set {
+                key: entity_key.clone(),
+                data: partial_entity.clone(),
+            }],
+        )
+        .unwrap();
 
         // Obtain the updated entity from the store
         let updated_entity = store.get(entity_key).unwrap().expect("entity not found");
@@ -1590,14 +1590,14 @@ fn revert_block_with_delete() {
         };
 
         // Process deletion
-        store
-            .transact_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_4_PTR,
-                vec![EntityOperation::Remove { key: del_key }],
-            )
-            .unwrap();
+        transact_entity_operations(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            *TEST_BLOCK_4_PTR,
+            vec![EntityOperation::Remove { key: del_key }],
+        )
+        .unwrap();
 
         let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER);
 
@@ -1662,17 +1662,17 @@ fn revert_block_with_partial_update() {
             .expect("missing entity");
 
         // Set test entity; as the entity already exists an update should be performed
-        store
-            .transact_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_4_PTR,
-                vec![EntityOperation::Set {
-                    key: entity_key.clone(),
-                    data: partial_entity.clone(),
-                }],
-            )
-            .unwrap();
+        transact_entity_operations(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            *TEST_BLOCK_4_PTR,
+            vec![EntityOperation::Set {
+                key: entity_key.clone(),
+                data: partial_entity.clone(),
+            }],
+        )
+        .unwrap();
 
         let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER);
 
@@ -1793,14 +1793,14 @@ fn revert_block_with_dynamic_data_source_operations() {
         ops.extend(dynamic_ds.write_entity_operations("dynamic-data-source"));
 
         // Add user and dynamic data source to the store
-        store
-            .transact_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_4_PTR,
-                ops,
-            )
-            .unwrap();
+        transact_entity_operations(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            *TEST_BLOCK_4_PTR,
+            ops,
+        )
+        .unwrap();
 
         // Verify that the user is no longer the original
         assert_ne!(
@@ -1952,24 +1952,24 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 ]),
             ),
         ];
-        store
-            .transact_block_operations(
-                subgraph_id.clone(),
-                *TEST_BLOCK_0_PTR,
-                *TEST_BLOCK_1_PTR,
-                added_entities
-                    .iter()
-                    .map(|(id, data)| EntityOperation::Set {
-                        key: EntityKey {
-                            subgraph_id: subgraph_id.clone(),
-                            entity_type: USER.to_owned(),
-                            entity_id: id.to_owned(),
-                        },
-                        data: data.to_owned(),
-                    })
-                    .collect(),
-            )
-            .unwrap();
+        transact_entity_operations(
+            &store,
+            subgraph_id.clone(),
+            *TEST_BLOCK_0_PTR,
+            *TEST_BLOCK_1_PTR,
+            added_entities
+                .iter()
+                .map(|(id, data)| EntityOperation::Set {
+                    key: EntityKey {
+                        subgraph_id: subgraph_id.clone(),
+                        entity_type: USER.to_owned(),
+                        entity_id: id.to_owned(),
+                    },
+                    data: data.to_owned(),
+                })
+                .collect(),
+        )
+        .unwrap();
 
         // Update an entity in the store
         let updated_entity = Entity::from(vec![
@@ -1995,14 +1995,14 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         };
 
         // Commit update & delete ops
-        store
-            .transact_block_operations(
-                subgraph_id.clone(),
-                *TEST_BLOCK_1_PTR,
-                *TEST_BLOCK_2_PTR,
-                vec![update_op, delete_op],
-            )
-            .unwrap();
+        transact_entity_operations(
+            &store,
+            subgraph_id.clone(),
+            *TEST_BLOCK_1_PTR,
+            *TEST_BLOCK_2_PTR,
+            vec![update_op, delete_op],
+        )
+        .unwrap();
 
         // We're expecting two meta data events to be written to the meta data subscription
         let meta_expected = vec![
@@ -2089,14 +2089,14 @@ fn throttle_subscription_delivers() {
             None,
         );
 
-        store
-            .transact_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_4_PTR,
-                vec![user4],
-            )
-            .unwrap();
+        transact_entity_operations(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            *TEST_BLOCK_4_PTR,
+            vec![user4],
+        )
+        .unwrap();
 
         let meta_expected = StoreEvent::new(vec![make_deployment_change(
             "testsubgraph",
@@ -2139,14 +2139,14 @@ fn throttle_subscription_throttles() {
                 None,
             );
 
-            store
-                .transact_block_operations(
-                    TEST_SUBGRAPH_ID.clone(),
-                    *TEST_BLOCK_3_PTR,
-                    *TEST_BLOCK_4_PTR,
-                    vec![user4],
-                )
-                .unwrap();
+            transact_entity_operations(
+                &store,
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_4_PTR,
+                vec![user4],
+            )
+            .unwrap();
 
             // Make sure we time out waiting for the subscription
             Box::new(
@@ -2268,7 +2268,7 @@ fn handle_large_string_with_index() {
     const ONE: &str = "large_string_one";
     const TWO: &str = "large_string_two";
 
-    fn make_set_op(id: &str, name: &str) -> EntityOperation {
+    fn make_insert_op(id: &str, name: &str) -> EntityModification {
         let mut data = Entity::new();
         data.set("id", id);
         data.set(NAME, name);
@@ -2279,7 +2279,7 @@ fn handle_large_string_with_index() {
             entity_id: id.to_owned(),
         };
 
-        EntityOperation::Set { key, data }
+        EntityModification::Insert { key, data }
     };
 
     run_test(|store| -> Result<(), ()> {
@@ -2307,7 +2307,10 @@ fn handle_large_string_with_index() {
                 TEST_SUBGRAPH_ID.clone(),
                 *TEST_BLOCK_3_PTR,
                 *TEST_BLOCK_4_PTR,
-                vec![make_set_op(ONE, &long_text), make_set_op(TWO, &other_text)],
+                vec![
+                    make_insert_op(ONE, &long_text),
+                    make_insert_op(TWO, &other_text),
+                ],
             )
             .expect("Failed to insert large text");
 

@@ -47,11 +47,12 @@ fn insert_and_query(
             data,
         });
 
-    STORE.transact_block_operations(
+    transact_entity_operations(
+        &STORE,
         subgraph_id.clone(),
         GENESIS_PTR.clone(),
         BLOCK_ONE.clone(),
-        insert_ops.collect(),
+        insert_ops.collect::<Vec<_>>(),
     )?;
 
     let resolver = StoreResolver::new(&logger, STORE.clone());
