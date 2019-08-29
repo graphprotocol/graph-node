@@ -618,12 +618,12 @@ impl Store {
     fn apply_entity_cache(
         &self,
         conn: &e::Connection,
-        entity_cache: EntityCache,
+        mods: Vec<EntityModification>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<i32, StoreError> {
         let mut count = 0;
 
-        for modification in entity_cache.as_modifications(self)? {
+        for modification in mods {
             use EntityModification::*;
 
             let do_count = !modification.entity_key().subgraph_id.is_meta();
@@ -662,21 +662,19 @@ impl Store {
     /// Apply a series of entity operations in Postgres. Return `true` if
     /// the subgraph mentioned in `history_event` should have its schema
     /// migrated
-    fn apply_entity_operations_with_conn(
+    fn apply_entity_cache_with_conn(
         &self,
         econn: &e::Connection,
         subgraph: &SubgraphDeploymentId,
-        operations: Vec<EntityOperation>,
+        mods: Vec<EntityModification>,
         history_event: &HistoryEvent,
     ) -> Result<bool, StoreError> {
         // Emit a store event for the changes we are about to make
-        let event: StoreEvent = operations.clone().into();
+        let event = StoreEvent::from(&mods);
         let v = serde_json::to_value(event)?;
         JsonNotification::send("store_events", &v, &econn.conn)?;
 
-        let mut entity_cache = EntityCache::new();
-        entity_cache.append(operations);
-        let count = self.apply_entity_cache(econn, entity_cache, Some(history_event))?;
+        let count = self.apply_entity_cache(econn, mods, Some(history_event))?;
 
         econn.update_entity_count(&subgraph, count)?;
         match history_event {
@@ -930,7 +928,7 @@ impl StoreTrait for Store {
         subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
-        operations: Vec<EntityOperation>,
+        mods: Vec<EntityModification>,
     ) -> Result<bool, StoreError> {
         // Sanity check on block numbers
         if block_ptr_from.number != block_ptr_to.number - 1 {
@@ -939,10 +937,11 @@ impl StoreTrait for Store {
 
         // All operations should apply only to entities in this subgraph or
         // the subgraph of subgraphs
-        if operations.iter().any(|op| {
-            op.entity_key().subgraph_id != subgraph_id
-                && op.entity_key().subgraph_id != *SUBGRAPHS_ID
-        }) {
+        if mods
+            .iter()
+            .map(|modification| modification.entity_key())
+            .any(|key| key.subgraph_id != subgraph_id && key.subgraph_id != *SUBGRAPHS_ID)
+        {
             panic!(
                 "transact_block_operations must affect only entities \
                  in the subgraph or in the subgraph of subgraphs"
@@ -957,12 +956,8 @@ impl StoreTrait for Store {
             let history_event = econn.create_history_event(subgraph_id.clone(), event_source)?;
 
             // Apply the entity operations with the new block as the event source
-            let should_migrate = self.apply_entity_operations_with_conn(
-                &econn,
-                &subgraph_id,
-                operations,
-                &history_event,
-            )?;
+            let should_migrate =
+                self.apply_entity_cache_with_conn(&econn, &subgraph_id, mods, &history_event)?;
 
             // Update the subgraph block pointer, without an event source; this way
             // no entity history is recorded for the block pointer update itself

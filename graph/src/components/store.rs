@@ -242,6 +242,18 @@ impl From<MetadataOperation> for Option<EntityChange> {
     }
 }
 
+impl From<&EntityModification> for EntityChange {
+    fn from(operation: &EntityModification) -> Self {
+        use self::EntityModification::*;
+        match operation {
+            Insert { key, .. } | Overwrite { key, .. } => {
+                Self::from_key(key.clone(), EntityChangeOperation::Set)
+            }
+            Remove { key } => Self::from_key(key.clone(), EntityChangeOperation::Removed),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 /// The store emits `StoreEvents` to indicate that some entities have changed.
 /// For block-related data, at most one `StoreEvent` is emitted for each block
@@ -268,6 +280,13 @@ impl From<Vec<EntityOperation>> for StoreEvent {
 impl From<Vec<MetadataOperation>> for StoreEvent {
     fn from(operations: Vec<MetadataOperation>) -> Self {
         let changes: Vec<_> = operations.into_iter().filter_map(|op| op.into()).collect();
+        StoreEvent::new(changes)
+    }
+}
+
+impl From<&Vec<EntityModification>> for StoreEvent {
+    fn from(mods: &Vec<EntityModification>) -> Self {
+        let changes: Vec<_> = mods.iter().map(|op| op.into()).collect();
         StoreEvent::new(changes)
     }
 }
@@ -739,7 +758,7 @@ pub trait Store: Send + Sync + 'static {
         subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
-        operations: Vec<EntityOperation>,
+        mods: Vec<EntityModification>,
     ) -> Result<bool, StoreError>;
 
     /// Apply the specified metadata operations.
@@ -1267,6 +1286,19 @@ impl EntityCache {
         }
     }
 
+    pub fn extend(&mut self, other: EntityCache) {
+        self.current.extend(other.current);
+        for (key, update) in other.updates.into_iter() {
+            match update {
+                Some(update) => self.set(key, update),
+                None => self.remove(key),
+            }
+        }
+    }
+
+    /// Return the changes that have been made via `set` and `remove` as
+    /// `EntityModification`, making sure to only produce one when a change
+    /// to the current state is actually needed
     pub fn as_modifications(
         mut self,
         store: &dyn Store,
@@ -1280,7 +1312,6 @@ impl EntityCache {
         for key in missing {
             self.get(store, key)?;
         }
-
         let mut mods = Vec::new();
         for (key, update) in self.updates.into_iter() {
             use EntityModification::*;
@@ -1289,11 +1320,13 @@ impl EntityCache {
                 .remove(&key)
                 .expect("we should have already loaded all needed entities");
             let modification = match (current, update) {
+                // Entity was created
                 (None, Some(updates)) => {
                     let mut data = Entity::new();
                     data.merge(updates);
                     Some(Insert { key, data })
                 }
+                // Entity may have been changed
                 (Some(current), Some(updates)) => {
                     let mut data = current.clone();
                     data.merge(updates);
@@ -1303,7 +1336,9 @@ impl EntityCache {
                         None
                     }
                 }
+                // Existing entity was deleted
                 (Some(_), None) => Some(Remove { key }),
+                // Entity was deleted, but it doesn't exist in the store
                 (None, None) => None,
             };
             if let Some(modification) = modification {

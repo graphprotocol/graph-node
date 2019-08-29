@@ -134,14 +134,15 @@ where
             _ => (),
         }
 
-        ctx.state.entity_operations.push(EntityOperation::Set {
-            key: EntityKey {
-                subgraph_id: self.subgraph_id.clone(),
-                entity_type,
-                entity_id,
-            },
-            data: Entity::from(data),
-        });
+        let key = EntityKey {
+            subgraph_id: self.subgraph_id.clone(),
+            entity_type,
+            entity_id,
+        };
+        ctx.state
+            .entity_cache
+            .borrow_mut()
+            .set(key, Entity::from(data));
 
         Ok(())
     }
@@ -152,13 +153,12 @@ where
         entity_type: String,
         entity_id: String,
     ) {
-        ctx.state.entity_operations.push(EntityOperation::Remove {
-            key: EntityKey {
-                subgraph_id: self.subgraph_id.clone(),
-                entity_type,
-                entity_id,
-            },
-        });
+        let key = EntityKey {
+            subgraph_id: self.subgraph_id.clone(),
+            entity_type,
+            entity_id,
+        };
+        ctx.state.entity_cache.borrow_mut().remove(key);
     }
 
     pub(crate) fn store_get(
@@ -174,47 +174,16 @@ where
             entity_id: entity_id.clone(),
         };
 
-        // Get all operations for this entity
-        let matching_operations: Vec<_> = ctx
+        let result = ctx
             .state
-            .entity_operations
-            .iter()
-            .filter(|op| op.matches_entity(&store_key))
-            .collect();
+            .entity_cache
+            .borrow_mut()
+            .get(self.store.as_ref(), store_key)
+            .map_err(HostExportError)
+            .map(|ok| ok.to_owned());
 
-        // Shortcut 1: If the latest operation for this entity was a removal,
-        // return 0 (= null) to the runtime
-        if matching_operations
-            .iter()
-            .peekable()
-            .peek()
-            .map(|op| op.is_remove())
-            .unwrap_or(false)
-        {
-            return Ok(None);
-        }
-
-        // Shortcut 2: If there is a removal in the operations, the
-        // entity will be the result of the operations after that, so we
-        // don't have to hit the store for anything
-        if matching_operations.iter().any(|op| op.is_remove()) {
-            return EntityOperation::apply_all(None, &matching_operations)
-                .map_err(QueryExecutionError::StoreError)
-                .map_err(HostExportError);
-        }
-
-        // No removal in the operations => read the entity from the store, then apply
-        // the operations to it to obtain the result
-        let result = self
-            .store
-            .get(store_key)
-            .and_then(|entity| {
-                EntityOperation::apply_all(entity, &matching_operations)
-                    .map_err(QueryExecutionError::StoreError)
-            })
-            .map_err(HostExportError);
         debug!(ctx.logger, "Store get finished";
-               "type" => &entity_type, 
+               "type" => &entity_type,
                "id" => &entity_id,
                "time" => format!("{}ms", start_time.elapsed().as_millis()));
         result

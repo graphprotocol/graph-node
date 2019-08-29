@@ -701,8 +701,9 @@ where
                     for output_state in output_states {
                         self.ctx
                             .state
-                            .entity_operations
-                            .extend(output_state.entity_operations);
+                            .entity_cache
+                            .borrow_mut()
+                            .extend(output_state.entity_cache.into_inner());
                         self.ctx
                             .state
                             .created_data_sources

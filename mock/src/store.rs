@@ -161,7 +161,7 @@ impl Store for MockStore {
         _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
-        _: Vec<EntityOperation>,
+        _: Vec<EntityModification>,
     ) -> Result<bool, StoreError> {
         unimplemented!();
     }
@@ -421,7 +421,7 @@ pub struct FakeStore;
 
 impl Store for FakeStore {
     fn get(&self, _: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
-        unimplemented!();
+        Ok(None)
     }
 
     fn find(&self, _: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
@@ -458,7 +458,7 @@ impl Store for FakeStore {
         _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: EthereumBlockPointer,
-        _: Vec<EntityOperation>,
+        _: Vec<EntityModification>,
     ) -> Result<bool, StoreError> {
         unimplemented!();
     }

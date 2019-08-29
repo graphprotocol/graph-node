@@ -541,12 +541,18 @@ where
             return Err(CancelableError::Cancel);
         }
 
-        if !block_state.entity_operations.is_empty() {
-            info!(
-                logger4,
-                "Applying {} entity operation(s)",
-                block_state.entity_operations.len()
-            );
+        let mods = block_state
+            .entity_cache
+            .into_inner()
+            .as_modifications(ctx.inputs.store.as_ref())
+            .map_err(|e| {
+                CancelableError::from(format_err!(
+                    "Error while processing block stream for a subgraph: {}",
+                    e
+                ))
+            })?;
+        if !mods.is_empty() {
+            info!(logger4, "Applying {} entity operation(s)", mods.len());
         }
 
         // Transact entity operations into the store and update the
@@ -557,7 +563,7 @@ where
                 ctx.inputs.deployment_id.clone(),
                 block_ptr_now,
                 block_ptr_after,
-                block_state.entity_operations,
+                mods,
             )
             .map(|should_migrate| {
                 if should_migrate {
@@ -705,7 +711,7 @@ where
 fn persist_dynamic_data_sources<B, S, T>(
     logger: Logger,
     mut ctx: IndexingContext<B, S, T>,
-    mut block_state: BlockState,
+    block_state: BlockState,
     data_sources: Vec<DataSource>,
     runtime_hosts: Vec<Arc<T::Host>>,
     block_ptr: EthereumBlockPointer,
@@ -737,7 +743,7 @@ where
         ));
         let id = format!("{}-dynamic", Uuid::new_v4().to_simple());
         let operations = entity.write_entity_operations(id.as_ref());
-        block_state.entity_operations.extend(operations);
+        block_state.entity_cache.borrow_mut().append(operations);
     }
 
     // Merge log filters from data sources into the block stream builder

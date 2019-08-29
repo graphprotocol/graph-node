@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use graph::prelude::*;
 use graph_graphql::prelude::*;
-use test_store::{BLOCK_ONE, GENESIS_PTR, STORE};
+use test_store::{transact_entity_operations, BLOCK_ONE, GENESIS_PTR, STORE};
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId = {
@@ -190,14 +190,14 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         data,
     });
 
-    store
-        .transact_block_operations(
-            id.clone(),
-            GENESIS_PTR.clone(),
-            BLOCK_ONE.clone(),
-            insert_ops.collect(),
-        )
-        .unwrap();
+    transact_entity_operations(
+        &STORE,
+        id.clone(),
+        GENESIS_PTR.clone(),
+        BLOCK_ONE.clone(),
+        insert_ops.collect::<Vec<_>>(),
+    )
+    .unwrap();
 }
 
 fn execute_query_document(query: q::Document) -> QueryResult {
