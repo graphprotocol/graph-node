@@ -9,7 +9,7 @@ futures = "0.1.21"
 hex = "0.3.2"
 graph = { path = "../../graph" }
 tiny-keccak = "1.4.2"
-wasmi = "0.4"
+wasmi = "0.5"
 pwasm-utils = "0.6.1"
 bs58 = "0.2.2"
 graph-runtime-derive = { path = "../derive" }
