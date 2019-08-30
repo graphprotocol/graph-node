@@ -284,18 +284,22 @@ impl Store {
             stream::iter_ok::<_, ()>(senders).for_each(move |(id, sender)| {
                 let logger = logger.clone();
                 let subscriptions = subscriptions.clone();
+                let subscriptions2 = subscriptions.clone();
 
-                sender.send(event.clone()).then(move |result| {
+                let result = sender.send(event.clone()).then(move |result| {
                     match result {
                         Err(_send_error) => {
                             // Receiver was dropped
                             debug!(logger, "Unsubscribe"; "id" => &id);
-                            subscriptions.write().unwrap().remove(&id);
+                            subscriptions2.write().unwrap().remove(&id);
                             Ok(())
                         }
                         Ok(_sender) => Ok(()),
                     }
-                })
+                });
+
+                subscriptions.write().unwrap().shrink_to_fit();
+                result
             })
         }));
     }
@@ -324,6 +328,9 @@ impl Store {
                         debug!(logger, "Unsubscribe"; "id" => &id);
                         subscriptions.remove(&id);
                     }
+
+                    // Shrink hash map to prevent it from growing over time
+                    subscriptions.shrink_to_fit();
 
                     Ok(())
                 })
