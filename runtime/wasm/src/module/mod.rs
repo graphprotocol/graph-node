@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 use std::fmt;
 use std::ops::Deref;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use semver::Version;
 use wasmi::{
@@ -87,6 +87,7 @@ pub struct WasmiModuleConfig<T, L, S> {
     pub ethereum_adapter: Arc<T>,
     pub link_resolver: Arc<L>,
     pub store: Arc<S>,
+    pub handler_timeout: Option<Duration>,
 }
 
 /// A pre-processed and valid WASM module, ready to be started as a WasmiModule.
@@ -162,6 +163,7 @@ where
             config.link_resolver.clone(),
             config.store.clone(),
             task_sink,
+            config.handler_timeout,
         );
 
         Ok(ValidModule {
@@ -418,6 +420,9 @@ where
         + 'static,
 {
     fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, Error> {
+        // We request large chunks from the AssemblyScript allocator and manage them ourselves.
+        // This assumes the arena allocator is being used in AS.
+
         static MIN_HEAP_SIZE_INCREMENT: u32 = 10_000;
 
         let size = u32::try_from(bytes.len()).unwrap();

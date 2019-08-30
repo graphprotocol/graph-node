@@ -17,8 +17,6 @@ use web3::types::H160;
 
 use crate::module::WasmiModule;
 
-pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_MAPPING_HANDLER_TIMEOUT";
-
 pub(crate) trait ExportError: fmt::Debug + fmt::Display + Send + Sync + 'static {}
 
 impl<E> ExportError for E where E: fmt::Debug + fmt::Display + Send + Sync + 'static {}
@@ -49,6 +47,7 @@ pub(crate) struct HostExports<E, L, S, U> {
     link_resolver: Arc<L>,
     store: Arc<S>,
     task_sink: U,
+    handler_timeout: Option<Duration>,
 }
 
 impl<E, L, S, U> HostExports<E, L, S, U>
@@ -72,6 +71,7 @@ where
         link_resolver: Arc<L>,
         store: Arc<S>,
         task_sink: U,
+        handler_timeout: Option<Duration>,
     ) -> Self {
         HostExports {
             subgraph_id,
@@ -83,6 +83,7 @@ where
             link_resolver,
             store,
             task_sink,
+            handler_timeout,
         }
     }
 
@@ -532,11 +533,7 @@ where
         &self,
         start_time: Instant,
     ) -> Result<(), HostExportError<impl ExportError>> {
-        let mapping_handler_timeout = std::env::var(TIMEOUT_ENV_VAR)
-            .ok()
-            .and_then(|s| u64::from_str(&s).ok())
-            .map(Duration::from_secs);
-        if let Some(timeout) = mapping_handler_timeout {
+        if let Some(timeout) = self.handler_timeout {
             if start_time.elapsed() > timeout {
                 return Err(HostExportError(format!("Mapping handler timed out")));
             }
