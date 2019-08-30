@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn unbounded_loop() {
     // Set handler timeout to 3 seconds.
-    env::set_var(host_exports::TIMEOUT_ENV_VAR, "3");
+    env::set_var(crate::host::TIMEOUT_ENV_VAR, "3");
     let valid_module = test_valid_module(mock_data_source("wasm_test/non_terminating.wasm"));
     let mut module = WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
     module.start_time = Instant::now();

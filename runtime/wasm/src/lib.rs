@@ -1,14 +1,3 @@
-extern crate bs58;
-extern crate ethabi;
-extern crate futures;
-extern crate graph;
-extern crate graph_runtime_derive;
-extern crate hex;
-extern crate pwasm_utils;
-extern crate semver;
-extern crate tiny_keccak;
-extern crate wasmi;
-
 mod asc_abi;
 mod host;
 mod module;

@@ -4,8 +4,9 @@ use semver::{Version, VersionReq};
 use tiny_keccak::keccak256;
 
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::MappingContext;
 use crate::module::{ValidModule, WasmiModule, WasmiModuleConfig};
@@ -18,6 +19,8 @@ use graph::prelude::{
 };
 use graph::util;
 use web3::types::{Log, Transaction};
+
+pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_MAPPING_HANDLER_TIMEOUT";
 
 pub struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
@@ -246,6 +249,10 @@ impl RuntimeHost {
                 ethereum_adapter: ethereum_adapter.clone(),
                 link_resolver: link_resolver.clone(),
                 store: store.clone(),
+                handler_timeout: std::env::var(TIMEOUT_ENV_VAR)
+                    .ok()
+                    .and_then(|s| u64::from_str(&s).ok())
+                    .map(Duration::from_secs),
             };
             let valid_module = ValidModule::new(&module_logger, wasmi_config, task_sender)
                 .expect("Failed to validate module");

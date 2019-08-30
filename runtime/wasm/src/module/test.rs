@@ -172,6 +172,10 @@ fn test_valid_module(
                 ethereum_adapter: mock_ethereum_adapter,
                 link_resolver: Arc::new(ipfs_api::IpfsClient::default().into()),
                 store: Arc::new(FakeStore),
+                handler_timeout: std::env::var(crate::host::TIMEOUT_ENV_VAR)
+                    .ok()
+                    .and_then(|s| u64::from_str(&s).ok())
+                    .map(Duration::from_secs),
             },
             task_sender,
         )
