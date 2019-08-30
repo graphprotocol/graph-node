@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::fmt;
 use std::ops::Deref;
 use std::time::Instant;
@@ -187,6 +188,12 @@ pub(crate) struct WasmiModule<T, L, S, U> {
     // True if `run_start` has not yet been called on the module.
     // This is used to prevent mutating store state in start.
     running_start: bool,
+
+    // First free byte in the heap.
+    heap_start_ptr: u32,
+
+    // Number of free bytes starting from `heap_start_ptr`.
+    heap_free_size: u32,
 }
 
 impl<T, L, S, U> WasmiModule<T, L, S, U>
@@ -235,6 +242,10 @@ where
             valid_module: valid_module.clone(),
             start_time: Instant::now(),
             running_start: true,
+
+            // `heap_start_ptr` will be set on the first call to `raw_new`.
+            heap_free_size: 0,
+            heap_start_ptr: 0,
         };
 
         this.module = module
@@ -407,22 +418,34 @@ where
         + 'static,
 {
     fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, Error> {
-        let address = self
-            .module
-            .clone()
-            .invoke_export(
-                "memory.allocate",
-                &[RuntimeValue::I32(bytes.len() as i32)],
-                self,
-            )
-            .expect("Failed to invoke memory allocation function")
-            .expect("Function did not return a value")
-            .try_into::<u32>()
-            .expect("Function did not return u32");
+        static MIN_HEAP_SIZE_INCREMENT: u32 = 10_000;
 
-        self.memory.set(address, bytes)?;
+        let size = u32::try_from(bytes.len()).unwrap();
+        if size > self.heap_free_size {
+            let need = size - self.heap_free_size;
+            let allocate = need.max(MIN_HEAP_SIZE_INCREMENT);
+            let allocated_ptr = self
+                .module
+                .clone()
+                .invoke_export("memory.allocate", &[RuntimeValue::from(allocate)], self)
+                .expect("Failed to invoke memory allocation function")
+                .expect("Function did not return a value")
+                .try_into::<u32>()
+                .expect("Function did not return u32");
+            self.heap_free_size += allocate;
 
-        Ok(address)
+            // On the first call, initialze `self.heap_start_ptr`.
+            if self.heap_start_ptr == 0 {
+                self.heap_start_ptr = allocated_ptr;
+            }
+        };
+
+        let ptr = self.heap_start_ptr;
+        self.memory.set(ptr, bytes)?;
+        self.heap_start_ptr += size;
+        self.heap_free_size -= size;
+
+        Ok(ptr)
     }
 
     fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, Error> {
