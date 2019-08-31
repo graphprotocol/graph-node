@@ -37,11 +37,11 @@ those.
   subgraphs locally. _Warning:_ Do not use this in production, as it may
   cause subgraphs to be only indexed partially.
 - `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`: Maximum range size for `eth.getLogs`
-requests that dont filter on contract address, only event signature.
+  requests that dont filter on contract address, only event signature.
 
 ## Running mapping handlers
 
-- `GRAPH_EVENT_HANDLER_TIMEOUT`: amount of time an event handler is allowed to
+- `GRAPH_MAPPING_HANDLER_TIMEOUT`: amount of time a mapping handler is allowed to
   take (in seconds, default is unlimited)
 - `GRAPH_IPFS_TIMEOUT`: timeout for ipfs requests. In seconds, default is 60.
   seconds.
