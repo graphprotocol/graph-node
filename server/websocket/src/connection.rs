@@ -290,6 +290,8 @@ where
                     let run_subscription = graphql_runner
                         .run_subscription(subscription)
                         .map_err(move |e| {
+                            // NOTE: Commenting this out doesn't change memory growth.
+
                             debug!(err_logger, "Subscription error";
                                                "connection" => &err_connection_id,
                                                "id" => &err_id,
@@ -312,6 +314,9 @@ where
                                     OutgoingMessage::from_query_result(result_id.clone(), result)
                                 })
                                 .map(WsMessage::from)
+                                // NOTE: Replacing the next two lines with
+                                // `.for_each(|_| Ok(()))` out doesn't change
+                                // memory growth.
                                 .forward(result_sink.sink_map_err(|_| ()))
                                 .map(|_| ())
                         });
@@ -328,7 +333,9 @@ where
                     });
                     operations.insert(id, guard);
 
+                    // NOTE: Commenting this out drops memory growth from ~4MB to ~2kb for 2000 subscriptions.
                     tokio::spawn(run_subscription);
+
                     Ok(())
                 }
             }
