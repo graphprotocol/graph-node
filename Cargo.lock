@@ -674,7 +674,7 @@ dependencies = [
 [[package]]
 name = "ethabi"
 version = "8.0.0"
-source = "git+https://github.com/graphprotocol/ethabi.git?branch=graph-patches#7b0f48cdda6e5553e2644d72152a3168e858fbb4"
+source = "git+https://github.com/graphprotocol/ethabi.git?branch=graph-patches#da9e2bf596da19c1739d390a5579c856b2d5e78c"
 dependencies = [
  "error-chain 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ethereum-types 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
