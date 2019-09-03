@@ -393,6 +393,8 @@ where
                             //   `revert` and `require` calls with a reason string can be detected.
 
                             const GANACHE_VM_EXECUTION_ERROR: i64 = -32000;
+                            const GANACHE_REVERT_MESSAGE: &str =
+                                "VM Exception while processing transaction: revert";
                             const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
                             const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
 
@@ -444,7 +446,8 @@ where
 
                                 // Check for Ganache revert.
                                 Err(web3::Error::Rpc(ref rpc_error))
-                                    if rpc_error.code.code() == GANACHE_VM_EXECUTION_ERROR =>
+                                    if rpc_error.code.code() == GANACHE_VM_EXECUTION_ERROR
+                                        && rpc_error.message == GANACHE_REVERT_MESSAGE =>
                                 {
                                     Err(EthereumContractCallError::Revert(
                                         rpc_error.message.clone(),
