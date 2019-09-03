@@ -191,11 +191,11 @@ pub(crate) struct WasmiModule<T, L, S, U> {
     // This is used to prevent mutating store state in start.
     running_start: bool,
 
-    // First free byte in the heap.
-    heap_start_ptr: u32,
+    // First free byte in the current arena.
+    arena_start_ptr: u32,
 
-    // Number of free bytes starting from `heap_start_ptr`.
-    heap_free_size: u32,
+    // Number of free bytes starting from `arena_start_ptr`.
+    arena_free_size: u32,
 }
 
 impl<T, L, S, U> WasmiModule<T, L, S, U>
@@ -245,9 +245,9 @@ where
             start_time: Instant::now(),
             running_start: true,
 
-            // `heap_start_ptr` will be set on the first call to `raw_new`.
-            heap_free_size: 0,
-            heap_start_ptr: 0,
+            // `arena_start_ptr` will be set on the first call to `raw_new`.
+            arena_free_size: 0,
+            arena_start_ptr: 0,
         };
 
         this.module = module
@@ -420,35 +420,32 @@ where
         + 'static,
 {
     fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, Error> {
-        // We request large chunks from the AssemblyScript allocator and manage them ourselves.
-        // This assumes the arena allocator is being used in AS.
+        // We request large chunks from the AssemblyScript allocator to use as arenas that we
+        // manage directly.
 
-        static MIN_HEAP_SIZE_INCREMENT: u32 = 10_000;
+        static MIN_ARENA_SIZE: u32 = 10_000;
 
         let size = u32::try_from(bytes.len()).unwrap();
-        if size > self.heap_free_size {
-            let need = size - self.heap_free_size;
-            let allocate = need.max(MIN_HEAP_SIZE_INCREMENT);
+        if size > self.arena_free_size {
+            // Allocate a new arena. Any free space left in the previous arena is left unused. This
+            // causes at most half of memory to be wasted, which is acceptable.
+            let arena_size = size.max(MIN_ARENA_SIZE);
             let allocated_ptr = self
                 .module
                 .clone()
-                .invoke_export("memory.allocate", &[RuntimeValue::from(allocate)], self)
+                .invoke_export("memory.allocate", &[RuntimeValue::from(arena_size)], self)
                 .expect("Failed to invoke memory allocation function")
                 .expect("Function did not return a value")
                 .try_into::<u32>()
                 .expect("Function did not return u32");
-            self.heap_free_size += allocate;
-
-            // On the first call, initialze `self.heap_start_ptr`.
-            if self.heap_start_ptr == 0 {
-                self.heap_start_ptr = allocated_ptr;
-            }
+            self.arena_start_ptr = allocated_ptr;
+            self.arena_free_size = arena_size;
         };
 
-        let ptr = self.heap_start_ptr;
+        let ptr = self.arena_start_ptr;
         self.memory.set(ptr, bytes)?;
-        self.heap_start_ptr += size;
-        self.heap_free_size -= size;
+        self.arena_start_ptr += size;
+        self.arena_free_size -= size;
 
         Ok(ptr)
     }
