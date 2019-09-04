@@ -5,7 +5,7 @@ use graphql_parser::schema as s;
 use inflector::Inflector;
 use std::cmp::PartialOrd;
 use std::collections::{HashMap, HashSet};
-use std::fmt;
+use std::fmt::{self, Write};
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -20,16 +20,6 @@ use graph::prelude::{
 
 use crate::block_range::BlockNumber;
 use crate::entities::STRING_PREFIX_SIZE;
-
-trait AsDdl {
-    fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> Result<(), fmt::Error>;
-
-    fn as_ddl(&self, mapping: &Mapping) -> Result<String, fmt::Error> {
-        let mut output = String::new();
-        self.fmt(&mut output, mapping)?;
-        Ok(output)
-    }
-}
 
 /// A string we use as a SQL name for a table or column. The important thing
 /// is that SQL names are snake cased. Using this type makes it easier to
@@ -238,8 +228,20 @@ impl Mapping {
         Ok(mapping)
     }
 
+    /// Generate the DDL for the entire mapping, i.e., all `create table`
+    /// and `create index` etc. statements needed in the database schema
     pub fn as_ddl(&self) -> Result<String, fmt::Error> {
-        (self as &dyn AsDdl).as_ddl(self)
+        let mut out = String::new();
+
+        // We sort tables here solely because the unit tests rely on
+        // 'create table' statements appearing in a fixed order
+        let mut tables = self.tables.values().collect::<Vec<_>>();
+        tables.sort_by(|a, b| (&a.position).partial_cmp(&b.position).unwrap());
+        // Output 'create table' statements for all tables
+        for table in tables {
+            table.as_ddl(&mut out, self)?;
+        }
+        Ok(out)
     }
 
     /// Find the table with the provided `name`. The name must exactly match
@@ -426,20 +428,6 @@ impl Mapping {
     }
 }
 
-impl AsDdl for Mapping {
-    fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> fmt::Result {
-        // We sort tables here solely because the unit tests rely on
-        // 'create table' statements appearing in a fixed order
-        let mut tables = self.tables.values().collect::<Vec<_>>();
-        tables.sort_by(|a, b| (&a.position).partial_cmp(&b.position).unwrap());
-        // Output 'create table' statements for all tables
-        for table in tables {
-            table.fmt(f, mapping)?;
-        }
-        Ok(())
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Reference {
     pub table: SqlName,
@@ -569,20 +557,18 @@ impl Column {
     pub fn is_derived(&self) -> bool {
         self.derived.is_some()
     }
-}
 
-impl AsDdl for Column {
-    fn fmt(&self, f: &mut dyn fmt::Write, _: &Mapping) -> fmt::Result {
-        write!(f, "    ")?;
+    fn as_ddl(&self, out: &mut String) -> fmt::Result {
+        write!(out, "    ")?;
         if self.derived.is_some() {
-            write!(f, " -- ")?;
+            write!(out, " -- ")?;
         }
-        write!(f, "{:20} {}", self.name, self.sql_type())?;
+        write!(out, "{:20} {}", self.name, self.sql_type())?;
         if self.is_list() {
-            write!(f, "[]")?;
+            write!(out, "[]")?;
         }
         if self.name.0 == PRIMARY_KEY_COLUMN || !self.is_nullable() {
-            write!(f, " not null")?;
+            write!(out, " not null")?;
         }
         Ok(())
     }
@@ -679,34 +665,32 @@ impl Table {
     pub fn object_name(gql_type_name: &str) -> String {
         gql_type_name.to_snake_case()
     }
-}
 
-impl AsDdl for Table {
-    fn fmt(&self, f: &mut dyn fmt::Write, mapping: &Mapping) -> fmt::Result {
-        write!(f, "create table {}.{} (\n", mapping.schema, self.name)?;
+    fn as_ddl(&self, out: &mut String, mapping: &Mapping) -> fmt::Result {
+        write!(out, "create table {}.{} (\n", mapping.schema, self.name)?;
         for column in self.columns.iter().filter(|col| !col.is_derived()) {
-            write!(f, "    ")?;
-            column.fmt(f, mapping)?;
-            write!(f, ",\n")?;
+            write!(out, "    ")?;
+            column.as_ddl(out)?;
+            write!(out, ",\n")?;
         }
         // Add block_range column and constraint
         write!(
-            f,
+            out,
             "\n        {block_range}          int4range not null,
         exclude using gist   (id with =, {block_range} with &&)\n",
             block_range = BLOCK_RANGE
         )?;
         if self.columns.iter().any(|col| col.is_derived()) {
-            write!(f, "\n     -- derived fields (not stored in this table)\n")?;
+            write!(out, "\n     -- derived fields (not stored in this table)\n")?;
             for column in self.columns.iter().filter(|col| col.is_derived()) {
-                column.fmt(f, mapping)?;
+                column.as_ddl(out)?;
                 for reference in &column.references {
-                    write!(f, " references {}({})", reference.table, reference.column)?;
+                    write!(out, " references {}({})", reference.table, reference.column)?;
                 }
-                write!(f, "\n")?;
+                write!(out, "\n")?;
             }
         }
-        write!(f, ");\n")?;
+        write!(out, ");\n")?;
 
         for (i, column) in self
             .columns
@@ -720,7 +704,7 @@ impl AsDdl for Table {
                 && column.column_type == ColumnType::String
             {
                 write!(
-                f,
+                out,
                 "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.{table_name} using btree(left({column_name}, {prefix_size}));\n",
                 table_index=self.position,
                 table_name=self.name,
@@ -732,7 +716,7 @@ impl AsDdl for Table {
             } else {
                 let method = if column.is_list() { "gin" } else { "btree" };
                 write!(
-                f,
+                out,
                 "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.{table_name} using {method}({column_name});\n",
                 table_index=self.position,
                 table_name=self.name,
@@ -743,7 +727,7 @@ impl AsDdl for Table {
             )?;
             }
         }
-        write!(f, "\n")
+        write!(out, "\n")
     }
 }
 
