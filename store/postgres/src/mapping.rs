@@ -125,13 +125,16 @@ impl Mapping {
         // Extract interfaces and tables
         let mut interfaces: HashMap<String, Vec<SqlName>> = HashMap::new();
         let mut tables = Vec::new();
-        let mut position = 0;
 
         for defn in &document.definitions {
             match defn {
                 TypeDefinition(Object(obj_type)) => {
-                    position += 1;
-                    let table = Table::new(obj_type, &mut interfaces, id_type, position)?;
+                    let table = Table::new(
+                        obj_type,
+                        &mut interfaces,
+                        id_type,
+                        (tables.len() + 1) as u32,
+                    )?;
                     tables.push(table);
                 }
                 TypeDefinition(Interface(interface_type)) => {
