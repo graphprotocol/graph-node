@@ -77,8 +77,6 @@ pub struct Mapping {
     id_type: IdType,
     /// Maps the GraphQL name of a type to the relational table
     pub tables: HashMap<String, Rc<Table>>,
-    /// A fake table that mirrors the Query type for the schema
-    root_table: Table,
     /// The subgraph id
     pub subgraph: SubgraphDeploymentId,
     /// The database schema for this subgraph
@@ -178,8 +176,6 @@ impl Mapping {
             }
         }
 
-        let root_table = Mapping::make_root_table(&tables, id_type);
-
         let tables: Vec<_> = tables.into_iter().map(|table| Rc::new(table)).collect();
         let interfaces = interfaces
             .into_iter()
@@ -219,7 +215,6 @@ impl Mapping {
             subgraph,
             schema,
             tables,
-            root_table,
             interfaces,
             count_query,
         })
@@ -263,46 +258,6 @@ impl Mapping {
     #[allow(dead_code)]
     pub fn column(&self, reference: &Reference) -> Result<&Column, StoreError> {
         self.table(&reference.table)?.column(&reference.column)
-    }
-
-    /// Construct a fake root table that has an attribute for each table
-    /// we actually support
-    fn make_root_table(tables: &Vec<Table>, id_type: IdType) -> Table {
-        let mut columns = Vec::new();
-
-        for table in tables {
-            let objects = Column {
-                name: table.name.clone(),
-                field: table.object.clone(),
-                column_type: ColumnType::from(id_type),
-                field_type: q::Type::NamedType(table.object.clone()),
-                derived: None,
-                references: vec![table.primary_key()],
-            };
-            columns.push(objects);
-
-            let object = Column {
-                name: SqlName::from(&*table.singular_name),
-                field: table.object.clone(),
-                column_type: ColumnType::from(id_type),
-                field_type: q::Type::NamedType(table.object.clone()),
-                derived: None,
-                references: vec![table.primary_key()],
-            };
-            columns.push(object);
-        }
-        Table {
-            object: "$Root".to_owned(),
-            name: "$roots".into(),
-            singular_name: "$root".to_owned(),
-            columns,
-            position: 0,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn root_table(&self) -> &Table {
-        &self.root_table
     }
 
     pub fn find(
