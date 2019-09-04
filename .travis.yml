@@ -62,6 +62,10 @@ before_script:
 script:
   # Run tests
   - RUST_BACKTRACE=1 cargo test --verbose --all -- --nocapture
+  # Run tests again against relational schema
+  - psql -c 'drop database graph_node_test;' -U travis
+  - psql -c 'create database graph_node_test;' -U travis
+  - RUST_BACKTRACE=1 RELATIONAL_SCHEMA=on cargo test --verbose --all -- --nocapture
 
 deploy:
   provider: releases
