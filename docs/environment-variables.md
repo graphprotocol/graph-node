@@ -70,6 +70,9 @@ those.
   with introspection done by graphql clients.
 - `GRAPH_GRAPHQL_MAX_DEPTH`: maximum depth of a graphql query. Default (and
   maximum) is 255.
+- `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`: maximum number of GraphQL
+  operations per WebSocket connection. Any operation created after the limit
+  will return an error to the client. Default: unlimited.
 
 ## Tokio
 
