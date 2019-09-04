@@ -8,7 +8,6 @@ use std::env;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use web3::types::H256;
 
@@ -194,19 +193,6 @@ impl EntityChange {
             entity_type: key.entity_type,
             entity_id: key.entity_id,
             operation,
-        }
-    }
-
-    /// Convert an `EntityOperation` into the corresponding `EntityChange`.
-    /// `Set` and `Update` operations are mapped to that `EntityChange`.
-    /// `AbortUnless` operations are mapped to `None`, as they do not represent
-    ///  a change to any entity.
-    pub fn from_entity_operation(operation: EntityOperation) -> Option<Self> {
-        use self::EntityOperation::*;
-
-        match operation {
-            Set { key, .. } => Some(Self::from_key(key, EntityChangeOperation::Set)),
-            Remove { key } => Some(Self::from_key(key, EntityChangeOperation::Removed)),
         }
     }
 
@@ -556,7 +542,7 @@ impl EntityOperation {
     }
 }
 
-/// An operation on subgraph metadata. All operations implictly only concern
+/// An operation on subgraph metadata. All operations implicitly only concern
 /// the subgraph of subgraphs.
 #[derive(Clone, Debug, PartialEq)]
 pub enum MetadataOperation {
@@ -573,7 +559,7 @@ pub enum MetadataOperation {
     Remove { entity: String, id: String },
 
     /// Aborts and rolls back the transaction unless `query` returns entities
-    /// exactly matching `entity_ids`.  The equality test is only sensitive
+    /// exactly matching `entity_ids`. The equality test is only sensitive
     /// to the order of the results if `query` contains an `order_by`.
     AbortUnless {
         description: String, // Programmer-friendly debug message to explain reason for abort
@@ -1202,9 +1188,8 @@ impl From<EntityModification> for EntityOperation {
 /// A cache for entities from the store that provides the basic functionality
 /// needed for the store interactions in the host exports. This struct tracks
 /// how entities are modified, and caches all entities looked up from the
-/// store. The cache makes
-/// sure that
-///   (1) no entity appears in more than one operations
+/// store. The cache makes sure that
+///   (1) no entity appears in more than one operation
 ///   (2) only entities that will actually be changed from what they
 ///       are in the store are changed
 #[derive(Clone, Debug, Default)]
@@ -1238,18 +1223,18 @@ impl EntityCache {
             }
             Some(data) => data.to_owned(),
         };
-        match (&current, self.updates.get(&key)) {
+        match (current, self.updates.get(&key).cloned()) {
             // Entity is unchanged
-            (_, None) => Ok(current),
+            (current, None) => Ok(current),
             // Entity was deleted
             (_, Some(None)) => Ok(None),
             // Entity created
-            (None, Some(updates)) => Ok(updates.clone()),
+            (None, Some(updates)) => Ok(updates),
             // Entity updated
             (Some(current), Some(Some(updates))) => {
-                let mut data = current.clone();
-                data.merge(updates.clone());
-                Ok(Some(data))
+                let mut current = current;
+                current.merge(updates);
+                Ok(Some(current))
             }
         }
     }
@@ -1288,7 +1273,7 @@ impl EntityCache {
 
     pub fn extend(&mut self, other: EntityCache) {
         self.current.extend(other.current);
-        for (key, update) in other.updates.into_iter() {
+        for (key, update) in other.updates {
             match update {
                 Some(update) => self.set(key, update),
                 None => self.remove(key),
@@ -1313,7 +1298,7 @@ impl EntityCache {
             self.get(store, key)?;
         }
         let mut mods = Vec::new();
-        for (key, update) in self.updates.into_iter() {
+        for (key, update) in self.updates {
             use EntityModification::*;
             let current = self
                 .current
