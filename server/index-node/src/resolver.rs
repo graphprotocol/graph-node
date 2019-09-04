@@ -22,6 +22,10 @@ struct EthereumBlock(EthereumBlockPointer);
 impl From<EthereumBlock> for q::Value {
     fn from(block: EthereumBlock) -> Self {
         object_value(vec![
+            (
+                "__typename",
+                q::Value::String(String::from("EthereumBlock")),
+            ),
             ("hash", q::Value::String(block.0.hash_hex())),
             ("number", q::Value::String(format!("{}", block.0.number))),
         ])
