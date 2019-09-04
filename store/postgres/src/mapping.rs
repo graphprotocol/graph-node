@@ -258,7 +258,6 @@ impl Mapping {
             .ok_or_else(|| StoreError::UnknownTable(entity.to_owned()))
     }
 
-    #[allow(dead_code)]
     pub fn column(&self, reference: &Reference) -> Result<&Column, StoreError> {
         self.table(&reference.table)?.column(&reference.column)
     }
@@ -519,7 +518,6 @@ pub struct Column {
     pub references: Vec<Reference>,
 }
 
-#[allow(dead_code)]
 impl Column {
     fn new(field: &s::Field, id_type: IdType) -> Result<Column, StoreError> {
         let sql_name = SqlName::from(&*field.name);
@@ -666,7 +664,6 @@ impl Table {
         }
     }
 
-    #[allow(dead_code)]
     pub fn reference(&self, name: &SqlName) -> Result<Reference, StoreError> {
         let attr = self.column(name)?;
         Ok(Reference {
