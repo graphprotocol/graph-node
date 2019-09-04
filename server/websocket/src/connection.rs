@@ -2,13 +2,25 @@ use futures::future::IntoFuture;
 use futures::stream::SplitStream;
 use futures::sync::mpsc;
 use graphql_parser::parse_query;
+use lazy_static::lazy_static;
 use std::collections::HashMap;
+use std::env;
+use std::str::FromStr;
 use tokio_tungstenite::tungstenite::{Error as WsError, Message as WsMessage};
 use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;
 
 use graph::prelude::serde_json;
 use graph::prelude::*;
+
+lazy_static! {
+    static ref MAX_OPERATIONS_PER_CONNECTION: Option<usize> =
+        env::var("GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION")
+            .ok()
+            .map(|s| usize::from_str(&s).unwrap_or_else(|_| panic!(
+                "failed to parse env var GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION"
+            )));
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -224,6 +236,19 @@ where
                             id.clone(),
                             format!("Operation with ID already started: {}", id),
                         );
+                    }
+
+                    if let Some(max_ops) = *MAX_OPERATIONS_PER_CONNECTION {
+                        if operations.operations.len() >= max_ops {
+                            return send_error_string(
+                                &msg_sink,
+                                id.clone(),
+                                format!(
+                                    "Reached the limit of {} operations per connection",
+                                    max_ops
+                                ),
+                            );
+                        }
                     }
 
                     // Parse the GraphQL query document; respond with a GQL_ERROR if
