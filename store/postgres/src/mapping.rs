@@ -598,9 +598,6 @@ pub struct Table {
     pub object: s::Name,
     /// The name of the database table for this type ('things')
     pub name: SqlName,
-    /// The name for a single object of elements of this type in GraphQL
-    /// queries ('thing')
-    pub singular_name: String,
 
     pub columns: Vec<Column>,
     /// The position of this table in all the tables for this mapping; this
@@ -625,7 +622,6 @@ impl Table {
         let table = Table {
             object: defn.name.clone(),
             name: table_name.clone(),
-            singular_name: Table::object_name(&defn.name),
             columns,
             position,
         };
@@ -829,7 +825,6 @@ mod tests {
             .expect("failed to get 'things' table");
         assert_eq!(SqlName::from("things"), table.name);
         assert_eq!("Thing", table.object);
-        assert_eq!("thing", table.singular_name);
 
         let id = table
             .column(&PRIMARY_KEY_COLUMN.into())
