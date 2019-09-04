@@ -25,6 +25,14 @@ use crate::entities::STRING_PREFIX_SIZE;
 /// is that SQL names are snake cased. Using this type makes it easier to
 /// spot cases where we use a GraphQL name like 'bigThing' when we should
 /// really use the SQL version 'big_thing'
+///
+/// We use `SqlName` for example for table and column names, and feed these
+/// directly to Postgres. Postgres truncates names to 63 characters; if
+/// users have GraphQL type names that do not differ in the first
+/// 63 characters after snakecasing, schema creation will fail because, to
+/// Postgres, we would create the same table twice. We consider this case
+/// to be pathological and so unlikely in practice that we do not try to work
+/// around it in the application.
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct SqlName(String);
 
@@ -160,7 +168,7 @@ impl Mapping {
                     None => {
                         // sql_type is an object; add a single reference to the target
                         // table and column
-                        let other_table_name = Table::collection_name(named_type);
+                        let other_table_name = SqlName::from(named_type);
                         let reference = Reference::to_column(other_table_name, column);
                         vec![reference]
                     }
@@ -583,7 +591,8 @@ pub(crate) const BLOCK_RANGE: &str = "block_range";
 pub struct Table {
     /// The name of the GraphQL object type ('Thing')
     pub object: s::Name,
-    /// The name of the database table for this type ('things')
+    /// The name of the database table for this type ('thing'), snakecased
+    /// version of `object`
     pub name: SqlName,
 
     pub columns: Vec<Column>,
@@ -600,7 +609,7 @@ impl Table {
         id_type: IdType,
         position: u32,
     ) -> Result<Table, StoreError> {
-        let table_name = Table::collection_name(&defn.name);
+        let table_name = SqlName::from(&*defn.name);
         let columns = defn
             .fields
             .iter()
@@ -656,14 +665,6 @@ impl Table {
             table: self.name.clone(),
             column: attr.name.clone(),
         })
-    }
-
-    pub fn collection_name(gql_type_name: &str) -> SqlName {
-        SqlName::from(gql_type_name.to_snake_case().to_plural())
-    }
-
-    pub fn object_name(gql_type_name: &str) -> String {
-        gql_type_name.to_snake_case()
     }
 
     fn as_ddl(&self, out: &mut String, mapping: &Mapping) -> fmt::Result {
@@ -803,16 +804,16 @@ mod tests {
 
     #[test]
     fn table_is_sane() {
-        let mapping = test_mapping(THINGS_GQL);
+        let mapping = test_mapping(THING_GQL);
         let table = mapping
-            .table(&"things".into())
-            .expect("failed to get 'things' table");
-        assert_eq!(SqlName::from("things"), table.name);
+            .table(&"thing".into())
+            .expect("failed to get 'thing' table");
+        assert_eq!(SqlName::from("thing"), table.name);
         assert_eq!("Thing", table.object);
 
         let id = table
             .column(&PRIMARY_KEY_COLUMN.into())
-            .expect("failed to get 'id' column for 'things' table");
+            .expect("failed to get 'id' column for 'thing' table");
         assert_eq!(ID_TYPE, id.column_type);
         assert!(!id.is_nullable());
         assert!(!id.is_list());
@@ -821,13 +822,13 @@ mod tests {
 
         let big_thing = table
             .column(&"big_thing".into())
-            .expect("failed to get 'big_thing' column for 'things' table");
+            .expect("failed to get 'big_thing' column for 'thing' table");
         assert_eq!(ID_TYPE, big_thing.column_type);
         assert!(!big_thing.is_nullable());
         assert!(big_thing.derived.is_none());
         assert_eq!(
             vec![Reference {
-                table: "things".into(),
+                table: "thing".into(),
                 column: PRIMARY_KEY_COLUMN.into()
             }],
             big_thing.references
@@ -839,9 +840,9 @@ mod tests {
 
     #[test]
     fn generate_ddl() {
-        let mapping = test_mapping(THINGS_GQL);
+        let mapping = test_mapping(THING_GQL);
         let sql = mapping.as_ddl().expect("Failed to generate DDL");
-        assert_eq!(THINGS_DDL, sql);
+        assert_eq!(THING_DDL, sql);
 
         let mapping = test_mapping(MUSIC_GQL);
         let sql = mapping.as_ddl().expect("Failed to generate DDL");
@@ -852,7 +853,7 @@ mod tests {
         assert_eq!(FOREST_DDL, sql);
     }
 
-    const THINGS_GQL: &str = "
+    const THING_GQL: &str = "
         type Thing @entity {
             id: ID!
             bigThing: Thing!
@@ -868,19 +869,19 @@ mod tests {
             bigInt: BigInt,
         }";
 
-    const THINGS_DDL: &str = "create table rel.things (
+    const THING_DDL: &str = "create table rel.thing (
         id                   text not null,
         big_thing            text not null,
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
-create index attr_1_1_things_id
-    on rel.things using btree(id);
-create index attr_1_2_things_big_thing
-    on rel.things using btree(big_thing);
+create index attr_1_1_thing_id
+    on rel.thing using btree(id);
+create index attr_1_2_thing_big_thing
+    on rel.thing using btree(big_thing);
 
-create table rel.scalars (
+create table rel.scalar (
         id                   text not null,
         bool                 boolean,
         int                  integer,
@@ -892,20 +893,20 @@ create table rel.scalars (
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
-create index attr_2_1_scalars_id
-    on rel.scalars using btree(id);
-create index attr_2_2_scalars_bool
-    on rel.scalars using btree(bool);
-create index attr_2_3_scalars_int
-    on rel.scalars using btree(int);
-create index attr_2_4_scalars_big_decimal
-    on rel.scalars using btree(big_decimal);
-create index attr_2_5_scalars_string
-    on rel.scalars using btree(left(string, 2048));
-create index attr_2_6_scalars_bytes
-    on rel.scalars using btree(bytes);
-create index attr_2_7_scalars_big_int
-    on rel.scalars using btree(big_int);
+create index attr_2_1_scalar_id
+    on rel.scalar using btree(id);
+create index attr_2_2_scalar_bool
+    on rel.scalar using btree(bool);
+create index attr_2_3_scalar_int
+    on rel.scalar using btree(int);
+create index attr_2_4_scalar_big_decimal
+    on rel.scalar using btree(big_decimal);
+create index attr_2_5_scalar_string
+    on rel.scalar using btree(left(string, 2048));
+create index attr_2_6_scalar_bytes
+    on rel.scalar using btree(bytes);
+create index attr_2_7_scalar_big_int
+    on rel.scalar using btree(big_int);
 
 ";
 
@@ -936,7 +937,7 @@ type SongStat @entity {
     song: Song @derivedFrom(field: \"id\")
     played: Int!
 }";
-    const MUSIC_DDL: &str = "create table rel.musicians (
+    const MUSIC_DDL: &str = "create table rel.musician (
         id                   text not null,
         name                 text not null,
         main_band            text,
@@ -946,18 +947,18 @@ type SongStat @entity {
         exclude using gist   (id with =, block_range with &&)
 
      -- derived fields (not stored in this table)
-     -- written_songs        text[] not null references songs(written_by)
+     -- written_songs        text[] not null references song(written_by)
 );
-create index attr_1_1_musicians_id
-    on rel.musicians using btree(id);
-create index attr_1_2_musicians_name
-    on rel.musicians using btree(left(name, 2048));
-create index attr_1_3_musicians_main_band
-    on rel.musicians using btree(main_band);
-create index attr_1_4_musicians_bands
-    on rel.musicians using gin(bands);
+create index attr_1_1_musician_id
+    on rel.musician using btree(id);
+create index attr_1_2_musician_name
+    on rel.musician using btree(left(name, 2048));
+create index attr_1_3_musician_main_band
+    on rel.musician using btree(main_band);
+create index attr_1_4_musician_bands
+    on rel.musician using gin(bands);
 
-create table rel.bands (
+create table rel.band (
         id                   text not null,
         name                 text not null,
         original_songs       text[] not null,
@@ -966,16 +967,16 @@ create table rel.bands (
         exclude using gist   (id with =, block_range with &&)
 
      -- derived fields (not stored in this table)
-     -- members              text[] not null references musicians(bands)
+     -- members              text[] not null references musician(bands)
 );
-create index attr_2_1_bands_id
-    on rel.bands using btree(id);
-create index attr_2_2_bands_name
-    on rel.bands using btree(left(name, 2048));
-create index attr_2_3_bands_original_songs
-    on rel.bands using gin(original_songs);
+create index attr_2_1_band_id
+    on rel.band using btree(id);
+create index attr_2_2_band_name
+    on rel.band using btree(left(name, 2048));
+create index attr_2_3_band_original_songs
+    on rel.band using gin(original_songs);
 
-create table rel.songs (
+create table rel.song (
         id                   text not null,
         title                text not null,
         written_by           text not null,
@@ -984,16 +985,16 @@ create table rel.songs (
         exclude using gist   (id with =, block_range with &&)
 
      -- derived fields (not stored in this table)
-     -- band                 text references bands(original_songs)
+     -- band                 text references band(original_songs)
 );
-create index attr_3_1_songs_id
-    on rel.songs using btree(id);
-create index attr_3_2_songs_title
-    on rel.songs using btree(left(title, 2048));
-create index attr_3_3_songs_written_by
-    on rel.songs using btree(written_by);
+create index attr_3_1_song_id
+    on rel.song using btree(id);
+create index attr_3_2_song_title
+    on rel.song using btree(left(title, 2048));
+create index attr_3_3_song_written_by
+    on rel.song using btree(written_by);
 
-create table rel.song_stats (
+create table rel.song_stat (
         id                   text not null,
         played               integer not null,
 
@@ -1001,12 +1002,12 @@ create table rel.song_stats (
         exclude using gist   (id with =, block_range with &&)
 
      -- derived fields (not stored in this table)
-     -- song                 text references songs(id)
+     -- song                 text references song(id)
 );
-create index attr_4_1_song_stats_id
-    on rel.song_stats using btree(id);
-create index attr_4_2_song_stats_played
-    on rel.song_stats using btree(played);
+create index attr_4_1_song_stat_id
+    on rel.song_stat using btree(id);
+create index attr_4_2_song_stat_played
+    on rel.song_stat using btree(played);
 
 ";
 
@@ -1031,31 +1032,31 @@ type Habitat @entity {
     dwellers: [ForestDweller!]!
 }";
 
-    const FOREST_DDL: &str = "create table rel.animals (
+    const FOREST_DDL: &str = "create table rel.animal (
         id                   text not null,
         forest               text,
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
-create index attr_1_1_animals_id
-    on rel.animals using btree(id);
-create index attr_1_2_animals_forest
-    on rel.animals using btree(forest);
+create index attr_1_1_animal_id
+    on rel.animal using btree(id);
+create index attr_1_2_animal_forest
+    on rel.animal using btree(forest);
 
-create table rel.forests (
+create table rel.forest (
         id                   text not null,
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 
      -- derived fields (not stored in this table)
-     -- dwellers             text[] not null references animals(forest)
+     -- dwellers             text[] not null references animal(forest)
 );
-create index attr_2_1_forests_id
-    on rel.forests using btree(id);
+create index attr_2_1_forest_id
+    on rel.forest using btree(id);
 
-create table rel.habitats (
+create table rel.habitat (
         id                   text not null,
         most_common          text not null,
         dwellers             text[] not null,
@@ -1063,12 +1064,12 @@ create table rel.habitats (
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
-create index attr_3_1_habitats_id
-    on rel.habitats using btree(id);
-create index attr_3_2_habitats_most_common
-    on rel.habitats using btree(most_common);
-create index attr_3_3_habitats_dwellers
-    on rel.habitats using gin(dwellers);
+create index attr_3_1_habitat_id
+    on rel.habitat using btree(id);
+create index attr_3_2_habitat_most_common
+    on rel.habitat using btree(most_common);
+create index attr_3_3_habitat_dwellers
+    on rel.habitat using gin(dwellers);
 
 ";
 
