@@ -199,7 +199,12 @@ impl Mapping {
 
         let count_query = tables
             .iter()
-            .map(|table| format!("select count(*) from \"{}\".\"{}\"", schema, table.name))
+            .map(|table| {
+                format!(
+                    "select count(*) from \"{}\".\"{}\" where upper_inf(block_range)",
+                    schema, table.name
+                )
+            })
             .collect::<Vec<_>>()
             .join("\nunion all\n");
         let count_query = format!("select sum(e.count) from ({}) e", count_query);
