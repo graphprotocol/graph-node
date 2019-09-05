@@ -392,6 +392,9 @@ where
                             //   cannot be differentiated from random failures. However Solidity
                             //   `revert` and `require` calls with a reason string can be detected.
 
+                            // 0xfe is the "designated bad instruction" of the EVM, and Solidity
+                            // uses it for asserts.
+                            const PARITY_0xFE: &str = "Bad instruction fe";
                             const GANACHE_VM_EXECUTION_ERROR: i64 = -32000;
                             const GANACHE_REVERT_MESSAGE: &str =
                                 "VM Exception while processing transaction: revert";
@@ -424,17 +427,23 @@ where
                                     if rpc_error.code.code() == PARITY_VM_EXECUTION_ERROR =>
                                 {
                                     match rpc_error.data.as_ref().and_then(|d| d.as_str()) {
-                                        Some(data) if data.starts_with(PARITY_REVERT_PREFIX) => {
-                                            let payload =
-                                                data.trim_start_matches(PARITY_REVERT_PREFIX);
-                                            Err(EthereumContractCallError::Revert(
+                                        Some(data)
+                                            if data.starts_with(PARITY_REVERT_PREFIX)
+                                                || data == PARITY_0xFE =>
+                                        {
+                                            let reason = if data == PARITY_0xFE {
+                                                PARITY_0xFE.to_owned()
+                                            } else {
+                                                let payload =
+                                                    data.trim_start_matches(PARITY_REVERT_PREFIX);
                                                 hex::decode(payload)
                                                     .ok()
                                                     .and_then(|payload| {
                                                         as_solidity_revert_with_reason(&payload)
                                                     })
-                                                    .unwrap_or("no reason".to_owned()),
-                                            ))
+                                                    .unwrap_or("no reason".to_owned())
+                                            };
+                                            Err(EthereumContractCallError::Revert(reason))
                                         }
 
                                         // The VM execution error was not identified as a revert.
