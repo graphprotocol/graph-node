@@ -139,9 +139,7 @@ where
             entity_type,
             entity_id,
         };
-        ctx.state
-            .entity_cache
-            .set(key, Entity::from(data));
+        ctx.state.entity_cache.set(key, Entity::from(data));
 
         Ok(())
     }
