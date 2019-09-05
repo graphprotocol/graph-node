@@ -16,12 +16,7 @@ use crate::mapping::BLOCK_RANGE;
 /// be enough for everybody
 pub type BlockNumber = i32;
 
-pub trait BlockNumberConsts {
-    const FIRST: BlockNumber = 0;
-    const LAST: BlockNumber = std::i32::MAX;
-}
-
-impl BlockNumberConsts for BlockNumber {}
+pub const BLOCK_NUMBER_MAX: BlockNumber = std::i32::MAX;
 
 /// The range of blocks for which
 #[derive(Clone, Debug)]

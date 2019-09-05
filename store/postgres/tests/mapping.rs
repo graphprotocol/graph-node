@@ -13,7 +13,7 @@ use graph::prelude::{
     bigdecimal::One, web3::types::H256, Entity, EntityFilter, EntityKey, EntityOrder, EntityQuery,
     EntityRange, Schema, SubgraphDeploymentId, Value, ValueType,
 };
-use graph_store_postgres::mapping_for_tests::{BlockNumber, BlockNumberConsts, Mapping};
+use graph_store_postgres::mapping_for_tests::{Mapping, BLOCK_NUMBER_MAX};
 
 use test_store::*;
 
@@ -315,19 +315,19 @@ fn find() {
 
         // Happy path: find existing entity
         let entity = mapping
-            .find(conn, "Scalar", "one", BlockNumber::LAST)
+            .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&*SCALAR_ENTITY), entity);
 
         // Find non-existing entity
         let entity = mapping
-            .find(conn, "Scalar", "noone", BlockNumber::LAST)
+            .find(conn, "Scalar", "noone", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[noone]");
         assert!(entity.is_none());
 
         // Find for non-existing entity type
-        let err = mapping.find(conn, "NoEntity", "one", BlockNumber::LAST);
+        let err = mapping.find(conn, "NoEntity", "one", BLOCK_NUMBER_MAX);
         match err {
             Err(e) => assert_eq!("store error: unknown table 'NoEntity'", e.to_string()),
             _ => {
@@ -364,7 +364,7 @@ fn update_overwrite() {
         entity.set("strings", Value::Null);
 
         let actual = mapping
-            .find(conn, "Scalar", "one", BlockNumber::LAST)
+            .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
@@ -395,7 +395,7 @@ fn update_no_overwrite() {
         entity.set("strings", strings);
 
         let actual = mapping
-            .find(conn, "Scalar", "one", BlockNumber::LAST)
+            .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
@@ -425,7 +425,7 @@ fn update_guard_no_match() {
         // The update will have done nothing
         entity.set("string", string);
         let actual = mapping
-            .find(conn, "Scalar", "one", BlockNumber::LAST)
+            .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
@@ -454,7 +454,7 @@ fn update_guard_matches() {
 
         // The update will have changed the entity
         let actual = mapping
-            .find(conn, "Scalar", "one", BlockNumber::LAST)
+            .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
@@ -475,7 +475,7 @@ fn count_scalar_entities(conn: &PgConnection, mapping: &Mapping) -> usize {
             None,
             None,
             0,
-            BlockNumber::LAST,
+            BLOCK_NUMBER_MAX,
         )
         .expect("Count query failed")
         .len()
@@ -574,7 +574,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
                 order,
                 query.range.first,
                 query.range.skip,
-                BlockNumber::LAST,
+                BLOCK_NUMBER_MAX,
             )
             .expect("mapping.query failed to execute query");
 

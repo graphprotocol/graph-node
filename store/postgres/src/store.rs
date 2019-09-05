@@ -20,7 +20,7 @@ use graph_graphql::prelude::api_schema;
 use tokio::timer::Interval;
 use web3::types::H256;
 
-use crate::block_range::{BlockNumber, BlockNumberConsts};
+use crate::block_range::BLOCK_NUMBER_MAX;
 use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::entities as e;
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
@@ -350,7 +350,7 @@ impl Store {
         // that is fully plumbed in, we just use the biggest possible block
         // number so that we will always return the latest version,
         // i.e., the one with an infinite upper bound
-        conn.find(op_subgraph, op_entity, op_id, BlockNumber::LAST)
+        conn.find(op_subgraph, op_entity, op_id, BLOCK_NUMBER_MAX)
             .map_err(|e| {
                 QueryExecutionError::ResolveEntityError(
                     op_subgraph.clone(),
@@ -402,7 +402,7 @@ impl Store {
             order,
             query.range.first,
             query.range.skip,
-            BlockNumber::LAST,
+            BLOCK_NUMBER_MAX,
         )
     }
 
