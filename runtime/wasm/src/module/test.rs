@@ -453,7 +453,6 @@ fn ipfs_map() {
             .ctx
             .state
             .entity_cache
-            .into_inner()
             .as_modifications(store.as_ref())?;
         // Bring the modifications into a predictable order (by entity_id)
         mods.sort_by(|a, b| {

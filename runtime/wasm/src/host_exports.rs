@@ -141,7 +141,6 @@ where
         };
         ctx.state
             .entity_cache
-            .borrow_mut()
             .set(key, Entity::from(data));
 
         Ok(())
@@ -158,12 +157,12 @@ where
             entity_type,
             entity_id,
         };
-        ctx.state.entity_cache.borrow_mut().remove(key);
+        ctx.state.entity_cache.remove(key);
     }
 
     pub(crate) fn store_get(
         &self,
-        ctx: &MappingContext,
+        ctx: &mut MappingContext,
         entity_type: String,
         entity_id: String,
     ) -> Result<Option<Entity>, HostExportError<impl ExportError>> {
@@ -177,7 +176,6 @@ where
         let result = ctx
             .state
             .entity_cache
-            .borrow_mut()
             .get(self.store.as_ref(), store_key)
             .map_err(HostExportError)
             .map(|ok| ok.to_owned());

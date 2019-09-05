@@ -543,7 +543,6 @@ where
 
         let mods = block_state
             .entity_cache
-            .into_inner()
             .as_modifications(ctx.inputs.store.as_ref())
             .map_err(|e| {
                 CancelableError::from(format_err!(
@@ -735,6 +734,7 @@ where
 
     // Add entity operations to the block state in order to persist
     // the dynamic data sources
+    let mut block_state = block_state;
     for data_source in data_sources.iter() {
         let entity = DynamicEthereumContractDataSourceEntity::from((
             &ctx.inputs.deployment_id,
@@ -743,7 +743,7 @@ where
         ));
         let id = format!("{}-dynamic", Uuid::new_v4().to_simple());
         let operations = entity.write_entity_operations(id.as_ref());
-        block_state.entity_cache.borrow_mut().append(operations);
+        block_state.entity_cache.append(operations);
     }
 
     // Merge log filters from data sources into the block stream builder

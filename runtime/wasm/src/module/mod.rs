@@ -548,11 +548,12 @@ where
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let entity_option = self.host_exports().store_get(
-            &self.ctx,
-            self.asc_get(entity_ptr),
-            self.asc_get(id_ptr),
-        )?;
+        let entity_ptr = self.asc_get(entity_ptr);
+        let id_ptr = self.asc_get(id_ptr);
+        let entity_option =
+            self.valid_module
+                .host_exports
+                .store_get(&mut self.ctx, entity_ptr, id_ptr)?;
 
         Ok(Some(match entity_option {
             Some(entity) => RuntimeValue::from(self.asc_new(&entity)),
@@ -702,8 +703,7 @@ where
                         self.ctx
                             .state
                             .entity_cache
-                            .borrow_mut()
-                            .extend(output_state.entity_cache.into_inner());
+                            .extend(output_state.entity_cache);
                         self.ctx
                             .state
                             .created_data_sources

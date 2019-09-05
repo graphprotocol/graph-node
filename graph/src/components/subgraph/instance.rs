@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use std::cell::RefCell;
 use web3::types::Log;
 
 #[derive(Clone, Debug)]
@@ -11,7 +10,7 @@ pub struct DataSourceTemplateInfo {
 
 #[derive(Debug, Default)]
 pub struct BlockState {
-    pub entity_cache: RefCell<EntityCache>,
+    pub entity_cache: EntityCache,
     pub created_data_sources: Vec<DataSourceTemplateInfo>,
 }
 
