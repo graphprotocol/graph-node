@@ -79,7 +79,7 @@ fn format_wasmi_error(e: Error) -> String {
 
 pub struct WasmiModuleConfig<T, L, S> {
     pub subgraph_id: SubgraphDeploymentId,
-    pub parsed_module: Arc<parity_wasm::elements::Module>,
+    pub parsed_module: Arc<Module>,
     pub api_version: Version,
     pub data_source_name: String,
     pub templates: Vec<DataSourceTemplate>,
