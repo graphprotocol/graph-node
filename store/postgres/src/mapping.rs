@@ -3,7 +3,6 @@ use diesel::{debug_query, PgConnection, RunQueryDsl};
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
-use std::cmp::PartialOrd;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Write};
 use std::rc::Rc;
@@ -249,7 +248,7 @@ impl Mapping {
         // We sort tables here solely because the unit tests rely on
         // 'create table' statements appearing in a fixed order
         let mut tables = self.tables.values().collect::<Vec<_>>();
-        tables.sort_by(|a, b| (&a.position).partial_cmp(&b.position).unwrap());
+        tables.sort_by_key(|table| table.position);
         // Output 'create table' statements for all tables
         for table in tables {
             table.as_ddl(&mut out, self)?;
