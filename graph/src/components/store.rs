@@ -1244,18 +1244,18 @@ impl EntityCache {
     }
 
     pub fn set(&mut self, key: EntityKey, entity: Entity) {
-        let update = match self.updates.remove(&key) {
-            // Previously removed
-            Some(None) => entity,
-            // Previously changed
-            Some(Some(mut update)) => {
+        let update = self.updates.entry(key).or_insert(None);
+
+        match update {
+            Some(update) => {
+                // Previously changed
                 update.merge(entity);
-                update
             }
-            // Never changed
-            None => entity,
-        };
-        self.updates.insert(key, Some(update));
+            None => {
+                // Previously removed or never changed
+                *update = Some(entity);
+            }
+        }
     }
 
     pub fn append(&mut self, operations: Vec<EntityOperation>) {
