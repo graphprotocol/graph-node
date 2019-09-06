@@ -450,168 +450,133 @@ impl Store {
         Ok(())
     }
 
-    /// Applies a set operation in Postgres. Returns `1` if this is a new
-    /// entity, and `0` if it is an existing entity
-    fn apply_set_operation(
-        &self,
-        conn: &e::Connection,
-        key: EntityKey,
-        data: Entity,
-        history_event: Option<&HistoryEvent>,
-    ) -> Result<i32, StoreError> {
-        self.check_interface_entity_uniqueness(conn, &key)?;
-
-        // Load the entity if exists
-        let entity = self
-            .get_entity(conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
-            .map_err(Error::from)?;
-
-        // Identify whether this is an insert or an update operation and
-        // merge the changes into the entity.
-        let result = match entity {
-            Some(mut entity) => {
-                entity.merge(data);
-                conn.update(&key, &entity, true, None, history_event)
-                    .map(|_| 0)
-            }
-            None => {
-                // Merge with a new entity since that removes values that
-                // were set to Value::Null
-                let mut entity = Entity::new();
-                entity.merge(data);
-                conn.insert(&key, &entity, history_event).map(|_| 1)
-            }
-        };
-
-        result.map_err(|e| {
-            format_err!(
-                "Failed to set entity ({}, {}, {}): {}",
-                key.subgraph_id,
-                key.entity_type,
-                key.entity_id,
-                e
-            )
-            .into()
-        })
-    }
-
-    /// Applies an update operation to an existing entity
-    fn apply_update_operation(
-        &self,
-        conn: &e::Connection,
-        key: EntityKey,
-        data: Entity,
-        guard: Option<EntityFilter>,
-    ) -> Result<i32, StoreError> {
-        self.check_interface_entity_uniqueness(conn, &key)?;
-
-        // Update the entity in Postgres
-        match conn.update(&key, &data, false, guard, None)? {
-            0 => Err(TransactionAbortError::AbortUnless {
-                expected_entity_ids: vec![key.entity_id.clone()],
-                actual_entity_ids: vec![],
-                description: "update did not change any rows".to_owned(),
-            }
-            .into()),
-            1 => Ok(0),
-            res => Err(TransactionAbortError::AbortUnless {
-                expected_entity_ids: vec![key.entity_id.clone()],
-                actual_entity_ids: vec![],
-                description: format!("update changed {} rows instead of just one", res),
-            }
-            .into()),
-        }
-    }
-
-    /// Applies a remove operation by deleting the entity from Postgres.
-    fn apply_remove_operation(
-        &self,
-        conn: &e::Connection,
-        key: EntityKey,
-        history_event: Option<&HistoryEvent>,
-    ) -> Result<i32, StoreError> {
-        conn.delete(&key, history_event)
-            // This conversion is ok since n will only be 0 or 1
-            .map(|n| -(n as i32))
-            .map_err(|e| {
-                format_err!(
-                    "Failed to remove entity ({}, {}, {}): {}",
-                    key.subgraph_id,
-                    key.entity_type,
-                    key.entity_id,
-                    e
-                )
-                .into()
-            })
-    }
-
-    fn apply_abort_unless_operation(
-        &self,
-        conn: &e::Connection,
-        description: String,
-        query: EntityQuery,
-        mut expected_entity_ids: Vec<String>,
-    ) -> Result<i32, StoreError> {
-        // Execute query
-        let actual_entities = self.execute_query(conn, query.clone()).map_err(|e| {
-            format_err!(
-                "AbortUnless ({}): query execution error: {:?}, {}",
-                description,
-                query,
-                e
-            )
-        })?;
-
-        // Extract IDs from entities
-        let mut actual_entity_ids: Vec<String> = actual_entities
-            .into_iter()
-            .map(|entity| entity.id())
-            .collect::<Result<_, _>>()?;
-
-        // Sort entity IDs lexicographically if and only if no sort order is specified.
-        // When no sort order is specified, the entity ordering is arbitrary and should not be a
-        // factor in deciding whether or not to abort.
-        if query.order_by.is_none() {
-            expected_entity_ids.sort();
-            actual_entity_ids.sort();
-        }
-
-        // Abort if actual IDs do not match expected
-        if actual_entity_ids != expected_entity_ids {
-            return Err(TransactionAbortError::AbortUnless {
-                expected_entity_ids,
-                actual_entity_ids,
-                description,
-            }
-            .into());
-        }
-
-        // Safe to continue
-        Ok(0)
-    }
-
     /// Apply a metadata operation in Postgres.
     fn apply_metadata_operation(
         &self,
         conn: &e::Connection,
         operation: MetadataOperation,
     ) -> Result<i32, StoreError> {
+        // Get the key from the operation before we move it in the match. We
+        // only unwrap the option when we know it is safe to do
+        // so (i.e., not for an AbortUnless)
         let key = operation.entity_key();
         match operation {
             MetadataOperation::Set { data, .. } => {
-                self.apply_set_operation(conn, key.unwrap(), data, None)
+                let key = key.unwrap();
+
+                self.check_interface_entity_uniqueness(conn, &key)?;
+
+                // Load the entity if exists
+                let entity = self
+                    .get_entity(conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
+                    .map_err(Error::from)?;
+
+                // Identify whether this is an insert or an update operation and
+                // merge the changes into the entity.
+                let result = match entity {
+                    Some(mut entity) => {
+                        entity.merge(data);
+                        conn.update(&key, &entity, true, None, None).map(|_| 0)
+                    }
+                    None => {
+                        // Merge with a new entity since that removes values that
+                        // were set to Value::Null
+                        let mut entity = Entity::new();
+                        entity.merge(data);
+                        conn.insert(&key, &entity, None).map(|_| 1)
+                    }
+                };
+
+                result.map_err(|e| {
+                    format_err!(
+                        "Failed to set entity ({}, {}, {}): {}",
+                        key.subgraph_id,
+                        key.entity_type,
+                        key.entity_id,
+                        e
+                    )
+                    .into()
+                })
             }
             MetadataOperation::Update { data, guard, .. } => {
-                self.apply_update_operation(conn, key.unwrap(), data, guard)
+                let key = key.unwrap();
+                self.check_interface_entity_uniqueness(conn, &key)?;
+
+                // Update the entity in Postgres
+                match conn.update(&key, &data, false, guard, None)? {
+                    0 => Err(TransactionAbortError::AbortUnless {
+                        expected_entity_ids: vec![key.entity_id.clone()],
+                        actual_entity_ids: vec![],
+                        description: "update did not change any rows".to_owned(),
+                    }
+                    .into()),
+                    1 => Ok(0),
+                    res => Err(TransactionAbortError::AbortUnless {
+                        expected_entity_ids: vec![key.entity_id.clone()],
+                        actual_entity_ids: vec![],
+                        description: format!("update changed {} rows instead of just one", res),
+                    }
+                    .into()),
+                }
             }
             MetadataOperation::Remove { .. } => {
-                self.apply_remove_operation(conn, key.unwrap(), None)
+                let key = key.unwrap();
+                conn.delete(&key, None)
+                    // This conversion is ok since n will only be 0 or 1
+                    .map(|n| -(n as i32))
+                    .map_err(|e| {
+                        format_err!(
+                            "Failed to remove entity ({}, {}, {}): {}",
+                            key.subgraph_id,
+                            key.entity_type,
+                            key.entity_id,
+                            e
+                        )
+                        .into()
+                    })
             }
             MetadataOperation::AbortUnless {
                 description,
                 query,
-                entity_ids,
-            } => self.apply_abort_unless_operation(conn, description, query, entity_ids),
+                entity_ids: mut expected_entity_ids,
+            } => {
+                // Execute query
+                let actual_entities = self.execute_query(conn, query.clone()).map_err(|e| {
+                    format_err!(
+                        "AbortUnless ({}): query execution error: {:?}, {}",
+                        description,
+                        query,
+                        e
+                    )
+                })?;
+
+                // Extract IDs from entities
+                let mut actual_entity_ids: Vec<String> = actual_entities
+                    .into_iter()
+                    .map(|entity| entity.id())
+                    .collect::<Result<_, _>>()?;
+
+                // Sort entity IDs lexicographically if and only if no sort order is specified.
+                // When no sort order is specified, the entity ordering is arbitrary and should not be a
+                // factor in deciding whether or not to abort.
+                if query.order_by.is_none() {
+                    expected_entity_ids.sort();
+                    actual_entity_ids.sort();
+                }
+
+                // Abort if actual IDs do not match expected
+                if actual_entity_ids != expected_entity_ids {
+                    return Err(TransactionAbortError::AbortUnless {
+                        expected_entity_ids,
+                        actual_entity_ids,
+                        description,
+                    }
+                    .into());
+                }
+
+                // Safe to continue
+                Ok(0)
+            }
         }
     }
 
