@@ -1,5 +1,5 @@
 use diesel::connection::SimpleConnection;
-use diesel::{debug_query, PgConnection, RunQueryDsl};
+use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
@@ -283,9 +283,9 @@ impl Mapping {
         id: &str,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
-        let mut values = FindQuery::new(self, entity, id, block).load::<EntityData>(conn)?;
-        values
-            .pop()
+        FindQuery::new(self, entity, id, block)
+            .get_result::<EntityData>(conn)
+            .optional()?
             .map(|entity_data| entity_data.to_entity(self))
             .transpose()
     }

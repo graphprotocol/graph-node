@@ -117,7 +117,7 @@ impl EntityData {
                     .map(|v| Self::value_from_json(column_type, v))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
-            j::Object(_) => unimplemented!(),
+            j::Object(_) => unimplemented!("objects as entity attributes are not needed/supported"),
         }
     }
 
@@ -147,7 +147,9 @@ impl EntityData {
                 }
                 Ok(entity)
             }
-            _ => unreachable!(),
+            _ => unreachable!(
+                "we use `to_json` in our queries, and will therefore always get an object back"
+            ),
         }
     }
 }
@@ -512,7 +514,7 @@ pub struct FindQuery<'a> {
 }
 
 impl<'a> FindQuery<'a> {
-    fn object_query(&self, table: &'a Table, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn object_query(&self, table: &Table, mut out: AstPass<Pg>) -> QueryResult<()> {
         // Generate
         //    select '..' as entity, to_jsonb(e.*) as data from schema.table e where id = $1
         out.push_sql("select ");
@@ -780,7 +782,7 @@ pub struct FilterQuery<'a> {
 }
 
 impl<'a> FilterQuery<'a> {
-    fn object_query(&self, table: &'a Table, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn object_query(&self, table: &Table, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.push_sql("select ");
         out.push_bind_param::<Text, _>(&table.object)?;
         out.push_sql(" as entity, to_jsonb(e.*) as data");
