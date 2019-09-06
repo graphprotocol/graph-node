@@ -699,34 +699,29 @@ impl Table {
             .filter(|col| !col.is_derived())
             .enumerate()
         {
-            if !column.is_primary_key()
-                && !column.is_reference()
-                && !column.is_list()
-                && column.column_type == ColumnType::String
-            {
-                write!(
+            // Attributes that are plain strings are indexed with a BTree; but
+            // they can be too large for Postgres' limit on values that can go
+            // into a BTree. For those attributes, only index the first
+            // STRING_PREFIX_SIZE characters
+            let index_expr =
+                if !column.is_list() && base_type(&column.field_type) == ValueType::String {
+                    format!("left({}, {})", column.name, STRING_PREFIX_SIZE)
+                } else {
+                    column.name.to_string()
+                };
+
+            let method = if column.is_list() { "gin" } else { "btree" };
+            write!(
                 out,
-                "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.{table_name} using btree(left({column_name}, {prefix_size}));\n",
-                table_index=self.position,
-                table_name=self.name,
-                column_index=i,
-                column_name=column.name,
-                schema_name=mapping.schema,
-                prefix_size=STRING_PREFIX_SIZE,
+                "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.{table_name} using {method}({index_expr});\n",
+                table_index = self.position,
+                table_name = self.name,
+                column_index = i,
+                column_name = column.name,
+                schema_name = mapping.schema,
+                method = method,
+                index_expr = index_expr,
             )?;
-            } else {
-                let method = if column.is_list() { "gin" } else { "btree" };
-                write!(
-                out,
-                "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.{table_name} using {method}({column_name});\n",
-                table_index=self.position,
-                table_name=self.name,
-                column_index=i,
-                column_name=column.name,
-                schema_name=mapping.schema,
-                method=method
-            )?;
-            }
         }
         write!(out, "\n")
     }
