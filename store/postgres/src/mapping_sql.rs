@@ -21,7 +21,7 @@ use graph::prelude::{
     ValueType,
 };
 
-use crate::block_range::{BlockNumber, BlockRange};
+use crate::block_range::{BlockNumber, BlockRange, BlockRangeContainsClause};
 use crate::filter::UnsupportedFilter;
 use crate::mapping::{
     Column, ColumnType, Mapping, SqlName, Table, BLOCK_RANGE, PRIMARY_KEY_COLUMN,
@@ -527,7 +527,7 @@ impl<'a> FindQuery<'a> {
         out.push_sql(" = ");
         out.push_bind_param::<Text, _>(&self.id)?;
         out.push_sql(" and ");
-        BlockRange::contains(self.block).walk_ast(out)
+        BlockRangeContainsClause::new(self.block).walk_ast(out)
     }
 }
 
@@ -696,7 +696,7 @@ impl<'a> QueryFragment<Pg> for CopyQuery<'a> {
         out.push_sql(" = ");
         out.push_bind_param::<Text, _>(&self.key.entity_id)?;
         out.push_sql(" and ");
-        BlockRange::contains(self.block - 1).walk_ast(out)
+        BlockRangeContainsClause::new(self.block - 1).walk_ast(out)
     }
 }
 
@@ -798,7 +798,7 @@ impl<'a> FilterQuery<'a> {
         out.push_identifier(table.name.as_str())?;
         out.push_sql(" e");
         out.push_sql("\n where ");
-        BlockRange::contains(self.block).walk_ast(out.reborrow())?;
+        BlockRangeContainsClause::new(self.block).walk_ast(out.reborrow())?;
         if let Some(filter) = &self.filter {
             out.push_sql(" and ");
             QueryFilter::new(filter, table).walk_ast(out)?;

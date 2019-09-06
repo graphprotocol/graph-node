@@ -73,17 +73,14 @@ impl ToSql<Range<Integer>, Pg> for BlockRange {
     }
 }
 
-impl BlockRange {
-    pub fn contains(block: BlockNumber) -> BlockRangeContainsQuery {
-        BlockRangeContainsQuery { block }
-    }
-}
-
-pub struct BlockRangeContainsQuery {
+/// Generate the clause that checks whether `block` is in the block range
+/// of an entity
+#[derive(Constructor)]
+pub struct BlockRangeContainsClause {
     block: BlockNumber,
 }
 
-impl QueryFragment<Pg> for BlockRangeContainsQuery {
+impl QueryFragment<Pg> for BlockRangeContainsClause {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
