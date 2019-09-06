@@ -172,10 +172,9 @@ impl Store for MockStore {
         let mut entities: HashMap<_, _> = entities_ref.clone();
         let mut entity_changes = vec![];
         for op in ops {
-            let key = op.entity_key();
             match op {
-                MetadataOperation::Set { data, .. } => {
-                    let key = key.unwrap();
+                MetadataOperation::Set { entity, id, data } => {
+                    let key = MetadataOperation::entity_key(entity, id);
                     let entities_of_type = entities
                         .entry(key.subgraph_id.clone())
                         .or_default()
@@ -198,8 +197,13 @@ impl Store for MockStore {
                             .push(EntityChange::from_key(key, EntityChangeOperation::Set));
                     }
                 }
-                MetadataOperation::Update { data, guard, .. } => {
-                    let key = key.unwrap();
+                MetadataOperation::Update {
+                    entity,
+                    id,
+                    data,
+                    guard,
+                } => {
+                    let key = MetadataOperation::entity_key(entity, id);
                     let entities_of_type = entities
                         .entry(key.subgraph_id.clone())
                         .or_default()
@@ -233,8 +237,8 @@ impl Store for MockStore {
                         .into());
                     }
                 }
-                MetadataOperation::Remove { .. } => {
-                    let key = key.unwrap();
+                MetadataOperation::Remove { entity, id } => {
+                    let key = MetadataOperation::entity_key(entity, id);
                     if let Some(in_subgraph) = entities.get_mut(&key.subgraph_id) {
                         if let Some(of_type) = in_subgraph.get_mut(&key.entity_type) {
                             if of_type.remove(&key.entity_id).is_some() {

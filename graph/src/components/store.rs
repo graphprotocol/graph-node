@@ -205,12 +205,12 @@ impl From<MetadataOperation> for Option<EntityChange> {
     fn from(operation: MetadataOperation) -> Self {
         use self::MetadataOperation::*;
         match operation {
-            Set { .. } | Update { .. } => Some(EntityChange::from_key(
-                operation.entity_key().unwrap(),
+            Set { entity, id, .. } | Update { entity, id, .. } => Some(EntityChange::from_key(
+                MetadataOperation::entity_key(entity, id),
                 EntityChangeOperation::Set,
             )),
-            Remove { .. } => Some(EntityChange::from_key(
-                operation.entity_key().unwrap(),
+            Remove { entity, id, .. } => Some(EntityChange::from_key(
+                MetadataOperation::entity_key(entity, id),
                 EntityChangeOperation::Removed,
             )),
             AbortUnless { .. } => None,
@@ -504,18 +504,11 @@ pub enum MetadataOperation {
 }
 
 impl MetadataOperation {
-    pub fn entity_key(&self) -> Option<EntityKey> {
-        use self::MetadataOperation::*;
-
-        match self {
-            Set { entity, id, .. } | Update { entity, id, .. } | Remove { entity, id } => {
-                Some(EntityKey {
-                    subgraph_id: SUBGRAPHS_ID.clone(),
-                    entity_type: entity.to_owned(),
-                    entity_id: id.to_owned(),
-                })
-            }
-            AbortUnless { .. } => None,
+    pub fn entity_key(entity: String, id: String) -> EntityKey {
+        EntityKey {
+            subgraph_id: SUBGRAPHS_ID.clone(),
+            entity_type: entity,
+            entity_id: id,
         }
     }
 }

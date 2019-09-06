@@ -456,13 +456,9 @@ impl Store {
         conn: &e::Connection,
         operation: MetadataOperation,
     ) -> Result<i32, StoreError> {
-        // Get the key from the operation before we move it in the match. We
-        // only unwrap the option when we know it is safe to do
-        // so (i.e., not for an AbortUnless)
-        let key = operation.entity_key();
         match operation {
-            MetadataOperation::Set { data, .. } => {
-                let key = key.unwrap();
+            MetadataOperation::Set { entity, id, data } => {
+                let key = MetadataOperation::entity_key(entity, id);
 
                 self.check_interface_entity_uniqueness(conn, &key)?;
 
@@ -498,8 +494,14 @@ impl Store {
                     .into()
                 })
             }
-            MetadataOperation::Update { data, guard, .. } => {
-                let key = key.unwrap();
+            MetadataOperation::Update {
+                entity,
+                id,
+                data,
+                guard,
+            } => {
+                let key = MetadataOperation::entity_key(entity, id);
+
                 self.check_interface_entity_uniqueness(conn, &key)?;
 
                 // Update the entity in Postgres
@@ -519,8 +521,8 @@ impl Store {
                     .into()),
                 }
             }
-            MetadataOperation::Remove { .. } => {
-                let key = key.unwrap();
+            MetadataOperation::Remove { entity, id } => {
+                let key = MetadataOperation::entity_key(entity, id);
                 conn.delete(&key, None)
                     // This conversion is ok since n will only be 0 or 1
                     .map(|n| -(n as i32))
