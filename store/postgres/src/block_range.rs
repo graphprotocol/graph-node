@@ -18,7 +18,8 @@ pub type BlockNumber = i32;
 
 pub const BLOCK_NUMBER_MAX: BlockNumber = std::i32::MAX;
 
-/// The range of blocks for which
+/// The range of blocks for which an entity is valid. We need this struct
+/// to bind ranges into Diesel queries.
 #[derive(Clone, Debug)]
 pub struct BlockRange(Bound<BlockNumber>, Bound<BlockNumber>);
 
@@ -36,7 +37,7 @@ fn clone_bound(bound: Bound<&BlockNumber>) -> Bound<BlockNumber> {
 /// `None` panic because that indicates that we want to perform an
 /// operation that does not record history, which should not happen
 /// with how we currently use relational schemas
-pub fn block_number(history_event: &Option<&HistoryEvent>) -> BlockNumber {
+pub(crate) fn block_number(history_event: &Option<&HistoryEvent>) -> BlockNumber {
     match history_event {
         None => panic!("operation that requires a history event did not receive one"),
         Some(HistoryEvent {
@@ -53,18 +54,6 @@ pub fn block_number(history_event: &Option<&HistoryEvent>) -> BlockNumber {
                 )
             }
         }
-    }
-}
-
-impl From<Option<&HistoryEvent>> for BlockRange {
-    fn from(event: Option<&HistoryEvent>) -> BlockRange {
-        BlockRange(Bound::Included(block_number(&event)), Bound::Unbounded)
-    }
-}
-
-impl From<BlockRange> for (Bound<BlockNumber>, Bound<BlockNumber>) {
-    fn from(range: BlockRange) -> (Bound<BlockNumber>, Bound<BlockNumber>) {
-        (range.0, range.1)
     }
 }
 
