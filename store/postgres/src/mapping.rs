@@ -458,7 +458,6 @@ pub struct Column {
     pub field: String,
     pub field_type: q::Type,
     pub column_type: ColumnType,
-    pub derived: Option<String>,
 }
 
 impl Column {
@@ -469,7 +468,6 @@ impl Column {
             field: field.name.clone(),
             column_type: ColumnType::from_value_type(base_type(&field.field_type), id_type)?,
             field_type: field.field_type.clone(),
-            derived: derived_column(field)?,
         })
     }
 
@@ -504,15 +502,8 @@ impl Column {
         is_list(&self.field_type)
     }
 
-    pub fn is_derived(&self) -> bool {
-        self.derived.is_some()
-    }
-
     fn as_ddl(&self, out: &mut String) -> fmt::Result {
         write!(out, "    ")?;
-        if self.derived.is_some() {
-            write!(out, " -- ")?;
-        }
         write!(out, "{:20} {}", self.name, self.sql_type())?;
         if self.is_list() {
             write!(out, "[]")?;
@@ -555,6 +546,7 @@ impl Table {
         let columns = defn
             .fields
             .iter()
+            .filter(|field| !derived_column(field))
             .map(|field| Column::new(field, id_type))
             .collect::<Result<Vec<_>, _>>()?;
         let table = Table {
@@ -596,7 +588,7 @@ impl Table {
 
     fn as_ddl(&self, out: &mut String, mapping: &Mapping) -> fmt::Result {
         write!(out, "create table {}.{} (\n", mapping.schema, self.name)?;
-        for column in self.columns.iter().filter(|col| !col.is_derived()) {
+        for column in self.columns.iter() {
             write!(out, "    ")?;
             column.as_ddl(out)?;
             write!(out, ",\n")?;
@@ -605,24 +597,11 @@ impl Table {
         write!(
             out,
             "\n        {block_range}          int4range not null,
-        exclude using gist   (id with =, {block_range} with &&)\n",
+        exclude using gist   (id with =, {block_range} with &&)\n);\n",
             block_range = BLOCK_RANGE
         )?;
-        if self.columns.iter().any(|col| col.is_derived()) {
-            write!(out, "\n     -- derived fields (not stored in this table)\n")?;
-            for column in self.columns.iter().filter(|col| col.is_derived()) {
-                column.as_ddl(out)?;
-                write!(out, "\n")?;
-            }
-        }
-        write!(out, ");\n")?;
 
-        for (i, column) in self
-            .columns
-            .iter()
-            .filter(|col| !col.is_derived())
-            .enumerate()
-        {
+        for (i, column) in self.columns.iter().enumerate() {
             // Attributes that are plain strings are indexed with a BTree; but
             // they can be too large for Postgres' limit on values that can go
             // into a BTree. For those attributes, only index the first
@@ -670,29 +649,11 @@ fn named_type(field_type: &q::Type) -> &str {
     }
 }
 
-fn derived_column(field: &s::Field) -> Result<Option<String>, StoreError> {
-    match field
+fn derived_column(field: &s::Field) -> bool {
+    field
         .directives
         .iter()
-        .find(|dir| dir.name == s::Name::from("derivedFrom"))
-    {
-        Some(dir) => Ok(Some(
-            dir.arguments
-                .iter()
-                .find(|arg| arg.0 == "field")
-                .map(|arg| {
-                    arg.1
-                        .to_string()
-                        .trim_start_matches('"')
-                        .trim_end_matches('"')
-                        .to_owned()
-                })
-                .ok_or(StoreError::MalformedDirective(
-                    "derivedFrom requires a 'field' argument".to_owned(),
-                ))?,
-        )),
-        None => Ok(None),
-    }
+        .any(|dir| dir.name == s::Name::from("derivedFrom"))
 }
 
 #[cfg(test)]
@@ -723,14 +684,12 @@ mod tests {
         assert_eq!(ID_TYPE, id.column_type);
         assert!(!id.is_nullable());
         assert!(!id.is_list());
-        assert!(id.derived.is_none());
 
         let big_thing = table
             .column(&"big_thing".into())
             .expect("failed to get 'big_thing' column for 'thing' table");
         assert_eq!(ID_TYPE, big_thing.column_type);
         assert!(!big_thing.is_nullable());
-        assert!(big_thing.derived.is_none());
         // Field lookup happens by the SQL name, not the GraphQL name
         let bad_sql_name = SqlName("bigThing".to_owned());
         assert!(table.column(&bad_sql_name).is_err());
@@ -843,9 +802,6 @@ type SongStat @entity {
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
-
-     -- derived fields (not stored in this table)
-     -- written_songs        text[] not null
 );
 create index attr_0_0_musician_id
     on rel.musician using btree(id);
@@ -863,9 +819,6 @@ create table rel.band (
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
-
-     -- derived fields (not stored in this table)
-     -- members              text[] not null
 );
 create index attr_1_0_band_id
     on rel.band using btree(id);
@@ -881,9 +834,6 @@ create table rel.song (
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
-
-     -- derived fields (not stored in this table)
-     -- band                 text
 );
 create index attr_2_0_song_id
     on rel.song using btree(id);
@@ -898,9 +848,6 @@ create table rel.song_stat (
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
-
-     -- derived fields (not stored in this table)
-     -- song                 text
 );
 create index attr_3_0_song_stat_id
     on rel.song_stat using btree(id);
@@ -947,9 +894,6 @@ create table rel.forest (
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
-
-     -- derived fields (not stored in this table)
-     -- dwellers             text[] not null
 );
 create index attr_1_0_forest_id
     on rel.forest using btree(id);

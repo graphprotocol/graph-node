@@ -590,12 +590,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         out.push_identifier(self.table.name.as_str())?;
 
         out.push_sql("(");
-        for column in self
-            .table
-            .columns
-            .iter()
-            .filter(|column| !column.is_derived())
-        {
+        for column in self.table.columns.iter() {
             if self.entity.contains_key(&column.field) {
                 out.push_identifier(column.name.as_str())?;
                 out.push_sql(", ");
@@ -614,12 +609,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         out.push_identifier(BLOCK_RANGE)?;
 
         out.push_sql(")\nvalues(");
-        for column in self
-            .table
-            .columns
-            .iter()
-            .filter(|column| !column.is_derived())
-        {
+        for column in self.table.columns.iter() {
             if let Some(value) = self.entity.get(&column.field) {
                 QueryValue(value, column.column_type).walk_ast(out.reborrow())?;
                 out.push_sql(", ");
@@ -668,12 +658,7 @@ impl<'a> QueryFragment<Pg> for CopyQuery<'a> {
         out.push_identifier(self.table.name.as_str())?;
 
         out.push_sql("\nselect ");
-        for column in self
-            .table
-            .columns
-            .iter()
-            .filter(|column| !column.is_derived())
-        {
+        for column in self.table.columns.iter() {
             if let Some(value) = self.entity.get(&column.field) {
                 QueryValue(value, column.column_type).walk_ast(out.reborrow())?;
                 out.push_sql(" as ");
@@ -879,7 +864,7 @@ impl<'a> QueryFragment<Pg> for UpdateQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        let updateable = { |column: &Column| !column.is_primary_key() && !column.is_derived() };
+        let updateable = { |column: &Column| !column.is_primary_key() };
 
         // Construct a query
         //   update schema.table1
