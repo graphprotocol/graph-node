@@ -39,6 +39,39 @@ impl SqlName {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    // Check that `name` matches the regular expression `/[A-Za-z][A-Za-z0-9_]*/`
+    // without pulling in a regex matcher
+    fn check_valid_identifier(name: &str, kind: &str) -> Result<(), StoreError> {
+        let mut chars = name.chars();
+        match chars.next() {
+            Some(c) => {
+                if !c.is_ascii_alphabetic() {
+                    let msg = format!(
+                        "the name `{}` can not be used for a {}; \
+                         it must start with an ASCII alphabetic character",
+                        name, kind
+                    );
+                    return Err(StoreError::InvalidIdentifier(msg));
+                }
+            }
+            None => {
+                let msg = format!("can not use an empty name for a {}", kind);
+                return Err(StoreError::InvalidIdentifier(msg));
+            }
+        }
+        for c in chars {
+            if !c.is_ascii_alphanumeric() && c != '_' {
+                let msg = format!(
+                    "the name `{}` can not be used for a {}; \
+                     it can only contain alphanumeric characters and `_`",
+                    name, kind
+                );
+                return Err(StoreError::InvalidIdentifier(msg));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl From<&str> for SqlName {
@@ -105,6 +138,7 @@ impl Mapping {
         use s::TypeDefinition::*;
 
         let schema = schema.into();
+        SqlName::check_valid_identifier(&schema, "database schema")?;
 
         // Check that we can handle all the definitions
         for defn in &document.definitions {
@@ -131,6 +165,7 @@ impl Mapping {
                     tables.push(table);
                 }
                 TypeDefinition(Interface(interface_type)) => {
+                    SqlName::check_valid_identifier(&interface_type.name, "interface")?;
                     interfaces.insert(interface_type.name.clone(), vec![]);
                 }
                 other => {
@@ -208,6 +243,9 @@ impl Mapping {
 
     /// Generate the DDL for the entire mapping, i.e., all `create table`
     /// and `create index` etc. statements needed in the database schema
+    ///
+    /// See the unit tests at the end of this file for the actual DDL that
+    /// gets generated
     pub fn as_ddl(&self) -> Result<String, fmt::Error> {
         let mut out = String::new();
 
@@ -462,6 +500,8 @@ pub struct Column {
 
 impl Column {
     fn new(field: &s::Field, id_type: IdType) -> Result<Column, StoreError> {
+        SqlName::check_valid_identifier(&*field.name, "attribute")?;
+
         let sql_name = SqlName::from(&*field.name);
         Ok(Column {
             name: sql_name,
@@ -502,6 +542,11 @@ impl Column {
         is_list(&self.field_type)
     }
 
+    /// Generate the DDL for one column, i.e. the part of a `create table`
+    /// statement for this column.
+    ///
+    /// See the unit tests at the end of this file for the actual DDL that
+    /// gets generated
     fn as_ddl(&self, out: &mut String) -> fmt::Result {
         write!(out, "    ")?;
         write!(out, "{:20} {}", self.name, self.sql_type())?;
@@ -542,6 +587,8 @@ impl Table {
         id_type: IdType,
         position: u32,
     ) -> Result<Table, StoreError> {
+        SqlName::check_valid_identifier(&*defn.name, "object")?;
+
         let table_name = SqlName::from(&*defn.name);
         let columns = defn
             .fields
@@ -586,6 +633,11 @@ impl Table {
             .ok_or_else(|| StoreError::UnknownField(field.to_string()))
     }
 
+    /// Generate the DDL for one table, i.e. one `create table` statement
+    /// and all `create index` statements for the table's columns
+    ///
+    /// See the unit tests at the end of this file for the actual DDL that
+    /// gets generated
     fn as_ddl(&self, out: &mut String, mapping: &Mapping) -> fmt::Result {
         write!(out, "create table {}.{} (\n", mapping.schema, self.name)?;
         for column in self.columns.iter() {

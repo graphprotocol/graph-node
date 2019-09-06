@@ -570,6 +570,8 @@ pub enum StoreError {
     MalformedDirective(String),
     #[fail(display = "query execution failed: {}", _0)]
     QueryExecutionError(String),
+    #[fail(display = "invalid identifier: {}", _0)]
+    InvalidIdentifier(String),
 }
 
 impl From<TransactionAbortError> for StoreError {
