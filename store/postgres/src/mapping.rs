@@ -126,12 +126,8 @@ impl Mapping {
         for defn in &document.definitions {
             match defn {
                 TypeDefinition(Object(obj_type)) => {
-                    let table = Table::new(
-                        obj_type,
-                        &mut interfaces,
-                        id_type,
-                        (tables.len() + 1) as u32,
-                    )?;
+                    let table =
+                        Table::new(obj_type, &mut interfaces, id_type, tables.len() as u32)?;
                     tables.push(table);
                 }
                 TypeDefinition(Interface(interface_type)) => {
@@ -713,7 +709,7 @@ impl Table {
                 "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.{table_name} using btree(left({column_name}, {prefix_size}));\n",
                 table_index=self.position,
                 table_name=self.name,
-                column_index=i + 1,
+                column_index=i,
                 column_name=column.name,
                 schema_name=mapping.schema,
                 prefix_size=STRING_PREFIX_SIZE,
@@ -725,7 +721,7 @@ impl Table {
                 "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.{table_name} using {method}({column_name});\n",
                 table_index=self.position,
                 table_name=self.name,
-                column_index=i + 1,
+                column_index=i,
                 column_name=column.name,
                 schema_name=mapping.schema,
                 method=method
@@ -880,9 +876,9 @@ mod tests {
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
-create index attr_1_1_thing_id
+create index attr_0_0_thing_id
     on rel.thing using btree(id);
-create index attr_1_2_thing_big_thing
+create index attr_0_1_thing_big_thing
     on rel.thing using btree(big_thing);
 
 create table rel.scalar (
@@ -897,19 +893,19 @@ create table rel.scalar (
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
-create index attr_2_1_scalar_id
+create index attr_1_0_scalar_id
     on rel.scalar using btree(id);
-create index attr_2_2_scalar_bool
+create index attr_1_1_scalar_bool
     on rel.scalar using btree(bool);
-create index attr_2_3_scalar_int
+create index attr_1_2_scalar_int
     on rel.scalar using btree(int);
-create index attr_2_4_scalar_big_decimal
+create index attr_1_3_scalar_big_decimal
     on rel.scalar using btree(big_decimal);
-create index attr_2_5_scalar_string
+create index attr_1_4_scalar_string
     on rel.scalar using btree(left(string, 2048));
-create index attr_2_6_scalar_bytes
+create index attr_1_5_scalar_bytes
     on rel.scalar using btree(bytes);
-create index attr_2_7_scalar_big_int
+create index attr_1_6_scalar_big_int
     on rel.scalar using btree(big_int);
 
 ";
@@ -953,13 +949,13 @@ type SongStat @entity {
      -- derived fields (not stored in this table)
      -- written_songs        text[] not null references song(written_by)
 );
-create index attr_1_1_musician_id
+create index attr_0_0_musician_id
     on rel.musician using btree(id);
-create index attr_1_2_musician_name
+create index attr_0_1_musician_name
     on rel.musician using btree(left(name, 2048));
-create index attr_1_3_musician_main_band
+create index attr_0_2_musician_main_band
     on rel.musician using btree(main_band);
-create index attr_1_4_musician_bands
+create index attr_0_3_musician_bands
     on rel.musician using gin(bands);
 
 create table rel.band (
@@ -973,11 +969,11 @@ create table rel.band (
      -- derived fields (not stored in this table)
      -- members              text[] not null references musician(bands)
 );
-create index attr_2_1_band_id
+create index attr_1_0_band_id
     on rel.band using btree(id);
-create index attr_2_2_band_name
+create index attr_1_1_band_name
     on rel.band using btree(left(name, 2048));
-create index attr_2_3_band_original_songs
+create index attr_1_2_band_original_songs
     on rel.band using gin(original_songs);
 
 create table rel.song (
@@ -991,11 +987,11 @@ create table rel.song (
      -- derived fields (not stored in this table)
      -- band                 text references band(original_songs)
 );
-create index attr_3_1_song_id
+create index attr_2_0_song_id
     on rel.song using btree(id);
-create index attr_3_2_song_title
+create index attr_2_1_song_title
     on rel.song using btree(left(title, 2048));
-create index attr_3_3_song_written_by
+create index attr_2_2_song_written_by
     on rel.song using btree(written_by);
 
 create table rel.song_stat (
@@ -1008,9 +1004,9 @@ create table rel.song_stat (
      -- derived fields (not stored in this table)
      -- song                 text references song(id)
 );
-create index attr_4_1_song_stat_id
+create index attr_3_0_song_stat_id
     on rel.song_stat using btree(id);
-create index attr_4_2_song_stat_played
+create index attr_3_1_song_stat_played
     on rel.song_stat using btree(played);
 
 ";
@@ -1043,9 +1039,9 @@ type Habitat @entity {
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
-create index attr_1_1_animal_id
+create index attr_0_0_animal_id
     on rel.animal using btree(id);
-create index attr_1_2_animal_forest
+create index attr_0_1_animal_forest
     on rel.animal using btree(forest);
 
 create table rel.forest (
@@ -1057,7 +1053,7 @@ create table rel.forest (
      -- derived fields (not stored in this table)
      -- dwellers             text[] not null references animal(forest)
 );
-create index attr_2_1_forest_id
+create index attr_1_0_forest_id
     on rel.forest using btree(id);
 
 create table rel.habitat (
@@ -1068,11 +1064,11 @@ create table rel.habitat (
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
-create index attr_3_1_habitat_id
+create index attr_2_0_habitat_id
     on rel.habitat using btree(id);
-create index attr_3_2_habitat_most_common
+create index attr_2_1_habitat_most_common
     on rel.habitat using btree(most_common);
-create index attr_3_3_habitat_dwellers
+create index attr_2_2_habitat_dwellers
     on rel.habitat using gin(dwellers);
 
 ";
