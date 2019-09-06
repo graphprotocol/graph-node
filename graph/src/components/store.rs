@@ -201,16 +201,6 @@ impl EntityChange {
     }
 }
 
-impl From<EntityOperation> for EntityChange {
-    fn from(operation: EntityOperation) -> Self {
-        use self::EntityOperation::*;
-        match operation {
-            Set { key, .. } => Self::from_key(key, EntityChangeOperation::Set),
-            Remove { key } => Self::from_key(key, EntityChangeOperation::Removed),
-        }
-    }
-}
-
 impl From<MetadataOperation> for Option<EntityChange> {
     fn from(operation: MetadataOperation) -> Self {
         use self::MetadataOperation::*;
@@ -254,13 +244,6 @@ pub struct StoreEvent {
     // logs as they flow through the system
     pub tag: usize,
     pub changes: HashSet<EntityChange>,
-}
-
-impl From<Vec<EntityOperation>> for StoreEvent {
-    fn from(operations: Vec<EntityOperation>) -> Self {
-        let changes: Vec<_> = operations.into_iter().map(|op| op.into()).collect();
-        StoreEvent::new(changes)
-    }
 }
 
 impl From<Vec<MetadataOperation>> for StoreEvent {
@@ -481,65 +464,6 @@ pub enum EntityOperation {
 
     /// Removes an entity with the specified key, if one exists.
     Remove { key: EntityKey },
-}
-
-impl EntityOperation {
-    /// Returns true if the operation is an entity removal.
-    pub fn is_remove(&self) -> bool {
-        use self::EntityOperation::*;
-
-        match self {
-            Remove { .. } => true,
-            _ => false,
-        }
-    }
-
-    pub fn entity_key(&self) -> &EntityKey {
-        use self::EntityOperation::*;
-
-        match self {
-            Set { ref key, .. } => key,
-            Remove { ref key } => key,
-        }
-    }
-
-    /// Returns true if the operation matches a given store key.
-    pub fn matches_entity(&self, key: &EntityKey) -> bool {
-        self.entity_key() == key
-    }
-
-    /// Applies the operation to an existing entity (may be None).
-    ///
-    /// Returns `Some(entity)` with an updated entity if the operation is a `Set`.
-    /// Returns `None` if the operation is a `Remove`.
-    pub fn apply(&self, entity: Option<Entity>) -> Result<Option<Entity>, Error> {
-        use self::EntityOperation::*;
-
-        match self {
-            Set { data, .. } => {
-                let mut entity = entity.unwrap_or(Entity::new());
-                entity.merge(data.clone());
-                Ok(Some(entity))
-            }
-            Remove { .. } => Ok(None),
-        }
-    }
-
-    /// Applies all entity operations to the given entity in order.
-    /// `ops` must not contain any `AbortUnless` operations.
-    pub fn apply_all(
-        entity: Option<Entity>,
-        ops: &[&EntityOperation],
-    ) -> Result<Option<Entity>, Error> {
-        // If there is a remove operations, we only need to consider the operations after that
-        ops.iter()
-            .rev()
-            .take_while(|op| !op.is_remove())
-            .collect::<Vec<_>>()
-            .iter()
-            .rev()
-            .try_fold(entity, |entity, op| op.apply(entity))
-    }
 }
 
 /// An operation on subgraph metadata. All operations implicitly only concern
@@ -845,7 +769,7 @@ pub trait Store: Send + Sync + 'static {
     /// `SubgraphVersionSummary`s.
     ///
     /// Returns the version summaries and a sequence of `AbortUnless`
-    /// `EntityOperation`s, which will abort the transaction if the version
+    /// `MetadataOperation`s, which will abort the transaction if the version
     /// summaries are out of date by the time the entity operations are applied.
     fn read_subgraph_version_summaries(
         &self,
@@ -952,7 +876,7 @@ pub trait Store: Send + Sync + 'static {
         Ok((version_summaries, ops))
     }
 
-    /// Produce the EntityOperations needed to create/remove
+    /// Produce the MetadataOperations needed to create/remove
     /// SubgraphDeploymentAssignments to reflect the addition/removal of
     /// SubgraphVersions between `versions_before` and `versions_after`.
     /// Any new assignments are created with the specified `node_id`.
@@ -1170,17 +1094,6 @@ impl EntityModification {
         use EntityModification::*;
         match self {
             Insert { key, .. } | Overwrite { key, .. } | Remove { key } => key,
-        }
-    }
-}
-
-impl From<EntityModification> for EntityOperation {
-    fn from(modification: EntityModification) -> Self {
-        use EntityModification::*;
-
-        match modification {
-            Insert { key, data } | Overwrite { key, data } => EntityOperation::Set { key, data },
-            Remove { key } => EntityOperation::Remove { key },
         }
     }
 }

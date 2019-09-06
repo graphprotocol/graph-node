@@ -405,7 +405,7 @@ fn ipfs_cat() {
 // The user_data value we use with calls to ipfs_map
 const USER_DATA: &str = "user_data";
 
-fn make_thing(id: &str, value: &str) -> (String, EntityOperation) {
+fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
     let mut data = Entity::new();
     data.set("id", id);
     data.set("value", value);
@@ -418,7 +418,7 @@ fn make_thing(id: &str, value: &str) -> (String, EntityOperation) {
     };
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
-        EntityOperation::Set { key, data },
+        EntityModification::Insert { key, data },
     )
 }
 
@@ -431,7 +431,7 @@ fn ipfs_map() {
     let ipfs = Arc::new(ipfs_api::IpfsClient::default());
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
 
-    let mut run_ipfs_map = move |json_string| -> Result<Vec<EntityOperation>, Error> {
+    let mut run_ipfs_map = move |json_string| -> Result<Vec<EntityModification>, Error> {
         let mut module =
             WasmiModule::from_valid_module_with_ctx(valid_module.clone(), mock_context()).unwrap();
         let hash = if json_string == BAD_IPFS_HASH {
@@ -461,7 +461,7 @@ fn ipfs_map() {
                 .partial_cmp(&b.entity_key().entity_id)
                 .unwrap()
         });
-        Ok(mods.into_iter().map(|op| op.into()).collect())
+        Ok(mods)
     };
 
     // Try it with two valid objects
