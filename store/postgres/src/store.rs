@@ -637,7 +637,7 @@ impl Store {
         history_event: &HistoryEvent,
     ) -> Result<bool, StoreError> {
         // Emit a store event for the changes we are about to make
-        let event = StoreEvent::from(&mods);
+        let event: StoreEvent = mods.iter().collect();
         let v = serde_json::to_value(event)?;
         JsonNotification::send("store_events", &v, &econn.conn)?;
 

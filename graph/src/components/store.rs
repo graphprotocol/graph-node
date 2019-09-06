@@ -218,18 +218,6 @@ impl From<MetadataOperation> for Option<EntityChange> {
     }
 }
 
-impl From<&EntityModification> for EntityChange {
-    fn from(operation: &EntityModification) -> Self {
-        use self::EntityModification::*;
-        match operation {
-            Insert { key, .. } | Overwrite { key, .. } => {
-                Self::from_key(key.clone(), EntityChangeOperation::Set)
-            }
-            Remove { key } => Self::from_key(key.clone(), EntityChangeOperation::Removed),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 /// The store emits `StoreEvents` to indicate that some entities have changed.
 /// For block-related data, at most one `StoreEvent` is emitted for each block
@@ -253,9 +241,22 @@ impl From<Vec<MetadataOperation>> for StoreEvent {
     }
 }
 
-impl From<&Vec<EntityModification>> for StoreEvent {
-    fn from(mods: &Vec<EntityModification>) -> Self {
-        let changes: Vec<_> = mods.iter().map(|op| op.into()).collect();
+impl<'a> FromIterator<&'a EntityModification> for StoreEvent {
+    fn from_iter<I: IntoIterator<Item = &'a EntityModification>>(mods: I) -> Self {
+        let changes: Vec<_> = mods
+            .into_iter()
+            .map(|op| {
+                use self::EntityModification::*;
+                match op {
+                    Insert { key, .. } | Overwrite { key, .. } => {
+                        EntityChange::from_key(key.clone(), EntityChangeOperation::Set)
+                    }
+                    Remove { key } => {
+                        EntityChange::from_key(key.clone(), EntityChangeOperation::Removed)
+                    }
+                }
+            })
+            .collect();
         StoreEvent::new(changes)
     }
 }
