@@ -142,36 +142,6 @@ impl Mapping {
             }
         }
 
-        // Resolve references
-        for table in tables.iter_mut() {
-            for column in table.columns.iter_mut() {
-                let named_type = named_type(&column.field_type);
-                if is_scalar_type(named_type) {
-                    // We only care about references
-                    continue;
-                }
-
-                let references = match interfaces.get(named_type) {
-                    Some(table_names) => {
-                        // sql_type is an interface; add each table that contains
-                        // a type that implements the interface into the references
-                        table_names
-                            .iter()
-                            .map(|table_name| Reference::to_column(table_name.clone(), column))
-                            .collect()
-                    }
-                    None => {
-                        // sql_type is an object; add a single reference to the target
-                        // table and column
-                        let other_table_name = SqlName::from(named_type);
-                        let reference = Reference::to_column(other_table_name, column);
-                        vec![reference]
-                    }
-                };
-                column.references = references;
-            }
-        }
-
         let tables: Vec<_> = tables.into_iter().map(|table| Rc::new(table)).collect();
         let interfaces = interfaces
             .into_iter()
@@ -266,10 +236,6 @@ impl Mapping {
         self.tables
             .get(entity)
             .ok_or_else(|| StoreError::UnknownTable(entity.to_owned()))
-    }
-
-    pub fn column(&self, reference: &Reference) -> Result<&Column, StoreError> {
-        self.table(&reference.table)?.column(&reference.column)
     }
 
     pub fn find(
@@ -436,24 +402,6 @@ impl Mapping {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Reference {
-    pub table: SqlName,
-    pub column: SqlName,
-}
-
-impl Reference {
-    fn to_column(table: SqlName, column: &Column) -> Reference {
-        let column = match &column.derived {
-            Some(col) => col,
-            None => PRIMARY_KEY_COLUMN,
-        }
-        .into();
-
-        Reference { table, column }
-    }
-}
-
 /// This is almost the same as graph::data::store::ValueType, but without
 /// ID and List; with this type, we only care about scalar types that directly
 /// correspond to Postgres scalar types
@@ -511,7 +459,6 @@ pub struct Column {
     pub field_type: q::Type,
     pub column_type: ColumnType,
     pub derived: Option<String>,
-    pub references: Vec<Reference>,
 }
 
 impl Column {
@@ -523,12 +470,7 @@ impl Column {
             column_type: ColumnType::from_value_type(base_type(&field.field_type), id_type)?,
             field_type: field.field_type.clone(),
             derived: derived_column(field)?,
-            references: vec![],
         })
-    }
-
-    pub fn is_reference(&self) -> bool {
-        !self.references.is_empty()
     }
 
     pub fn is_primary_key(&self) -> bool {
@@ -652,21 +594,6 @@ impl Table {
             .ok_or_else(|| StoreError::UnknownField(field.to_string()))
     }
 
-    pub fn primary_key(&self) -> Reference {
-        Reference {
-            table: self.name.clone(),
-            column: PRIMARY_KEY_COLUMN.into(),
-        }
-    }
-
-    pub fn reference(&self, name: &SqlName) -> Result<Reference, StoreError> {
-        let attr = self.column(name)?;
-        Ok(Reference {
-            table: self.name.clone(),
-            column: attr.name.clone(),
-        })
-    }
-
     fn as_ddl(&self, out: &mut String, mapping: &Mapping) -> fmt::Result {
         write!(out, "create table {}.{} (\n", mapping.schema, self.name)?;
         for column in self.columns.iter().filter(|col| !col.is_derived()) {
@@ -685,9 +612,6 @@ impl Table {
             write!(out, "\n     -- derived fields (not stored in this table)\n")?;
             for column in self.columns.iter().filter(|col| col.is_derived()) {
                 column.as_ddl(out)?;
-                for reference in &column.references {
-                    write!(out, " references {}({})", reference.table, reference.column)?;
-                }
                 write!(out, "\n")?;
             }
         }
@@ -725,19 +649,6 @@ impl Table {
         }
         write!(out, "\n")
     }
-}
-
-/// Return `true` if `named_type` is one of the builtin scalar types, i.e.,
-/// does not refer to another object
-fn is_scalar_type(named_type: &str) -> bool {
-    // This is pretty adhoc, and solely based on the example schema
-    return named_type == "Boolean"
-        || named_type == "BigDecimal"
-        || named_type == "BigInt"
-        || named_type == "Bytes"
-        || named_type == "ID"
-        || named_type == "Int"
-        || named_type == "String";
 }
 
 /// Return the base type underlying the given field type, i.e., the type
@@ -813,7 +724,6 @@ mod tests {
         assert!(!id.is_nullable());
         assert!(!id.is_list());
         assert!(id.derived.is_none());
-        assert!(!id.is_reference());
 
         let big_thing = table
             .column(&"big_thing".into())
@@ -821,13 +731,6 @@ mod tests {
         assert_eq!(ID_TYPE, big_thing.column_type);
         assert!(!big_thing.is_nullable());
         assert!(big_thing.derived.is_none());
-        assert_eq!(
-            vec![Reference {
-                table: "thing".into(),
-                column: PRIMARY_KEY_COLUMN.into()
-            }],
-            big_thing.references
-        );
         // Field lookup happens by the SQL name, not the GraphQL name
         let bad_sql_name = SqlName("bigThing".to_owned());
         assert!(table.column(&bad_sql_name).is_err());
@@ -942,7 +845,7 @@ type SongStat @entity {
         exclude using gist   (id with =, block_range with &&)
 
      -- derived fields (not stored in this table)
-     -- written_songs        text[] not null references song(written_by)
+     -- written_songs        text[] not null
 );
 create index attr_0_0_musician_id
     on rel.musician using btree(id);
@@ -962,7 +865,7 @@ create table rel.band (
         exclude using gist   (id with =, block_range with &&)
 
      -- derived fields (not stored in this table)
-     -- members              text[] not null references musician(bands)
+     -- members              text[] not null
 );
 create index attr_1_0_band_id
     on rel.band using btree(id);
@@ -980,7 +883,7 @@ create table rel.song (
         exclude using gist   (id with =, block_range with &&)
 
      -- derived fields (not stored in this table)
-     -- band                 text references band(original_songs)
+     -- band                 text
 );
 create index attr_2_0_song_id
     on rel.song using btree(id);
@@ -997,7 +900,7 @@ create table rel.song_stat (
         exclude using gist   (id with =, block_range with &&)
 
      -- derived fields (not stored in this table)
-     -- song                 text references song(id)
+     -- song                 text
 );
 create index attr_3_0_song_stat_id
     on rel.song_stat using btree(id);
@@ -1046,7 +949,7 @@ create table rel.forest (
         exclude using gist   (id with =, block_range with &&)
 
      -- derived fields (not stored in this table)
-     -- dwellers             text[] not null references animal(forest)
+     -- dwellers             text[] not null
 );
 create index attr_1_0_forest_id
     on rel.forest using btree(id);
