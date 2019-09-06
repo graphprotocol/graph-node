@@ -58,7 +58,7 @@ impl ToSql<Binary, Pg> for SqlValue {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
         match self.0 {
             Value::Bytes(ref h) => <_ as ToSql<Binary, Pg>>::to_sql(&h.as_slice(), out),
-            _ => panic!("Failed to convert attribute value to String or Bytes in SQL"),
+            _ => panic!("Failed to convert attribute value to Bytes in SQL"),
         }
     }
 }
