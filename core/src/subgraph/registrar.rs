@@ -326,6 +326,25 @@ where
             node_id,
         )))
     }
+
+    fn update_subgraph_price(
+        &self,
+        hash: SubgraphDeploymentId,
+        price: f32,
+    ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
+        Box::new(future::result(update_subgraph_price(
+            self.store.clone(),
+            hash,
+            price,
+        )))
+    }
+
+    fn update_all_prices(
+        &self,
+        price: f32,
+    ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
+        Box::new(future::result(update_all_prices(self.store.clone(), price)))
+    }
 }
 
 fn handle_assignment_event<P>(
@@ -937,5 +956,17 @@ fn reassign_subgraph(
 
     store.apply_metadata_operations(ops)?;
 
+    Ok(())
+}
+
+fn update_subgraph_price(
+    _store: Arc<impl Store>,
+    _hash: SubgraphDeploymentId,
+    _price: f32,
+) -> Result<(), SubgraphRegistrarError> {
+    Ok(())
+}
+
+fn update_all_prices(_store: Arc<impl Store>, _price: f32) -> Result<(), SubgraphRegistrarError> {
     Ok(())
 }

@@ -51,6 +51,17 @@ struct SubgraphReassignParams {
     node_id: NodeId,
 }
 
+#[derive(Debug, Deserialize)]
+struct UpdateSubgraphPriceParams {
+    ipfs_hash: SubgraphDeploymentId,
+    price: f32,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateAllSubgraphPricesParams {
+    price: f32,
+}
+
 pub struct JsonRpcServer<R> {
     registrar: Arc<R>,
     http_port: u16,
@@ -153,6 +164,54 @@ where
         Box::new(
             self.registrar
                 .reassign_subgraph(params.ipfs_hash, params.node_id)
+                .map_err(move |e| {
+                    if let SubgraphRegistrarError::Unknown(e) = e {
+                        error!(logger, "subgraph_reassignment failed: {}", e);
+                        json_rpc_error(JSON_RPC_REASSIGN_ERROR, "internal error".to_owned())
+                    } else {
+                        json_rpc_error(JSON_RPC_REASSIGN_ERROR, e.to_string())
+                    }
+                })
+                .map(|_| Ok(Value::Null))
+                .flatten(),
+        )
+    }
+
+    fn update_price_handler(
+        &self,
+        params: UpdateSubgraphPriceParams,
+    ) -> Box<dyn Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
+        let logger = self.logger.clone();
+
+        info!(logger, "Received subgraph_reassignment request"; "params" => format!("{:?}", params));
+
+        Box::new(
+            self.registrar
+                .update_subgraph_price(params.ipfs_hash, params.price)
+                .map_err(move |e| {
+                    if let SubgraphRegistrarError::Unknown(e) = e {
+                        error!(logger, "subgraph_reassignment failed: {}", e);
+                        json_rpc_error(JSON_RPC_REASSIGN_ERROR, "internal error".to_owned())
+                    } else {
+                        json_rpc_error(JSON_RPC_REASSIGN_ERROR, e.to_string())
+                    }
+                })
+                .map(|_| Ok(Value::Null))
+                .flatten(),
+        )
+    }
+
+    fn update_all_prices_handler(
+        &self,
+        params: UpdateAllSubgraphPricesParams,
+    ) -> Box<dyn Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
+        let logger = self.logger.clone();
+
+        info!(logger, "Received subgraph_reassignment request"; "params" => format!("{:?}", params));
+
+        Box::new(
+            self.registrar
+                .update_all_prices(params.price)
                 .map_err(move |e| {
                     if let SubgraphRegistrarError::Unknown(e) = e {
                         error!(logger, "subgraph_reassignment failed: {}", e);
