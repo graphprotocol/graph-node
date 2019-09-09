@@ -657,7 +657,6 @@ pub struct UpdateQuery<'a> {
     guard: &'a Option<EntityFilter>,
     entity: &'a Entity,
     block: BlockNumber,
-    overwrite: bool,
 }
 
 impl<'a> QueryFragment<Pg> for UpdateQuery<'a> {
@@ -685,14 +684,6 @@ impl<'a> QueryFragment<Pg> for UpdateQuery<'a> {
         )
         .walk_ast(out.reborrow())?;
         out.push_sql("\nreturning id");
-        if !self.overwrite {
-            for column in &self.table.columns {
-                if !self.entity.contains_key(&column.field) {
-                    out.push_sql(", ");
-                    out.push_identifier(column.name.as_str())?;
-                }
-            }
-        }
         out.push_sql("\n)\ninsert into ");
         out.push_identifier(self.schema_name)?;
         out.push_sql(".");
@@ -703,12 +694,7 @@ impl<'a> QueryFragment<Pg> for UpdateQuery<'a> {
             if let Some(value) = self.entity.get(&column.field) {
                 QueryValue(value, column.column_type).walk_ast(out.reborrow())?;
             } else {
-                if self.overwrite {
-                    out.push_sql("null");
-                } else {
-                    out.push_sql("old.");
-                    out.push_identifier(column.name.as_str())?;
-                }
+                out.push_sql("null");
             }
             out.push_sql(" as ");
             out.push_identifier(column.name.as_str())?;

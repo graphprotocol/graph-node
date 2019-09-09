@@ -429,14 +429,13 @@ impl<'a> Connection<'a> {
             Storage::Json(json) => {
                 json.update(&self.conn, key, entity, overwrite, guard, history_event)
             }
-            Storage::Relational(mapping) => mapping.update(
-                &self.conn,
-                key,
-                entity,
-                overwrite,
-                guard,
-                block_number(&history_event),
-            ),
+            Storage::Relational(mapping) => {
+                assert!(
+                    overwrite,
+                    "Non-overwrite (partial) updates are not supported for the relational schema"
+                );
+                mapping.update(&self.conn, key, entity, guard, block_number(&history_event))
+            }
         }
     }
 

@@ -340,7 +340,7 @@ fn find() {
 }
 
 #[test]
-fn update_overwrite() {
+fn update() {
     run_test(|conn, mapping| -> Result<(), ()> {
         insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
 
@@ -355,44 +355,13 @@ fn update_overwrite() {
             entity_id: entity.id().unwrap().clone(),
         };
         let count = mapping
-            .update(&conn, &key, &entity, true, None, 1)
+            .update(&conn, &key, &entity, None, 1)
             .expect("Failed to update");
         assert_eq!(1, count);
 
         // The missing 'strings' will show up as Value::Null in the
         // loaded entity
         entity.set("strings", Value::Null);
-
-        let actual = mapping
-            .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
-            .expect("Failed to read Scalar[one]")
-            .unwrap();
-        assert_entity_eq!(scrub(&entity), actual);
-        Ok(())
-    });
-}
-
-#[test]
-fn update_no_overwrite() {
-    run_test(|conn, mapping| -> Result<(), ()> {
-        insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
-
-        // Update with overwrite
-        let mut entity = SCALAR_ENTITY.clone();
-        entity.set("string", "updated");
-        let strings = entity.remove("strings").unwrap();
-        let key = EntityKey {
-            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_type: "Scalar".to_owned(),
-            entity_id: entity.id().unwrap().clone(),
-        };
-        let count = mapping
-            .update(&conn, &key, &entity, false, None, 1)
-            .expect("Failed to update");
-        assert_eq!(1, count);
-
-        // 'strings' will not have changed
-        entity.set("strings", strings);
 
         let actual = mapping
             .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
@@ -418,7 +387,7 @@ fn update_guard_no_match() {
         };
         let guard = EntityFilter::Equal("string".into(), "does not match".into());
         let count = mapping
-            .update(&conn, &key, &entity, false, Some(guard), 1)
+            .update(&conn, &key, &entity, Some(guard), 1)
             .expect("Failed to update");
         assert_eq!(0, count);
 
@@ -448,7 +417,7 @@ fn update_guard_matches() {
         };
         let guard = EntityFilter::Equal("string".into(), string.into());
         let count = mapping
-            .update(&conn, &key, &entity, false, Some(guard), 1)
+            .update(&conn, &key, &entity, Some(guard), 1)
             .expect("Failed to update");
         assert_eq!(1, count);
 

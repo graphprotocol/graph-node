@@ -358,12 +358,11 @@ impl Mapping {
         conn: &PgConnection,
         key: &EntityKey,
         entity: &Entity,
-        overwrite: bool,
         guard: Option<EntityFilter>,
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        let query = UpdateQuery::new(&self.schema, table, key, &guard, entity, block, overwrite);
+        let query = UpdateQuery::new(&self.schema, table, key, &guard, entity, block);
         Ok(query.execute(conn)?)
     }
 
