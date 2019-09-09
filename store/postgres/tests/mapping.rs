@@ -355,7 +355,7 @@ fn update() {
             entity_id: entity.id().unwrap().clone(),
         };
         let count = mapping
-            .update(&conn, &key, &entity, None, 1)
+            .update(&conn, &key, &entity, 1)
             .expect("Failed to update");
         assert_eq!(1, count);
 
@@ -363,65 +363,6 @@ fn update() {
         // loaded entity
         entity.set("strings", Value::Null);
 
-        let actual = mapping
-            .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
-            .expect("Failed to read Scalar[one]")
-            .unwrap();
-        assert_entity_eq!(scrub(&entity), actual);
-        Ok(())
-    });
-}
-
-#[test]
-fn update_guard_no_match() {
-    run_test(|conn, mapping| -> Result<(), ()> {
-        insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
-
-        // Update where guard prevents the update
-        let mut entity = SCALAR_ENTITY.clone();
-        let string = entity.set("string", "updated").unwrap();
-        let key = EntityKey {
-            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_type: "Scalar".to_owned(),
-            entity_id: entity.id().unwrap().clone(),
-        };
-        let guard = EntityFilter::Equal("string".into(), "does not match".into());
-        let count = mapping
-            .update(&conn, &key, &entity, Some(guard), 1)
-            .expect("Failed to update");
-        assert_eq!(0, count);
-
-        // The update will have done nothing
-        entity.set("string", string);
-        let actual = mapping
-            .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
-            .expect("Failed to read Scalar[one]")
-            .unwrap();
-        assert_entity_eq!(scrub(&entity), actual);
-        Ok(())
-    });
-}
-
-#[test]
-fn update_guard_matches() {
-    run_test(|conn, mapping| -> Result<(), ()> {
-        insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
-
-        // Update where guard prevents the update
-        let mut entity = SCALAR_ENTITY.clone();
-        let string = entity.set("string", "updated").unwrap();
-        let key = EntityKey {
-            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_type: "Scalar".to_owned(),
-            entity_id: entity.id().unwrap().clone(),
-        };
-        let guard = EntityFilter::Equal("string".into(), string.into());
-        let count = mapping
-            .update(&conn, &key, &entity, Some(guard), 1)
-            .expect("Failed to update");
-        assert_eq!(1, count);
-
-        // The update will have changed the entity
         let actual = mapping
             .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")

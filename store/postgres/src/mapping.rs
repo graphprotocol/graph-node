@@ -358,11 +358,10 @@ impl Mapping {
         conn: &PgConnection,
         key: &EntityKey,
         entity: &Entity,
-        guard: Option<EntityFilter>,
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        let query = UpdateQuery::new(&self.schema, table, key, &guard, entity, block);
+        let query = UpdateQuery::new(&self.schema, table, key, entity, block);
         Ok(query.execute(conn)?)
     }
 
@@ -373,7 +372,7 @@ impl Mapping {
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        Ok(ClampRangeQuery::new(&self.schema, table, key, &None, block).execute(conn)?)
+        Ok(ClampRangeQuery::new(&self.schema, table, key, block).execute(conn)?)
     }
 
     pub fn revert_block(

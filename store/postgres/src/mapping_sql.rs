@@ -654,7 +654,6 @@ pub struct UpdateQuery<'a> {
     schema_name: &'a str,
     table: &'a Table,
     key: &'a EntityKey,
-    guard: &'a Option<EntityFilter>,
     entity: &'a Entity,
     block: BlockNumber,
 }
@@ -669,20 +668,14 @@ impl<'a> QueryFragment<Pg> for UpdateQuery<'a> {
         //        set block_range = int4range(lower(block_range), $block)
         //      where id = $id
         //        and upper_inf(block_range)
-        //     returning attr1, attr2, ...)
+        //     returning id)
         //   insert into schema.table
         //   select column, ... from schema.table
         //   where id = $id
         //     and block_range @> $block-1
         out.push_sql("with old as (\n");
-        ClampRangeQuery::new(
-            &self.schema_name,
-            &self.table,
-            &self.key,
-            &self.guard,
-            self.block,
-        )
-        .walk_ast(out.reborrow())?;
+        ClampRangeQuery::new(&self.schema_name, &self.table, &self.key, self.block)
+            .walk_ast(out.reborrow())?;
         out.push_sql("\nreturning id");
         out.push_sql("\n)\ninsert into ");
         out.push_identifier(self.schema_name)?;
@@ -881,7 +874,6 @@ pub struct ClampRangeQuery<'a> {
     schema: &'a str,
     table: &'a Table,
     key: &'a EntityKey,
-    guard: &'a Option<EntityFilter>,
     block: BlockNumber,
 }
 
@@ -909,10 +901,6 @@ impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
         out.push_sql(" and upper_inf(");
         out.push_identifier(BLOCK_RANGE)?;
         out.push_sql(")");
-        if let Some(guard) = &self.guard {
-            out.push_sql(" and ");
-            QueryFilter::new(guard, &self.table).walk_ast(out)?;
-        }
         Ok(())
     }
 }

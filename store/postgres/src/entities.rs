@@ -434,7 +434,11 @@ impl<'a> Connection<'a> {
                     overwrite,
                     "Non-overwrite (partial) updates are not supported for the relational schema"
                 );
-                mapping.update(&self.conn, key, entity, guard, block_number(&history_event))
+                assert!(
+                    guard.is_none(),
+                    "The `guard` can not be Some(_) when overwrite is `true`"
+                );
+                mapping.update(&self.conn, key, entity, block_number(&history_event))
             }
         }
     }
