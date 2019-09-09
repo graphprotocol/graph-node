@@ -650,34 +650,67 @@ impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
 /// Attributes mentioned in `entity` will be set to the value from that; all
 /// other attributes are copied from the previous version
 #[derive(Debug, Clone, Constructor)]
-pub struct CopyQuery<'a> {
+pub struct UpdateQuery<'a> {
     schema_name: &'a str,
     table: &'a Table,
     key: &'a EntityKey,
+    guard: &'a Option<EntityFilter>,
     entity: &'a Entity,
     block: BlockNumber,
+    overwrite: bool,
 }
 
-impl<'a> QueryFragment<Pg> for CopyQuery<'a> {
+impl<'a> QueryFragment<Pg> for UpdateQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Construct a query
+        //   with old as (
+        //     update schema.table
+        //        set block_range = int4range(lower(block_range), $block)
+        //      where id = $id
+        //        and upper_inf(block_range)
+        //     returning attr1, attr2, ...)
         //   insert into schema.table
         //   select column, ... from schema.table
         //   where id = $id
         //     and block_range @> $block-1
-        out.push_sql("insert into ");
+        out.push_sql("with old as (\n");
+        ClampRangeQuery::new(
+            &self.schema_name,
+            &self.table,
+            &self.key,
+            &self.guard,
+            self.block,
+        )
+        .walk_ast(out.reborrow())?;
+        out.push_sql("\nreturning id");
+        if !self.overwrite {
+            for column in &self.table.columns {
+                if !self.entity.contains_key(&column.field) {
+                    out.push_sql(", ");
+                    out.push_identifier(column.name.as_str())?;
+                }
+            }
+        }
+        out.push_sql("\n)\ninsert into ");
         out.push_identifier(self.schema_name)?;
         out.push_sql(".");
         out.push_identifier(self.table.name.as_str())?;
 
         out.push_sql("\nselect ");
-        for column in self.table.columns.iter() {
+        for column in &self.table.columns {
             if let Some(value) = self.entity.get(&column.field) {
                 QueryValue(value, column.column_type).walk_ast(out.reborrow())?;
-                out.push_sql(" as ");
+            } else {
+                if self.overwrite {
+                    out.push_sql("null");
+                } else {
+                    out.push_sql("old.");
+                    out.push_identifier(column.name.as_str())?;
+                }
             }
+            out.push_sql(" as ");
             out.push_identifier(column.name.as_str())?;
             out.push_sql(", ");
         }
@@ -686,27 +719,18 @@ impl<'a> QueryFragment<Pg> for CopyQuery<'a> {
         out.push_sql(" as ");
         out.push_identifier(BLOCK_RANGE)?;
 
-        out.push_sql("\n  from ");
-        out.push_identifier(self.schema_name)?;
-        out.push_sql(".");
-        out.push_identifier(self.table.name.as_str())?;
-
-        out.push_sql("\n where ");
-        out.push_identifier(PRIMARY_KEY_COLUMN)?;
-        out.push_sql(" = ");
-        out.push_bind_param::<Text, _>(&self.key.entity_id)?;
-        out.push_sql(" and ");
-        BlockRangeContainsClause::new(self.block - 1).walk_ast(out)
+        out.push_sql("\n  from old");
+        Ok(())
     }
 }
 
-impl<'a> QueryId for CopyQuery<'a> {
+impl<'a> QueryId for UpdateQuery<'a> {
     type QueryId = ();
 
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a, Conn> RunQueryDsl<Conn> for CopyQuery<'a> {}
+impl<'a, Conn> RunQueryDsl<Conn> for UpdateQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct ConflictingEntityQuery<'a> {
@@ -871,7 +895,7 @@ pub struct ClampRangeQuery<'a> {
     schema: &'a str,
     table: &'a Table,
     key: &'a EntityKey,
-    guard: Option<EntityFilter>,
+    guard: &'a Option<EntityFilter>,
     block: BlockNumber,
 }
 

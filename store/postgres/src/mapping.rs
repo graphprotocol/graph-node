@@ -9,8 +9,8 @@ use std::rc::Rc;
 use std::str::FromStr;
 
 use crate::mapping_sql::{
-    ClampRangeQuery, ConflictingEntityQuery, CopyQuery, EntityData, FilterQuery, FindQuery,
-    InsertQuery, RevertClampQuery, RevertRemoveQuery,
+    ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindQuery, InsertQuery,
+    RevertClampQuery, RevertRemoveQuery, UpdateQuery,
 };
 use graph::prelude::{
     format_err, Entity, EntityChange, EntityChangeOperation, EntityFilter, EntityKey,
@@ -363,15 +363,8 @@ impl Mapping {
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        let count = ClampRangeQuery::new(&self.schema, table, key, guard, block).execute(conn)?;
-        if count > 0 {
-            if overwrite {
-                InsertQuery::new(&self.schema, table, key, entity, block)?.execute(conn)?;
-            } else {
-                CopyQuery::new(&self.schema, table, key, entity, block).execute(conn)?;
-            }
-        }
-        Ok(count)
+        let query = UpdateQuery::new(&self.schema, table, key, &guard, entity, block, overwrite);
+        Ok(query.execute(conn)?)
     }
 
     pub fn delete(
@@ -381,7 +374,7 @@ impl Mapping {
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        Ok(ClampRangeQuery::new(&self.schema, table, key, None, block).execute(conn)?)
+        Ok(ClampRangeQuery::new(&self.schema, table, key, &None, block).execute(conn)?)
     }
 
     pub fn revert_block(
