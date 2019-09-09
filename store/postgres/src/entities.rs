@@ -1392,8 +1392,7 @@ pub(crate) fn create_schema(
         "create table {}.entity_history
          (
            id           serial primary key,
-           event_id     integer references event_meta_data(id)
-                          on update cascade on delete cascade,
+           event_id     integer,
            entity       varchar not null,
            entity_id    varchar not null,
            data_before  jsonb,

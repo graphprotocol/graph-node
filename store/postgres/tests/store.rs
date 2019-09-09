@@ -2162,7 +2162,11 @@ fn subgraph_schema_types_have_subgraph_id_directive() {
     })
 }
 
+// After removing the foreign key constraint from a subgraph's
+// entity_history table to event_meta_data subgraph creation does not take
+// a lock anymore, which makes this test fail.
 #[test]
+#[ignore]
 fn create_subgraph_deployment_tolerates_locks() {
     run_test(|store| -> Result<(), ()> {
         use diesel::connection::SimpleConnection;
