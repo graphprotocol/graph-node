@@ -51,73 +51,69 @@ impl EntityData {
         // Many possible conversion errors are already caught by how
         // we define the schema; for example, we can only get a NULL for
         // a column that is actually nullable
-        match json {
-            j::Null => Ok(g::Null),
-            j::Bool(b) => Ok(g::Bool(b)),
-            j::Number(number) => match column_type {
-                ColumnType::Int => match number.as_i64() {
-                    Some(i) => i32::try_from(i).map(|i| g::Int(i)).map_err(|e| {
+        match (json, column_type) {
+            (j::Null, _) => Ok(g::Null),
+            (j::Bool(b), _) => Ok(g::Bool(b)),
+            (j::Number(number), ColumnType::Int) => match number.as_i64() {
+                Some(i) => i32::try_from(i).map(|i| g::Int(i)).map_err(|e| {
+                    StoreError::Unknown(format_err!("failed to convert {} to Int: {}", number, e))
+                }),
+                None => Err(StoreError::Unknown(format_err!(
+                    "failed to convert {} to Int",
+                    number
+                ))),
+            },
+            (j::Number(number), ColumnType::BigDecimal) => {
+                let s = number.to_string();
+                scalar::BigDecimal::from_str(s.as_str())
+                    .map(|d| g::BigDecimal(d))
+                    .map_err(|e| {
                         StoreError::Unknown(format_err!(
-                            "failed to convert {} to Int: {}",
+                            "failed to convert {} to BigDecimal: {}",
                             number,
                             e
                         ))
-                    }),
-                    None => Err(StoreError::Unknown(format_err!(
-                        "failed to convert {} to Int",
-                        number
-                    ))),
-                },
-                ColumnType::BigDecimal => {
-                    let s = number.to_string();
-                    scalar::BigDecimal::from_str(s.as_str())
-                        .map(|d| g::BigDecimal(d))
-                        .map_err(|e| {
-                            StoreError::Unknown(format_err!(
-                                "failed to convert {} to BigDecimal: {}",
-                                number,
-                                e
-                            ))
-                        })
-                }
-                ColumnType::BigInt => {
-                    let s = number.to_string();
-                    scalar::BigInt::from_str(s.as_str())
-                        .map(|d| g::BigInt(d))
-                        .map_err(|e| {
-                            StoreError::Unknown(format_err!(
-                                "failed to convert {} to BigInt: {}",
-                                number,
-                                e
-                            ))
-                        })
-                }
-                column_type => Err(StoreError::Unknown(format_err!(
-                    "can not convert number {} to {:?}",
-                    number,
-                    column_type
-                ))),
-            },
-            j::String(s) => match column_type {
-                ColumnType::String => Ok(g::String(s)),
-                ColumnType::Bytes => scalar::Bytes::from_str(s.trim_start_matches("\\x"))
+                    })
+            }
+            (j::Number(number), ColumnType::BigInt) => {
+                let s = number.to_string();
+                scalar::BigInt::from_str(s.as_str())
+                    .map(|d| g::BigInt(d))
+                    .map_err(|e| {
+                        StoreError::Unknown(format_err!(
+                            "failed to convert {} to BigInt: {}",
+                            number,
+                            e
+                        ))
+                    })
+            }
+            (j::Number(number), column_type) => Err(StoreError::Unknown(format_err!(
+                "can not convert number {} to {:?}",
+                number,
+                column_type
+            ))),
+            (j::String(s), ColumnType::String) => Ok(g::String(s)),
+            (j::String(s), ColumnType::Bytes) => {
+                scalar::Bytes::from_str(s.trim_start_matches("\\x"))
                     .map(|b| g::Bytes(b))
                     .map_err(|e| {
                         StoreError::Unknown(format_err!("failed to convert {} to Bytes: {}", s, e))
-                    }),
-                column_type => Err(StoreError::Unknown(format_err!(
-                    "can not convert string {} to {:?}",
-                    s,
-                    column_type
-                ))),
-            },
-            j::Array(values) => Ok(g::List(
+                    })
+            }
+            (j::String(s), column_type) => Err(StoreError::Unknown(format_err!(
+                "can not convert string {} to {:?}",
+                s,
+                column_type
+            ))),
+            (j::Array(values), _) => Ok(g::List(
                 values
                     .into_iter()
                     .map(|v| Self::value_from_json(column_type, v))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
-            j::Object(_) => unimplemented!("objects as entity attributes are not needed/supported"),
+            (j::Object(_), _) => {
+                unimplemented!("objects as entity attributes are not needed/supported")
+            }
         }
     }
 
