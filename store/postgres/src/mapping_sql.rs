@@ -567,13 +567,40 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FindQuery<'a> {
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug, Clone)]
 pub struct InsertQuery<'a> {
     schema_name: &'a str,
     table: &'a Table,
     key: &'a EntityKey,
     entity: &'a Entity,
     block: BlockNumber,
+}
+
+impl<'a> InsertQuery<'a> {
+    pub fn new(
+        schema_name: &'a str,
+        table: &'a Table,
+        key: &'a EntityKey,
+        entity: &'a Entity,
+        block: BlockNumber,
+    ) -> Result<InsertQuery<'a>, StoreError> {
+        for column in table.columns.iter() {
+            if !column.is_nullable() && !entity.contains_key(&column.field) {
+                return Err(StoreError::QueryExecutionError(format!(
+                    "can not insert entity {}[{}] since value for {} is missing",
+                    key.entity_type, key.entity_id, column.field
+                )));
+            }
+        }
+
+        Ok(InsertQuery {
+            schema_name,
+            table,
+            key,
+            entity,
+            block,
+        })
+    }
 }
 
 impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
@@ -594,16 +621,6 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
             if self.entity.contains_key(&column.field) {
                 out.push_identifier(column.name.as_str())?;
                 out.push_sql(", ");
-            } else {
-                if !column.is_nullable() {
-                    return Err(diesel::result::Error::QueryBuilderError(
-                        format!(
-                            "can not insert entity {}[{}] since value for {} is missing",
-                            self.key.entity_type, self.key.entity_id, column.field
-                        )
-                        .into(),
-                    ));
-                }
             }
         }
         out.push_identifier(BLOCK_RANGE)?;

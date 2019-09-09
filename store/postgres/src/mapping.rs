@@ -298,7 +298,7 @@ impl Mapping {
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        let query = InsertQuery::new(&self.schema, table, key, entity, block);
+        let query = InsertQuery::new(&self.schema, table, key, entity, block)?;
         Ok(query.execute(conn)?)
     }
 
@@ -366,7 +366,7 @@ impl Mapping {
         let count = ClampRangeQuery::new(&self.schema, table, key, guard, block).execute(conn)?;
         if count > 0 {
             if overwrite {
-                InsertQuery::new(&self.schema, table, key, entity, block).execute(conn)?;
+                InsertQuery::new(&self.schema, table, key, entity, block)?.execute(conn)?;
             } else {
                 CopyQuery::new(&self.schema, table, key, entity, block).execute(conn)?;
             }
