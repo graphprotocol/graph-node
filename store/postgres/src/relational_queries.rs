@@ -512,7 +512,8 @@ pub struct FindQuery<'a> {
 impl<'a> FindQuery<'a> {
     fn object_query(&self, table: &Table, mut out: AstPass<Pg>) -> QueryResult<()> {
         // Generate
-        //    select '..' as entity, to_jsonb(e.*) as data from schema.table e where id = $1
+        //    select '..' as entity, to_jsonb(e.*) as data
+        //      from schema.table e where id = $1
         out.push_sql("select ");
         out.push_bind_param::<Text, _>(&self.entity)?;
         out.push_sql(" as entity, to_jsonb(e.*) as data\n");
@@ -716,6 +717,11 @@ pub struct FilterQuery<'a> {
 
 impl<'a> FilterQuery<'a> {
     fn object_query(&self, table: &Table, mut out: AstPass<Pg>) -> QueryResult<()> {
+        // Generate
+        //   select 'entity_type' as entity, to_jsonb(e.*) as data, e.col as sort_key, e.id
+        //     from schema.table
+        //    where block_range @> $block
+        //      and query_filter
         out.push_sql("select ");
         out.push_bind_param::<Text, _>(&table.object)?;
         out.push_sql(" as entity, to_jsonb(e.*) as data");
@@ -755,12 +761,10 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
         //   select '...' as entity, to_jsonb(e.*) as data
         //     from schema.table
         //    where entity_filter
-        //    order by e.order, e.id
-        //    limit first offset skip
-        //      set col = $1
-        //          ...
-        //    where id = $n
         // and join them with 'union all'
+        // Optionally select the column to order by as sort key
+        // and sort the whole thing by it. Also add limit
+        // and offset
         for (i, table) in self.tables.iter().enumerate() {
             if i > 0 {
                 out.push_sql("\nunion all\n");
@@ -870,7 +874,7 @@ impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
 
         // Construct a query
         //   delete from table
-        //   where lower(block_range) >= $block
+        //    where lower(block_range) >= $block
         //   returning id
         out.push_sql("delete from ");
         out.push_identifier(&self.schema)?;
