@@ -13,7 +13,7 @@ use graph::prelude::{
     bigdecimal::One, web3::types::H256, Entity, EntityFilter, EntityKey, EntityOrder, EntityQuery,
     EntityRange, Schema, SubgraphDeploymentId, Value, ValueType,
 };
-use graph_store_postgres::mapping_for_tests::{Mapping, BLOCK_NUMBER_MAX};
+use graph_store_postgres::layout_for_tests::{Layout, BLOCK_NUMBER_MAX};
 
 use test_store::*;
 
@@ -69,7 +69,7 @@ const THINGS_GQL: &str = "
     }
 ";
 
-const SCHEMA_NAME: &str = "mapping";
+const SCHEMA_NAME: &str = "layout";
 
 lazy_static! {
     static ref THINGS_SUBGRAPH_ID: SubgraphDeploymentId =
@@ -121,19 +121,19 @@ fn remove_test_data(conn: &PgConnection) {
         .expect("Failed to drop test schema");
 }
 
-fn insert_entity(conn: &PgConnection, mapping: &Mapping, entity_type: &str, entity: Entity) {
+fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
     let key = EntityKey {
         subgraph_id: THINGS_SUBGRAPH_ID.clone(),
         entity_type: entity_type.to_owned(),
         entity_id: entity.id().unwrap(),
     };
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
-    mapping.insert(&conn, &key, &entity, 0).expect(&errmsg);
+    layout.insert(&conn, &key, &entity, 0).expect(&errmsg);
 }
 
 fn insert_user_entity(
     conn: &PgConnection,
-    mapping: &Mapping,
+    layout: &Layout,
     id: &str,
     entity_type: &str,
     name: &str,
@@ -175,13 +175,13 @@ fn insert_user_entity(
         );
     }
 
-    insert_entity(conn, mapping, entity_type, user);
+    insert_entity(conn, layout, entity_type, user);
 }
 
-fn insert_users(conn: &PgConnection, mapping: &Mapping) {
+fn insert_users(conn: &PgConnection, layout: &Layout) {
     insert_user_entity(
         conn,
-        mapping,
+        layout,
         "1",
         "User",
         "Johnton",
@@ -194,7 +194,7 @@ fn insert_users(conn: &PgConnection, mapping: &Mapping) {
     );
     insert_user_entity(
         conn,
-        mapping,
+        layout,
         "2",
         "User",
         "Cindini",
@@ -207,7 +207,7 @@ fn insert_users(conn: &PgConnection, mapping: &Mapping) {
     );
     insert_user_entity(
         conn,
-        mapping,
+        layout,
         "3",
         "User",
         "Shaqueeena",
@@ -220,13 +220,13 @@ fn insert_users(conn: &PgConnection, mapping: &Mapping) {
     );
 }
 
-fn insert_test_data(conn: &PgConnection) -> Mapping {
+fn insert_test_data(conn: &PgConnection) -> Layout {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
     let query = format!("create schema {}", SCHEMA_NAME);
     conn.batch_execute(&*query).unwrap();
 
-    let mapping = Mapping::create_relational_schema(
+    let layout = Layout::create_relational_schema(
         &conn,
         SCHEMA_NAME,
         THINGS_SUBGRAPH_ID.clone(),
@@ -234,7 +234,7 @@ fn insert_test_data(conn: &PgConnection) -> Mapping {
     )
     .expect("Failed to create relational schema");
 
-    mapping
+    layout
 }
 
 fn scrub(entity: &Entity) -> Entity {
@@ -280,7 +280,7 @@ macro_rules! assert_entity_eq {
 /// Test harness for running database integration tests.
 fn run_test<R, F>(test: F)
 where
-    F: FnOnce(&PgConnection, &Mapping) -> R + Send + 'static,
+    F: FnOnce(&PgConnection, &Layout) -> R + Send + 'static,
     R: IntoFuture<Item = ()> + Send + 'static,
     R::Error: Send + Debug,
     R::Future: Send,
@@ -300,34 +300,34 @@ where
             remove_test_data(&conn);
 
             // Seed database with test data
-            let mapping = insert_test_data(&conn);
+            let layout = insert_test_data(&conn);
 
             // Run test
-            test(&conn, &mapping)
+            test(&conn, &layout)
         }))
         .expect("Failed to run ChainHead test");
 }
 
 #[test]
 fn find() {
-    run_test(|conn, mapping| -> Result<(), ()> {
-        insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
+    run_test(|conn, layout| -> Result<(), ()> {
+        insert_entity(&conn, &layout, "Scalar", SCALAR_ENTITY.clone());
 
         // Happy path: find existing entity
-        let entity = mapping
+        let entity = layout
             .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&*SCALAR_ENTITY), entity);
 
         // Find non-existing entity
-        let entity = mapping
+        let entity = layout
             .find(conn, "Scalar", "noone", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[noone]");
         assert!(entity.is_none());
 
         // Find for non-existing entity type
-        let err = mapping.find(conn, "NoEntity", "one", BLOCK_NUMBER_MAX);
+        let err = layout.find(conn, "NoEntity", "one", BLOCK_NUMBER_MAX);
         match err {
             Err(e) => assert_eq!("store error: unknown table 'NoEntity'", e.to_string()),
             _ => {
@@ -341,8 +341,8 @@ fn find() {
 
 #[test]
 fn update() {
-    run_test(|conn, mapping| -> Result<(), ()> {
-        insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
+    run_test(|conn, layout| -> Result<(), ()> {
+        insert_entity(&conn, &layout, "Scalar", SCALAR_ENTITY.clone());
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
@@ -354,7 +354,7 @@ fn update() {
             entity_type: "Scalar".to_owned(),
             entity_id: entity.id().unwrap().clone(),
         };
-        mapping
+        layout
             .update(&conn, &key, &entity, 1)
             .expect("Failed to update");
 
@@ -362,7 +362,7 @@ fn update() {
         // loaded entity
         entity.set("strings", Value::Null);
 
-        let actual = mapping
+        let actual = layout
             .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
@@ -371,12 +371,12 @@ fn update() {
     });
 }
 
-fn count_scalar_entities(conn: &PgConnection, mapping: &Mapping) -> usize {
+fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
     let filter = EntityFilter::Or(vec![
         EntityFilter::Equal("bool".into(), true.into()),
         EntityFilter::Equal("bool".into(), false.into()),
     ]);
-    mapping
+    layout
         .query(
             &conn,
             vec!["Scalar".to_owned()],
@@ -392,11 +392,11 @@ fn count_scalar_entities(conn: &PgConnection, mapping: &Mapping) -> usize {
 
 #[test]
 fn delete() {
-    run_test(|conn, mapping| -> Result<(), ()> {
-        insert_entity(&conn, &mapping, "Scalar", SCALAR_ENTITY.clone());
+    run_test(|conn, layout| -> Result<(), ()> {
+        insert_entity(&conn, &layout, "Scalar", SCALAR_ENTITY.clone());
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two");
-        insert_entity(&conn, &mapping, "Scalar", two);
+        insert_entity(&conn, &layout, "Scalar", two);
 
         // Delete where nothing is getting deleted
         let mut key = EntityKey {
@@ -404,22 +404,22 @@ fn delete() {
             entity_type: "Scalar".to_owned(),
             entity_id: "no such entity".to_owned(),
         };
-        let count = mapping.delete(&conn, &key, 1).expect("Failed to delete");
+        let count = layout.delete(&conn, &key, 1).expect("Failed to delete");
         assert_eq!(0, count);
-        assert_eq!(2, count_scalar_entities(conn, mapping));
+        assert_eq!(2, count_scalar_entities(conn, layout));
 
         // Delete entity two
         key.entity_id = "two".to_owned();
-        let count = mapping.delete(&conn, &key, 1).expect("Failed to delete");
+        let count = layout.delete(&conn, &key, 1).expect("Failed to delete");
         assert_eq!(1, count);
-        assert_eq!(1, count_scalar_entities(conn, mapping));
+        assert_eq!(1, count_scalar_entities(conn, layout));
         Ok(())
     });
 }
 
 #[test]
 fn conflicting_entity() {
-    run_test(|conn, mapping| -> Result<(), ()> {
+    run_test(|conn, layout| -> Result<(), ()> {
         let id = "fred";
         let cat = "Cat".to_owned();
         let dog = "Dog".to_owned();
@@ -428,23 +428,23 @@ fn conflicting_entity() {
         let mut fred = Entity::new();
         fred.set("id", id);
         fred.set("name", id);
-        insert_entity(&conn, &mapping, "Cat", fred);
+        insert_entity(&conn, &layout, "Cat", fred);
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
-        let conflict = mapping
+        let conflict = layout
             .conflicting_entity(&conn, &id.to_owned(), vec![&cat, &ferret])
             .unwrap();
         assert_eq!(Some("Cat".to_owned()), conflict);
 
         // If we wanted to manipulate Fred the cat, which is ok, we'd run:
-        let conflict = mapping
+        let conflict = layout
             .conflicting_entity(&conn, &id.to_owned(), vec![&dog, &ferret])
             .unwrap();
         assert_eq!(None, conflict);
 
         // Chairs are not pets
         let chair = "Chair".to_owned();
-        let result = mapping.conflicting_entity(&conn, &id.to_owned(), vec![&dog, &ferret, &chair]);
+        let result = layout.conflicting_entity(&conn, &id.to_owned(), vec![&dog, &ferret, &chair]);
         assert!(result.is_err());
         assert_eq!(
             "store error: unknown table 'Chair'",
@@ -458,8 +458,8 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
     let expected_entity_ids: Vec<String> =
         expected_entity_ids.into_iter().map(str::to_owned).collect();
 
-    run_test(move |conn, mapping| -> Result<(), ()> {
-        insert_users(conn, mapping);
+    run_test(move |conn, layout| -> Result<(), ()> {
+        insert_users(conn, layout);
 
         let order = match query.order_by {
             Some((attribute, value_type)) => {
@@ -475,7 +475,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
             None => None,
         };
 
-        let entities = mapping
+        let entities = layout
             .query(
                 conn,
                 vec!["User".to_owned()],
@@ -485,14 +485,14 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
                 query.range.skip,
                 BLOCK_NUMBER_MAX,
             )
-            .expect("mapping.query failed to execute query");
+            .expect("layout.query failed to execute query");
 
         let entity_ids: Vec<_> = entities
             .into_iter()
             .map(|entity| match entity.get("id") {
                 Some(Value::String(id)) => id.to_owned(),
-                Some(_) => panic!("mapping.query returned entity with non-string ID attribute"),
-                None => panic!("mapping.query returned entity with no ID attribute"),
+                Some(_) => panic!("layout.query returned entity with non-string ID attribute"),
+                None => panic!("layout.query returned entity with no ID attribute"),
             })
             .collect();
 

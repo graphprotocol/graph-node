@@ -27,9 +27,9 @@ mod entities;
 mod filter;
 mod functions;
 mod jsonb;
+mod notification_listener;
 mod relational;
 mod relational_queries;
-mod notification_listener;
 mod sql_value;
 pub mod store;
 mod store_events;
@@ -41,7 +41,7 @@ pub mod db_schema_for_tests {
 }
 
 #[cfg(debug_assertions)]
-pub mod mapping_for_tests {
+pub mod layout_for_tests {
     pub use crate::block_range::*;
     pub use crate::relational::*;
 }

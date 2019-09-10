@@ -51,7 +51,7 @@ use crate::block_range::{block_number, BlockNumber};
 use crate::filter::build_filter;
 use crate::functions::set_config;
 use crate::jsonb::PgJsonbExpressionMethods as _;
-use crate::relational::{IdType, Mapping};
+use crate::relational::{IdType, Layout};
 use crate::store::Store;
 
 /// The size of string prefixes that we index. This should be large enough
@@ -271,7 +271,7 @@ pub(crate) struct JsonStorage {
 #[derive(Debug, Clone)]
 pub(crate) enum Storage {
     Json(JsonStorage),
-    Relational(Mapping),
+    Relational(Layout),
 }
 
 /// Helper struct to support a custom query for entity history
@@ -301,7 +301,7 @@ impl QueryableByName<Pg> for RawHistory {
 }
 
 /// A connection into the database to handle entities which caches the
-/// mapping to actual database tables. Instances of this struct must not be
+/// layout to actual database tables. Instances of this struct must not be
 /// cached across transactions as there is no mechanism in place to notify
 /// other index nodes that a subgraph has been migrated
 pub(crate) struct Connection<'a> {
@@ -363,7 +363,7 @@ impl<'a> Connection<'a> {
     ) -> Result<Option<Entity>, StoreError> {
         match self.storage(subgraph)? {
             Storage::Json(json) => json.find(&self.conn, entity, id),
-            Storage::Relational(mapping) => mapping.find(&self.conn, entity, id, block),
+            Storage::Relational(layout) => layout.find(&self.conn, entity, id, block),
         }
     }
 
@@ -379,8 +379,8 @@ impl<'a> Connection<'a> {
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         match self.storage(subgraph)? {
             Storage::Json(json) => json.query(&self.conn, entity_types, filter, order, first, skip),
-            Storage::Relational(mapping) => {
-                mapping.query(&self.conn, entity_types, filter, order, first, skip, block)
+            Storage::Relational(layout) => {
+                layout.query(&self.conn, entity_types, filter, order, first, skip, block)
             }
         }
     }
@@ -393,8 +393,8 @@ impl<'a> Connection<'a> {
     ) -> Result<Option<String>, StoreError> {
         match self.storage(subgraph)? {
             Storage::Json(json) => json.conflicting_entity(&self.conn, entity_id, entities),
-            Storage::Relational(mapping) => {
-                mapping.conflicting_entity(&self.conn, entity_id, entities)
+            Storage::Relational(layout) => {
+                layout.conflicting_entity(&self.conn, entity_id, entities)
             }
         }
     }
@@ -409,8 +409,8 @@ impl<'a> Connection<'a> {
             Storage::Json(json) => json
                 .insert(&self.conn, &key, entity, history_event)
                 .map(|_| ()),
-            Storage::Relational(mapping) => {
-                mapping.insert(&self.conn, key, entity, block_number(&history_event))
+            Storage::Relational(layout) => {
+                layout.insert(&self.conn, key, entity, block_number(&history_event))
             }
         }
     }
@@ -425,8 +425,8 @@ impl<'a> Connection<'a> {
             Storage::Json(json) => json
                 .update(&self.conn, key, entity, history_event)
                 .map(|_| ()),
-            Storage::Relational(mapping) => {
-                mapping.update(&self.conn, key, entity, block_number(&history_event))
+            Storage::Relational(layout) => {
+                layout.update(&self.conn, key, entity, block_number(&history_event))
             }
         }
     }
@@ -452,8 +452,8 @@ impl<'a> Connection<'a> {
     ) -> Result<usize, StoreError> {
         match self.storage(&key.subgraph_id)? {
             Storage::Json(json) => json.delete(&self.conn, key, history_event),
-            Storage::Relational(mapping) => {
-                mapping.delete(&self.conn, key, block_number(&history_event))
+            Storage::Relational(layout) => {
+                layout.delete(&self.conn, key, block_number(&history_event))
             }
         }
     }
@@ -476,9 +476,9 @@ impl<'a> Connection<'a> {
         // Revert the block in the subgraph itself
         let (event, count) = match self.storage(subgraph)? {
             Storage::Json(json) => json.revert_block(&self.conn, block_ptr.hash_hex())?,
-            Storage::Relational(mapping) => {
+            Storage::Relational(layout) => {
                 let block = block_ptr.number.try_into().unwrap();
-                mapping.revert_block(&self.conn, block)?
+                layout.revert_block(&self.conn, block)?
             }
         };
         // Revert the meta data changes that correspond to this subgraph.
@@ -1279,13 +1279,13 @@ impl Storage {
             }
             V::Relational => {
                 let subgraph_schema = store.raw_subgraph_schema(subgraph)?;
-                let mapping = Mapping::new(
+                let layout = Layout::new(
                     &subgraph_schema.document,
                     IdType::String,
                     subgraph.clone(),
                     schema.name,
                 )?;
-                Storage::Relational(mapping)
+                Storage::Relational(layout)
             }
         };
         Ok(storage)
@@ -1302,7 +1302,7 @@ impl Storage {
     ) -> Result<(), StoreError> {
         let count_query = match self {
             Storage::Json(json) => json.count_query.as_str(),
-            Storage::Relational(mapping) => mapping.count_query.as_str(),
+            Storage::Relational(layout) => layout.count_query.as_str(),
         };
         // The big complication in this query is how to determine what the
         // new entityCount should be. We want to make sure that if the entityCount
@@ -1417,7 +1417,7 @@ pub(crate) fn create_schema(
     conn.batch_execute(&*query)?;
 
     match std::env::var_os("RELATIONAL_SCHEMA") {
-        Some(_) => Mapping::create_relational_schema(
+        Some(_) => Layout::create_relational_schema(
             conn,
             &schema_name,
             schema.id.clone(),

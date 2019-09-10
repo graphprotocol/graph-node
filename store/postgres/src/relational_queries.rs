@@ -24,7 +24,7 @@ use graph::prelude::{
 use crate::block_range::{BlockNumber, BlockRange, BlockRangeContainsClause};
 use crate::filter::UnsupportedFilter;
 use crate::relational::{
-    Column, ColumnType, Mapping, SqlName, Table, BLOCK_RANGE, PRIMARY_KEY_COLUMN,
+    Column, ColumnType, Layout, SqlName, Table, BLOCK_RANGE, PRIMARY_KEY_COLUMN,
 };
 use crate::sql_value::SqlValue;
 
@@ -118,9 +118,9 @@ impl EntityData {
     }
 
     /// Map the `EntityData` to an entity using the schema information
-    /// in `Mapping`
-    pub fn to_entity(self, mapping: &Mapping) -> Result<Entity, StoreError> {
-        let table = mapping.table_for_entity(&self.entity)?;
+    /// in `Layout`
+    pub fn to_entity(self, layout: &Layout) -> Result<Entity, StoreError> {
+        let table = layout.table_for_entity(&self.entity)?;
 
         use serde_json::Value as j;
         match self.data {
@@ -503,7 +503,7 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindQuery<'a> {
-    mapping: &'a Mapping,
+    layout: &'a Layout,
     entity: &'a str,
     id: &'a str,
     block: BlockNumber,
@@ -517,7 +517,7 @@ impl<'a> FindQuery<'a> {
         out.push_bind_param::<Text, _>(&self.entity)?;
         out.push_sql(" as entity, to_jsonb(e.*) as data\n");
         out.push_sql("  from ");
-        out.push_identifier(&self.mapping.schema)?;
+        out.push_identifier(&self.layout.schema)?;
         out.push_sql(".");
         out.push_identifier(table.name.as_str())?;
         out.push_sql(" e\n where ");
@@ -533,9 +533,9 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        if let Some(table) = self.mapping.table_for_entity(self.entity).ok() {
+        if let Some(table) = self.layout.table_for_entity(self.entity).ok() {
             self.object_query(table, out)
-        } else if let Some(tables) = self.mapping.interfaces.get(self.entity) {
+        } else if let Some(tables) = self.layout.interfaces.get(self.entity) {
             for (i, table) in tables.iter().enumerate() {
                 if i > 0 {
                     out.push_sql("\nunion all\n");
@@ -647,7 +647,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct ConflictingEntityQuery<'a> {
-    mapping: &'a Mapping,
+    layout: &'a Layout,
     entities: &'a Vec<&'a String>,
     entity_id: &'a String,
 }
@@ -669,10 +669,10 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
             out.push_sql("select ");
             out.push_bind_param::<Text, _>(entity)?;
             out.push_sql(" as entity from ");
-            out.push_identifier(&self.mapping.schema)?;
+            out.push_identifier(&self.layout.schema)?;
             out.push_sql(".");
             let table = self
-                .mapping
+                .layout
                 .table_for_entity(entity)
                 .map_err(|e| diesel::result::Error::QueryBuilderError(e.to_string().into()))?;
             out.push_identifier(table.name.as_str())?;

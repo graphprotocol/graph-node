@@ -102,7 +102,7 @@ pub enum IdType {
 }
 
 #[derive(Debug, Clone)]
-pub struct Mapping {
+pub struct Layout {
     /// The SQL type for columns with GraphQL type `ID`
     id_type: IdType,
     /// Maps the GraphQL name of a type to the relational table
@@ -119,8 +119,8 @@ pub struct Mapping {
     pub count_query: String,
 }
 
-impl Mapping {
-    /// Generate a mapping for a relational schema for entities in the
+impl Layout {
+    /// Generate a layout for a relational schema for entities in the
     /// GraphQL schema `document`. Attributes of type `ID` will use the
     /// SQL type `id_type`. The subgraph ID is passed in `subgraph`, and
     /// the name of the database schema in which the subgraph's tables live
@@ -130,7 +130,7 @@ impl Mapping {
         id_type: IdType,
         subgraph: SubgraphDeploymentId,
         schema: V,
-    ) -> Result<Mapping, StoreError>
+    ) -> Result<Layout, StoreError>
     where
         V: Into<String>,
     {
@@ -216,7 +216,7 @@ impl Mapping {
                 tables
             });
 
-        Ok(Mapping {
+        Ok(Layout {
             id_type,
             subgraph,
             schema,
@@ -231,17 +231,17 @@ impl Mapping {
         schema_name: &str,
         subgraph: SubgraphDeploymentId,
         document: &s::Document,
-    ) -> Result<Mapping, StoreError> {
-        let mapping =
-            crate::relational::Mapping::new(document, IdType::String, subgraph, schema_name)?;
-        let sql = mapping
+    ) -> Result<Layout, StoreError> {
+        let layout =
+            crate::relational::Layout::new(document, IdType::String, subgraph, schema_name)?;
+        let sql = layout
             .as_ddl()
-            .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for mapping")))?;
+            .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for layout")))?;
         conn.batch_execute(&sql)?;
-        Ok(mapping)
+        Ok(layout)
     }
 
-    /// Generate the DDL for the entire mapping, i.e., all `create table`
+    /// Generate the DDL for the entire layout, i.e., all `create table`
     /// and `create index` etc. statements needed in the database schema
     ///
     /// See the unit tests at the end of this file for the actual DDL that
@@ -568,7 +568,7 @@ pub struct Table {
     pub name: SqlName,
 
     pub columns: Vec<Column>,
-    /// The position of this table in all the tables for this mapping; this
+    /// The position of this table in all the tables for this layout; this
     /// is really only needed for the tests to make the names of indexes
     /// predictable
     position: u32,
@@ -632,8 +632,8 @@ impl Table {
     ///
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
-    fn as_ddl(&self, out: &mut String, mapping: &Mapping) -> fmt::Result {
-        write!(out, "create table {}.{} (\n", mapping.schema, self.name)?;
+    fn as_ddl(&self, out: &mut String, layout: &Layout) -> fmt::Result {
+        write!(out, "create table {}.{} (\n", layout.schema, self.name)?;
         for column in self.columns.iter() {
             write!(out, "    ")?;
             column.as_ddl(out)?;
@@ -667,7 +667,7 @@ impl Table {
                 table_name = self.name,
                 column_index = i,
                 column_name = column.name,
-                schema_name = mapping.schema,
+                schema_name = layout.schema,
                 method = method,
                 index_expr = index_expr,
             )?;
@@ -709,16 +709,16 @@ mod tests {
 
     const ID_TYPE: ColumnType = ColumnType::String;
 
-    fn test_mapping(gql: &str) -> Mapping {
+    fn test_layout(gql: &str) -> Layout {
         let schema = parse_schema(gql).expect("Test schema invalid");
         let subgraph = SubgraphDeploymentId::new("subgraph").unwrap();
-        Mapping::new(&schema, IdType::String, subgraph, "rel").expect("Failed to construct Mapping")
+        Layout::new(&schema, IdType::String, subgraph, "rel").expect("Failed to construct Layout")
     }
 
     #[test]
     fn table_is_sane() {
-        let mapping = test_mapping(THING_GQL);
-        let table = mapping
+        let layout = test_layout(THING_GQL);
+        let table = layout
             .table(&"thing".into())
             .expect("failed to get 'thing' table");
         assert_eq!(SqlName::from("thing"), table.name);
@@ -743,16 +743,16 @@ mod tests {
 
     #[test]
     fn generate_ddl() {
-        let mapping = test_mapping(THING_GQL);
-        let sql = mapping.as_ddl().expect("Failed to generate DDL");
+        let layout = test_layout(THING_GQL);
+        let sql = layout.as_ddl().expect("Failed to generate DDL");
         assert_eq!(THING_DDL, sql);
 
-        let mapping = test_mapping(MUSIC_GQL);
-        let sql = mapping.as_ddl().expect("Failed to generate DDL");
+        let layout = test_layout(MUSIC_GQL);
+        let sql = layout.as_ddl().expect("Failed to generate DDL");
         assert_eq!(MUSIC_DDL, sql);
 
-        let mapping = test_mapping(FOREST_GQL);
-        let sql = mapping.as_ddl().expect("Failed to generate DDL");
+        let layout = test_layout(FOREST_GQL);
+        let sql = layout.as_ddl().expect("Failed to generate DDL");
         assert_eq!(FOREST_DDL, sql);
     }
 
