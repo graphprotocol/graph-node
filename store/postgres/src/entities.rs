@@ -404,42 +404,44 @@ impl<'a> Connection<'a> {
         key: &EntityKey,
         entity: &Entity,
         history_event: Option<&HistoryEvent>,
-    ) -> Result<usize, StoreError> {
+    ) -> Result<(), StoreError> {
         match self.storage(&key.subgraph_id)? {
-            Storage::Json(json) => json.insert(&self.conn, &key, entity, history_event),
+            Storage::Json(json) => json
+                .insert(&self.conn, &key, entity, history_event)
+                .map(|_| ()),
             Storage::Relational(mapping) => {
                 mapping.insert(&self.conn, key, entity, block_number(&history_event))
             }
         }
     }
 
-    /// Update an existing entity. If `overwrite` is true, `entity` contains
-    /// the entire entity, and the existing entity should be completely
-    /// replaced by it. Otherwise, `entity` is only partial, and only the
-    /// attributes explicitly mentioned in `entity` should be changed.
     pub(crate) fn update(
         &self,
         key: &EntityKey,
         entity: &Entity,
-        overwrite: bool,
-        guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
-    ) -> Result<usize, StoreError> {
+    ) -> Result<(), StoreError> {
         match self.storage(&key.subgraph_id)? {
-            Storage::Json(json) => {
-                json.update(&self.conn, key, entity, overwrite, guard, history_event)
-            }
+            Storage::Json(json) => json
+                .update(&self.conn, key, entity, history_event)
+                .map(|_| ()),
             Storage::Relational(mapping) => {
-                assert!(
-                    overwrite,
-                    "Non-overwrite (partial) updates are not supported for the relational schema"
-                );
-                assert!(
-                    guard.is_none(),
-                    "The `guard` can not be Some(_) when overwrite is `true`"
-                );
                 mapping.update(&self.conn, key, entity, block_number(&history_event))
             }
+        }
+    }
+
+    /// Update a metadata entity. The `entity` should only contain the fields
+    /// that should be changed.
+    pub(crate) fn update_metadata(
+        &self,
+        key: &EntityKey,
+        entity: &Entity,
+        guard: Option<EntityFilter>,
+    ) -> Result<usize, StoreError> {
+        match self.storage(&key.subgraph_id)? {
+            Storage::Json(json) => json.update_metadata(&self.conn, key, entity, guard),
+            Storage::Relational(_) => unreachable!("relational storeage is not used for metadata"),
         }
     }
 
@@ -837,92 +839,74 @@ impl JsonStorage {
         conn: &PgConnection,
         key: &EntityKey,
         entity: &Entity,
-        overwrite: bool,
-        guard: Option<EntityFilter>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         let data = entity_to_json(key, &entity)?;
 
         self.add_entity_history_record(conn, history_event, &key, OperationType::Update)?;
 
-        if !guard.is_none() && key.subgraph_id != *SUBGRAPHS_ID {
-            // We can only make adding additional conditions to the update
-            // operation work for a query that is fully generated with
-            // Diesel's DSL. Trying to combine the result of build_filter
-            // with a direct query is too cumbersome because of various type
-            // system gyrations. For now, we also only need update guards for
-            // the subgraph of subgraphs
-            panic!("update guards are only possible for the 'subgraphs' subgraph");
-        }
-
         let event_source = HistoryEvent::to_event_source_string(&history_event);
 
-        if let Some(filter) = guard {
-            // Update for subgraph of subgraphs with a guard
-            use self::subgraphs::entities;
-
-            let filter = build_filter(filter).map_err(|e| {
-                TransactionAbortError::Other(format!(
-                    "invalid filter '{}' for value '{}'",
-                    e.filter, e.value
-                ))
-            })?;
-
-            let target = entities::table
-                .filter(entities::entity.eq(&key.entity_type))
-                .filter(entities::id.eq(&key.entity_id));
-
-            if overwrite {
-                Ok(diesel::update(target)
-                    .set((
-                        entities::data.eq(&data),
-                        entities::event_source.eq(&event_source),
-                    ))
-                    .filter(filter)
-                    .execute(conn)?)
-            } else {
-                Ok(diesel::update(target)
-                    .set((
-                        entities::data.eq(entities::data.merge(&data)),
-                        entities::event_source.eq(&event_source),
-                    ))
-                    .filter(filter)
-                    .execute(conn)?)
-            }
-        } else {
-            // If there is no guard (which has to include all 'normal' subgraphs),
-            // we need to use a direct query since diesel::update does not like
-            // dynamic tables.
-            let query = if overwrite {
-                format!(
-                    "update {}.entities
+        // We need to use a direct query since diesel::update does not like
+        // dynamic tables.
+        let query = format!(
+            "update {}.entities
                        set data = $3, event_source = $4
                        where entity = $1 and id = $2",
-                    self.schema
-                )
-            } else {
-                format!(
-                    "update {}.entities
-                       set data = data || $3, event_source = $4
-                       where entity = $1 and id = $2",
-                    self.schema
-                )
-            };
-            let query = diesel::sql_query(query)
-                .bind::<Text, _>(&key.entity_type)
-                .bind::<Text, _>(&key.entity_id)
-                .bind::<Jsonb, _>(data)
-                .bind::<Text, _>(&event_source);
-            query.execute(conn).map_err(|e| {
-                format_err!(
-                    "Failed to update entity ({}, {}, {}): {}",
-                    key.subgraph_id,
-                    key.entity_type,
-                    key.entity_id,
-                    e
-                )
-                .into()
-            })
+            self.schema
+        );
+        let query = diesel::sql_query(query)
+            .bind::<Text, _>(&key.entity_type)
+            .bind::<Text, _>(&key.entity_id)
+            .bind::<Jsonb, _>(data)
+            .bind::<Text, _>(&event_source);
+        query.execute(conn).map_err(|e| {
+            format_err!(
+                "Failed to update entity ({}, {}, {}): {}",
+                key.subgraph_id,
+                key.entity_type,
+                key.entity_id,
+                e
+            )
+            .into()
+        })
+    }
+
+    fn update_metadata(
+        &self,
+        conn: &PgConnection,
+        key: &EntityKey,
+        entity: &Entity,
+        guard: Option<EntityFilter>,
+    ) -> Result<usize, StoreError> {
+        const NONE: &str = "none";
+        assert_eq!(
+            *SUBGRAPHS_ID, key.subgraph_id,
+            "update_metadata can only be called on the metadata subgraph"
+        );
+        let data = entity_to_json(key, &entity)?;
+
+        use self::subgraphs::entities;
+
+        let query = diesel::update(entities::table)
+            .filter(entities::entity.eq(&key.entity_type))
+            .filter(entities::id.eq(&key.entity_id))
+            .set((
+                entities::data.eq(entities::data.merge(&data)),
+                entities::event_source.eq(NONE),
+            ));
+
+        match guard {
+            Some(filter) => {
+                let filter = build_filter(filter).map_err(|e| {
+                    TransactionAbortError::Other(format!(
+                        "invalid filter '{}' for value '{}'",
+                        e.filter, e.value
+                    ))
+                })?;
+                Ok(query.filter(filter).execute(conn)?)
+            }
+            None => Ok(query.execute(conn)?),
         }
     }
 

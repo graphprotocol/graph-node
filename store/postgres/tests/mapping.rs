@@ -354,10 +354,9 @@ fn update() {
             entity_type: "Scalar".to_owned(),
             entity_id: entity.id().unwrap().clone(),
         };
-        let count = mapping
+        mapping
             .update(&conn, &key, &entity, 1)
             .expect("Failed to update");
-        assert_eq!(1, count);
 
         // The missing 'strings' will show up as Value::Null in the
         // loaded entity

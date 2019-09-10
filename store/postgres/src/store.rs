@@ -472,7 +472,7 @@ impl Store {
                 let result = match entity {
                     Some(mut entity) => {
                         entity.merge(data);
-                        conn.update(&key, &entity, true, None, None).map(|_| 0)
+                        conn.update(&key, &entity, None).map(|_| 0)
                     }
                     None => {
                         // Merge with a new entity since that removes values that
@@ -505,7 +505,7 @@ impl Store {
                 self.check_interface_entity_uniqueness(conn, &key)?;
 
                 // Update the entity in Postgres
-                match conn.update(&key, &data, false, guard, None)? {
+                match conn.update_metadata(&key, &data, guard)? {
                     0 => Err(TransactionAbortError::AbortUnless {
                         expected_entity_ids: vec![key.entity_id.clone()],
                         actual_entity_ids: vec![],
@@ -597,8 +597,7 @@ impl Store {
             let n = match modification {
                 Overwrite { key, data } => {
                     self.check_interface_entity_uniqueness(conn, &key)?;
-                    conn.update(&key, &data, true, None, history_event)
-                        .map(|_| 0)
+                    conn.update(&key, &data, history_event).map(|_| 0)
                 }
                 Insert { key, data } => {
                     self.check_interface_entity_uniqueness(conn, &key)?;
