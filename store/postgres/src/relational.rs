@@ -233,7 +233,7 @@ impl Mapping {
         document: &s::Document,
     ) -> Result<Mapping, StoreError> {
         let mapping =
-            crate::mapping::Mapping::new(document, IdType::String, subgraph, schema_name)?;
+            crate::relational::Mapping::new(document, IdType::String, subgraph, schema_name)?;
         let sql = mapping
             .as_ddl()
             .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for mapping")))?;

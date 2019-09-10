@@ -51,7 +51,7 @@ use crate::block_range::{block_number, BlockNumber};
 use crate::filter::build_filter;
 use crate::functions::set_config;
 use crate::jsonb::PgJsonbExpressionMethods as _;
-use crate::mapping::{IdType, Mapping};
+use crate::relational::{IdType, Mapping};
 use crate::store::Store;
 
 /// The size of string prefixes that we index. This should be large enough

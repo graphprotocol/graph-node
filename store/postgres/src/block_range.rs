@@ -9,7 +9,7 @@ use std::ops::{Bound, RangeBounds, RangeFrom};
 
 use graph::prelude::{EventSource, HistoryEvent};
 
-use crate::mapping::BLOCK_RANGE;
+use crate::relational::BLOCK_RANGE;
 
 /// The type we use for block numbers. This has to be a signed integer type
 /// since Postgres does not support unsigned integer types. But 2G ought to

@@ -23,7 +23,7 @@ use graph::prelude::{
 
 use crate::block_range::{BlockNumber, BlockRange, BlockRangeContainsClause};
 use crate::filter::UnsupportedFilter;
-use crate::mapping::{
+use crate::relational::{
     Column, ColumnType, Mapping, SqlName, Table, BLOCK_RANGE, PRIMARY_KEY_COLUMN,
 };
 use crate::sql_value::SqlValue;

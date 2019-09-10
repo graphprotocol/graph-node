@@ -27,7 +27,7 @@ mod entities;
 mod filter;
 mod functions;
 mod jsonb;
-mod mapping;
+mod relational;
 mod mapping_sql;
 mod notification_listener;
 mod sql_value;
@@ -43,7 +43,7 @@ pub mod db_schema_for_tests {
 #[cfg(debug_assertions)]
 pub mod mapping_for_tests {
     pub use crate::block_range::*;
-    pub use crate::mapping::*;
+    pub use crate::relational::*;
 }
 
 pub use self::chain_head_listener::ChainHeadUpdateListener;
