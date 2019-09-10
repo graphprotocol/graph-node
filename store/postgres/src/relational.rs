@@ -8,7 +8,7 @@ use std::fmt::{self, Write};
 use std::rc::Rc;
 use std::str::FromStr;
 
-use crate::mapping_sql::{
+use crate::relational_queries::{
     ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindQuery, InsertQuery,
     RevertClampQuery, RevertRemoveQuery,
 };

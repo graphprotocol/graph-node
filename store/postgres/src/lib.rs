@@ -28,7 +28,7 @@ mod filter;
 mod functions;
 mod jsonb;
 mod relational;
-mod mapping_sql;
+mod relational_queries;
 mod notification_listener;
 mod sql_value;
 pub mod store;
