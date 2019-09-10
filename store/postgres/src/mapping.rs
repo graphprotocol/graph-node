@@ -361,10 +361,13 @@ impl Mapping {
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        ClampRangeQuery::new(&self.schema, table, key, block)
-            .execute(conn)?;
-        let query = InsertQuery::new(&self.schema, table, key, entity, block)?;
-        Ok(query.execute(conn)?)
+        let count = ClampRangeQuery::new(&self.schema, table, key, block).execute(conn)?;
+        // For an update, we only do an insert if the entity already exists
+        if count > 0 {
+            let query = InsertQuery::new(&self.schema, table, key, entity, block)?;
+            query.execute(conn)?;
+        }
+        Ok(count)
     }
 
     pub fn delete(
