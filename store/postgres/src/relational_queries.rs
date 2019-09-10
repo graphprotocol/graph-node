@@ -43,7 +43,7 @@ pub struct EntityData {
 
 impl EntityData {
     fn value_from_json(
-        column_type: ColumnType,
+        column_type: &ColumnType,
         json: serde_json::Value,
     ) -> Result<graph::prelude::Value, StoreError> {
         use graph::prelude::Value as g;
@@ -92,7 +92,9 @@ impl EntityData {
                 number,
                 column_type
             ))),
-            (j::String(s), ColumnType::String) => Ok(g::String(s)),
+            (j::String(s), ColumnType::String) | (j::String(s), ColumnType::Enum(_)) => {
+                Ok(g::String(s))
+            }
             (j::String(s), ColumnType::Bytes) => {
                 scalar::Bytes::from_str(s.trim_start_matches("\\x"))
                     .map(|b| g::Bytes(b))
@@ -135,7 +137,7 @@ impl EntityData {
                     // column; those will be things like the block_range that
                     // is used internally for versioning
                     if let Some(column) = table.column(&SqlName::from(&*key)).ok() {
-                        let value = Self::value_from_json(column.column_type, json)?;
+                        let value = Self::value_from_json(&column.column_type, json)?;
                         if value != Value::Null {
                             entity.insert(column.field.clone(), value);
                         }
@@ -157,21 +159,31 @@ fn query_builder_error(msg: String) -> diesel::result::Error {
 }
 
 /// A `QueryValue` makes it possible to bind a `Value` into a SQL query
-/// where the needed SQL type is `ColumnType`
-struct QueryValue<'a>(&'a Value, ColumnType);
+/// using the metadata from Column
+struct QueryValue<'a>(&'a Value, &'a ColumnType);
 
 impl<'a> QueryFragment<Pg> for QueryValue<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
+        let column_type = self.1;
 
         match self.0 {
-            Value::String(s) => out.push_bind_param::<Text, _>(s),
+            Value::String(s) => match &column_type {
+                ColumnType::String => out.push_bind_param::<Text, _>(s),
+                ColumnType::Enum(name) => {
+                    out.push_bind_param::<Text, _>(s)?;
+                    out.push_sql("::");
+                    out.push_sql(name.as_str());
+                    Ok(())
+                }
+                _ => unreachable!("only string and enum columns have values of type string"),
+            },
             Value::Int(i) => out.push_bind_param::<Integer, _>(i),
             Value::BigDecimal(d) => out.push_bind_param::<Numeric, _>(d),
             Value::Bool(b) => out.push_bind_param::<Bool, _>(b),
             Value::List(values) => {
                 let values = SqlValue::new_array(values.clone());
-                match self.1 {
+                match &column_type {
                     ColumnType::BigDecimal | ColumnType::BigInt => {
                         out.push_bind_param::<Array<Numeric>, _>(&values)
                     }
@@ -179,6 +191,13 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(&values),
                     ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(&values),
                     ColumnType::String => out.push_bind_param::<Array<Text>, _>(&values),
+                    ColumnType::Enum(name) => {
+                        out.push_bind_param::<Array<Text>, _>(&values)?;
+                        out.push_sql("::");
+                        out.push_sql(name.as_str());
+                        out.push_sql("[]");
+                        Ok(())
+                    }
                 }
             }
             Value::Null => {
@@ -273,7 +292,7 @@ impl<'a> QueryFilter<'a> {
             Value::List(_) => {
                 out.push_identifier(column.name.as_str())?;
                 out.push_sql(" @> ");
-                QueryValue(value, column.column_type).walk_ast(out)?;
+                QueryValue(value, &column.column_type).walk_ast(out)?;
             }
             Value::Null
             | Value::BigDecimal(_)
@@ -319,7 +338,7 @@ impl<'a> QueryFilter<'a> {
                     out.push_sql(" = ");
                 };
 
-                QueryValue(value, column.column_type).walk_ast(out)?;
+                QueryValue(value, &column.column_type).walk_ast(out)?;
             }
             Value::Null => {
                 if negated {
@@ -345,7 +364,7 @@ impl<'a> QueryFilter<'a> {
         out.push_sql(op);
         match value {
             Value::BigInt(_) | Value::BigDecimal(_) | Value::Int(_) | Value::String(_) => {
-                QueryValue(value, column.column_type).walk_ast(out)?
+                QueryValue(value, &column.column_type).walk_ast(out)?
             }
             Value::Bool(_) | Value::Bytes(_) | Value::List(_) | Value::Null => {
                 return Err(UnsupportedFilter {
@@ -413,7 +432,7 @@ impl<'a> QueryFilter<'a> {
                 if i > 0 {
                     out.push_sql(", ");
                 }
-                QueryValue(&value, column.column_type).walk_ast(out.reborrow())?;
+                QueryValue(&value, &column.column_type).walk_ast(out.reborrow())?;
             }
             out.push_sql(")");
         }
@@ -627,7 +646,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         out.push_sql(")\nvalues(");
         for column in self.table.columns.iter() {
             if let Some(value) = self.entity.get(&column.field) {
-                QueryValue(value, column.column_type).walk_ast(out.reborrow())?;
+                QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
                 out.push_sql(", ");
             }
         }

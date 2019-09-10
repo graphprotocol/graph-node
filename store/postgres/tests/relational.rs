@@ -23,6 +23,8 @@ const THINGS_GQL: &str = "
         bigThing: Thing!
     }
 
+    enum Color { yellow, red, BLUE }
+
     type Scalar @entity {
         id: ID,
         bool: Boolean,
@@ -33,6 +35,7 @@ const THINGS_GQL: &str = "
         bytes: Bytes,
         byteArray: [Bytes!],
         bigInt: BigInt,
+        color: Color,
     }
 
     interface Pet {
@@ -64,7 +67,7 @@ const THINGS_GQL: &str = "
         seconds_age: BigInt!,
         weight: BigDecimal!,
         coffee: Boolean!,
-        favorite_color: String,
+        favorite_color: Color,
         drinks: [String!]
     }
 ";
@@ -109,6 +112,7 @@ lazy_static! {
         entity.set("bytes", (*BYTES_VALUE).clone());
         entity.set("byteArray", byte_array);
         entity.set("bigInt", (*LARGE_INT).clone());
+        entity.set("color", "yellow");
         entity.set("__typename", "Scalar");
         entity
     };
@@ -189,7 +193,7 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
         67 as i32,
         184.4,
         false,
-        None,
+        Some("yellow"),
         None,
     );
     insert_user_entity(
@@ -1178,7 +1182,7 @@ fn find_bytes_equal() {
 #[test]
 fn find_null_equal() {
     test_find(
-        vec!["3", "1"],
+        vec!["3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
             entity_types: vec!["user".to_owned()],
@@ -1196,7 +1200,7 @@ fn find_null_equal() {
 #[test]
 fn find_null_not_equal() {
     test_find(
-        vec!["2"],
+        vec!["1", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
             entity_types: vec!["user".to_owned()],
@@ -1211,7 +1215,7 @@ fn find_null_not_equal() {
 #[test]
 fn find_null_not_in() {
     test_find(
-        vec!["2"],
+        vec!["1", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
             entity_types: vec!["user".to_owned()],
@@ -1226,7 +1230,7 @@ fn find_null_not_in() {
     );
 
     test_find(
-        vec!["2"],
+        vec!["1", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
             entity_types: vec!["user".to_owned()],
@@ -1359,6 +1363,78 @@ fn find_where_nested_and_or() {
             order_by: Some(("id".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
             range: EntityRange::first(100),
+        },
+    )
+}
+
+#[test]
+fn find_enum_equal() {
+    test_find(
+        vec!["2"],
+        EntityQuery {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_types: vec!["user".to_owned()],
+            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
+                "favorite_color".to_owned(),
+                "red".into(),
+            )])),
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Descending),
+            range: EntityRange::first(100),
+        },
+    )
+}
+
+#[test]
+fn find_enum_not_equal() {
+    test_find(
+        vec!["1"],
+        EntityQuery {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_types: vec!["user".to_owned()],
+            filter: Some(EntityFilter::And(vec![EntityFilter::Not(
+                "favorite_color".to_owned(),
+                "red".into(),
+            )])),
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Ascending),
+            range: EntityRange::first(100),
+        },
+    )
+}
+
+#[test]
+fn find_enum_in() {
+    test_find(
+        vec!["2"],
+        EntityQuery {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_types: vec!["user".to_owned()],
+            filter: Some(EntityFilter::And(vec![EntityFilter::In(
+                "favorite_color".to_owned(),
+                vec!["red".into()],
+            )])),
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Descending),
+            range: EntityRange::first(5),
+        },
+    )
+}
+
+#[test]
+fn find_enum_not_in() {
+    test_find(
+        vec!["1"],
+        EntityQuery {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_types: vec!["user".to_owned()],
+            filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
+                "favorite_color".to_owned(),
+                vec!["red".into()],
+            )])),
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Descending),
+            range: EntityRange::first(5),
         },
     )
 }
