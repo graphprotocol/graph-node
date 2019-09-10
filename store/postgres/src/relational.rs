@@ -1,3 +1,11 @@
+//! Support for storing the entities of a subgraph in a relational schema,
+//! i.e., one where each entity type gets its own table, and the table
+//! structure follows the structure of the GraphQL type, using the
+//! native SQL types that most appropriately map to the corresponding
+//! GraphQL types
+//!
+//! The pivotal struct in this module is the `Layout` which handles all the
+//! information about mapping a GraphQL schema to database tables
 use diesel::connection::SimpleConnection;
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graphql_parser::query as q;
