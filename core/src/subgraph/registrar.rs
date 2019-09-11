@@ -327,23 +327,26 @@ where
         )))
     }
 
-    fn update_subgraph_price(
+    fn update_subgraph_query_price(
         &self,
         hash: SubgraphDeploymentId,
-        price: f32,
+        price: u64,
     ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
-        Box::new(future::result(update_subgraph_price(
+        Box::new(future::result(update_subgraph_query_price(
             self.store.clone(),
             hash,
             price,
         )))
     }
 
-    fn update_all_prices(
+    fn update_subgraph_query_prices(
         &self,
-        price: f32,
+        prices: Vec<(SubgraphDeploymentId, u64)>,
     ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
-        Box::new(future::result(update_all_prices(self.store.clone(), price)))
+        Box::new(future::result(update_subgraph_query_prices(
+            self.store.clone(),
+            prices,
+        )))
     }
 }
 
@@ -959,14 +962,87 @@ fn reassign_subgraph(
     Ok(())
 }
 
-fn update_subgraph_price(
-    _store: Arc<impl Store>,
-    _hash: SubgraphDeploymentId,
-    _price: f32,
+fn update_subgraph_query_price(
+    store: Arc<impl Store>,
+    hash: SubgraphDeploymentId,
+    price: u64,
 ) -> Result<(), SubgraphRegistrarError> {
+    let mut ops = vec![];
+
+    let current_deployment = store.find(
+        SubgraphDeploymentEntity::query()
+            .filter(EntityFilter::new_equal("id", hash.clone().to_string())),
+    )?;
+
+    let current_query_price = current_deployment
+        .first()
+        .and_then(|d| d.get("queryPrice"))
+        .ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.clone().to_string()))?;
+
+    if current_query_price.to_string() == price.to_string() {
+        return Err(SubgraphRegistrarError::DeploymentAssignmentUnchanged(
+            hash.clone().to_string(),
+        ));
+    }
+
+    ops.push(MetadataOperation::AbortUnless {
+        description: "Deployment assignment is unchanged".to_owned(),
+        query: SubgraphDeploymentAssignmentEntity::query().filter(EntityFilter::And(vec![
+            EntityFilter::new_equal("queryPrice", current_query_price.to_string()),
+            EntityFilter::new_equal("id", hash.clone().to_string()),
+        ])),
+        entity_ids: vec![hash.clone().to_string()],
+    });
+
+    ops.extend(SubgraphDeploymentEntity::update_query_price_operations(
+        &hash, price,
+    ));
+
+    store.apply_metadata_operations(ops)?;
+
     Ok(())
 }
 
-fn update_all_prices(_store: Arc<impl Store>, _price: f32) -> Result<(), SubgraphRegistrarError> {
+fn update_subgraph_query_prices(
+    store: Arc<impl Store>,
+    prices: Vec<(SubgraphDeploymentId, u64)>,
+) -> Result<(), SubgraphRegistrarError> {
+    let mut ops = vec![];
+
+    for subgraph_price in prices {
+        let hash = subgraph_price.0;
+        let price = subgraph_price.1;
+        let current_deployment = store.find(
+            SubgraphDeploymentEntity::query()
+                .filter(EntityFilter::new_equal("id", hash.to_string())),
+        )?;
+
+        let current_query_price = current_deployment
+            .first()
+            .and_then(|d| d.get("queryPrice"))
+            .ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.clone().to_string()))?;
+
+        if current_query_price.to_string() == price.to_string() {
+            return Err(SubgraphRegistrarError::DeploymentAssignmentUnchanged(
+                hash.clone().to_string(),
+            ));
+        }
+
+        ops.push(MetadataOperation::AbortUnless {
+            description: "Deployment assignment is unchanged".to_owned(),
+            query: SubgraphDeploymentAssignmentEntity::query().filter(EntityFilter::And(vec![
+                EntityFilter::new_equal("queryPrice", current_query_price.to_string()),
+                EntityFilter::new_equal("id", hash.clone().to_string()),
+            ])),
+            entity_ids: vec![hash.clone().to_string()],
+        });
+
+        ops.extend(SubgraphDeploymentEntity::update_query_price_operations(
+            &hash, price,
+        ));
+    }
+
+    store.apply_metadata_operations(ops)?;
+
     Ok(())
 }

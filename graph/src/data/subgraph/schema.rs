@@ -393,7 +393,7 @@ impl SubgraphDeploymentEntity {
 
     pub fn update_query_price_operations(
         id: &SubgraphDeploymentId,
-        price: BigDecimal,
+        price: u64,
     ) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("queryPrice", price);

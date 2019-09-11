@@ -52,9 +52,8 @@ struct SubgraphReassignParams {
 }
 
 #[derive(Debug, Deserialize)]
-struct UpdateSubgraphPriceParams {
-    ipfs_hash: SubgraphDeploymentId,
-    price: f32,
+struct UpdateQueryPricesParams {
+    prices: Vec<(SubgraphDeploymentId, u64)>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -177,41 +176,17 @@ where
         )
     }
 
-    fn update_price_handler(
+    fn update_query_prices_handler(
         &self,
-        params: UpdateSubgraphPriceParams,
+        params: UpdateQueryPricesParams,
     ) -> Box<dyn Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
         let logger = self.logger.clone();
 
-        info!(logger, "Received subgraph_reassignment request"; "params" => format!("{:?}", params));
+        info!(logger, "Received update_query_prices request"; "params" => format!("{:?}", params));
 
         Box::new(
             self.registrar
-                .update_subgraph_price(params.ipfs_hash, params.price)
-                .map_err(move |e| {
-                    if let SubgraphRegistrarError::Unknown(e) = e {
-                        error!(logger, "subgraph_reassignment failed: {}", e);
-                        json_rpc_error(JSON_RPC_REASSIGN_ERROR, "internal error".to_owned())
-                    } else {
-                        json_rpc_error(JSON_RPC_REASSIGN_ERROR, e.to_string())
-                    }
-                })
-                .map(|_| Ok(Value::Null))
-                .flatten(),
-        )
-    }
-
-    fn update_all_prices_handler(
-        &self,
-        params: UpdateAllSubgraphPricesParams,
-    ) -> Box<dyn Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
-        let logger = self.logger.clone();
-
-        info!(logger, "Received subgraph_reassignment request"; "params" => format!("{:?}", params));
-
-        Box::new(
-            self.registrar
-                .update_all_prices(params.price)
+                .update_subgraph_query_prices(params.prices)
                 .map_err(move |e| {
                     if let SubgraphRegistrarError::Unknown(e) = e {
                         error!(logger, "subgraph_reassignment failed: {}", e);
@@ -293,6 +268,15 @@ where
                 .parse()
                 .into_future()
                 .and_then(move |params| me.reassign_handler(params))
+        });
+
+        let me = arc_self.clone();
+        handler.add_method("update_query_prices", move |params: Params| {
+            let me = me.clone();
+            params
+                .parse()
+                .into_future()
+                .and_then(move |params| me.update_query_prices_handler(params))
         });
 
         ServerBuilder::new(handler)
