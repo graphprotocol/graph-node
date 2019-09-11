@@ -54,7 +54,7 @@ struct SubgraphReassignParams {
 #[derive(Debug, Deserialize)]
 struct UpdateSubgraphPriceParams {
     ipfs_hash: SubgraphDeploymentId,
-    price: f32,
+    price: u64,
 }
 
 #[derive(Debug, Deserialize)]

@@ -350,6 +350,21 @@ impl SubgraphDeploymentEntity {
             None,
         )]
     }
+
+    pub fn update_query_price_operations(
+        id: &SubgraphDeploymentId,
+        price: u64,
+    ) -> Vec<MetadataOperation> {
+        let mut entity = Entity::new();
+        entity.set("queryPrice", price);
+
+        vec![update_metadata_operation(
+            Self::TYPENAME,
+            id.as_str(),
+            entity,
+            None,
+        )]
+    }
 }
 
 #[derive(Debug)]
