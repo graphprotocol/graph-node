@@ -69,7 +69,7 @@ can access these via:
 - IPFS:
   - `127.0.0.1:5001` or `/ip4/127.0.0.1/tcp/5001`
 - Postgres:
-  - `postgresql://graph-node:let-me-in@localhost:8545/graph-node`
+  - `postgresql://graph-node:let-me-in@localhost:5432/graph-node`
 
 Once this is up and running, you can use
 [`graph-cli`](https://github.com/graphprotocol/graph-cli) to create and
