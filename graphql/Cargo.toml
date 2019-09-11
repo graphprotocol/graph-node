@@ -5,7 +5,7 @@ edition = "2018"
 
 [dependencies]
 graph = { path = "../graph" }
-graphql-parser = "0.2.0"
+graphql-parser = "0.2.3"
 indexmap = "1.1"
 Inflector = "0.11.3"
 lazy_static = "1.2.0"

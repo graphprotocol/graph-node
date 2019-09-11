@@ -16,7 +16,7 @@ fallible-iterator = "0.1.4"
 futures = "0.1.21"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
-graphql-parser = "0.2.0"
+graphql-parser = "0.2.3"
 Inflector = "0.11.3"
 lazy_static = "1.1"
 lru_time_cache = "0.8"
@@ -25,7 +25,7 @@ serde = "1.0"
 uuid = { version = "0.7.4", features = ["v4"] }
 
 [dev-dependencies]
-graphql-parser = "0.2.0"
+graphql-parser = "0.2.3"
 hex = "0.3.2"
 parity-wasm = "0.31"
 test-store = { path = "../test-store" }

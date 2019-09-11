@@ -26,4 +26,4 @@ graph-mock = { path = "../mock" }
 walkdir = "2.2.9"
 test-store = { path = "../store/test-store" }
 hex = "0.3.2"
-graphql-parser = "0.2.1"
+graphql-parser = "0.2.3"

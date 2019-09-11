@@ -17,7 +17,7 @@ semver = "0.9.0"
 parity-wasm = "0.31"
 
 [dev-dependencies]
-graphql-parser = "0.2.0"
+graphql-parser = "0.2.3"
 graph-core = { path = "../../core" }
 graph-mock = { path = "../../mock" }
 # We're using the latest ipfs-api for the HTTPS support that was merged in

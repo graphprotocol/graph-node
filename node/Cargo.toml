@@ -8,7 +8,7 @@ clap = "2.31.2"
 env_logger = "0.6.2"
 futures = "0.1.21"
 git-testament = "0.1"
-graphql-parser = "0.2.1"
+graphql-parser = "0.2.3"
 http = "0.1"
 
 # We're using the latest ipfs-api for the HTTPS support that was merged in
