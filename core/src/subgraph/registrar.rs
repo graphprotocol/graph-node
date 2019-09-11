@@ -657,8 +657,16 @@ fn create_subgraph_version(
         let chain_head_block = chain_store.chain_head_ptr()?;
         let genesis_block = chain_store.genesis_block_ptr()?;
         ops.extend(
-            SubgraphDeploymentEntity::new(&manifest, false, false, genesis_block, chain_head_block)
-                .create_operations(&manifest.id),
+            SubgraphDeploymentEntity::new(
+                &manifest,
+                false,
+                false,
+                genesis_block,
+                chain_head_block,
+                0,
+                0,
+            )
+            .create_operations(&manifest.id),
         );
     }
 

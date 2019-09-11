@@ -27,11 +27,12 @@ fn insert_and_query(
 
     let logger = Logger::root(slog::Discard, o!());
 
-    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, GENESIS_PTR.clone(), None)
-        .create_operations_replace(&subgraph_id)
-        .into_iter()
-        .map(|op| op.into())
-        .collect();
+    let ops =
+        SubgraphDeploymentEntity::new(&manifest, false, false, GENESIS_PTR.clone(), None, 0, 0)
+            .create_operations_replace(&subgraph_id)
+            .into_iter()
+            .map(|op| op.into())
+            .collect();
     STORE
         .create_subgraph_deployment(&logger, &schema, ops)
         .unwrap();

@@ -105,6 +105,8 @@ mod test {
                         hash: H256::zero(),
                         number: 0,
                     }),
+                    0,
+                    0,
                 )
                 .create_operations(&manifest.id),
             )

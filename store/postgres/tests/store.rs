@@ -154,6 +154,8 @@ fn insert_test_data(store: Arc<DieselStore>) {
         false,
         *TEST_BLOCK_0_PTR,
         Some(*TEST_BLOCK_0_PTR),
+        0,
+        0,
     )
     .create_operations(&*TEST_SUBGRAPH_ID);
     store
@@ -1924,6 +1926,8 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             false,
             *TEST_BLOCK_0_PTR,
             Some(*TEST_BLOCK_0_PTR),
+            0,
+            0,
         )
         .create_operations(&subgraph_id);
         store

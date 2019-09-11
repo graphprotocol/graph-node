@@ -490,6 +490,8 @@ mod tests {
                         hash: H256::zero(),
                         number: 0,
                     }),
+                    0,
+                    0,
                 )
                 .create_operations(&id),
             )
@@ -567,6 +569,8 @@ mod tests {
                                     hash: H256::zero(),
                                     number: 0,
                                 }),
+                                0,
+                                0,
                             )
                             .create_operations(&id),
                         )

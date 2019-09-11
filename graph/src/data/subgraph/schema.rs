@@ -214,6 +214,8 @@ pub struct SubgraphDeploymentEntity {
     ethereum_head_block_hash: Option<H256>,
     ethereum_head_block_number: Option<u64>,
     total_ethereum_blocks_count: u64,
+    entity_count: u64,
+    query_price: u64,
 }
 
 impl TypedEntity for SubgraphDeploymentEntity {
@@ -228,6 +230,8 @@ impl SubgraphDeploymentEntity {
         synced: bool,
         earliest_ethereum_block: EthereumBlockPointer,
         latest_ethereum_block: Option<EthereumBlockPointer>,
+        entity_count: u64,
+        query_price: u64,
     ) -> Self {
         let latest_ethereum_block =
             latest_ethereum_block.unwrap_or(earliest_ethereum_block.clone());
@@ -243,6 +247,8 @@ impl SubgraphDeploymentEntity {
             ethereum_head_block_hash: Some(latest_ethereum_block.hash),
             ethereum_head_block_number: Some(latest_ethereum_block.number),
             total_ethereum_blocks_count: latest_ethereum_block.number,
+            entity_count,
+            query_price,
         }
     }
 
@@ -306,7 +312,8 @@ impl SubgraphDeploymentEntity {
                 .map_or(Value::Null, Value::from),
         );
         entity.set("totalEthereumBlocksCount", self.total_ethereum_blocks_count);
-        entity.set("entityCount", 0 as u64);
+        entity.set("entityCount", self.entity_count);
+        entity.set("queryPrice", self.query_price);
         ops.push(set_metadata_operation(
             Self::TYPENAME,
             id.to_string(),
@@ -375,6 +382,21 @@ impl SubgraphDeploymentEntity {
     ) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("synced", synced);
+
+        vec![update_metadata_operation(
+            Self::TYPENAME,
+            id.as_str(),
+            entity,
+            None,
+        )]
+    }
+
+    pub fn update_query_price_operations(
+        id: &SubgraphDeploymentId,
+        price: BigDecimal,
+    ) -> Vec<MetadataOperation> {
+        let mut entity = Entity::new();
+        entity.set("queryPrice", price);
 
         vec![update_metadata_operation(
             Self::TYPENAME,
