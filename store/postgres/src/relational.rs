@@ -270,6 +270,7 @@ impl Layout {
 
     /// Find the table with the provided `name`. The name must exactly match
     /// the name of an existing table. No conversions of the name are done
+    #[allow(dead_code)]
     pub fn table(&self, name: &SqlName) -> Result<&Table, StoreError> {
         self.tables
             .values()
@@ -511,10 +512,6 @@ impl Column {
             column_type: ColumnType::from_value_type(base_type(&field.field_type), id_type)?,
             field_type: field.field_type.clone(),
         })
-    }
-
-    pub fn is_primary_key(&self) -> bool {
-        PRIMARY_KEY_COLUMN == self.name.as_str()
     }
 
     fn sql_type(&self) -> &str {
