@@ -48,6 +48,10 @@ impl SqlName {
         &self.0
     }
 
+    pub fn quoted(&self) -> String {
+        format!("\"{}\"", self.0)
+    }
+
     // Check that `name` matches the regular expression `/[A-Za-z][A-Za-z0-9_]*/`
     // without pulling in a regex matcher
     fn check_valid_identifier(name: &str, kind: &str) -> Result<(), StoreError> {
@@ -270,7 +274,12 @@ impl Layout {
         for (name, values) in &self.enums {
             let mut sep = "";
             let name = SqlName::from(name.as_str());
-            write!(out, "create type {}.{}\n    as enum (", self.schema, name)?;
+            write!(
+                out,
+                "create type {}.{}\n    as enum (",
+                self.schema,
+                name.quoted()
+            )?;
             for value in values {
                 write!(out, "{}'{}'", sep, value)?;
                 sep = ", "
@@ -616,7 +625,7 @@ impl Column {
     /// gets generated
     fn as_ddl(&self, out: &mut String) -> fmt::Result {
         write!(out, "    ")?;
-        write!(out, "{:20} {}", self.name, self.sql_type())?;
+        write!(out, "{:20} {}", self.name.quoted(), self.sql_type())?;
         if self.is_list() {
             write!(out, "[]")?;
         }
@@ -708,7 +717,12 @@ impl Table {
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
     fn as_ddl(&self, out: &mut String, layout: &Layout) -> fmt::Result {
-        write!(out, "create table {}.{} (\n", layout.schema, self.name)?;
+        write!(
+            out,
+            "create table {}.{} (\n",
+            layout.schema,
+            self.name.quoted()
+        )?;
         for column in self.columns.iter() {
             write!(out, "    ")?;
             column.as_ddl(out)?;
@@ -730,15 +744,15 @@ impl Table {
             // into a BTree. For those attributes, only index the first
             // STRING_PREFIX_SIZE characters
             let index_expr = if column.is_text() {
-                format!("left({}, {})", column.name, STRING_PREFIX_SIZE)
+                format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
             } else {
-                column.name.to_string()
+                column.name.quoted()
             };
 
             let method = if column.is_list() { "gin" } else { "btree" };
             write!(
                 out,
-                "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.{table_name} using {method}({index_expr});\n",
+                "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.\"{table_name}\" using {method}({index_expr});\n",
                 table_index = self.position,
                 table_name = self.name,
                 column_index = i,
@@ -844,51 +858,51 @@ mod tests {
             color: Color,
         }";
 
-    const THING_DDL: &str = "create type rel.color
+    const THING_DDL: &str = "create type rel.\"color\"
     as enum ('yellow', 'red', 'BLUE');
-create type rel.size
+create type rel.\"size\"
     as enum (\'small\', \'medium\', \'large\');
-create table rel.thing (
-        id                   text not null,
-        big_thing            text not null,
+create table rel.\"thing\" (
+        \"id\"                 text not null,
+        \"big_thing\"          text not null,
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index attr_0_0_thing_id
-    on rel.thing using btree(id);
+    on rel.\"thing\" using btree(\"id\");
 create index attr_0_1_thing_big_thing
-    on rel.thing using btree(big_thing);
+    on rel.\"thing\" using btree(\"big_thing\");
 
-create table rel.scalar (
-        id                   text not null,
-        bool                 boolean,
-        int                  integer,
-        big_decimal          numeric,
-        string               text,
-        bytes                bytea,
-        big_int              numeric,
-        color                \"rel\".\"color\",
+create table rel.\"scalar\" (
+        \"id\"                 text not null,
+        \"bool\"               boolean,
+        \"int\"                integer,
+        \"big_decimal\"        numeric,
+        \"string\"             text,
+        \"bytes\"              bytea,
+        \"big_int\"            numeric,
+        \"color\"              \"rel\".\"color\",
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index attr_1_0_scalar_id
-    on rel.scalar using btree(id);
+    on rel.\"scalar\" using btree(\"id\");
 create index attr_1_1_scalar_bool
-    on rel.scalar using btree(bool);
+    on rel.\"scalar\" using btree(\"bool\");
 create index attr_1_2_scalar_int
-    on rel.scalar using btree(int);
+    on rel.\"scalar\" using btree(\"int\");
 create index attr_1_3_scalar_big_decimal
-    on rel.scalar using btree(big_decimal);
+    on rel.\"scalar\" using btree(\"big_decimal\");
 create index attr_1_4_scalar_string
-    on rel.scalar using btree(left(string, 2048));
+    on rel.\"scalar\" using btree(left(\"string\", 2048));
 create index attr_1_5_scalar_bytes
-    on rel.scalar using btree(bytes);
+    on rel.\"scalar\" using btree(\"bytes\");
 create index attr_1_6_scalar_big_int
-    on rel.scalar using btree(big_int);
+    on rel.\"scalar\" using btree(\"big_int\");
 create index attr_1_7_scalar_color
-    on rel.scalar using btree(color);
+    on rel.\"scalar\" using btree(\"color\");
 
 ";
 
@@ -919,65 +933,65 @@ type SongStat @entity {
     song: Song @derivedFrom(field: \"id\")
     played: Int!
 }";
-    const MUSIC_DDL: &str = "create table rel.musician (
-        id                   text not null,
-        name                 text not null,
-        main_band            text,
-        bands                text[] not null,
+    const MUSIC_DDL: &str = "create table rel.\"musician\" (
+        \"id\"                 text not null,
+        \"name\"               text not null,
+        \"main_band\"          text,
+        \"bands\"              text[] not null,
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index attr_0_0_musician_id
-    on rel.musician using btree(id);
+    on rel.\"musician\" using btree(\"id\");
 create index attr_0_1_musician_name
-    on rel.musician using btree(left(name, 2048));
+    on rel.\"musician\" using btree(left(\"name\", 2048));
 create index attr_0_2_musician_main_band
-    on rel.musician using btree(main_band);
+    on rel.\"musician\" using btree(\"main_band\");
 create index attr_0_3_musician_bands
-    on rel.musician using gin(bands);
+    on rel.\"musician\" using gin(\"bands\");
 
-create table rel.band (
-        id                   text not null,
-        name                 text not null,
-        original_songs       text[] not null,
+create table rel.\"band\" (
+        \"id\"                 text not null,
+        \"name\"               text not null,
+        \"original_songs\"     text[] not null,
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index attr_1_0_band_id
-    on rel.band using btree(id);
+    on rel.\"band\" using btree(\"id\");
 create index attr_1_1_band_name
-    on rel.band using btree(left(name, 2048));
+    on rel.\"band\" using btree(left(\"name\", 2048));
 create index attr_1_2_band_original_songs
-    on rel.band using gin(original_songs);
+    on rel.\"band\" using gin(\"original_songs\");
 
-create table rel.song (
-        id                   text not null,
-        title                text not null,
-        written_by           text not null,
+create table rel.\"song\" (
+        \"id\"                 text not null,
+        \"title\"              text not null,
+        \"written_by\"         text not null,
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index attr_2_0_song_id
-    on rel.song using btree(id);
+    on rel.\"song\" using btree(\"id\");
 create index attr_2_1_song_title
-    on rel.song using btree(left(title, 2048));
+    on rel.\"song\" using btree(left(\"title\", 2048));
 create index attr_2_2_song_written_by
-    on rel.song using btree(written_by);
+    on rel.\"song\" using btree(\"written_by\");
 
-create table rel.song_stat (
-        id                   text not null,
-        played               integer not null,
+create table rel.\"song_stat\" (
+        \"id\"                 text not null,
+        \"played\"             integer not null,
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index attr_3_0_song_stat_id
-    on rel.song_stat using btree(id);
+    on rel.\"song_stat\" using btree(\"id\");
 create index attr_3_1_song_stat_played
-    on rel.song_stat using btree(played);
+    on rel.\"song_stat\" using btree(\"played\");
 
 ";
 
@@ -1002,41 +1016,41 @@ type Habitat @entity {
     dwellers: [ForestDweller!]!
 }";
 
-    const FOREST_DDL: &str = "create table rel.animal (
-        id                   text not null,
-        forest               text,
+    const FOREST_DDL: &str = "create table rel.\"animal\" (
+        \"id\"                 text not null,
+        \"forest\"             text,
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index attr_0_0_animal_id
-    on rel.animal using btree(id);
+    on rel.\"animal\" using btree(\"id\");
 create index attr_0_1_animal_forest
-    on rel.animal using btree(forest);
+    on rel.\"animal\" using btree(\"forest\");
 
-create table rel.forest (
-        id                   text not null,
+create table rel.\"forest\" (
+        \"id\"                 text not null,
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index attr_1_0_forest_id
-    on rel.forest using btree(id);
+    on rel.\"forest\" using btree(\"id\");
 
-create table rel.habitat (
-        id                   text not null,
-        most_common          text not null,
-        dwellers             text[] not null,
+create table rel.\"habitat\" (
+        \"id\"                 text not null,
+        \"most_common\"        text not null,
+        \"dwellers\"           text[] not null,
 
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index attr_2_0_habitat_id
-    on rel.habitat using btree(id);
+    on rel.\"habitat\" using btree(\"id\");
 create index attr_2_1_habitat_most_common
-    on rel.habitat using btree(most_common);
+    on rel.\"habitat\" using btree(\"most_common\");
 create index attr_2_2_habitat_dwellers
-    on rel.habitat using gin(dwellers);
+    on rel.\"habitat\" using gin(\"dwellers\");
 
 ";
 
