@@ -17,6 +17,7 @@ type SubgraphVersion @entity {
 type SubgraphDeployment @entity {
     id: ID! # Subgraph IPFS hash
     manifest: SubgraphManifest!
+    assignment: SubgraphDeploymentAssignment!
     failed: Boolean!
     synced: Boolean!
     earliestEthereumBlockHash: String
@@ -27,6 +28,7 @@ type SubgraphDeployment @entity {
     ethereumHeadBlockHash: String
     totalEthereumBlocksCount: BigInt!
     entityCount: BigInt!
+    queryPrice: BigInt!
     dynamicDataSources: [DynamicEthereumContractDataSource!] @derivedFrom(field: "deployment")
 }
 

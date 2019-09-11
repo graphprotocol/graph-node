@@ -1,4 +1,4 @@
-use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
+use graphql_parser::{query as q, query::Name, query::Number, schema as s, schema::ObjectType};
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 
@@ -91,6 +91,10 @@ struct IndexingStatus {
     error: Option<String>,
     /// Indexing status on different chains involved in the subgraph's data sources.
     chains: Vec<ChainIndexingStatus>,
+
+    entity_count: u64,
+
+    query_price: u64,
 }
 
 impl IndexingStatus {
@@ -130,6 +134,17 @@ impl IndexingStatus {
             _ => Ok(None),
         }
     }
+    fn u64_from_value(value: &q::Value, key: &'static str) -> Result<u64, Error> {
+        value
+            .get_required::<q::Value>(key.as_ref())
+            .and_then(|value| match value {
+                q::Value::String(s) => Ok(s),
+                e => Err(format_err!("{}", e)),
+            })
+            .map(|s| BigInt::from_str(s.as_ref()))?
+            .map(|n| n.to_u64())
+            .map_err(|e| format_err!("{}", e))
+    }
 }
 
 impl TryFromValue for IndexingStatus {
@@ -149,6 +164,8 @@ impl TryFromValue for IndexingStatus {
                 earliest_block: Self::block_from_value(value, "earliestEthereumBlock")?,
                 latest_block: Self::block_from_value(value, "latestEthereumBlock")?,
             })],
+            entity_count: Self::u64_from_value(value, "entityCount")?,
+            query_price: Self::u64_from_value(value, "queryPrice")?,
         })
     }
 }
@@ -170,6 +187,14 @@ impl From<IndexingStatus> for q::Value {
             (
                 "chains",
                 q::Value::List(status.chains.into_iter().map(q::Value::from).collect()),
+            ),
+            (
+                "entityCount",
+                q::Value::String(format!("{}", status.entity_count)),
+            ),
+            (
+                "queryPrice",
+                q::Value::Int(Number::from(status.query_price as i32)),
             ),
         ])
     }
@@ -240,6 +265,8 @@ where
                         network
                       }
                     }
+                    entityCount
+                    queryPrice
                   }
                 }
                 "#,
