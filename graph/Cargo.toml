@@ -19,7 +19,7 @@ reqwest = "0.9"
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "graph-patches" }
 hex = "0.3.2"
 futures = "0.1.21"
-graphql-parser = "0.2.1"
+graphql-parser = "0.2.3"
 # We're using the latest ipfs-api for the HTTPS support that was merged in
 # https://github.com/ferristseng/rust-ipfs-api/commit/55902e98d868dcce047863859caf596a629d10ec
 # but has not been released yet.
