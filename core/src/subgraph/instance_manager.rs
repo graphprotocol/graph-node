@@ -456,12 +456,12 @@ where
         block.clone(),
         triggers,
     )
-    .and_then(|(ctx, block_state)| {
-        // Instantiate dynamic data sources
+    .and_then(|(ctx, mut block_state)| {
+        // Instantiate dynamic data sources, removing them from the block state.
         future::result(create_dynamic_data_sources(
             logger1,
             &ctx.inputs,
-            &block_state.created_data_sources,
+            block_state.created_data_sources.drain(..),
         ))
         .from_err()
         .map(|(data_sources, runtime_hosts)| (ctx, block_state, data_sources, runtime_hosts))
@@ -469,7 +469,6 @@ where
     .and_then(move |(ctx, block_state, data_sources, runtime_hosts)| {
         // Reprocess the triggers from this block that match the new data sources
 
-        let created_ds_count = block_state.created_data_sources.len();
         let block_with_calls = EthereumBlockWithCalls {
             ethereum_block: block.deref().clone(),
             calls,
@@ -507,7 +506,7 @@ where
                 triggers,
             )
             .and_then(move |block_state| {
-                match block_state.created_data_sources.len() > created_ds_count {
+                match block_state.created_data_sources.len() > 0 {
                     false => Ok((ctx, block_state, data_sources, runtime_hosts)),
                     true => Err(err_msg(
                         "A dynamic data source, in the same block that it was created,
@@ -644,7 +643,7 @@ where
 fn create_dynamic_data_sources<B, S, T>(
     logger: Logger,
     inputs: &IndexingInputs<B, S, T>,
-    created_data_sources: &[DataSourceTemplateInfo],
+    created_data_sources: impl Iterator<Item = DataSourceTemplateInfo>,
 ) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), Error>
 where
     B: BlockStreamBuilder,
@@ -656,7 +655,7 @@ where
 
     for info in created_data_sources {
         // Try to instantiate a data source from the template
-        let data_source = DataSource::try_from_template(info.template.clone(), &info.params)?;
+        let data_source = DataSource::try_from_template(info.template, &info.params)?;
 
         // Try to create a runtime host for the data source
         let host = inputs.host_builder.build(
