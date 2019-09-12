@@ -519,23 +519,23 @@ where
             })
         })
     })
-    .and_then(move |(ctx, block_state, data_sources, runtime_hosts)| {
+    .and_then(move |(mut ctx, mut block_state, data_sources, hosts)| {
+        // If new data sources have been added, indicate that the subgraph
+        // needs to be restarted after this block.
+        let needs_restart = !data_sources.is_empty();
+
         // Add entity operations for the new data sources to the block state
-        // and add runtimes for the data sources to the subgraph instance
+        // and add runtimes for the data sources to the subgraph instance.
         future::result(
             persist_dynamic_data_sources(
                 logger3,
-                ctx,
-                block_state,
+                &mut ctx,
+                &mut block_state.entity_cache,
                 data_sources,
-                runtime_hosts,
+                hosts,
                 block_ptr_for_new_data_sources,
             )
-            .map(move |(ctx, block_state, data_sources_created)| {
-                // If new data sources have been added, indicate that the subgraph
-                // needs to be restarted after this block
-                (ctx, block_state, data_sources_created)
-            }),
+            .map(move |()| (ctx, block_state, needs_restart)),
         )
         .from_err()
     })
@@ -675,12 +675,12 @@ where
 
 fn persist_dynamic_data_sources<B, S, T>(
     logger: Logger,
-    mut ctx: IndexingContext<B, S, T>,
-    block_state: BlockState,
+    ctx: &mut IndexingContext<B, S, T>,
+    entity_cache: &mut EntityCache,
     data_sources: Vec<DataSource>,
     runtime_hosts: Vec<Arc<T::Host>>,
     block_ptr: EthereumBlockPointer,
-) -> Result<(IndexingContext<B, S, T>, BlockState, bool), Error>
+) -> Result<(), Error>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store,
@@ -694,13 +694,8 @@ where
         );
     }
 
-    // If there are any new dynamic data sources, we'll have to restart
-    // the subgraph after this block
-    let needs_restart = !data_sources.is_empty();
-
     // Add entity operations to the block state in order to persist
     // the dynamic data sources
-    let mut block_state = block_state;
     for data_source in data_sources.iter() {
         let entity = DynamicEthereumContractDataSourceEntity::from((
             &ctx.inputs.deployment_id,
@@ -709,7 +704,7 @@ where
         ));
         let id = format!("{}-dynamic", Uuid::new_v4().to_simple());
         let operations = entity.write_entity_operations(id.as_ref());
-        block_state.entity_cache.append(operations);
+        entity_cache.append(operations);
     }
 
     // Merge log filters from data sources into the block stream builder
@@ -728,8 +723,5 @@ where
         .extend(EthereumBlockFilter::from_data_sources(&data_sources));
 
     // Add the new data sources to the subgraph instance
-    ctx.state
-        .instance
-        .add_dynamic_data_sources(runtime_hosts)
-        .map(move |_| (ctx, block_state, needs_restart))
+    ctx.state.instance.add_dynamic_data_sources(runtime_hosts)
 }
