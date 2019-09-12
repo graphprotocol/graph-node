@@ -375,6 +375,37 @@ fn update() {
     });
 }
 
+/// Test that we properly handle BigDecimal values with a negative scale.
+#[test]
+fn serialize_bigdecimal() {
+    run_test(|conn, layout| -> Result<(), ()> {
+        insert_entity(&conn, &layout, "Scalar", SCALAR_ENTITY.clone());
+
+        // Update with overwrite
+        let mut entity = SCALAR_ENTITY.clone();
+
+        let d = BigDecimal::from_str("5000").unwrap();
+        let d = d.with_scale(-2);
+        entity.set("bigDecimal", d);
+
+        let key = EntityKey {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_type: "Scalar".to_owned(),
+            entity_id: entity.id().unwrap().clone(),
+        };
+        layout
+            .update(&conn, &key, &entity, 1)
+            .expect("Failed to update");
+
+        let actual = layout
+            .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
+            .expect("Failed to read Scalar[one]")
+            .unwrap();
+        assert_entity_eq!(&entity, actual);
+        Ok(())
+    });
+}
+
 fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
     let filter = EntityFilter::Or(vec![
         EntityFilter::Equal("bool".into(), true.into()),
