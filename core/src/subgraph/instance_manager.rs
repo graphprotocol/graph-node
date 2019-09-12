@@ -458,7 +458,13 @@ where
     )
     .and_then(|(ctx, block_state)| {
         // Instantiate dynamic data sources
-        create_dynamic_data_sources(logger1, ctx, block_state).from_err()
+        future::result(create_dynamic_data_sources(
+            logger1,
+            &ctx.inputs,
+            &block_state.created_data_sources,
+        ))
+        .from_err()
+        .map(|(data_sources, runtime_hosts)| (ctx, block_state, data_sources, runtime_hosts))
     })
     .and_then(move |(ctx, block_state, data_sources, runtime_hosts)| {
         // Reprocess the triggers from this block that match the new data sources
@@ -637,74 +643,35 @@ where
 
 fn create_dynamic_data_sources<B, S, T>(
     logger: Logger,
-    ctx: IndexingContext<B, S, T>,
-    block_state: BlockState,
-) -> impl Future<
-    Item = (
-        IndexingContext<B, S, T>,
-        BlockState,
-        Vec<DataSource>,
-        Vec<Arc<T::Host>>,
-    ),
-    Error = Error,
->
+    inputs: &IndexingInputs<B, S, T>,
+    created_data_sources: &[DataSourceTemplateInfo],
+) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), Error>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store,
     T: RuntimeHostBuilder,
 {
-    struct State<B, S, T>
-    where
-        B: BlockStreamBuilder,
-        S: ChainStore + Store,
-        T: RuntimeHostBuilder,
-    {
-        ctx: IndexingContext<B, S, T>,
-        block_state: BlockState,
-        data_sources: Vec<DataSource>,
-        runtime_hosts: Vec<Arc<T::Host>>,
-    };
+    let mut data_sources = vec![];
+    let mut runtime_hosts = vec![];
 
-    let initial_state = State {
-        ctx,
-        block_state,
-        data_sources: vec![],
-        runtime_hosts: vec![],
-    };
+    for info in created_data_sources {
+        // Try to instantiate a data source from the template
+        let data_source = DataSource::try_from_template(info.template.clone(), &info.params)?;
 
-    stream::iter_ok(initial_state.block_state.created_data_sources.clone())
-        .fold(initial_state, move |mut state, info| {
-            // Try to instantiate a data source from the template
-            let data_source = match DataSource::try_from_template(info.template, &info.params) {
-                Ok(data_source) => data_source,
-                Err(e) => return future::err(e),
-            };
+        // Try to create a runtime host for the data source
+        let host = inputs.host_builder.build(
+            &logger,
+            inputs.network_name.clone(),
+            inputs.deployment_id.clone(),
+            data_source.clone(),
+            inputs.top_level_templates.clone(),
+        )?;
 
-            // Try to create a runtime host for the data source
-            let host = match state.ctx.inputs.host_builder.build(
-                &logger,
-                state.ctx.inputs.network_name.clone(),
-                state.ctx.inputs.deployment_id.clone(),
-                data_source.clone(),
-                state.ctx.inputs.top_level_templates.clone(),
-            ) {
-                Ok(host) => Arc::new(host),
-                Err(e) => return future::err(e),
-            };
+        data_sources.push(data_source);
+        runtime_hosts.push(Arc::new(host));
+    }
 
-            state.data_sources.push(data_source);
-            state.runtime_hosts.push(host);
-
-            future::ok(state)
-        })
-        .map(|final_state| {
-            (
-                final_state.ctx,
-                final_state.block_state,
-                final_state.data_sources,
-                final_state.runtime_hosts,
-            )
-        })
+    Ok((data_sources, runtime_hosts))
 }
 
 fn persist_dynamic_data_sources<B, S, T>(
