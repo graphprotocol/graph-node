@@ -13,7 +13,7 @@ pub trait BlockStream: Stream<Item = EthereumBlockWithTriggers, Error = Error> {
     ) -> Result<EthereumBlockWithTriggers, Error>;
 }
 
-pub trait BlockStreamBuilder: Clone + Send + Sync {
+pub trait BlockStreamBuilder: Clone + Send + Sync + 'static {
     type Stream: BlockStream + Send + 'static;
 
     fn build(

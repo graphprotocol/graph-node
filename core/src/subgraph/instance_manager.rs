@@ -66,7 +66,7 @@ impl SubgraphInstanceManager {
     where
         S: Store + ChainStore,
         T: RuntimeHostBuilder,
-        B: BlockStreamBuilder + 'static,
+        B: BlockStreamBuilder,
     {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -99,7 +99,7 @@ impl SubgraphInstanceManager {
     ) where
         S: Store + ChainStore,
         T: RuntimeHostBuilder,
-        B: BlockStreamBuilder + 'static,
+        B: BlockStreamBuilder,
     {
         // Subgraph instance shutdown senders
         let instances: SharedInstanceKeepAliveMap = Default::default();
@@ -173,7 +173,7 @@ impl SubgraphInstanceManager {
     ) -> Result<(), Error>
     where
         T: RuntimeHostBuilder,
-        B: BlockStreamBuilder + 'static,
+        B: BlockStreamBuilder,
         S: Store + ChainStore,
     {
         // Clear the 'failed' state of the subgraph. We were told explicitly
@@ -424,6 +424,7 @@ where
         "block_number" => format!("{:?}", block.block.number.unwrap()),
         "block_hash" => format!("{:?}", block.block.hash.unwrap())
     ));
+    let logger1 = logger.clone();
 
     if triggers.len() == 1 {
         info!(logger, "1 trigger found in this block for this subgraph");
@@ -441,12 +442,6 @@ where
     let block_ptr_after = EthereumBlockPointer::from(&*block);
     let block_ptr_for_new_data_sources = block_ptr_after.clone();
 
-    // Clone a few things to pass into futures
-    let logger1 = logger.clone();
-    let logger2 = logger.clone();
-    let logger3 = logger.clone();
-    let logger4 = logger.clone();
-
     // Process events one after the other, passing in entity operations
     // collected previously to every new event being processed
     process_triggers(
@@ -456,88 +451,90 @@ where
         block.clone(),
         triggers,
     )
-    .and_then(|(ctx, mut block_state)| {
-        // Instantiate dynamic data sources, removing them from the block state.
-        future::result(create_dynamic_data_sources(
-            logger1,
-            &ctx.inputs,
-            block_state.created_data_sources.drain(..),
-        ))
-        .from_err()
-        .map(|(data_sources, runtime_hosts)| (ctx, block_state, data_sources, runtime_hosts))
-    })
-    .and_then(move |(ctx, block_state, data_sources, runtime_hosts)| {
-        // Reprocess the triggers from this block that match the new data sources
+    .and_then(move |(ctx, block_state)| {
+        // If new data sources have been created, restart the subgraph after this block.
+        let needs_restart = !block_state.created_data_sources.is_empty();
 
-        let block_with_calls = EthereumBlockWithCalls {
-            ethereum_block: block.deref().clone(),
-            calls,
-        };
-
-        future::result(<B>::Stream::parse_triggers(
-            EthereumLogFilter::from_data_sources(data_sources.iter()),
-            EthereumCallFilter::from_data_sources(data_sources.iter()),
-            EthereumBlockFilter::from_data_sources(data_sources.iter()),
-            false,
-            block_with_calls,
-        ))
-        .from_err()
-        .and_then(move |block_with_triggers| {
-            let triggers = block_with_triggers.triggers;
-
-            if triggers.len() == 1 {
-                info!(
-                    logger,
-                    "1 trigger found in this block for the new data sources"
-                );
-            } else if triggers.len() > 1 {
-                info!(
-                    logger,
-                    "{} triggers found in this block for the new data sources",
-                    triggers.len()
-                );
-            }
-
-            process_triggers_in_runtime_hosts::<T>(
-                logger2.clone(),
-                runtime_hosts.clone(),
-                block_state,
-                block.clone(),
-                triggers,
-            )
-            .and_then(move |block_state| {
-                match block_state.created_data_sources.len() > 0 {
-                    false => Ok((ctx, block_state, data_sources, runtime_hosts)),
-                    true => Err(err_msg(
-                        "A dynamic data source, in the same block that it was created,
-                        attempted to create another dynamic data source.
-                        To let us know that you are affected by this bug, please comment in
-                        https://github.com/graphprotocol/graph-node/issues/1105",
-                    )
-                    .into()),
+        // This loop will:
+        // 1. Instantiate created data sources.
+        // 2. Process those data sources for the current block.
+        // Until no data sources are created or MAX_DATA_SOURCES is hit.
+        loop_fn(
+            (ctx, block_state),
+            move |(mut ctx, mut block_state)| -> Box<dyn Future<Item = _, Error = _> + Send> {
+                if block_state.created_data_sources.is_empty() {
+                    // No new data sources, nothing to do.
+                    return Box::new(future::ok(Loop::Break((ctx, block_state))));
                 }
-            })
-        })
-    })
-    .and_then(move |(mut ctx, mut block_state, data_sources, hosts)| {
-        // If new data sources have been added, indicate that the subgraph
-        // needs to be restarted after this block.
-        let needs_restart = !data_sources.is_empty();
 
-        // Add entity operations for the new data sources to the block state
-        // and add runtimes for the data sources to the subgraph instance.
-        future::result(
-            persist_dynamic_data_sources(
-                logger3,
-                &mut ctx,
-                &mut block_state.entity_cache,
-                data_sources,
-                hosts,
-                block_ptr_for_new_data_sources,
-            )
-            .map(move |()| (ctx, block_state, needs_restart)),
+                // Instantiate dynamic data sources, removing them from the block state.
+                let (data_sources, runtime_hosts) = match create_dynamic_data_sources(
+                    logger.clone(),
+                    &ctx.inputs,
+                    block_state.created_data_sources.drain(..),
+                ) {
+                    Ok(ok) => ok,
+                    Err(err) => return Box::new(future::err(err.into())),
+                };
+
+                // Reprocess the triggers from this block that match the new data sources
+
+                let block_with_calls = EthereumBlockWithCalls {
+                    ethereum_block: block.deref().clone(),
+                    calls: calls.clone(),
+                };
+
+                let block_with_triggers = match <B>::Stream::parse_triggers(
+                    EthereumLogFilter::from_data_sources(data_sources.iter()),
+                    EthereumCallFilter::from_data_sources(data_sources.iter()),
+                    EthereumBlockFilter::from_data_sources(data_sources.iter()),
+                    false,
+                    block_with_calls,
+                ) {
+                    Ok(block_with_triggers) => block_with_triggers,
+                    Err(err) => return Box::new(future::err(err.into())),
+                };
+                let triggers = block_with_triggers.triggers;
+
+                if triggers.len() == 1 {
+                    info!(
+                        logger,
+                        "1 trigger found in this block for the new data sources"
+                    );
+                } else if triggers.len() > 1 {
+                    info!(
+                        logger,
+                        "{} triggers found in this block for the new data sources",
+                        triggers.len()
+                    );
+                }
+
+                // Add entity operations for the new data sources to the block state
+                // and add runtimes for the data sources to the subgraph instance.
+                if let Err(err) = persist_dynamic_data_sources(
+                    logger.clone(),
+                    &mut ctx,
+                    &mut block_state.entity_cache,
+                    data_sources,
+                    runtime_hosts.clone(),
+                    block_ptr_for_new_data_sources,
+                ) {
+                    return Box::new(future::err(err.into()));
+                }
+
+                Box::new(
+                    process_triggers_in_runtime_hosts::<T>(
+                        logger.clone(),
+                        runtime_hosts,
+                        block_state,
+                        block.clone(),
+                        triggers,
+                    )
+                    .and_then(|block_state| future::ok(Loop::Continue((ctx, block_state)))),
+                )
+            },
         )
-        .from_err()
+        .map(move |(ctx, block_state)| (ctx, block_state, needs_restart))
     })
     // Apply entity operations and advance the stream
     .and_then(move |(ctx, block_state, needs_restart)| {
@@ -556,7 +553,7 @@ where
                 ))
             })?;
         if !mods.is_empty() {
-            info!(logger4, "Applying {} entity operation(s)", mods.len());
+            info!(logger1, "Applying {} entity operation(s)", mods.len());
         }
 
         // Transact entity operations into the store and update the
@@ -572,7 +569,7 @@ where
             .map(|should_migrate| {
                 if should_migrate {
                     ctx.inputs.store.migrate_subgraph_deployment(
-                        &logger4,
+                        &logger1,
                         &ctx.inputs.deployment_id,
                         &block_ptr_after,
                     );
