@@ -308,6 +308,7 @@ impl Store for MockStore {
 
     fn build_entity_attribute_indexes(
         &self,
+        _: &SubgraphDeploymentId,
         _: Vec<AttributeIndexDefinition>,
     ) -> Result<(), SubgraphAssignmentProviderError> {
         Ok(())
@@ -473,6 +474,7 @@ impl Store for FakeStore {
 
     fn build_entity_attribute_indexes(
         &self,
+        _: &SubgraphDeploymentId,
         _: Vec<AttributeIndexDefinition>,
     ) -> Result<(), SubgraphAssignmentProviderError> {
         Ok(())

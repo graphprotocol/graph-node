@@ -650,6 +650,7 @@ pub trait Store: Send + Sync + 'static {
     /// Build indexes for a set of subgraph entity attributes
     fn build_entity_attribute_indexes(
         &self,
+        subgraph: &SubgraphDeploymentId,
         indexes: Vec<AttributeIndexDefinition>,
     ) -> Result<(), SubgraphAssignmentProviderError>;
 

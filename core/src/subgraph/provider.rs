@@ -141,7 +141,7 @@ where
                         self_clone
                             .store
                             .clone()
-                            .build_entity_attribute_indexes(index_definitions)
+                            .build_entity_attribute_indexes(&subgraph.id, index_definitions)
                             .map(|_| {
                                 info!(
                                     logger,

@@ -355,15 +355,14 @@ impl Store {
         // that is fully plumbed in, we just use the biggest possible block
         // number so that we will always return the latest version,
         // i.e., the one with an infinite upper bound
-        conn.find(op_subgraph, op_entity, op_id, BLOCK_NUMBER_MAX)
-            .map_err(|e| {
-                QueryExecutionError::ResolveEntityError(
-                    op_subgraph.clone(),
-                    op_entity.clone(),
-                    op_id.clone(),
-                    format!("Invalid entity {}", e),
-                )
-            })
+        conn.find(op_entity, op_id, BLOCK_NUMBER_MAX).map_err(|e| {
+            QueryExecutionError::ResolveEntityError(
+                op_subgraph.clone(),
+                op_entity.clone(),
+                op_id.clone(),
+                format!("Invalid entity {}", e),
+            )
+        })
     }
 
     fn execute_query(
@@ -388,7 +387,6 @@ impl Store {
 
         // Process results; deserialize JSON data
         conn.query(
-            &query.subgraph_id,
             query.entity_types,
             query.filter,
             order,
@@ -427,11 +425,9 @@ impl Store {
         );
 
         if !types_with_shared_interface.is_empty() {
-            if let Some(conflicting_entity) = conn.conflicting_entity(
-                &key.subgraph_id,
-                &key.entity_id,
-                types_with_shared_interface,
-            )? {
+            if let Some(conflicting_entity) =
+                conn.conflicting_entity(&key.entity_id, types_with_shared_interface)?
+            {
                 return Err(StoreError::ConflictingId(
                     key.entity_type.clone(),
                     key.entity_id.clone(),
@@ -577,7 +573,6 @@ impl Store {
     fn apply_entity_modifications(
         &self,
         conn: &e::Connection,
-        subgraph: &SubgraphDeploymentId,
         mods: Vec<EntityModification>,
         history_event: Option<&HistoryEvent>,
     ) -> Result<(), StoreError> {
@@ -615,7 +610,7 @@ impl Store {
                 count += n;
             }
         }
-        conn.update_entity_count(&subgraph, count)?;
+        conn.update_entity_count(count)?;
         Ok(())
     }
 
@@ -676,9 +671,11 @@ impl Store {
         conn.map_err(Error::from)
     }
 
-    fn get_entity_conn(&self) -> Result<e::Connection, Error> {
+    fn get_entity_conn(&self, subgraph: &SubgraphDeploymentId) -> Result<e::Connection, Error> {
         let conn = self.get_conn()?;
-        Ok(e::Connection::new(conn, self))
+        let storage = e::Connection::storage(&conn, self, subgraph)?;
+        let metadata = e::Connection::storage(&conn, self, &*SUBGRAPHS_ID)?;
+        Ok(e::Connection::new(conn, storage, metadata))
     }
 
     fn cached_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SchemaPair, Error> {
@@ -778,14 +775,14 @@ impl StoreTrait for Store {
 
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
         let conn = self
-            .get_entity_conn()
+            .get_entity_conn(&key.subgraph_id)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         self.get_entity(&conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
     }
 
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
         let conn = self
-            .get_entity_conn()
+            .get_entity_conn(&query.subgraph_id)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         self.execute_query(&conn, query)
     }
@@ -794,7 +791,7 @@ impl StoreTrait for Store {
         query.range = EntityRange::first(1);
 
         let conn = self
-            .get_entity_conn()
+            .get_entity_conn(&query.subgraph_id)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
 
         let mut results = self.execute_query(&conn, query)?;
@@ -836,7 +833,7 @@ impl StoreTrait for Store {
             block_ptr_from,
             block_ptr_to,
         );
-        let conn = self.get_entity_conn().map_err(Error::from)?;
+        let conn = self.get_entity_conn(&subgraph_id).map_err(Error::from)?;
         conn.transaction(|| self.apply_metadata_operations_with_conn(&conn, ops))?;
 
         conn.should_migrate(&subgraph_id, &block_ptr_to)
@@ -867,7 +864,7 @@ impl StoreTrait for Store {
             );
         }
 
-        let econn = self.get_entity_conn()?;
+        let econn = self.get_entity_conn(&subgraph_id)?;
 
         econn.transaction(|| {
             // Ensure the history event exists in the database
@@ -880,7 +877,7 @@ impl StoreTrait for Store {
             econn.send_store_event(&event)?;
 
             // Make the changes
-            self.apply_entity_modifications(&econn, &subgraph_id, mods, Some(&history_event))?;
+            self.apply_entity_modifications(&econn, mods, Some(&history_event))?;
 
             // Update the subgraph block pointer, without an event source; this way
             // no entity history is recorded for the block pointer update itself
@@ -900,7 +897,7 @@ impl StoreTrait for Store {
         &self,
         operations: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
-        let econn = self.get_entity_conn()?;
+        let econn = self.get_entity_conn(&*SUBGRAPHS_ID)?;
         econn.transaction(|| {
             self.apply_metadata_operations_with_conn(&econn, operations)
                 .map(|_| ())
@@ -909,9 +906,10 @@ impl StoreTrait for Store {
 
     fn build_entity_attribute_indexes(
         &self,
+        subgraph: &SubgraphDeploymentId,
         indexes: Vec<AttributeIndexDefinition>,
     ) -> Result<(), SubgraphAssignmentProviderError> {
-        let econn = self.get_entity_conn()?;
+        let econn = self.get_entity_conn(subgraph)?;
         econn.transaction(|| self.build_entity_attribute_indexes_with_conn(&econn, indexes))
     }
 
@@ -926,7 +924,7 @@ impl StoreTrait for Store {
             panic!("revert_block_operations must revert a single block only");
         }
 
-        let econn = self.get_entity_conn()?;
+        let econn = self.get_entity_conn(&subgraph_id)?;
         econn.transaction(|| {
             let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
                 &subgraph_id,
@@ -935,8 +933,8 @@ impl StoreTrait for Store {
             );
             self.apply_metadata_operations_with_conn(&econn, ops)?;
 
-            let (event, count) = econn.revert_block(&subgraph_id, &block_ptr_from)?;
-            econn.update_entity_count(&subgraph_id, count)?;
+            let (event, count) = econn.revert_block(&block_ptr_from)?;
+            econn.update_entity_count(count)?;
             econn.send_store_event(&event)
         })
     }
@@ -976,7 +974,7 @@ impl StoreTrait for Store {
         const MAX_DELAY: u64 = 64;
         const LOCK_TIMEOUT: u64 = 2;
 
-        let econn = self.get_entity_conn()?;
+        let econn = self.get_entity_conn(&*SUBGRAPHS_ID)?;
         let mut delay = Duration::from_secs(INITIAL_DELAY);
 
         // Creating a subgraph creates a table that references
@@ -1038,11 +1036,11 @@ impl StoreTrait for Store {
         subgraph_id: &SubgraphDeploymentId,
         ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
-        let econn = self.get_entity_conn()?;
+        let econn = self.get_entity_conn(subgraph_id)?;
 
         econn.transaction(|| {
             self.apply_metadata_operations_with_conn(&econn, ops)?;
-            econn.start_subgraph(subgraph_id)
+            econn.start_subgraph()
         })
     }
 
@@ -1052,7 +1050,7 @@ impl StoreTrait for Store {
         subgraph_id: &SubgraphDeploymentId,
         block_ptr: &EthereumBlockPointer,
     ) {
-        let econn = match self.get_entity_conn() {
+        let econn = match self.get_entity_conn(subgraph_id) {
             Ok(econn) => econn,
             Err(e) => {
                 warn!(logger, "failed to get connection to start migrating";
@@ -1063,7 +1061,7 @@ impl StoreTrait for Store {
             }
         };
 
-        if let Err(e) = econn.migrate(logger, subgraph_id, block_ptr) {
+        if let Err(e) = econn.migrate(logger, block_ptr) {
             // An error in a migration should not lead to the
             // subgraph being marked as failed
             warn!(logger, "aborted migrating";
