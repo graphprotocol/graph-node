@@ -574,7 +574,7 @@ impl Store {
         }
     }
 
-    fn apply_entity_cache(
+    fn apply_entity_modifications(
         &self,
         conn: &e::Connection,
         subgraph: &SubgraphDeploymentId,
@@ -896,7 +896,7 @@ impl StoreTrait for Store {
             JsonNotification::send("store_events", &v, &econn.conn)?;
 
             // Make the changes
-            self.apply_entity_cache(&econn, &subgraph_id, mods, Some(&history_event))?;
+            self.apply_entity_modifications(&econn, &subgraph_id, mods, Some(&history_event))?;
 
             // Update the subgraph block pointer, without an event source; this way
             // no entity history is recorded for the block pointer update itself
