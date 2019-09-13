@@ -619,32 +619,6 @@ impl Store {
         Ok(())
     }
 
-    /// Apply a series of entity operations in Postgres. Return `true` if
-    /// the subgraph mentioned in `history_event` should have its schema
-    /// migrated
-    fn apply_entity_cache_with_conn(
-        &self,
-        econn: &e::Connection,
-        subgraph: &SubgraphDeploymentId,
-        mods: Vec<EntityModification>,
-        history_event: &HistoryEvent,
-    ) -> Result<bool, StoreError> {
-        // Emit a store event for the changes we are about to make
-        let event: StoreEvent = mods.iter().collect();
-        let v = serde_json::to_value(event)?;
-        JsonNotification::send("store_events", &v, &econn.conn)?;
-
-        self.apply_entity_cache(econn, &subgraph, mods, Some(history_event))?;
-
-        match history_event {
-            HistoryEvent {
-                source: EventSource::EthereumBlock(block_ptr),
-                subgraph,
-                ..
-            } => Ok(econn.should_migrate(&subgraph, block_ptr)?),
-        }
-    }
-
     fn apply_metadata_operations_with_conn(
         &self,
         econn: &e::Connection,
@@ -914,9 +888,15 @@ impl StoreTrait for Store {
             let event_source = EventSource::EthereumBlock(block_ptr_to);
             let history_event = econn.create_history_event(subgraph_id.clone(), event_source)?;
 
-            // Apply the entity operations with the new block as the event source
-            let should_migrate =
-                self.apply_entity_cache_with_conn(&econn, &subgraph_id, mods, &history_event)?;
+            let should_migrate = econn.should_migrate(&subgraph_id, &block_ptr_to)?;
+
+            // Emit a store event for the changes we are about to make
+            let event: StoreEvent = mods.iter().collect();
+            let v = serde_json::to_value(event)?;
+            JsonNotification::send("store_events", &v, &econn.conn)?;
+
+            // Make the changes
+            self.apply_entity_cache(&econn, &subgraph_id, mods, Some(&history_event))?;
 
             // Update the subgraph block pointer, without an event source; this way
             // no entity history is recorded for the block pointer update itself
