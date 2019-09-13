@@ -459,6 +459,10 @@ where
         // 1. Instantiate created data sources.
         // 2. Process those data sources for the current block.
         // Until no data sources are created or MAX_DATA_SOURCES is hit.
+
+        // Note that this algorithm processes data sources spawned on the same block _breadth
+        // first_ on the tree implied by the parent-child relationship between data sources. Only a
+        // very contrived subgraph would be able to observe this.
         loop_fn(
             (ctx, block_state),
             move |(mut ctx, mut block_state)| -> Box<dyn Future<Item = _, Error = _> + Send> {
@@ -522,15 +526,22 @@ where
                     return Box::new(future::err(err.into()));
                 }
 
+                let logger = logger.clone();
+                let block = block.clone();
                 Box::new(
-                    process_triggers_in_runtime_hosts::<T>(
-                        logger.clone(),
-                        runtime_hosts,
-                        block_state,
-                        block.clone(),
-                        triggers,
-                    )
-                    .and_then(|block_state| future::ok(Loop::Continue((ctx, block_state)))),
+                    stream::iter_ok(triggers)
+                        .fold(block_state, move |block_state, trigger| {
+                            // Process the triggers in each host in the same order the
+                            // corresponding data sources have been created.
+                            SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
+                                &logger,
+                                runtime_hosts.iter().cloned(),
+                                block.clone(),
+                                trigger,
+                                block_state,
+                            )
+                        })
+                        .and_then(|block_state| future::ok(Loop::Continue((ctx, block_state)))),
                 )
             },
         )
@@ -605,31 +616,6 @@ where
                 .process_trigger(&logger, block, trigger, block_state)
                 .map(|block_state| (ctx, block_state))
                 .map_err(|e| format_err!("Failed to process trigger: {}", e))
-        })
-}
-
-fn process_triggers_in_runtime_hosts<T>(
-    logger: Logger,
-    runtime_hosts: Vec<Arc<T::Host>>,
-    block_state: BlockState,
-    block: Arc<EthereumBlock>,
-    triggers: Vec<EthereumTrigger>,
-) -> impl Future<Item = BlockState, Error = CancelableError<Error>>
-where
-    T: RuntimeHostBuilder,
-{
-    stream::iter_ok::<_, CancelableError<Error>>(triggers)
-        // Process events from the block stream
-        .fold(block_state, move |block_state, trigger| {
-            // Process the log in each host in the same order the corresponding
-            // data sources have been created
-            SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
-                &logger,
-                runtime_hosts.iter().cloned(),
-                block.clone(),
-                trigger,
-                block_state,
-            )
         })
 }
 
