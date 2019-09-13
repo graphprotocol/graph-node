@@ -529,7 +529,7 @@ impl<'a> Connection<'a> {
         subgraph: SubgraphDeploymentId,
         block_ptr: EthereumBlockPointer,
     ) -> Result<HistoryEvent, Error> {
-        create_history_event(&self.conn, subgraph, block_ptr)
+        HistoryEvent::allocate(&self.conn, subgraph, block_ptr)
     }
 
     /// Check if the schema for `subgraph` needs to be migrated, and if so
@@ -1548,38 +1548,4 @@ fn drop_schema(
     } else {
         Ok(0)
     }
-}
-
-/// Ensures a history event exists for the current transaction and returns its ID.
-fn create_history_event(
-    conn: &diesel::pg::PgConnection,
-    subgraph: SubgraphDeploymentId,
-    block_ptr: EthereumBlockPointer,
-) -> Result<HistoryEvent, Error> {
-    #[derive(Queryable, Debug)]
-    struct Event {
-        id: i32,
-    };
-
-    impl QueryableByName<Pg> for Event {
-        fn build<R: diesel::row::NamedRow<Pg>>(row: &R) -> diesel::deserialize::Result<Self> {
-            Ok(Event {
-                id: row.get("event_id")?,
-            })
-        }
-    }
-
-    let result: Event = diesel::sql_query(
-        "insert into event_meta_data (db_transaction_id, db_transaction_time, source)
-           values (txid_current(), statement_timestamp(), $1)
-         returning event_meta_data.id as event_id",
-    )
-    .bind::<Text, _>(block_ptr.hash_hex())
-    .get_result(conn)?;
-
-    Ok(HistoryEvent {
-        id: result.id,
-        subgraph,
-        block_ptr,
-    })
 }
