@@ -514,32 +514,6 @@ impl MetadataOperation {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub enum EventSource {
-    EthereumBlock(EthereumBlockPointer),
-}
-
-impl fmt::Display for EventSource {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            EventSource::EthereumBlock(block_ptr) => f.write_str(&block_ptr.hash_hex()),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct HistoryEvent {
-    pub id: i32,
-    pub subgraph: SubgraphDeploymentId,
-    pub source: EventSource,
-}
-
-impl HistoryEvent {
-    pub fn to_event_source_string(event: &Option<&HistoryEvent>) -> String {
-        event.map_or(String::from("none"), |event| event.source.to_string())
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct AttributeIndexDefinition {
     pub subgraph_id: SubgraphDeploymentId,

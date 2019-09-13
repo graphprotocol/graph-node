@@ -42,14 +42,15 @@ use graph::data::schema::Schema as SubgraphSchema;
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{
     debug, format_err, info, serde_json, warn, AttributeIndexDefinition, Entity, EntityChange,
-    EntityChangeOperation, EntityFilter, EntityKey, Error, EthereumBlockPointer, EventSource,
-    HistoryEvent, Logger, QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId,
-    TransactionAbortError, ValueType,
+    EntityChangeOperation, EntityFilter, EntityKey, Error, EthereumBlockPointer, Logger,
+    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, TransactionAbortError,
+    ValueType,
 };
 
 use crate::block_range::{block_number, BlockNumber};
 use crate::filter::build_filter;
 use crate::functions::set_config;
+use crate::history_event::{EventSource, HistoryEvent};
 use crate::jsonb::PgJsonbExpressionMethods as _;
 use crate::relational::{IdType, Layout};
 use crate::store::Store;

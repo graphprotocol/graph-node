@@ -7,8 +7,7 @@ use diesel::sql_types::{Integer, Range};
 use std::io::Write;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
-use graph::prelude::{EventSource, HistoryEvent};
-
+use crate::history_event::{EventSource, HistoryEvent};
 use crate::relational::BLOCK_RANGE;
 
 /// The type we use for block numbers. This has to be a signed integer type

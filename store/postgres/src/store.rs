@@ -24,6 +24,7 @@ use crate::block_range::BLOCK_NUMBER_MAX;
 use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::entities as e;
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
+use crate::history_event::{EventSource, HistoryEvent};
 use crate::store_events::StoreEventListener;
 
 embed_migrations!("./migrations");
