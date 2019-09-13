@@ -10,7 +10,6 @@ use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-use crate::notification_listener::JsonNotification;
 use graph::components::store::Store as StoreTrait;
 use graph::data::subgraph::schema::*;
 use graph::prelude::serde_json;
@@ -627,8 +626,7 @@ impl Store {
     ) -> Result<(), StoreError> {
         // Emit a store event for the changes we are about to make
         let event: StoreEvent = operations.clone().into();
-        let v = serde_json::to_value(event)?;
-        JsonNotification::send("store_events", &v, &econn.conn)?;
+        econn.send_store_event(&event)?;
 
         // Actually apply the operations
         for operation in operations.into_iter() {
@@ -880,8 +878,7 @@ impl StoreTrait for Store {
 
             // Emit a store event for the changes we are about to make
             let event: StoreEvent = mods.iter().collect();
-            let v = serde_json::to_value(event)?;
-            JsonNotification::send("store_events", &v, &econn.conn)?;
+            econn.send_store_event(&event)?;
 
             // Make the changes
             self.apply_entity_modifications(&econn, &subgraph_id, mods, Some(&history_event))?;
@@ -943,9 +940,7 @@ impl StoreTrait for Store {
 
             let (event, count) = econn.revert_block(&subgraph_id, &block_ptr_from)?;
             econn.update_entity_count(&subgraph_id, count)?;
-
-            let v = serde_json::to_value(event)?;
-            JsonNotification::send("store_events", &v, &*econn.conn)
+            econn.send_store_event(&event)
         })
     }
 

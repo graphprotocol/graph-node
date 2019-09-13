@@ -52,6 +52,7 @@ use crate::filter::build_filter;
 use crate::functions::set_config;
 use crate::history_event::HistoryEvent;
 use crate::jsonb::PgJsonbExpressionMethods as _;
+use crate::notification_listener::JsonNotification;
 use crate::relational::{IdType, Layout};
 use crate::store::Store;
 
@@ -684,6 +685,11 @@ impl<'a> Connection<'a> {
             );
             Ok(storage.needs_migrating())
         })
+    }
+
+    pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
+        let v = serde_json::to_value(event)?;
+        JsonNotification::send("store_events", &v, &*self.conn)
     }
 }
 
