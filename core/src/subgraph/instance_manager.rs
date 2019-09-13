@@ -621,15 +621,11 @@ where
     stream::iter_ok::<_, CancelableError<Error>>(triggers)
         // Process events from the block stream
         .fold(block_state, move |block_state, trigger| {
-            let logger = logger.clone();
-            let block = block.clone();
-            let runtime_hosts = runtime_hosts.clone();
-
             // Process the log in each host in the same order the corresponding
             // data sources have been created
             SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
                 &logger,
-                runtime_hosts.iter().map(|host| host.clone()),
+                runtime_hosts.iter().cloned(),
                 block.clone(),
                 trigger,
                 block_state,

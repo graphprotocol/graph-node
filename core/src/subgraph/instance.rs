@@ -97,16 +97,13 @@ where
         )
     }
 
-    fn process_trigger_in_runtime_hosts<I>(
+    fn process_trigger_in_runtime_hosts(
         logger: &Logger,
-        hosts: I,
+        hosts: impl Iterator<Item = Arc<T::Host>>,
         block: Arc<EthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
-    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>
-    where
-        I: IntoIterator<Item = Arc<T::Host>>,
-    {
+    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
         let logger = logger.to_owned();
         match trigger {
             EthereumTrigger::Log(log) => {
@@ -114,10 +111,7 @@ where
                     .transaction_for_log(&log)
                     .map(Arc::new)
                     .ok_or_else(|| format_err!("Found no transaction for event"));
-                let matching_hosts: Vec<_> = hosts
-                    .into_iter()
-                    .filter(|host| host.matches_log(&log))
-                    .collect();
+                let matching_hosts: Vec<_> = hosts.filter(|host| host.matches_log(&log)).collect();
                 let log = Arc::new(log);
 
                 // Process the log in each host in the same order the corresponding data

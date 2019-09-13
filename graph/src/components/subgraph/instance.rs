@@ -39,15 +39,13 @@ where
     ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
 
     /// Like `process_trigger` but processes an Ethereum event in a given list of hosts.
-    fn process_trigger_in_runtime_hosts<I>(
+    fn process_trigger_in_runtime_hosts(
         logger: &Logger,
-        hosts: I,
+        hosts: impl Iterator<Item = Arc<T::Host>>,
         block: Arc<EthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
-    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>
-    where
-        I: IntoIterator<Item = Arc<T::Host>>;
+    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
 
     /// Adds dynamic data sources to the subgraph.
     fn add_dynamic_data_sources(&mut self, runtime_hosts: Vec<Arc<T::Host>>) -> Result<(), Error>;
