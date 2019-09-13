@@ -7,7 +7,7 @@ use diesel::sql_types::{Integer, Range};
 use std::io::Write;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
-use crate::history_event::{EventSource, HistoryEvent};
+use crate::history_event::HistoryEvent;
 use crate::relational::BLOCK_RANGE;
 
 /// The type we use for block numbers. This has to be a signed integer type
@@ -39,10 +39,7 @@ fn clone_bound(bound: Bound<&BlockNumber>) -> Bound<BlockNumber> {
 pub(crate) fn block_number(history_event: &Option<&HistoryEvent>) -> BlockNumber {
     match history_event {
         None => panic!("operation that requires a history event did not receive one"),
-        Some(HistoryEvent {
-            source: EventSource::EthereumBlock(block_ptr),
-            ..
-        }) => {
+        Some(HistoryEvent { block_ptr, .. }) => {
             if block_ptr.number < std::i32::MAX as u64 {
                 block_ptr.number as i32
             } else {

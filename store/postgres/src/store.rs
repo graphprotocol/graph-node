@@ -24,7 +24,7 @@ use crate::block_range::BLOCK_NUMBER_MAX;
 use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::entities as e;
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
-use crate::history_event::{EventSource, HistoryEvent};
+use crate::history_event::HistoryEvent;
 use crate::store_events::StoreEventListener;
 
 embed_migrations!("./migrations");
@@ -874,8 +874,7 @@ impl StoreTrait for Store {
 
         econn.conn.transaction(|| {
             // Ensure the history event exists in the database
-            let event_source = EventSource::EthereumBlock(block_ptr_to);
-            let history_event = econn.create_history_event(subgraph_id.clone(), event_source)?;
+            let history_event = econn.create_history_event(subgraph_id.clone(), block_ptr_to)?;
 
             let should_migrate = econn.should_migrate(&subgraph_id, &block_ptr_to)?;
 

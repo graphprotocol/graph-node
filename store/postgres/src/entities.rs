@@ -50,7 +50,7 @@ use graph::prelude::{
 use crate::block_range::{block_number, BlockNumber};
 use crate::filter::build_filter;
 use crate::functions::set_config;
-use crate::history_event::{EventSource, HistoryEvent};
+use crate::history_event::HistoryEvent;
 use crate::jsonb::PgJsonbExpressionMethods as _;
 use crate::relational::{IdType, Layout};
 use crate::store::Store;
@@ -527,9 +527,9 @@ impl<'a> Connection<'a> {
     pub(crate) fn create_history_event(
         &self,
         subgraph: SubgraphDeploymentId,
-        event_source: EventSource,
+        block_ptr: EthereumBlockPointer,
     ) -> Result<HistoryEvent, Error> {
-        create_history_event(&self.conn, subgraph, event_source)
+        create_history_event(&self.conn, subgraph, block_ptr)
     }
 
     /// Check if the schema for `subgraph` needs to be migrated, and if so
@@ -1554,7 +1554,7 @@ fn drop_schema(
 fn create_history_event(
     conn: &diesel::pg::PgConnection,
     subgraph: SubgraphDeploymentId,
-    event_source: EventSource,
+    block_ptr: EthereumBlockPointer,
 ) -> Result<HistoryEvent, Error> {
     #[derive(Queryable, Debug)]
     struct Event {
@@ -1574,12 +1574,12 @@ fn create_history_event(
            values (txid_current(), statement_timestamp(), $1)
          returning event_meta_data.id as event_id",
     )
-    .bind::<Text, _>(event_source.to_string())
+    .bind::<Text, _>(block_ptr.hash_hex())
     .get_result(conn)?;
 
     Ok(HistoryEvent {
         id: result.id,
         subgraph,
-        source: event_source,
+        block_ptr,
     })
 }
