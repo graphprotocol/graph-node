@@ -1,7 +1,6 @@
 extern crate clap;
 extern crate env_logger;
 extern crate futures;
-extern crate itertools;
 #[macro_use]
 extern crate sentry;
 extern crate graph;

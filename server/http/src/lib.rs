@@ -6,7 +6,6 @@ extern crate graph_mock;
 extern crate graphql_parser;
 extern crate http;
 extern crate hyper;
-extern crate itertools;
 extern crate serde;
 
 mod request;

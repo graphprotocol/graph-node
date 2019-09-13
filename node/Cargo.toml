@@ -15,7 +15,6 @@ http = "0.1"
 # https://github.com/ferristseng/rust-ipfs-api/commit/55902e98d868dcce047863859caf596a629d10ec
 # but has not been released yet.
 ipfs-api = { git = "https://github.com/ferristseng/rust-ipfs-api", branch = "master", features = ["hyper-tls"] }
-itertools = "0.7"
 lazy_static = "1.2.0"
 sentry = "0.15.5"
 url = "1.7.1"
