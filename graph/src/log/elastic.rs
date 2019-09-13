@@ -8,7 +8,6 @@ use std::time::Duration;
 use chrono::prelude::{SecondsFormat, Utc};
 use futures::future;
 use futures::{Future, Stream};
-use itertools;
 use reqwest;
 use reqwest::r#async::Client;
 use serde::ser::Serializer as SerdeSerializer;
@@ -112,7 +111,11 @@ impl SimpleKVSerializer {
     fn finish(self) -> (usize, String) {
         (
             self.kvs.len(),
-            itertools::join(self.kvs.iter().map(|(k, v)| format!("{}: {}", k, v)), ", "),
+            self.kvs
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, v))
+                .collect::<Vec<_>>()
+                .join(", "),
         )
     }
 }

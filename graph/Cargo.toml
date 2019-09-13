@@ -8,7 +8,6 @@ bigdecimal = { version = "0.0.14", features = ["serde"] }
 diesel = { version = "1.4.2", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 chrono = "0.4"
 isatty = "0.1"
-itertools = "0.7"
 reqwest = "0.9"
 
 # graph-patches contains changes such as
