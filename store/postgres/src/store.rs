@@ -577,9 +577,10 @@ impl Store {
     fn apply_entity_cache(
         &self,
         conn: &e::Connection,
+        subgraph: &SubgraphDeploymentId,
         mods: Vec<EntityModification>,
         history_event: Option<&HistoryEvent>,
-    ) -> Result<i32, StoreError> {
+    ) -> Result<(), StoreError> {
         let mut count = 0;
 
         for modification in mods {
@@ -614,7 +615,8 @@ impl Store {
                 count += n;
             }
         }
-        Ok(count)
+        conn.update_entity_count(&subgraph, count)?;
+        Ok(())
     }
 
     /// Apply a series of entity operations in Postgres. Return `true` if
@@ -632,9 +634,8 @@ impl Store {
         let v = serde_json::to_value(event)?;
         JsonNotification::send("store_events", &v, &econn.conn)?;
 
-        let count = self.apply_entity_cache(econn, mods, Some(history_event))?;
+        self.apply_entity_cache(econn, &subgraph, mods, Some(history_event))?;
 
-        econn.update_entity_count(&subgraph, count)?;
         match history_event {
             HistoryEvent {
                 source: EventSource::EthereumBlock(block_ptr),
