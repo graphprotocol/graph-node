@@ -682,18 +682,6 @@ impl Store {
         Ok(e::Connection::new(conn, self))
     }
 
-    /// Creates a history event to use when applying entity operations.
-    pub fn create_history_event(
-        &self,
-        subgraph: SubgraphDeploymentId,
-        event_source: EventSource,
-    ) -> Result<HistoryEvent, Error> {
-        let conn = self
-            .get_entity_conn()
-            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        conn.create_history_event(subgraph, event_source)
-    }
-
     fn cached_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SchemaPair, Error> {
         if let Some(pair) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
             trace!(self.logger, "schema cache hit"; "id" => subgraph_id.to_string());

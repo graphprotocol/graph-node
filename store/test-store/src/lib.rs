@@ -64,18 +64,6 @@ lazy_static! {
     ).into();
 }
 
-pub fn make_history_event(
-    block_ptr: &EthereumBlockPointer,
-    subgraph: &SubgraphDeploymentId,
-) -> HistoryEvent {
-    let source = EventSource::EthereumBlock(block_ptr.to_owned());
-    HistoryEvent {
-        id: 0,
-        subgraph: subgraph.clone(),
-        source,
-    }
-}
-
 /// Convenience to transact EntityOperation instead of EntityModification
 pub fn transact_entity_operations(
     store: &Arc<Store>,
