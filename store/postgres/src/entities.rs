@@ -384,7 +384,7 @@ impl<'a> Connection<'a> {
         subgraph: &SubgraphDeploymentId,
         entity_types: Vec<String>,
         filter: Option<EntityFilter>,
-        order: Option<(String, ValueType, &str, &str)>,
+        order: Option<(String, ValueType, &str)>,
         first: Option<u32>,
         skip: u32,
         block: BlockNumber,
@@ -734,13 +734,13 @@ impl JsonStorage {
             .transpose()
     }
 
-    /// order is a tuple (attribute, value_type, cast, direction)
+    /// order is a tuple (attribute, value_type, direction)
     fn query(
         &self,
         conn: &PgConnection,
         entity_types: Vec<String>,
         filter: Option<EntityFilter>,
-        order: Option<(String, ValueType, &str, &str)>,
+        order: Option<(String, ValueType, &str)>,
         first: Option<u32>,
         skip: u32,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
@@ -758,7 +758,21 @@ impl JsonStorage {
             query = query.filter(filter);
         }
 
-        if let Some((attribute, value_type, cast, direction)) = order {
+        if let Some((attribute, value_type, direction)) = order {
+            let cast = match value_type {
+                ValueType::BigInt | ValueType::BigDecimal => "::numeric",
+                ValueType::Boolean => "::boolean",
+                ValueType::Bytes => "",
+                ValueType::ID => "",
+                ValueType::Int => "::bigint",
+                ValueType::String => "",
+                ValueType::List => {
+                    return Err(QueryExecutionError::OrderByNotSupportedForType(
+                        "List".to_string(),
+                    ));
+                }
+            };
+
             query = match value_type {
                 ValueType::String => query.order(
                     sql::<Text>("left(data ->")

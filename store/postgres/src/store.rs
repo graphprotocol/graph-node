@@ -381,20 +381,7 @@ impl Store {
                         EntityOrder::Descending => "DESC",
                     })
                     .unwrap_or("ASC");
-                let cast_type = match value_type {
-                    ValueType::BigInt | ValueType::BigDecimal => "::numeric",
-                    ValueType::Boolean => "::boolean",
-                    ValueType::Bytes => "",
-                    ValueType::ID => "",
-                    ValueType::Int => "::bigint",
-                    ValueType::String => "",
-                    ValueType::List => {
-                        return Err(QueryExecutionError::OrderByNotSupportedForType(
-                            "List".to_string(),
-                        ));
-                    }
-                };
-                Some((attribute, value_type, cast_type, direction))
+                Some((attribute, value_type, direction))
             }
             None => None,
         };

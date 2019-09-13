@@ -353,13 +353,13 @@ impl Layout {
             .map(|data| data.entity))
     }
 
-    /// order is a tuple (attribute, cast, direction)
+    /// order is a tuple (attribute, value_type, direction)
     pub fn query(
         &self,
         conn: &PgConnection,
         entity_types: Vec<String>,
         filter: Option<EntityFilter>,
-        order: Option<(String, ValueType, &str, &str)>,
+        order: Option<(String, ValueType, &str)>,
         first: Option<u32>,
         skip: u32,
         block: BlockNumber,

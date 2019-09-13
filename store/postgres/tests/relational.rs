@@ -505,7 +505,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
                         EntityOrder::Descending => "DESC",
                     })
                     .unwrap_or("ASC");
-                Some((attribute, value_type, "", direction))
+                Some((attribute, value_type, direction))
             }
             None => None,
         };
