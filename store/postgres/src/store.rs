@@ -837,8 +837,7 @@ impl StoreTrait for Store {
             block_ptr_to,
         );
         let conn = self.get_entity_conn().map_err(Error::from)?;
-        conn.conn
-            .transaction(|| self.apply_metadata_operations_with_conn(&conn, ops))?;
+        conn.transaction(|| self.apply_metadata_operations_with_conn(&conn, ops))?;
 
         conn.should_migrate(&subgraph_id, &block_ptr_to)
     }
@@ -870,7 +869,7 @@ impl StoreTrait for Store {
 
         let econn = self.get_entity_conn()?;
 
-        econn.conn.transaction(|| {
+        econn.transaction(|| {
             // Ensure the history event exists in the database
             let history_event = econn.create_history_event(subgraph_id.clone(), block_ptr_to)?;
 
@@ -902,7 +901,7 @@ impl StoreTrait for Store {
         operations: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         let econn = self.get_entity_conn()?;
-        econn.conn.transaction(|| {
+        econn.transaction(|| {
             self.apply_metadata_operations_with_conn(&econn, operations)
                 .map(|_| ())
         })
@@ -913,9 +912,7 @@ impl StoreTrait for Store {
         indexes: Vec<AttributeIndexDefinition>,
     ) -> Result<(), SubgraphAssignmentProviderError> {
         let econn = self.get_entity_conn()?;
-        econn
-            .conn
-            .transaction(|| self.build_entity_attribute_indexes_with_conn(&econn, indexes))
+        econn.transaction(|| self.build_entity_attribute_indexes_with_conn(&econn, indexes))
     }
 
     fn revert_block_operations(
@@ -930,7 +927,7 @@ impl StoreTrait for Store {
         }
 
         let econn = self.get_entity_conn()?;
-        econn.conn.transaction(|| {
+        econn.transaction(|| {
             let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
                 &subgraph_id,
                 block_ptr_from,
@@ -1008,12 +1005,9 @@ impl StoreTrait for Store {
         // and then retry the subgraph creation.
         loop {
             let start = Instant::now();
-            let result = econn.conn.transaction(|| -> Result<(), StoreError> {
+            let result = econn.transaction(|| -> Result<(), StoreError> {
                 self.apply_metadata_operations_with_conn(&econn, ops.clone())?;
-                econn
-                    .conn
-                    .batch_execute(&format!("set local lock_timeout to '{}s'", LOCK_TIMEOUT))?;
-                crate::entities::create_schema(&econn.conn, schema)
+                econn.create_schema(schema, LOCK_TIMEOUT)
             });
             if let Err(StoreError::Unknown(_)) = &result {
                 // There is no robust way to actually find out that we timed
@@ -1046,7 +1040,7 @@ impl StoreTrait for Store {
     ) -> Result<(), StoreError> {
         let econn = self.get_entity_conn()?;
 
-        econn.conn.transaction(|| {
+        econn.transaction(|| {
             self.apply_metadata_operations_with_conn(&econn, ops)?;
             econn.start_subgraph(subgraph_id)
         })

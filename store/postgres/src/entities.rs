@@ -316,7 +316,7 @@ pub(crate) fn make_storage_cache() -> StorageCache {
 /// cached across transactions as there is no mechanism in place to notify
 /// other index nodes that a subgraph has been migrated
 pub(crate) struct Connection<'a> {
-    pub conn: PooledConnection<ConnectionManager<PgConnection>>,
+    conn: PooledConnection<ConnectionManager<PgConnection>>,
     store: &'a Store,
 }
 
@@ -690,6 +690,74 @@ impl<'a> Connection<'a> {
     pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
         let v = serde_json::to_value(event)?;
         JsonNotification::send("store_events", &v, &*self.conn)
+    }
+
+    pub(crate) fn transaction<T, E, F>(&self, f: F) -> Result<T, E>
+    where
+        F: FnOnce() -> Result<T, E>,
+        E: From<diesel::result::Error>,
+    {
+        self.conn.transaction(f)
+    }
+
+    /// Create the database schema for a new subgraph, including all tables etc.
+    ///
+    /// It is an error if `deployment_schemas` already has an entry for this
+    /// `subgraph_id`
+    pub(crate) fn create_schema(
+        &self,
+        schema: &SubgraphSchema,
+        lock_timeout: u64,
+    ) -> Result<(), StoreError> {
+        // Creating JSONB storage used to require a lock on event_meta_data. To
+        // avoid locking up indexing completely, do not hold a lock for longer
+        // than `lock_timeout`
+        self.conn
+            .batch_execute(&format!("set local lock_timeout to '{}s'", lock_timeout))?;
+
+        // Check if there already is an entry for this subgraph. If so, do
+        // nothing
+        let count = deployment_schemas::table
+            .filter(deployment_schemas::subgraph.eq(schema.id.to_string()))
+            .count()
+            .first::<i64>(&self.conn)?;
+        if count > 0 {
+            return Ok(());
+        }
+
+        // We temporarily use an environment variable to determine whether
+        // to create a relational or split schema. Utimately, we will default
+        // to always creating a relational schema
+        let scheme = match std::env::var_os("RELATIONAL_SCHEMA") {
+            Some(_) => self::public::DeploymentSchemaVersion::Relational,
+            None => self::public::DeploymentSchemaVersion::Split,
+        };
+
+        // Create a schema for the deployment.
+        let schemas: Vec<String> = diesel::insert_into(deployment_schemas::table)
+            .values((
+                deployment_schemas::subgraph.eq(schema.id.to_string()),
+                deployment_schemas::version.eq(scheme),
+            ))
+            .returning(deployment_schemas::name)
+            .get_results(&self.conn)?;
+        let schema_name = schemas
+            .first()
+            .ok_or_else(|| format_err!("failed to read schema name for {} back", &schema.id))?;
+
+        let query = format!("create schema {}", schema_name);
+        self.conn.batch_execute(&*query)?;
+
+        match std::env::var_os("RELATIONAL_SCHEMA") {
+            Some(_) => Layout::create_relational_schema(
+                &self.conn,
+                &schema_name,
+                schema.id.clone(),
+                &schema.document,
+            )
+            .map(|_| ()),
+            None => create_split_schema(&self.conn, &schema_name),
+        }
     }
 }
 
@@ -1411,59 +1479,6 @@ pub fn delete_all_entities_for_test_use_only(
     rows = rows + diesel::delete(subgraphs::entities::table).execute(conn)?;
     store.storage_cache.lock().unwrap().clear();
     Ok(rows)
-}
-
-/// Create the database schema for a new subgraph, including all tables etc.
-///
-/// It is an error if `deployment_schemas` already has an entry for this
-/// `subgraph_id`
-pub(crate) fn create_schema(
-    conn: &PgConnection,
-    schema: &SubgraphSchema,
-) -> Result<(), StoreError> {
-    // Check if there already is an entry for this subgraph. If so, do
-    // nothing
-    let count = deployment_schemas::table
-        .filter(deployment_schemas::subgraph.eq(schema.id.to_string()))
-        .count()
-        .first::<i64>(conn)?;
-    if count > 0 {
-        return Ok(());
-    }
-
-    // We temporarily use an environment variable to determine whether
-    // to create a relational or split schema. Utimately, we will default
-    // to always creating a relational schema
-    let scheme = match std::env::var_os("RELATIONAL_SCHEMA") {
-        Some(_) => self::public::DeploymentSchemaVersion::Relational,
-        None => self::public::DeploymentSchemaVersion::Split,
-    };
-
-    // Create a schema for the deployment.
-    let schemas: Vec<String> = diesel::insert_into(deployment_schemas::table)
-        .values((
-            deployment_schemas::subgraph.eq(schema.id.to_string()),
-            deployment_schemas::version.eq(scheme),
-        ))
-        .returning(deployment_schemas::name)
-        .get_results(conn)?;
-    let schema_name = schemas
-        .first()
-        .ok_or_else(|| format_err!("failed to read schema name for {} back", &schema.id))?;
-
-    let query = format!("create schema {}", schema_name);
-    conn.batch_execute(&*query)?;
-
-    match std::env::var_os("RELATIONAL_SCHEMA") {
-        Some(_) => Layout::create_relational_schema(
-            conn,
-            &schema_name,
-            schema.id.clone(),
-            &schema.document,
-        )
-        .map(|_| ()),
-        None => create_split_schema(conn, &schema_name),
-    }
 }
 
 pub fn create_split_schema(conn: &PgConnection, schema_name: &str) -> Result<(), StoreError> {
