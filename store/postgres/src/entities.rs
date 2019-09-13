@@ -31,11 +31,11 @@ use diesel::Connection as _;
 use diesel::ExpressionMethods;
 use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
 use inflector::cases::snakecase::to_snake_case;
-use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use graph::data::schema::Schema as SubgraphSchema;
@@ -300,13 +300,21 @@ impl QueryableByName<Pg> for RawHistory {
     }
 }
 
+/// A cache for storage objects as constructing them takes a bit of
+/// computation. The cache lives as an attribute on the Store, but is managed
+/// solely from this module
+pub(crate) type StorageCache = Mutex<HashMap<SubgraphDeploymentId, Arc<Storage>>>;
+
+pub(crate) fn make_storage_cache() -> StorageCache {
+    Mutex::new(HashMap::new())
+}
+
 /// A connection into the database to handle entities which caches the
 /// layout to actual database tables. Instances of this struct must not be
 /// cached across transactions as there is no mechanism in place to notify
 /// other index nodes that a subgraph has been migrated
 pub(crate) struct Connection<'a> {
     pub conn: PooledConnection<ConnectionManager<PgConnection>>,
-    cache: RefCell<HashMap<SubgraphDeploymentId, Storage>>,
     store: &'a Store,
 }
 
@@ -315,25 +323,29 @@ impl<'a> Connection<'a> {
         conn: PooledConnection<ConnectionManager<PgConnection>>,
         store: &'a Store,
     ) -> Connection<'a> {
-        Connection {
-            conn,
-            cache: RefCell::new(HashMap::new()),
-            store,
-        }
+        Connection { conn, store }
     }
 
-    /// Return the storage for the subgraph
-    fn storage(&self, subgraph: &SubgraphDeploymentId) -> Result<Storage, StoreError> {
-        let mut cache = self.cache.borrow_mut();
-
-        match cache.get(subgraph) {
-            Some(storage) => Ok(storage.clone()),
-            None => {
-                let storage = Storage::new(&self.conn, subgraph, self.store)?;
-                cache.insert(subgraph.clone(), storage.clone());
-                Ok(storage)
-            }
+    /// Return the storage for the subgraph. Since constructing a `Storage`
+    /// object takes a bit of computation, we cache storage objects that do
+    /// not have a pending migration in the Store, i.e., for the lifetime of
+    /// the Store. Storage objects with a pending migration can not be
+    /// cached for longer than a transaction since they might change
+    /// without us knowing
+    fn storage(&self, subgraph: &SubgraphDeploymentId) -> Result<Arc<Storage>, StoreError> {
+        if let Some(storage) = self.store.storage_cache.lock().unwrap().get(subgraph) {
+            return Ok(storage.clone());
         }
+
+        let storage = Arc::new(Storage::new(&self.conn, subgraph, self.store)?);
+        if !storage.needs_migrating() {
+            self.store
+                .storage_cache
+                .lock()
+                .unwrap()
+                .insert(subgraph.clone(), storage.clone());
+        }
+        Ok(storage.clone())
     }
 
     /// Do any cleanup to bring the subgraph into a known good state
@@ -361,7 +373,7 @@ impl<'a> Connection<'a> {
         id: &String,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
-        match self.storage(subgraph)? {
+        match &*self.storage(subgraph)? {
             Storage::Json(json) => json.find(&self.conn, entity, id),
             Storage::Relational(layout) => layout.find(&self.conn, entity, id, block),
         }
@@ -377,7 +389,7 @@ impl<'a> Connection<'a> {
         skip: u32,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        match self.storage(subgraph)? {
+        match &*self.storage(subgraph)? {
             Storage::Json(json) => json.query(&self.conn, entity_types, filter, order, first, skip),
             Storage::Relational(layout) => {
                 layout.query(&self.conn, entity_types, filter, order, first, skip, block)
@@ -391,7 +403,7 @@ impl<'a> Connection<'a> {
         entity_id: &String,
         entities: Vec<&String>,
     ) -> Result<Option<String>, StoreError> {
-        match self.storage(subgraph)? {
+        match &*self.storage(subgraph)? {
             Storage::Json(json) => json.conflicting_entity(&self.conn, entity_id, entities),
             Storage::Relational(layout) => {
                 layout.conflicting_entity(&self.conn, entity_id, entities)
@@ -405,7 +417,7 @@ impl<'a> Connection<'a> {
         entity: &Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<(), StoreError> {
-        match self.storage(&key.subgraph_id)? {
+        match &*self.storage(&key.subgraph_id)? {
             Storage::Json(json) => json
                 .insert(&self.conn, &key, entity, history_event)
                 .map(|_| ()),
@@ -421,7 +433,7 @@ impl<'a> Connection<'a> {
         entity: &Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<(), StoreError> {
-        match self.storage(&key.subgraph_id)? {
+        match &*self.storage(&key.subgraph_id)? {
             Storage::Json(json) => json
                 .update(&self.conn, key, entity, history_event)
                 .map(|_| ()),
@@ -439,7 +451,7 @@ impl<'a> Connection<'a> {
         entity: &Entity,
         guard: Option<EntityFilter>,
     ) -> Result<usize, StoreError> {
-        match self.storage(&key.subgraph_id)? {
+        match &*self.storage(&key.subgraph_id)? {
             Storage::Json(json) => json.update_metadata(&self.conn, key, entity, guard),
             Storage::Relational(_) => unreachable!("relational storeage is not used for metadata"),
         }
@@ -450,7 +462,7 @@ impl<'a> Connection<'a> {
         key: &EntityKey,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        match self.storage(&key.subgraph_id)? {
+        match &*self.storage(&key.subgraph_id)? {
             Storage::Json(json) => json.delete(&self.conn, key, history_event),
             Storage::Relational(layout) => {
                 layout.delete(&self.conn, key, block_number(&history_event))
@@ -462,7 +474,7 @@ impl<'a> Connection<'a> {
         &self,
         index: &AttributeIndexDefinition,
     ) -> Result<usize, StoreError> {
-        match self.storage(&index.subgraph_id)? {
+        match &*self.storage(&index.subgraph_id)? {
             Storage::Json(json) => json.build_attribute_index(&self.conn, index),
             Storage::Relational(_) => Ok(1),
         }
@@ -474,7 +486,7 @@ impl<'a> Connection<'a> {
         block_ptr: &EthereumBlockPointer,
     ) -> Result<(StoreEvent, i32), StoreError> {
         // Revert the block in the subgraph itself
-        let (event, count) = match self.storage(subgraph)? {
+        let (event, count) = match &*self.storage(subgraph)? {
             Storage::Json(json) => json.revert_block(&self.conn, block_ptr.hash_hex())?,
             Storage::Relational(layout) => {
                 let block = block_ptr.number.try_into().unwrap();
@@ -486,7 +498,7 @@ impl<'a> Connection<'a> {
         // importantly creation of dynamic data sources. We ensure in the
         // rest of the code that we only record history for those meta data
         // changes that might need to be reverted
-        match self.storage(&SUBGRAPHS_ID)? {
+        match &*self.storage(&SUBGRAPHS_ID)? {
             Storage::Json(json) => {
                 let (meta_event, _) =
                     json.revert_block_meta(&self.conn, subgraph, block_ptr.hash_hex())?;
@@ -628,11 +640,16 @@ impl<'a> Connection<'a> {
     /// Perform one migration step and return true if there are more steps
     /// left to do. Each step of the migration is performed in  a separate
     /// transaction so that any locks a step takes are freed up at the end
+    // We do not currently use this, but getting the framework right was
+    // painful enough that we should preserve the general setup of
+    // per-subgraph migrations
+    #[allow(unreachable_code, unused_variables)]
     fn migration_step(
         &self,
         logger: &Logger,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<bool, Error> {
+        unreachable!("The curent code base does not require any subgraph migrations");
         self.conn.transaction(|| -> Result<bool, Error> {
             let storage = self.storage(subgraph)?;
             let errmsg = format_err!(
@@ -649,9 +666,13 @@ impl<'a> Connection<'a> {
                 "state" => format!("{:?}", schema.state)
             );
             let start = Instant::now();
-            let storage = storage.migrate(&self.conn, logger, &schema)?;
-            let needs_migrating = storage.needs_migrating();
-            self.cache.borrow_mut().insert(subgraph.clone(), storage);
+            // Do the actual migration, and return an updated storage
+            // object, something like
+            //
+            // let storage = storage.migrate(&self.conn, logger, &schema)?;
+            // let needs_migrating = storage.needs_migrating();
+            // self.cache.borrow_mut().insert(subgraph.clone(), Arc::new(storage));
+            //
             info!(
                 logger,
                 "finished migrating";
@@ -660,7 +681,7 @@ impl<'a> Connection<'a> {
                 "state" => format!("{:?}", schema.state),
                 "migration_time_ms" => start.elapsed().as_millis()
             );
-            Ok(needs_migrating)
+            Ok(storage.needs_migrating())
         })
     }
 }
@@ -1340,15 +1361,6 @@ impl Storage {
             .map(|_| ())?)
     }
 
-    fn migrate(
-        self,
-        _conn: &PgConnection,
-        _logger: &Logger,
-        _schema: &Schema,
-    ) -> Result<Self, Error> {
-        Ok(self)
-    }
-
     fn needs_migrating(&self) -> bool {
         false
     }
@@ -1357,7 +1369,11 @@ impl Storage {
 /// Delete all entities. This function exists solely for integration tests
 /// and should never be called from any other code. Unfortunately, Rust makes
 /// it very hard to export items just for testing
-pub fn delete_all_entities_for_test_use_only(conn: &PgConnection) -> Result<usize, StoreError> {
+#[cfg(debug_assertions)]
+pub fn delete_all_entities_for_test_use_only(
+    store: &Store,
+    conn: &PgConnection,
+) -> Result<usize, StoreError> {
     // Delete public entities and related data
     let mut rows = diesel::delete(public::event_meta_data::table).execute(conn)?;
     // Delete all subgraph schemas
@@ -1372,6 +1388,7 @@ pub fn delete_all_entities_for_test_use_only(conn: &PgConnection) -> Result<usiz
     }
     // Delete subgraphs entities
     rows = rows + diesel::delete(subgraphs::entities::table).execute(conn)?;
+    store.storage_cache.lock().unwrap().clear();
     Ok(rows)
 }
 
@@ -1502,7 +1519,7 @@ pub fn create_split_schema(conn: &PgConnection, schema_name: &str) -> Result<(),
 /// Drop the schema for `subgraph`. This deletes all data for the subgraph,
 /// and can not be reversed. It does not remove any of the metadata in
 /// `subgraphs.entities` associated with the subgraph
-pub(crate) fn drop_schema(
+fn drop_schema(
     conn: &diesel::pg::PgConnection,
     subgraph: &SubgraphDeploymentId,
 ) -> Result<usize, StoreError> {

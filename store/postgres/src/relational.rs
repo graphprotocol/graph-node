@@ -13,8 +13,8 @@ use graphql_parser::schema as s;
 use inflector::Inflector;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::{self, Write};
-use std::rc::Rc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use crate::relational_queries::{
     ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindQuery, InsertQuery,
@@ -120,7 +120,7 @@ pub struct Layout {
     /// The SQL type for columns with GraphQL type `ID`
     id_type: IdType,
     /// Maps the GraphQL name of a type to the relational table
-    pub tables: HashMap<String, Rc<Table>>,
+    pub tables: HashMap<String, Arc<Table>>,
     /// The subgraph id
     pub subgraph: SubgraphDeploymentId,
     /// The database schema for this subgraph
@@ -128,7 +128,7 @@ pub struct Layout {
     /// Map the entity names of interfaces to the list of
     /// database tables that contain entities implementing
     /// that interface
-    pub interfaces: HashMap<String, Vec<Rc<Table>>>,
+    pub interfaces: HashMap<String, Vec<Arc<Table>>>,
     /// Enums defined in the schema and their possible values. The names
     /// are the original GraphQL names
     pub enums: EnumMap,
@@ -197,7 +197,7 @@ impl Layout {
             }
         }
 
-        let tables: Vec<_> = tables.into_iter().map(|table| Rc::new(table)).collect();
+        let tables: Vec<_> = tables.into_iter().map(|table| Arc::new(table)).collect();
         let interfaces = interfaces
             .into_iter()
             .map(|(k, v)| {
@@ -308,7 +308,7 @@ impl Layout {
             .ok_or_else(|| StoreError::UnknownTable(name.to_string()))
     }
 
-    pub fn table_for_entity(&self, entity: &str) -> Result<&Rc<Table>, StoreError> {
+    pub fn table_for_entity(&self, entity: &str) -> Result<&Arc<Table>, StoreError> {
         self.tables
             .get(entity)
             .ok_or_else(|| StoreError::UnknownTable(entity.to_owned()))

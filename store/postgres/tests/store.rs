@@ -120,7 +120,7 @@ where
     runtime
         .block_on(future::lazy(move || {
             // Reset state before starting
-            remove_test_data();
+            remove_test_data(store.clone());
 
             // Seed database with test data
             insert_test_data(store.clone());
@@ -271,10 +271,10 @@ fn create_test_entity(
 }
 
 /// Removes test data from the database behind the store.
-fn remove_test_data() {
+fn remove_test_data(store: Arc<graph_store_postgres::Store>) {
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
-    graph_store_postgres::store::delete_all_entities_for_test_use_only(&conn)
+    graph_store_postgres::store::delete_all_entities_for_test_use_only(&store, &conn)
         .expect("Failed to remove entity test data");
 }
 

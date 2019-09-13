@@ -123,6 +123,10 @@ pub struct Store {
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
     schema_cache: Mutex<LruCache<SubgraphDeploymentId, SchemaPair>>,
+    /// A cache for the storage metadata for subgraphs. The Store just
+    /// hosts this because it lives long enough, but it is managed from
+    /// the entities module
+    pub(crate) storage_cache: e::StorageCache,
 }
 
 impl Store {
@@ -186,6 +190,7 @@ impl Store {
             genesis_block_ptr: (net_identifiers.genesis_block_hash, config.start_block).into(),
             conn: pool,
             schema_cache: Mutex::new(LruCache::with_capacity(100)),
+            storage_cache: e::make_storage_cache(),
         };
 
         // Add network to store and check network identifiers
@@ -1263,4 +1268,5 @@ impl ChainStore for Store {
 /// Delete all entities. This function exists solely for integration tests
 /// and should never be called from any other code. Unfortunately, Rust makes
 /// it very hard to export items just for testing
+#[cfg(debug_assertions)]
 pub use crate::entities::delete_all_entities_for_test_use_only;
