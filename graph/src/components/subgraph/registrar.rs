@@ -41,12 +41,6 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
         node_id: NodeId,
     ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static>;
 
-    fn update_subgraph_query_price(
-        &self,
-        hash: SubgraphDeploymentId,
-        price: u64,
-    ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static>;
-
     fn update_subgraph_query_prices(
         &self,
         prices: Vec<(SubgraphDeploymentId, u64)>,
