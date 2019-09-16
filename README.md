@@ -1,7 +1,5 @@
 # Graph Node
 
-**Note:** This project is a heavily WIP and until it reaches v1.0, the API is subject to change in breaking ways without notice.
-
 [![Build Status](https://travis-ci.org/graphprotocol/graph-node.svg?branch=master)](https://travis-ci.org/graphprotocol/graph-node)
 [![Getting Started Docs](https://img.shields.io/badge/docs-getting--started-brightgreen.svg)](docs/getting-started.md)
 
