@@ -225,7 +225,7 @@ dependencies = [
 
 [[package]]
 name = "bs58"
-version = "0.2.2"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -1004,7 +1004,7 @@ dependencies = [
 name = "graph-runtime-wasm"
 version = "0.15.1"
 dependencies = [
- "bs58 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bs58 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "ethabi 8.0.0 (git+https://github.com/graphprotocol/ethabi.git?branch=graph-patches)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.15.1",
@@ -3505,7 +3505,7 @@ dependencies = [
 "checksum block-buffer 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "a076c298b9ecdb530ed9d967e74a6027d6a7478924520acddcddc24c1c8ab3ab"
 "checksum block-buffer 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "49665c62e0e700857531fa5d3763e91b539ff1abeebd56808d378b495870d60d"
 "checksum block-padding 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "d75255892aeb580d3c566f213a2b6fdc1c66667839f45719ee1d30ebf2aea591"
-"checksum bs58 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "0de79cfb98e7aa9988188784d8664b4b5dad6eaaa0863b91d9a4ed871d4f7a42"
+"checksum bs58 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)" = "c95ee6bba9d950218b6cc910cf62bc9e0a171d0f4537e3627b0f54d08549b188"
 "checksum build_const 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "39092a32794787acd8525ee150305ff051b0aa6cc2abaf193924f5ab05425f39"
 "checksum byte-tools 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "560c32574a12a89ecd91f5e742165893f86e3ab98d21f8ea548658eb9eef5f40"
 "checksum byte-tools 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "e3b5ca7a04898ad4bcd41c90c5285445ff5b791899bb1b0abdd2a2aa791211d7"
