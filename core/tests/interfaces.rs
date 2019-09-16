@@ -166,7 +166,16 @@ fn one_interface_multiple_entities() {
     assert_eq!(
         format!("{:?}", res.data.unwrap()),
         "Object({\"leggeds\": List([Object({\"legs\": Int(Number(3))}), Object({\"legs\": Int(Number(4))})])})"
-    )
+    );
+
+    // Test for support issue #32.
+    let query = "query { legged(id: \"2\") { legs } }";
+    let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
+    assert!(res.errors.is_none());
+    assert_eq!(
+        format!("{:?}", res.data.unwrap()),
+        "Object({\"legged\": Object({\"legs\": Int(Number(4))})})",
+    );
 }
 
 #[test]
