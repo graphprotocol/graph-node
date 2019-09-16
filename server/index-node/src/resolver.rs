@@ -16,6 +16,16 @@ pub struct IndexNodeResolver<R, S> {
     store: Arc<S>,
 }
 
+/// The ID of a subgraph deployment assignment.
+#[derive(Debug)]
+struct AssignmentId(String);
+
+impl TryFromValue for AssignmentId {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        Ok(Self(value.get_required("id")?))
+    }
+}
+
 /// Light wrapper around `EthereumBlockPointer` that is compatible with GraphQL values.
 struct EthereumBlock(EthereumBlockPointer);
 
@@ -179,13 +189,37 @@ struct IndexingStatuses(Vec<IndexingStatus>);
 
 impl From<&QueryResult> for IndexingStatuses {
     fn from(result: &QueryResult) -> Self {
-        IndexingStatuses(result.data.as_ref().map_or(vec![], |value| {
+        // Extract deployment assignment IDs from the query result
+        let assignments = dbg!(result.data.as_ref().map_or(vec![], |value| {
             value
-                .get_required::<q::Value>("subgraphDeployments")
-                .expect("no subgraph deployments in the result")
-                .get_values()
-                .expect("failed to parse subgraph deployments")
-        }))
+                .get_required::<q::Value>("subgraphDeploymentAssignments")
+                .expect("no subgraph deployment assignments in the result")
+                .get_values::<AssignmentId>()
+                .expect("failed to parse subgraph deployment assignments")
+        }));
+
+        IndexingStatuses(
+            result
+                .data
+                .as_ref()
+                // Parse indexing statuses from deployments
+                .map_or(vec![], |value| {
+                    value
+                        .get_required::<q::Value>("subgraphDeployments")
+                        .expect("no subgraph deployments in the result")
+                        .get_values()
+                        .expect("failed to parse subgraph deployments")
+                })
+                .into_iter()
+                // Filter out those deployments for which there is no active assignment
+                .filter(|status: &IndexingStatus| {
+                    dbg!(assignments
+                        .iter()
+                        .find(|id| id.0 == status.subgraph)
+                        .is_some())
+                })
+                .collect(),
+        )
     }
 }
 
@@ -213,6 +247,16 @@ where
         &self,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
+        // Build a `where` filter that both subgraph deployments and subgraph deployment
+        // assignments have to match
+        let where_filter = object_value(arguments.get(&String::from("subgraphs")).map_or(
+            vec![],
+            |value| match value {
+                ids @ q::Value::List(_) => vec![("id_in", ids.clone())],
+                _ => unreachable!(),
+            },
+        ));
+
         // Build a query for matching subgraph deployments
         let query = Query {
             // The query is against the subgraph of subgraphs
@@ -224,8 +268,11 @@ where
             // We're querying all deployments that match the provided filter
             document: q::parse_query(
                 r#"
-                query deployments($where: SubgraphDeployment_filter!) {
-                  subgraphDeployments(where: $where) {
+                query deployments(
+                  $whereDeployments: SubgraphDeployment_filter!,
+                  $whereAssignments: SubgraphDeploymentAssignment_filter!
+                ) {
+                  subgraphDeployments(where: $whereDeployments) {
                     id
                     synced
                     failed
@@ -241,6 +288,9 @@ where
                       }
                     }
                   }
+                  subgraphDeploymentAssignments(where: $whereAssignments) {
+                    id
+                  }
                 }
                 "#,
             )
@@ -249,26 +299,20 @@ where
             // If the `subgraphs` argument was provided, build a suitable `where`
             // filter to match the IDs; otherwise leave the `where` filter empty
             variables: Some(QueryVariables::new(HashMap::from_iter(
-                vec![(
-                    "where".into(),
-                    object_value(arguments.get(&String::from("subgraphs")).map_or(
-                        vec![],
-                        |value| match value {
-                            ids @ q::Value::List(_) => vec![("id_in", ids.clone())],
-                            _ => unreachable!(),
-                        },
-                    )),
-                )]
+                vec![
+                    ("whereDeployments".into(), where_filter.clone()),
+                    ("whereAssignments".into(), where_filter),
+                ]
                 .into_iter(),
             ))),
         };
 
         // Execute the query
-        let result = self
+        let result = dbg!(self
             .graphql_runner
             .run_query_with_complexity(query, None, None, Some(std::u32::MAX))
             .wait()
-            .expect("error querying subgraph deployments");
+            .expect("error querying subgraph deployments"));
 
         Ok(IndexingStatuses::from(&result).into())
     }
