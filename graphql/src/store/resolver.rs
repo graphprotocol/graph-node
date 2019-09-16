@@ -231,7 +231,8 @@ where
                         .map(|o| o.name.clone())
                         .collect();
                     let range = EntityRange::first(1);
-                    let query = EntityQuery::new(subgraph_id, entity_types, range);
+                    let mut query = EntityQuery::new(subgraph_id, entity_types, range);
+                    query.filter = Some(EntityFilter::Equal(String::from("id"), Value::from(id)));
                     self.store.find(query)?.into_iter().next()
                 }
             }
