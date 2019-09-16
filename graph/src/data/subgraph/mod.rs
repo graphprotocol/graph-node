@@ -239,6 +239,8 @@ pub enum SubgraphRegistrarError {
     DeploymentNotFound(String),
     #[fail(display = "deployment assignment unchanged: {}", _0)]
     DeploymentAssignmentUnchanged(String),
+    #[fail(display = "query price unchanged, deployment: {}, price: {}", _0, _1)]
+    QueryPriceUnchanged(String, String),
     #[fail(display = "subgraph registrar internal query error: {}", _0)]
     QueryExecutionError(QueryExecutionError),
     #[fail(display = "subgraph registrar error with store: {}", _0)]
