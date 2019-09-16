@@ -513,7 +513,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
         let entities = layout
             .query(
                 conn,
-                vec!["User".to_owned()],
+                query.entity_types,
                 query.filter,
                 order,
                 query.range.first,
@@ -543,7 +543,7 @@ fn find_string_contains() {
         vec!["2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Contains(
                 "name".into(),
                 "ind".into(),
@@ -589,7 +589,7 @@ fn find_string_equal() {
         vec!["2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "name".to_owned(),
                 "Cindini".into(),
@@ -607,7 +607,7 @@ fn find_string_not_equal() {
         vec!["1", "3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 "name".to_owned(),
                 "Cindini".into(),
@@ -625,7 +625,7 @@ fn find_string_greater_than() {
         vec!["3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
                 "name".to_owned(),
                 "Kundi".into(),
@@ -643,7 +643,7 @@ fn find_string_less_than_order_by_asc() {
         vec!["2", "1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "name".to_owned(),
                 "Kundi".into(),
@@ -661,7 +661,7 @@ fn find_string_less_than_order_by_desc() {
         vec!["1", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "name".to_owned(),
                 "Kundi".into(),
@@ -679,7 +679,7 @@ fn find_string_less_than_range() {
         vec!["1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "name".to_owned(),
                 "ZZZ".into(),
@@ -700,7 +700,7 @@ fn find_string_multiple_and() {
         vec!["2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![
                 EntityFilter::LessThan("name".to_owned(), "Cz".into()),
                 EntityFilter::Equal("name".to_owned(), "Cindini".into()),
@@ -718,7 +718,7 @@ fn find_string_ends_with() {
         vec!["2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::EndsWith(
                 "name".to_owned(),
                 "ini".into(),
@@ -736,7 +736,7 @@ fn find_string_not_ends_with() {
         vec!["3", "1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::NotEndsWith(
                 "name".to_owned(),
                 "ini".into(),
@@ -754,7 +754,7 @@ fn find_string_in() {
         vec!["1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 "name".to_owned(),
                 vec!["Johnton".into(), "Nobody".into(), "Still nobody".into()],
@@ -772,7 +772,7 @@ fn find_string_not_in() {
         vec!["1", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 "name".to_owned(),
                 vec!["Shaqueeena".into()],
@@ -790,7 +790,7 @@ fn find_float_equal() {
         vec!["1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "weight".to_owned(),
                 Value::BigDecimal(184.4.into()),
@@ -808,7 +808,7 @@ fn find_float_not_equal() {
         vec!["3", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 "weight".to_owned(),
                 Value::BigDecimal(184.4.into()),
@@ -826,7 +826,7 @@ fn find_float_greater_than() {
         vec!["1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
                 "weight".to_owned(),
                 Value::BigDecimal(160.0.into()),
@@ -844,7 +844,7 @@ fn find_float_less_than() {
         vec!["2", "3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "weight".to_owned(),
                 Value::BigDecimal(160.0.into()),
@@ -862,7 +862,7 @@ fn find_float_less_than_order_by_desc() {
         vec!["3", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "weight".to_owned(),
                 Value::BigDecimal(160.0.into()),
@@ -880,7 +880,7 @@ fn find_float_less_than_range() {
         vec!["2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "weight".to_owned(),
                 Value::BigDecimal(161.0.into()),
@@ -901,7 +901,7 @@ fn find_float_in() {
         vec!["3", "1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 "weight".to_owned(),
                 vec![
@@ -922,7 +922,7 @@ fn find_float_not_in() {
         vec!["2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 "weight".to_owned(),
                 vec![
@@ -943,7 +943,7 @@ fn find_int_equal() {
         vec!["1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "age".to_owned(),
                 Value::Int(67 as i32),
@@ -961,7 +961,7 @@ fn find_int_not_equal() {
         vec!["3", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 "age".to_owned(),
                 Value::Int(67 as i32),
@@ -979,7 +979,7 @@ fn find_int_greater_than() {
         vec!["1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
                 "age".to_owned(),
                 Value::Int(43 as i32),
@@ -997,7 +997,7 @@ fn find_int_greater_or_equal() {
         vec!["2", "1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::GreaterOrEqual(
                 "age".to_owned(),
                 Value::Int(43 as i32),
@@ -1015,7 +1015,7 @@ fn find_int_less_than() {
         vec!["2", "3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "age".to_owned(),
                 Value::Int(50 as i32),
@@ -1033,7 +1033,7 @@ fn find_int_less_or_equal() {
         vec!["2", "3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessOrEqual(
                 "age".to_owned(),
                 Value::Int(43 as i32),
@@ -1051,7 +1051,7 @@ fn find_int_less_than_order_by_desc() {
         vec!["3", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "age".to_owned(),
                 Value::Int(50 as i32),
@@ -1069,7 +1069,7 @@ fn find_int_less_than_range() {
         vec!["2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
                 "age".to_owned(),
                 Value::Int(67 as i32),
@@ -1090,7 +1090,7 @@ fn find_int_in() {
         vec!["1", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 "age".to_owned(),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
@@ -1108,7 +1108,7 @@ fn find_int_not_in() {
         vec!["3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 "age".to_owned(),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
@@ -1126,7 +1126,7 @@ fn find_bool_equal() {
         vec!["2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "coffee".to_owned(),
                 Value::Bool(true),
@@ -1144,7 +1144,7 @@ fn find_bool_not_equal() {
         vec!["1", "3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 "coffee".to_owned(),
                 Value::Bool(true),
@@ -1162,7 +1162,7 @@ fn find_bool_in() {
         vec!["2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 "coffee".to_owned(),
                 vec![Value::Bool(true)],
@@ -1180,7 +1180,7 @@ fn find_bool_not_in() {
         vec!["3", "1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 "coffee".to_owned(),
                 vec![Value::Bool(true)],
@@ -1198,7 +1198,7 @@ fn find_bytes_equal() {
         vec!["1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "bin_name".to_owned(),
                 Value::Bytes("Johnton".as_bytes().into()),
@@ -1216,7 +1216,7 @@ fn find_null_equal() {
         vec!["3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::Equal(
                 "favorite_color".to_owned(),
                 Value::Null,
@@ -1234,7 +1234,7 @@ fn find_null_not_equal() {
         vec!["1", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::Not("favorite_color".to_owned(), Value::Null)),
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
@@ -1249,7 +1249,7 @@ fn find_null_not_in() {
         vec!["1", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::NotIn(
                 "favorite_color".to_owned(),
                 vec![Value::Null],
@@ -1264,7 +1264,7 @@ fn find_null_not_in() {
         vec!["1", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::NotIn(
                 "favorite_color".to_owned(),
                 vec!["red".into(), Value::Null],
@@ -1282,7 +1282,7 @@ fn find_order_by_float() {
         vec!["3", "2", "1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: None,
             order_by: Some(("weight".to_owned(), ValueType::BigDecimal)),
             order_direction: Some(EntityOrder::Ascending),
@@ -1293,7 +1293,7 @@ fn find_order_by_float() {
         vec!["1", "2", "3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: None,
             order_by: Some(("weight".to_owned(), ValueType::BigDecimal)),
             order_direction: Some(EntityOrder::Descending),
@@ -1308,7 +1308,7 @@ fn find_order_by_id() {
         vec!["1", "2", "3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: None,
             order_by: Some(("id".to_owned(), ValueType::ID)),
             order_direction: Some(EntityOrder::Ascending),
@@ -1319,7 +1319,7 @@ fn find_order_by_id() {
         vec!["3", "2", "1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: None,
             order_by: Some(("id".to_owned(), ValueType::ID)),
             order_direction: Some(EntityOrder::Descending),
@@ -1334,7 +1334,7 @@ fn find_order_by_int() {
         vec!["3", "2", "1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: None,
             order_by: Some(("age".to_owned(), ValueType::Int)),
             order_direction: Some(EntityOrder::Ascending),
@@ -1345,7 +1345,7 @@ fn find_order_by_int() {
         vec!["1", "2", "3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: None,
             order_by: Some(("age".to_owned(), ValueType::Int)),
             order_direction: Some(EntityOrder::Descending),
@@ -1360,7 +1360,7 @@ fn find_order_by_string() {
         vec!["2", "1", "3"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: None,
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Ascending),
@@ -1371,7 +1371,7 @@ fn find_order_by_string() {
         vec!["3", "1", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: None,
             order_by: Some(("name".to_owned(), ValueType::String)),
             order_direction: Some(EntityOrder::Descending),
@@ -1386,7 +1386,7 @@ fn find_where_nested_and_or() {
         vec!["1", "2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Or(vec![
                 EntityFilter::Equal("id".to_owned(), Value::from("1")),
                 EntityFilter::Equal("id".to_owned(), Value::from("2")),
@@ -1404,7 +1404,7 @@ fn find_enum_equal() {
         vec!["2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
                 "favorite_color".to_owned(),
                 "red".into(),
@@ -1422,7 +1422,7 @@ fn find_enum_not_equal() {
         vec!["1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::Not(
                 "favorite_color".to_owned(),
                 "red".into(),
@@ -1440,7 +1440,7 @@ fn find_enum_in() {
         vec!["2"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::In(
                 "favorite_color".to_owned(),
                 vec!["red".into()],
@@ -1458,7 +1458,7 @@ fn find_enum_not_in() {
         vec!["1"],
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_types: vec!["user".to_owned()],
+            entity_types: vec!["User".to_owned()],
             filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
                 "favorite_color".to_owned(),
                 vec!["red".into()],
