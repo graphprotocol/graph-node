@@ -345,7 +345,7 @@ fn find() {
         // Find for non-existing entity type
         let err = layout.find(conn, "NoEntity", "one", BLOCK_NUMBER_MAX);
         match err {
-            Err(e) => assert_eq!("store error: unknown table 'NoEntity'", e.to_string()),
+            Err(e) => assert_eq!("unknown table 'NoEntity'", e.to_string()),
             _ => {
                 println!("{:?}", err);
                 assert!(false)

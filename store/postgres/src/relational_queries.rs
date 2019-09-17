@@ -534,52 +534,32 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindQuery<'a> {
-    layout: &'a Layout,
-    entity: &'a str,
+    schema: &'a str,
+    table: &'a Table,
     id: &'a str,
     block: BlockNumber,
-}
-
-impl<'a> FindQuery<'a> {
-    fn object_query(&self, table: &Table, mut out: AstPass<Pg>) -> QueryResult<()> {
-        // Generate
-        //    select '..' as entity, to_jsonb(e.*) as data
-        //      from schema.table e where id = $1
-        out.push_sql("select ");
-        out.push_bind_param::<Text, _>(&self.entity)?;
-        out.push_sql(" as entity, to_jsonb(e.*) as data\n");
-        out.push_sql("  from ");
-        out.push_identifier(&self.layout.schema)?;
-        out.push_sql(".");
-        out.push_identifier(table.name.as_str())?;
-        out.push_sql(" e\n where ");
-        out.push_identifier(PRIMARY_KEY_COLUMN)?;
-        out.push_sql(" = ");
-        out.push_bind_param::<Text, _>(&self.id)?;
-        out.push_sql(" and ");
-        BlockRangeContainsClause::new(self.block).walk_ast(out)
-    }
 }
 
 impl<'a> QueryFragment<Pg> for FindQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        if let Some(table) = self.layout.table_for_entity(self.entity).ok() {
-            self.object_query(table, out)
-        } else if let Some(tables) = self.layout.interfaces.get(self.entity) {
-            for (i, table) in tables.iter().enumerate() {
-                if i > 0 {
-                    out.push_sql("\nunion all\n");
-                }
-                self.object_query(table, out.reborrow())?;
-            }
-            Ok(())
-        } else {
-            Err(diesel::result::Error::QueryBuilderError(Box::new(
-                StoreError::UnknownTable(self.entity.to_owned()).compat(),
-            )))
-        }
+        // Generate
+        //    select '..' as entity, to_jsonb(e.*) as data
+        //      from schema.table e where id = $1
+        out.push_sql("select ");
+        out.push_bind_param::<Text, _>(&self.table.object)?;
+        out.push_sql(" as entity, to_jsonb(e.*) as data\n");
+        out.push_sql("  from ");
+        out.push_identifier(self.schema)?;
+        out.push_sql(".");
+        out.push_identifier(self.table.name.as_str())?;
+        out.push_sql(" e\n where ");
+        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+        out.push_sql(" = ");
+        out.push_bind_param::<Text, _>(&self.id)?;
+        out.push_sql(" and ");
+        BlockRangeContainsClause::new(self.block).walk_ast(out)
     }
 }
 

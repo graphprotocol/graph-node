@@ -321,7 +321,8 @@ impl Layout {
         id: &str,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
-        FindQuery::new(self, entity, id, block)
+        let table = self.table_for_entity(entity)?;
+        FindQuery::new(&self.schema, table.as_ref(), id, block)
             .get_result::<EntityData>(conn)
             .optional()?
             .map(|entity_data| entity_data.to_entity(self))
