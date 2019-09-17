@@ -763,9 +763,10 @@ impl<'a> FilterQuery<'a> {
 
             out.push_sql(", e.");
             out.push_identifier(column.name.as_str())?;
-            out.push_sql(" as sort_key, e.");
-            out.push_identifier(PRIMARY_KEY_COLUMN)?;
+            out.push_sql(" as sort_key");
         }
+        out.push_sql(", e.");
+        out.push_identifier(PRIMARY_KEY_COLUMN)?;
         out.push_sql("\n  from ");
         out.push_identifier(&self.schema)?;
         out.push_sql(".");

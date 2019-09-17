@@ -224,6 +224,18 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
     );
 }
 
+fn insert_pets(conn: &PgConnection, layout: &Layout) {
+    let mut dog = Entity::new();
+    dog.set("id", "pluto");
+    dog.set("name", "Pluto");
+    insert_entity(conn, layout, "Dog", dog);
+
+    let mut cat = Entity::new();
+    cat.set("id", "garfield");
+    cat.set("name", "Garfield");
+    insert_entity(conn, layout, "Cat", cat);
+}
+
 fn insert_test_data(conn: &PgConnection) -> Layout {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
@@ -495,6 +507,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
 
     run_test(move |conn, layout| -> Result<(), ()> {
         insert_users(conn, layout);
+        insert_pets(conn, layout);
 
         let order = match query.order_by {
             Some((attribute, value_type)) => {
@@ -535,6 +548,45 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
 
         Ok(())
     })
+}
+
+#[test]
+fn find_interface() {
+    test_find(
+        vec!["garfield", "pluto"],
+        EntityQuery {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_types: vec!["Cat".to_owned(), "Dog".to_owned()],
+            filter: None,
+            order_by: None,
+            order_direction: None,
+            range: EntityRange::first(100),
+        },
+    );
+
+    test_find(
+        vec!["pluto", "garfield"],
+        EntityQuery {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_types: vec!["Cat".to_owned(), "Dog".to_owned()],
+            filter: None,
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Descending),
+            range: EntityRange::first(100),
+        },
+    );
+
+    test_find(
+        vec!["garfield"],
+        EntityQuery {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_types: vec!["Cat".to_owned(), "Dog".to_owned()],
+            filter: Some(EntityFilter::StartsWith("name".into(), Value::from("Gar"))),
+            order_by: Some(("name".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Descending),
+            range: EntityRange::first(100),
+        },
+    );
 }
 
 #[test]
