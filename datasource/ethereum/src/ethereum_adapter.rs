@@ -950,9 +950,6 @@ where
                         .as_u64();
                     let block_ptr = EthereumBlockPointer::from((hash, number));
                     if !block_ptrs.contains(&block_ptr) {
-                        if let Some(prev) = block_ptrs.last() {
-                            assert!(prev.number < number);
-                        }
                         block_ptrs.push(block_ptr);
                     }
                 }
