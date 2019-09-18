@@ -376,6 +376,14 @@ impl Layout {
             Some(skip.to_string())
         };
 
+        let order = match (order, tables.iter().next()) {
+            (Some((attribute, _, direction)), Some(table)) => {
+                let column = table.column_for_field(&attribute)?;
+                Some((&column.name, direction))
+            }
+            _ => None,
+        };
+
         let query = FilterQuery::new(&self.schema, tables, filter, order, first, skip, block);
         let query_debug_info = query.clone();
 

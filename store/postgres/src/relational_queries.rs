@@ -18,7 +18,6 @@ use std::str::FromStr;
 use graph::data::store::scalar;
 use graph::prelude::{
     format_err, serde_json, Attribute, Entity, EntityFilter, EntityKey, StoreError, Value,
-    ValueType,
 };
 
 use crate::block_range::{
@@ -720,7 +719,7 @@ pub struct FilterQuery<'a> {
     schema: &'a str,
     tables: Vec<&'a Table>,
     filter: Option<EntityFilter>,
-    order: Option<(String, ValueType, &'a str)>,
+    order: Option<(&'a SqlName, &'a str)>,
     first: Option<String>,
     skip: Option<String>,
     block: BlockNumber,
@@ -736,13 +735,9 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("select ");
         out.push_bind_param::<Text, _>(&table.object)?;
         out.push_sql(" as entity, to_jsonb(e.*) as data");
-        if let Some((attribute, _, _)) = &self.order {
-            let column = table
-                .column_for_field(&attribute)
-                .map_err(|e| diesel::result::Error::QueryBuilderError(Box::new(e.compat())))?;
-
+        if let Some((name, _)) = &self.order {
             out.push_sql(", e.");
-            out.push_identifier(column.name.as_str())?;
+            out.push_identifier(name.as_str())?;
             out.push_sql(" as sort_key");
         }
         out.push_sql(", e.");
@@ -784,7 +779,7 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
             self.object_query(table, out.reborrow())?;
         }
         out.push_sql("\n order by ");
-        if let Some((_, _, direction)) = &self.order {
+        if let Some((_, direction)) = &self.order {
             out.push_sql("sort_key ");
             out.push_sql(direction);
             out.push_sql(", ");
