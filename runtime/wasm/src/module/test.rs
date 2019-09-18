@@ -4,7 +4,7 @@ extern crate ipfs_api;
 use ethabi::Token;
 use futures::sync::mpsc::{channel, Sender};
 use hex;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::io::Cursor;
 use std::str::FromStr;
@@ -868,4 +868,82 @@ fn ens_name_by_hash() {
     assert!(module
         .takes_ptr_returns_ptr::<_, AscString>("nameByHash", hash)
         .is_null());
+}
+
+#[test]
+fn entity_store() {
+    fn get_user(id: &str) -> Option<Entity> {
+        let valid_module = test_valid_module(mock_data_source("wasm_test/store.wasm"));
+        let mut module =
+            WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
+        let entity_ptr: AscPtr<AscEntity> = module
+            .module
+            .clone()
+            .invoke_export(
+                "getUser",
+                &[RuntimeValue::from(module.asc_new(id))],
+                &mut module,
+            )
+            .expect("call failed")
+            .expect("call returned nothing")
+            .try_into()
+            .expect("call did not return pointer");
+        if entity_ptr.is_null() {
+            None
+        } else {
+            Some(Entity::from(
+                module.asc_get::<HashMap<String, Value>, _>(entity_ptr),
+            ))
+        }
+    }
+
+    fn load_and_set_user_name(id: &str, name: &str) -> (Arc<MockStore>, EntityCache) {
+        let (valid_module, store) =
+            test_valid_module_and_store(mock_data_source("wasm_test/store.wasm"));
+        let mut module =
+            WasmiModule::from_valid_module_with_ctx(valid_module, mock_context()).unwrap();
+        module
+            .module
+            .clone()
+            .invoke_export(
+                "loadAndSetUserName",
+                &[
+                    RuntimeValue::from(module.asc_new(id)),
+                    RuntimeValue::from(module.asc_new(name)),
+                ],
+                &mut module,
+            )
+            .expect("call failed");
+        (store, module.ctx.state.entity_cache)
+    }
+
+    // store.get of a nonexistent user
+    assert_eq!(None, get_user("herobrine"));
+    // store.get of an existing user
+    let steve = get_user("steve").unwrap();
+    assert_eq!(Some(&Value::from("Steve")), steve.get("name"));
+
+    // Load, set, save cycle for an existing entity
+    let (store, entity_cache) = load_and_set_user_name("steve", "Steve-O");
+    let mut mods = entity_cache.as_modifications(store.as_ref()).unwrap();
+    assert_eq!(1, mods.len());
+    match mods.pop().unwrap() {
+        EntityModification::Overwrite { data, .. } => {
+            assert_eq!(Some(&Value::from("steve")), data.get("id"));
+            assert_eq!(Some(&Value::from("Steve-O")), data.get("name"));
+        }
+        _ => assert!(false, "expected Overwrite modification"),
+    }
+
+    // Load, set, save cycle for a new entity
+    let (store, entity_cache) = load_and_set_user_name("herobrine", "Brine-O");
+    let mut mods = entity_cache.as_modifications(store.as_ref()).unwrap();
+    assert_eq!(1, mods.len());
+    match mods.pop().unwrap() {
+        EntityModification::Insert { data, .. } => {
+            assert_eq!(Some(&Value::from("herobrine")), data.get("id"));
+            assert_eq!(Some(&Value::from("Brine-O")), data.get("name"));
+        }
+        _ => assert!(false, "expected Insert modification"),
+    }
 }
