@@ -340,32 +340,6 @@ pub(crate) struct Connection {
 }
 
 impl Connection {
-    /// Return the storage for the subgraph. Since constructing a `Storage`
-    /// object takes a bit of computation, we cache storage objects that do
-    /// not have a pending migration in the Store, i.e., for the lifetime of
-    /// the Store. Storage objects with a pending migration can not be
-    /// cached for longer than a transaction since they might change
-    /// without us knowing
-    pub(crate) fn storage(
-        conn: &PgConnection,
-        store: &Store,
-        subgraph: &SubgraphDeploymentId,
-    ) -> Result<Arc<Storage>, StoreError> {
-        if let Some(storage) = store.storage_cache.lock().unwrap().get(subgraph) {
-            return Ok(storage.clone());
-        }
-
-        let storage = Arc::new(Storage::new(conn, subgraph, store)?);
-        if !storage.needs_migrating() {
-            store
-                .storage_cache
-                .lock()
-                .unwrap()
-                .insert(subgraph.clone(), storage.clone());
-        }
-        Ok(storage.clone())
-    }
-
     /// Return the storage for `key`, which must refer either to the subgraph
     /// for this connection, or the metadata subgraph.
     ///
@@ -1396,7 +1370,7 @@ impl Storage {
     /// Returns an error if `subgraph` does not have an entry in
     /// `deployment_schemas`, which can only happen if `create_schema` was not
     /// called for that `subgraph`
-    fn new(
+    pub(crate) fn new(
         conn: &PgConnection,
         subgraph: &SubgraphDeploymentId,
         store: &Store,
@@ -1438,6 +1412,12 @@ impl Storage {
             }
         };
         Ok(storage)
+    }
+
+    /// Return `true` if it is safe to cache this storage instance across
+    /// transactions
+    pub(crate) fn is_cacheable(&self) -> bool {
+        !self.needs_migrating()
     }
 
     /// Adjust the `entityCount` property of the `SubgraphDeployment` for

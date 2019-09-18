@@ -673,9 +673,34 @@ impl Store {
 
     fn get_entity_conn(&self, subgraph: &SubgraphDeploymentId) -> Result<e::Connection, Error> {
         let conn = self.get_conn()?;
-        let storage = e::Connection::storage(&conn, self, subgraph)?;
-        let metadata = e::Connection::storage(&conn, self, &*SUBGRAPHS_ID)?;
+        let storage = self.storage(&conn, subgraph)?;
+        let metadata = self.storage(&conn, &*SUBGRAPHS_ID)?;
         Ok(e::Connection::new(conn, storage, metadata))
+    }
+
+    /// Return the storage for the subgraph. Since constructing a `Storage`
+    /// object takes a bit of computation, we cache storage objects that do
+    /// not have a pending migration in the Store, i.e., for the lifetime of
+    /// the Store. Storage objects with a pending migration can not be
+    /// cached for longer than a transaction since they might change
+    /// without us knowing
+    fn storage(
+        &self,
+        conn: &PgConnection,
+        subgraph: &SubgraphDeploymentId,
+    ) -> Result<Arc<e::Storage>, StoreError> {
+        if let Some(storage) = self.storage_cache.lock().unwrap().get(subgraph) {
+            return Ok(storage.clone());
+        }
+
+        let storage = Arc::new(e::Storage::new(conn, subgraph, self)?);
+        if storage.is_cacheable() {
+            self.storage_cache
+                .lock()
+                .unwrap()
+                .insert(subgraph.clone(), storage.clone());
+        }
+        Ok(storage.clone())
     }
 
     fn cached_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SchemaPair, Error> {
