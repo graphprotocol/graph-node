@@ -190,13 +190,13 @@ struct IndexingStatuses(Vec<IndexingStatus>);
 impl From<&QueryResult> for IndexingStatuses {
     fn from(result: &QueryResult) -> Self {
         // Extract deployment assignment IDs from the query result
-        let assignments = dbg!(result.data.as_ref().map_or(vec![], |value| {
+        let assignments = result.data.as_ref().map_or(vec![], |value| {
             value
                 .get_required::<q::Value>("subgraphDeploymentAssignments")
                 .expect("no subgraph deployment assignments in the result")
                 .get_values::<AssignmentId>()
                 .expect("failed to parse subgraph deployment assignments")
-        }));
+        });
 
         IndexingStatuses(
             result
@@ -213,10 +213,10 @@ impl From<&QueryResult> for IndexingStatuses {
                 .into_iter()
                 // Filter out those deployments for which there is no active assignment
                 .filter(|status: &IndexingStatus| {
-                    dbg!(assignments
+                    assignments
                         .iter()
                         .find(|id| id.0 == status.subgraph)
-                        .is_some())
+                        .is_some()
                 })
                 .collect(),
         )
