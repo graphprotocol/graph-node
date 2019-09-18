@@ -22,7 +22,7 @@ use crate::failure::Error;
 
 use super::*;
 
-use self::graph_mock::FakeStore;
+use self::graph_mock::MockStore;
 
 mod abi;
 
@@ -150,16 +150,16 @@ fn test_valid_module_and_store(
         ValidModule<
             MockEthereumAdapter,
             graph_core::LinkResolver,
-            FakeStore,
+            MockStore,
             Sender<Box<dyn Future<Item = (), Error = ()> + Send>>,
         >,
     >,
-    Arc<FakeStore>,
+    Arc<MockStore>,
 ) {
     let logger = Logger::root(slog::Discard, o!());
     let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
     let (task_sender, task_receiver) = channel(100);
-    let fake_store = Arc::new(FakeStore);
+    let store = Arc::new(MockStore::user_store());
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     runtime.spawn(task_receiver.for_each(tokio::spawn));
     ::std::mem::forget(runtime);
@@ -168,7 +168,7 @@ fn test_valid_module_and_store(
             ValidModule::new(
                 &logger,
                 WasmiModuleConfig {
-                    subgraph_id: SubgraphDeploymentId::new("wasmModuleTest").unwrap(),
+                    subgraph_id: MockStore::user_subgraph_id(),
                     api_version: Version::parse(&data_source.mapping.api_version).unwrap(),
                     parsed_module: data_source.mapping.runtime,
                     abis: data_source.mapping.abis,
@@ -176,7 +176,7 @@ fn test_valid_module_and_store(
                     templates: data_source.templates,
                     ethereum_adapter: mock_ethereum_adapter,
                     link_resolver: Arc::new(ipfs_api::IpfsClient::default().into()),
-                    store: fake_store.clone(),
+                    store: store.clone(),
                     handler_timeout: std::env::var(crate::host::TIMEOUT_ENV_VAR)
                         .ok()
                         .and_then(|s| u64::from_str(&s).ok())
@@ -186,7 +186,7 @@ fn test_valid_module_and_store(
             )
             .unwrap(),
         ),
-        fake_store,
+        store,
     )
 }
 
@@ -196,7 +196,7 @@ fn test_valid_module(
     ValidModule<
         MockEthereumAdapter,
         graph_core::LinkResolver,
-        FakeStore,
+        MockStore,
         Sender<Box<dyn Future<Item = (), Error = ()> + Send>>,
     >,
 > {
@@ -410,7 +410,7 @@ fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
     data.set("id", id);
     data.set("value", value);
     data.set("extra", USER_DATA);
-    let subgraph_id = SubgraphDeploymentId::new("wasmModuleTest").unwrap();
+    let subgraph_id = MockStore::user_subgraph_id();
     let key = EntityKey {
         subgraph_id,
         entity_type: "Thing".to_string(),

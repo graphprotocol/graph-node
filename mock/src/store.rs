@@ -20,6 +20,7 @@ impl ChainHeadUpdateListener for MockChainHeadUpdateListener {
     }
 }
 
+#[derive(Debug)]
 pub struct MockStore {
     schemas: HashMap<SubgraphDeploymentId, Schema>,
 
@@ -59,6 +60,40 @@ impl MockStore {
             entities: Default::default(),
             subscriptions: Default::default(),
         }
+    }
+
+    pub fn user_subgraph_id() -> SubgraphDeploymentId {
+        SubgraphDeploymentId::new("UserSubgraph").unwrap()
+    }
+
+    /// Create a store that uses a very simple `User(id, name)` schema and
+    /// puts two users into the store
+    pub fn user_store() -> Self {
+        const USER_GQL: &str = "
+            type User @entity {
+                id: ID!,
+                name: String,
+            }";
+        let subgraph = Self::user_subgraph_id();
+        let schema =
+            Schema::parse(USER_GQL, subgraph.clone()).expect("Failed to parse user schema");
+
+        // Build a map of entities
+        let mut alex = Entity::new();
+        alex.set("id", "alex");
+        alex.set("name", "Alex");
+        let mut steve = Entity::new();
+        steve.set("id", "steve");
+        steve.set("name", "Steve");
+        let mut users = HashMap::new();
+        users.insert("alex".to_owned(), alex);
+        users.insert("steve".to_owned(), steve);
+        let mut entities = HashMap::new();
+        entities.insert("User".to_owned(), users);
+
+        let store = Self::new(vec![(subgraph.clone(), schema)]);
+        store.entities.lock().unwrap().insert(subgraph, entities);
+        store
     }
 
     fn execute_query(
@@ -139,8 +174,12 @@ impl Store for MockStore {
         Ok(self.find(query)?.pop())
     }
 
-    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError> {
-        Ok(None)
+    fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
+        let s1 = "dealdrafts".to_string();
+        match hash {
+            "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3" => Ok(Some(s1)),
+            _ => Ok(None),
+        }
     }
 
     fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
