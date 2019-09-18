@@ -25,7 +25,7 @@ use graph::prelude::{
     QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, ValueType,
 };
 
-use crate::block_range::BlockNumber;
+use crate::block_range::{BlockNumber, BLOCK_RANGE_COLUMN};
 use crate::entities::STRING_PREFIX_SIZE;
 
 /// A string we use as a SQL name for a table or column. The important thing
@@ -640,8 +640,6 @@ impl Column {
 /// The name for the primary key column of a table; hardcoded for now
 pub(crate) const PRIMARY_KEY_COLUMN: &str = "id";
 
-pub(crate) const BLOCK_RANGE: &str = "block_range";
-
 #[derive(Clone, Debug)]
 pub struct Table {
     /// The name of the GraphQL object type ('Thing')
@@ -734,7 +732,7 @@ impl Table {
             out,
             "\n        {block_range}          int4range not null,
         exclude using gist   (id with =, {block_range} with &&)\n);\n",
-            block_range = BLOCK_RANGE
+            block_range = BLOCK_RANGE_COLUMN
         )?;
 
         // Create indexes. Don't bother with enum types, since an index on a

@@ -8,7 +8,6 @@ use std::io::Write;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
 use crate::history_event::HistoryEvent;
-use crate::relational::BLOCK_RANGE;
 
 /// The type we use for block numbers. This has to be a signed integer type
 /// since Postgres does not support unsigned integer types. But 2G ought to
@@ -16,6 +15,16 @@ use crate::relational::BLOCK_RANGE;
 pub type BlockNumber = i32;
 
 pub const BLOCK_NUMBER_MAX: BlockNumber = std::i32::MAX;
+
+/// The name of the column in which we store the block range
+pub(crate) const BLOCK_RANGE_COLUMN: &str = "block_range";
+
+/// The SQL clause we use to check that an entity version is current;
+/// that version has an unbounded block range, but checking for
+/// `upper_inf(block_range)` is slow and can't use the exclusion
+/// index we have on entity tables; we therefore check if i32::MAX is
+/// in the range
+pub(crate) const BLOCK_RANGE_CURRENT: &str = "block_range @> 2147483647";
 
 /// The range of blocks for which an entity is valid. We need this struct
 /// to bind ranges into Diesel queries.
@@ -80,7 +89,7 @@ impl QueryFragment<Pg> for BlockRangeContainsClause {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        out.push_identifier(BLOCK_RANGE)?;
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(" @> ");
         out.push_bind_param::<Integer, _>(&self.block)
     }

@@ -21,11 +21,11 @@ use graph::prelude::{
     ValueType,
 };
 
-use crate::block_range::{BlockNumber, BlockRange, BlockRangeContainsClause};
-use crate::filter::UnsupportedFilter;
-use crate::relational::{
-    Column, ColumnType, Layout, SqlName, Table, BLOCK_RANGE, PRIMARY_KEY_COLUMN,
+use crate::block_range::{
+    BlockNumber, BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
 };
+use crate::filter::UnsupportedFilter;
+use crate::relational::{Column, ColumnType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN};
 use crate::sql_value::SqlValue;
 
 /// Helper struct for retrieving entities from the database. With diesel, we
@@ -633,7 +633,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 out.push_sql(", ");
             }
         }
-        out.push_identifier(BLOCK_RANGE)?;
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
 
         out.push_sql(")\nvalues(");
         for column in self.table.columns.iter() {
@@ -832,24 +832,24 @@ impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
         // update table
         //    set block_range = int4range(lower(block_range), $block)
         //  where id = $id
-        //    and upper_inf(block_range)
+        //    and block_range @> INTMAX
         out.unsafe_to_cache_prepared();
         out.push_sql("update ");
         out.push_identifier(self.schema)?;
         out.push_sql(".");
         out.push_identifier(self.table.name.as_str())?;
         out.push_sql("\n   set ");
-        out.push_identifier(BLOCK_RANGE)?;
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(" = int4range(lower(");
-        out.push_identifier(BLOCK_RANGE)?;
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql("), ");
         out.push_bind_param::<Integer, _>(&self.block)?;
         out.push_sql(")\n where ");
         out.push_identifier(PRIMARY_KEY_COLUMN)?;
         out.push_sql(" = ");
         out.push_bind_param::<Text, _>(&self.key.entity_id)?;
-        out.push_sql(" and upper_inf(");
-        out.push_identifier(BLOCK_RANGE)?;
+        out.push_sql(" and (");
+        out.push_sql(BLOCK_RANGE_CURRENT);
         out.push_sql(")");
         Ok(())
     }
@@ -893,7 +893,7 @@ impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
         out.push_sql(".");
         out.push_identifier(self.table.name.as_str())?;
         out.push_sql("\n where lower(");
-        out.push_identifier(BLOCK_RANGE)?;
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(") >= ");
         out.push_bind_param::<Integer, _>(&self.block)?;
         out.push_sql("\nreturning ");
@@ -932,22 +932,22 @@ impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
         //   update table
         //     set block_range = int4range(lower(block_range), null)
         //   where block_range @> $block
-        //     and not upper_inf(block_range)
+        //     and not block_range @> INTMAX
         //   returning id
         out.push_sql("update ");
         out.push_identifier(&self.schema)?;
         out.push_sql(".");
         out.push_identifier(self.table.name.as_str())?;
         out.push_sql("\n   set ");
-        out.push_identifier(BLOCK_RANGE)?;
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(" = int4range(lower(");
-        out.push_identifier(BLOCK_RANGE)?;
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql("), null)\n where");
-        out.push_identifier(BLOCK_RANGE)?;
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(" @> ");
         out.push_bind_param::<Integer, _>(&self.block)?;
-        out.push_sql(" and not upper_inf(");
-        out.push_identifier(BLOCK_RANGE)?;
+        out.push_sql(" and not (");
+        out.push_sql(BLOCK_RANGE_CURRENT);
         out.push_sql(")\nreturning ");
         out.push_identifier(PRIMARY_KEY_COLUMN)
     }
