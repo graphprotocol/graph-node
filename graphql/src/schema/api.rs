@@ -27,9 +27,9 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     let mut schema = input_schema.clone();
     add_builtin_scalar_types(&mut schema)?;
     add_order_direction_enum(&mut schema);
-    add_field_arguments(&mut schema, &input_schema)?;
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
+    add_field_arguments(&mut schema, &input_schema)?;
     add_query_type(&mut schema, &object_types, &interface_types)?;
     add_subscription_type(&mut schema, &object_types, &interface_types)?;
     Ok(schema)
