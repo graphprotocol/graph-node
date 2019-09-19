@@ -1016,9 +1016,9 @@ impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(" @> ");
         out.push_bind_param::<Integer, _>(&self.block)?;
-        out.push_sql(" and not (");
+        out.push_sql(" and not ");
         out.push_sql(BLOCK_RANGE_CURRENT);
-        out.push_sql(")\nreturning ");
+        out.push_sql("\nreturning ");
         out.push_identifier(PRIMARY_KEY_COLUMN)
     }
 }

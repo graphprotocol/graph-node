@@ -376,12 +376,19 @@ impl Layout {
             Some(skip.to_string())
         };
 
-        let order = match (order, tables.iter().next()) {
+        // Get the name of the column we order by; if there is more than one
+        // table, we are querying an interface, and the order is on an attribute
+        // in that interface so that all tables have a column for that. It is
+        // therefore enough to just look at the first table to get the name
+        let order = match (order, tables.first()) {
+            (_, None) => {
+                unreachable!("an entity query always contains at least one entity type/table");
+            }
             (Some((attribute, _, direction)), Some(table)) => {
                 let column = table.column_for_field(&attribute)?;
                 Some((&column.name, direction))
             }
-            _ => None,
+            (None, _) => None,
         };
 
         let query = FilterQuery::new(&self.schema, tables, filter, order, first, skip, block);
