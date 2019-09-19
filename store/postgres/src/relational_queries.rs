@@ -726,22 +726,41 @@ pub struct FilterQuery<'a> {
 }
 
 impl<'a> FilterQuery<'a> {
-    fn object_query(&self, table: &Table, mut out: AstPass<Pg>) -> QueryResult<()> {
-        // Generate
-        //   select 'entity_type' as entity, to_jsonb(e.*) as data, e.col as sort_key, e.id
-        //     from schema.table
-        //    where block_range @> $block
-        //      and query_filter
-        out.push_sql("select ");
-        out.push_bind_param::<Text, _>(&table.object)?;
-        out.push_sql(" as entity, to_jsonb(e.*) as data");
-        if let Some((name, _)) = &self.order {
+    fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        out.push_sql("\n order by ");
+        if let Some((name, direction)) = &self.order {
+            out.push_identifier(name.as_str())?;
+            out.push_sql(" ");
+            out.push_sql(direction);
+            out.push_sql(", ");
+        }
+        out.push_identifier(PRIMARY_KEY_COLUMN)
+    }
+
+    fn add_sort_key(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        if let Some((name, _)) = self.order {
             out.push_sql(", e.");
             out.push_identifier(name.as_str())?;
-            out.push_sql(" as sort_key");
         }
-        out.push_sql(", e.");
-        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+        Ok(())
+    }
+
+    fn limit(&self, out: &mut AstPass<Pg>) {
+        if let Some(first) = &self.first {
+            out.push_sql("\n limit ");
+            out.push_sql(first);
+        }
+        if let Some(skip) = &self.skip {
+            out.push_sql("\noffset ");
+            out.push_sql(skip);
+        }
+    }
+
+    fn filtered_rows(&self, table: &Table, mut out: AstPass<Pg>) -> QueryResult<()> {
+        // Generate
+        //     from schema.table e
+        //    where block_range @> $block
+        //      and query_filter
         out.push_sql("\n  from ");
         out.push_identifier(&self.schema)?;
         out.push_sql(".");
@@ -764,35 +783,91 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
             return Ok(());
         }
 
-        // For each table, construct a query
-        //   select '...' as entity, to_jsonb(e.*) as data
-        //     from schema.table
-        //    where entity_filter
-        // and join them with 'union all'
-        // Optionally select the column to order by as sort key
-        // and sort the whole thing by it. Also add limit
-        // and offset
-        for (i, table) in self.tables.iter().enumerate() {
-            if i > 0 {
-                out.push_sql("\nunion all\n");
-            }
-            self.object_query(table, out.reborrow())?;
-        }
-        out.push_sql("\n order by ");
-        if let Some((_, direction)) = &self.order {
-            out.push_sql("sort_key ");
-            out.push_sql(direction);
-            out.push_sql(", ");
-        }
-        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+        // The queries are a little tricky because we need to defer generating
+        // JSONB until we actually know which rows we really need to make these
+        // queries fast; otherwise, Postgres spends too much time generating
+        // JSONB, most of which will never get used
+        if self.tables.len() == 1 {
+            // The common case is that we have just one table; for that we
+            // can generate a simpler/faster query. We generate
+            // select '..' as entity, to_jsonb(e.*) as data
+            // from (
+            //   select *
+            //     from schema.table
+            //    where entity_filter
+            //      and block_range @> INTMAX
+            //    order by ...
+            //    limit n offset m
+            // ) e
+            let table = self.tables.first().unwrap();
+            out.push_sql("select ");
+            out.push_bind_param::<Text, _>(&table.object)?;
+            out.push_sql(
+                " as entity, to_jsonb(e.*) as data\n  from (\n  select *\
+                 \n",
+            );
+            self.filtered_rows(table, out.reborrow())?;
+            self.order_by(&mut out)?;
+            self.limit(&mut out);
+            // close the outer select
+            out.push_sql(") e");
+        } else {
+            // We have multiple tables which might have different schemas since
+            // the entity_types come from implementing the same interface. We
+            // need to do the query in two steps: first we build a CTE with the
+            // id's of entities matching the filter and order/limit. As a second
+            // step, we get matching rows from the underlying tables and convert
+            // them to JSONB.
+            //
+            // Overall, we generate a query
+            //
+            // with matches as (
+            //   select '...' as entity, id
+            //     from table1
+            //    where entity_filter
+            //    union all
+            //    ...
+            //    order by ...
+            //    limit n offset m)
+            // select matches.entity, to_jsonb(e.*) as data, sort_key, id
+            //   from table1 e, matches
+            //  where e.id = matches.id and matches.entity = '...'
+            //  union all
+            //  ...
+            //  order by ...
 
-        if let Some(first) = &self.first {
-            out.push_sql("\n limit ");
-            out.push_sql(first);
-        }
-        if let Some(skip) = &self.skip {
-            out.push_sql("\noffset ");
-            out.push_sql(skip);
+            // Step 1: build matches CTE
+            out.push_sql("with matches as (");
+            for (i, table) in self.tables.iter().enumerate() {
+                if i > 0 {
+                    out.push_sql("\nunion all\n");
+                }
+                out.push_sql("select ");
+                out.push_bind_param::<Text, _>(&table.object)?;
+                out.push_sql(" as entity, e.id");
+                self.add_sort_key(&mut out)?;
+                self.filtered_rows(table, out.reborrow())?;
+            }
+            self.order_by(&mut out)?;
+            self.limit(&mut out);
+            out.push_sql(")\n");
+
+            // Step 2: convert to JSONB
+            for (i, table) in self.tables.iter().enumerate() {
+                if i > 0 {
+                    out.push_sql("\nunion all\n");
+                }
+                out.push_sql("select matches.entity, to_jsonb(e.*) as data, e.id");
+                self.add_sort_key(&mut out)?;
+                out.push_sql("\n  from ");
+                out.push_identifier(&self.schema)?;
+                out.push_sql(".");
+                out.push_identifier(table.name.as_str())?;
+                out.push_sql(" e, matches");
+                out.push_sql("\n where e.id = matches.id and matches.entity = ");
+                out.push_bind_param::<Text, _>(&table.object)?;
+            }
+            self.order_by(&mut out)?;
         }
         Ok(())
     }
