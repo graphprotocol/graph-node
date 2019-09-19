@@ -1192,3 +1192,56 @@ fn subscription_gets_result_even_without_events() {
         )])),
     );
 }
+
+#[test]
+fn can_use_nested_filter() {
+    let result = execute_query_document(
+        graphql_parser::parse_query(
+            "
+        query {
+            musicians(orderBy: id) {
+                name
+                bands(where: { originalSongs: [\"s1\", \"s3\", \"s4\"] }) { id }
+            }
+        }
+        ",
+        )
+        .expect("invalid test query"),
+    );
+
+    assert_eq!(
+        result.data.unwrap(),
+        object_value(vec![(
+            "musicians",
+            q::Value::List(vec![
+                object_value(vec![
+                    ("name", q::Value::String(String::from("John"))),
+                    (
+                        "bands",
+                        q::Value::List(vec![object_value(vec![(
+                            "id",
+                            q::Value::String(String::from("b2"))
+                        )])])
+                    )
+                ]),
+                object_value(vec![
+                    ("name", q::Value::String(String::from("Lisa"))),
+                    ("bands", q::Value::List(vec![]))
+                ]),
+                object_value(vec![
+                    ("name", q::Value::String(String::from("Tom"))),
+                    (
+                        "bands",
+                        q::Value::List(vec![object_value(vec![
+                            (("id", q::Value::String(String::from("b2"))))
+                        ])])
+                    )
+                ]),
+                object_value(vec![
+                    ("name", q::Value::String(String::from("Valerie"))),
+                    ("bands", q::Value::List(vec![]))
+                ])
+            ])
+        )])
+    )
+}
