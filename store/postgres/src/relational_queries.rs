@@ -822,7 +822,7 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
             // Overall, we generate a query
             //
             // with matches as (
-            //   select '...' as entity, id
+            //   select '...' as entity, id, vid
             //     from table1
             //    where entity_filter
             //    union all
@@ -831,7 +831,7 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
             //    limit n offset m)
             // select matches.entity, to_jsonb(e.*) as data, sort_key, id
             //   from table1 e, matches
-            //  where e.id = matches.id and matches.entity = '...'
+            //  where e.vid = matches.vid and matches.entity = '...'
             //  union all
             //  ...
             //  order by ...
@@ -844,7 +844,7 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
                 }
                 out.push_sql("select ");
                 out.push_bind_param::<Text, _>(&table.object)?;
-                out.push_sql(" as entity, e.id");
+                out.push_sql(" as entity, e.id, e.vid");
                 self.add_sort_key(&mut out)?;
                 self.filtered_rows(table, out.reborrow())?;
             }
@@ -864,7 +864,7 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
                 out.push_sql(".");
                 out.push_identifier(table.name.as_str())?;
                 out.push_sql(" e, matches");
-                out.push_sql("\n where e.id = matches.id and matches.entity = ");
+                out.push_sql("\n where e.vid = matches.vid and matches.entity = ");
                 out.push_bind_param::<Text, _>(&table.object)?;
             }
             self.order_by(&mut out)?;
