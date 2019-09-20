@@ -3,14 +3,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use web3::types::*;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct EthereumBlockWithTriggers {
     pub ethereum_block: EthereumBlock,
     pub triggers: Vec<EthereumTrigger>,
     pub calls: Option<Vec<EthereumCall>>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct EthereumBlockWithCalls {
     pub ethereum_block: EthereumBlock,
     pub calls: Option<Vec<EthereumCall>>,
@@ -68,7 +68,7 @@ impl Default for EthereumBlock {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EthereumCall {
     pub from: Address,
     pub to: Address,
@@ -114,14 +114,14 @@ impl EthereumCall {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub enum EthereumTrigger {
     Block(EthereumBlockTriggerType),
     Call(EthereumCall),
     Log(Log),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub enum EthereumBlockTriggerType {
     Every,
     WithCallTo(Address),
@@ -151,7 +151,7 @@ impl EthereumTrigger {
 }
 
 /// Ethereum block data.
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default)]
 pub struct EthereumBlockData {
     pub hash: H256,
     pub parent_hash: H256,
@@ -292,7 +292,7 @@ impl Clone for EthereumCallData {
 /// A block hash and block number from a specific Ethereum block.
 ///
 /// Maximum block number supported: 2^63 - 1
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EthereumBlockPointer {
     pub hash: H256,
     pub number: u64,
