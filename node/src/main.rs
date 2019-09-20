@@ -334,8 +334,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .parse()
         .expect("invalid index node server port");
 
-    debug!(logger, "Setting up Sentry");
-
     // Obtain DISABLE_BLOCK_INGESTOR setting
     let disable_block_ingestor: bool = matches
         .value_of("disable-block-ingestor")
