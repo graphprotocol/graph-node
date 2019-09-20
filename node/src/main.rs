@@ -1,22 +1,3 @@
-extern crate clap;
-extern crate env_logger;
-extern crate futures;
-#[macro_use]
-extern crate sentry;
-extern crate graph;
-extern crate graph_core;
-extern crate graph_datasource_ethereum;
-extern crate graph_runtime_wasm;
-extern crate graph_server_http;
-extern crate graph_server_index_node;
-extern crate graph_server_json_rpc;
-extern crate graph_server_websocket;
-extern crate graph_store_postgres;
-extern crate http;
-extern crate ipfs_api;
-extern crate lazy_static;
-extern crate url;
-
 use clap::{App, Arg};
 use futures::sync::mpsc;
 use git_testament::{git_testament, render_testament};
@@ -374,17 +355,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         panic!("--store-connection-pool-size/STORE_CONNECTION_POOL_SIZE must be > 1")
     }
 
-    // Set up Sentry, with release tracking and panic handling;
-    // fall back to an empty URL, which will result in no errors being reported
-    let sentry_url = env::var_os("THEGRAPH_SENTRY_URL").unwrap_or_else(|| "".into());
-    let _sentry = sentry::init((
-        sentry_url,
-        sentry::ClientOptions {
-            release: sentry_crate_release!(),
-            ..Default::default()
-        },
-    ));
-    sentry::integrations::panic::register_panic_handler();
     info!(logger, "Starting up");
 
     // Parse the IPFS URL from the `--ipfs` command line argument

@@ -112,11 +112,8 @@ OPTIONS:
 
 ### Environment Variables
 
-The Graph supports the following environment variables:
-
-```
-THEGRAPH_SENTRY_URL (optional) — Activates error reporting using Sentry
-```
+See [here](https://github.com/graphprotocol/graph-node/blob/master/docs/environment-variables.md) for a list of
+the environment variables that can be configured.
 
 ## Project Layout
 
