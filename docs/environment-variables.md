@@ -88,6 +88,5 @@ those.
   of nodes.
 - `GRAPH_LOG`: control log levels, the same way that `RUST_LOG` is described
   [here](https://docs.rs/env_logger/0.6.0/env_logger/)
-- `THEGRAPH_SENTRY_URL`:
 - `THEGRAPH_STORE_POSTGRES_DIESEL_URL`: postgres instance used when running
   tests. Set to `postgresql://<DBUSER>:<DBPASSWORD>@<DBHOST>:<DBPORT>/<DBNAME>`
