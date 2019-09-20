@@ -20,7 +20,7 @@ struct IndexingInputs<B, S, T> {
     store: Arc<S>,
     stream_builder: B,
     host_builder: T,
-    include_calls_in_blocks: bool,
+    templates_use_calls: bool,
     top_level_templates: Vec<DataSourceTemplate>,
 }
 
@@ -203,12 +203,9 @@ impl SubgraphInstanceManager {
         // block handlers with call filters; in this case, we need to
         // include calls in all blocks so we cen reprocess the block
         // when new dynamic data sources are being created
-        let include_calls_in_blocks = templates
-            .iter()
-            .find(|template| {
-                template.has_call_handler() || template.has_block_handler_with_call_filter()
-            })
-            .is_some();
+        let templates_use_calls = templates.iter().any(|template| {
+            template.has_call_handler() || template.has_block_handler_with_call_filter()
+        });
 
         let top_level_templates = manifest.templates.clone();
 
@@ -224,7 +221,7 @@ impl SubgraphInstanceManager {
                 store,
                 stream_builder,
                 host_builder,
-                include_calls_in_blocks,
+                templates_use_calls,
                 top_level_templates,
             },
             state: IndexingState {
@@ -301,7 +298,7 @@ where
             ctx.state.log_filter.clone(),
             ctx.state.call_filter.clone(),
             ctx.state.block_filter.clone(),
-            ctx.inputs.include_calls_in_blocks,
+            ctx.inputs.templates_use_calls,
         )
         .from_err()
         .cancelable(&block_stream_canceler, || CancelableError::Cancel);

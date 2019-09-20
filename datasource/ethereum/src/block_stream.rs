@@ -124,7 +124,7 @@ struct BlockStreamContext<S, C, E> {
     log_filter: EthereumLogFilter,
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
-    include_calls_in_blocks: bool,
+    templates_use_calls: bool,
     logger: Logger,
 }
 
@@ -140,7 +140,7 @@ impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
             log_filter: self.log_filter.clone(),
             call_filter: self.call_filter.clone(),
             block_filter: self.block_filter.clone(),
-            include_calls_in_blocks: self.include_calls_in_blocks,
+            templates_use_calls: self.templates_use_calls,
             logger: self.logger.clone(),
         }
     }
@@ -168,7 +168,7 @@ where
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
-        include_calls_in_blocks: bool,
+        templates_use_calls: bool,
         reorg_threshold: u64,
         logger: Logger,
     ) -> Self {
@@ -187,7 +187,7 @@ where
                 log_filter,
                 call_filter,
                 block_filter,
-                include_calls_in_blocks,
+                templates_use_calls,
             },
         }
     }
@@ -202,7 +202,9 @@ where
     /// Analyze the trigger filters to determine if we need to query the blocks calls
     /// and populate them in the blocks
     fn include_calls_in_blocks(&self) -> bool {
-        !self.call_filter.is_empty() || self.block_filter.contract_addresses.len() > 0
+        self.templates_use_calls
+            || !self.call_filter.is_empty()
+            || self.block_filter.contract_addresses.len() > 0
     }
 
     /// Update the block pointer for `self.subgraph_id`, and, if needed,
@@ -573,7 +575,7 @@ where
         step: ReconciliationStep,
     ) -> Box<dyn Future<Item = ReconciliationStepOutcome, Error = Error> + Send> {
         let ctx = self.clone();
-        let include_calls_in_blocks = self.include_calls_in_blocks;
+        let include_calls_in_blocks = self.include_calls_in_blocks();
 
         // We now know where to take the subgraph ptr.
         match step {
@@ -1291,7 +1293,7 @@ where
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
-        include_calls_in_blocks: bool,
+        templates_use_calls: bool,
     ) -> Self::Stream {
         let logger = logger.new(o!(
             "component" => "BlockStream",
@@ -1324,7 +1326,7 @@ where
             log_filter,
             call_filter,
             block_filter,
-            include_calls_in_blocks,
+            templates_use_calls,
             self.reorg_threshold,
             logger,
         )
