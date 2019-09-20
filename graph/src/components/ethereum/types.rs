@@ -15,7 +15,7 @@ pub struct EthereumBlockWithCalls {
     pub calls: Option<Vec<EthereumCall>>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct EthereumBlock {
     pub block: Block<Transaction>,
     pub transaction_receipts: Vec<TransactionReceipt>,
@@ -32,38 +32,6 @@ impl EthereumBlock {
         call.transaction_hash
             .and_then(|hash| self.block.transactions.iter().find(|tx| tx.hash == hash))
             .cloned()
-    }
-}
-
-// Remove this and derive after a new web3 is released.
-impl Default for EthereumBlock {
-    fn default() -> Self {
-        Self {
-            block: Block {
-                hash: Some(H256::default()),
-                parent_hash: H256::default(),
-                uncles_hash: H256::default(),
-                author: H160::default(),
-                state_root: H256::default(),
-                transactions_root: H256::default(),
-                receipts_root: H256::default(),
-                number: None,
-                gas_used: U256::default(),
-                gas_limit: U256::default(),
-                extra_data: Bytes(vec![]),
-                logs_bloom: H2048::default(),
-                timestamp: U256::default(),
-                difficulty: U256::default(),
-                total_difficulty: U256::default(),
-                seal_fields: vec![],
-                uncles: vec![],
-                transactions: vec![],
-                size: None,
-                mix_hash: Some(H256::default()),
-                nonce: None,
-            },
-            transaction_receipts: vec![],
-        }
     }
 }
 
