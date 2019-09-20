@@ -12,7 +12,7 @@ RUN apt-get update \
 RUN git clone https://github.com/graphprotocol/graph-node \
     && cd graph-node \
     && git checkout "$SOURCE_BRANCH" \
-    && cargo install --path node \
+    && cargo install --locked --path node \
     && cd .. \
     && rm -rf graph-node
 
