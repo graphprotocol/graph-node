@@ -1,6 +1,5 @@
 use ethabi::LogParam;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use web3::types::*;
 
 #[derive(Clone, Debug)]
@@ -79,6 +78,7 @@ pub struct EthereumCall {
     pub block_number: u64,
     pub block_hash: H256,
     pub transaction_hash: Option<H256>,
+    transaction_index: u64,
 }
 
 impl EthereumCall {
@@ -100,6 +100,10 @@ impl EthereumCall {
             _ => return None,
         };
 
+        // The only traces without transactions are those from Parity block reward contracts, we
+        // don't support triggering on that.
+        let transaction_index = trace.transaction_position? as u64;
+
         Some(EthereumCall {
             from: call.from,
             to: call.to,
@@ -110,6 +114,7 @@ impl EthereumCall {
             block_number: trace.block_number,
             block_hash: trace.block_hash,
             transaction_hash: trace.transaction_hash,
+            transaction_index,
         })
     }
 }
@@ -128,24 +133,12 @@ pub enum EthereumBlockTriggerType {
 }
 
 impl EthereumTrigger {
-    pub fn transaction_index(
-        &self,
-        transaction_hash_index_lookup: &HashMap<H256, u64>,
-    ) -> Result<Option<u64>, ()> {
+    pub fn transaction_index(&self) -> Option<u64> {
         match self {
-            EthereumTrigger::Log(log) => {
-                match transaction_hash_index_lookup.get(&log.transaction_hash.unwrap()) {
-                    Some(index) => Ok(Some(*index)),
-                    None => Err(()),
-                }
-            }
-            EthereumTrigger::Call(call) => {
-                match transaction_hash_index_lookup.get(&call.transaction_hash.unwrap()) {
-                    Some(index) => Ok(Some(*index)),
-                    None => Err(()),
-                }
-            }
-            EthereumTrigger::Block(_call) => Ok(None),
+            // We only handle logs that are in a block and therefore have a `transaction_index`.
+            EthereumTrigger::Log(log) => Some(log.transaction_index.unwrap().as_u64()),
+            EthereumTrigger::Call(call) => Some(call.transaction_index),
+            EthereumTrigger::Block(_) => None,
         }
     }
 }

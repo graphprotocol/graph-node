@@ -971,44 +971,10 @@ where
         triggers.append(&mut parse_call_triggers(call_filter, &descendant_block));
         triggers.append(&mut parse_block_triggers(block_filter, &descendant_block));
 
-        let tx_hash_indexes = descendant_block
-            .ethereum_block
-            .transaction_receipts
-            .iter()
-            .map(|receipt| (receipt.transaction_hash, receipt.transaction_index.as_u64()))
-            .collect::<HashMap<H256, u64>>();
-
-        // Ensure all `Call` and `Log` triggers have a transaction index
-        for trigger in triggers.iter() {
-            match trigger {
-                EthereumTrigger::Log(log) => {
-                    if !tx_hash_indexes
-                        .get(&log.transaction_hash.unwrap())
-                        .is_some()
-                    {
-                        return Err(format_err!(
-                            "Unable to determine transaction index for Ethereum event."
-                        ));
-                    }
-                }
-                EthereumTrigger::Call(call) => {
-                    if !tx_hash_indexes
-                        .get(&call.transaction_hash.unwrap())
-                        .is_some()
-                    {
-                        return Err(format_err!(
-                            "Unable to determine transaction index for Ethereum call."
-                        ));
-                    }
-                }
-                EthereumTrigger::Block(_) => continue,
-            }
-        }
-
         // Sort the triggers
         triggers.sort_by(|a, b| {
-            let a_tx_index = a.transaction_index(&tx_hash_indexes).unwrap();
-            let b_tx_index = b.transaction_index(&tx_hash_indexes).unwrap();
+            let a_tx_index = a.transaction_index();
+            let b_tx_index = b.transaction_index();
             if a_tx_index.is_none() && b_tx_index.is_none() {
                 return Ordering::Equal;
             }
