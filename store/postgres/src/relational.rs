@@ -655,6 +655,10 @@ impl Column {
 /// The name for the primary key column of a table; hardcoded for now
 pub(crate) const PRIMARY_KEY_COLUMN: &str = "id";
 
+/// We give every version of every entity in our tables, i.e., every row, a
+/// synthetic primary key. This is the name of the column we use.
+pub(crate) const VID_COLUMN: &str = "vid";
+
 #[derive(Clone, Debug)]
 pub struct Table {
     /// The name of the GraphQL object type ('Thing')
@@ -745,8 +749,10 @@ impl Table {
         // Add block_range column and constraint
         write!(
             out,
-            "\n        {block_range}          int4range not null,
+            "\n        {vid}                  bigserial primary key,\
+             \n        {block_range}          int4range not null,
         exclude using gist   (id with =, {block_range} with &&)\n);\n",
+            vid = VID_COLUMN,
             block_range = BLOCK_RANGE_COLUMN
         )?;
 
@@ -880,6 +886,7 @@ create table rel.\"thing\" (
         \"id\"                 text not null,
         \"big_thing\"          text not null,
 
+        vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
@@ -898,6 +905,7 @@ create table rel.\"scalar\" (
         \"big_int\"            numeric,
         \"color\"              \"rel\".\"color\",
 
+        vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
@@ -953,6 +961,7 @@ type SongStat @entity {
         \"main_band\"          text,
         \"bands\"              text[] not null,
 
+        vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
@@ -970,6 +979,7 @@ create table rel.\"band\" (
         \"name\"               text not null,
         \"original_songs\"     text[] not null,
 
+        vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
@@ -985,6 +995,7 @@ create table rel.\"song\" (
         \"title\"              text not null,
         \"written_by\"         text not null,
 
+        vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
@@ -999,6 +1010,7 @@ create table rel.\"song_stat\" (
         \"id\"                 text not null,
         \"played\"             integer not null,
 
+        vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
@@ -1034,6 +1046,7 @@ type Habitat @entity {
         \"id\"                 text not null,
         \"forest\"             text,
 
+        vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
@@ -1045,6 +1058,7 @@ create index attr_0_1_animal_forest
 create table rel.\"forest\" (
         \"id\"                 text not null,
 
+        vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
@@ -1056,6 +1070,7 @@ create table rel.\"habitat\" (
         \"most_common\"        text not null,
         \"dwellers\"           text[] not null,
 
+        vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
