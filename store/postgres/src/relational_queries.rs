@@ -596,7 +596,9 @@ impl<'a> InsertQuery<'a> {
         for column in table.columns.iter() {
             if !column.is_nullable() && !entity.contains_key(&column.field) {
                 return Err(StoreError::QueryExecutionError(format!(
-                    "can not insert entity {}[{}] since value for {} is missing",
+                    "can not insert entity {}[{}] since value for non-nullable attribute {} is missing. \
+                     To fix this, mark the attribute as nullable in the GraphQL schema or change the \
+                     mapping code to always set this attribute.",
                     key.entity_type, key.entity_id, column.field
                 )));
             }
