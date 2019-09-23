@@ -4,7 +4,7 @@ version = "0.15.1"
 edition = "2018"
 
 [dependencies]
-futures = "0.1.21"
+futures = "0.1.29"
 graphql-parser = "0.2.3"
 http = "0.1.18"
 hyper = "0.12.33"
