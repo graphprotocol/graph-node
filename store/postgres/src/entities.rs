@@ -833,11 +833,23 @@ impl JsonStorage {
         skip: u32,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let entities = self.clone();
-        let mut query = entities
-            .table
-            .filter((&self.entity).eq(any(entity_types)))
-            .select((&self.data, &self.entity))
-            .into_boxed::<Pg>();
+        let mut query = if entity_types.len() == 1 {
+            // If there is only one entity_type, which is the case in all
+            // queries that do not involve interfaces, leaving out `any`
+            // lets Postgres use the primary key index on the entities table
+            let entity_type = entity_types.first().unwrap();
+            entities
+                .table
+                .select((&self.data, &self.entity))
+                .filter((&self.entity).eq(entity_type))
+                .into_boxed::<Pg>()
+        } else {
+            entities
+                .table
+                .select((&self.data, &self.entity))
+                .filter((&self.entity).eq(any(entity_types)))
+                .into_boxed::<Pg>()
+        };
 
         if let Some(filter) = filter {
             let filter = build_filter(filter).map_err(|e| {
