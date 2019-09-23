@@ -1,6 +1,6 @@
 use failure::Error;
-use graphql_parser::query::Value;
-use std::collections::BTreeMap;
+use graphql_parser::query::{Name, Value};
+use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 
 use crate::prelude::format_err;
@@ -131,6 +131,28 @@ impl ValueMap for &BTreeMap<String, Value> {
         T: TryFromValue,
     {
         self.get(key).map_or(Ok(None), |value| {
+            T::try_from_value(value)
+                .map(|value| Some(value))
+                .map_err(|e| e.into())
+        })
+    }
+}
+
+impl ValueMap for &HashMap<&Name, Value> {
+    fn get_required<T>(&self, key: &str) -> Result<T, Error>
+    where
+        T: TryFromValue,
+    {
+        self.get(&Name::from(key))
+            .ok_or_else(|| format_err!("Required field `{}` not set", key))
+            .and_then(|value| T::try_from_value(value).map_err(|e| e.into()))
+    }
+
+    fn get_optional<T>(&self, key: &str) -> Result<Option<T>, Error>
+    where
+        T: TryFromValue,
+    {
+        self.get(&Name::from(key)).map_or(Ok(None), |value| {
             T::try_from_value(value)
                 .map(|value| Some(value))
                 .map_err(|e| e.into())
