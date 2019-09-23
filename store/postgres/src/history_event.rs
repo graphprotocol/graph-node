@@ -6,7 +6,9 @@ use diesel::pg::{Pg, PgConnection};
 use diesel::sql_types::Text;
 use diesel::RunQueryDsl;
 
-use graph::prelude::{EthereumBlockPointer, SubgraphDeploymentId};
+use graph::prelude::{format_err, EthereumBlockPointer, SubgraphDeploymentId};
+
+use crate::functions::set_config;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct HistoryEvent {
@@ -49,10 +51,21 @@ impl HistoryEvent {
         .bind::<Text, _>(block_ptr.hash_hex())
         .get_result(conn)?;
 
-        Ok(HistoryEvent {
+        let event = HistoryEvent {
             id: result.id,
             subgraph,
             block_ptr,
-        })
+        };
+        // Set the event_source for delete operations
+        diesel::select(set_config(
+            "vars.current_event_source",
+            HistoryEvent::to_event_source_string(&Some(&event)),
+            true,
+        ))
+        .execute(conn)
+        .map_err(|e| format_err!("Failed to set event source for remove operation: {}", e))
+        .map(|_| ())?;
+
+        Ok(event)
     }
 }

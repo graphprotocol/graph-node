@@ -49,7 +49,6 @@ use graph::prelude::{
 
 use crate::block_range::{block_number, BlockNumber};
 use crate::filter::build_filter;
-use crate::functions::set_config;
 use crate::history_event::HistoryEvent;
 use crate::jsonb::PgJsonbExpressionMethods as _;
 use crate::notification_listener::JsonNotification;
@@ -1051,15 +1050,6 @@ impl JsonStorage {
         key: &EntityKey,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        diesel::select(set_config(
-            "vars.current_event_source",
-            HistoryEvent::to_event_source_string(&history_event),
-            true,
-        ))
-        .execute(conn)
-        .map_err(|e| format_err!("Failed to set event source for remove operation: {}", e))
-        .map(|_| ())?;
-
         self.add_entity_history_record(conn, history_event, &key, OperationType::Delete)?;
 
         let query = format!(
