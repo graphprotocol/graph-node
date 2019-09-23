@@ -5,6 +5,7 @@ scalar ID
 scalar String
 
 type Query {
+  indexingStatusesForSubgraphName(subgraphName: String!): [SubgraphIndexingStatus!]!
   indexingStatuses(subgraphs: [String!]): [SubgraphIndexingStatus!]!
 }
 
