@@ -10,5 +10,5 @@ graph-graphql = { path = "../../graphql" }
 graphql-parser = "0.2.3"
 http = "0.1.5"
 hyper = "0.12.31"
-lazy_static = "1.2.0"
+lazy_static = "1.4.0"
 serde = "1.0"
