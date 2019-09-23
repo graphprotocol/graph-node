@@ -12,7 +12,7 @@ use crate::functions::set_config;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct HistoryEvent {
-    pub id: i32,
+    pub id: Option<i32>,
     pub subgraph: SubgraphDeploymentId,
     pub block_ptr: EthereumBlockPointer,
 }
@@ -29,6 +29,7 @@ impl HistoryEvent {
         conn: &PgConnection,
         subgraph: SubgraphDeploymentId,
         block_ptr: EthereumBlockPointer,
+        has_removes: bool,
     ) -> Result<HistoryEvent, failure::Error> {
         #[derive(Queryable, Debug)]
         struct Event {
@@ -52,20 +53,32 @@ impl HistoryEvent {
         .get_result(conn)?;
 
         let event = HistoryEvent {
-            id: result.id,
+            id: Some(result.id),
             subgraph,
             block_ptr,
         };
         // Set the event_source for delete operations
-        diesel::select(set_config(
-            "vars.current_event_source",
-            HistoryEvent::to_event_source_string(&Some(&event)),
-            true,
-        ))
-        .execute(conn)
-        .map_err(|e| format_err!("Failed to set event source for remove operation: {}", e))
-        .map(|_| ())?;
-
+        if has_removes {
+            diesel::select(set_config(
+                "vars.current_event_source",
+                HistoryEvent::to_event_source_string(&Some(&event)),
+                true,
+            ))
+            .execute(conn)
+            .map_err(|e| format_err!("Failed to set event source for remove operation: {}", e))
+            .map(|_| ())?;
+        }
         Ok(event)
+    }
+
+    pub fn create_without_event_metadata(
+        subgraph: SubgraphDeploymentId,
+        block_ptr: EthereumBlockPointer,
+    ) -> HistoryEvent {
+        HistoryEvent {
+            id: None,
+            subgraph,
+            block_ptr,
+        }
     }
 }

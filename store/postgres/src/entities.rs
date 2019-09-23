@@ -42,9 +42,9 @@ use graph::data::schema::Schema as SubgraphSchema;
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{
     debug, format_err, info, serde_json, warn, AttributeIndexDefinition, Entity, EntityChange,
-    EntityChangeOperation, EntityFilter, EntityKey, Error, EthereumBlockPointer, Logger,
-    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, TransactionAbortError,
-    ValueType,
+    EntityChangeOperation, EntityFilter, EntityKey, EntityModification, Error,
+    EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
+    SubgraphDeploymentId, TransactionAbortError, ValueType,
 };
 
 use crate::block_range::{block_number, BlockNumber};
@@ -535,10 +535,33 @@ impl Connection {
 
     pub(crate) fn create_history_event(
         &self,
-        subgraph: SubgraphDeploymentId,
         block_ptr: EthereumBlockPointer,
+        mods: &Vec<EntityModification>,
     ) -> Result<HistoryEvent, Error> {
-        HistoryEvent::allocate(&self.conn, subgraph, block_ptr)
+        let has_removes = mods.iter().any(|m| m.is_remove());
+        match &*self.storage {
+            Storage::Json(json) => {
+                HistoryEvent::allocate(&self.conn, json.subgraph.clone(), block_ptr, has_removes)
+            }
+            Storage::Relational(layout) => {
+                // For relational storage, we do not need an entry in event_meta_data
+                // _unless_ any change we will make touches the metadata subgraph
+                // since that uses JSON storage
+                if mods.iter().any(|m| m.is_meta()) {
+                    HistoryEvent::allocate(
+                        &self.conn,
+                        layout.subgraph.clone(),
+                        block_ptr,
+                        has_removes,
+                    )
+                } else {
+                    Ok(HistoryEvent::create_without_event_metadata(
+                        layout.subgraph.clone(),
+                        block_ptr,
+                    ))
+                }
+            }
+        }
     }
 
     /// Check if the schema for `subgraph` needs to be migrated, and if so
@@ -1103,7 +1126,9 @@ impl JsonStorage {
             None => return Ok(()),
             Some(event) => event,
         };
-
+        let event_id = history_event
+            .id
+            .expect("we always allocate an event_id when we need to record metadata history");
         let schema = self.schema.as_str();
 
         diesel::sql_query(format!(
@@ -1124,7 +1149,7 @@ impl JsonStorage {
                    $5 as op_id",
             schema, schema,
         ))
-        .bind::<Integer, _>(history_event.id)
+        .bind::<Integer, _>(event_id)
         .bind::<Text, _>(&*history_event.subgraph)
         .bind::<Text, _>(&key.entity_type)
         .bind::<Text, _>(&key.entity_id)

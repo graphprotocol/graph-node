@@ -1067,6 +1067,18 @@ impl EntityModification {
             Insert { key, .. } | Overwrite { key, .. } | Remove { key } => key,
         }
     }
+
+    /// Return `true` if self modifies the metadata subgraph
+    pub fn is_meta(&self) -> bool {
+        self.entity_key().subgraph_id.is_meta()
+    }
+
+    pub fn is_remove(&self) -> bool {
+        match self {
+            EntityModification::Remove { .. } => true,
+            _ => false,
+        }
+    }
 }
 
 /// A cache for entities from the store that provides the basic functionality

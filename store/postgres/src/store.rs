@@ -893,7 +893,7 @@ impl StoreTrait for Store {
 
         econn.transaction(|| {
             // Ensure the history event exists in the database
-            let history_event = econn.create_history_event(subgraph_id.clone(), block_ptr_to)?;
+            let history_event = econn.create_history_event(block_ptr_to, &mods)?;
 
             let should_migrate = econn.should_migrate(&subgraph_id, &block_ptr_to)?;
 
