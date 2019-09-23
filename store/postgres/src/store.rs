@@ -158,6 +158,7 @@ impl Store {
             // turns off this timeout and makes it possible that work needing
             // a database connection blocks for a very long time
             .connection_timeout(Duration::from_secs(6 * 60 * 60))
+            .min_idle(Some(1))
             .max_size(config.conn_pool_size)
             .build(conn_manager)
             .unwrap();
