@@ -1106,7 +1106,7 @@ impl JsonStorage {
         // We only need to do work for the subgraph of subgraphs. All other
         // entities tables have triggers that will populate a history record
         // whenever we make a change to an entity
-        if key.subgraph_id != *SUBGRAPHS_ID {
+        if !key.subgraph_id.is_meta() {
             return Ok(());
         }
         let history_event = match history_event {
@@ -1116,9 +1116,8 @@ impl JsonStorage {
 
         let schema = self.schema.as_str();
 
-        if schema == SUBGRAPHS_ID.to_string() {
-            diesel::sql_query(format!(
-                "insert into {}.entity_history(
+        diesel::sql_query(format!(
+            "insert into {}.entity_history(
                    event_id,
                    subgraph, entity, entity_id,
                    data_before, op_id
@@ -1133,35 +1132,14 @@ impl JsonStorage {
                      where entity = $3
                        and id = $4) as data_before,
                    $5 as op_id",
-                schema, schema,
-            ))
-            .bind::<Integer, _>(history_event.id)
-            .bind::<Text, _>(&*history_event.subgraph)
-            .bind::<Text, _>(&key.entity_type)
-            .bind::<Text, _>(&key.entity_id)
-            .bind::<Integer, i32>(operation.into())
-            .execute(conn)?;
-        } else {
-            diesel::sql_query(format!(
-                "insert into {}.entity_history(
-                   event_id,
-                   entity, entity_id,
-                   data_before, op_id
-                 )
-                 select
-                   $1 as event_id,
-                   $2 as entity,
-                   $3 as entity_id,
-                   (select data from {}.entities where entity = $2 and id = $3) as data_before,
-                   $4 as op_id",
-                schema, schema
-            ))
-            .bind::<Integer, _>(history_event.id)
-            .bind::<Text, _>(&key.entity_type)
-            .bind::<Text, _>(&key.entity_id)
-            .bind::<Integer, i32>(operation.into())
-            .execute(conn)?;
-        }
+            schema, schema,
+        ))
+        .bind::<Integer, _>(history_event.id)
+        .bind::<Text, _>(&*history_event.subgraph)
+        .bind::<Text, _>(&key.entity_type)
+        .bind::<Text, _>(&key.entity_id)
+        .bind::<Integer, i32>(operation.into())
+        .execute(conn)?;
 
         Ok(())
     }
