@@ -43,7 +43,7 @@ tokio = "0.1.22"
 tokio-executor = "0.1.5"
 tokio-retry = "0.2"
 tokio-timer = "0.2.11"
-tokio-threadpool = "0.1.14"
+tokio-threadpool = "0.1.15"
 url = "1.7.2"
 
 # Our fork contains a small but hacky patch.
