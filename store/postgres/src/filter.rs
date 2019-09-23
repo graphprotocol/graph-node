@@ -47,28 +47,34 @@ trait IntoFilter<QS> {
 
 impl<QS> IntoFilter<QS> for String {
     fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
-        // Generate
-        //  (left(attribute, prefix_size) op left(self, prefix_size) and attribute op self)
-        // The first condition is there to make the index on attribute usable,
-        // the second so that we only return correct results
-        Box::new(
-            sql("(left(data -> ")
-                .bind::<Text, _>(attribute.clone())
-                .sql("->> 'data', ")
-                .sql(&STRING_PREFIX_SIZE.to_string())
-                .sql(") ")
-                .sql(op)
-                .sql(" left(")
-                .bind::<Text, _>(self.clone())
-                .sql(", ")
-                .sql(&STRING_PREFIX_SIZE.to_string())
-                .sql(") and data -> ")
-                .bind::<Text, _>(attribute)
-                .sql("->> 'data' ")
-                .sql(op)
-                .bind::<Text, _>(self)
-                .sql(")"),
-        ) as FilterExpression<QS>
+        if &attribute == "id" {
+            // Use the `id` column rather than `data->'id'->>'data'` so that
+            // Postgres can use the primary key index on the entities table
+            Box::new(sql("id").sql(op).bind::<Text, _>(self)) as FilterExpression<QS>
+        } else {
+            // Generate
+            //  (left(attribute, prefix_size) op left(self, prefix_size) and attribute op self)
+            // The first condition is there to make the index on attribute usable,
+            // the second so that we only return correct results
+            Box::new(
+                sql("(left(data -> ")
+                    .bind::<Text, _>(attribute.clone())
+                    .sql("->> 'data', ")
+                    .sql(&STRING_PREFIX_SIZE.to_string())
+                    .sql(") ")
+                    .sql(op)
+                    .sql(" left(")
+                    .bind::<Text, _>(self.clone())
+                    .sql(", ")
+                    .sql(&STRING_PREFIX_SIZE.to_string())
+                    .sql(") and data -> ")
+                    .bind::<Text, _>(attribute)
+                    .sql("->> 'data' ")
+                    .sql(op)
+                    .bind::<Text, _>(self)
+                    .sql(")"),
+            ) as FilterExpression<QS>
+        }
     }
 }
 
