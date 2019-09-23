@@ -223,29 +223,21 @@ impl From<IndexingStatus> for q::Value {
 
 struct IndexingStatuses(Vec<IndexingStatus>);
 
-impl From<&QueryResult> for IndexingStatuses {
-    fn from(result: &QueryResult) -> Self {
+impl From<q::Value> for IndexingStatuses {
+    fn from(data: q::Value) -> Self {
         // Extract deployment assignment IDs from the query result
-        let assignments = result.data.as_ref().map_or(vec![], |value| {
-            value
-                .get_required::<q::Value>("subgraphDeploymentAssignments")
-                .expect("no subgraph deployment assignments in the result")
-                .get_values::<DeploymentAssignment>()
-                .expect("failed to parse subgraph deployment assignments")
-        });
+        let assignments = data
+            .get_required::<q::Value>("subgraphDeploymentAssignments")
+            .expect("no subgraph deployment assignments in the result")
+            .get_values::<DeploymentAssignment>()
+            .expect("failed to parse subgraph deployment assignments");
 
         IndexingStatuses(
-            result
-                .data
-                .as_ref()
-                // Parse indexing statuses from deployments
-                .map_or(vec![], |value| {
-                    value
-                        .get_required::<q::Value>("subgraphDeployments")
-                        .expect("no subgraph deployments in the result")
-                        .get_values()
-                        .expect("failed to parse subgraph deployments")
-                })
+            // Parse indexing statuses from deployments
+            data.get_required::<q::Value>("subgraphDeployments")
+                .expect("no subgraph deployments in the result")
+                .get_values()
+                .expect("failed to parse subgraph deployments")
                 .into_iter()
                 // Filter out those deployments for which there is no active assignment
                 .filter_map(|status: IndexingStatusWithoutNode| {
@@ -283,15 +275,20 @@ where
         &self,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
+        // Extract optional "subgraphs" argument
+        let subgraphs = arguments
+            .get(&String::from("subgraphs"))
+            .map(|value| match value {
+                ids @ q::Value::List(_) => ids.clone(),
+                _ => unreachable!(),
+            });
+
         // Build a `where` filter that both subgraph deployments and subgraph deployment
         // assignments have to match
-        let where_filter = object_value(arguments.get(&String::from("subgraphs")).map_or(
-            vec![],
-            |value| match value {
-                ids @ q::Value::List(_) => vec![("id_in", ids.clone())],
-                _ => unreachable!(),
-            },
-        ));
+        let where_filter = object_value(match subgraphs {
+            Some(ref ids) => vec![("id_in", ids.clone())],
+            None => vec![],
+        });
 
         // Build a query for matching subgraph deployments
         let query = Query {
@@ -345,13 +342,151 @@ where
         };
 
         // Execute the query
-        let result = dbg!(self
+        let result = self
             .graphql_runner
             .run_query_with_complexity(query, None, None, Some(std::u32::MAX))
             .wait()
-            .expect("error querying subgraph deployments"));
+            .expect("error querying subgraph deployments");
 
-        Ok(IndexingStatuses::from(&result).into())
+        let data = match result.data {
+            Some(data) => data,
+            None => {
+                error!(
+                    self.logger,
+                    "Failed to query subgraph deployments";
+                    "subgraphs" => format!("{:?}", subgraphs),
+                    "errors" => format!("{:?}", result.errors)
+                );
+                return Ok(q::Value::List(vec![]));
+            }
+        };
+
+        Ok(IndexingStatuses::from(data).into())
+    }
+
+    fn resolve_indexing_statuses_for_subgraph_name(
+        &self,
+        arguments: &HashMap<&q::Name, q::Value>,
+    ) -> Result<q::Value, QueryExecutionError> {
+        // Get the subgraph name from the arguments; we can safely use `expect` here
+        // because the argument will already have been validated prior to the resolver
+        // being called
+        let subgraph_name = arguments
+            .get_required::<String>("subgraphName")
+            .expect("subgraphName not provided");
+
+        // Build a `where` filter that the subgraph has to match
+        let where_filter = object_value(vec![("name", q::Value::String(subgraph_name.clone()))]);
+
+        // Build a query for matching subgraph deployments
+        let query = Query {
+            // The query is against the subgraph of subgraphs
+            schema: self
+                .store
+                .subgraph_schema(&SUBGRAPHS_ID)
+                .map_err(QueryExecutionError::StoreError)?,
+
+            // We're querying all deployments that match the provided filter
+            document: q::parse_query(
+                r#"
+                query subgraphs($where: Subgraph_filter!) {
+                  subgraphs(where: $where) {
+                    versions(orderBy: createdAt, orderDirection: asc) {
+                      deployment {
+                        id
+                        synced
+                        failed
+                        ethereumHeadBlockNumber
+                        ethereumHeadBlockHash
+                        earliestEthereumBlockHash
+                        earliestEthereumBlockNumber
+                        latestEthereumBlockHash
+                        latestEthereumBlockNumber
+                        manifest {
+                          dataSources(first: 1) {
+                            network
+                          }
+                        }
+                      }
+                    }
+                  }
+                  subgraphDeploymentAssignments {
+                    id
+                    nodeId
+                  }
+                }
+                "#,
+            )
+            .unwrap(),
+
+            // If the `subgraphs` argument was provided, build a suitable `where`
+            // filter to match the IDs; otherwise leave the `where` filter empty
+            variables: Some(QueryVariables::new(HashMap::from_iter(
+                vec![("where".into(), where_filter)].into_iter(),
+            ))),
+        };
+
+        // Execute the query
+        let result = self
+            .graphql_runner
+            .run_query_with_complexity(query, None, None, Some(std::u32::MAX))
+            .wait()
+            .expect("error querying subgraph deployments");
+
+        let data = match result.data {
+            Some(data) => data,
+            None => {
+                error!(
+                    self.logger,
+                    "Failed to query subgraph deployments";
+                    "subgraph" => subgraph_name,
+                    "errors" => format!("{:?}", result.errors)
+                );
+                return Ok(q::Value::List(vec![]));
+            }
+        };
+
+        let subgraphs = match data
+            .get_optional::<q::Value>("subgraphs")
+            .expect("invalid subgraphs")
+        {
+            Some(subgraphs) => subgraphs,
+            None => return Ok(q::Value::List(vec![])),
+        };
+
+        let subgraphs = subgraphs
+            .get_values::<q::Value>()
+            .expect("invalid subgraph values");
+
+        let subgraph = if subgraphs.len() > 0 {
+            subgraphs[0].clone()
+        } else {
+            return Ok(q::Value::List(vec![]));
+        };
+
+        let deployments = subgraph
+            .get_required::<q::Value>("versions")
+            .expect("missing subgraph versions")
+            .get_values::<q::Value>()
+            .expect("invalid subgraph versions")
+            .into_iter()
+            .map(|version| {
+                version
+                    .get_required::<q::Value>("deployment")
+                    .expect("missing deployment")
+            })
+            .collect::<Vec<_>>();
+
+        let transformed_data = object_value(vec![
+            ("subgraphDeployments", q::Value::List(deployments)),
+            (
+                "subgraphDeploymentAssignments",
+                data.get_required::<q::Value>("subgraphDeploymentAssignments")
+                    .expect("missing deployment assignments"),
+            ),
+        ]);
+
+        Ok(IndexingStatuses::from(transformed_data).into())
     }
 }
 
@@ -398,6 +533,11 @@ where
                     .clone()),
                 _ => unreachable!(),
             },
+
+            // The top-level `indexingStatusesForSubgraphName` field
+            (None, "SubgraphIndexingStatus", "indexingStatusesForSubgraphName") => {
+                self.resolve_indexing_statuses_for_subgraph_name(arguments)
+            }
 
             // Unknown fields on the `Query` type
             (None, _, name) => Err(QueryExecutionError::UnknownField(
