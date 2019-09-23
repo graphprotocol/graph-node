@@ -14,6 +14,7 @@ type SubgraphIndexingStatus {
   failed: Boolean!
   error: String
   chains: [ChainIndexingStatus!]!
+  node: String!
 }
 
 interface ChainIndexingStatus {

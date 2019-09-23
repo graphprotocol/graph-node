@@ -18,11 +18,19 @@ pub struct IndexNodeResolver<R, S> {
 
 /// The ID of a subgraph deployment assignment.
 #[derive(Debug)]
-struct AssignmentId(String);
+struct DeploymentAssignment {
+    /// ID of the subgraph.
+    subgraph: String,
+    /// ID of the Graph Node that indexes the subgraph.
+    node: String,
+}
 
-impl TryFromValue for AssignmentId {
+impl TryFromValue for DeploymentAssignment {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
-        Ok(Self(value.get_required("id")?))
+        Ok(Self {
+            subgraph: value.get_required("id")?,
+            node: value.get_required("nodeId")?,
+        })
     }
 }
 
@@ -90,7 +98,7 @@ impl From<ChainIndexingStatus> for q::Value {
 }
 
 /// The overall indexing status of a subgraph.
-struct IndexingStatus {
+struct IndexingStatusWithoutNode {
     /// The subgraph ID.
     subgraph: String,
     /// Whether or not the subgraph has synced all the way to the current chain head.
@@ -103,7 +111,34 @@ struct IndexingStatus {
     chains: Vec<ChainIndexingStatus>,
 }
 
-impl IndexingStatus {
+struct IndexingStatus {
+    /// The subgraph ID.
+    subgraph: String,
+    /// Whether or not the subgraph has synced all the way to the current chain head.
+    synced: bool,
+    /// Whether or not the subgraph has failed syncing.
+    failed: bool,
+    /// If it has failed, an optional error.
+    error: Option<String>,
+    /// Indexing status on different chains involved in the subgraph's data sources.
+    chains: Vec<ChainIndexingStatus>,
+    /// ID of the Graph Node that the subgraph is indexed by.
+    node: String,
+}
+
+impl IndexingStatusWithoutNode {
+    /// Adds a Graph Node ID to the indexing status.
+    fn with_node(self, node: String) -> IndexingStatus {
+        IndexingStatus {
+            subgraph: self.subgraph,
+            synced: self.synced,
+            failed: self.failed,
+            error: self.error,
+            chains: self.chains,
+            node: node,
+        }
+    }
+
     /// Attempts to parse `${prefix}Hash` and `${prefix}Number` fields on a
     /// GraphQL object value into an `EthereumBlock`.
     fn block_from_value(
@@ -142,7 +177,7 @@ impl IndexingStatus {
     }
 }
 
-impl TryFromValue for IndexingStatus {
+impl TryFromValue for IndexingStatusWithoutNode {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         Ok(Self {
             subgraph: value.get_required("id")?,
@@ -181,6 +216,7 @@ impl From<IndexingStatus> for q::Value {
                 "chains",
                 q::Value::List(status.chains.into_iter().map(q::Value::from).collect()),
             ),
+            ("node", q::Value::String(status.node)),
         ])
     }
 }
@@ -194,7 +230,7 @@ impl From<&QueryResult> for IndexingStatuses {
             value
                 .get_required::<q::Value>("subgraphDeploymentAssignments")
                 .expect("no subgraph deployment assignments in the result")
-                .get_values::<AssignmentId>()
+                .get_values::<DeploymentAssignment>()
                 .expect("failed to parse subgraph deployment assignments")
         });
 
@@ -212,11 +248,11 @@ impl From<&QueryResult> for IndexingStatuses {
                 })
                 .into_iter()
                 // Filter out those deployments for which there is no active assignment
-                .filter(|status: &IndexingStatus| {
+                .filter_map(|status: IndexingStatusWithoutNode| {
                     assignments
                         .iter()
-                        .find(|id| id.0 == status.subgraph)
-                        .is_some()
+                        .find(|assignment| assignment.subgraph == status.subgraph)
+                        .map(|assignment| status.with_node(assignment.node.clone()))
                 })
                 .collect(),
         )
@@ -290,6 +326,7 @@ where
                   }
                   subgraphDeploymentAssignments(where: $whereAssignments) {
                     id
+                    nodeId
                   }
                 }
                 "#,
