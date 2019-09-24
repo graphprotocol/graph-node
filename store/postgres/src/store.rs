@@ -112,6 +112,15 @@ struct SchemaPair {
     api: Arc<Schema>,
 }
 
+#[derive(Debug)]
+struct ErrorHandler(Logger);
+
+impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
+    fn handle_error(&self, error: r2d2::Error) {
+        error!(self.0, "Postgres connection error"; "error" => error.to_string());
+    }
+}
+
 /// A Store based on Diesel and Postgres.
 pub struct Store {
     logger: Logger,
@@ -130,25 +139,17 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn new(
-        config: StoreConfig,
+    pub fn create_conn_pool(
+        postgres_url: String,
+        pool_size: u32,
         logger: &Logger,
-        net_identifiers: EthereumNetworkIdentifier,
-    ) -> Self {
-        // Create a store-specific logger
-        let logger = logger.new(o!("component" => "Store"));
-
-        #[derive(Debug)]
-        struct ErrorHandler(Logger);
-        impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
-            fn handle_error(&self, error: r2d2::Error) {
-                error!(self.0, "Postgres connection error"; "error" => error.to_string())
-            }
-        }
-        let error_handler = Box::new(ErrorHandler(logger.clone()));
+    ) -> Pool<ConnectionManager<PgConnection>> {
+        let logger_store = logger.new(o!("component" => "Store"));
+        let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
+        let error_handler = Box::new(ErrorHandler(logger_pool.clone()));
 
         // Connect to Postgres
-        let conn_manager = ConnectionManager::new(config.postgres_url.as_str());
+        let conn_manager = ConnectionManager::new(postgres_url.clone());
         let pool = Pool::builder()
             .error_handler(error_handler)
             // Set the time we wait for a connection to 6h. The default is 30s
@@ -158,14 +159,25 @@ impl Store {
             // turns off this timeout and makes it possible that work needing
             // a database connection blocks for a very long time
             .connection_timeout(Duration::from_secs(6 * 60 * 60))
-            .max_size(config.conn_pool_size)
+            .max_size(pool_size)
             .build(conn_manager)
             .unwrap();
         info!(
-            logger,
+            logger_store,
             "Connected to Postgres";
-            "url" => SafeDisplay(config.postgres_url.as_str())
+            "url" => SafeDisplay(postgres_url.as_str())
         );
+        pool
+    }
+
+    pub fn new(
+        config: StoreConfig,
+        logger: &Logger,
+        net_identifiers: EthereumNetworkIdentifier,
+        pool: Pool<ConnectionManager<PgConnection>>,
+    ) -> Self {
+        // Create a store-specific logger
+        let logger = logger.new(o!("component" => "Store"));
 
         // Create the entities table (if necessary)
         initiate_schema(&logger, &pool.get().unwrap(), &pool.get().unwrap());

@@ -37,16 +37,22 @@ lazy_static! {
                 net_version: NETWORK_VERSION.to_owned(),
                 genesis_block_hash: GENESIS_PTR.hash,
             };
-
+            let conn_pool_size: u32 = 10;
+            let postgres_conn_pool = Store::create_conn_pool(
+                postgres_url.clone(),
+                conn_pool_size,
+                &logger,
+            );
             Ok(Arc::new(Store::new(
                 StoreConfig {
                     postgres_url,
                     network_name: NETWORK_NAME.to_owned(),
                     start_block: 0u64,
-                    conn_pool_size: 10,
+                    conn_pool_size: conn_pool_size,
                 },
                 &logger,
                 net_identifiers,
+                postgres_conn_pool,
             )))
         })).expect("could not create Diesel Store instance for test suite")
     };

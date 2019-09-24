@@ -467,6 +467,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         "conn_pool_size" => store_conn_pool_size,
     );
 
+    let postgres_conn_pool = DieselStore::create_conn_pool(
+        postgres_url.clone(),
+        store_conn_pool_size,
+        &logger,
+    );
     let stores: HashMap<String, Arc<DieselStore>> = eth_adapters
         .iter()
         .map(|(network_name, eth_adapter)| {
@@ -493,6 +498,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                             },
                             &logger,
                             network_identifier,
+                            postgres_conn_pool.clone(),
                         )),
                     )
                 }
