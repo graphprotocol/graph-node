@@ -22,6 +22,7 @@ extern crate uuid;
 
 mod block_range;
 mod chain_head_listener;
+pub mod connection_pool;
 mod db_schema;
 mod entities;
 mod filter;

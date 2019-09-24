@@ -1,7 +1,7 @@
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
-use diesel::r2d2::{self, ConnectionManager, Pool, PooledConnection};
+use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::{insert_into, select, update};
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
@@ -14,7 +14,6 @@ use graph::components::store::Store as StoreTrait;
 use graph::data::subgraph::schema::*;
 use graph::prelude::serde_json;
 use graph::prelude::{ChainHeadUpdateListener as _, *};
-use graph::util::security::SafeDisplay;
 use graph_graphql::prelude::api_schema;
 use tokio::timer::Interval;
 use web3::types::H256;
@@ -111,15 +110,6 @@ struct SchemaPair {
     api: Arc<Schema>,
 }
 
-#[derive(Debug)]
-struct ErrorHandler(Logger);
-
-impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
-    fn handle_error(&self, error: r2d2::Error) {
-        error!(self.0, "Postgres connection error"; "error" => error.to_string());
-    }
-}
-
 /// A Store based on Diesel and Postgres.
 pub struct Store {
     logger: Logger,
@@ -138,37 +128,6 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn create_connection_pool(
-        postgres_url: String,
-        pool_size: u32,
-        logger: &Logger,
-    ) -> Pool<ConnectionManager<PgConnection>> {
-        let logger_store = logger.new(o!("component" => "Store"));
-        let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
-        let error_handler = Box::new(ErrorHandler(logger_pool.clone()));
-
-        // Connect to Postgres
-        let conn_manager = ConnectionManager::new(postgres_url.clone());
-        let pool = Pool::builder()
-            .error_handler(error_handler)
-            // Set the time we wait for a connection to 6h. The default is 30s
-            // which can be too little if database connections are highly
-            // contended; if we don't get a connection within the timeout,
-            // ultimately subgraphs get marked as failed. This effectively
-            // turns off this timeout and makes it possible that work needing
-            // a database connection blocks for a very long time
-            .connection_timeout(Duration::from_secs(6 * 60 * 60))
-            .max_size(pool_size)
-            .build(conn_manager)
-            .unwrap();
-        info!(
-            logger_store,
-            "Connected to Postgres";
-            "url" => SafeDisplay(postgres_url.as_str())
-        );
-        pool
-    }
-
     pub fn new(
         config: StoreConfig,
         logger: &Logger,

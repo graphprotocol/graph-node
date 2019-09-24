@@ -3,6 +3,7 @@ use graph::log;
 #[allow(unused_imports)]
 use graph::prelude::{Store as _, *};
 use graph_store_postgres::{Store, StoreConfig};
+use graph_store_postgres::connection_pool::create_connection_pool;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::env;
@@ -38,7 +39,7 @@ lazy_static! {
                 genesis_block_hash: GENESIS_PTR.hash,
             };
             let conn_pool_size: u32 = 10;
-            let postgres_conn_pool = Store::create_connection_pool(
+            let postgres_conn_pool = create_connection_pool(
                 postgres_url.clone(),
                 conn_pool_size,
                 &logger,
