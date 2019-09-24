@@ -342,7 +342,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .expect("invalid --disable-block-ingestor/DISABLE_BLOCK_INGESTOR value");
 
     // Obtain STORE_CONNECTION_POOL_SIZE setting
-    let store_conn_pool_size = matches
+    let store_conn_pool_size: u32 = matches
         .value_of("store-connection-pool-size")
         .unwrap()
         .parse()
