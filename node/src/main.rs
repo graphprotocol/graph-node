@@ -22,8 +22,8 @@ use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
-use graph_store_postgres::{Store as DieselStore, StoreConfig};
 use graph_store_postgres::connection_pool::create_connection_pool;
+use graph_store_postgres::{Store as DieselStore, StoreConfig};
 
 use tokio_timer::timer::Timer;
 
@@ -468,7 +468,8 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         "conn_pool_size" => store_conn_pool_size,
     );
 
-    let postgres_conn_pool = create_connection_pool(postgres_url.clone(), store_conn_pool_size, &logger);
+    let postgres_conn_pool =
+        create_connection_pool(postgres_url.clone(), store_conn_pool_size, &logger);
     let stores: HashMap<String, Arc<DieselStore>> = eth_adapters
         .iter()
         .map(|(network_name, eth_adapter)| {

@@ -2,8 +2,8 @@ use crate::tokio::runtime::Runtime;
 use graph::log;
 #[allow(unused_imports)]
 use graph::prelude::{Store as _, *};
-use graph_store_postgres::{Store, StoreConfig};
 use graph_store_postgres::connection_pool::create_connection_pool;
+use graph_store_postgres::{Store, StoreConfig};
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::env;
