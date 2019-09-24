@@ -48,7 +48,6 @@ lazy_static! {
                     postgres_url,
                     network_name: NETWORK_NAME.to_owned(),
                     start_block: 0u64,
-                    conn_pool_size: conn_pool_size,
                 },
                 &logger,
                 net_identifiers,

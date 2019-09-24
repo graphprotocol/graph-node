@@ -103,7 +103,6 @@ pub struct StoreConfig {
     pub postgres_url: String,
     pub network_name: String,
     pub start_block: u64,
-    pub conn_pool_size: u32,
 }
 
 #[derive(Clone)]

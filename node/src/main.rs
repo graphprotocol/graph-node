@@ -494,7 +494,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                                 postgres_url: postgres_url.clone(),
                                 network_name: network_name.to_string(),
                                 start_block: *ETHEREUM_START_BLOCK,
-                                conn_pool_size: store_conn_pool_size,
                             },
                             &logger,
                             network_identifier,
