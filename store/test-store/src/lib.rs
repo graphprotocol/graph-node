@@ -38,7 +38,7 @@ lazy_static! {
                 genesis_block_hash: GENESIS_PTR.hash,
             };
             let conn_pool_size: u32 = 10;
-            let postgres_conn_pool = Store::create_conn_pool(
+            let postgres_conn_pool = Store::create_connection_pool(
                 postgres_url.clone(),
                 conn_pool_size,
                 &logger,

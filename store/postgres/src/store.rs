@@ -138,7 +138,7 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn create_conn_pool(
+    pub fn create_connection_pool(
         postgres_url: String,
         pool_size: u32,
         logger: &Logger,
