@@ -23,6 +23,7 @@ use graph::prelude::{
 use crate::block_range::{
     BlockNumber, BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
 };
+use crate::entities::STRING_PREFIX_SIZE;
 use crate::filter::UnsupportedFilter;
 use crate::relational::{Column, ColumnType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN};
 use crate::sql_value::SqlValue;
@@ -223,6 +224,162 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
     }
 }
 
+#[derive(Copy, Clone, PartialEq)]
+enum Comparison {
+    Less,
+    LessOrEqual,
+    Equal,
+    NotEqual,
+    GreaterOrEqual,
+    Greater,
+}
+
+impl Comparison {
+    fn as_str(&self) -> &str {
+        use Comparison::*;
+        match self {
+            Less => " < ",
+            LessOrEqual => " <= ",
+            Equal => " = ",
+            NotEqual => " != ",
+            GreaterOrEqual => " >= ",
+            Greater => " > ",
+        }
+    }
+}
+
+/// Produce a comparison between the string column `column` and the string
+/// value `text` that makes it obvious to Postgres' optimizer that it can
+/// first consult the partial index on `left(column, 2048)` instead of going
+/// straight to a sequential scan of the underlying table. We do this by
+/// writing the comparison `column op text` in a way that
+/// involves `left(column, 2048)`
+#[derive(Constructor)]
+struct PrefixComparison<'a> {
+    op: Comparison,
+    column: &'a Column,
+    text: &'a Value,
+}
+
+impl<'a> PrefixComparison<'a> {
+    fn push_column_prefix(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.push_sql("left(");
+        out.push_identifier(self.column.name.as_str())?;
+        out.push_sql(", ");
+        out.push_sql(&STRING_PREFIX_SIZE.to_string());
+        out.push_sql(")");
+        Ok(())
+    }
+
+    fn push_value_prefix(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.push_sql("left(");
+        QueryValue(self.text, &self.column.column_type).walk_ast(out.reborrow())?;
+        out.push_sql(", ");
+        out.push_sql(&STRING_PREFIX_SIZE.to_string());
+        out.push_sql(")");
+        Ok(())
+    }
+
+    fn push_prefix_cmp(&self, op: Comparison, mut out: AstPass<Pg>) -> QueryResult<()> {
+        self.push_column_prefix(out.reborrow())?;
+        out.push_sql(op.as_str());
+        self.push_value_prefix(out.reborrow())
+    }
+
+    fn push_full_cmp(&self, op: Comparison, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.push_identifier(self.column.name.as_str())?;
+        out.push_sql(op.as_str());
+        QueryValue(self.text, &self.column.column_type).walk_ast(out)
+    }
+}
+
+impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        use Comparison::*;
+
+        // For the various comparison operators, we want to write the condition
+        // `column op text` in a way that lets Postgres use the index on
+        // `left(column, 2048)`. If at all possible, we also want the condition
+        // in a form that only uses the index, or if that's not possible, in
+        // a form where Postgres can first reduce the number of rows where
+        // a full comparison between `column` and `text` is needed by consulting
+        // the index.
+        //
+        // To ease notation, let `N = 2048` and write a string stored in
+        // `column` as `uv` where `len(u) <= N`; that means that `v` is only
+        // nonempty if `len(uv) > N`. We similarly split `text` into `st` where
+        // `len(s) <= N`. In other words, `u = left(column, N)` and
+        // `s = left(text, N)`
+        //
+        // In all these comparisons, if `len(st) <= N - 1`, we can reduce
+        // checking `uv op st` to `u op s`, since in that case `t` is the empty
+        // string, we have `uv op s`. If `len(uv) <= N - 1`, then `v` will
+        // also be the empty string. If `len(uv) >= N`, then `len(u) = N`,
+        // and since `u` will be one character longer than `s`, that character
+        // will decide the outcome of `u op s`, even if `u` and `s` agree on
+        // the first `N-1` characters.
+        //
+        // For equality, we can expand `uv = st` into `u = s && uv = st` which
+        // lets Postgres use the index for the first comparison, and `uv = st`
+        // only needs to be checked for rows that pass the check on the index.
+        //
+        // For inequality, we can write `uv != st` as `u != s || uv != st`,
+        // but that doesn't buy us much since Postgres always needs to check
+        // `uv != st`, for which the index is of little help.
+        //
+        // For `op` either `<` or `>`, we have
+        //   uv op st <=> u op s || u = s && uv op st
+        //
+        // For `op` either `<=` or `>=`, we can write (using '<=' as an example)
+        //   uv <= st <=> u < s || u = s && uv <= st
+        let large = if let Value::String(s) = self.text {
+            // We need to check the entire string
+            s.len() > STRING_PREFIX_SIZE - 1
+        } else {
+            unreachable!("text columns are only ever compared to strings");
+        };
+        match self.op {
+            Equal => {
+                if large {
+                    out.push_sql("(");
+                    self.push_prefix_cmp(self.op, out.reborrow())?;
+                    out.push_sql(" and ");
+                    self.push_full_cmp(self.op, out.reborrow())?;
+                    out.push_sql(")");
+                } else {
+                    self.push_prefix_cmp(self.op, out.reborrow())?;
+                }
+            }
+            NotEqual => {
+                if large {
+                    self.push_full_cmp(self.op, out.reborrow())?;
+                } else {
+                    self.push_prefix_cmp(self.op, out.reborrow())?;
+                }
+            }
+            LessOrEqual | Less | GreaterOrEqual | Greater => {
+                let prefix_op = match self.op {
+                    LessOrEqual => Less,
+                    GreaterOrEqual => Greater,
+                    op => op,
+                };
+                if large {
+                    out.push_sql("(");
+                    self.push_prefix_cmp(prefix_op, out.reborrow())?;
+                    out.push_sql(" or (");
+                    self.push_prefix_cmp(Equal, out.reborrow())?;
+                    out.push_sql(" and ");
+                    self.push_full_cmp(self.op, out.reborrow())?;
+                    out.push_sql("))");
+                } else {
+                    self.push_prefix_cmp(self.op, out.reborrow())?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// A `QueryFilter` adds the conditions represented by the `filter` to
 /// the `where` clause of a SQL query. The attributes mentioned in
 /// the `filter` must all come from the given `table`, which is used to
@@ -328,34 +485,34 @@ impl<'a> QueryFilter<'a> {
         &self,
         attribute: &Attribute,
         value: &Value,
-        negated: bool,
+        op: Comparison,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute)?;
 
-        out.push_identifier(column.name.as_str())?;
+        if column.is_text() && value.is_string() {
+            PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
+        } else {
+            out.push_identifier(column.name.as_str())?;
 
-        match value {
-            Value::String(_)
-            | Value::BigInt(_)
-            | Value::Bool(_)
-            | Value::Bytes(_)
-            | Value::BigDecimal(_)
-            | Value::Int(_)
-            | Value::List(_) => {
-                if negated {
-                    out.push_sql(" != ");
-                } else {
-                    out.push_sql(" = ");
-                };
-
-                QueryValue(value, &column.column_type).walk_ast(out)?;
-            }
-            Value::Null => {
-                if negated {
-                    out.push_sql(" is not null");
-                } else {
-                    out.push_sql(" is null");
+            match value {
+                Value::String(_)
+                | Value::BigInt(_)
+                | Value::Bool(_)
+                | Value::Bytes(_)
+                | Value::BigDecimal(_)
+                | Value::Int(_)
+                | Value::List(_) => {
+                    out.push_sql(op.as_str());
+                    QueryValue(value, &column.column_type).walk_ast(out)?;
+                }
+                Value::Null => {
+                    use Comparison as c;
+                    match op {
+                        c::Equal => out.push_sql(" is null"),
+                        c::NotEqual => out.push_sql(" is not null"),
+                        _ => unreachable!("we only call equals with '=' or '!='"),
+                    }
                 }
             }
         }
@@ -366,23 +523,27 @@ impl<'a> QueryFilter<'a> {
         &self,
         attribute: &Attribute,
         value: &Value,
-        op: &str,
+        op: Comparison,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute)?;
 
-        out.push_identifier(column.name.as_str())?;
-        out.push_sql(op);
-        match value {
-            Value::BigInt(_) | Value::BigDecimal(_) | Value::Int(_) | Value::String(_) => {
-                QueryValue(value, &column.column_type).walk_ast(out)?
-            }
-            Value::Bool(_) | Value::Bytes(_) | Value::List(_) | Value::Null => {
-                return Err(UnsupportedFilter {
-                    filter: op.to_owned(),
-                    value: value.clone(),
+        if column.is_text() && value.is_string() {
+            PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
+        } else {
+            out.push_identifier(column.name.as_str())?;
+            out.push_sql(op.as_str());
+            match value {
+                Value::BigInt(_) | Value::BigDecimal(_) | Value::Int(_) | Value::String(_) => {
+                    QueryValue(value, &column.column_type).walk_ast(out)?
                 }
-                .into());
+                Value::Bool(_) | Value::Bytes(_) | Value::List(_) | Value::Null => {
+                    return Err(UnsupportedFilter {
+                        filter: op.as_str().to_owned(),
+                        value: value.clone(),
+                    }
+                    .into());
+                }
             }
         }
         Ok(())
@@ -497,6 +658,7 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
+        use Comparison as c;
         use EntityFilter::*;
         match &self.filter {
             And(filters) => self.binary_op(filters, " and ", out)?,
@@ -505,13 +667,13 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             Contains(attr, value) => self.contains(attr, value, false, out)?,
             NotContains(attr, value) => self.contains(attr, value, true, out)?,
 
-            Equal(attr, value) => self.equals(attr, value, false, out)?,
-            Not(attr, value) => self.equals(attr, value, true, out)?,
+            Equal(attr, value) => self.equals(attr, value, c::Equal, out)?,
+            Not(attr, value) => self.equals(attr, value, c::NotEqual, out)?,
 
-            GreaterThan(attr, value) => self.compare(attr, value, " > ", out)?,
-            LessThan(attr, value) => self.compare(attr, value, " < ", out)?,
-            GreaterOrEqual(attr, value) => self.compare(attr, value, " >= ", out)?,
-            LessOrEqual(attr, value) => self.compare(attr, value, " <= ", out)?,
+            GreaterThan(attr, value) => self.compare(attr, value, c::Greater, out)?,
+            LessThan(attr, value) => self.compare(attr, value, c::Less, out)?,
+            GreaterOrEqual(attr, value) => self.compare(attr, value, c::GreaterOrEqual, out)?,
+            LessOrEqual(attr, value) => self.compare(attr, value, c::LessOrEqual, out)?,
 
             In(attr, values) => self.in_array(attr, values, false, out)?,
             NotIn(attr, values) => self.in_array(attr, values, true, out)?,

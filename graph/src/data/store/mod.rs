@@ -203,6 +203,13 @@ impl Value {
         }
     }
 
+    pub fn is_string(&self) -> bool {
+        match self {
+            Value::String(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn as_int(self) -> Option<i32> {
         if let Value::Int(i) = self {
             Some(i)

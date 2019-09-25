@@ -2321,7 +2321,10 @@ fn handle_large_string_with_index() {
             vec![USER.to_owned()],
             EntityRange::first(5),
         )
-        .filter(EntityFilter::Equal(NAME.to_owned(), long_text.into()))
+        .filter(EntityFilter::Equal(
+            NAME.to_owned(),
+            long_text.clone().into(),
+        ))
         .order_by((NAME.to_owned(), ValueType::String), EntityOrder::Ascending);
 
         let ids = store
@@ -2333,6 +2336,29 @@ fn handle_large_string_with_index() {
             .expect("Found entities without an id");
 
         assert_eq!(vec![ONE], ids);
+
+        // Make sure we check the full string and not just a prefix
+        let mut prefix = long_text.clone();
+        prefix.truncate(2048);
+        let query = EntityQuery::new(
+            TEST_SUBGRAPH_ID.clone(),
+            vec![USER.to_owned()],
+            EntityRange::first(5),
+        )
+        .filter(EntityFilter::LessOrEqual(NAME.to_owned(), prefix.into()))
+        .order_by((NAME.to_owned(), ValueType::String), EntityOrder::Ascending);
+
+        let ids = store
+            .find(query)
+            .expect("Could not find entity")
+            .iter()
+            .map(|e| e.id())
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Found entities without an id");
+
+        // Users with name 'Cindini' and 'Johnton'
+        assert_eq!(vec!["2", "1"], ids);
+
         Ok(())
     })
 }
