@@ -29,14 +29,10 @@ lazy_static! {
     static ref MAX_IPFS_CACHE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_CACHE_SIZE")
         .unwrap_or(50);
 
-}
-
-// The timeout for IPFS requests in seconds
-fn ipfs_timeout() -> Duration {
-    let timeout = env::var("GRAPH_IPFS_TIMEOUT").ok().map(|s| {
-        u64::from_str(&s).unwrap_or_else(|_| panic!("failed to parse env var GRAPH_IPFS_TIMEOUT"))
-    });
-    Duration::from_secs(timeout.unwrap_or(60))
+    // The timeout for IPFS requests in seconds
+    static ref IPFS_TIMEOUT: Duration = Duration::from_secs(
+        read_u64_from_env("GRAPH_IPFS_TIMEOUT").unwrap_or(60)
+    );
 }
 
 fn read_u64_from_env(name: &str) -> Option<u64> {
@@ -98,7 +94,7 @@ impl From<ipfs_api::IpfsClient> for LinkResolver {
             cache: Arc::new(Mutex::new(LruCache::with_capacity(
                 *MAX_IPFS_CACHE_SIZE as usize,
             ))),
-            timeout: ipfs_timeout(),
+            timeout: *IPFS_TIMEOUT,
         }
     }
 }
