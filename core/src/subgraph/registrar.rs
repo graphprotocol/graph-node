@@ -1,7 +1,18 @@
+use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
-use std::iter;
 use std::ops::Deref;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::{env, iter};
+
+lazy_static! {
+    // The timeout for IPFS requests in seconds
+    static ref IPFS_SUBGRAPH_LOADING_TIMEOUT: Duration = Duration::from_secs(
+        env::var("GRAPH_IPFS_SUBGRAPH_LOADING_TIMEOUT")
+            .unwrap_or("60".into())
+            .parse::<u64>()
+            .expect("invalid IPFS subgraph loading timeout")
+    );
+}
 
 use super::validation;
 use graph::data::subgraph::schema::{
@@ -51,7 +62,7 @@ where
                 *resolver
                     .clone()
                     .deref()
-                    .with_timeout(Duration::from_secs(60)),
+                    .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT),
             ),
             provider,
             store,
