@@ -329,11 +329,15 @@ impl SubgraphDeploymentEntity {
             EntityFilter::new_equal("latestEthereumBlockHash", block_ptr_from.hash_hex()),
             EntityFilter::new_equal("latestEthereumBlockNumber", block_ptr_from.number),
         ]);
+        let msg = format!(
+            "advance block pointer from {} to {}",
+            block_ptr_from.number, block_ptr_to.number
+        );
         vec![update_metadata_operation(
             Self::TYPENAME,
             id.to_string(),
             entity,
-            Some(guard),
+            Some((guard, msg)),
         )]
     }
 
@@ -1221,7 +1225,7 @@ fn update_metadata_operation(
     entity_type_name: impl Into<String>,
     entity_id: impl Into<String>,
     data: impl Into<Entity>,
-    guard: Option<EntityFilter>,
+    guard: Option<(EntityFilter, String)>,
 ) -> MetadataOperation {
     MetadataOperation::Update {
         entity: entity_type_name.into(),

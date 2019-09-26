@@ -251,7 +251,7 @@ impl Store for MockStore {
 
                     if entities_of_type.contains_key(&key.entity_id) {
                         let existing_entity = entities_of_type.get_mut(&key.entity_id).unwrap();
-                        if let Some(filter) = guard {
+                        if let Some((filter, _)) = guard {
                             if !entity_matches_filter(existing_entity, &filter) {
                                 return Err(TransactionAbortError::AbortUnless {
                                     expected_entity_ids: vec![key.entity_id],

@@ -463,18 +463,24 @@ impl Store {
                 self.check_interface_entity_uniqueness(conn, &key)?;
 
                 // Update the entity in Postgres
-                match conn.update_metadata(&key, &data, guard)? {
+                let (filter, msg) = guard
+                    .map(|(filter, msg)| (Some(filter), msg))
+                    .unwrap_or((None, "".to_owned()));
+                match conn.update_metadata(&key, &data, filter)? {
                     0 => Err(TransactionAbortError::AbortUnless {
                         expected_entity_ids: vec![key.entity_id.clone()],
                         actual_entity_ids: vec![],
-                        description: "update did not change any rows".to_owned(),
+                        description: format!("{}: update did not change any rows", msg),
                     }
                     .into()),
                     1 => Ok(0),
                     res => Err(TransactionAbortError::AbortUnless {
                         expected_entity_ids: vec![key.entity_id.clone()],
                         actual_entity_ids: vec![],
-                        description: format!("update changed {} rows instead of just one", res),
+                        description: format!(
+                            "{}: update changed {} rows instead of just one",
+                            msg, res
+                        ),
                     }
                     .into()),
                 }
