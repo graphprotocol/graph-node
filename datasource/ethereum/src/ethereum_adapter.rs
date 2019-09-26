@@ -138,14 +138,16 @@ where
         to: u64,
         addresses: Vec<H160>,
         event_signatures: Vec<H256>,
-        too_many_logs_fingerprint: &'static str,
+        too_many_logs_fingerprints: &'static [&'static str],
     ) -> impl Future<Item = Vec<Log>, Error = tokio_timer::timeout::Error<web3::error::Error>> {
         let eth_adapter = self.clone();
 
         retry("eth_getLogs RPC call", &logger)
             .when(move |res: &Result<_, web3::error::Error>| match res {
                 Ok(_) => false,
-                Err(e) => !e.to_string().contains(too_many_logs_fingerprint),
+                Err(e) => !too_many_logs_fingerprints
+                    .iter()
+                    .any(|f| e.to_string().contains(f)),
             })
             .no_limit()
             .timeout_secs(60)
@@ -206,9 +208,10 @@ where
         to: u64,
         log_filter: EthereumLogFilter,
     ) -> impl Future<Item = Vec<Log>, Error = Error> {
-        // Code returned by Infura if a request returns too many logs.
-        // web3 doesn't seem to offer a better way of checking the error code.
-        const TOO_MANY_LOGS_FINGERPRINT: &str = "ServerError(-32005)";
+        // Codes returned by Ethereum node providers if an eth_getLogs request is too heavy.
+        // The first one is for Infura when it hits the log limit, the second for Alchemy timeouts.
+        const TOO_MANY_LOGS_FINGERPRINTS: &[&str] =
+            &["ServerError(-32005)", "503 Service Unavailable"];
 
         if from > to {
             panic!(
@@ -292,7 +295,7 @@ where
                         high,
                         addresses.clone(),
                         event_sigs.clone(),
-                        TOO_MANY_LOGS_FINGERPRINT,
+                        TOO_MANY_LOGS_FINGERPRINTS,
                     )
                     .map(move |logs| {
                         logs.into_iter()
@@ -314,7 +317,11 @@ where
                             // If the step is already 0, we're hitting the log
                             // limit even for a single block. We hope this never
                             // happens, but if it does, make sure to error.
-                            if string_err.contains(TOO_MANY_LOGS_FINGERPRINT) && step > 0 {
+                            if TOO_MANY_LOGS_FINGERPRINTS
+                                .iter()
+                                .any(|f| string_err.contains(f))
+                                && step > 0
+                            {
                                 // The range size for a request is `step + 1`.
                                 // So it's ok if the step goes down to 0, in
                                 // that case we'll request one block at a time.
