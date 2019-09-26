@@ -832,6 +832,7 @@ impl StoreTrait for Store {
             &subgraph_id,
             block_ptr_from,
             block_ptr_to,
+            "skip blocks with no changes",
         );
         let conn = self.get_entity_conn(&subgraph_id).map_err(Error::from)?;
         conn.transaction(|| self.apply_metadata_operations_with_conn(&conn, ops))?;
@@ -885,6 +886,7 @@ impl StoreTrait for Store {
                 &subgraph_id,
                 block_ptr_from,
                 block_ptr_to,
+                "transact block operations",
             );
             self.apply_metadata_operations_with_conn(&econn, block_ptr_ops)?;
             Ok(should_migrate)
@@ -930,6 +932,7 @@ impl StoreTrait for Store {
                 &subgraph_id,
                 block_ptr_from,
                 block_ptr_to,
+                "revert block",
             );
             self.apply_metadata_operations_with_conn(&econn, ops)?;
 

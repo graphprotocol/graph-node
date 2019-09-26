@@ -320,6 +320,7 @@ impl SubgraphDeploymentEntity {
         id: &SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
+        reason: &str,
     ) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("latestEthereumBlockHash", block_ptr_to.hash_hex());
@@ -330,8 +331,8 @@ impl SubgraphDeploymentEntity {
             EntityFilter::new_equal("latestEthereumBlockNumber", block_ptr_from.number),
         ]);
         let msg = format!(
-            "advance block pointer from {} to {}",
-            block_ptr_from.number, block_ptr_to.number
+            "advance block pointer ({}) from {} to {}",
+            reason, block_ptr_from.number, block_ptr_to.number
         );
         vec![update_metadata_operation(
             Self::TYPENAME,
