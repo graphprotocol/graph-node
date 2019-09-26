@@ -1,6 +1,5 @@
 use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
-use std::ops::Deref;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, iter};
 
@@ -60,8 +59,8 @@ where
             logger_factory,
             resolver: Arc::new(
                 resolver
+                    .as_ref()
                     .clone()
-                    .deref()
                     .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT),
             ),
             provider,
