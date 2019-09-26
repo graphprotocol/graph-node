@@ -1082,5 +1082,4 @@ create index attr_2_2_habitat_dwellers
     on rel.\"habitat\" using gin(\"dwellers\");
 
 ";
-
 }
