@@ -18,9 +18,9 @@ pub type JsonValueStream =
     Box<dyn Stream<Item = JsonStreamValue, Error = failure::Error> + Send + 'static>;
 
 /// Resolves links to subgraph manifests and resources referenced by them.
-pub trait LinkResolver: Send + Sync + 'static + Sized {
-    /// Creates a new link resolver that implements the given timeout.
-    fn with_timeout(&self, timeout: Duration) -> Self;
+pub trait LinkResolver: Clone + Send + Sync + 'static + Sized {
+    /// Updates the timeout used by the resolver.
+    fn with_timeout(self, timeout: Duration) -> Self;
 
     /// Fetches the link contents as bytes.
     fn cat(
