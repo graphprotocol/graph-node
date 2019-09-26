@@ -240,6 +240,7 @@ mod tests {
         env::set_var(MAX_IPFS_FILE_SIZE_VAR, "200");
         let file: &[u8] = &[0u8; 201];
         let client = ipfs_api::IpfsClient::default();
+        let resolver = super::LinkResolver::from(client.clone());
 
         let logger = Logger::root(slog::Discard, o!());
 
@@ -247,7 +248,7 @@ mod tests {
         let link = runtime.block_on(client.add(file)).unwrap().hash;
         let err = runtime
             .block_on(LinkResolver::cat(
-                &client.into(),
+                &resolver,
                 &logger,
                 &Link { link: link.clone() },
             ))
@@ -264,11 +265,12 @@ mod tests {
 
     fn json_round_trip(text: &'static str) -> Result<Vec<Value>, failure::Error> {
         let client = ipfs_api::IpfsClient::default();
+        let resolver = super::LinkResolver::from(client.clone());
 
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         let link = runtime.block_on(client.add(text.as_bytes())).unwrap().hash;
         runtime.block_on(
-            LinkResolver::json_stream(&client.into(), &Link { link: link.clone() })
+            LinkResolver::json_stream(&resolver, &Link { link: link.clone() })
                 .and_then(|stream| stream.map(|sv| sv.value).collect()),
         )
     }
