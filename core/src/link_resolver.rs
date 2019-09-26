@@ -56,6 +56,7 @@ fn read_u64_from_env(name: &str) -> Option<u64> {
 fn restrict_file_size<T>(
     client: &ipfs_api::IpfsClient,
     path: String,
+    timeout: Duration,
     max_file_bytes: Option<u64>,
     fut: Box<dyn Future<Item = T, Error = failure::Error> + Send>,
 ) -> Box<dyn Future<Item = T, Error = failure::Error> + Send>
@@ -66,7 +67,7 @@ where
         Some(max_bytes) => Box::new(
             client
                 .object_stat(&path)
-                .timeout(ipfs_timeout())
+                .timeout(timeout)
                 .map_err(|e| failure::err_msg(e.to_string()))
                 .and_then(move |stat| match stat.cumulative_size > max_bytes {
                     false => Ok(()),
@@ -83,9 +84,11 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct LinkResolver {
     client: ipfs_api::IpfsClient,
     cache: Arc<Mutex<LruCache<String, Vec<u8>>>>,
+    timeout: Duration,
 }
 
 impl From<ipfs_api::IpfsClient> for LinkResolver {
@@ -95,11 +98,18 @@ impl From<ipfs_api::IpfsClient> for LinkResolver {
             cache: Arc::new(Mutex::new(LruCache::with_capacity(
                 *MAX_IPFS_CACHE_SIZE as usize,
             ))),
+            timeout: ipfs_timeout(),
         }
     }
 }
 
 impl LinkResolverTrait for LinkResolver {
+    fn with_timeout(&self, timeout: Duration) -> Box<Self> {
+        let mut other = self.clone();
+        other.timeout = timeout;
+        Box::new(other)
+    }
+
     /// Supports links of the form `/ipfs/ipfs_hash` or just `ipfs_hash`.
     fn cat(
         &self,
@@ -116,12 +126,11 @@ impl LinkResolverTrait for LinkResolver {
             trace!(logger, "IPFS cache miss"; "hash" => &path);
         }
 
-        let ipfs_timeout = ipfs_timeout();
         let cat = self
             .client
             .cat(&path)
             .concat2()
-            .timeout(ipfs_timeout)
+            .timeout(self.timeout)
             .map(|x| x.to_vec())
             .map_err(|e| failure::err_msg(e.to_string()));
 
@@ -130,18 +139,23 @@ impl LinkResolverTrait for LinkResolver {
         let max_file_size: Option<u64> = read_u64_from_env(MAX_IPFS_FILE_SIZE_VAR);
 
         Box::new(
-            restrict_file_size(&self.client, path.clone(), max_file_size, Box::new(cat)).map(
-                move |data| {
-                    // Only cache files if they are not too large
-                    if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
-                        let mut cache = cache_for_writing.lock().unwrap();
-                        if !cache.contains_key(&path) {
-                            cache.insert(path, data.clone());
-                        }
+            restrict_file_size(
+                &self.client,
+                path.clone(),
+                self.timeout,
+                max_file_size,
+                Box::new(cat),
+            )
+            .map(move |data| {
+                // Only cache files if they are not too large
+                if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
+                    let mut cache = cache_for_writing.lock().unwrap();
+                    if !cache.contains_key(&path) {
+                        cache.insert(path, data.clone());
                     }
-                    data
-                },
-            ),
+                }
+                data
+            }),
         )
     }
 
@@ -213,6 +227,7 @@ impl LinkResolverTrait for LinkResolver {
         restrict_file_size(
             &self.client,
             path,
+            self.timeout,
             Some(max_file_size),
             Box::new(future::ok(stream)),
         )

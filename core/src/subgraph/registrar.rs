@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::iter;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::ops::Deref;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use super::validation;
 use graph::data::subgraph::schema::{
@@ -46,7 +47,12 @@ where
         SubgraphRegistrar {
             logger,
             logger_factory,
-            resolver,
+            resolver: Arc::new(
+                *resolver
+                    .clone()
+                    .deref()
+                    .with_timeout(Duration::from_secs(60)),
+            ),
             provider,
             store,
             chain_stores,

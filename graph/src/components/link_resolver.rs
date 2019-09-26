@@ -1,6 +1,7 @@
 use failure;
 use serde_json::Value;
 use slog::Logger;
+use std::time::Duration;
 use tokio::prelude::*;
 
 use crate::data::subgraph::Link;
@@ -18,6 +19,9 @@ pub type JsonValueStream =
 
 /// Resolves links to subgraph manifests and resources referenced by them.
 pub trait LinkResolver: Send + Sync + 'static + Sized {
+    /// Creates a new link resolver that implements the given timeout.
+    fn with_timeout(&self, timeout: Duration) -> Box<Self>;
+
     /// Fetches the link contents as bytes.
     fn cat(
         &self,
