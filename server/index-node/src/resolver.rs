@@ -305,7 +305,7 @@ where
                   $whereDeployments: SubgraphDeployment_filter!,
                   $whereAssignments: SubgraphDeploymentAssignment_filter!
                 ) {
-                  subgraphDeployments(where: $whereDeployments) {
+                  subgraphDeployments(where: $whereDeployments, first: 1000000) {
                     id
                     synced
                     failed
@@ -321,7 +321,7 @@ where
                       }
                     }
                   }
-                  subgraphDeploymentAssignments(where: $whereAssignments) {
+                  subgraphDeploymentAssignments(where: $whereAssignments, first: 1000000) {
                     id
                     nodeId
                   }
@@ -375,6 +375,12 @@ where
             .get_required::<String>("subgraphName")
             .expect("subgraphName not provided");
 
+        debug!(
+            self.logger,
+            "Resolve indexing statuses for subgraph name";
+            "name" => &subgraph_name
+        );
+
         // Build a `where` filter that the subgraph has to match
         let where_filter = object_value(vec![("name", q::Value::String(subgraph_name.clone()))]);
 
@@ -390,8 +396,8 @@ where
             document: q::parse_query(
                 r#"
                 query subgraphs($where: Subgraph_filter!) {
-                  subgraphs(where: $where) {
-                    versions(orderBy: createdAt, orderDirection: asc) {
+                  subgraphs(where: $where, first: 1000000) {
+                    versions(orderBy: createdAt, orderDirection: asc, first: 1000000) {
                       deployment {
                         id
                         synced
@@ -410,7 +416,7 @@ where
                       }
                     }
                   }
-                  subgraphDeploymentAssignments {
+                  subgraphDeploymentAssignments(first: 1000000) {
                     id
                     nodeId
                   }
