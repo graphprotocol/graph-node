@@ -100,10 +100,10 @@ impl From<ipfs_api::IpfsClient> for LinkResolver {
 }
 
 impl LinkResolverTrait for LinkResolver {
-    fn with_timeout(&self, timeout: Duration) -> Box<Self> {
+    fn with_timeout(&self, timeout: Duration) -> Self {
         let mut other = self.clone();
         other.timeout = timeout;
-        Box::new(other)
+        other
     }
 
     /// Supports links of the form `/ipfs/ipfs_hash` or just `ipfs_hash`.

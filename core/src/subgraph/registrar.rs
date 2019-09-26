@@ -59,7 +59,7 @@ where
             logger,
             logger_factory,
             resolver: Arc::new(
-                *resolver
+                resolver
                     .clone()
                     .deref()
                     .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT),

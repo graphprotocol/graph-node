@@ -20,7 +20,7 @@ pub type JsonValueStream =
 /// Resolves links to subgraph manifests and resources referenced by them.
 pub trait LinkResolver: Send + Sync + 'static + Sized {
     /// Creates a new link resolver that implements the given timeout.
-    fn with_timeout(&self, timeout: Duration) -> Box<Self>;
+    fn with_timeout(&self, timeout: Duration) -> Self;
 
     /// Fetches the link contents as bytes.
     fn cat(
