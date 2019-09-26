@@ -675,7 +675,6 @@ impl Store {
 
     fn cached_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SchemaPair, Error> {
         if let Some(pair) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
-            trace!(self.logger, "schema cache hit"; "id" => subgraph_id.to_string());
             return Ok(pair.clone());
         }
         trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
