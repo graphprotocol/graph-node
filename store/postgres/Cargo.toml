@@ -26,6 +26,7 @@ serde = "1.0"
 uuid = { version = "0.8.1", features = ["v4"] }
 
 [dev-dependencies]
+clap = "2.33.0"
 graphql-parser = "0.2.3"
 hex = "0.4.0"
 parity-wasm = "0.40"

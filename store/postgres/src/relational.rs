@@ -559,7 +559,7 @@ impl ColumnType {
         }
     }
 
-    fn sql_type(&self) -> &str {
+    pub fn sql_type(&self) -> &str {
         match self {
             ColumnType::Boolean => "boolean",
             ColumnType::BigDecimal => "numeric",
