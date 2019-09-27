@@ -5,7 +5,7 @@ use std::{env, iter};
 
 lazy_static! {
     // The timeout for IPFS requests in seconds
-    static ref IPFS_SUBGRAPH_LOADING_TIMEOUT: Duration = Duration::from_secs(
+    pub static ref IPFS_SUBGRAPH_LOADING_TIMEOUT: Duration = Duration::from_secs(
         env::var("GRAPH_IPFS_SUBGRAPH_LOADING_TIMEOUT")
             .unwrap_or("60".into())
             .parse::<u64>()

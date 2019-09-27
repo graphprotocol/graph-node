@@ -8,6 +8,7 @@ use graph::prelude::{
     SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *,
 };
 
+use crate::subgraph::registrar::IPFS_SUBGRAPH_LOADING_TIMEOUT;
 use crate::DataSourceLoader;
 
 pub struct SubgraphAssignmentProvider<L, Q, S> {
@@ -44,7 +45,12 @@ where
             logger_factory,
             event_stream: Some(event_stream),
             event_sink,
-            resolver,
+            resolver: Arc::new(
+                resolver
+                    .as_ref()
+                    .clone()
+                    .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT),
+            ),
             subgraphs_running: Arc::new(Mutex::new(HashSet::new())),
             store,
             graphql_runner,
