@@ -1,6 +1,7 @@
 use crate::prelude::Fail;
 use graphql_parser::schema::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,11 +28,17 @@ pub enum SchemaValidationError {
         _0, _1, _2
     )]
     CannotImplement(String, String, Strings), // (type, interface, missing_fields)
+    #[fail(
+        display = "Field `{}` in type `{}` has invalid @derivedFrom: {}",
+        _1, _0, _2
+    )]
+    DerivedFromInvalid(String, String, String), // (type, field, reason)
 }
 
 /// Validates whether a GraphQL schema is compatible with The Graph.
 pub(crate) fn validate_schema(schema: &Document) -> Result<(), SchemaValidationError> {
-    validate_schema_types(schema)
+    validate_schema_types(schema)?;
+    validate_derived_from(schema)
 }
 
 /// Validates whether all object types in the schema are declared with an @entity directive.
@@ -93,10 +100,198 @@ pub fn get_object_type_definitions(schema: &Document) -> Vec<&ObjectType> {
         .collect()
 }
 
+/// Returns all object and interface type definitions in the schema.
+pub fn get_object_and_interface_type_fields(schema: &Document) -> HashMap<&Name, &Vec<Field>> {
+    schema
+        .definitions
+        .iter()
+        .filter_map(|d| match d {
+            Definition::TypeDefinition(TypeDefinition::Object(t)) => Some((&t.name, &t.fields)),
+            Definition::TypeDefinition(TypeDefinition::Interface(t)) => Some((&t.name, &t.fields)),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Looks up a directive in a object type, if it is provided.
 pub fn get_object_type_directive(object_type: &ObjectType, name: Name) -> Option<&Directive> {
     object_type
         .directives
         .iter()
         .find(|directive| directive.name == name)
+}
+
+/// Returns the underlying type for a GraphQL field type
+pub fn get_base_type(field_type: &Type) -> &Name {
+    match field_type {
+        Type::NamedType(name) => name,
+        Type::NonNullType(inner) => get_base_type(&inner),
+        Type::ListType(inner) => get_base_type(&inner),
+    }
+}
+
+/// Check `@derivedFrom` annotations for various problems. This follows the
+/// corresponding checks in graph-cli
+fn validate_derived_from(schema: &Document) -> Result<(), SchemaValidationError> {
+    // Helper to construct a DerivedFromInvalid
+    fn invalid(object_type: &ObjectType, field_name: &str, reason: &str) -> SchemaValidationError {
+        SchemaValidationError::DerivedFromInvalid(
+            object_type.name.to_owned(),
+            field_name.to_owned(),
+            reason.to_owned(),
+        )
+    }
+
+    let type_definitions = get_object_type_definitions(schema);
+    let object_and_interface_type_fields = get_object_and_interface_type_fields(schema);
+
+    // Iterate over all derived fields in all entity types; include the
+    // `field` argument of @derivedFrom directive
+    for (object_type, field, target_field) in type_definitions
+        .clone()
+        .iter()
+        .flat_map(|object_type| {
+            object_type
+                .fields
+                .iter()
+                .map(move |field| (object_type, field))
+        })
+        .filter_map(|(object_type, field)| {
+            field
+                .directives
+                .iter()
+                .find(|dir| dir.name == "derivedFrom")
+                .map(|directive| {
+                    (
+                        object_type,
+                        field,
+                        directive
+                            .arguments
+                            .iter()
+                            .find(|(name, _)| name == "field")
+                            .map(|(_, value)| value),
+                    )
+                })
+        })
+    {
+        // Turn `target_field` into the string name of the field
+        let target_field = target_field.ok_or_else(|| {
+            invalid(
+                object_type,
+                &field.name,
+                "the @derivedFrom directive must have a `field` argument",
+            )
+        })?;
+        let target_field = match target_field {
+            Value::String(s) => s,
+            _ => {
+                return Err(invalid(
+                    object_type,
+                    &field.name,
+                    "the value of the @derivedFrom `field` argument must be a string",
+                ))
+            }
+        };
+
+        // Check that the type we are deriving from exists
+        let target_type_name = get_base_type(&field.field_type);
+        let target_fields = object_and_interface_type_fields
+            .get(target_type_name)
+            .ok_or_else(|| {
+                invalid(
+                    object_type,
+                    &field.name,
+                    "the type of the field must be an existing entity or interface type",
+                )
+            })?;
+
+        // Check that the type we are deriving from has a field with the
+        // right name and type
+        let target_field = target_fields
+            .iter()
+            .find(|field| &field.name == target_field)
+            .ok_or_else(|| {
+                let msg = format!(
+                    "field `{}` does not exist on type `{}`",
+                    target_field, target_type_name
+                );
+                invalid(object_type, &field.name, &msg)
+            })?;
+
+        // The field we are deriving from has to point back to us; as an
+        // exception, we allow deriving from the `id` of another type.
+        // For that, we will wind up comparing the `id`s of the two types
+        // when we query, and just assume that that's ok.
+        let target_field_type = get_base_type(&target_field.field_type);
+        if target_field_type != &object_type.name && target_field_type != "ID" {
+            let msg = format!(
+                "field `{tf}` on type `{tt}` must have type `{ot}`, `{ot}!`, or `[{ot}!]!`",
+                tf = target_field.name,
+                tt = target_type_name,
+                ot = object_type.name,
+            );
+            return Err(invalid(object_type, &field.name, &msg));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_derived_from_validation() {
+    const OTHER_TYPES: &str = "
+type B @entity { id: ID! }
+type C @entity { id: ID! }
+type D @entity { id: ID! }
+type E @entity { id: ID! }
+type F @entity { id: ID! }
+type G @entity { id: ID! a: BigInt }
+type H @entity { id: ID! a: A! }";
+
+    fn validate(field: &str, errmsg: &str) {
+        let raw = format!("type A @entity {{ id: ID!\n {} }}\n{}", field, OTHER_TYPES);
+
+        let document = graphql_parser::parse_schema(&raw).expect("Failed to parse raw schema");
+        match validate_derived_from(&document) {
+            Err(ref e) => match e {
+                SchemaValidationError::DerivedFromInvalid(_, _, msg) => assert_eq!(errmsg, msg),
+                _ => panic!("expected variant SchemaValidationError::DerivedFromInvalid"),
+            },
+            Ok(_) => {
+                if errmsg != "ok" {
+                    panic!("expected validation for `{}` to fail", field)
+                }
+            }
+        }
+    }
+
+    validate(
+        "b: B @derivedFrom(field: \"a\")",
+        "field `a` does not exist on type `B`",
+    );
+    validate(
+        "c: [C!]! @derivedFrom(field: \"a\")",
+        "field `a` does not exist on type `C`",
+    );
+    validate(
+        "d: D @derivedFrom",
+        "the @derivedFrom directive must have a `field` argument",
+    );
+    validate(
+        "e: E @derivedFrom(attr: \"a\")",
+        "the @derivedFrom directive must have a `field` argument",
+    );
+    validate(
+        "f: F @derivedFrom(field: 123)",
+        "the value of the @derivedFrom `field` argument must be a string",
+    );
+    validate(
+        "g: G @derivedFrom(field: \"a\")",
+        "field `a` on type `G` must have type `A`, `A!`, or `[A!]!`",
+    );
+    validate("h: H @derivedFrom(field: \"a\")", "ok");
+    validate(
+        "i: NotAType @derivedFrom(field: \"a\")",
+        "the type of the field must be an existing entity or interface type",
+    );
+    validate("j: B @derivedFrom(field: \"id\")", "ok");
 }
