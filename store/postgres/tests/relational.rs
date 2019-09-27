@@ -1669,3 +1669,45 @@ fn text_greater_or_equal() {
     text_find(vec!["a8b"], filter(a8b));
     text_find(vec!["a8b", "a9"], filter(a9));
 }
+
+#[test]
+fn text_in() {
+    let (a7, a8, a8b, a9) = ferrets();
+    fn filter(names: Vec<&str>) -> EntityFilter {
+        EntityFilter::In(
+            "name".to_owned(),
+            names
+                .into_iter()
+                .map(|name| Value::from(name.to_owned()))
+                .collect(),
+        )
+    }
+
+    text_find(vec!["a7"], filter(vec![&a7]));
+    text_find(vec!["a8"], filter(vec![&a8]));
+    text_find(vec!["a8b"], filter(vec![&a8b]));
+    text_find(vec!["a9"], filter(vec![&a9]));
+    text_find(vec!["a7", "a8"], filter(vec![&a7, &a8]));
+    text_find(vec!["a7", "a9"], filter(vec![&a7, &a9]));
+}
+
+#[test]
+fn text_not_in() {
+    let (a7, a8, a8b, a9) = ferrets();
+    fn filter(names: Vec<&str>) -> EntityFilter {
+        EntityFilter::NotIn(
+            "name".to_owned(),
+            names
+                .into_iter()
+                .map(|name| Value::from(name.to_owned()))
+                .collect(),
+        )
+    }
+
+    text_find(vec!["a8", "a8b", "a9"], filter(vec![&a7]));
+    text_find(vec!["a7", "a8b", "a9"], filter(vec![&a8]));
+    text_find(vec!["a7", "a8", "a9"], filter(vec![&a8b]));
+    text_find(vec!["a7", "a8", "a8b"], filter(vec![&a9]));
+    text_find(vec!["a8b", "a9"], filter(vec![&a7, &a8]));
+    text_find(vec!["a8", "a8b"], filter(vec![&a7, &a9]));
+}

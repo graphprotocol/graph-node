@@ -262,9 +262,9 @@ struct PrefixComparison<'a> {
 }
 
 impl<'a> PrefixComparison<'a> {
-    fn push_column_prefix(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn push_column_prefix(column: &Column, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.push_sql("left(");
-        out.push_identifier(self.column.name.as_str())?;
+        out.push_identifier(column.name.as_str())?;
         out.push_sql(", ");
         out.push_sql(&STRING_PREFIX_SIZE.to_string());
         out.push_sql(")");
@@ -281,7 +281,7 @@ impl<'a> PrefixComparison<'a> {
     }
 
     fn push_prefix_cmp(&self, op: Comparison, mut out: AstPass<Pg>) -> QueryResult<()> {
-        self.push_column_prefix(out.reborrow())?;
+        Self::push_column_prefix(self.column, out.reborrow())?;
         out.push_sql(op.as_str());
         self.push_value_prefix(out.reborrow())
     }
@@ -590,7 +590,22 @@ impl<'a> QueryFilter<'a> {
         }
 
         if have_non_nulls {
-            out.push_identifier(column.name.as_str())?;
+            if column.is_text()
+                && values.iter().all(|v| match v {
+                    Value::String(s) => s.len() <= STRING_PREFIX_SIZE - 1,
+                    _ => false,
+                })
+            {
+                // If all values are shorter than STRING_PREFIX_SIZE - 1,
+                // only check the prefix of the column; that's a fairly common
+                // case and we present it in the best possible way for
+                // Postgres' query optimizer
+                // See PrefixComparison for a more detailed discussion of what
+                // is happening here
+                PrefixComparison::push_column_prefix(&column, out.reborrow())?;
+            } else {
+                out.push_identifier(column.name.as_str())?;
+            }
             if negated {
                 out.push_sql(" not in (");
             } else {
