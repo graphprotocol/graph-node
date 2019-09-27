@@ -10,6 +10,8 @@ use web3::types::*;
 use super::types::*;
 use crate::prelude::*;
 
+pub type EventSig = H256;
+
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
 pub struct EthereumNetworkIdentifier {
     pub net_version: String,
@@ -86,7 +88,7 @@ impl From<Error> for EthereumAdapterError {
 
 #[derive(Clone, Debug)]
 pub struct EthereumLogFilter {
-    pub contract_address_and_event_sig_pairs: HashSet<(Option<Address>, H256)>,
+    pub contract_address_and_event_sig_pairs: HashSet<(Option<Address>, EventSig)>,
 }
 
 impl EthereumLogFilter {
@@ -150,6 +152,12 @@ impl EthereumLogFilter {
             contract_address_and_event_sig_pairs,
         } = self;
         contract_address_and_event_sig_pairs.is_empty()
+    }
+
+    pub fn eth_log_filters(self) -> impl Iterator<Item = (Vec<Address>, Vec<EventSig>)> {
+        self.contract_address_and_event_sig_pairs
+            .into_iter()
+            .map(|(address, event)| (address.into_iter().collect(), vec![event]))
     }
 }
 
