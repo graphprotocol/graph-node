@@ -55,10 +55,13 @@ use crate::notification_listener::JsonNotification;
 use crate::relational::{IdType, Layout};
 use crate::store::Store;
 
-/// The size of string prefixes that we index. This should be large enough
-/// that we catch most strings, but small enough so that we can still insert
-/// it into a Postgres BTree index
-pub(crate) const STRING_PREFIX_SIZE: usize = 2048;
+/// The size of string prefixes that we index. This is chosen so that we
+/// will index strings that people will do string comparisons like
+/// `=` or `!=` on; if text longer than this is stored in a String attribute
+/// it is highly unlikely that they will be used for exact string operations.
+/// This also makes sure that we do not put strings into a BTree index that's
+/// bigger than Postgres' limit on such strings which is about 2k
+pub const STRING_PREFIX_SIZE: usize = 256;
 
 /// The type of operation that led to a history entry. When we revert a block,
 /// we reverse the effects of that operation; e.g., an `Insert` entry in the

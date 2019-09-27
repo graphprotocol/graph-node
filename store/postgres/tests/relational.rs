@@ -13,7 +13,7 @@ use graph::prelude::{
     bigdecimal::One, web3::types::H256, Entity, EntityFilter, EntityKey, EntityOrder, EntityQuery,
     EntityRange, Schema, SubgraphDeploymentId, Value, ValueType,
 };
-use graph_store_postgres::layout_for_tests::{Layout, BLOCK_NUMBER_MAX};
+use graph_store_postgres::layout_for_tests::{Layout, BLOCK_NUMBER_MAX, STRING_PREFIX_SIZE};
 
 use test_store::*;
 
@@ -1522,18 +1522,19 @@ fn find_enum_not_in() {
     )
 }
 
-// To keep typing to a minimum, we call our test strings
-// a7 -> "a" * 2047, same for a8 and a9
-// and a8b = "a" * 2048 + "b"
-// Return (a7, a8, a8b, a9)
+// We call our test strings aN so that
+//   aN = "a" * (STRING_PREFIX_SIZE - 2 + N)
+// chosen so that they straddle the boundary between strings that fit into
+// the index, and strings that have only a prefix in the index
+// Return (a1, a2, a2b, a3)
 // Note that that is the order for these ids, though the
-// underlying strings are in the order a7 < a8 < a9 < a8b
+// underlying strings are in the order a1 < a2 < a3 < a2b
 fn ferrets() -> (String, String, String, String) {
     (
-        "a".repeat(2047),
-        "a".repeat(2048),
-        format!("{}b", "a".repeat(2048)),
-        "a".repeat(2049),
+        "a".repeat(STRING_PREFIX_SIZE - 1),
+        "a".repeat(STRING_PREFIX_SIZE),
+        format!("{}b", "a".repeat(STRING_PREFIX_SIZE)),
+        "a".repeat(STRING_PREFIX_SIZE + 1),
     )
 }
 
@@ -1542,11 +1543,11 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
         expected_entity_ids.into_iter().map(str::to_owned).collect();
 
     run_test(move |conn, layout| -> Result<(), ()> {
-        let (a7, a8, a8b, a9) = ferrets();
-        insert_pet(conn, layout, "Ferret", "a7", &a7);
-        insert_pet(conn, layout, "Ferret", "a8", &a8);
-        insert_pet(conn, layout, "Ferret", "a8b", &a8b);
-        insert_pet(conn, layout, "Ferret", "a9", &a9);
+        let (a1, a2, a2b, a3) = ferrets();
+        insert_pet(conn, layout, "Ferret", "a1", &a1);
+        insert_pet(conn, layout, "Ferret", "a2", &a2);
+        insert_pet(conn, layout, "Ferret", "a2b", &a2b);
+        insert_pet(conn, layout, "Ferret", "a3", &a3);
 
         let query = EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
@@ -1600,79 +1601,79 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
 
 #[test]
 fn text_equal() {
-    let (a7, a8, a8b, a9) = ferrets();
+    let (a1, a2, a2b, a3) = ferrets();
     fn filter(name: String) -> EntityFilter {
         EntityFilter::Equal("name".to_owned(), name.into())
     }
-    text_find(vec!["a7"], filter(a7));
-    text_find(vec!["a8"], filter(a8));
-    text_find(vec!["a8b"], filter(a8b));
-    text_find(vec!["a9"], filter(a9));
+    text_find(vec!["a1"], filter(a1));
+    text_find(vec!["a2"], filter(a2));
+    text_find(vec!["a2b"], filter(a2b));
+    text_find(vec!["a3"], filter(a3));
 }
 
 #[test]
 fn text_not_equal() {
-    let (a7, a8, a8b, a9) = ferrets();
+    let (a1, a2, a2b, a3) = ferrets();
     fn filter(name: String) -> EntityFilter {
         EntityFilter::Not("name".to_owned(), name.into())
     }
-    text_find(vec!["a8", "a8b", "a9"], filter(a7));
-    text_find(vec!["a7", "a8b", "a9"], filter(a8));
-    text_find(vec!["a7", "a8", "a9"], filter(a8b));
-    text_find(vec!["a7", "a8", "a8b"], filter(a9));
+    text_find(vec!["a2", "a2b", "a3"], filter(a1));
+    text_find(vec!["a1", "a2b", "a3"], filter(a2));
+    text_find(vec!["a1", "a2", "a3"], filter(a2b));
+    text_find(vec!["a1", "a2", "a2b"], filter(a3));
 }
 
 #[test]
 fn text_less_than() {
-    let (a7, a8, a8b, a9) = ferrets();
+    let (a1, a2, a2b, a3) = ferrets();
     fn filter(name: String) -> EntityFilter {
         EntityFilter::LessThan("name".to_owned(), name.into())
     }
-    text_find(vec![], filter(a7));
-    text_find(vec!["a7"], filter(a8));
-    text_find(vec!["a7", "a8", "a9"], filter(a8b));
-    text_find(vec!["a7", "a8"], filter(a9));
+    text_find(vec![], filter(a1));
+    text_find(vec!["a1"], filter(a2));
+    text_find(vec!["a1", "a2", "a3"], filter(a2b));
+    text_find(vec!["a1", "a2"], filter(a3));
 }
 
 #[test]
 fn text_less_or_equal() {
-    let (a7, a8, a8b, a9) = ferrets();
+    let (a1, a2, a2b, a3) = ferrets();
     fn filter(name: String) -> EntityFilter {
         EntityFilter::LessOrEqual("name".to_owned(), name.into())
     }
-    text_find(vec!["a7"], filter(a7));
-    text_find(vec!["a7", "a8"], filter(a8));
-    text_find(vec!["a7", "a8", "a8b", "a9"], filter(a8b));
-    text_find(vec!["a7", "a8", "a9"], filter(a9));
+    text_find(vec!["a1"], filter(a1));
+    text_find(vec!["a1", "a2"], filter(a2));
+    text_find(vec!["a1", "a2", "a2b", "a3"], filter(a2b));
+    text_find(vec!["a1", "a2", "a3"], filter(a3));
 }
 
 #[test]
 fn text_greater_than() {
-    let (a7, a8, a8b, a9) = ferrets();
+    let (a1, a2, a2b, a3) = ferrets();
     fn filter(name: String) -> EntityFilter {
         EntityFilter::GreaterThan("name".to_owned(), name.into())
     }
-    text_find(vec!["a8", "a8b", "a9"], filter(a7));
-    text_find(vec!["a8b", "a9"], filter(a8));
-    text_find(vec![], filter(a8b));
-    text_find(vec!["a8b"], filter(a9));
+    text_find(vec!["a2", "a2b", "a3"], filter(a1));
+    text_find(vec!["a2b", "a3"], filter(a2));
+    text_find(vec![], filter(a2b));
+    text_find(vec!["a2b"], filter(a3));
 }
 
 #[test]
 fn text_greater_or_equal() {
-    let (a7, a8, a8b, a9) = ferrets();
+    let (a1, a2, a2b, a3) = ferrets();
     fn filter(name: String) -> EntityFilter {
         EntityFilter::GreaterOrEqual("name".to_owned(), name.into())
     }
-    text_find(vec!["a7", "a8", "a8b", "a9"], filter(a7));
-    text_find(vec!["a8", "a8b", "a9"], filter(a8));
-    text_find(vec!["a8b"], filter(a8b));
-    text_find(vec!["a8b", "a9"], filter(a9));
+    text_find(vec!["a1", "a2", "a2b", "a3"], filter(a1));
+    text_find(vec!["a2", "a2b", "a3"], filter(a2));
+    text_find(vec!["a2b"], filter(a2b));
+    text_find(vec!["a2b", "a3"], filter(a3));
 }
 
 #[test]
 fn text_in() {
-    let (a7, a8, a8b, a9) = ferrets();
+    let (a1, a2, a2b, a3) = ferrets();
     fn filter(names: Vec<&str>) -> EntityFilter {
         EntityFilter::In(
             "name".to_owned(),
@@ -1683,17 +1684,17 @@ fn text_in() {
         )
     }
 
-    text_find(vec!["a7"], filter(vec![&a7]));
-    text_find(vec!["a8"], filter(vec![&a8]));
-    text_find(vec!["a8b"], filter(vec![&a8b]));
-    text_find(vec!["a9"], filter(vec![&a9]));
-    text_find(vec!["a7", "a8"], filter(vec![&a7, &a8]));
-    text_find(vec!["a7", "a9"], filter(vec![&a7, &a9]));
+    text_find(vec!["a1"], filter(vec![&a1]));
+    text_find(vec!["a2"], filter(vec![&a2]));
+    text_find(vec!["a2b"], filter(vec![&a2b]));
+    text_find(vec!["a3"], filter(vec![&a3]));
+    text_find(vec!["a1", "a2"], filter(vec![&a1, &a2]));
+    text_find(vec!["a1", "a3"], filter(vec![&a1, &a3]));
 }
 
 #[test]
 fn text_not_in() {
-    let (a7, a8, a8b, a9) = ferrets();
+    let (a1, a2, a2b, a3) = ferrets();
     fn filter(names: Vec<&str>) -> EntityFilter {
         EntityFilter::NotIn(
             "name".to_owned(),
@@ -1704,10 +1705,10 @@ fn text_not_in() {
         )
     }
 
-    text_find(vec!["a8", "a8b", "a9"], filter(vec![&a7]));
-    text_find(vec!["a7", "a8b", "a9"], filter(vec![&a8]));
-    text_find(vec!["a7", "a8", "a9"], filter(vec![&a8b]));
-    text_find(vec!["a7", "a8", "a8b"], filter(vec![&a9]));
-    text_find(vec!["a8b", "a9"], filter(vec![&a7, &a8]));
-    text_find(vec!["a8", "a8b"], filter(vec![&a7, &a9]));
+    text_find(vec!["a2", "a2b", "a3"], filter(vec![&a1]));
+    text_find(vec!["a1", "a2b", "a3"], filter(vec![&a2]));
+    text_find(vec!["a1", "a2", "a3"], filter(vec![&a2b]));
+    text_find(vec!["a1", "a2", "a2b"], filter(vec![&a3]));
+    text_find(vec!["a2b", "a3"], filter(vec![&a1, &a2]));
+    text_find(vec!["a2", "a2b"], filter(vec![&a1, &a3]));
 }

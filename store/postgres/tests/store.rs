@@ -13,6 +13,7 @@ use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
+use graph_store_postgres::layout_for_tests::STRING_PREFIX_SIZE;
 use graph_store_postgres::Store as DieselStore;
 use web3::types::{Address, H256};
 
@@ -2339,7 +2340,7 @@ fn handle_large_string_with_index() {
 
         // Make sure we check the full string and not just a prefix
         let mut prefix = long_text.clone();
-        prefix.truncate(2048);
+        prefix.truncate(STRING_PREFIX_SIZE);
         let query = EntityQuery::new(
             TEST_SUBGRAPH_ID.clone(),
             vec![USER.to_owned()],

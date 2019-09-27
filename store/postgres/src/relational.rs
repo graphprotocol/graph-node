@@ -918,7 +918,7 @@ create index attr_1_2_scalar_int
 create index attr_1_3_scalar_big_decimal
     on rel.\"scalar\" using btree(\"big_decimal\");
 create index attr_1_4_scalar_string
-    on rel.\"scalar\" using btree(left(\"string\", 2048));
+    on rel.\"scalar\" using btree(left(\"string\", 256));
 create index attr_1_5_scalar_bytes
     on rel.\"scalar\" using btree(\"bytes\");
 create index attr_1_6_scalar_big_int
@@ -968,7 +968,7 @@ type SongStat @entity {
 create index attr_0_0_musician_id
     on rel.\"musician\" using btree(\"id\");
 create index attr_0_1_musician_name
-    on rel.\"musician\" using btree(left(\"name\", 2048));
+    on rel.\"musician\" using btree(left(\"name\", 256));
 create index attr_0_2_musician_main_band
     on rel.\"musician\" using btree(\"main_band\");
 create index attr_0_3_musician_bands
@@ -986,7 +986,7 @@ create table rel.\"band\" (
 create index attr_1_0_band_id
     on rel.\"band\" using btree(\"id\");
 create index attr_1_1_band_name
-    on rel.\"band\" using btree(left(\"name\", 2048));
+    on rel.\"band\" using btree(left(\"name\", 256));
 create index attr_1_2_band_original_songs
     on rel.\"band\" using gin(\"original_songs\");
 
@@ -1002,7 +1002,7 @@ create table rel.\"song\" (
 create index attr_2_0_song_id
     on rel.\"song\" using btree(\"id\");
 create index attr_2_1_song_title
-    on rel.\"song\" using btree(left(\"title\", 2048));
+    on rel.\"song\" using btree(left(\"title\", 256));
 create index attr_2_2_song_written_by
     on rel.\"song\" using btree(\"written_by\");
 

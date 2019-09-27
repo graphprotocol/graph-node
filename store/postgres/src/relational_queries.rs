@@ -250,10 +250,10 @@ impl Comparison {
 
 /// Produce a comparison between the string column `column` and the string
 /// value `text` that makes it obvious to Postgres' optimizer that it can
-/// first consult the partial index on `left(column, 2048)` instead of going
-/// straight to a sequential scan of the underlying table. We do this by
-/// writing the comparison `column op text` in a way that
-/// involves `left(column, 2048)`
+/// first consult the partial index on `left(column, STRING_PREFIX_SIZE)`
+/// instead of going straight to a sequential scan of the underlying table.
+/// We do this by writing the comparison `column op text` in a way that
+/// involves `left(column, STRING_PREFIX_SIZE)`
 #[derive(Constructor)]
 struct PrefixComparison<'a> {
     op: Comparison,
@@ -299,13 +299,13 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
 
         // For the various comparison operators, we want to write the condition
         // `column op text` in a way that lets Postgres use the index on
-        // `left(column, 2048)`. If at all possible, we also want the condition
-        // in a form that only uses the index, or if that's not possible, in
-        // a form where Postgres can first reduce the number of rows where
-        // a full comparison between `column` and `text` is needed by consulting
-        // the index.
+        // `left(column, STRING_PREFIX_SIZE)`. If at all possible, we also want
+        // the condition in a form that only uses the index, or if that's not
+        // possible, in a form where Postgres can first reduce the number of
+        // rows where a full comparison between `column` and `text` is needed
+        // by consulting the index.
         //
-        // To ease notation, let `N = 2048` and write a string stored in
+        // To ease notation, let `N = STRING_PREFIX_SIZE` and write a string stored in
         // `column` as `uv` where `len(u) <= N`; that means that `v` is only
         // nonempty if `len(uv) > N`. We similarly split `text` into `st` where
         // `len(s) <= N`. In other words, `u = left(column, N)` and
