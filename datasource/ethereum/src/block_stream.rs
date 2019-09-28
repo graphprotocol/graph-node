@@ -127,6 +127,7 @@ struct BlockStreamContext<S, C> {
     start_blocks: Vec<u64>,
     templates_use_calls: bool,
     logger: Logger,
+    metrics: BlockStreamMetrics,
 }
 
 impl<S, C> Clone for BlockStreamContext<S, C> {
@@ -144,6 +145,44 @@ impl<S, C> Clone for BlockStreamContext<S, C> {
             start_blocks: self.start_blocks.clone(),
             templates_use_calls: self.templates_use_calls,
             logger: self.logger.clone(),
+            metrics: self.metrics.clone(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct BlockStreamMetrics {
+    pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+    pub blocks_behind: Box<Gauge>,
+    pub reverted_blocks: Box<Gauge>,
+}
+
+impl BlockStreamMetrics {
+    pub fn new<M: MetricsRegistry>(registry: Arc<M>, deployment_id: SubgraphDeploymentId) -> Self {
+        let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(
+            registry.clone(),
+            deployment_id.to_string(),
+        ));
+        let blocks_behind = registry
+            .new_gauge(
+                format!("subgraph_blocks_behind_{}", deployment_id.to_string()),
+                String::from(
+                    "Track the number of blocks a subgraph deployment is behind the HEAD block",
+                ),
+                HashMap::new(),
+            )
+            .expect("failed to create `subgraph_blocks_behind` gauge");
+        let reverted_blocks = registry
+            .new_gauge(
+                format!("subgraph_reverted_blocks_{}", deployment_id.to_string()),
+                String::from("Track the last reverted block for a subgraph deployment"),
+                HashMap::new(),
+            )
+            .expect("Failed to create `subgraph_reverted_blocks` gauge");
+        Self {
+            ethrpc_metrics,
+            blocks_behind,
+            reverted_blocks,
         }
     }
 }
@@ -173,6 +212,7 @@ where
         templates_use_calls: bool,
         reorg_threshold: u64,
         logger: Logger,
+        metrics: BlockStreamMetrics,
     ) -> Self {
         BlockStream {
             state: Mutex::new(BlockStreamState::New),
@@ -191,6 +231,7 @@ where
                 block_filter,
                 start_blocks,
                 templates_use_calls,
+                metrics,
             },
         }
     }
@@ -318,6 +359,9 @@ where
 
         // Only continue if the subgraph block ptr is behind the head block ptr.
         // subgraph_ptr > head_ptr shouldn't happen, but if it does, it's safest to just stop.
+        self.metrics
+            .blocks_behind
+            .set((head_ptr.number - subgraph_ptr.number) as f64);
         if subgraph_ptr.number >= head_ptr.number {
             return Box::new(future::ok(ReconciliationStep::Done))
                 as Box<dyn Future<Item = _, Error = _> + Send>;
@@ -364,7 +408,7 @@ where
             // permanently accepted into the main chain, or does it point to a block that was
             // uncled?
             Box::new(ctx.eth_adapter
-                .is_on_main_chain(&ctx.logger, subgraph_ptr)
+                .is_on_main_chain(&ctx.logger, ctx.metrics.ethrpc_metrics.clone(), subgraph_ptr)
                 .and_then(move |is_on_main_chain| -> Box<dyn Future<Item = _, Error = _> + Send> {
                     if is_on_main_chain {
                         // The subgraph ptr points to a block on the main chain.
@@ -421,6 +465,7 @@ where
                             ctx.eth_adapter
                                 .blocks_with_triggers(
                                     &ctx.logger,
+                                    ctx.metrics.ethrpc_metrics.clone(),
                                     from,
                                     to,
                                     log_filter.clone(),
@@ -555,6 +600,7 @@ where
                                     .eth_adapter
                                     .calls_in_block(
                                         &logger,
+                                        ctx.metrics.ethrpc_metrics.clone(),
                                         block.block.number.unwrap().as_u64(),
                                         block.block.hash.unwrap(),
                                     )
@@ -598,6 +644,9 @@ where
             ReconciliationStep::Retry => Box::new(future::ok(ReconciliationStepOutcome::MoreSteps)),
             ReconciliationStep::Done => Box::new(future::ok(ReconciliationStepOutcome::Done)),
             ReconciliationStep::RevertBlock(subgraph_ptr) => {
+                let metrics = self.metrics.clone();
+                let reverted_block_number = subgraph_ptr.number as f64;
+
                 // We would like to move to the parent of the current block.
                 // This means we need to revert this block.
 
@@ -623,6 +672,7 @@ where
                             )
                             .map_err(Error::from)
                             .map(|()| {
+                                metrics.reverted_blocks.set(reverted_block_number);
                                 // At this point, the loop repeats, and we try to move
                                 // the subgraph ptr another step in the right direction.
                                 ReconciliationStepOutcome::MoreSteps
@@ -907,6 +957,7 @@ where
     ) -> impl Future<Item = EthereumBlockWithCalls, Error = Error> + Send {
         let ctx = self.clone();
         let eth = self.eth_adapter.clone();
+        let eth_rpc_metrics = self.metrics.ethrpc_metrics.clone();
         let logger = self.logger.clone();
 
         // Search for the block in the store first then use the ethereum adapter as a backup
@@ -959,6 +1010,7 @@ where
                     let block = eth
                         .calls_in_block(
                             &logger,
+                            eth_rpc_metrics,
                             block.block.number.unwrap().as_u64(),
                             block.block.hash.unwrap(),
                         )
@@ -1214,15 +1266,16 @@ where
     }
 }
 
-pub struct BlockStreamBuilder<S, C> {
+pub struct BlockStreamBuilder<S, C, M> {
     subgraph_store: Arc<S>,
     chain_stores: HashMap<String, Arc<C>>,
     eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
     node_id: NodeId,
     reorg_threshold: u64,
+    metrics_registry: Arc<M>,
 }
 
-impl<S, C> Clone for BlockStreamBuilder<S, C> {
+impl<S, C, M> Clone for BlockStreamBuilder<S, C, M> {
     fn clone(&self) -> Self {
         BlockStreamBuilder {
             subgraph_store: self.subgraph_store.clone(),
@@ -1230,14 +1283,16 @@ impl<S, C> Clone for BlockStreamBuilder<S, C> {
             eth_adapters: self.eth_adapters.clone(),
             node_id: self.node_id.clone(),
             reorg_threshold: self.reorg_threshold,
+            metrics_registry: self.metrics_registry.clone(),
         }
     }
 }
 
-impl<S, C> BlockStreamBuilder<S, C>
+impl<S, C, M> BlockStreamBuilder<S, C, M>
 where
     S: Store,
     C: ChainStore,
+    M: MetricsRegistry,
 {
     pub fn new(
         subgraph_store: Arc<S>,
@@ -1245,6 +1300,7 @@ where
         eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
         node_id: NodeId,
         reorg_threshold: u64,
+        metrics_registry: Arc<M>,
     ) -> Self {
         BlockStreamBuilder {
             subgraph_store,
@@ -1252,14 +1308,16 @@ where
             eth_adapters,
             node_id,
             reorg_threshold,
+            metrics_registry,
         }
     }
 }
 
-impl<S, C> BlockStreamBuilderTrait for BlockStreamBuilder<S, C>
+impl<S, C, M> BlockStreamBuilderTrait for BlockStreamBuilder<S, C, M>
 where
     S: Store,
     C: ChainStore,
+    M: MetricsRegistry,
 {
     type Stream = BlockStream<S, C>;
 
@@ -1295,6 +1353,9 @@ where
             ))
             .clone();
 
+        // Instantiate metrics needed by the BlockStream
+        let metrics = BlockStreamMetrics::new(self.metrics_registry.clone(), deployment_id.clone());
+
         // Create the actual subgraph-specific block stream
         BlockStream::new(
             self.subgraph_store.clone(),
@@ -1309,6 +1370,7 @@ where
             templates_use_calls,
             self.reorg_threshold,
             logger,
+            metrics,
         )
     }
 }

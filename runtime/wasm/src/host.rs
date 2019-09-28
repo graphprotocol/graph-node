@@ -4,6 +4,7 @@ use semver::{Version, VersionReq};
 use tiny_keccak::keccak256;
 
 use std::collections::HashMap;
+use std::fmt;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
@@ -35,7 +36,10 @@ pub struct RuntimeHostBuilder<S> {
     stores: HashMap<String, Arc<S>>,
 }
 
-impl<S> Clone for RuntimeHostBuilder<S> {
+impl<S> Clone for RuntimeHostBuilder<S>
+where
+    S: Store,
+{
     fn clone(&self) -> Self {
         RuntimeHostBuilder {
             ethereum_adapters: self.ethereum_adapters.clone(),
@@ -73,8 +77,9 @@ where
         parsed_module: parity_wasm::elements::Module,
         logger: Logger,
         subgraph_id: SubgraphDeploymentId,
+        metrics: Arc<HostMetrics>,
     ) -> Result<Sender<Self::Req>, Error> {
-        crate::mapping::spawn_module(parsed_module, logger, subgraph_id)
+        crate::mapping::spawn_module(parsed_module, logger, subgraph_id, metrics)
     }
 
     fn build(
@@ -84,6 +89,7 @@ where
         data_source: DataSource,
         top_level_templates: Vec<DataSourceTemplate>,
         mapping_request_sender: Sender<MappingRequest>,
+        metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
         let store = self.stores.get(&network_name).ok_or_else(|| {
             format_err!(
@@ -119,6 +125,7 @@ where
                 templates,
             },
             mapping_request_sender,
+            metrics,
         )
     }
 }
@@ -133,6 +140,7 @@ pub struct RuntimeHost {
     data_source_block_handlers: Vec<MappingBlockHandler>,
     mapping_request_sender: Sender<MappingRequest>,
     host_exports: Arc<HostExports>,
+    metrics: Arc<HostMetrics>,
 }
 
 impl RuntimeHost {
@@ -143,6 +151,7 @@ impl RuntimeHost {
         call_cache: Arc<dyn EthereumCallCache>,
         config: RuntimeHostConfig,
         mapping_request_sender: Sender<MappingRequest>,
+        metrics: Arc<HostMetrics>,
     ) -> Result<Self, Error> {
         let api_version = Version::parse(&config.mapping.api_version)?;
         if !VersionReq::parse("<= 0.0.3").unwrap().matches(&api_version) {
@@ -166,6 +175,7 @@ impl RuntimeHost {
                 )
             })?
             .clone();
+
         let data_source_name = config.data_source_name;
 
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
@@ -195,6 +205,7 @@ impl RuntimeHost {
             data_source_block_handlers: config.mapping.block_handlers,
             mapping_request_sender,
             host_exports,
+            metrics,
         })
     }
 
@@ -468,6 +479,7 @@ impl RuntimeHostTrait for RuntimeHost {
         // Execute the call handler and asynchronously wait for the result
         let (result_sender, result_receiver) = oneshot::channel();
         let start_time = Instant::now();
+        let metrics = self.metrics.clone();
         Box::new(
             self.mapping_request_sender
                 .clone()
@@ -494,11 +506,16 @@ impl RuntimeHostTrait for RuntimeHost {
                     })
                 })
                 .and_then(move |(result, _)| {
+                    let elapsed = start_time.elapsed();
+                    metrics.observe_handler_execution_time(
+                        elapsed.as_secs_f64(),
+                        call_handler.handler.clone(),
+                    );
                     info!(
                         logger, "Done processing Ethereum call";
                         "function" => &call_handler.function,
                         "handler" => &call_handler.handler,
-                        "ms" => start_time.elapsed().as_millis(),
+                        "ms" => elapsed.as_millis(),
                     );
                     result
                 }),
@@ -528,6 +545,7 @@ impl RuntimeHostTrait for RuntimeHost {
         // Execute the call handler and asynchronously wait for the result
         let (result_sender, result_receiver) = oneshot::channel();
         let start_time = Instant::now();
+        let metrics = self.metrics.clone();
         Box::new(
             self.mapping_request_sender
                 .clone()
@@ -552,12 +570,17 @@ impl RuntimeHostTrait for RuntimeHost {
                     })
                 })
                 .and_then(move |(result, _)| {
+                    let elapsed = start_time.elapsed();
+                    metrics.observe_handler_execution_time(
+                        elapsed.as_secs_f64(),
+                        block_handler.handler.clone(),
+                    );
                     info!(
                         logger, "Done processing Ethereum block";
                         "hash" => block.block.hash.unwrap().to_string(),
                         "number" => &block.block.number.unwrap().to_string(),
                         "handler" => &block_handler.handler,
-                        "ms" => start_time.elapsed().as_millis(),
+                        "ms" => elapsed.as_millis(),
                     );
                     result
                 }),
@@ -697,7 +720,7 @@ impl RuntimeHostTrait for RuntimeHost {
         let before_event_signature = event_handler.event.clone();
         let event_signature = event_handler.event.clone();
         let start_time = Instant::now();
-
+        let metrics = self.metrics.clone();
         Box::new(
             self.mapping_request_sender
                 .clone()
@@ -732,12 +755,17 @@ impl RuntimeHostTrait for RuntimeHost {
                     })
                 })
                 .and_then(move |(result, send_time)| {
+                    let elapsed = start_time.elapsed();
                     let logger = logger.clone();
+                    metrics.observe_handler_execution_time(
+                        elapsed.as_secs_f64(),
+                        event_handler.handler.clone(),
+                    );
                     info!(
                         logger, "Done processing Ethereum event";
                         "signature" => &event_handler.event,
                         "handler" => &event_handler.handler,
-                        "total_ms" => start_time.elapsed().as_millis(),
+                        "total_ms" => elapsed.as_millis(),
 
                         // How much time the result spent in the channel,
                         // waiting in the tokio threadpool queue. Anything

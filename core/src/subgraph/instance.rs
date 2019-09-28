@@ -38,6 +38,7 @@ where
         logger: &Logger,
         manifest: SubgraphManifest,
         host_builder: T,
+        host_metrics: Arc<HostMetrics>,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name()?;
@@ -57,7 +58,7 @@ where
         let (hosts, errors): (_, Vec<_>) = manifest
             .data_sources
             .into_iter()
-            .map(|d| this.new_host(logger.clone(), d, templates.clone()))
+            .map(|d| this.new_host(logger.clone(), d, templates.clone(), host_metrics.clone()))
             .partition(|res| res.is_ok());
 
         if !errors.is_empty() {
@@ -87,6 +88,7 @@ where
         logger: Logger,
         data_source: DataSource,
         top_level_templates: Vec<DataSourceTemplate>,
+        host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
             let module_bytes = data_source.mapping.runtime.as_ref().clone().to_bytes()?;
@@ -97,6 +99,7 @@ where
                     data_source.mapping.runtime.as_ref().clone(),
                     logger,
                     self.subgraph_id.clone(),
+                    host_metrics.clone(),
                 )?;
                 self.module_cache.insert(module_bytes, sender.clone());
                 sender
@@ -108,6 +111,7 @@ where
             data_source,
             top_level_templates,
             mapping_request_sender,
+            host_metrics,
         )
     }
 }
@@ -221,6 +225,7 @@ where
         logger: &Logger,
         data_source: DataSource,
         top_level_templates: Vec<DataSourceTemplate>,
+        metrics: Arc<HostMetrics>,
     ) -> Result<Arc<T::Host>, Error> {
         // Protect against creating more than the allowed maximum number of data sources
         if let Some(max_data_sources) = *MAX_DATA_SOURCES {
@@ -232,7 +237,12 @@ where
             }
         }
 
-        let host = Arc::new(self.new_host(logger.clone(), data_source, top_level_templates)?);
+        let host = Arc::new(self.new_host(
+            logger.clone(),
+            data_source,
+            top_level_templates,
+            metrics.clone(),
+        )?);
         self.hosts.push(host.clone());
         Ok(host)
     }

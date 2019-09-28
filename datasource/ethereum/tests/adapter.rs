@@ -10,6 +10,7 @@ use graph::components::ethereum::EthereumContractCall;
 use graph::prelude::EthereumAdapter as EthereumAdapterTrait;
 use graph::prelude::*;
 use graph_datasource_ethereum::EthereumAdapter;
+use mock::MockMetricsRegistry;
 use web3::helpers::*;
 use web3::types::*;
 use web3::{BatchTransport, RequestId, Transport};
@@ -155,6 +156,7 @@ impl EthereumCallCache for FakeEthereumCallCache {
 #[test]
 #[ignore]
 fn contract_call() {
+    let registry = Arc::new(MockMetricsRegistry::new());
     let mut transport = TestTransport::default();
 
     transport.add_response(serde_json::to_value(mock_block()).unwrap());
@@ -166,7 +168,10 @@ fn contract_call() {
     )));
 
     let logger = Logger::root(slog::Discard, o!());
-    let adapter = EthereumAdapter::new(transport);
+
+    let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(registry.clone()));
+
+    let adapter = EthereumAdapter::new(transport, provider_metrics);
     let balance_of = Function {
         name: "balanceOf".to_owned(),
         inputs: vec![Param {

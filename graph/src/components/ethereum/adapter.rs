@@ -9,6 +9,7 @@ use tiny_keccak::keccak256;
 use web3::types::*;
 
 use super::types::*;
+use crate::components::metrics::{CounterVec, GaugeVec, HistogramVec};
 use crate::prelude::*;
 
 pub type EventSignature = H256;
@@ -468,6 +469,89 @@ impl EthereumBlockFilter {
     }
 }
 
+#[derive(Clone)]
+pub struct ProviderEthRpcMetrics {
+    request_duration: Box<HistogramVec>,
+    errors: Box<CounterVec>,
+}
+
+impl ProviderEthRpcMetrics {
+    pub fn new<M: MetricsRegistry>(registry: Arc<M>) -> Self {
+        let request_duration = registry
+            .new_histogram_vec(
+                String::from("eth_rpc_request_duration"),
+                String::from("Measures eth rpc request duration"),
+                HashMap::new(),
+                vec![String::from("method")],
+                vec![0.05, 0.2, 0.5, 1.0, 3.0, 5.0],
+            )
+            .unwrap();
+        let errors = registry
+            .new_counter_vec(
+                String::from("eth_rpc_errors"),
+                String::from("Counts eth rpc request errors"),
+                HashMap::new(),
+                vec![String::from("method")],
+            )
+            .unwrap();
+        Self {
+            request_duration,
+            errors,
+        }
+    }
+
+    pub fn observe_request(&self, duration: f64, method: &str) {
+        self.request_duration
+            .with_label_values(vec![method].as_slice())
+            .observe(duration);
+    }
+
+    pub fn add_error(&self, method: &str) {
+        self.errors.with_label_values(vec![method].as_slice()).inc();
+    }
+}
+
+#[derive(Clone)]
+pub struct SubgraphEthRpcMetrics {
+    request_duration: Box<GaugeVec>,
+    errors: Box<CounterVec>,
+}
+
+impl SubgraphEthRpcMetrics {
+    pub fn new<M: MetricsRegistry>(registry: Arc<M>, subgraph_hash: String) -> Self {
+        let request_duration = registry
+            .new_gauge_vec(
+                format!("subgraph_eth_rpc_request_duration_{}", subgraph_hash),
+                String::from("Measures eth rpc request duration for a subgraph deployment"),
+                HashMap::new(),
+                vec![String::from("method")],
+            )
+            .unwrap();
+        let errors = registry
+            .new_counter_vec(
+                format!("subgraph_eth_rpc_errors_{}", subgraph_hash),
+                String::from("Counts eth rpc request errors for a subgraph deployment"),
+                HashMap::new(),
+                vec![String::from("method")],
+            )
+            .unwrap();
+        Self {
+            request_duration,
+            errors,
+        }
+    }
+
+    pub fn observe_request(&self, duration: f64, method: &str) {
+        self.request_duration
+            .with_label_values(vec![method].as_slice())
+            .set(duration);
+    }
+
+    pub fn add_error(&self, method: &str) {
+        self.errors.with_label_values(vec![method].as_slice()).inc();
+    }
+}
+
 /// Common trait for components that watch and manage access to Ethereum.
 ///
 /// Implementations may be implemented against an in-process Ethereum node
@@ -542,12 +626,14 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn is_on_main_chain(
         &self,
         logger: &Logger,
+        metrics: Arc<SubgraphEthRpcMetrics>,
         block_ptr: EthereumBlockPointer,
     ) -> Box<dyn Future<Item = bool, Error = Error> + Send>;
 
     fn calls_in_block(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         block_number: u64,
         block_hash: H256,
     ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send>;
@@ -555,6 +641,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn blocks_with_triggers(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
@@ -577,6 +664,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn blocks_with_logs(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
@@ -585,6 +673,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn blocks_with_calls(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
         call_filter: EthereumCallFilter,
@@ -593,6 +682,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn blocks(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;

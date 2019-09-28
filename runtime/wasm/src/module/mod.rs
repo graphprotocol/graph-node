@@ -67,6 +67,17 @@ const ENS_NAME_BY_HASH: usize = 36;
 const LOG_LOG: usize = 37;
 const BIG_INT_POW: usize = 38;
 
+/// Transform function index into the function name string
+fn fn_index_to_metrics_string(index: usize) -> Option<String> {
+    match index {
+        STORE_GET_FUNC_INDEX => Some(String::from("store_get")),
+        ETHEREUM_CALL_FUNC_INDEX => Some(String::from("ethereum_call")),
+        IPFS_MAP_FUNC_INDEX => Some(String::from("ipfs_map")),
+        IPFS_CAT_FUNC_INDEX => Some(String::from("ipfs_cat")),
+        _ => None,
+    }
+}
+
 /// A common error is a trap in the host, so simplify the message in that case.
 fn format_wasmi_error(e: Error) -> String {
     match e {
@@ -86,6 +97,7 @@ pub(crate) struct WasmiModule<U> {
     pub ctx: MappingContext,
     pub(crate) valid_module: Arc<ValidModule>,
     pub(crate) task_sink: U,
+    pub(crate) host_metrics: Arc<HostMetrics>,
 
     // Time when the current handler began processing.
     start_time: Instant,
@@ -114,6 +126,7 @@ where
         valid_module: Arc<ValidModule>,
         ctx: MappingContext,
         task_sink: U,
+        host_metrics: Arc<HostMetrics>,
     ) -> Result<Self, FailureError> {
         // Build import resolver
         let mut imports = ImportsBuilder::new();
@@ -141,6 +154,7 @@ where
             ctx,
             valid_module: valid_module.clone(),
             task_sink,
+            host_metrics: host_metrics.clone(),
             start_time: Instant::now(),
             running_start: true,
 
@@ -920,7 +934,8 @@ where
         index: usize,
         args: RuntimeArgs,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        match index {
+        let start = Instant::now();
+        let res = match index {
             ABORT_FUNC_INDEX => self.abort(
                 args.nth_checked(0)?,
                 args.nth_checked(1)?,
@@ -991,7 +1006,13 @@ where
             ENS_NAME_BY_HASH => self.ens_name_by_hash(args.nth_checked(0)?),
             LOG_LOG => self.log_log(args.nth_checked(0)?, args.nth_checked(1)?),
             _ => panic!("Unimplemented function at {}", index),
-        }
+        };
+        // Record execution time
+        fn_index_to_metrics_string(index).map(|name| {
+            self.host_metrics
+                .observe_host_fn_execution_time(start.elapsed().as_secs_f64(), name);
+        });
+        res
     }
 }
 

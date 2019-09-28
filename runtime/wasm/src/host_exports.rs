@@ -381,6 +381,7 @@ impl HostExports {
             return Err(HostExportError(format!("Flags must contain 'json'")));
         }
 
+        let host_metrics = module.host_metrics.clone();
         let task_sink = module.task_sink.clone();
         let valid_module = module.valid_module.clone();
         let ctx = module.ctx.clone();
@@ -405,6 +406,7 @@ impl HostExports {
                                 valid_module.clone(),
                                 ctx.clone(),
                                 task_sink.clone(),
+                                host_metrics.clone(),
                             )?;
                             let result =
                                 module.handle_json_callback(&*callback, &sv.value, &user_data);
