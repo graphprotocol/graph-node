@@ -1,9 +1,9 @@
 use ethabi::{Bytes, Error as ABIError, Function, ParamType, Token};
-use failure::{Error, SyncFailure};
+use failure::SyncFailure;
 use futures::Future;
-use slog::Logger;
+use petgraph::graphmap::GraphMap;
 use std::collections::{HashMap, HashSet};
-use std::iter::FromIterator;
+use std::fmt;
 use tiny_keccak::keccak256;
 use web3::types::*;
 
@@ -86,9 +86,50 @@ impl From<Error> for EthereumAdapterError {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+enum LogFilterNode {
+    Contract(Address),
+    Event(EventSig),
+}
+
+/// Corresponds to an `eth_getLogs` call.
+#[derive(Clone)]
+pub struct EthGetLogsFilter {
+    pub contracts: Vec<Address>,
+    pub event_sigs: Vec<EventSig>,
+}
+
+impl fmt::Display for EthGetLogsFilter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.contracts.len() == 1 {
+            write!(
+                f,
+                "contract {}, {} events",
+                self.contracts[0],
+                self.event_sigs.len()
+            )
+        } else if self.event_sigs.len() == 1 {
+            write!(
+                f,
+                "event {}, {} contracts",
+                self.event_sigs[0],
+                self.contracts.len()
+            )
+        } else {
+            write!(f, "unreachable")
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct EthereumLogFilter {
-    pub contract_address_and_event_sig_pairs: HashSet<(Option<Address>, EventSig)>,
+    /// Log filters can be represented as a bipartite graph between contracts and events. An edge
+    /// exists between a contract and an event if a data source for the contract has a trigger for
+    /// the event.
+    contracts_and_events_graph: GraphMap<LogFilterNode, (), petgraph::Undirected>,
+
+    // Event sigs with no associated address, matching on all addresses.
+    wildcard_events: HashSet<EventSig>,
 }
 
 impl EthereumLogFilter {
@@ -105,70 +146,124 @@ impl EthereumLogFilter {
         // First topic should be event sig
         match log.topics.first() {
             None => false,
-            Some(sig) => self
-                .contract_address_and_event_sig_pairs
-                .iter()
-                .any(|pair| match pair {
-                    // The `Log` matches the filter either if the filter contains
-                    // a (contract address, event signature) pair that matches the
-                    // `Log`...
-                    (Some(addr), s) => addr == &log.address && s == sig,
 
-                    // ...or if the filter contains a pair with no contract address
-                    // but an event signature that matches the event
-                    (None, s) => s == sig,
-                }),
+            Some(sig) => {
+                // The `Log` matches the filter either if the filter contains
+                // a (contract address, event signature) pair that matches the
+                // `Log`, or if the filter contains wildcard event that matches.
+                self.contracts_and_events_graph
+                    .all_edges()
+                    .any(|(s, t, ())| {
+                        let contract = LogFilterNode::Contract(log.address.clone());
+                        let event = LogFilterNode::Event(*sig);
+                        (s == contract && t == event) || (t == contract && s == event)
+                    })
+                    || self.wildcard_events.contains(sig)
+            }
         }
     }
 
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
-        iter.into_iter()
-            .map(|data_source| {
-                let contract_addr = data_source.source.address;
-
-                data_source
-                    .mapping
-                    .event_handlers
-                    .iter()
-                    .map(move |event_handler| {
-                        let event_sig = event_handler.topic0();
-                        (contract_addr, event_sig)
-                    })
-            })
-            .flatten()
-            .collect()
+        let mut this = EthereumLogFilter::default();
+        for ds in iter {
+            for event_sig in ds.mapping.event_handlers.iter().map(|e| e.topic0()) {
+                match ds.source.address {
+                    Some(contract) => {
+                        this.contracts_and_events_graph.add_edge(
+                            LogFilterNode::Contract(contract),
+                            LogFilterNode::Event(event_sig),
+                            (),
+                        );
+                    }
+                    None => {
+                        this.wildcard_events.insert(event_sig);
+                    }
+                }
+            }
+        }
+        this
     }
 
     /// Extends this log filter with another one.
     pub fn extend(&mut self, other: EthereumLogFilter) {
-        self.contract_address_and_event_sig_pairs
-            .extend(other.contract_address_and_event_sig_pairs.iter());
+        // Destructure to make sure we're checking all fields.
+        let EthereumLogFilter {
+            contracts_and_events_graph,
+            wildcard_events,
+        } = other;
+        for (s, t, ()) in contracts_and_events_graph.all_edges() {
+            self.contracts_and_events_graph.add_edge(s, t, ());
+        }
+        self.wildcard_events.extend(wildcard_events);
     }
 
     /// An empty filter is one that never matches.
     pub fn is_empty(&self) -> bool {
         // Destructure to make sure we're checking all fields.
         let EthereumLogFilter {
-            contract_address_and_event_sig_pairs,
+            contracts_and_events_graph,
+            wildcard_events,
         } = self;
-        contract_address_and_event_sig_pairs.is_empty()
+        contracts_and_events_graph.edge_count() == 0 && wildcard_events.is_empty()
     }
 
-    pub fn eth_log_filters(self) -> impl Iterator<Item = (Vec<Address>, Vec<EventSig>)> {
-        self.contract_address_and_event_sig_pairs
-            .into_iter()
-            .map(|(address, event)| (address.into_iter().collect(), vec![event]))
-    }
-}
+    /// Filters for `eth_getLogs` calls. The filters will not return false positives. This attempts
+    /// to balance between having granular filters but too many calls and having few calls but too
+    /// broad filters causing the Ethereum endpoint to timeout.
+    pub fn eth_get_logs_filters(self) -> impl Iterator<Item = EthGetLogsFilter> {
+        let mut filters = Vec::new();
 
-impl FromIterator<(Option<Address>, H256)> for EthereumLogFilter {
-    fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = (Option<Address>, H256)>,
-    {
-        EthereumLogFilter {
-            contract_address_and_event_sig_pairs: iter.into_iter().collect(),
+        // First add the wildcard event filters.
+        for wildcard_event in self.wildcard_events {
+            filters.push(EthGetLogsFilter {
+                contracts: vec![],
+                event_sigs: vec![wildcard_event],
+            })
         }
+
+        // The current algorithm is to repeatedly find the maximum cardinality vertex and turn all
+        // of its edges into a filter. This is nice because it is neutral between filtering by
+        // contract or by events, if there are many events that appear on only one data source
+        // we'll filter by many events on a single contract, but if there is an event that appears
+        // on a lot of data sources we'll filter by many contracts with a single event.
+        //
+        // From a theoretical standpoint we're finding a vertex cover, and this is not the optimal
+        // algorithm to find a minimum vertex cover, but should be fine as an approximation.
+        //
+        // One optimization we're not doing is to merge nodes that have the same neighbors into a
+        // single node. For example if a subgraph has two data sources, each with the same two
+        // events, we could cover that with a single filter and no false positives. However that
+        // might cause the filter to become too broad, so at the moment it seems excessive.
+        let mut g = self.contracts_and_events_graph;
+        while g.edge_count() > 0 {
+            // If there are edges, there are vertexes.
+            let max_vertex = g.nodes().max_by_key(|&n| g.neighbors(n).count()).unwrap();
+            let mut filter = match max_vertex {
+                LogFilterNode::Contract(address) => EthGetLogsFilter {
+                    contracts: vec![address],
+                    event_sigs: vec![],
+                },
+                LogFilterNode::Event(event_sig) => EthGetLogsFilter {
+                    contracts: vec![],
+                    event_sigs: vec![event_sig],
+                },
+            };
+            for neighbor in g.neighbors(max_vertex) {
+                match neighbor {
+                    LogFilterNode::Contract(address) => filter.contracts.push(address),
+                    LogFilterNode::Event(event_sig) => filter.event_sigs.push(event_sig),
+                }
+            }
+
+            // Sanity checks:
+            // - The filter is not a wildcard because all nodes have neighbors.
+            // - The graph is bipartite.
+            assert!(filter.contracts.len() > 0 && filter.event_sigs.len() > 0);
+            assert!(filter.contracts.len() == 1 || filter.event_sigs.len() == 1);
+            filters.push(filter);
+            g.remove_node(max_vertex);
+        }
+        filters.into_iter()
     }
 }
 

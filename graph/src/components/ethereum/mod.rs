@@ -4,8 +4,8 @@ mod stream;
 mod types;
 
 pub use self::adapter::{
-    EthereumAdapter, EthereumAdapterError, EthereumBlockFilter, EthereumCallFilter,
-    EthereumContractCall, EthereumContractCallError, EthereumContractState,
+    EthGetLogsFilter, EthereumAdapter, EthereumAdapterError, EthereumBlockFilter,
+    EthereumCallFilter, EthereumContractCall, EthereumContractCallError, EthereumContractState,
     EthereumContractStateError, EthereumContractStateRequest, EthereumLogFilter,
     EthereumNetworkIdentifier, EventSig,
 };
