@@ -137,8 +137,7 @@ where
         logger: &Logger,
         from: u64,
         to: u64,
-        addresses: Vec<H160>,
-        event_signatures: Vec<EventSig>,
+        filter: EthGetLogsFilter,
         too_many_logs_fingerprints: &'static [&'static str],
     ) -> impl Future<Item = Vec<Log>, Error = tokio_timer::timeout::Error<web3::error::Error>> {
         let eth_adapter = self.clone();
@@ -157,8 +156,8 @@ where
                 let log_filter: Filter = FilterBuilder::default()
                     .from_block(from.into())
                     .to_block(to.into())
-                    .address(addresses.clone())
-                    .topics(Some(event_signatures.clone()), None, None, None)
+                    .address(filter.contracts.clone())
+                    .topics(Some(filter.event_sigs.clone()), None, None, None)
                     .build();
 
                 // Request logs from client
@@ -204,11 +203,10 @@ where
 
     fn log_stream(
         &self,
-        logger: &Logger,
+        logger: Logger,
         from: u64,
         to: u64,
-        addresses: Vec<H160>,
-        event_sigs: Vec<EventSig>,
+        filter: EthGetLogsFilter,
     ) -> impl Future<Item = Vec<Log>, Error = Error> {
         // Codes returned by Ethereum node providers if an eth_getLogs request is too heavy.
         // The first one is for Infura when it hits the log limit, the second for Alchemy timeouts.
@@ -224,8 +222,7 @@ where
 
         // Collect all event sigs
         let eth = self.clone();
-        let logger = logger.to_owned();
-        let step = match addresses.is_empty() {
+        let step = match filter.contracts.is_empty() {
             // `to - from` is the size of the full range.
             false => to - from,
             true => (to - from).min(*MAX_EVENT_ONLY_RANGE),
@@ -245,13 +242,15 @@ where
                     break;
                 }
                 let high = (low + step).min(to);
-                debug!(logger, "Requesting logs for blocks [{}, {}]", low, high);
+                debug!(
+                    logger,
+                    "Requesting logs for blocks [{}, {}], {}", low, high, filter
+                );
                 chunk_futures.push(eth.logs_with_sigs(
                     &logger,
                     low,
                     high,
-                    addresses.clone(),
-                    event_sigs.clone(),
+                    filter.clone(),
                     TOO_MANY_LOGS_FINGERPRINTS,
                 ));
                 low = high + 1;
@@ -896,30 +895,26 @@ where
         let eth = self.clone();
         let logger = logger.clone();
         Box::new(
-            stream::iter_ok(
-                log_filter
-                    .eth_log_filters()
-                    .map(move |(addresses, event_sigs)| {
-                        eth.log_stream(&logger, from, to, addresses, event_sigs)
-                            .map(|logs| {
-                                let mut block_ptrs = vec![];
-                                for log in logs.iter() {
-                                    let hash = log
-                                        .block_hash
-                                        .expect("log from Eth node is missing block hash");
-                                    let number = log
-                                        .block_number
-                                        .expect("log from Eth node is missing block number")
-                                        .as_u64();
-                                    let block_ptr = EthereumBlockPointer::from((hash, number));
-                                    if !block_ptrs.contains(&block_ptr) {
-                                        block_ptrs.push(block_ptr);
-                                    }
-                                }
-                                block_ptrs
-                            })
-                    }),
-            )
+            stream::iter_ok(log_filter.eth_get_logs_filters().map(move |filter| {
+                eth.log_stream(logger.clone(), from, to, filter)
+                    .map(|logs| {
+                        let mut block_ptrs = vec![];
+                        for log in logs.iter() {
+                            let hash = log
+                                .block_hash
+                                .expect("log from Eth node is missing block hash");
+                            let number = log
+                                .block_number
+                                .expect("log from Eth node is missing block number")
+                                .as_u64();
+                            let block_ptr = EthereumBlockPointer::from((hash, number));
+                            if !block_ptrs.contains(&block_ptr) {
+                                block_ptrs.push(block_ptr);
+                            }
+                        }
+                        block_ptrs
+                    })
+            }))
             .buffered(*LOG_STREAM_PARALLEL_CHUNKS as usize)
             .concat2(),
         )
