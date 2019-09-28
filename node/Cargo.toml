@@ -10,6 +10,7 @@ futures = "0.1.21"
 git-testament = "0.1"
 graphql-parser = "0.2.3"
 http = "0.1"
+prometheus = "0.7"
 
 # We're using the latest ipfs-api for the HTTPS support that was merged in
 # https://github.com/ferristseng/rust-ipfs-api/commit/55902e98d868dcce047863859caf596a629d10ec
@@ -27,6 +28,7 @@ graph-server-http = { path = "../server/http" }
 graph-server-index-node = { path = "../server/index-node" }
 graph-server-json-rpc = { path = "../server/json-rpc"}
 graph-server-websocket = { path = "../server/websocket" }
+graph-server-metrics = { path = "../server/metrics" }
 graph-store-postgres = { path = "../store/postgres" }
 
 [dev-dependencies]

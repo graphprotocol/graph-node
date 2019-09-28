@@ -45,13 +45,19 @@ pub mod prelude {
         EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall, EthereumCallData,
         EthereumCallFilter, EthereumContractCall, EthereumContractCallError, EthereumEventData,
         EthereumLogFilter, EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger,
+        ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
     };
     pub use crate::components::graphql::{
         GraphQlRunner, QueryResultFuture, SubscriptionResultFuture,
     };
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
+    pub use crate::components::metrics::{
+        Collector, Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec,
+        MetricsRegistry, Opts, PrometheusError, Registry,
+    };
     pub use crate::components::server::admin::JsonRpcServer;
     pub use crate::components::server::index_node::IndexNodeServer;
+    pub use crate::components::server::metrics::MetricsServer;
     pub use crate::components::server::query::GraphQLServer;
     pub use crate::components::server::subscription::SubscriptionServer;
     pub use crate::components::store::{
@@ -62,9 +68,9 @@ pub mod prelude {
         SUBSCRIPTION_THROTTLE_INTERVAL,
     };
     pub use crate::components::subgraph::{
-        BlockState, DataSourceLoader, DataSourceTemplateInfo, RuntimeHost, RuntimeHostBuilder,
-        SubgraphAssignmentProvider, SubgraphInstance, SubgraphInstanceManager, SubgraphRegistrar,
-        SubgraphVersionSwitchingMode,
+        BlockState, DataSourceLoader, DataSourceTemplateInfo, HostMetrics, RuntimeHost,
+        RuntimeHostBuilder, SubgraphAssignmentProvider, SubgraphInstance, SubgraphInstanceManager,
+        SubgraphRegistrar, SubgraphVersionSwitchingMode,
     };
     pub use crate::components::{EventConsumer, EventProducer};
 

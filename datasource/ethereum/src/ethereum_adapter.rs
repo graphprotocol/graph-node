@@ -4,6 +4,7 @@ use futures::prelude::*;
 use lazy_static::lazy_static;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Instant;
 
 use ethabi::ParamType;
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
@@ -16,6 +17,7 @@ use web3::types::{Filter, *};
 #[derive(Clone)]
 pub struct EthereumAdapter<T: web3::Transport> {
     web3: Arc<Web3<T>>,
+    metrics: Arc<ProviderEthRpcMetrics>,
 }
 
 lazy_static! {
@@ -46,15 +48,17 @@ where
     T: web3::BatchTransport + Send + Sync + 'static,
     T::Out: Send,
 {
-    pub fn new(transport: T) -> Self {
+    pub fn new(transport: T, provider_metrics: Arc<ProviderEthRpcMetrics>) -> Self {
         EthereumAdapter {
             web3: Arc::new(Web3::new(transport)),
+            metrics: provider_metrics,
         }
     }
 
     fn traces(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
         addresses: Vec<H160>,
@@ -80,6 +84,9 @@ where
 
                 let logger_for_triggers = logger.clone();
                 let logger_for_error = logger.clone();
+                let start = Instant::now();
+                let subgraph_metrics = subgraph_metrics.clone();
+                let provider_metrics = eth.metrics.clone();
                 eth.web3
                     .trace()
                     .filter(trace_filter)
@@ -106,7 +113,12 @@ where
                     })
                     .from_err()
                     .then(move |result| {
+                        let elapsed = start.elapsed().as_secs_f64();
+                        provider_metrics.observe_request(elapsed, "eth_getLogs");
+                        subgraph_metrics.observe_request(elapsed, "eth_getLogs");
                         if result.is_err() {
+                            provider_metrics.add_error("eth_getLogs");
+                            subgraph_metrics.add_error("eth_getLogs");
                             debug!(
                                 logger_for_error,
                                 "Error querying traces error = {:?} from = {:?} to = {:?}",
@@ -133,6 +145,7 @@ where
     fn logs_with_sigs(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
         filter: EthGetLogsFilter,
@@ -150,6 +163,10 @@ where
             .no_limit()
             .timeout_secs(60)
             .run(move || {
+                let start = Instant::now();
+                let subgraph_metrics = subgraph_metrics.clone();
+                let provider_metrics = eth_adapter.metrics.clone();
+
                 // Create a log filter
                 let log_filter: Filter = FilterBuilder::default()
                     .from_block(from.into())
@@ -159,13 +176,23 @@ where
                     .build();
 
                 // Request logs from client
-                eth_adapter.web3.eth().logs(log_filter)
+                eth_adapter.web3.eth().logs(log_filter).then(move |result| {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    provider_metrics.observe_request(elapsed, "eth_getLogs");
+                    subgraph_metrics.observe_request(elapsed, "eth_getLogs");
+                    if result.is_err() {
+                        provider_metrics.add_error("eth_getLogs");
+                        subgraph_metrics.add_error("eth_getLogs");
+                    }
+                    result
+                })
             })
     }
 
     fn trace_stream(
         self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
         addresses: Vec<H160>,
@@ -191,8 +218,14 @@ where
                 debug!(logger, "Requesting traces for blocks [{}, {}]", start, end);
             }
             Some(
-                eth.traces(&logger, start, end, addresses.clone())
-                    .map(move |traces| (traces, new_start)),
+                eth.traces(
+                    &logger,
+                    subgraph_metrics.clone(),
+                    start,
+                    end,
+                    addresses.clone(),
+                )
+                .map(move |traces| (traces, new_start)),
             )
         })
         .map(stream::iter_ok)
@@ -202,6 +235,7 @@ where
     fn log_stream(
         &self,
         logger: Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
         filter: EthGetLogsFilter,
@@ -246,6 +280,7 @@ where
                 );
                 chunk_futures.push(eth.logs_with_sigs(
                     &logger,
+                    subgraph_metrics.clone(),
                     low,
                     high,
                     filter.clone(),
@@ -738,6 +773,7 @@ where
     fn is_on_main_chain(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         block_ptr: EthereumBlockPointer,
     ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
         Box::new(
@@ -755,13 +791,20 @@ where
     fn calls_in_block(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         block_number: u64,
         block_hash: H256,
     ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
         let eth = self.clone();
         let addresses = Vec::new();
         let calls = eth
-            .trace_stream(&logger, block_number, block_number, addresses)
+            .trace_stream(
+                &logger,
+                subgraph_metrics.clone(),
+                block_number,
+                block_number,
+                addresses,
+            )
             .collect()
             .and_then(move |traces| {
                 // `trace_stream` returns all of the traces for the block, and this
@@ -800,6 +843,7 @@ where
     fn blocks_with_triggers(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
@@ -816,20 +860,21 @@ where
         if block_filter.trigger_every_block {
             // All blocks in the range contain a trigger
             block_futs.push(Box::new(
-                eth.blocks(&logger, from, to)
+                eth.blocks(&logger, subgraph_metrics.clone(), from, to)
                     .map(|block_ptrs| block_ptrs.into_iter().collect()),
             ));
         } else {
             // Scan the block range from triggers to find relevant blocks
             if !log_filter.is_empty() {
                 block_futs.push(Box::new(
-                    eth.blocks_with_logs(&logger, from, to, log_filter)
+                    eth.blocks_with_logs(&logger, subgraph_metrics.clone(), from, to, log_filter)
                         .map(|block_ptrs| block_ptrs.into_iter().collect()),
                 ));
             }
             if !call_filter.is_empty() {
                 block_futs.push(Box::new(eth.blocks_with_calls(
                     &logger,
+                    subgraph_metrics.clone(),
                     from,
                     to,
                     call_filter,
@@ -845,6 +890,7 @@ where
                     let call_filter = EthereumCallFilter::from(block_filter);
                     block_futs.push(Box::new(eth.blocks_with_calls(
                         &logger,
+                        subgraph_metrics.clone(),
                         from,
                         to,
                         call_filter,
@@ -862,6 +908,7 @@ where
     fn blocks(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
@@ -904,6 +951,7 @@ where
     fn blocks_with_logs(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
@@ -912,7 +960,7 @@ where
         let logger = logger.clone();
         Box::new(
             stream::iter_ok(log_filter.eth_get_logs_filters().map(move |filter| {
-                eth.log_stream(logger.clone(), from, to, filter)
+                eth.log_stream(logger.clone(), subgraph_metrics.clone(), from, to, filter)
                     .map(|logs| {
                         let mut block_ptrs = vec![];
                         for log in logs.iter() {
@@ -939,6 +987,7 @@ where
     fn blocks_with_calls(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
         call_filter: EthereumCallFilter,
@@ -954,7 +1003,7 @@ where
             .into_iter()
             .collect::<Vec<H160>>();
         Box::new(
-            eth.trace_stream(&logger, from, to, addresses)
+            eth.trace_stream(&logger, subgraph_metrics, from, to, addresses)
                 .filter_map(|trace| EthereumCall::try_from_trace(&trace))
                 .filter(move |call| {
                     // `trace_filter` can only filter by calls `to` an address and

@@ -13,6 +13,7 @@ pub fn spawn_module(
     parsed_module: parity_wasm::elements::Module,
     logger: Logger,
     subgraph_id: SubgraphDeploymentId,
+    host_metrics: Arc<HostMetrics>,
 ) -> Result<mpsc::Sender<MappingRequest>, Error> {
     let valid_module = Arc::new(ValidModule::new(parsed_module)?);
 
@@ -51,6 +52,7 @@ pub fn spawn_module(
                     valid_module.clone(),
                     ctx,
                     task_sender.clone(),
+                    host_metrics.clone(),
                 )?;
 
                 let result = match trigger {

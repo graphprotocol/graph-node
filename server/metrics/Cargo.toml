@@ -1,0 +1,13 @@
+[package]
+name = "graph-server-metrics"
+version = "0.0.1"
+edition = "2018"
+
+[dependencies]
+futures = "0.1.21"
+graph = { path = "../../graph" }
+http = "0.1.5"
+hyper = "0.12.35"
+lazy_static = "1.2.0"
+serde = "1.0"
+prometheus = "0.7"

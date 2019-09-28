@@ -8,5 +8,6 @@ failure = "0.1.2"
 futures = "0.1.21"
 jsonrpc-core = "13.2.0"
 graph = { path = "../../graph" }
+mock = { package = "graph-mock", path = "../../mock" }
 lazy_static = "1.2.0"
 hex-literal = "0.2"

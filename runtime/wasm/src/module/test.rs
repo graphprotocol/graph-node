@@ -20,7 +20,7 @@ use web3::types::{Address, H160};
 
 use super::*;
 
-use self::graph_mock::{MockEthereumAdapter, MockStore};
+use self::graph_mock::{MockEthereumAdapter, MockMetricsRegistry, MockStore};
 
 mod abi;
 
@@ -37,6 +37,12 @@ fn test_valid_module_and_store(
     Arc<MockStore>,
 ) {
     let store = Arc::new(MockStore::user_store());
+    let metrics_registry = Arc::new(MockMetricsRegistry::new());
+    let deployment_id = MockStore::user_subgraph_id();
+    let host_metrics = Arc::new(HostMetrics::new(
+        metrics_registry,
+        deployment_id.to_string(),
+    ));
 
     let (task_sender, task_receiver) = channel(100);
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
@@ -46,6 +52,7 @@ fn test_valid_module_and_store(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref().clone()).unwrap()),
         mock_context(data_source, store.clone()),
         task_sender,
+        host_metrics,
     )
     .unwrap();
 

@@ -3,6 +3,7 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::RwLock;
+use std::time::Instant;
 use uuid::Uuid;
 
 use graph::data::subgraph::schema::{
@@ -40,6 +41,12 @@ struct IndexingContext<B, T: RuntimeHostBuilder, S> {
 
     /// Mutable state that may be modified while indexing a subgraph.
     pub state: IndexingState<T>,
+
+    /// Sensors to measure the execution of the subgraph instance
+    pub subgraph_metrics: Arc<SubgraphInstanceMetrics>,
+
+    /// Sensors to measue the execution of the subgraphs runtime hosts
+    pub host_metrics: Arc<HostMetrics>,
 }
 
 pub struct SubgraphInstanceManager {
@@ -47,17 +54,122 @@ pub struct SubgraphInstanceManager {
     input: Sender<SubgraphAssignmentProviderEvent>,
 }
 
+struct SubgraphInstanceManagerMetrics {
+    pub subgraph_count: Box<Gauge>,
+}
+
+impl SubgraphInstanceManagerMetrics {
+    pub fn new<M: MetricsRegistry>(registry: Arc<M>) -> Self {
+        let subgraph_count = registry
+            .new_gauge(
+                String::from("subgraph_count"),
+                String::from(
+                    "Counts the number of subgraphs currently being indexed by the graph-node.",
+                ),
+                HashMap::new(),
+            )
+            .expect("failed to create `subgraph_count` gauge");
+        Self { subgraph_count }
+    }
+}
+
+enum TriggerType {
+    Event,
+    Call,
+    Block,
+}
+
+impl TriggerType {
+    fn label_value(&self) -> &str {
+        match self {
+            TriggerType::Event => "event",
+            TriggerType::Call => "call",
+            TriggerType::Block => "block",
+        }
+    }
+}
+
+struct SubgraphInstanceMetrics {
+    pub block_trigger_count: Box<Histogram>,
+    pub block_processing_duration: Box<Histogram>,
+    pub block_ops_transaction_duration: Box<Histogram>,
+
+    trigger_processing_duration: Box<HistogramVec>,
+}
+
+impl SubgraphInstanceMetrics {
+    pub fn new<M: MetricsRegistry>(registry: Arc<M>, subgraph_hash: String) -> Self {
+        let block_trigger_count = registry
+            .new_histogram(
+                format!("subgraph_block_trigger_count_{}", subgraph_hash),
+                String::from(
+                    "Measures the number of triggers in each block for a subgraph deployment",
+                ),
+                HashMap::new(),
+                vec![1.0, 5.0, 10.0, 20.0, 50.0],
+            )
+            .expect("failed to create `subgraph_block_trigger_count` histogram");
+        let trigger_processing_duration = registry
+            .new_histogram_vec(
+                format!("subgraph_trigger_processing_duration_{}", subgraph_hash),
+                String::from("Measures duration of trigger processing for a subgraph deployment"),
+                HashMap::new(),
+                vec![String::from("trigger_type")],
+                vec![0.01, 0.05, 0.1, 0.5, 1.5, 5.0, 10.0, 30.0, 120.0],
+            )
+            .expect("failed to create `subgraph_trigger_processing_duration` histogram");
+        let block_processing_duration = registry
+            .new_histogram(
+                format!("subgraph_block_processing_duration_{}", subgraph_hash),
+                String::from("Measures duration of block processing for a subgraph deployment"),
+                HashMap::new(),
+                vec![0.05, 0.2, 0.7, 1.5, 4.0, 10.0, 60.0, 120.0, 240.0],
+            )
+            .expect("failed to create `subgraph_block_processing_duration` histogram");
+        let block_ops_transaction_duration = registry
+            .new_histogram(
+                format!("subgraph_transact_block_operations_duration_{}", subgraph_hash),
+                String::from("Measures duration of commiting all the entity operations in a block and updating the subgraph pointer"),
+                HashMap::new(),
+                vec![0.01, 0.05, 0.1, 0.3, 0.7, 2.0],
+            )
+            .expect("failed to create `subgraph_transact_block_operations_duration_{}");
+
+        Self {
+            block_trigger_count,
+            block_processing_duration,
+            trigger_processing_duration,
+            block_ops_transaction_duration,
+        }
+    }
+
+    pub fn observe_trigger_processing_duration(&self, duration: f64, trigger: TriggerType) {
+        self.trigger_processing_duration
+            .with_label_values(vec![trigger.label_value()].as_slice())
+            .observe(duration);
+    }
+
+    pub fn unregister<M: MetricsRegistry>(&self, registry: Arc<M>) {
+        registry.unregister(self.block_processing_duration.clone());
+        registry.unregister(self.block_trigger_count.clone());
+        registry.unregister(self.trigger_processing_duration.clone());
+        registry.unregister(self.block_ops_transaction_duration.clone());
+    }
+}
+
 impl SubgraphInstanceManager {
     /// Creates a new runtime manager.
-    pub fn new<B, S>(
+    pub fn new<B, S, M>(
         logger_factory: &LoggerFactory,
         stores: HashMap<String, Arc<S>>,
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
+        metrics_registry: Arc<M>,
     ) -> Self
     where
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
         B: BlockStreamBuilder,
+        M: MetricsRegistry,
     {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -72,6 +184,7 @@ impl SubgraphInstanceManager {
             stores,
             host_builder,
             block_stream_builder,
+            metrics_registry.clone(),
         );
 
         SubgraphInstanceManager {
@@ -81,16 +194,22 @@ impl SubgraphInstanceManager {
     }
 
     /// Handle incoming events from subgraph providers.
-    fn handle_subgraph_events<B, S>(
+    fn handle_subgraph_events<B, S, M>(
         logger_factory: LoggerFactory,
         receiver: Receiver<SubgraphAssignmentProviderEvent>,
         stores: HashMap<String, Arc<S>>,
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
+        metrics_registry: Arc<M>,
     ) where
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
         B: BlockStreamBuilder,
+        M: MetricsRegistry,
     {
+        let metrics_registry_for_manager = metrics_registry.clone();
+        let metrics_registry_for_subgraph = metrics_registry.clone();
+        let manager_metrics = SubgraphInstanceManagerMetrics::new(metrics_registry_for_manager);
+
         // Subgraph instance shutdown senders
         let instances: SharedInstanceKeepAliveMap = Default::default();
 
@@ -100,7 +219,6 @@ impl SubgraphInstanceManager {
             match event {
                 SubgraphStart(manifest) => {
                     let logger = logger_factory.subgraph_logger(&manifest.id);
-
                     info!(
                         logger,
                         "Start subgraph";
@@ -122,6 +240,7 @@ impl SubgraphInstanceManager {
                                     ))
                                     .clone(),
                                 manifest,
+                                metrics_registry_for_subgraph.clone(),
                             )
                             .map_err(|err| {
                                 error!(
@@ -130,6 +249,10 @@ impl SubgraphInstanceManager {
                                     "error" => format!("{}", err),
                                     "code" => LogCode::SubgraphStartFailure
                                 )
+                            })
+                            .and_then(|_| {
+                                manager_metrics.subgraph_count.inc();
+                                Ok(())
                             })
                             .ok();
                         }
@@ -146,6 +269,7 @@ impl SubgraphInstanceManager {
                     info!(logger, "Stop subgraph");
 
                     Self::stop_subgraph(instances.clone(), id);
+                    manager_metrics.subgraph_count.dec();
                 }
             };
 
@@ -153,17 +277,19 @@ impl SubgraphInstanceManager {
         }));
     }
 
-    fn start_subgraph<B, S>(
+    fn start_subgraph<B, S, M>(
         logger: Logger,
         instances: SharedInstanceKeepAliveMap,
         host_builder: impl RuntimeHostBuilder,
         stream_builder: B,
         store: Arc<S>,
         manifest: SubgraphManifest,
+        registry: Arc<M>,
     ) -> Result<(), Error>
     where
         B: BlockStreamBuilder,
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
+        M: MetricsRegistry,
     {
         // Clear the 'failed' state of the subgraph. We were told explicitly
         // to start, which implies we assume the subgraph has not failed (yet)
@@ -201,12 +327,22 @@ impl SubgraphInstanceManager {
 
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
-        let instance = SubgraphInstance::from_manifest(&logger, manifest, host_builder)?;
+        let subgraph_metrics = Arc::new(SubgraphInstanceMetrics::new(
+            registry.clone(),
+            deployment_id.clone().to_string(),
+        ));
+        let subgraph_metrics_unregister = subgraph_metrics.clone();
+        let host_metrics = Arc::new(HostMetrics::new(
+            registry.clone(),
+            deployment_id.clone().to_string(),
+        ));
+        let instance =
+            SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
 
         // The subgraph state tracks the state of the subgraph instance over time
         let ctx = IndexingContext {
             inputs: IndexingInputs {
-                deployment_id,
+                deployment_id: deployment_id.clone(),
                 network_name,
                 start_blocks,
                 store,
@@ -223,6 +359,8 @@ impl SubgraphInstanceManager {
                 block_filter,
                 restarts: 0,
             },
+            subgraph_metrics,
+            host_metrics,
         };
 
         // Keep restarting the subgraph until it terminates. The subgraph
@@ -232,9 +370,14 @@ impl SubgraphInstanceManager {
         // forward; this is easier than updating the existing block stream.
         //
         // This task has many calls to the store, so mark it as `blocking`.
-        tokio::spawn(graph::util::futures::blocking(loop_fn(ctx, |ctx| {
-            run_subgraph(ctx)
-        })));
+        let subgraph_runner =
+            graph::util::futures::blocking(loop_fn(ctx, move |ctx| run_subgraph(ctx))).then(
+                move |res| {
+                    subgraph_metrics_unregister.unregister(registry);
+                    future::result(res)
+                },
+            );
+        tokio::spawn(subgraph_runner);
 
         Ok(())
     }
@@ -328,6 +471,11 @@ where
         .filter_map(|block_opt| block_opt)
         // Process blocks from the stream as long as no restart is needed
         .fold(ctx, move |ctx, block| {
+            let subgraph_metrics = ctx.subgraph_metrics.clone();
+            let start = Instant::now();
+            subgraph_metrics
+                .block_trigger_count
+                .observe(block.triggers.len() as f64);
             process_block(
                 logger.clone(),
                 ctx,
@@ -338,6 +486,11 @@ where
             .and_then(|(ctx, needs_restart)| match needs_restart {
                 false => Ok(ctx),
                 true => Err(StreamEnd::NeedsRestart(ctx)),
+            })
+            .then(move |res| {
+                let elapsed = start.elapsed().as_secs_f64();
+                subgraph_metrics.block_processing_duration.observe(elapsed);
+                res
             })
         })
         .then(move |res| match res {
@@ -429,6 +582,8 @@ where
     let block_ptr_after = EthereumBlockPointer::from(&*block);
     let block_ptr_for_new_data_sources = block_ptr_after.clone();
 
+    let metrics = ctx.subgraph_metrics.clone();
+
     // Process events one after the other, passing in entity operations
     // collected previously to every new event being processed
     process_triggers(
@@ -441,6 +596,7 @@ where
     .and_then(move |(ctx, block_state)| {
         // If new data sources have been created, restart the subgraph after this block.
         let needs_restart = !block_state.created_data_sources.is_empty();
+        let host_metrics = ctx.host_metrics.clone();
 
         // This loop will:
         // 1. Instantiate created data sources.
@@ -462,6 +618,7 @@ where
                 let (data_sources, runtime_hosts) = match create_dynamic_data_sources(
                     logger.clone(),
                     &mut ctx,
+                    host_metrics.clone(),
                     block_state.created_data_sources.drain(..),
                 ) {
                     Ok(ok) => ok,
@@ -553,6 +710,7 @@ where
 
         // Transact entity operations into the store and update the
         // subgraph's block stream pointer
+        let start = Instant::now();
         ctx.inputs
             .store
             .transact_block_operations(
@@ -562,6 +720,8 @@ where
                 mods,
             )
             .map(|should_migrate| {
+                let elapsed = start.elapsed().as_secs_f64();
+                metrics.block_ops_transaction_duration.observe(elapsed);
                 if should_migrate {
                     ctx.inputs.store.migrate_subgraph_deployment(
                         &logger1,
@@ -592,11 +752,21 @@ where
         .fold((ctx, block_state), move |(ctx, block_state), trigger| {
             let logger = logger.clone();
             let block = block.clone();
-
+            let subgraph_metrics = ctx.subgraph_metrics.clone();
+            let trigger_type = match trigger {
+                EthereumTrigger::Log(_) => TriggerType::Event,
+                EthereumTrigger::Call(_) => TriggerType::Call,
+                EthereumTrigger::Block(_) => TriggerType::Block,
+            };
+            let start = Instant::now();
             ctx.state
                 .instance
                 .process_trigger(&logger, block, trigger, block_state)
-                .map(|block_state| (ctx, block_state))
+                .map(move |block_state| {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    subgraph_metrics.observe_trigger_processing_duration(elapsed, trigger_type);
+                    (ctx, block_state)
+                })
                 .map_err(|e| format_err!("Failed to process trigger: {}", e))
         })
 }
@@ -604,6 +774,7 @@ where
 fn create_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
     logger: Logger,
     ctx: &mut IndexingContext<B, T, S>,
+    host_metrics: Arc<HostMetrics>,
     created_data_sources: impl Iterator<Item = DataSourceTemplateInfo>,
 ) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), Error>
 where
@@ -616,12 +787,14 @@ where
     for info in created_data_sources {
         // Try to instantiate a data source from the template
         let data_source = DataSource::try_from_template(info.template, &info.params)?;
+        let host_metrics = host_metrics.clone();
 
         // Try to create a runtime host for the data source
         let host = ctx.state.instance.add_dynamic_data_source(
             &logger,
             data_source.clone(),
             ctx.inputs.top_level_templates.clone(),
+            host_metrics,
         )?;
 
         data_sources.push(data_source);

@@ -43,5 +43,6 @@ pub trait SubgraphInstance<H: RuntimeHost> {
         logger: &Logger,
         data_source: DataSource,
         top_level_templates: Vec<DataSourceTemplate>,
+        metrics: Arc<HostMetrics>,
     ) -> Result<Arc<H>, Error>;
 }

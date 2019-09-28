@@ -15,8 +15,13 @@ use std::time::Duration;
 use std::time::Instant;
 
 use graph::prelude::*;
-use graph_core::LinkResolver;
-use graph_mock::{MockEthereumAdapter, MockStore};
+
+use graph_core::{LinkResolver, SubgraphInstanceManager};
+use graph_mock::{
+    FakeStore, MockBlockStreamBuilder, MockEthereumAdapter, MockMetricsRegistry, MockStore,
+    MockStore,
+};
+use web3::types::*;
 
 use crate::tokio::timer::Delay;
 
@@ -144,6 +149,7 @@ fn multiple_data_sources_per_subgraph() {
             _: SubgraphDeploymentId,
             data_source: DataSource,
             _: Vec<DataSourceTemplate>,
+            _: Arc<HostMetrics>,
         ) -> Result<Self::Host, Error> {
             self.data_sources_received.lock().unwrap().push(data_source);
 
@@ -168,12 +174,14 @@ fn multiple_data_sources_per_subgraph() {
             stores.insert("mainnet".to_string(), Arc::new(FakeStore));
             let host_builder = MockRuntimeHostBuilder::new();
             let block_stream_builder = MockBlockStreamBuilder::new();
+            let metrics_registry = Arc::new(MockMetricsRegistry::new());
 
             let manager = SubgraphInstanceManager::new(
                 &logger_factory,
                 stores,
                 host_builder.clone(),
                 block_stream_builder.clone(),
+                metrics_registry,
             );
 
             // Load a subgraph with two data sources

@@ -3,6 +3,7 @@ use futures::sync::mpsc;
 use git_testament::{git_testament, render_testament};
 use ipfs_api::IpfsClient;
 use lazy_static::lazy_static;
+use prometheus::Registry;
 use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
@@ -15,7 +16,7 @@ use graph::prelude::{
 };
 use graph::util::security::SafeDisplay;
 use graph_core::{
-    LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
+    LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
@@ -23,6 +24,7 @@ use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
+use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::connection_pool::create_connection_pool;
 use graph_store_postgres::{Store as DieselStore, StoreConfig};
@@ -212,6 +214,13 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .help("Port for the JSON-RPC admin server"),
         )
         .arg(
+            Arg::with_name("metrics-port")
+                .default_value("8040")
+                .long("metrics-port")
+                .value_name("PORT")
+                .help("Port for the Prometheus metrics server"),
+        )
+        .arg(
             Arg::with_name("node-id")
                 .default_value("default")
                 .long("node-id")
@@ -330,6 +339,13 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         .parse()
         .expect("invalid index node server port");
 
+    // Obtain metrics server port
+    let metrics_port = matches
+        .value_of("metrics-port")
+        .unwrap()
+        .parse()
+        .expect("invalid metrics port");
+
     // Obtain DISABLE_BLOCK_INGESTOR setting
     let disable_block_ingestor: bool = matches
         .value_of("disable-block-ingestor")
@@ -425,6 +441,18 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     // Convert the client into a link resolver
     let link_resolver = Arc::new(LinkResolver::from(ipfs_client));
 
+    // Set up Prometheus registry
+    let prometheus_registry = Arc::new(Registry::new());
+    let metrics_registry = Arc::new(MetricsRegistry::new(
+        logger.clone(),
+        prometheus_registry.clone(),
+        String::from("graph_node"),
+        node_id.to_string(),
+    ));
+    let mut metrics_server =
+        PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
+
+    // Ethereum clients
     let eth_adapters = [
         (ConnectionType::RPC, ethereum_rpc),
         (ConnectionType::IPC, ethereum_ipc),
@@ -434,7 +462,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     .cloned()
     .filter(|(_, values)| values.is_some())
     .fold(HashMap::new(), |adapters, (connection_type, values)| {
-        match parse_ethereum_networks_and_nodes(logger.clone(), values.unwrap(), connection_type) {
+        match parse_ethereum_networks_and_nodes(
+            logger.clone(),
+            values.unwrap(),
+            connection_type,
+            metrics_registry.clone(),
+        ) {
             Ok(adapter) => adapters.into_iter().chain(adapter).collect(),
             Err(e) => {
                 panic!(
@@ -545,6 +578,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         eth_adapters.clone(),
         node_id.clone(),
         *REORG_THRESHOLD,
+        metrics_registry.clone(),
     );
     let runtime_host_builder =
         WASMRuntimeHostBuilder::new(eth_adapters.clone(), link_resolver.clone(), stores.clone());
@@ -554,6 +588,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         stores.clone(),
         runtime_host_builder,
         block_stream_builder,
+        metrics_registry.clone(),
     );
 
     // Create IPFS-based subgraph provider
@@ -656,6 +691,12 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             .expect("Failed to start index node server"),
     );
 
+    tokio::spawn(
+        metrics_server
+            .serve(metrics_port)
+            .expect("Failed to start metrics server"),
+    );
+
     // Periodically check for contention in the tokio threadpool. First spawn a
     // task that simply responds to "ping" requests. Then spawn a separate
     // thread to periodically ping it and check responsiveness.
@@ -693,7 +734,9 @@ fn parse_ethereum_networks_and_nodes(
     logger: Logger,
     networks: clap::Values,
     connection_type: ConnectionType,
+    registry: Arc<MetricsRegistry>,
 ) -> Result<HashMap<String, Arc<dyn EthereumAdapterTrait>>, Error> {
+    let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
     networks
         .map(|network| {
             if network.starts_with("wss://")
@@ -745,8 +788,10 @@ fn parse_ethereum_networks_and_nodes(
 
                 Ok((
                     name.to_string(),
-                    Arc::new(graph_datasource_ethereum::EthereumAdapter::new(transport))
-                        as Arc<dyn EthereumAdapter>,
+                    Arc::new(graph_datasource_ethereum::EthereumAdapter::new(
+                        transport,
+                        eth_rpc_metrics.clone(),
+                    )) as Arc<dyn EthereumAdapter>,
                 ))
             }
         })
