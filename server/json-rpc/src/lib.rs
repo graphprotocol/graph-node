@@ -74,10 +74,12 @@ where
 
         Box::new(
             self.registrar
-                .create_subgraph(params.name)
+                .create_subgraph(params.name.clone())
                 .map_err(move |e| {
-                    if let SubgraphRegistrarError::Unknown(e) = e {
-                        error!(logger, "subgraph_create failed: {}", e);
+                    error!(logger, "subgraph_create failed";
+                           "error" => format!("{:?}", e),
+                           "params" => format!("{:?}", params));
+                    if let SubgraphRegistrarError::Unknown(_) = e {
                         json_rpc_error(JSON_RPC_CREATE_ERROR, "internal error".to_owned())
                     } else {
                         json_rpc_error(JSON_RPC_CREATE_ERROR, e.to_string())
@@ -103,10 +105,12 @@ where
 
         Box::new(
             self.registrar
-                .create_subgraph_version(params.name, params.ipfs_hash, node_id)
+                .create_subgraph_version(params.name.clone(), params.ipfs_hash.clone(), node_id)
                 .map_err(move |e| {
-                    if let SubgraphRegistrarError::Unknown(e) = e {
-                        error!(logger, "subgraph_deploy failed: {}", e);
+                    error!(logger, "subgraph_deploy failed";
+                           "error" => format!("{:?}", e),
+                           "params" => format!("{:?}", params));
+                    if let SubgraphRegistrarError::Unknown(_) = e {
                         json_rpc_error(JSON_RPC_DEPLOY_ERROR, "internal error".to_owned())
                     } else {
                         json_rpc_error(JSON_RPC_DEPLOY_ERROR, e.to_string())
@@ -127,10 +131,12 @@ where
 
         Box::new(
             self.registrar
-                .remove_subgraph(params.name)
+                .remove_subgraph(params.name.clone())
                 .map_err(move |e| {
-                    if let SubgraphRegistrarError::Unknown(e) = e {
-                        error!(logger, "subgraph_remove failed: {}", e);
+                    error!(logger, "subgraph_remove failed";
+                           "error" => format!("{:?}", e),
+                           "params" => format!("{:?}", params));
+                    if let SubgraphRegistrarError::Unknown(_) = e {
                         json_rpc_error(JSON_RPC_REMOVE_ERROR, "internal error".to_owned())
                     } else {
                         json_rpc_error(JSON_RPC_REMOVE_ERROR, e.to_string())
@@ -152,10 +158,12 @@ where
 
         Box::new(
             self.registrar
-                .reassign_subgraph(params.ipfs_hash, params.node_id)
+                .reassign_subgraph(params.ipfs_hash.clone(), params.node_id.clone())
                 .map_err(move |e| {
-                    if let SubgraphRegistrarError::Unknown(e) = e {
-                        error!(logger, "subgraph_reassignment failed: {}", e);
+                    error!(logger, "subgraph_reassign failed";
+                           "error" => format!("{:?}", e),
+                           "params" => format!("{:?}", params));
+                    if let SubgraphRegistrarError::Unknown(_) = e {
                         json_rpc_error(JSON_RPC_REASSIGN_ERROR, "internal error".to_owned())
                     } else {
                         json_rpc_error(JSON_RPC_REASSIGN_ERROR, e.to_string())
