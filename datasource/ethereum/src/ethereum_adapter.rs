@@ -223,9 +223,9 @@ where
         // Collect all event sigs
         let eth = self.clone();
         let step = match filter.contracts.is_empty() {
-            // `to - from` is the size of the full range.
+            // `to - from + 1`  blocks will be scanned.
             false => to - from,
-            true => (to - from).min(*MAX_EVENT_ONLY_RANGE),
+            true => (to - from).min(*MAX_EVENT_ONLY_RANGE - 1),
         };
 
         stream::unfold((from, step), move |(start, step)| {
