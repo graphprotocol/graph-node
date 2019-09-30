@@ -387,6 +387,7 @@ pub struct Source {
     #[serde(default, deserialize_with = "deserialize_address")]
     pub address: Option<Address>,
     pub abi: String,
+    #[serde(rename = "startBlock")]
     pub start_block: Option<String>,
 }
 
@@ -643,8 +644,7 @@ impl UnresolvedDataSource {
             templates,
         } = self;
 
-        info!(logger, "Resolve data source"; "name" => &name);
-
+        info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
         mapping
             .resolve(resolver, logger.clone())
             .join(
@@ -697,7 +697,7 @@ impl DataSource {
             source: Source {
                 address: Some(address),
                 abi: template.source.abi,
-                start_block: None,
+                start_block: Some("0".to_string()),
             },
             mapping: template.mapping,
             templates: Vec::new(),
