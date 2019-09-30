@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, iter};
@@ -686,13 +687,19 @@ fn create_subgraph_version(
         .clone()
         .into_iter()
         .map(|data_source| {
-            let start_block = data_source.source.start_block.unwrap();
             let source_address = data_source.source.address;
+            let block_num = match data_source
+                .source
+                .start_block
+                .and_then(|block_str| block_str.parse::<u64>().ok())
+            {
+                Some(block_num) => block_num,
+                None => return None,
+            };
 
             // Safe to unwrap?
-            let block_num = start_block.parse::<u64>().unwrap();
-            let full_block = eth_adapter
-                .clone()
+            //            let block_num = start_block.parse::<u64>().unwrap();
+            let full_block = match eth_adapter
                 .block_hash_by_block_number(logger, block_num)
                 .and_then(move |block_hash_opt| {
                     block_hash_opt.ok_or_else(|| {
@@ -713,8 +720,11 @@ fn create_subgraph_version(
                 })
                 .from_err()
                 .and_then(|block| eth_adapter.load_full_block(logger, block))
-                .wait()
-                .unwrap();
+                .wait() {
+                Ok(block) => block,
+                Err(e) => return None,
+            };
+
             if full_block
                 .transaction_receipts
                 .iter()
@@ -743,7 +753,11 @@ fn create_subgraph_version(
     // Create deployment only if it does not exist already
     if !deployment_exists {
         let chain_head_block = chain_store.chain_head_ptr()?;
-        let genesis_block = chain_store.genesis_block_ptr()?;
+        let genesis_block = dbg!(match starting_blocks {
+            Some(blocks) => EthereumBlockPointer::minimum_block_number(blocks),
+            None => chain_store.genesis_block_ptr().ok(),
+        }
+        .unwrap());
         ops.extend(
             SubgraphDeploymentEntity::new(&manifest, false, false, genesis_block, chain_head_block)
                 .create_operations(&manifest.id),

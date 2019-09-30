@@ -1,6 +1,7 @@
 use ethabi::LogParam;
 use serde::{Deserialize, Serialize};
 use web3::types::*;
+use std::cmp::Ordering;
 
 #[derive(Clone, Debug)]
 pub struct EthereumBlockWithTriggers {
@@ -275,6 +276,20 @@ impl EthereumBlockPointer {
     /// implements `H256::to_string`.
     pub fn hash_hex(&self) -> String {
         format!("{:x}", self.hash)
+    }
+
+    pub fn minimum_block_number(blocks: Vec<Self>) -> Option<Self> {
+        blocks.iter()
+            .fold(None, |a: Option<EthereumBlockPointer>, &b| {
+                match a {
+                    Some(a) => match PartialOrd::partial_cmp(&a.number, &b.number) {
+                        None => None,
+                        Some(Ordering::Less) => Some(a),
+                        Some(_) => Some(b),
+                    },
+                    None => Some(b),
+                }
+            })
     }
 }
 
