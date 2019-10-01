@@ -16,7 +16,7 @@ reqwest = "0.9"
 # tuple support which isn't upstreamed yet. For now, we shall deviate from
 # ethabi, but long term we want to find a way to drop our fork.
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "graph-patches" }
-hex = "0.3.2"
+hex = "0.4.0"
 futures = "0.1.21"
 graphql-parser = "0.2.3"
 # We're using the latest ipfs-api for the HTTPS support that was merged in
