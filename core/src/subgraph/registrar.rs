@@ -299,6 +299,7 @@ where
     ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
         let store = self.store.clone();
         let chain_stores = self.chain_stores.clone();
+        let ethereum_adapters = self.ethereum_adapters.clone();
         let version_switching_mode = self.version_switching_mode;
 
         let logger = self.logger_factory.subgraph_logger(&hash);
@@ -677,6 +678,67 @@ fn create_subgraph_version(
             vec![]
         },
     });
+
+    let eth_adapter = ethereum_adapter.clone();
+
+    let _starting_blocks: Option<Vec<EthereumBlockPointer>> = manifest
+        .data_sources
+        .clone()
+        .into_iter()
+        .map(|data_source| {
+            let start_block = data_source.source.start_block.unwrap();
+            let source_address = data_source.source.address;
+
+            // Safe to unwrap?
+            let block_num = start_block.parse::<u64>().unwrap();
+            let full_block = eth_adapter
+                .clone()
+                .block_hash_by_block_number(logger, block_num)
+                .and_then(move |block_hash_opt| {
+                    block_hash_opt.ok_or_else(|| {
+                        format_err!(
+                            "Ethereum node could not find block with number {}",
+                            block_num
+                        )
+                    })
+                })
+                .and_then(|block_hash| eth_adapter.block_by_hash(logger, block_hash))
+                .and_then(move |block_opt| {
+                    block_opt.ok_or_else(|| {
+                        format_err!(
+                            "Ethereum node could not find block with number {}",
+                            block_num
+                        )
+                    })
+                })
+                .from_err()
+                .and_then(|block| eth_adapter.load_full_block(logger, block))
+                .wait()
+                .unwrap();
+            if full_block
+                .transaction_receipts
+                .iter()
+                .filter(|receipt| {
+                    receipt.contract_address == source_address && receipt.contract_address.is_some()
+                })
+                .any(|receipt| {
+                    match full_block
+                        .block
+                        .transactions
+                        .iter()
+                        .find(|&transaction| transaction.hash == receipt.transaction_hash)
+                    {
+                        Some(t) => t.to.is_none(),
+                        None => false,
+                    }
+                })
+            {
+                Some(EthereumBlockPointer::from(full_block))
+            } else {
+                None
+            }
+        })
+        .collect();
 
     // Create deployment only if it does not exist already
     if !deployment_exists {
