@@ -6,7 +6,9 @@ extern crate graphql_parser;
 extern crate rand;
 
 mod block_stream;
+mod ethereum_adapter;
 mod store;
 
 pub use self::block_stream::{MockBlockStream, MockBlockStreamBuilder};
+pub use self::ethereum_adapter::MockEthereumAdapter;
 pub use self::store::{FakeStore, MockStore};
