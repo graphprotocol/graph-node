@@ -594,16 +594,15 @@ impl Store {
         &self,
         econn: &e::Connection,
         operations: Vec<MetadataOperation>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<StoreEvent, StoreError> {
         // Emit a store event for the changes we are about to make
         let event: StoreEvent = operations.clone().into();
-        econn.send_store_event(&event)?;
 
         // Actually apply the operations
         for operation in operations.into_iter() {
             self.apply_metadata_operation(econn, operation)?;
         }
-        Ok(())
+        Ok(event)
     }
 
     /// Build a partial Postgres index on a Subgraph-Entity-Attribute
@@ -835,7 +834,10 @@ impl StoreTrait for Store {
             "skip blocks with no changes",
         );
         let conn = self.get_entity_conn(&subgraph_id).map_err(Error::from)?;
-        conn.transaction(|| self.apply_metadata_operations_with_conn(&conn, ops))?;
+        conn.transaction(|| {
+            let event = self.apply_metadata_operations_with_conn(&conn, ops)?;
+            conn.send_store_event(&event)
+        })?;
 
         conn.should_migrate(&subgraph_id, &block_ptr_to)
     }
@@ -873,9 +875,11 @@ impl StoreTrait for Store {
 
             let should_migrate = econn.should_migrate(&subgraph_id, &block_ptr_to)?;
 
-            // Emit a store event for the changes we are about to make
+            // Emit a store event for the changes we are about to make. We
+            // wait with sending it until we have done all our other work
+            // so that we do not hold a lock on the notification queue
+            // for longer than we have to
             let event: StoreEvent = mods.iter().collect();
-            econn.send_store_event(&event)?;
 
             // Make the changes
             self.apply_entity_modifications(&econn, mods, Some(&history_event))?;
@@ -888,7 +892,9 @@ impl StoreTrait for Store {
                 block_ptr_to,
                 "transact block operations",
             );
-            self.apply_metadata_operations_with_conn(&econn, block_ptr_ops)?;
+            let metadata_event = self.apply_metadata_operations_with_conn(&econn, block_ptr_ops)?;
+            econn.send_store_event(&metadata_event)?;
+            econn.send_store_event(&event)?;
             Ok(should_migrate)
         })
     }
@@ -901,8 +907,8 @@ impl StoreTrait for Store {
     ) -> Result<(), StoreError> {
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID)?;
         econn.transaction(|| {
-            self.apply_metadata_operations_with_conn(&econn, operations)
-                .map(|_| ())
+            let event = self.apply_metadata_operations_with_conn(&econn, operations)?;
+            econn.send_store_event(&event)
         })
     }
 
@@ -934,10 +940,11 @@ impl StoreTrait for Store {
                 block_ptr_to,
                 "revert block",
             );
-            self.apply_metadata_operations_with_conn(&econn, ops)?;
+            let metadata_event = self.apply_metadata_operations_with_conn(&econn, ops)?;
 
             let (event, count) = econn.revert_block(&block_ptr_from)?;
             econn.update_entity_count(count)?;
+            econn.send_store_event(&metadata_event)?;
             econn.send_store_event(&event)
         })
     }
@@ -1007,8 +1014,9 @@ impl StoreTrait for Store {
         loop {
             let start = Instant::now();
             let result = econn.transaction(|| -> Result<(), StoreError> {
-                self.apply_metadata_operations_with_conn(&econn, ops.clone())?;
-                econn.create_schema(schema, LOCK_TIMEOUT)
+                let event = self.apply_metadata_operations_with_conn(&econn, ops.clone())?;
+                econn.create_schema(schema, LOCK_TIMEOUT)?;
+                econn.send_store_event(&event)
             });
             if let Err(StoreError::Unknown(_)) = &result {
                 // There is no robust way to actually find out that we timed
@@ -1042,8 +1050,9 @@ impl StoreTrait for Store {
         let econn = self.get_entity_conn(subgraph_id)?;
 
         econn.transaction(|| {
-            self.apply_metadata_operations_with_conn(&econn, ops)?;
-            econn.start_subgraph()
+            let event = self.apply_metadata_operations_with_conn(&econn, ops)?;
+            econn.start_subgraph()?;
+            econn.send_store_event(&event)
         })
     }
 
