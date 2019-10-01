@@ -1,5 +1,4 @@
 use lazy_static::lazy_static;
-use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, iter};
@@ -680,84 +679,79 @@ fn create_subgraph_version(
         },
     });
 
-    let eth_adapter = ethereum_adapter.clone();
-
-    let _starting_blocks: Option<Vec<EthereumBlockPointer>> = manifest
+    let start_blocks: Option<Vec<EthereumBlockPointer>> = manifest
         .data_sources
         .clone()
         .into_iter()
         .map(|data_source| {
             let source_address = data_source.source.address;
-            let block_num = match data_source
+            let block_number = match data_source
                 .source
                 .start_block
                 .and_then(|block_str| block_str.parse::<u64>().ok())
             {
-                Some(block_num) => block_num,
-                None => return None,
+                Some(number) => number,
+                None => {
+                    warn!(
+                        logger,
+                        "Start block invalid or not specified for the '{}' data source",
+                        &data_source.name
+                    );
+                    return None
+                },
             };
 
-            // Safe to unwrap?
-            //            let block_num = start_block.parse::<u64>().unwrap();
-            let full_block = match eth_adapter
-                .block_hash_by_block_number(logger, block_num)
-                .and_then(move |block_hash_opt| {
-                    block_hash_opt.ok_or_else(|| {
-                        format_err!(
-                            "Ethereum node could not find block with number {}",
-                            block_num
-                        )
-                    })
-                })
-                .and_then(|block_hash| eth_adapter.block_by_hash(logger, block_hash))
-                .and_then(move |block_opt| {
-                    block_opt.ok_or_else(|| {
-                        format_err!(
-                            "Ethereum node could not find block with number {}",
-                            block_num
-                        )
-                    })
-                })
-                .from_err()
-                .and_then(|block| eth_adapter.load_full_block(logger, block))
-                .wait() {
-                Ok(block) => block,
-                Err(e) => return None,
-            };
-
-            if full_block
-                .transaction_receipts
-                .iter()
-                .filter(|receipt| {
-                    receipt.contract_address == source_address && receipt.contract_address.is_some()
-                })
-                .any(|receipt| {
-                    match full_block
-                        .block
-                        .transactions
-                        .iter()
-                        .find(|&transaction| transaction.hash == receipt.transaction_hash)
-                    {
-                        Some(t) => t.to.is_none(),
-                        None => false,
-                    }
-                })
+            // Validate that the start block provided for the Data Source is indeed the block that
+            // contains the contract creation transaction. Allow the block to be used as the
+            // subgraph level start block regardless, but emit a warning.
+            match ethereum_adapter
+                .validate_start_block(logger, block_number, source_address)
+                .wait()
             {
-                Some(EthereumBlockPointer::from(full_block))
-            } else {
-                None
+                Ok((block, validated)) => {
+                    if !validated {
+                        warn!(
+                            logger,
+                            "Unable to confirm block number {} as the start block for the '{}' data source, address: {}",
+                            &block_number.to_string(),
+                            &data_source.name,
+                            source_address
+                                .map(|a| a.to_string())
+                                .unwrap_or("unspecified".to_string())
+                        );
+                    }
+                    Some(block)
+                },
+                Err(e) => {
+                    warn!(
+                        logger,
+                        "Start block number {} for the '{}' data source will not be used to filter the stream due to an error validating. Error: {}",
+                        &block_number.to_string(),
+                        &data_source.name,
+                        e
+                    );
+                    None
+                }
             }
         })
+        .filter(|&n| n.is_some())
         .collect();
 
     // Create deployment only if it does not exist already
     if !deployment_exists {
         let chain_head_block = chain_store.chain_head_ptr()?;
-        let genesis_block = dbg!(match starting_blocks {
-            Some(blocks) => EthereumBlockPointer::minimum_block_number(blocks),
-            None => chain_store.genesis_block_ptr().ok(),
-        }
-        .unwrap());
+        let start_blocks = start_blocks.unwrap();
+        let genesis_block = if start_blocks.is_empty() {
+            chain_store.genesis_block_ptr()?
+        } else {
+            EthereumBlockPointer::earliest_block(start_blocks)
+                .or_else(|| chain_store.genesis_block_ptr().ok())
+                .unwrap()
+        };
+        info!(
+            logger,
+            "Set the earliest available Ethereum block, start_block: {}", genesis_block.number
+        );
         ops.extend(
             SubgraphDeploymentEntity::new(&manifest, false, false, genesis_block, chain_head_block)
                 .create_operations(&manifest.id),
