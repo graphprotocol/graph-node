@@ -712,9 +712,9 @@ fn create_subgraph_version(
                     if !validated {
                         warn!(
                             logger,
-                            "Unable to confirm block number {} as the start block for the '{}' data source, address: {}",
-                            &block_number.to_string(),
+                            "Start block for '{}' may lead to skipping on chain data, block number: {}, address: {}",
                             &data_source.name,
+                            &block_number.to_string(),
                             source_address
                                 .map(|a| a.to_string())
                                 .unwrap_or("unspecified".to_string())
@@ -725,7 +725,7 @@ fn create_subgraph_version(
                 Err(e) => {
                     warn!(
                         logger,
-                        "Start block number {} for the '{}' data source will not be used to filter the stream due to an error validating. Error: {}",
+                        "Unable to validate start block for '{}', block_num: {}, error: {}",
                         &block_number.to_string(),
                         &data_source.name,
                         e
