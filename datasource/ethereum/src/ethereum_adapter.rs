@@ -157,7 +157,7 @@ where
                     .from_block(from.into())
                     .to_block(to.into())
                     .address(filter.contracts.clone())
-                    .topics(Some(filter.event_sigs.clone()), None, None, None)
+                    .topics(Some(filter.event_signatures.clone()), None, None, None)
                     .build();
 
                 // Request logs from client

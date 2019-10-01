@@ -10,7 +10,7 @@ use web3::types::*;
 use super::types::*;
 use crate::prelude::*;
 
-pub type EventSig = H256;
+pub type EventSignature = H256;
 
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
 pub struct EthereumNetworkIdentifier {
@@ -89,14 +89,14 @@ impl From<Error> for EthereumAdapterError {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 enum LogFilterNode {
     Contract(Address),
-    Event(EventSig),
+    Event(EventSignature),
 }
 
 /// Corresponds to an `eth_getLogs` call.
 #[derive(Clone)]
 pub struct EthGetLogsFilter {
     pub contracts: Vec<Address>,
-    pub event_sigs: Vec<EventSig>,
+    pub event_signatures: Vec<EventSignature>,
 }
 
 impl fmt::Display for EthGetLogsFilter {
@@ -104,15 +104,15 @@ impl fmt::Display for EthGetLogsFilter {
         if self.contracts.len() == 1 {
             write!(
                 f,
-                "contract {}, {} events",
+                "contract {:?}, {} events",
                 self.contracts[0],
-                self.event_sigs.len()
+                self.event_signatures.len()
             )
-        } else if self.event_sigs.len() == 1 {
+        } else if self.event_signatures.len() == 1 {
             write!(
                 f,
-                "event {}, {} contracts",
-                self.event_sigs[0],
+                "event {:?}, {} contracts",
+                self.event_signatures[0],
                 self.contracts.len()
             )
         } else {
@@ -129,7 +129,7 @@ pub struct EthereumLogFilter {
     contracts_and_events_graph: GraphMap<LogFilterNode, (), petgraph::Undirected>,
 
     // Event sigs with no associated address, matching on all addresses.
-    wildcard_events: HashSet<EventSig>,
+    wildcard_events: HashSet<EventSignature>,
 }
 
 impl EthereumLogFilter {
@@ -151,11 +151,11 @@ impl EthereumLogFilter {
                 // The `Log` matches the filter either if the filter contains
                 // a (contract address, event signature) pair that matches the
                 // `Log`, or if the filter contains wildcard event that matches.
+                let contract = LogFilterNode::Contract(log.address.clone());
+                let event = LogFilterNode::Event(*sig);
                 self.contracts_and_events_graph
                     .all_edges()
                     .any(|(s, t, ())| {
-                        let contract = LogFilterNode::Contract(log.address.clone());
-                        let event = LogFilterNode::Event(*sig);
                         (s == contract && t == event) || (t == contract && s == event)
                     })
                     || self.wildcard_events.contains(sig)
@@ -217,7 +217,7 @@ impl EthereumLogFilter {
         for wildcard_event in self.wildcard_events {
             filters.push(EthGetLogsFilter {
                 contracts: vec![],
-                event_sigs: vec![wildcard_event],
+                event_signatures: vec![wildcard_event],
             })
         }
 
@@ -241,25 +241,25 @@ impl EthereumLogFilter {
             let mut filter = match max_vertex {
                 LogFilterNode::Contract(address) => EthGetLogsFilter {
                     contracts: vec![address],
-                    event_sigs: vec![],
+                    event_signatures: vec![],
                 },
                 LogFilterNode::Event(event_sig) => EthGetLogsFilter {
                     contracts: vec![],
-                    event_sigs: vec![event_sig],
+                    event_signatures: vec![event_sig],
                 },
             };
             for neighbor in g.neighbors(max_vertex) {
                 match neighbor {
                     LogFilterNode::Contract(address) => filter.contracts.push(address),
-                    LogFilterNode::Event(event_sig) => filter.event_sigs.push(event_sig),
+                    LogFilterNode::Event(event_sig) => filter.event_signatures.push(event_sig),
                 }
             }
 
             // Sanity checks:
             // - The filter is not a wildcard because all nodes have neighbors.
             // - The graph is bipartite.
-            assert!(filter.contracts.len() > 0 && filter.event_sigs.len() > 0);
-            assert!(filter.contracts.len() == 1 || filter.event_sigs.len() == 1);
+            assert!(filter.contracts.len() > 0 && filter.event_signatures.len() > 0);
+            assert!(filter.contracts.len() == 1 || filter.event_signatures.len() == 1);
             filters.push(filter);
             g.remove_node(max_vertex);
         }
