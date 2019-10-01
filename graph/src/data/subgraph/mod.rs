@@ -327,6 +327,8 @@ pub enum SubgraphManifestValidationError {
     EthereumNetworkRequired,
     #[fail(display = "subgraph data source has too many similar block handlers")]
     DataSourceBlockHandlerLimitExceeded,
+    #[fail(display = "the specified block must exist on the Ethereum network")]
+    StartBlockNotFound(String),
 }
 
 #[derive(Fail, Debug)]
@@ -385,6 +387,7 @@ pub struct Source {
     #[serde(default, deserialize_with = "deserialize_address")]
     pub address: Option<Address>,
     pub abi: String,
+    pub start_block: Option<String>,
 }
 
 impl From<EthereumContractSourceEntity> for Source {
@@ -392,6 +395,7 @@ impl From<EthereumContractSourceEntity> for Source {
         Self {
             address: entity.address,
             abi: entity.abi,
+            start_block: entity.start_block,
         }
     }
 }
@@ -693,6 +697,7 @@ impl DataSource {
             source: Source {
                 address: Some(address),
                 abi: template.source.abi,
+                start_block: None,
             },
             mapping: template.mapping,
             templates: Vec::new(),
