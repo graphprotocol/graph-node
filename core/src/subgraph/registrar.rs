@@ -23,24 +23,26 @@ use graph::prelude::{
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
 
-pub struct SubgraphRegistrar<L, P, S, CS> {
+pub struct SubgraphRegistrar<L, P, S, CS, E> {
     logger: Logger,
     logger_factory: LoggerFactory,
     resolver: Arc<L>,
     provider: Arc<P>,
     store: Arc<S>,
     chain_stores: HashMap<String, Arc<CS>>,
+    ethereum_adapters: HashMap<String, Arc<E>>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
 }
 
-impl<L, P, S, CS> SubgraphRegistrar<L, P, S, CS>
+impl<L, P, S, CS, E> SubgraphRegistrar<L, P, S, CS, E>
 where
     L: LinkResolver + Clone,
     P: SubgraphAssignmentProviderTrait,
     S: Store,
     CS: ChainStore,
+    E: EthereumAdapter,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
@@ -48,6 +50,7 @@ where
         provider: Arc<P>,
         store: Arc<S>,
         chain_stores: HashMap<String, Arc<CS>>,
+        ethereum_adapters: HashMap<String, Arc<E>>,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
     ) -> Self {
@@ -66,6 +69,7 @@ where
             provider,
             store,
             chain_stores,
+            ethereum_adapters,
             node_id,
             version_switching_mode,
             assignment_event_stream_cancel_guard: CancelGuard::new(),
@@ -267,12 +271,13 @@ where
     }
 }
 
-impl<L, P, S, CS> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS>
+impl<L, P, S, CS, E> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS, E>
 where
     L: LinkResolver,
     P: SubgraphAssignmentProviderTrait,
     S: Store,
     CS: ChainStore,
+    E: EthereumAdapter,
 {
     fn create_subgraph(
         &self,
@@ -304,13 +309,17 @@ where
                 .and_then(validation::validate_manifest)
                 .and_then(move |manifest| {
                     let network_name = manifest.network_name()?;
-                    let chain_store = chain_stores
-                        .get(&network_name)
-                        .ok_or(SubgraphRegistrarError::NetworkNotSupported(network_name))?;
+                    let chain_store = chain_stores.get(&network_name).ok_or(
+                        SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
+                    )?;
+                    let ethereum_adapter = ethereum_adapters.get(&network_name).ok_or(
+                        SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
+                    )?;
                     create_subgraph_version(
                         &logger,
                         store,
                         chain_store.clone(),
+                        ethereum_adapter.clone(),
                         name,
                         manifest,
                         node_id,
@@ -467,6 +476,7 @@ fn create_subgraph_version(
     logger: &Logger,
     store: Arc<impl Store>,
     chain_store: Arc<impl ChainStore>,
+    ethereum_adapter: Arc<impl EthereumAdapter>,
     name: SubgraphName,
     manifest: SubgraphManifest,
     node_id: NodeId,
