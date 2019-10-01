@@ -110,18 +110,6 @@ pub fn get_object_type_definitions(schema: &Document) -> Vec<&ObjectType> {
         .collect()
 }
 
-/// Returns all object type definitions in the schema.
-pub fn get_object_type_definitions_mut(schema: &mut Document) -> Vec<&mut ObjectType> {
-    schema
-        .definitions
-        .iter_mut()
-        .filter_map(|d| match d {
-            Definition::TypeDefinition(TypeDefinition::Object(t)) => Some(t),
-            _ => None,
-        })
-        .collect()
-}
-
 /// Returns the object type with the given name.
 pub fn get_object_type_mut<'a>(
     schema: &'a mut Document,
@@ -140,18 +128,6 @@ pub fn get_interface_type_definitions(schema: &Document) -> Vec<&InterfaceType> 
     schema
         .definitions
         .iter()
-        .filter_map(|d| match d {
-            Definition::TypeDefinition(TypeDefinition::Interface(t)) => Some(t),
-            _ => None,
-        })
-        .collect()
-}
-
-/// Returns all interface definitions in the schema.
-pub fn get_interface_type_definitions_mut(schema: &mut Document) -> Vec<&mut InterfaceType> {
-    schema
-        .definitions
-        .iter_mut()
         .filter_map(|d| match d {
             Definition::TypeDefinition(TypeDefinition::Interface(t)) => Some(t),
             _ => None,
@@ -406,7 +382,7 @@ pub fn is_list_or_non_null_list_field(field: &Field) -> bool {
     }
 }
 
-pub fn unpack_type<'a>(schema: &'a Document, t: &Type) -> Option<&'a TypeDefinition> {
+fn unpack_type<'a>(schema: &'a Document, t: &Type) -> Option<&'a TypeDefinition> {
     use self::Type::*;
 
     match t {
