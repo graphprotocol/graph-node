@@ -4,7 +4,7 @@ extern crate ipfs_api;
 use ethabi::Token;
 use futures::sync::mpsc::channel;
 use hex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::env;
 use std::io::Cursor;
 use std::str::FromStr;
@@ -17,133 +17,15 @@ use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::prelude::Error;
 use graph_core;
-use web3::types::{Address, Block, Transaction, H160, H256};
+use web3::types::{Address, H160};
 
 use super::*;
 
-use self::graph_mock::MockStore;
+use self::graph_mock::{MockEthereumAdapter, MockStore};
 
 mod abi;
 
-#[derive(Default)]
-struct MockEthereumAdapter {}
-
-impl EthereumAdapter for MockEthereumAdapter {
-    fn net_identifiers(
-        &self,
-        _: &Logger,
-    ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
-        unimplemented!();
-    }
-
-    fn latest_block(
-        &self,
-        _: &Logger,
-    ) -> Box<dyn Future<Item = Block<Transaction>, Error = EthereumAdapterError> + Send> {
-        unimplemented!();
-    }
-
-    fn block_by_hash(
-        &self,
-        _: &Logger,
-        _: H256,
-    ) -> Box<dyn Future<Item = Option<Block<Transaction>>, Error = Error> + Send> {
-        unimplemented!();
-    }
-
-    fn load_full_block(
-        &self,
-        _: &Logger,
-        _: Block<Transaction>,
-    ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
-        unimplemented!();
-    }
-
-    fn block_parent_hash(
-        &self,
-        _: &Logger,
-        _: H256,
-    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
-        unimplemented!();
-    }
-
-    fn block_hash_by_block_number(
-        &self,
-        _: &Logger,
-        _: u64,
-    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
-        unimplemented!();
-    }
-
-    fn is_on_main_chain(
-        &self,
-        _: &Logger,
-        _: EthereumBlockPointer,
-    ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
-        unimplemented!();
-    }
-
-    fn calls_in_block(
-        &self,
-        _: &Logger,
-        _: u64,
-        _: H256,
-    ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
-        unimplemented!();
-    }
-
-    fn blocks_with_triggers(
-        &self,
-        _: &Logger,
-        _: u64,
-        _: u64,
-        _: EthereumLogFilter,
-        _: EthereumCallFilter,
-        _: EthereumBlockFilter,
-    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
-        unimplemented!();
-    }
-
-    fn blocks_with_logs(
-        &self,
-        _: &Logger,
-        _: u64,
-        _: u64,
-        _: EthereumLogFilter,
-    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
-        unimplemented!();
-    }
-
-    fn blocks_with_calls(
-        &self,
-        _: &Logger,
-        _: u64,
-        _: u64,
-        _: EthereumCallFilter,
-    ) -> Box<dyn Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send> {
-        unimplemented!();
-    }
-
-    fn blocks(
-        &self,
-        _: &Logger,
-        _: u64,
-        _: u64,
-    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
-        unimplemented!();
-    }
-
-    fn contract_call(
-        &self,
-        _: &Logger,
-        _: EthereumContractCall,
-        _: Arc<dyn EthereumCallCache>,
-    ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
-        unimplemented!();
-    }
-}
-
-fn test_module_and_store(
+fn test_valid_module_and_store(
     data_source: DataSource,
 ) -> (
     WasmiModule<
