@@ -400,7 +400,7 @@ impl Store for MockStore {
 }
 
 impl SubgraphDeploymentStore for MockStore {
-    fn subgraph_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
         if *subgraph_id == *SUBGRAPHS_ID {
             // The subgraph of subgraphs schema is built-in.
             let raw_schema = include_str!("../../store/postgres/src/subgraphs.graphql").to_owned();

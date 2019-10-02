@@ -67,7 +67,7 @@ fn insert_and_query(
     };
     let document = graphql_parser::parse_query(query).unwrap();
     let query = Query {
-        schema: STORE.subgraph_schema(&subgraph_id).unwrap(),
+        schema: STORE.api_schema(&subgraph_id).unwrap(),
         document,
         variables: None,
     };

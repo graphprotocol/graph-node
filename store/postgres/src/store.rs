@@ -381,7 +381,7 @@ impl Store {
         // if that's Fred the Dog, Fred the Cat or both.
         //
         // This assumes that there are no concurrent writes to a subgraph.
-        let schema = self.subgraph_schema(&key.subgraph_id)?;
+        let schema = self.api_schema(&key.subgraph_id)?;
         let types_for_interface = schema.types_for_interface();
         let types_with_shared_interface = Vec::from_iter(
             schema
@@ -1085,7 +1085,7 @@ impl StoreTrait for Store {
 }
 
 impl SubgraphDeploymentStore for Store {
-    fn subgraph_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
         Ok(self.cached_schema(subgraph_id)?.api)
     }
 }

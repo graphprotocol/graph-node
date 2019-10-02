@@ -33,7 +33,7 @@ where
         skip: i32,
     ) -> Result<Query, Error> {
         // Obtain the "subgraphs" schema
-        let schema = self.store.subgraph_schema(&SUBGRAPHS_ID)?;
+        let schema = self.store.api_schema(&SUBGRAPHS_ID)?;
 
         // Construct a query for the subgraph deployment and all its
         // dynamic data sources

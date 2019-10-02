@@ -295,7 +295,7 @@ where
             // The query is against the subgraph of subgraphs
             schema: self
                 .store
-                .subgraph_schema(&SUBGRAPHS_ID)
+                .api_schema(&SUBGRAPHS_ID)
                 .map_err(QueryExecutionError::StoreError)?,
 
             // We're querying all deployments that match the provided filter
@@ -389,7 +389,7 @@ where
             // The query is against the subgraph of subgraphs
             schema: self
                 .store
-                .subgraph_schema(&SUBGRAPHS_ID)
+                .api_schema(&SUBGRAPHS_ID)
                 .map_err(QueryExecutionError::StoreError)?,
 
             // We're querying all deployments that match the provided filter

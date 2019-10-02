@@ -164,7 +164,7 @@ where
                             let subgraph_id = subgraph_id.lock().unwrap().clone().unwrap();
 
                             // Get the subgraph schema
-                            let schema = match store2.subgraph_schema(&subgraph_id) {
+                            let schema = match store2.api_schema(&subgraph_id) {
                                 Ok(schema) => schema,
                                 Err(e) => {
                                     error!(logger2, "Failed to establish WS connection, could not find schema";
