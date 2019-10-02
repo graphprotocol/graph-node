@@ -400,25 +400,19 @@ impl Store for MockStore {
 }
 
 impl SubgraphDeploymentStore for MockStore {
-    fn input_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
-        unimplemented!()
-    }
-
-    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+    fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
         if *subgraph_id == *SUBGRAPHS_ID {
-            // The subgraph of subgraphs schema is built-in.
             let raw_schema = include_str!("../../store/postgres/src/subgraphs.graphql").to_owned();
-
-            // Parse the schema and add @subgraphId directives
-            let mut schema = Schema::parse(&raw_schema, subgraph_id.clone())?;
-
-            // Generate an API schema for the subgraph and make sure all types in the
-            // API schema have a @subgraphId directive as well
-            schema.document = api_schema(&schema.document)?;
-
+            let schema = Schema::parse(&raw_schema, subgraph_id.clone())?;
             return Ok(Arc::new(schema));
         }
         Ok(Arc::new(self.schemas.get(subgraph_id).unwrap().clone()))
+    }
+
+    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+        let mut schema = self.input_schema(subgraph_id)?.as_ref().clone();
+        schema.document = api_schema(&schema.document)?;
+        return Ok(Arc::new(schema));
     }
 }
 

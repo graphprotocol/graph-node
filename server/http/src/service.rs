@@ -454,28 +454,25 @@ mod tests {
     #[test]
     fn posting_invalid_query_yields_error_response() {
         let logger = Logger::root(slog::Discard, o!());
-        let id = SubgraphDeploymentId::new("testschema").unwrap();
-        let schema = Schema::parse(
-            "\
-             scalar String \
-             type Query @entity { name: String } \
-             ",
-            id.clone(),
-        )
-        .unwrap();
+        let store = Arc::new(MockStore::user_store());
+        let id = MockStore::user_subgraph_id();
+        let schema = store
+            .input_schema(&id)
+            .expect("Failed to get schema")
+            .as_ref()
+            .clone();
         let manifest = SubgraphManifest {
             id: id.clone(),
             location: "".to_owned(),
             spec_version: "".to_owned(),
             description: None,
             repository: None,
-            schema: schema.clone(),
+            schema,
             data_sources: vec![],
             templates: vec![],
         };
 
         let graphql_runner = Arc::new(TestGraphQlRunner);
-        let store = Arc::new(MockStore::new(vec![(id.clone(), schema)]));
         store
             .apply_metadata_operations(
                 SubgraphDeploymentEntity::new(
@@ -527,27 +524,24 @@ mod tests {
     #[test]
     fn posting_valid_queries_yields_result_response() {
         let logger = Logger::root(slog::Discard, o!());
-        let id = SubgraphDeploymentId::new("testschema").unwrap();
-        let schema = Schema::parse(
-            "\
-             scalar String \
-             type Query @entity { name: String } \
-             ",
-            id.clone(),
-        )
-        .unwrap();
+        let store = Arc::new(MockStore::user_store());
+        let id = MockStore::user_subgraph_id();
+        let schema = store
+            .input_schema(&id)
+            .expect("Failed to get schema")
+            .as_ref()
+            .clone();
         let manifest = SubgraphManifest {
             id: id.clone(),
             location: "".to_owned(),
             spec_version: "".to_owned(),
             description: None,
             repository: None,
-            schema: schema.clone(),
+            schema,
             data_sources: vec![],
             templates: vec![],
         };
         let graphql_runner = Arc::new(TestGraphQlRunner);
-        let store = Arc::new(MockStore::new(vec![(id.clone(), schema)]));
 
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
