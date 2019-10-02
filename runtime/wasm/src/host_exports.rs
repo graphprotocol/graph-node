@@ -174,7 +174,7 @@ where
         let result = ctx
             .state
             .entity_cache
-            .get(self.store.as_ref(), store_key)
+            .get(self.store.as_ref(), &store_key)
             .map_err(HostExportError)
             .map(|ok| ok.to_owned());
 

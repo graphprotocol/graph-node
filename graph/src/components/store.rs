@@ -1114,7 +1114,7 @@ impl EntityCache {
     pub fn get(
         &mut self,
         store: &dyn Store,
-        key: EntityKey,
+        key: &EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
         let current = match self.current.get(&key) {
             None => {
@@ -1196,7 +1196,7 @@ impl EntityCache {
             .filter(|key| !self.current.contains_key(&key))
             .collect::<Vec<_>>();
         for key in missing {
-            self.get(store, key)?;
+            self.get(store, &key)?;
         }
         let mut mods = Vec::new();
         for (key, update) in self.updates {
