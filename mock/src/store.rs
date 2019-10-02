@@ -73,6 +73,12 @@ impl MockStore {
             type User @entity {
                 id: ID!,
                 name: String,
+            }
+            # Needed by ipfs_map in runtime/wasm/src/test.rs
+            type Thing @entity {
+                id: ID!,
+                value: String,
+                extra: String
             }";
         let subgraph = Self::user_subgraph_id();
         let schema =

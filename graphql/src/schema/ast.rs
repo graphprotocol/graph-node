@@ -6,6 +6,7 @@ use std::str::FromStr;
 
 use crate::execution::ObjectOrInterface;
 use crate::query::ast as qast;
+use graph::data::store;
 use graph::prelude::*;
 
 pub(crate) enum FilterOp {
@@ -430,4 +431,219 @@ pub fn get_derived_from_field<'a>(
             _ => None,
         })
         .and_then(|derived_from_field_name| get_field(object_type, derived_from_field_name))
+}
+
+fn scalar_value_type(schema: &Document, field_type: &Type) -> ValueType {
+    use TypeDefinition as t;
+    match field_type {
+        Type::NamedType(name) => {
+            ValueType::from_str(&name).unwrap_or_else(|_| match get_named_type(schema, name) {
+                Some(t::Object(_)) => ValueType::ID,
+                Some(t::Interface(_)) => ValueType::ID,
+                Some(t::Enum(_)) => ValueType::String,
+                Some(t::Scalar(_)) => unreachable!("user-defined scalars are not used"),
+                Some(t::Union(_)) => unreachable!("unions are not used"),
+                Some(t::InputObject(_)) => unreachable!("inputObjects are not used"),
+                None => unreachable!("names of field types have been validated"),
+            })
+        }
+        Type::NonNullType(inner) => scalar_value_type(schema, inner),
+        Type::ListType(inner) => scalar_value_type(schema, inner),
+    }
+}
+
+fn is_list(field_type: &Type) -> bool {
+    match field_type {
+        Type::NamedType(_) => false,
+        Type::NonNullType(inner) => is_list(inner),
+        Type::ListType(_) => true,
+    }
+}
+
+fn is_assignable(value: &store::Value, scalar_type: &ValueType, is_list: bool) -> bool {
+    match (value, scalar_type) {
+        (store::Value::String(_), ValueType::String)
+        | (store::Value::String(_), ValueType::ID)
+        | (store::Value::BigDecimal(_), ValueType::BigDecimal)
+        | (store::Value::BigInt(_), ValueType::BigInt)
+        | (store::Value::Bool(_), ValueType::Boolean)
+        | (store::Value::Bytes(_), ValueType::Bytes)
+        | (store::Value::Int(_), ValueType::Int)
+        | (store::Value::Null, _) => true,
+        (store::Value::List(values), _) if is_list => values
+            .iter()
+            .all(|value| is_assignable(value, scalar_type, false)),
+        _ => false,
+    }
+}
+
+pub fn validate_entity(
+    schema: &Document,
+    key: &EntityKey,
+    entity: &Entity,
+) -> Result<(), graph::prelude::Error> {
+    let object_type_definitions = get_object_type_definitions(schema);
+    let object_type = object_type_definitions
+        .iter()
+        .find(|object_type| object_type.name == key.entity_type)
+        .ok_or_else(|| {
+            format_err!(
+                "Entity {}[{}]: unknown entity type `{}`",
+                key.entity_type,
+                key.entity_id,
+                key.entity_type
+            )
+        })?;
+
+    for field in &object_type.fields {
+        match entity.get(&field.name) {
+            Some(value) => {
+                let scalar_type = scalar_value_type(schema, &field.field_type);
+                if is_list(&field.field_type) {
+                    // Check for inhomgeneous lists to produce a better
+                    // error message for them; other problems, like
+                    // assigning a scalar to a list will be caught below
+                    if let store::Value::List(elts) = value {
+                        for (index, elt) in elts.iter().enumerate() {
+                            if !is_assignable(elt, &scalar_type, false) {
+                                return Err(format_err!("Entity {}[{}]: field `{}` is of type {}, but the value `{}` contains a {} at index {}",
+                                key.entity_type,
+                                key.entity_id,
+                                field.name,
+                                &field.field_type,
+                                value,
+                                elt.type_name(),
+                                index
+                            ));
+                            }
+                        }
+                    }
+                }
+                if !is_assignable(value, &scalar_type, is_list(&field.field_type)) {
+                    return Err(format_err!(
+                        "Entity {}[{}]: the value `{}` for field `{}` must have type {} but has type {}",
+                        key.entity_type,
+                        key.entity_id,
+                        value,
+                        field.name,
+                        &field.field_type,
+                        value.type_name()
+                    ));
+                }
+            }
+            None => {
+                if is_non_null_type(&field.field_type) {
+                    return Err(format_err!(
+                        "Entity {}[{}]: missing value for non-nullable field `{}`",
+                        key.entity_type,
+                        key.entity_id,
+                        field.name
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn entity_validation() {
+    fn make_thing(name: &str) -> Entity {
+        let mut thing = Entity::new();
+        thing.set("id", name);
+        thing.set("name", name);
+        thing.set("stuff", "less");
+        thing.set("favorite_color", "red");
+        thing.set("things", vec![]);
+        thing
+    }
+
+    fn check(thing: Entity, errmsg: &str) {
+        const DOCUMENT: &str = "
+      enum Color { red, yellow, blue }
+      interface Stuff { id: ID!, name: String! }
+      type Thing @entity {
+          id: ID!,
+          name: String!,
+          favorite_color: Color,
+          stuff: Stuff,
+          things: [Thing!]!
+      }";
+        let subgraph = SubgraphDeploymentId::new("doesntmatter").unwrap();
+        let schema =
+            graph::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
+        let id = thing.id().unwrap_or("none".to_owned());
+        let key = EntityKey {
+            subgraph_id: SubgraphDeploymentId::new("doesntmatter").unwrap(),
+            entity_type: "Thing".to_owned(),
+            entity_id: id.to_owned(),
+        };
+
+        let err = validate_entity(&schema.document, &key, &thing);
+        if errmsg == "" {
+            assert!(
+                err.is_ok(),
+                "checking entity {}: expected ok but got {}",
+                id,
+                err.unwrap_err()
+            );
+        } else {
+            if let Err(e) = err {
+                assert_eq!(errmsg, e.to_string(), "checking entity {}", id);
+            } else {
+                panic!(
+                    "Expected error `{}` but got ok when checking entity {}",
+                    errmsg, id
+                );
+            }
+        }
+    }
+
+    let mut thing = make_thing("t1");
+    thing.set(
+        "things",
+        store::Value::from(vec!["thing1".into(), "thing2".into()]),
+    );
+    check(thing, "");
+
+    let thing = make_thing("t2");
+    check(thing, "");
+
+    let mut thing = make_thing("t3");
+    thing.remove("name");
+    check(
+        thing,
+        "Entity Thing[t3]: missing value for non-nullable field `name`",
+    );
+
+    let mut thing = make_thing("t4");
+    thing.remove("things");
+    check(
+        thing,
+        "Entity Thing[t4]: missing value for non-nullable field `things`",
+    );
+
+    let mut thing = make_thing("t5");
+    thing.set("name", store::Value::Int(32));
+    check(
+        thing,
+        "Entity Thing[t5]: the value `32` for field `name` must \
+         have type String! but has type Int",
+    );
+
+    let mut thing = make_thing("t6");
+    thing.set(
+        "things",
+        store::Value::List(vec!["thing1".into(), 17.into()]),
+    );
+    check(
+        thing,
+        "Entity Thing[t6]: field `things` is of type [Thing!]!, \
+         but the value `[thing1, 17]` contains a Int at index 1",
+    );
+
+    let mut thing = make_thing("t7");
+    thing.remove("favorite_color");
+    thing.remove("stuff");
+    check(thing, "");
 }

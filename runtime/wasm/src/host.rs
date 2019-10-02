@@ -74,7 +74,7 @@ impl<T, L, S> RuntimeHostBuilderTrait for RuntimeHostBuilder<T, L, S>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store,
+    S: Store + SubgraphDeploymentStore,
 {
     type Host = RuntimeHost;
 
@@ -177,7 +177,7 @@ impl RuntimeHost {
     where
         T: EthereumAdapter,
         L: LinkResolver,
-        S: Store,
+        S: Store + SubgraphDeploymentStore,
     {
         let logger = logger.new(o!(
             "component" => "RuntimeHost",
@@ -321,7 +321,7 @@ impl RuntimeHost {
                 })
                 .wait()
                 .unwrap_or_else(|e| {
-                    debug!(module_logger, "WASM runtime thread terminating"; 
+                    debug!(module_logger, "WASM runtime thread terminating";
                            "reason" => e.to_string())
                 });
         })

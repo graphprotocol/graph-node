@@ -3,7 +3,7 @@ use crate::UnresolvedContractCall;
 use ethabi::Token;
 use futures::sync::oneshot;
 use graph::components::ethereum::*;
-use graph::components::store::EntityKey;
+use graph::components::store::{EntityKey, SubgraphDeploymentStore};
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
@@ -14,6 +14,8 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 use web3::types::H160;
+
+use graph_graphql::prelude::validate_entity;
 
 use crate::module::WasmiModule;
 
@@ -54,7 +56,7 @@ impl<E, L, S, U> HostExports<E, L, S, U>
 where
     E: EthereumAdapter,
     L: LinkResolver,
-    S: Store + Send + Sync,
+    S: Store + SubgraphDeploymentStore + Send + Sync,
     U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
         + Clone
         + Send
@@ -139,8 +141,20 @@ where
             entity_type,
             entity_id,
         };
-        ctx.state.entity_cache.set(key, Entity::from(data));
 
+        ctx.state.entity_cache.set(key.clone(), Entity::from(data));
+
+        if self.store.uses_relational_schema(&self.subgraph_id)? {
+            // Validate the changes against the subgraph schema
+            let entity = ctx
+                .state
+                .entity_cache
+                .get(self.store.as_ref(), &key)
+                .map_err(|e| HostExportError(e.to_string()))?
+                .expect("we just stored this entity");
+            let schema = self.store.input_schema(&self.subgraph_id)?;
+            validate_entity(&schema.document, &key, &entity)?;
+        }
         Ok(())
     }
 

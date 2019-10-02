@@ -257,6 +257,26 @@ impl Value {
             None
         }
     }
+
+    /// Return the name of the type of this value for display to the user
+    pub fn type_name(&self) -> String {
+        match self {
+            Value::BigDecimal(_) => "BigDecimal".to_owned(),
+            Value::BigInt(_) => "BigInt".to_owned(),
+            Value::Bool(_) => "Boolean".to_owned(),
+            Value::Bytes(_) => "Bytes".to_owned(),
+            Value::Int(_) => "Int".to_owned(),
+            Value::List(values) => {
+                if let Some(v) = values.first() {
+                    format!("[{}]", v.type_name())
+                } else {
+                    "[Any]".to_owned()
+                }
+            }
+            Value::Null => "Null".to_owned(),
+            Value::String(_) => "String".to_owned(),
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -270,10 +290,14 @@ impl fmt::Display for Value {
                 Value::BigDecimal(d) => d.to_string(),
                 Value::Bool(b) => b.to_string(),
                 Value::Null => "null".to_string(),
-                Value::List(ref values) => values
-                    .into_iter()
-                    .map(|value| format!("{}", value))
-                    .collect(),
+                Value::List(ref values) => format!(
+                    "[{}]",
+                    values
+                        .into_iter()
+                        .map(|value| format!("{}", value))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
                 Value::Bytes(ref bytes) => bytes.to_string(),
                 Value::BigInt(ref number) => number.to_string(),
             }

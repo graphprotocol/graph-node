@@ -8,6 +8,7 @@ ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "graph-
 futures = "0.1.21"
 hex = "0.4.0"
 graph = { path = "../../graph" }
+graph-graphql = { path = "../../graphql" }
 tiny-keccak = "1.4.2"
 wasmi = "0.5"
 pwasm-utils = "0.6.1"
