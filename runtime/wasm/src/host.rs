@@ -238,7 +238,6 @@ impl RuntimeHost {
             config.subgraph_id, data_source_name
         ));
         conf.spawn(move || {
-            debug!(module_logger, "Start WASM runtime");
             let wasmi_config = WasmiModuleConfig {
                 subgraph_id: config.subgraph_id,
                 api_version: Version::parse(&config.mapping.api_version).unwrap(),
