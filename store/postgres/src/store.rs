@@ -106,7 +106,9 @@ pub struct StoreConfig {
 
 #[derive(Clone)]
 struct SchemaPair {
-    raw: Arc<Schema>,
+    /// The schema as supplied by the user
+    input: Arc<Schema>,
+    /// The schema we derive from `input` with `graphql::schema::api::api_schema`
     api: Arc<Schema>,
 }
 
@@ -684,7 +686,7 @@ impl Store {
         }
         trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
 
-        let raw_schema = if *subgraph_id == *SUBGRAPHS_ID {
+        let input_schema = if *subgraph_id == *SUBGRAPHS_ID {
             // The subgraph of subgraphs schema is built-in.
             include_str!("subgraphs.graphql").to_owned()
         } else {
@@ -708,8 +710,8 @@ impl Store {
         };
 
         // Parse the schema and add @subgraphId directives
-        let raw_schema = Schema::parse(&raw_schema, subgraph_id.clone())?;
-        let mut schema = raw_schema.clone();
+        let input_schema = Schema::parse(&input_schema, subgraph_id.clone())?;
+        let mut schema = input_schema.clone();
 
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
@@ -717,7 +719,7 @@ impl Store {
         schema.add_subgraph_id_directives(subgraph_id.clone());
 
         let pair = SchemaPair {
-            raw: Arc::new(raw_schema),
+            input: Arc::new(input_schema),
             api: Arc::new(schema),
         };
 
@@ -726,13 +728,6 @@ impl Store {
         cache.insert(subgraph_id.clone(), pair);
 
         Ok(cache.get(&subgraph_id).unwrap().clone())
-    }
-
-    pub(crate) fn raw_subgraph_schema(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<Arc<Schema>, Error> {
-        Ok(self.cached_schema(subgraph_id)?.raw)
     }
 }
 
@@ -1085,6 +1080,10 @@ impl StoreTrait for Store {
 }
 
 impl SubgraphDeploymentStore for Store {
+    fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+        Ok(self.cached_schema(subgraph_id)?.input)
+    }
+
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
         Ok(self.cached_schema(subgraph_id)?.api)
     }

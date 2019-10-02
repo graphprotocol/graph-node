@@ -400,6 +400,10 @@ impl Store for MockStore {
 }
 
 impl SubgraphDeploymentStore for MockStore {
+    fn input_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+        unimplemented!()
+    }
+
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
         if *subgraph_id == *SUBGRAPHS_ID {
             // The subgraph of subgraphs schema is built-in.

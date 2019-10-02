@@ -44,7 +44,7 @@ use graph::prelude::{
     debug, format_err, info, serde_json, warn, AttributeIndexDefinition, Entity, EntityChange,
     EntityChangeOperation, EntityFilter, EntityKey, EntityModification, Error,
     EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
-    SubgraphDeploymentId, TransactionAbortError, ValueType,
+    SubgraphDeploymentId, SubgraphDeploymentStore, TransactionAbortError, ValueType,
 };
 
 use crate::block_range::{block_number, BlockNumber};
@@ -1409,7 +1409,7 @@ impl Storage {
                 })
             }
             V::Relational => {
-                let subgraph_schema = store.raw_subgraph_schema(subgraph)?;
+                let subgraph_schema = store.input_schema(subgraph)?;
                 let layout = Layout::new(
                     &subgraph_schema.document,
                     IdType::String,
