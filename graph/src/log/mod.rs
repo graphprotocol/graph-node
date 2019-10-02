@@ -30,7 +30,10 @@ pub fn logger(show_debug: bool) -> Logger {
                 .unwrap(),
         )
         .build();
-    let drain = slog_async::Async::new(drain).chan_size(1000).build().fuse();
+    let drain = slog_async::Async::new(drain)
+        .chan_size(10000)
+        .build()
+        .fuse();
     Logger::root(drain, o!())
 }
 
