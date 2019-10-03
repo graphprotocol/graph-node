@@ -960,6 +960,7 @@ where
         &self,
         logger: &Logger,
         call: EthereumContractCall,
+        cache: Arc<impl EthereumCallCache>,
     ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
         // Emit custom error for type mismatches.
         for (token, kind) in call
@@ -978,20 +979,43 @@ where
         // Encode the call parameters according to the ABI
         let call_data = call.function.encode_input(&call.args).unwrap();
 
+        // Check if we have it cached, if not do the call and cache.
         Box::new(
-            // Make the actual function call
-            self.call(
-                logger,
-                call.address,
-                Bytes(call_data),
-                Some(call.block_ptr.number.into()),
-            )
-            .and_then(move |output| {
-                // Decode the return values according to the ABI
-                call.function
-                    .decode_output(&output.0)
-                    .map_err(EthereumContractCallError::from)
-            }),
+            match cache
+                .get_call(call.address, &call_data, call.block_ptr)
+                .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
+                .ok()
+                .and_then(|x| x)
+            {
+                Some(result) => {
+                    Box::new(future::ok(result)) as Box<dyn Future<Item = _, Error = _> + Send>
+                }
+                None => {
+                    let cache = cache.clone();
+                    let call = call.clone();
+                    let call_data = call_data.clone();
+                    let logger = logger.clone();
+                    Box::new(
+                        self.call(
+                            &logger,
+                            call.address,
+                            Bytes(call_data.clone()),
+                            Some(call.block_ptr.number.into()),
+                        )
+                        .map(move |result| {
+                            let _ = cache
+                                .set_call(call.address, &call_data, call.block_ptr, &result.0)
+                                .map_err(|e| {
+                                    error!(logger, "call cache set error";
+                                                   "error" => e.to_string())
+                                });
+                            result.0
+                        }),
+                    )
+                }
+            }
+            // Decode the return values according to the ABI
+            .and_then(move |output| call.function.decode_output(&output).map_err(From::from)),
         )
     }
 }

@@ -138,6 +138,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         &self,
         _: &Logger,
         _: EthereumContractCall,
+        _: Arc<impl EthereumCallCache>,
     ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
         unimplemented!();
     }
@@ -265,7 +266,7 @@ impl<T, L, S, U> WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + Send + Sync + 'static,
+    S: Store + SubgraphDeploymentStore + EthereumCallCache + Send + Sync + 'static,
     U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
         + Clone
         + Send

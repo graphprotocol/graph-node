@@ -102,7 +102,7 @@ impl<T, L, S, U> ValidModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + Send + Sync + 'static,
+    S: Store + SubgraphDeploymentStore + EthereumCallCache + Send + Sync + 'static,
     U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
         + Clone
         + Send
@@ -202,7 +202,7 @@ impl<T, L, S, U> WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + Send + Sync + 'static,
+    S: Store + SubgraphDeploymentStore + EthereumCallCache + Send + Sync + 'static,
     U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
         + Clone
         + Send
@@ -412,7 +412,7 @@ impl<T, L, S, U> AscHeap for WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + Send + Sync + 'static,
+    S: Store + SubgraphDeploymentStore + EthereumCallCache + Send + Sync + 'static,
     U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
         + Clone
         + Send
@@ -462,7 +462,7 @@ impl<T, L, S, U> WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + Send + Sync + 'static,
+    S: Store + SubgraphDeploymentStore + EthereumCallCache + Send + Sync + 'static,
     U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
         + Clone
         + Send
@@ -992,7 +992,7 @@ impl<T, L, S, U> Externals for WasmiModule<T, L, S, U>
 where
     T: EthereumAdapter,
     L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + Send + Sync + 'static,
+    S: Store + SubgraphDeploymentStore + EthereumCallCache + Send + Sync + 'static,
     U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
         + Clone
         + Send
