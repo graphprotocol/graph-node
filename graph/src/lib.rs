@@ -56,8 +56,8 @@ pub mod prelude {
     pub use crate::components::store::{
         AttributeIndexDefinition, ChainStore, EntityCache, EntityChange, EntityChangeOperation,
         EntityFilter, EntityKey, EntityModification, EntityOperation, EntityOrder, EntityQuery,
-        EntityRange, MetadataOperation, Store, StoreError, StoreEvent, StoreEventStream,
-        StoreEventStreamBox, SubgraphDeploymentStore, TransactionAbortError,
+        EntityRange, EthereumCallCache, MetadataOperation, Store, StoreError, StoreEvent,
+        StoreEventStream, StoreEventStreamBox, SubgraphDeploymentStore, TransactionAbortError,
         SUBSCRIPTION_THROTTLE_INTERVAL,
     };
     pub use crate::components::subgraph::{

@@ -56,7 +56,7 @@ impl<E, L, S, U> HostExports<E, L, S, U>
 where
     E: EthereumAdapter,
     L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + Send + Sync,
+    S: Store + SubgraphDeploymentStore + EthereumCallCache + Send + Sync,
     U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
         + Clone
         + Send
@@ -241,8 +241,9 @@ where
         // Run Ethereum call in tokio runtime
         let eth_adapter = self.ethereum_adapter.clone();
         let logger = ctx.logger.clone();
+        let store = self.store.clone();
         let result = match self.block_on(future::lazy(move || {
-            eth_adapter.contract_call(&logger, call)
+            eth_adapter.contract_call(&logger, call, store)
         })) {
             Ok(tokens) => Ok(Some(tokens)),
             Err(EthereumContractCallError::Revert(reason)) => {

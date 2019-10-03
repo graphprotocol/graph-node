@@ -1057,6 +1057,25 @@ pub trait ChainStore: Send + Sync + 'static {
     ) -> Result<Option<EthereumBlock>, Error>;
 }
 
+pub trait EthereumCallCache: Send + Sync + 'static {
+    /// Cached return value.
+    fn get_call(
+        &self,
+        contract_address: ethabi::Address,
+        encoded_call: &[u8],
+        block: EthereumBlockPointer,
+    ) -> Result<Option<Vec<u8>>, Error>;
+
+    // Add entry to the cache.
+    fn set_call(
+        &self,
+        contract_address: ethabi::Address,
+        encoded_call: &[u8],
+        block: EthereumBlockPointer,
+        return_value: &[u8],
+    ) -> Result<(), Error>;
+}
+
 /// An entity operation that can be transacted into the store; as opposed to
 /// `EntityOperation`, we already know whether a `Set` should be an `Insert`
 /// or `Update`

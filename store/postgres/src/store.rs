@@ -1168,6 +1168,27 @@ impl ChainStore for Store {
     }
 }
 
+impl EthereumCallCache for Store {
+    fn get_call(
+        &self,
+        contract_address: ethabi::Address,
+        encoded_call: &[u8],
+        block: EthereumBlockPointer,
+    ) -> Result<Option<Vec<u8>>, Error> {
+        unimplemented!()
+    }
+
+    fn set_call(
+        &self,
+        contract_address: ethabi::Address,
+        encoded_call: &[u8],
+        block: EthereumBlockPointer,
+        return_value: &[u8],
+    ) -> Result<(), Error> {
+        unimplemented!()
+    }
+}
+
 /// Delete all entities. This function exists solely for integration tests
 /// and should never be called from any other code. Unfortunately, Rust makes
 /// it very hard to export items just for testing

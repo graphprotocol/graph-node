@@ -468,6 +468,27 @@ impl ChainStore for MockStore {
     }
 }
 
+impl EthereumCallCache for MockStore {
+    fn get_call(
+        &self,
+        _: ethabi::Address,
+        _: &[u8],
+        _: EthereumBlockPointer,
+    ) -> Result<Option<Vec<u8>>, Error> {
+        unimplemented!()
+    }
+
+    fn set_call(
+        &self,
+        _: ethabi::Address,
+        _: &[u8],
+        _: EthereumBlockPointer,
+        _: &[u8],
+    ) -> Result<(), Error> {
+        unimplemented!()
+    }
+}
+
 pub struct FakeStore;
 
 impl Store for FakeStore {
