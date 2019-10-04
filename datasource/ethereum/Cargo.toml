@@ -4,6 +4,7 @@ version = "0.15.1"
 edition = "2018"
 
 [dependencies]
+bs58 = "0.3"
 failure = "0.1.2"
 futures = "0.1.21"
 jsonrpc-core = "13.2.0"
@@ -11,3 +12,5 @@ graph = { path = "../../graph" }
 mock = { package = "graph-mock", path = "../../mock" }
 lazy_static = "1.2.0"
 hex-literal = "0.2"
+serde = "1.0"
+ethjson = { git = "http://github.com/paritytech/parity-ethereum.git", branch = "master" }

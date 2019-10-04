@@ -584,6 +584,8 @@ where
             // block number, and checking to see if the block we found matches the
             // subgraph_ptr.
 
+            // Since we checked whether the subgraph pointer is `None` in the
+            // `if` condition above, we can safely unwrap it here.
             let subgraph_ptr =
                 subgraph_ptr.expect("subgraph block pointer should not be `None` here");
 

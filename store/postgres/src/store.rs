@@ -1282,6 +1282,37 @@ fn contract_call_id(
     id
 }
 
+impl NetworkStore for Store {
+    fn latest_block(
+        &self,
+        subgraph_id: SubgraphDeploymentId,
+    ) -> Result<Option<EthereumBlockPointer>, Error> {
+        // NOTE: This could be optimized by only loading the hash and number
+        // rather than the whole block.
+
+        self.find_one(
+            EntityQuery::new(subgraph_id, vec!["Block".into()], EntityRange::first(1)).order_by(
+                ("number".into(), ValueType::BigInt),
+                EntityOrder::Descending,
+            ),
+        )
+        .map_err(Into::into)
+        .and_then(|entity| match entity {
+            Some(entity) => {
+                let hash: H256 = entity
+                    .get_value("hash")?
+                    .ok_or_else(|| format_err!("latest block has no block hash"))?;
+                let number: u64 = entity
+                    .get_value("number")?
+                    .ok_or_else(|| format_err!("latest block has no block number"))?;
+
+                Ok(Some(EthereumBlockPointer { hash, number }))
+            }
+            None => Ok(None),
+        })
+    }
+}
+
 /// Delete all entities. This function exists solely for integration tests
 /// and should never be called from any other code. Unfortunately, Rust makes
 /// it very hard to export items just for testing

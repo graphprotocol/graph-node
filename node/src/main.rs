@@ -279,6 +279,13 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .env("STORE_CONNECTION_POOL_SIZE")
                 .help("Limits the number of connections in the store's connection pool"),
         )
+        .arg(
+            Arg::with_name("ethereum-subgraph")
+                .long("ethereum-subgraph")
+                .env("ETHEREUM_SUBGRAPH")
+                .takes_value(false)
+                .help("Whether to index Ethereum block explorer data"),
+        )
         .get_matches();
 
     // Set up logger
@@ -391,7 +398,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             });
 
     // Create a component and subgraph logger factory
-    let logger_factory = LoggerFactory::new(logger.clone(), elastic_config);
+    let logger_factory = LoggerFactory::new(logger.clone(), elastic_config.clone());
 
     info!(
         logger,
@@ -568,6 +575,24 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             // Run the Ethereum block ingestor in the background
             tokio::spawn(block_ingestor.into_polling_stream());
         });
+    }
+
+    if matches.is_present("ethereum-subgraph") {
+        info!(logger, "Starting Ethereum network ingestor");
+
+        // Create Ethereum network ingestors and spawn a thread to run each
+        eth_adapters.iter().for_each(|(network_name, eth_adapter)| {
+            let network_ingestor = graph_datasource_ethereum::NetworkIngestor::new(
+                stores.get(network_name).expect("network with name").clone(),
+                eth_adapter.clone(),
+                network_name.to_string(),
+                logger.clone(),
+                elastic_config.clone(),
+            );
+
+            // Run the Ethereum network ingestor
+            tokio::spawn(network_ingestor.into_polling_stream());
+        })
     }
 
     let block_stream_builder = BlockStreamBuilder::new(
