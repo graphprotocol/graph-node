@@ -455,7 +455,7 @@ where
     }
 
     pub(crate) fn crypto_keccak_256(&self, input: Vec<u8>) -> [u8; 32] {
-        ::tiny_keccak::keccak256(&input)
+        tiny_keccak::keccak256(&input)
     }
 
     pub(crate) fn big_int_plus(&self, x: BigInt, y: BigInt) -> BigInt {

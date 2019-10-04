@@ -1578,6 +1578,7 @@ pub fn create_split_schema(conn: &PgConnection, schema_name: &str) -> Result<(),
 /// Drop the schema for `subgraph`. This deletes all data for the subgraph,
 /// and can not be reversed. It does not remove any of the metadata in
 /// `subgraphs.entities` associated with the subgraph
+#[cfg(debug_assertions)]
 fn drop_schema(
     conn: &diesel::pg::PgConnection,
     subgraph: &SubgraphDeploymentId,

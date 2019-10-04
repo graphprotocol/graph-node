@@ -31,6 +31,7 @@ pub mod prelude {
     pub use std::fmt::Debug;
     pub use std::iter::FromIterator;
     pub use std::sync::Arc;
+    pub use tiny_keccak;
     pub use tokio;
     pub use tokio::prelude::*;
     pub use tokio_executor;

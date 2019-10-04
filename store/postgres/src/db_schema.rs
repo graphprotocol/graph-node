@@ -52,3 +52,4 @@ table! {
 }
 
 joinable!(eth_call_meta -> eth_call_cache (contract_address));
+allow_tables_to_appear_in_same_query!(eth_call_cache, eth_call_meta);

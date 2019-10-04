@@ -1175,7 +1175,31 @@ impl EthereumCallCache for Store {
         encoded_call: &[u8],
         block: EthereumBlockPointer,
     ) -> Result<Option<Vec<u8>>, Error> {
-        unimplemented!()
+        use crate::db_schema::{eth_call_cache, eth_call_meta};
+        use diesel::dsl::sql;
+
+        let id = contract_call_id(contract_address, encoded_call, block);
+        let conn = &*self.get_conn()?;
+
+        if let Some((return_value, update_accessed_at)) = eth_call_cache::table
+            .find(id.as_ref())
+            .inner_join(eth_call_meta::table)
+            .select((
+                eth_call_cache::return_value,
+                sql("CURRENT_DATE > eth_call_meta.accessed_at"),
+            ))
+            .get_result(conn)
+            .optional()?
+        {
+            if update_accessed_at {
+                update(eth_call_meta::table.find(contract_address.as_ref()))
+                    .set(eth_call_meta::accessed_at.eq(sql("CURRENT_DATE")))
+                    .execute(conn)?;
+            }
+            Ok(Some(return_value))
+        } else {
+            Ok(None)
+        }
     }
 
     fn set_call(
@@ -1185,8 +1209,51 @@ impl EthereumCallCache for Store {
         block: EthereumBlockPointer,
         return_value: &[u8],
     ) -> Result<(), Error> {
-        unimplemented!()
+        use crate::db_schema::{eth_call_cache, eth_call_meta};
+        use diesel::dsl::sql;
+
+        let id = contract_call_id(contract_address, encoded_call, block);
+        let conn = &*self.get_conn()?;
+
+        insert_into(eth_call_cache::table)
+            .values((
+                eth_call_cache::id.eq(id.as_ref()),
+                eth_call_cache::contract_address.eq(contract_address.as_ref()),
+                eth_call_cache::block_number.eq(block.number as i32),
+                eth_call_cache::return_value.eq(return_value),
+            ))
+            .on_conflict_do_nothing()
+            .execute(conn)?;
+
+        let accessed_at = eth_call_meta::accessed_at.eq(sql("CURRENT_DATE"));
+        insert_into(eth_call_meta::table)
+            .values((
+                eth_call_meta::contract_address.eq(contract_address.as_ref()),
+                accessed_at.clone(),
+            ))
+            .on_conflict(eth_call_meta::contract_address)
+            .do_update()
+            .set(accessed_at)
+            .execute(conn)
+            .map(|_| ())
+            .map_err(Error::from)
     }
+}
+
+/// The id is the hashed contract_address + encoded_call + block hash. This uniquely identifies the
+/// call. Use 128 bits of output to save some bytes in the DB.
+fn contract_call_id(
+    contract_address: ethabi::Address,
+    encoded_call: &[u8],
+    block: EthereumBlockPointer,
+) -> [u8; 16] {
+    let mut id = [0; 16];
+    let mut hash = tiny_keccak::Keccak::new_shake128();
+    hash.update(contract_address.as_ref());
+    hash.update(encoded_call);
+    hash.update(block.hash.as_ref());
+    hash.finalize(&mut id);
+    id
 }
 
 /// Delete all entities. This function exists solely for integration tests
