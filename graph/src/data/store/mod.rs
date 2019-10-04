@@ -10,7 +10,7 @@ use std::fmt;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
-use web3::types::H256;
+use web3::types::{Bytes, H2048, H256, H64, U128, U256, U64};
 
 use crate::data::subgraph::SubgraphDeploymentId;
 use crate::prelude::{format_err, QueryExecutionError};
@@ -371,21 +371,108 @@ impl From<u64> for Value {
     }
 }
 
-impl From<Vec<Value>> for Value {
-    fn from(list: Vec<Value>) -> Value {
-        Value::List(list)
-    }
-}
-
 impl From<Address> for Value {
     fn from(address: Address) -> Value {
         Value::Bytes(scalar::Bytes::from(address.as_ref()))
     }
 }
 
+impl From<H64> for Value {
+    fn from(hash: H64) -> Value {
+        Value::Bytes(scalar::Bytes::from(hash.as_ref()))
+    }
+}
+
 impl From<H256> for Value {
     fn from(hash: H256) -> Value {
         Value::Bytes(scalar::Bytes::from(hash.as_ref()))
+    }
+}
+
+impl From<H2048> for Value {
+    fn from(hash: H2048) -> Value {
+        Value::Bytes(scalar::Bytes::from(hash.as_ref()))
+    }
+}
+
+impl From<U64> for Value {
+    fn from(n: U64) -> Value {
+        Value::BigInt(scalar::BigInt::from_signed_u256(&n.as_u64().into()))
+    }
+}
+
+impl From<U128> for Value {
+    fn from(n: U128) -> Value {
+        Value::BigInt(scalar::BigInt::from_signed_u256(&n.into()))
+    }
+}
+
+impl From<U256> for Value {
+    fn from(n: U256) -> Value {
+        Value::BigInt(scalar::BigInt::from_unsigned_u256(&n))
+    }
+}
+
+impl From<Bytes> for Value {
+    fn from(bytes: Bytes) -> Value {
+        Value::Bytes(scalar::Bytes::from(bytes.0.as_slice()))
+    }
+}
+
+impl<T> From<Vec<T>> for Value
+where
+    T: Into<Value>,
+{
+    fn from(values: Vec<T>) -> Value {
+        Value::List(values.into_iter().map(Into::into).collect())
+    }
+}
+
+impl<T> From<Option<T>> for Value
+where
+    Value: From<T>,
+{
+    fn from(x: Option<T>) -> Value {
+        match x {
+            Some(x) => x.into(),
+            None => Value::Null,
+        }
+    }
+}
+
+impl TryFrom<Value> for H256 {
+    type Error = Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Bytes(bytes) => {
+                H256::from_str(format!("{}", bytes).as_str().trim_start_matches("0x"))
+                    .map_err(Into::into)
+            }
+            _ => Err(format_err!("Value is not a bytes / H256")),
+        }
+    }
+}
+
+impl TryFrom<Value> for U256 {
+    type Error = Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::BigInt(value) => Ok(value.to_unsigned_u256()),
+            _ => Err(format_err!("Value is not a BigInt / U256")),
+        }
+    }
+}
+
+impl TryFrom<Value> for u64 {
+    type Error = Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::BigInt(value) => Ok(value.to_u64()),
+            _ => Err(format_err!("Value is not a BigInt / u64")),
+        }
     }
 }
 
@@ -417,18 +504,6 @@ impl TryFrom<Value> for Option<scalar::BigInt> {
     }
 }
 
-impl<T> From<Option<T>> for Value
-where
-    Value: From<T>,
-{
-    fn from(x: Option<T>) -> Value {
-        match x {
-            Some(x) => x.into(),
-            None => Value::Null,
-        }
-    }
-}
-
 /// An entity is represented as a map of attribute names to values.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
@@ -444,6 +519,16 @@ impl Entity {
             None => Err(format_err!("Entity is missing an `id` attribute")),
             Some(Value::String(s)) => Ok(s.to_owned()),
             _ => Err(format_err!("Entity has non-string `id` attribute")),
+        }
+    }
+
+    pub fn get_value<'a, T: TryFrom<Value>>(
+        &self,
+        name: impl Into<Attribute>,
+    ) -> Result<Option<T>, T::Error> {
+        match self.get(name.into().as_str()) {
+            Some(value) => T::try_from(value.clone()).map(Some),
+            None => Ok(None),
         }
     }
 

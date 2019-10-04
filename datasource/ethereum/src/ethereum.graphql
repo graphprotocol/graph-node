@@ -1,0 +1,107 @@
+interface Address {
+  id: ID!
+  address: Bytes!
+  balance: BigInt!
+
+  transactionsFrom: [Transaction!]! @derivedFrom(field: "from")
+  transactionsTo: [Transaction!]! @derivedFrom(field: "to")
+}
+
+type Account implements Address @entity {
+  id: ID!
+  address: Bytes!
+  balance: BigInt!
+
+  transactionsFrom: [Transaction!]! @derivedFrom(field: "from")
+  transactionsTo: [Transaction!]! @derivedFrom(field: "to")
+}
+
+type Contract implements Address @entity {
+  id: ID!
+  address: Bytes!
+  balance: BigInt!
+
+  transactionsFrom: [Transaction!]! @derivedFrom(field: "from")
+  transactionsTo: [Transaction!]! @derivedFrom(field: "to")
+
+  logs: [Log!]! @derivedFrom(field: "contract")
+}
+
+type Block @entity {
+  id: ID!
+
+  hash: Bytes
+  number: BigInt
+  timestamp: BigInt!
+  author: Account!
+  nonce: Bytes
+
+  parent: Block
+  unclesHash: Bytes!
+  # uncles: [Block!]! @derivedFrom(field: "TODO")
+
+  stateRoot: Bytes!
+  transactionsRoot: Bytes!
+  receiptsRoot: Bytes!
+
+  transactions: [Transaction!]! @derivedFrom(field: "block")
+
+  gasUsed: BigInt!
+  gasLimit: BigInt!
+  extraData: Bytes!
+  difficulty: BigInt!
+  totalDifficulty: BigInt!
+  sealFields: [Bytes!]!
+  size: BigInt
+  mixHash: Bytes
+}
+
+type Transaction @entity {
+  id: ID!
+
+  hash: Bytes!
+  block: Block!
+  transactionIndex: BigInt
+  nonce: BigInt!
+
+  from: Address!
+  to: Address
+  value: BigInt!
+  input: Bytes!
+
+  receipt: TransactionReceipt @derivedFrom(field: "transaction")
+  gasPrice:  BigInt!
+  gas: BigInt!
+}
+
+enum TransactionReceiptStatus {
+  success,
+  failure
+}
+
+type TransactionReceipt @entity {
+  id: ID!
+
+  transaction: Transaction!
+  contract: Contract
+  logsBloom: Bytes!
+  logs: [Log!]! @derivedFrom(field: "receipt")
+  
+  cumulativeGasUsed: BigInt!
+  gasUsed: BigInt!
+  status: TransactionReceiptStatus
+}
+
+type Log @entity {
+  id: ID!
+  block: Block!
+  transaction: Transaction!
+  receipt: TransactionReceipt!
+  logIndex: BigInt!
+  transactionLogIndex: BigInt!
+  contract: Contract!
+  topics: [Bytes]!
+  data: Bytes!
+  logType: String
+  removed: Boolean
+}

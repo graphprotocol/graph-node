@@ -1063,6 +1063,13 @@ pub trait EthereumCallCache: Send + Sync + 'static {
     ) -> Result<(), Error>;
 }
 
+pub trait NetworkStore: Send + Sync + 'static {
+    fn latest_block(
+        &self,
+        subgraph_id: SubgraphDeploymentId,
+    ) -> Result<Option<EthereumBlockPointer>, Error>;
+}
+
 /// An entity operation that can be transacted into the store; as opposed to
 /// `EntityOperation`, we already know whether a `Set` should be an `Insert`
 /// or `Update`

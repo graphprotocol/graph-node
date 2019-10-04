@@ -717,7 +717,7 @@ impl Connection {
         logger: &Logger,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<bool, Error> {
-        unreachable!("The curent code base does not require any subgraph migrations");
+        unreachable!("The current code base does not require any subgraph migrations");
         self.conn.transaction(|| -> Result<bool, Error> {
             let errmsg = format_err!(
                 "subgraph {} has no entry in deployment_schemas and can not be migrated",
