@@ -1087,6 +1087,11 @@ impl SubgraphDeploymentStore for Store {
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
         Ok(self.cached_schema(subgraph_id)?.api)
     }
+
+    fn uses_relational_schema(&self, subgraph: &SubgraphDeploymentId) -> Result<bool, Error> {
+        self.get_entity_conn(subgraph)
+            .map(|econn| econn.uses_relational_schema())
+    }
 }
 
 impl ChainStore for Store {

@@ -414,6 +414,10 @@ impl SubgraphDeploymentStore for MockStore {
         schema.document = api_schema(&schema.document)?;
         return Ok(Arc::new(schema));
     }
+
+    fn uses_relational_schema(&self, _: &SubgraphDeploymentId) -> Result<bool, Error> {
+        Ok(true)
+    }
 }
 
 impl ChainStore for MockStore {

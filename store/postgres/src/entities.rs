@@ -797,6 +797,13 @@ impl Connection {
             None => create_split_schema(&self.conn, &schema_name),
         }
     }
+
+    pub(crate) fn uses_relational_schema(&self) -> bool {
+        match &*self.storage {
+            Storage::Json(_) => false,
+            Storage::Relational(_) => true,
+        }
+    }
 }
 
 // Find the database schema for `subgraph`. If no explicit schema exists,

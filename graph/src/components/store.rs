@@ -991,6 +991,12 @@ pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
+
+    /// Return true if the subgraph uses the relational storage scheme; if
+    /// it is false, the subgraph uses JSONB storage. This method exposes
+    /// store internals that should really be hidden and should be used
+    /// sparingly and only when absolutely needed
+    fn uses_relational_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<bool, Error>;
 }
 
 /// Common trait for blockchain store implementations.
