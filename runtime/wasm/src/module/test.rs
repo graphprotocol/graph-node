@@ -498,7 +498,7 @@ fn ipfs_map() {
     let errmsg = run_ipfs_map(BAD_IPFS_HASH.to_string())
         .unwrap_err()
         .to_string();
-    assert!(errmsg.contains("api returned error \\'invalid \\'ipfs ref\\' path\\'"))
+    assert!(errmsg.contains("api returned error"))
 }
 
 #[test]
