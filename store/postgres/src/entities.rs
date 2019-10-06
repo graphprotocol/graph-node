@@ -736,22 +736,12 @@ impl Connection {
     /// It is an error if `deployment_schemas` already has an entry for this
     /// `subgraph_id`. Note that `self` must be a connection for the subgraph
     /// of subgraphs
-    pub(crate) fn create_schema(
-        &self,
-        schema: &SubgraphSchema,
-        lock_timeout: u64,
-    ) -> Result<(), StoreError> {
+    pub(crate) fn create_schema(&self, schema: &SubgraphSchema) -> Result<(), StoreError> {
         assert_eq!(
             &*SUBGRAPHS_ID,
             self.storage.subgraph(),
             "create_schema can only be called on a Connection for the metadata subgraph"
         );
-
-        // Creating JSONB storage used to require a lock on event_meta_data. To
-        // avoid locking up indexing completely, do not hold a lock for longer
-        // than `lock_timeout`
-        self.conn
-            .batch_execute(&format!("set local lock_timeout to '{}s'", lock_timeout))?;
 
         // Check if there already is an entry for this subgraph. If so, do
         // nothing

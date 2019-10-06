@@ -77,16 +77,12 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         templates: vec![],
     };
 
-    let logger = Logger::root(slog::Discard, o!());
-
     let ops = SubgraphDeploymentEntity::new(&manifest, false, false, GENESIS_PTR.clone(), None)
         .create_operations_replace(&id)
         .into_iter()
         .map(|op| op.into())
         .collect();
-    store
-        .create_subgraph_deployment(&logger, &schema, ops)
-        .unwrap();
+    store.create_subgraph_deployment(&schema, ops).unwrap();
 
     let entities = vec![
         Entity::from(vec![

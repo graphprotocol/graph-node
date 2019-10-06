@@ -381,7 +381,6 @@ impl Store for MockStore {
 
     fn create_subgraph_deployment(
         &self,
-        _logger: &Logger,
         _schema: &Schema,
         ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
@@ -542,7 +541,6 @@ impl Store for FakeStore {
 
     fn create_subgraph_deployment(
         &self,
-        _logger: &Logger,
         _schema: &Schema,
         _ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {

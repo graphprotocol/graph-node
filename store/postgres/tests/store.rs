@@ -158,7 +158,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
     )
     .create_operations(&*TEST_SUBGRAPH_ID);
     store
-        .create_subgraph_deployment(&*LOGGER, &TEST_SUBGRAPH_SCHEMA, ops)
+        .create_subgraph_deployment(&TEST_SUBGRAPH_SCHEMA, ops)
         .unwrap();
 
     let test_entity_1 = create_test_entity(
@@ -1927,9 +1927,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             Some(*TEST_BLOCK_0_PTR),
         )
         .create_operations(&subgraph_id);
-        store
-            .create_subgraph_deployment(&*LOGGER, &schema, ops)
-            .unwrap();
+        store.create_subgraph_deployment(&schema, ops).unwrap();
 
         // Create store subscriptions
         let meta_subscription =
@@ -2202,62 +2200,6 @@ fn subgraph_schema_types_have_subgraph_id_directive() {
                     s::Value::String(TEST_SUBGRAPH_ID_STRING.to_string())
                 )]
             );
-        }
-        Ok(())
-    })
-}
-
-// After removing the foreign key constraint from a subgraph's
-// entity_history table to event_meta_data subgraph creation does not take
-// a lock anymore, which makes this test fail.
-#[test]
-#[ignore]
-fn create_subgraph_deployment_tolerates_locks() {
-    run_test(|store| -> Result<(), ()> {
-        use diesel::connection::SimpleConnection;
-        use diesel::connection::TransactionManager;
-        use std::sync::Barrier;
-
-        const BLOCK_TIME: u64 = 3;
-
-        let url = postgres_test_url();
-        let barrier = Arc::new(Barrier::new(2));
-        let blocker_barrier = barrier.clone();
-        // Start a thread that will take a lock for BLOCK_TIME seconds and
-        // therefore block subgraph creation during that time
-        std::thread::spawn(move || {
-            let blocker =
-                PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
-            blocker
-                .transaction_manager()
-                .begin_transaction(&blocker)
-                .expect("Failed to set up transaction for blocker");
-            blocker
-                .batch_execute("lock table event_meta_data in share update exclusive mode")
-                .expect("Failed to lock event_meta_data");
-            blocker_barrier.wait();
-            std::thread::sleep(Duration::from_secs(BLOCK_TIME));
-            blocker
-                .transaction_manager()
-                .rollback_transaction(&blocker)
-                .expect("Failed to roll blocker transaction back");
-        });
-
-        // While we are blocking, try to create a subgraph. We don't really have
-        // a way to check from the outside that this does not block other write
-        // activity, but it is visible in the logs if this test is run with
-        // GRAPH_LOG=debug
-        let subgraph_id = SubgraphDeploymentId::new("DeploymentLocking").unwrap();
-        let schema = Schema::parse(USER_GQL, subgraph_id).expect("Failed to parse dummy schema");
-        barrier.wait();
-        let start = std::time::Instant::now();
-        store
-            .create_subgraph_deployment(&*LOGGER, &schema, vec![])
-            .expect("Subgraph creation failed");
-        if std::env::var_os("RELATIONAL_SCHEMA").is_none() {
-            // This test makes no sense for relational schemas as we do
-            // not reference the event_meta_data table
-            assert!(start.elapsed() >= Duration::from_secs(BLOCK_TIME));
         }
         Ok(())
     })

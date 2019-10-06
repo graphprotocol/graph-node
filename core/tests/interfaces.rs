@@ -32,9 +32,7 @@ fn insert_and_query(
         .into_iter()
         .map(|op| op.into())
         .collect();
-    STORE
-        .create_subgraph_deployment(&logger, &schema, ops)
-        .unwrap();
+    STORE.create_subgraph_deployment(&schema, ops).unwrap();
 
     let insert_ops = entities
         .into_iter()

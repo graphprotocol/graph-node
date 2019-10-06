@@ -730,7 +730,7 @@ fn create_subgraph_version(
     if deployment_exists {
         store.apply_metadata_operations(ops)?
     } else {
-        store.create_subgraph_deployment(logger, &manifest.schema, ops)?;
+        store.create_subgraph_deployment(&manifest.schema, ops)?;
     }
 
     debug!(
