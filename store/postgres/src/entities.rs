@@ -31,6 +31,7 @@ use diesel::Connection as _;
 use diesel::ExpressionMethods;
 use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
 use inflector::cases::snakecase::to_snake_case;
+use lazy_static::lazy_static;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -54,6 +55,25 @@ use crate::jsonb::PgJsonbExpressionMethods as _;
 use crate::notification_listener::JsonNotification;
 use crate::relational::{IdType, Layout};
 use crate::store::Store;
+
+lazy_static! {
+    // We allow overriding the default storage scheme with the environment
+    // variable `GRAPH_STORAGE_SCHEME` in an overabundance of caution in case
+    // there is a problem with the default, relational storage. Eventually,
+    // this choice will go away.
+    static ref GRAPH_STORAGE_SCHEME: self::public::DeploymentSchemaVersion = {
+        use self::public::DeploymentSchemaVersion as v;
+
+        match std::env::var("GRAPH_STORAGE_SCHEME")
+                .unwrap_or_else(|_| "relational".to_owned())
+                .as_str() {
+            "relational" => v::Relational,
+            "json" => v::Split,
+            _ => panic!("Invalid value for GRAPH_STORAGE_SCHEME. It must be \
+                 either `relational` or `json`")
+        }
+    };
+}
 
 /// The size of string prefixes that we index. This is chosen so that we
 /// will index strings that people will do string comparisons like
@@ -114,7 +134,7 @@ mod public {
     /// subgraph from one version to another. Whether a subgraph scheme needs
     /// migrating is determined by `Table::needs_migrating`, the migration
     /// machinery is kicked off with a call to `Connection::migrate`
-    #[derive(DbEnum, Debug, Clone)]
+    #[derive(DbEnum, Debug, Clone, Copy)]
     pub enum DeploymentSchemaVersion {
         Split,
         Relational,
@@ -737,6 +757,8 @@ impl Connection {
     /// `subgraph_id`. Note that `self` must be a connection for the subgraph
     /// of subgraphs
     pub(crate) fn create_schema(&self, schema: &SubgraphSchema) -> Result<(), StoreError> {
+        use self::public::DeploymentSchemaVersion as v;
+
         assert_eq!(
             &*SUBGRAPHS_ID,
             self.storage.subgraph(),
@@ -753,19 +775,11 @@ impl Connection {
             return Ok(());
         }
 
-        // We temporarily use an environment variable to determine whether
-        // to create a relational or split schema. Utimately, we will default
-        // to always creating a relational schema
-        let scheme = match std::env::var_os("RELATIONAL_SCHEMA") {
-            Some(_) => self::public::DeploymentSchemaVersion::Relational,
-            None => self::public::DeploymentSchemaVersion::Split,
-        };
-
         // Create a schema for the deployment.
         let schemas: Vec<String> = diesel::insert_into(deployment_schemas::table)
             .values((
                 deployment_schemas::subgraph.eq(schema.id.to_string()),
-                deployment_schemas::version.eq(scheme),
+                deployment_schemas::version.eq(*GRAPH_STORAGE_SCHEME),
             ))
             .returning(deployment_schemas::name)
             .get_results(&self.conn)?;
@@ -776,15 +790,15 @@ impl Connection {
         let query = format!("create schema {}", schema_name);
         self.conn.batch_execute(&*query)?;
 
-        match std::env::var_os("RELATIONAL_SCHEMA") {
-            Some(_) => Layout::create_relational_schema(
+        match *GRAPH_STORAGE_SCHEME {
+            v::Relational => Layout::create_relational_schema(
                 &self.conn,
                 &schema_name,
                 schema.id.clone(),
                 &schema.document,
             )
             .map(|_| ()),
-            None => create_split_schema(&self.conn, &schema_name),
+            v::Split => create_split_schema(&self.conn, &schema_name),
         }
     }
 
