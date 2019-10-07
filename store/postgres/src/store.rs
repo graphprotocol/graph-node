@@ -1180,26 +1180,27 @@ impl EthereumCallCache for Store {
 
         let id = contract_call_id(contract_address, encoded_call, block);
         let conn = &*self.get_conn()?;
-
-        if let Some((return_value, update_accessed_at)) = eth_call_cache::table
-            .find(id.as_ref())
-            .inner_join(eth_call_meta::table)
-            .select((
-                eth_call_cache::return_value,
-                sql("CURRENT_DATE > eth_call_meta.accessed_at"),
-            ))
-            .get_result(conn)
-            .optional()?
-        {
-            if update_accessed_at {
-                update(eth_call_meta::table.find(contract_address.as_ref()))
-                    .set(eth_call_meta::accessed_at.eq(sql("CURRENT_DATE")))
-                    .execute(conn)?;
+        conn.transaction(|| {
+            if let Some((return_value, update_accessed_at)) = eth_call_cache::table
+                .find(id.as_ref())
+                .inner_join(eth_call_meta::table)
+                .select((
+                    eth_call_cache::return_value,
+                    sql("CURRENT_DATE > eth_call_meta.accessed_at"),
+                ))
+                .get_result(conn)
+                .optional()?
+            {
+                if update_accessed_at {
+                    update(eth_call_meta::table.find(contract_address.as_ref()))
+                        .set(eth_call_meta::accessed_at.eq(sql("CURRENT_DATE")))
+                        .execute(conn)?;
+                }
+                Ok(Some(return_value))
+            } else {
+                Ok(None)
             }
-            Ok(Some(return_value))
-        } else {
-            Ok(None)
-        }
+        })
     }
 
     fn set_call(
@@ -1214,29 +1215,30 @@ impl EthereumCallCache for Store {
 
         let id = contract_call_id(contract_address, encoded_call, block);
         let conn = &*self.get_conn()?;
+        conn.transaction(|| {
+            insert_into(eth_call_cache::table)
+                .values((
+                    eth_call_cache::id.eq(id.as_ref()),
+                    eth_call_cache::contract_address.eq(contract_address.as_ref()),
+                    eth_call_cache::block_number.eq(block.number as i32),
+                    eth_call_cache::return_value.eq(return_value),
+                ))
+                .on_conflict_do_nothing()
+                .execute(conn)?;
 
-        insert_into(eth_call_cache::table)
-            .values((
-                eth_call_cache::id.eq(id.as_ref()),
-                eth_call_cache::contract_address.eq(contract_address.as_ref()),
-                eth_call_cache::block_number.eq(block.number as i32),
-                eth_call_cache::return_value.eq(return_value),
-            ))
-            .on_conflict_do_nothing()
-            .execute(conn)?;
-
-        let accessed_at = eth_call_meta::accessed_at.eq(sql("CURRENT_DATE"));
-        insert_into(eth_call_meta::table)
-            .values((
-                eth_call_meta::contract_address.eq(contract_address.as_ref()),
-                accessed_at.clone(),
-            ))
-            .on_conflict(eth_call_meta::contract_address)
-            .do_update()
-            .set(accessed_at)
-            .execute(conn)
-            .map(|_| ())
-            .map_err(Error::from)
+            let accessed_at = eth_call_meta::accessed_at.eq(sql("CURRENT_DATE"));
+            insert_into(eth_call_meta::table)
+                .values((
+                    eth_call_meta::contract_address.eq(contract_address.as_ref()),
+                    accessed_at.clone(),
+                ))
+                .on_conflict(eth_call_meta::contract_address)
+                .do_update()
+                .set(accessed_at)
+                .execute(conn)
+                .map(|_| ())
+                .map_err(Error::from)
+        })
     }
 }
 
