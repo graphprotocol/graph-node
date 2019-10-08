@@ -9,7 +9,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use super::MappingContext;
-use crate::module::{ValidModule, WasmiModule, WasmiModuleConfig};
+use crate::host_exports::HostExports;
+use crate::module::{ValidModule, WasmiModule};
 use ethabi::{LogParam, RawLog};
 use graph::components::ethereum::*;
 use graph::components::store::Store;
@@ -76,7 +77,7 @@ where
     L: LinkResolver,
     S: Store + SubgraphDeploymentStore + EthereumCallCache,
 {
-    type Host = RuntimeHost;
+    type Host = RuntimeHost<T, L, S>;
 
     fn build(
         &self,
@@ -125,11 +126,8 @@ where
 
 type MappingResponse = (Result<BlockState, Error>, futures::Finished<Instant, Error>);
 
-#[derive(Debug)]
-struct MappingRequest {
-    logger: Logger,
-    block: Arc<EthereumBlock>,
-    state: BlockState,
+struct MappingRequest<E, L, S> {
+    ctx: MappingContext<E, L, S>,
     trigger: MappingTrigger,
     result_sender: oneshot::Sender<MappingResponse>,
 }
@@ -154,28 +152,38 @@ enum MappingTrigger {
     },
 }
 
-#[derive(Debug)]
-pub struct RuntimeHost {
+pub struct RuntimeHost<E, L, S> {
     data_source_name: String,
     data_source_contract: Source,
     data_source_contract_abi: MappingABI,
     data_source_event_handlers: Vec<MappingEventHandler>,
     data_source_call_handlers: Vec<MappingCallHandler>,
     data_source_block_handlers: Vec<MappingBlockHandler>,
-    mapping_request_sender: Sender<MappingRequest>,
+    mapping_request_sender: Sender<MappingRequest<E, L, S>>,
+    host_exports: HostExports<E, L, S>,
     _guard: oneshot::Sender<()>,
 }
 
-impl RuntimeHost {
-    pub fn new<T, L, S>(
+impl<E, L, S> std::fmt::Debug for RuntimeHost<E, L, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "RuntimeHost, data_source_name: `{}`, data_source_contract: `{:?}",
+            self.data_source_name, self.data_source_contract
+        )
+    }
+}
+
+impl<E, L, S> RuntimeHost<E, L, S> {
+    pub fn new(
         logger: &Logger,
-        ethereum_adapter: Arc<T>,
+        ethereum_adapter: Arc<E>,
         link_resolver: Arc<L>,
         store: Arc<S>,
         config: RuntimeHostConfig,
     ) -> Result<Self, Error>
     where
-        T: EthereumAdapter,
+        E: EthereumAdapter,
         L: LinkResolver,
         S: Store + SubgraphDeploymentStore + EthereumCallCache,
     {
@@ -227,6 +235,7 @@ impl RuntimeHost {
                 )
             })?
             .clone();
+        let runtime = config.mapping.runtime.clone();
 
         // Spawn a dedicated thread for the runtime.
         //
@@ -235,27 +244,11 @@ impl RuntimeHost {
         // subgraph to fail the next time it tries to handle an event.
         let conf = thread::Builder::new().name(format!(
             "mapping-{}-{}",
-            config.subgraph_id, data_source_name
+            &config.subgraph_id, data_source_name
         ));
         conf.spawn(move || {
-            let wasmi_config = WasmiModuleConfig {
-                subgraph_id: config.subgraph_id,
-                api_version: Version::parse(&config.mapping.api_version).unwrap(),
-                parsed_module: config.mapping.runtime,
-                abis: config.mapping.abis,
-                data_source_name: config.data_source_name,
-                templates: config.templates,
-                ethereum_adapter: ethereum_adapter.clone(),
-                link_resolver: link_resolver.clone(),
-                store: store.clone(),
-                handler_timeout: std::env::var(TIMEOUT_ENV_VAR)
-                    .ok()
-                    .and_then(|s| u64::from_str(&s).ok())
-                    .map(Duration::from_secs),
-            };
-            let valid_module = ValidModule::new(&module_logger, wasmi_config, task_sender)
-                .expect("Failed to validate module");
-            let valid_module = Arc::new(valid_module);
+            let valid_module =
+                Arc::new(ValidModule::new((*runtime).clone()).expect("Failed to validate module"));
 
             // Pass incoming triggers to the WASM module and return entity changes;
             // Stop when cancelled.
@@ -267,23 +260,18 @@ impl RuntimeHost {
                         .map_err(|_| ()),
                 )
                 .map_err(|()| err_msg("Cancelled"))
-                .for_each(move |request: MappingRequest| -> Result<(), Error> {
+                .for_each(move |request| -> Result<(), Error> {
                     let MappingRequest {
-                        logger,
-                        block,
-                        state,
+                        ctx,
                         trigger,
                         result_sender,
                     } = request;
 
-                    let ctx = MappingContext {
-                        logger,
-                        block,
-                        state,
-                    };
-
-                    let module =
-                        WasmiModule::from_valid_module_with_ctx(valid_module.clone(), ctx)?;
+                    let module = WasmiModule::from_valid_module_with_ctx(
+                        valid_module.clone(),
+                        ctx,
+                        task_sender.clone(),
+                    )?;
 
                     let result = match trigger {
                         MappingTrigger::Log {
@@ -327,6 +315,22 @@ impl RuntimeHost {
         })
         .expect("Spawning WASM runtime thread failed.");
 
+        // Create new instance of externally hosted functions invoker
+        let host_exports = HostExports::new(
+            config.subgraph_id,
+            api_version,
+            config.data_source_name,
+            config.templates,
+            config.mapping.abis,
+            ethereum_adapter,
+            link_resolver,
+            store,
+            std::env::var(TIMEOUT_ENV_VAR)
+                .ok()
+                .and_then(|s| u64::from_str(&s).ok())
+                .map(Duration::from_secs),
+        );
+
         Ok(RuntimeHost {
             data_source_name,
             data_source_contract,
@@ -335,6 +339,7 @@ impl RuntimeHost {
             data_source_call_handlers,
             data_source_block_handlers,
             mapping_request_sender,
+            host_exports,
             _guard: cancel_sender,
         })
     }
@@ -477,7 +482,12 @@ impl RuntimeHost {
     }
 }
 
-impl RuntimeHostTrait for RuntimeHost {
+impl<E, L, S> RuntimeHostTrait for RuntimeHost<E, L, S>
+where
+    E: EthereumAdapter,
+    L: LinkResolver,
+    S: Store + SubgraphDeploymentStore,
+{
     fn matches_log(&self, log: &Log) -> bool {
         self.matches_log_address(log) && self.matches_log_signature(log)
     }
@@ -604,8 +614,12 @@ impl RuntimeHostTrait for RuntimeHost {
             self.mapping_request_sender
                 .clone()
                 .send(MappingRequest {
-                    logger: logger.clone(),
-                    block: block.clone(),
+                    ctx: MappingContext {
+                        logger: logger.clone(),
+                        state,
+                        host_exports: self.host_exports.clone(),
+                        block: block.clone(),
+                    },
                     trigger: MappingTrigger::Call {
                         transaction: transaction.clone(),
                         call: call.clone(),
@@ -613,7 +627,6 @@ impl RuntimeHostTrait for RuntimeHost {
                         outputs,
                         handler: call_handler.clone(),
                     },
-                    state,
                     result_sender,
                 })
                 .map_err(move |_| format_err!("Mapping terminated before passing in Ethereum call"))
@@ -661,12 +674,15 @@ impl RuntimeHostTrait for RuntimeHost {
             self.mapping_request_sender
                 .clone()
                 .send(MappingRequest {
-                    logger: logger.clone(),
-                    block: block.clone(),
+                    ctx: MappingContext {
+                        logger: logger.clone(),
+                        state,
+                        host_exports: self.host_exports.clone(),
+                        block: block.clone(),
+                    },
                     trigger: MappingTrigger::Block {
                         handler: block_handler.clone(),
                     },
-                    state,
                     result_sender,
                 })
                 .map_err(move |_| {
@@ -829,15 +845,18 @@ impl RuntimeHostTrait for RuntimeHost {
             mapping_request_sender
                 .clone()
                 .send(MappingRequest {
-                    logger: logger.clone(),
-                    block: block.clone(),
+                    ctx: MappingContext {
+                        logger: logger.clone(),
+                        state,
+                        host_exports: self.host_exports.clone(),
+                        block: block.clone(),
+                    },
                     trigger: MappingTrigger::Log {
                         transaction: transaction.clone(),
                         log: log.clone(),
                         params,
                         handler: event_handler.clone(),
                     },
-                    state,
                     result_sender,
                 })
                 .map_err(move |_| {

@@ -19,9 +19,9 @@ pub(crate) struct UnresolvedContractCall {
     pub function_args: Vec<ethabi::Token>,
 }
 
-#[derive(Debug)]
-pub(crate) struct MappingContext {
+pub(crate) struct MappingContext<E, L, S> {
     logger: Logger,
+    host_exports: host_exports::HostExports<E, L, S>,
     block: Arc<EthereumBlock>,
     state: BlockState,
 }
@@ -29,10 +29,11 @@ pub(crate) struct MappingContext {
 /// Cloning an `MappingContext` clones all its fields,
 /// except the `state_operations`, since they are an output
 /// accumulator and are therefore initialized with an empty state.
-impl Clone for MappingContext {
+impl<E, L, S> Clone for MappingContext<E, L, S> {
     fn clone(&self) -> Self {
         MappingContext {
             logger: self.logger.clone(),
+            host_exports: self.host_exports.clone(),
             block: self.block.clone(),
             state: BlockState::default(),
         }
