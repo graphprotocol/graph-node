@@ -47,19 +47,20 @@ EXPOSE 8020
 # Start everything on startup
 ADD start-node /usr/local/bin
 
+RUN apt-get install gawk
+
 # Wait for IPFS and Postgres to start up.
 #
-# The sed/awk commands below take the IPFS and Postgres and extract
-# hostname:port from them (sed), using port 80 as a fallback (awk).
+# The awk commands below take the IPFS and Postgres and extract
+# hostname:port from them. The IPFS port defaults to 443 for HTTPS
+# and 80 for HTTP. The Postgres port defaults to 5432.
 CMD wait-for-it.sh \
       $(echo $ipfs | \
-        sed -E -e 's@([a-z]+:\/\/)([^\/]+).*$@\2@' | \
-        awk -F[:] '{ print $1":"($2 ? $2 : 80) }') \
+        gawk 'match($0, /^([a-z]+:\/\/)?([^\/:]+)(:([0-9]+))?.*$/, m) { print m[2]":"(m[4] ? m[4] : (m[1] == "https://" ? 443 : 80)) }') \
       -t 30 \
     && wait-for-it.sh \
          $(echo $postgres_host | \
-           sed -E -e 's@([a-z]+:\/\/)([^\/]+).*$@\2@' | \
-           awk -F[:] '{ print $1":"($2 ? $2 : 80) }') \
+           gawk 'match($0, /^([a-z]+:\/\/)?([^\/:]+)(:([0-9]+))?.*$/, m) { print m[2]":"(m[4] ? m[4] : 5432) }') \
          -t 30 \
     && sleep 5 \
     && start-node
