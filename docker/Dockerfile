@@ -46,7 +46,20 @@ EXPOSE 8020
 
 # Start everything on startup
 ADD start-node /usr/local/bin
-CMD wait-for-it.sh $ipfs -t 30 \
-    && wait-for-it.sh $postgres_host -t 30 \
+
+# Wait for IPFS and Postgres to start up.
+#
+# The sed/awk commands below take the IPFS and Postgres and extract
+# hostname:port from them (sed), using port 80 as a fallback (awk).
+CMD wait-for-it.sh \
+      $(echo $ipfs | \
+        sed -E -e 's@([a-z]+:\/\/)([^\/]+).*$@\2@' | \
+        awk -F[:] '{ print $1":"($2 ? $2 : 80) }') \
+      -t 30 \
+    && wait-for-it.sh \
+         $(echo $postgres_host | \
+           sed -E -e 's@([a-z]+:\/\/)([^\/]+).*$@\2@' | \
+           awk -F[:] '{ print $1":"($2 ? $2 : 80) }') \
+         -t 30 \
     && sleep 5 \
     && start-node
