@@ -40,6 +40,12 @@ lazy_static! {
         .unwrap_or("500".into())
         .parse::<u64>()
         .expect("invalid number of parallel Ethereum block ranges to scan");
+
+    /// Number of retries to attempt for Ethereum requests. Defaults to 10.
+    static ref REQUEST_RETRIES: usize = std::env::var("GRAPH_ETHEREUM_REQUEST_RETRIES")
+        .unwrap_or("10".into())
+        .parse::<usize>()
+        .expect("invalid number of Ethereum request retries");
 }
 
 impl<T> EthereumAdapter<T>
@@ -65,7 +71,7 @@ where
         let logger = logger.to_owned();
 
         retry("trace_filter RPC call", &logger)
-            .no_limit()
+            .limit(*REQUEST_RETRIES)
             .timeout_secs(60)
             .run(move || {
                 let trace_filter: TraceFilter = match addresses.len() {
@@ -149,7 +155,7 @@ where
                     .iter()
                     .any(|f| e.to_string().contains(f)),
             })
-            .no_limit()
+            .limit(*REQUEST_RETRIES)
             .timeout_secs(60)
             .run(move || {
                 // Create a log filter
@@ -315,7 +321,7 @@ where
                     Err(_) => false,
                 }
             })
-            .limit(16)
+            .limit(*REQUEST_RETRIES)
             .no_logging()
             .no_timeout()
             .run(move || {
@@ -327,7 +333,7 @@ where
                         Ok(_) | Err(EthereumContractCallError::Revert(_)) => false,
                         Err(_) => true,
                     })
-                    .no_limit()
+                    .limit(*REQUEST_RETRIES)
                     .timeout_secs(60)
                     .run(move || {
                         let req = CallRequest {
@@ -445,13 +451,13 @@ where
 
         let web3 = self.web3.clone();
         let net_version_future = retry("net_version RPC call", &logger)
-            .no_limit()
+            .limit(*REQUEST_RETRIES)
             .timeout_secs(20)
             .run(move || web3.net().version().from_err());
 
         let web3 = self.web3.clone();
         let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
-            .no_limit()
+            .limit(*REQUEST_RETRIES)
             .timeout_secs(30)
             .run(move || {
                 web3.eth()
@@ -497,7 +503,7 @@ where
 
         Box::new(
             retry("eth_getBlockByNumber(latest) RPC call", logger)
-                .no_limit()
+                .limit(*REQUEST_RETRIES)
                 .timeout_secs(60)
                 .run(move || {
                     web3.eth()
@@ -528,7 +534,7 @@ where
 
         Box::new(
             retry("eth_getBlockByHash RPC call", &logger)
-                .no_limit()
+                .limit(*REQUEST_RETRIES)
                 .timeout_secs(60)
                 .run(move || {
                     web3.eth()
@@ -567,7 +573,7 @@ where
         // transaction never made it back into the main chain.
         Box::new(
             retry("batch eth_getTransactionReceipt RPC call", &logger)
-                .limit(16)
+                .limit(*REQUEST_RETRIES)
                 .no_logging()
                 .timeout_secs(60)
                 .run(move || {
@@ -672,7 +678,7 @@ where
 
         Box::new(
             retry("eth_getBlockByHash RPC call", &logger)
-                .no_limit()
+                .limit(*REQUEST_RETRIES)
                 .timeout_secs(60)
                 .run(move || {
                     web3.eth()
@@ -700,7 +706,7 @@ where
 
         Box::new(
             retry("eth_getBlockByNumber RPC call", &logger)
-                .no_limit()
+                .limit(*REQUEST_RETRIES)
                 .timeout_secs(60)
                 .run(move || {
                     web3.eth()
