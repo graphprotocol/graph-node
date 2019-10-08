@@ -38,6 +38,9 @@ those.
   cause subgraphs to be only indexed partially.
 - `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`: Maximum range size for `eth.getLogs`
   requests that dont filter on contract address, only event signature.
+- `GRAPH_ETHEREUM_REQUEST_RETRIES`: Number of times to retry JSON-RPC requests
+  made against Ethereum. A higher number can help with instable Ethereum
+  nodes/APIs (defaults to 10).
 
 ## Running mapping handlers
 
