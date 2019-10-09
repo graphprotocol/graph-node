@@ -338,15 +338,16 @@ impl RuntimeHost {
 
 impl RuntimeHostTrait for RuntimeHost {
     fn matches_log(&self, log: &Log) -> bool {
-        self.matches_log_address(log) && self.matches_log_signature(log)
+        self.matches_log_address(log) && self.matches_log_signature(log) && self.data_source_contract.start_block <= log.block_number.unwrap().as_u64()
+
     }
 
     fn matches_call(&self, call: &EthereumCall) -> bool {
-        self.matches_call_address(call) && self.matches_call_function(call)
+        self.matches_call_address(call) && self.matches_call_function(call) && self.data_source_contract.start_block <= call.block_number
     }
 
-    fn matches_block(&self, block_trigger_type: EthereumBlockTriggerType) -> bool {
-        self.matches_block_trigger(block_trigger_type)
+    fn matches_block(&self, block_trigger_type: EthereumBlockTriggerType, block_number: u64) -> bool {
+        self.matches_block_trigger(block_trigger_type) && self.data_source_contract.start_block <= block_number
     }
 
     fn process_call(

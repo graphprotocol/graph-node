@@ -673,7 +673,7 @@ impl<'a, 'b, 'c>
 pub struct EthereumContractSourceEntity {
     pub address: Option<super::Address>,
     pub abi: String,
-    pub start_block: Option<String>,
+    pub start_block: u64,
 }
 
 impl TypedEntity for EthereumContractSourceEntity {
@@ -687,7 +687,7 @@ impl WriteOperations for EthereumContractSourceEntity {
         entity.set("id", id);
         entity.set("address", self.address);
         entity.set("abi", self.abi);
-        entity.set("start_block", self.start_block);
+        entity.set("startBlock", self.start_block);
         ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
@@ -715,7 +715,7 @@ impl TryFromValue for EthereumContractSourceEntity {
         Ok(Self {
             address: map.get_optional("address")?,
             abi: map.get_required("abi")?,
-            start_block: map.get_optional("startBlock")?,
+            start_block: map.get_required("startBlock")?,
         })
     }
 }

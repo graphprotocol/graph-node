@@ -194,7 +194,7 @@ where
             EthereumTrigger::Block(trigger_type) => {
                 let matching_hosts: Vec<_> = hosts
                     .into_iter()
-                    .filter(|host| host.matches_block(trigger_type.clone()))
+                    .filter(|host| host.matches_block(trigger_type.clone(), block.block.number.unwrap().as_u64()))
                     .collect();
 
                 Box::new(

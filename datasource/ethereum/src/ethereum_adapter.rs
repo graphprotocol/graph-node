@@ -993,7 +993,8 @@ where
         let addresses: Vec<H160> = call_filter
             .contract_addresses_function_signatures
             .iter()
-            .map(|(addr, _fsigs)| *addr)
+            .filter(|(_addr, (start_block, _fsigs))| start_block <= &to)
+            .map(|(addr, (_start_block, _fsigs))| *addr)
             .collect::<HashSet<H160>>()
             .into_iter()
             .collect::<Vec<H160>>();

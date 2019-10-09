@@ -79,7 +79,7 @@ fn multiple_data_sources_per_subgraph() {
             true
         }
 
-        fn matches_block(&self, _call: EthereumBlockTriggerType) -> bool {
+        fn matches_block(&self, _call: EthereumBlockTriggerType, _block_number: u64) -> bool {
             true
         }
 
