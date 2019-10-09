@@ -488,12 +488,11 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send>;
 
     /// Load full information for the specified `block number` (in particular, transaction receipts).
-    fn validate_start_block(
+    fn block_pointer_from_number(
         &self,
         logger: &Logger,
         block_number: u64,
-        source_address: Option<H160>,
-    ) -> Box<dyn Future<Item = (EthereumBlockPointer, bool), Error = EthereumAdapterError> + Send>;
+    ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send>;
 
     /// Find the hash for the parent block of the provided block hash
     fn block_parent_hash(
