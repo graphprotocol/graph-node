@@ -1,15 +1,20 @@
 mod asc_abi;
-mod host;
-mod module;
 mod to_from;
+
+/// Public interface of the crate, receives triggers to be processed.
+mod host;
+pub use self::host::{RuntimeHost, RuntimeHostBuilder, RuntimeHostConfig};
+
+/// Pre-processes modules and manages their threads. Serves as an interface from `host` to `module`.
+mod mapping;
+
+/// Deals with wasmi.
+mod module;
 
 /// Runtime-agnostic implementation of exports to WASM.
 mod host_exports;
 
-use graph::prelude::*;
-use web3::types::Address;
-
-pub use self::host::{RuntimeHost, RuntimeHostBuilder, RuntimeHostConfig};
+use graph::prelude::web3::types::Address;
 
 #[derive(Clone, Debug)]
 pub(crate) struct UnresolvedContractCall {
@@ -17,25 +22,4 @@ pub(crate) struct UnresolvedContractCall {
     pub contract_address: Address,
     pub function_name: String,
     pub function_args: Vec<ethabi::Token>,
-}
-
-pub(crate) struct MappingContext<E, L, S> {
-    logger: Logger,
-    host_exports: host_exports::HostExports<E, L, S>,
-    block: Arc<EthereumBlock>,
-    state: BlockState,
-}
-
-/// Cloning an `MappingContext` clones all its fields,
-/// except the `state_operations`, since they are an output
-/// accumulator and are therefore initialized with an empty state.
-impl<E, L, S> Clone for MappingContext<E, L, S> {
-    fn clone(&self) -> Self {
-        MappingContext {
-            logger: self.logger.clone(),
-            host_exports: self.host_exports.clone(),
-            block: self.block.clone(),
-            state: BlockState::default(),
-        }
-    }
 }

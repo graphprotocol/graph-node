@@ -1,16 +1,14 @@
-use futures::sync::mpsc::{channel, Sender};
+use futures::sync::mpsc::Sender;
 use futures::sync::oneshot;
 use semver::{Version, VersionReq};
 use tiny_keccak::keccak256;
 
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::thread;
 use std::time::{Duration, Instant};
 
-use super::MappingContext;
 use crate::host_exports::HostExports;
-use crate::module::{ValidModule, WasmiModule};
+use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
 use ethabi::{LogParam, RawLog};
 use graph::components::ethereum::*;
 use graph::components::store::Store;
@@ -124,34 +122,6 @@ where
     }
 }
 
-type MappingResponse = (Result<BlockState, Error>, futures::Finished<Instant, Error>);
-
-struct MappingRequest<E, L, S> {
-    ctx: MappingContext<E, L, S>,
-    trigger: MappingTrigger,
-    result_sender: oneshot::Sender<MappingResponse>,
-}
-
-#[derive(Debug)]
-enum MappingTrigger {
-    Log {
-        transaction: Arc<Transaction>,
-        log: Arc<Log>,
-        params: Vec<LogParam>,
-        handler: MappingEventHandler,
-    },
-    Call {
-        transaction: Arc<Transaction>,
-        call: Arc<EthereumCall>,
-        inputs: Vec<LogParam>,
-        outputs: Vec<LogParam>,
-        handler: MappingCallHandler,
-    },
-    Block {
-        handler: MappingBlockHandler,
-    },
-}
-
 pub struct RuntimeHost<E, L, S> {
     data_source_name: String,
     data_source_contract: Source,
@@ -201,22 +171,7 @@ impl<E, L, S> RuntimeHost<E, L, S> {
             ));
         }
 
-        // Create channel for canceling the module
-        let (cancel_sender, cancel_receiver) = oneshot::channel();
-
-        // Create channel for event handling requests
-        let (mapping_request_sender, mapping_request_receiver) = channel(100);
-
-        // wasmi modules are not `Send` therefore they cannot be scheduled by
-        // the regular tokio executor, so we create a dedicated thread.
-        //
-        // This thread can spawn tasks on the runtime by sending them to
-        // `task_receiver`.
-        let (task_sender, task_receiver) = channel(100);
-        tokio::spawn(task_receiver.for_each(tokio::spawn));
-
         // Start the WASMI module runtime
-        let module_logger = logger.clone();
         let data_source_name = config.data_source_name.clone();
         let data_source_contract = config.contract.clone();
         let data_source_event_handlers = config.mapping.event_handlers.clone();
@@ -235,89 +190,16 @@ impl<E, L, S> RuntimeHost<E, L, S> {
                 )
             })?
             .clone();
-        let runtime = config.mapping.runtime.clone();
 
-        // Spawn a dedicated thread for the runtime.
-        //
-        // In case of failure, this thread may panic or simply terminate,
-        // dropping the `mapping_request_receiver` which ultimately causes the
-        // subgraph to fail the next time it tries to handle an event.
-        let conf = thread::Builder::new().name(format!(
-            "mapping-{}-{}",
-            &config.subgraph_id, data_source_name
-        ));
-        conf.spawn(move || {
-            let valid_module =
-                Arc::new(ValidModule::new((*runtime).clone()).expect("Failed to validate module"));
-
-            // Pass incoming triggers to the WASM module and return entity changes;
-            // Stop when cancelled.
-            let canceler = cancel_receiver.into_stream();
-            mapping_request_receiver
-                .select(
-                    canceler
-                        .map(|_| panic!("WASM module thread cancelled"))
-                        .map_err(|_| ()),
-                )
-                .map_err(|()| err_msg("Cancelled"))
-                .for_each(move |request| -> Result<(), Error> {
-                    let MappingRequest {
-                        ctx,
-                        trigger,
-                        result_sender,
-                    } = request;
-
-                    let module = WasmiModule::from_valid_module_with_ctx(
-                        valid_module.clone(),
-                        ctx,
-                        task_sender.clone(),
-                    )?;
-
-                    let result = match trigger {
-                        MappingTrigger::Log {
-                            transaction,
-                            log,
-                            params,
-                            handler,
-                        } => module.handle_ethereum_log(
-                            handler.handler.as_str(),
-                            transaction,
-                            log,
-                            params,
-                        ),
-                        MappingTrigger::Call {
-                            transaction,
-                            call,
-                            inputs,
-                            outputs,
-                            handler,
-                        } => module.handle_ethereum_call(
-                            handler.handler.as_str(),
-                            transaction,
-                            call,
-                            inputs,
-                            outputs,
-                        ),
-                        MappingTrigger::Block { handler } => {
-                            module.handle_ethereum_block(handler.handler.as_str())
-                        }
-                    };
-
-                    result_sender
-                        .send((result, future::ok(Instant::now())))
-                        .map_err(|_| err_msg("WASM module result receiver dropped."))
-                })
-                .wait()
-                .unwrap_or_else(|e| {
-                    debug!(module_logger, "WASM runtime thread terminating";
-                           "reason" => e.to_string())
-                });
-        })
-        .expect("Spawning WASM runtime thread failed.");
+        let (mapping_request_sender, cancel_guard) = crate::mapping::handle(
+            (*config.mapping.runtime).clone(),
+            logger.clone(),
+            format!("mapping-{}-{}", &config.subgraph_id, data_source_name),
+        )?;
 
         // Create new instance of externally hosted functions invoker
         let host_exports = HostExports::new(
-            config.subgraph_id,
+            config.subgraph_id.clone(),
             api_version,
             config.data_source_name,
             config.templates,
@@ -340,7 +222,7 @@ impl<E, L, S> RuntimeHost<E, L, S> {
             data_source_block_handlers,
             mapping_request_sender,
             host_exports,
-            _guard: cancel_sender,
+            _guard: cancel_guard,
         })
     }
 
