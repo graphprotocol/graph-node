@@ -130,6 +130,20 @@ pub fn get_base_type(field_type: &Type) -> &Name {
     }
 }
 
+fn find_interface<'a>(schema: &'a Document, name: &str) -> Option<&'a InterfaceType> {
+    schema.definitions.iter().find_map(|d| match d {
+        Definition::TypeDefinition(TypeDefinition::Interface(t)) if t.name == name => Some(t),
+        _ => None,
+    })
+}
+
+fn find_derived_from<'a>(field: &'a Field) -> Option<&'a Directive> {
+    field
+        .directives
+        .iter()
+        .find(|dir| dir.name == "derivedFrom")
+}
+
 /// Check `@derivedFrom` annotations for various problems. This follows the
 /// corresponding checks in graph-cli
 fn validate_derived_from(schema: &Document) -> Result<(), SchemaValidationError> {
@@ -146,8 +160,9 @@ fn validate_derived_from(schema: &Document) -> Result<(), SchemaValidationError>
     let object_and_interface_type_fields = get_object_and_interface_type_fields(schema);
 
     // Iterate over all derived fields in all entity types; include the
-    // `field` argument of @derivedFrom directive
-    for (object_type, field, target_field) in type_definitions
+    // interface types that the entity with the `@derivedFrom` implements
+    // and the `field` argument of @derivedFrom directive
+    for (object_type, interface_types, field, target_field) in type_definitions
         .clone()
         .iter()
         .flat_map(|object_type| {
@@ -157,21 +172,30 @@ fn validate_derived_from(schema: &Document) -> Result<(), SchemaValidationError>
                 .map(move |field| (object_type, field))
         })
         .filter_map(|(object_type, field)| {
-            field
-                .directives
-                .iter()
-                .find(|dir| dir.name == "derivedFrom")
-                .map(|directive| {
-                    (
-                        object_type,
-                        field,
-                        directive
-                            .arguments
-                            .iter()
-                            .find(|(name, _)| name == "field")
-                            .map(|(_, value)| value),
-                    )
-                })
+            find_derived_from(field).map(|directive| {
+                (
+                    object_type,
+                    object_type
+                        .implements_interfaces
+                        .iter()
+                        .filter(|iface| {
+                            // Any interface that has `field` can be used
+                            // as the type of the field
+                            find_interface(schema, iface)
+                                .map(|iface| {
+                                    iface.fields.iter().any(|ifield| ifield.name == field.name)
+                                })
+                                .unwrap_or(false)
+                        })
+                        .collect::<Vec<_>>(),
+                    field,
+                    directive
+                        .arguments
+                        .iter()
+                        .find(|(name, _)| name == "field")
+                        .map(|(_, value)| value),
+                )
+            })
         })
     {
         // Turn `target_field` into the string name of the field
@@ -223,12 +247,34 @@ fn validate_derived_from(schema: &Document) -> Result<(), SchemaValidationError>
         // For that, we will wind up comparing the `id`s of the two types
         // when we query, and just assume that that's ok.
         let target_field_type = get_base_type(&target_field.field_type);
-        if target_field_type != &object_type.name && target_field_type != "ID" {
+        if target_field_type != &object_type.name
+            && target_field_type != "ID"
+            && !interface_types
+                .iter()
+                .any(|iface| &target_field_type == iface)
+        {
+            fn type_signatures(name: &String) -> Vec<String> {
+                vec![
+                    format!("{}", name),
+                    format!("{}!", name),
+                    format!("[{}!]", name),
+                    format!("[{}!]!", name),
+                ]
+            };
+
+            let mut valid_types = type_signatures(&object_type.name);
+            valid_types.extend(
+                interface_types
+                    .iter()
+                    .flat_map(|iface| type_signatures(iface)),
+            );
+            let valid_types = valid_types.join(", ");
+
             let msg = format!(
-                "field `{tf}` on type `{tt}` must have type `{ot}`, `{ot}!`, or `[{ot}!]!`",
+                "field `{tf}` on type `{tt}` must have one of the following types: {valid_types}",
                 tf = target_field.name,
                 tt = target_type_name,
-                ot = object_type.name,
+                valid_types = valid_types,
             );
             return Err(invalid(object_type, &field.name, &msg));
         }
@@ -245,7 +291,12 @@ type D @entity { id: ID! }
 type E @entity { id: ID! }
 type F @entity { id: ID! }
 type G @entity { id: ID! a: BigInt }
-type H @entity { id: ID! a: A! }";
+type H @entity { id: ID! a: A! }
+# This sets up a situation where we need to allow `Transaction.from` to
+# point to an interface because of `Account.txn`
+type Transaction @entity { from: Address! }
+interface Address { txn: Transaction! @derivedFrom(field: \"from\") }
+type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFrom(field: \"from\") }";
 
     fn validate(field: &str, errmsg: &str) {
         let raw = format!("type A @entity {{ id: ID!\n {} }}\n{}", field, OTHER_TYPES);
@@ -286,7 +337,7 @@ type H @entity { id: ID! a: A! }";
     );
     validate(
         "g: G @derivedFrom(field: \"a\")",
-        "field `a` on type `G` must have type `A`, `A!`, or `[A!]!`",
+        "field `a` on type `G` must have one of the following types: A, A!, [A!], [A!]!",
     );
     validate("h: H @derivedFrom(field: \"a\")", "ok");
     validate(
