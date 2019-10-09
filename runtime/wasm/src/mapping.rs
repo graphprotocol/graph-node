@@ -140,7 +140,7 @@ pub(crate) struct MappingRequest<E, L, S> {
 
 pub(crate) struct MappingContext<E, L, S> {
     pub(crate) logger: Logger,
-    pub(crate) host_exports: crate::host_exports::HostExports<E, L, S>,
+    pub(crate) host_exports: Arc<crate::host_exports::HostExports<E, L, S>>,
     pub(crate) block: Arc<EthereumBlock>,
     pub(crate) state: BlockState,
 }

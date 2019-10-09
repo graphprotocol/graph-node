@@ -130,7 +130,7 @@ pub struct RuntimeHost<E, L, S> {
     data_source_call_handlers: Vec<MappingCallHandler>,
     data_source_block_handlers: Vec<MappingBlockHandler>,
     mapping_request_sender: Sender<MappingRequest<E, L, S>>,
-    host_exports: HostExports<E, L, S>,
+    host_exports: Arc<HostExports<E, L, S>>,
     _guard: oneshot::Sender<()>,
 }
 
@@ -197,8 +197,9 @@ impl<E, L, S> RuntimeHost<E, L, S> {
             format!("mapping-{}-{}", &config.subgraph_id, data_source_name),
         )?;
 
-        // Create new instance of externally hosted functions invoker
-        let host_exports = HostExports::new(
+        // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
+        // implementing `Clone` for `HostExports`.
+        let host_exports = Arc::new(HostExports::new(
             config.subgraph_id.clone(),
             api_version,
             config.data_source_name,
@@ -211,7 +212,7 @@ impl<E, L, S> RuntimeHost<E, L, S> {
                 .ok()
                 .and_then(|s| u64::from_str(&s).ok())
                 .map(Duration::from_secs),
-        );
+        ));
 
         Ok(RuntimeHost {
             data_source_name,
