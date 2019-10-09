@@ -49,23 +49,6 @@ pub(crate) struct HostExports<E, L, S> {
     handler_timeout: Option<Duration>,
 }
 
-// `HostExports` gets cloned on every handler call so that should not be expensive.
-impl<E, L, S> Clone for HostExports<E, L, S> {
-    fn clone(&self) -> Self {
-        Self {
-            subgraph_id: self.subgraph_id.clone(),
-            ethereum_adapter: self.ethereum_adapter.clone(),
-            link_resolver: self.link_resolver.clone(),
-            store: self.store.clone(),
-            handler_timeout: self.handler_timeout.clone(),
-            api_version: self.api_version.clone(),
-            data_source_name: self.data_source_name.clone(),
-            templates: self.templates.clone(),
-            abis: self.abis.clone(),
-        }
-    }
-}
-
 impl<E, L, S> HostExports<E, L, S>
 where
     E: EthereumAdapter,
