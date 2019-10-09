@@ -75,6 +75,7 @@ fn mock_data_source(path: &str) -> DataSource {
         source: Source {
             address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
             abi: String::from("123123"),
+            start_block: 0,
         },
         mapping: Mapping {
             kind: String::from("ethereum/events"),

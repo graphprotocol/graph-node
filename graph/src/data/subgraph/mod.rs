@@ -387,8 +387,8 @@ pub struct Source {
     #[serde(default, deserialize_with = "deserialize_address")]
     pub address: Option<Address>,
     pub abi: String,
-    #[serde(rename = "startBlock")]
-    pub start_block: Option<String>,
+    #[serde(rename = "startBlock", default)]
+    pub start_block: u64,
 }
 
 impl From<EthereumContractSourceEntity> for Source {
@@ -697,7 +697,7 @@ impl DataSource {
             source: Source {
                 address: Some(address),
                 abi: template.source.abi,
-                start_block: Some("0".to_string()),
+                start_block: 0,
             },
             mapping: template.mapping,
             templates: Vec::new(),

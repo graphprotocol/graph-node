@@ -269,7 +269,7 @@ impl EthereumLogFilter {
 
 #[derive(Clone, Debug)]
 pub struct EthereumCallFilter {
-    pub contract_addresses_function_signatures: HashMap<Address, HashSet<[u8; 4]>>,
+    pub contract_addresses_function_signatures: HashMap<Address, (u64, HashSet<[u8; 4]>)>,
 }
 
 impl EthereumCallFilter {
@@ -286,6 +286,7 @@ impl EthereumCallFilter {
             .contract_addresses_function_signatures
             .get(&call.to)
             .unwrap()
+            .1
             .is_empty()
         {
             // Allow the ability to match on calls to a contract generally
@@ -297,6 +298,7 @@ impl EthereumCallFilter {
         self.contract_addresses_function_signatures
             .get(&call.to)
             .unwrap()
+            .1
             .contains(&call.input.0[..4])
     }
 
@@ -304,13 +306,16 @@ impl EthereumCallFilter {
         iter.into_iter()
             .filter_map(|data_source| data_source.source.address.map(|addr| (addr, data_source)))
             .map(|(contract_addr, data_source)| {
+                let start_block = data_source
+                    .source
+                    .start_block;
                 data_source
                     .mapping
                     .call_handlers
                     .iter()
                     .map(move |call_handler| {
                         let sig = keccak256(call_handler.function.as_bytes());
-                        (contract_addr, [sig[0], sig[1], sig[2], sig[3]])
+                        (start_block, contract_addr, [sig[0], sig[1], sig[2], sig[3]])
                     })
             })
             .flatten()
@@ -333,21 +338,22 @@ impl EthereumCallFilter {
     }
 }
 
-impl FromIterator<(Address, [u8; 4])> for EthereumCallFilter {
+impl FromIterator<(u64, Address, [u8; 4])> for EthereumCallFilter {
     fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = (Address, [u8; 4])>,
+        I: IntoIterator<Item = (u64, Address, [u8; 4])>,
     {
-        let mut lookup: HashMap<Address, HashSet<[u8; 4]>> = HashMap::new();
-        iter.into_iter().for_each(|(address, function_signature)| {
-            if !lookup.contains_key(&address) {
-                lookup.insert(address, HashSet::default());
-            }
-            lookup.get_mut(&address).map(|set| {
-                set.insert(function_signature);
-                set
+        let mut lookup: HashMap<Address, (u64, HashSet<[u8; 4]>)> = HashMap::new();
+        iter.into_iter()
+            .for_each(|(start_block, address, function_signature)| {
+                if !lookup.contains_key(&address) {
+                    lookup.insert(address, (start_block, HashSet::default()));
+                }
+                lookup.get_mut(&address).map(|set| {
+                    set.1.insert(function_signature);
+                    set
+                });
             });
-        });
         EthereumCallFilter {
             contract_addresses_function_signatures: lookup,
         }
@@ -360,15 +366,15 @@ impl From<EthereumBlockFilter> for EthereumCallFilter {
             contract_addresses_function_signatures: ethereum_block_filter
                 .contract_addresses
                 .into_iter()
-                .map(|address| (address, HashSet::default()))
-                .collect::<HashMap<Address, HashSet<[u8; 4]>>>(),
+                .map(|(start_block_opt, address)| (address, (start_block_opt, HashSet::default())))
+                .collect::<HashMap<Address, (u64, HashSet<[u8; 4]>)>>(),
         }
     }
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct EthereumBlockFilter {
-    pub contract_addresses: HashSet<Address>,
+    pub contract_addresses: HashSet<(u64, Address)>,
     pub trigger_every_block: bool,
 }
 
@@ -397,9 +403,14 @@ impl EthereumBlockFilter {
                 filter_opt.extend(Self {
                     trigger_every_block: has_block_handler_without_filter,
                     contract_addresses: if has_block_handler_with_call_filter {
-                        vec![data_source.source.address.unwrap().to_owned()]
-                            .into_iter()
-                            .collect()
+                        vec![(
+                            data_source
+                                .source
+                                .start_block,
+                            data_source.source.address.unwrap().to_owned(),
+                        )]
+                        .into_iter()
+                        .collect()
                     } else {
                         HashSet::default()
                     },

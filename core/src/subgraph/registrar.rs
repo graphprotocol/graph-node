@@ -685,21 +685,9 @@ fn create_subgraph_version(
         .into_iter()
         .map(|data_source| {
             let source_address = data_source.source.address;
-            let block_number = match data_source
+            let block_number = data_source
                 .source
-                .start_block
-                .and_then(|block_str| block_str.parse::<u64>().ok())
-            {
-                Some(number) => number,
-                None => {
-                    warn!(
-                        logger,
-                        "Start block invalid or not specified for the '{}' data source",
-                        &data_source.name
-                    );
-                    return None
-                },
-            };
+                .start_block;
 
             // Validate that the start block provided for the Data Source is indeed the block that
             // contains the contract creation transaction. Allow the block to be used as the
