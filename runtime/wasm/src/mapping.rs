@@ -34,6 +34,7 @@ where
     // `task_receiver`.
     let (task_sender, task_receiver) = mpsc::channel(100);
     tokio::spawn(task_receiver.for_each(tokio::spawn));
+
     // Spawn a dedicated thread for the runtime.
     //
     // In case of failure, this thread may panic or simply terminate,
@@ -58,6 +59,7 @@ where
                     result_sender,
                 } = request;
 
+                // Start the WASMI module runtime.
                 let module = WasmiModule::from_valid_module_with_ctx(
                     valid_module.clone(),
                     ctx,
