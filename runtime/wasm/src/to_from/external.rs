@@ -1,12 +1,12 @@
 use ethabi;
 use std::collections::HashMap;
 
-use crate::web3::types as web3;
 use graph::components::ethereum::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
 };
 use graph::data::store;
 use graph::prelude::serde_json;
+use graph::prelude::web3::types as web3;
 use graph::prelude::{BigDecimal, BigInt};
 
 use crate::asc_abi::class::*;

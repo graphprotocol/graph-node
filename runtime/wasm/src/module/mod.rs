@@ -6,12 +6,12 @@ use std::time::Instant;
 use semver::Version;
 use wasmi::{
     nan_preserving_float::F64, Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder,
-    MemoryRef, Module, ModuleImportResolver, ModuleInstance, ModuleRef, RuntimeArgs, RuntimeValue,
+    MemoryRef, ModuleImportResolver, ModuleInstance, ModuleRef, RuntimeArgs, RuntimeValue,
     Signature, Trap,
 };
 
 use crate::host_exports::{self, HostExportError};
-use crate::MappingContext;
+use crate::mapping::MappingContext;
 use ethabi::LogParam;
 use graph::components::ethereum::*;
 use graph::data::store;
@@ -21,6 +21,7 @@ use web3::types::{Log, Transaction, U256};
 use crate::asc_abi::asc_ptr::*;
 use crate::asc_abi::class::*;
 use crate::asc_abi::*;
+use crate::mapping::ValidModule;
 
 #[cfg(test)]
 mod test;
@@ -74,54 +75,6 @@ fn format_wasmi_error(e: Error) -> String {
             _ => trap.to_string(),
         },
         _ => e.to_string(),
-    }
-}
-
-/// A pre-processed and valid WASM module, ready to be started as a WasmiModule.
-pub(crate) struct ValidModule {
-    pub module: Module,
-    user_module: Option<String>,
-}
-
-impl ValidModule {
-    /// Pre-process and validate the module.
-    pub fn new(parsed_module: parity_wasm::elements::Module) -> Result<Self, FailureError> {
-        // Inject metering calls, which are used for checking timeouts.
-        let parsed_module = pwasm_utils::inject_gas_counter(parsed_module, &Default::default())
-            .map_err(|_| err_msg("failed to inject gas counter"))?;
-
-        // `inject_gas_counter` injects an import so the section must exist.
-        let import_section = parsed_module.import_section().unwrap().clone();
-
-        // Hack: AS currently puts all user imports in one module, in addition
-        // to the built-in "env" module. The name of that module is not fixed,
-        // to able able to infer the name we allow only one module with imports,
-        // with "env" being optional.
-        let mut user_modules: Vec<_> = import_section
-            .entries()
-            .into_iter()
-            .map(|import| import.module().to_owned())
-            .filter(|module| module != "env")
-            .collect();
-        user_modules.dedup();
-        let user_module = match user_modules.len() {
-            0 => None,
-            1 => Some(user_modules.into_iter().next().unwrap()),
-            _ => return Err(err_msg("WASM module has multiple import sections")),
-        };
-
-        let module = Module::from_parity_wasm_module(parsed_module).map_err(|e| {
-            format_err!(
-                "Invalid module `{}`: {}",
-                user_module.as_ref().unwrap_or(&String::new()),
-                e
-            )
-        })?;
-
-        Ok(ValidModule {
-            module,
-            user_module,
-        })
     }
 }
 
