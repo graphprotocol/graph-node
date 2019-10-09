@@ -5,7 +5,7 @@ use graph::prelude::{
     Arc,
     ethabi,
     EthereumCallCache,
-    web3::types::{Block, Transaction, H160, H256},
+    web3::types::{Block, Transaction, H256},
     Error, Future, Logger,
 };
 
@@ -43,13 +43,11 @@ impl EthereumAdapter for MockEthereumAdapter {
         unimplemented!();
     }
 
-    fn validate_start_block(
+    fn block_pointer_from_number(
         &self,
         _: &Logger,
         _: u64,
-        _: Option<H160>,
-    ) -> Box<dyn Future<Item = (EthereumBlockPointer, bool), Error = EthereumAdapterError> + Send>
-    {
+    ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send> {
         unimplemented!()
     }
 

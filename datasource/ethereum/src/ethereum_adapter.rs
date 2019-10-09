@@ -663,18 +663,11 @@ where
         )
     }
 
-    fn validate_start_block(
+    fn block_pointer_from_number(
         &self,
         logger: &Logger,
         block_number: u64,
-        source_address: Option<H160>,
-    ) -> Box<dyn Future<Item = (EthereumBlockPointer, bool), Error = EthereumAdapterError> + Send>
-    {
-        let eth = self.clone();
-        let eth2 = self.clone();
-        let logging = logger.clone();
-        let thelogger = logger.clone();
-
+    ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send> {
         Box::new(
             self.block_hash_by_block_number(logger, block_number)
                 .and_then(move |block_hash_opt| {
@@ -685,41 +678,10 @@ where
                         )
                     })
                 })
-                .and_then(move |block_hash| eth.block_by_hash(&logging, block_hash))
-                .and_then(move |block_opt| {
-                    block_opt.ok_or_else(|| {
-                        format_err!(
-                            "Ethereum node could not find start block by hash {}",
-                            &block_number
-                        )
-                    })
-                })
                 .from_err()
-                .and_then(move |block| eth2.load_full_block(&thelogger.clone(), block))
-                .map(move |full_block| {
-                    if full_block
-                        .transaction_receipts
-                        .iter()
-                        .filter(|receipt| {
-                            receipt.contract_address == source_address
-                                && receipt.contract_address.is_some()
-                        })
-                        .any(|receipt| {
-                            match full_block
-                                .block
-                                .transactions
-                                .iter()
-                                .find(|&transaction| transaction.hash == receipt.transaction_hash)
-                            {
-                                Some(t) => t.to.is_none(),
-                                None => false,
-                            }
-                        })
-                    {
-                        (EthereumBlockPointer::from(full_block), true)
-                    } else {
-                        (EthereumBlockPointer::from(full_block), false)
-                    }
+                .map(move |block_hash| EthereumBlockPointer {
+                    hash: block_hash,
+                    number: block_number,
                 }),
         )
     }

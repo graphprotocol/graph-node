@@ -679,70 +679,38 @@ fn create_subgraph_version(
         },
     });
 
-    let start_blocks: Option<Vec<EthereumBlockPointer>> = manifest
+    let start_block: Option<
+        Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send>,
+    > = manifest
         .data_sources
         .clone()
         .into_iter()
-        .map(|data_source| {
-            let source_address = data_source.source.address;
-            let block_number = data_source
-                .source
-                .start_block;
-
-            // Validate that the start block provided for the Data Source is indeed the block that
-            // contains the contract creation transaction. Allow the block to be used as the
-            // subgraph level start block regardless, but emit a warning.
-            match ethereum_adapter
-                .validate_start_block(logger, block_number, source_address)
-                .wait()
-            {
-                Ok((block, validated)) => {
-                    if !validated {
-                        warn!(
-                            logger,
-                            "Start block for '{}' may lead to skipping on chain data, block number: {}, address: {}",
-                            &data_source.name,
-                            &block_number.to_string(),
-                            source_address
-                                .map(|a| a.to_string())
-                                .unwrap_or("unspecified".to_string())
-                        );
-                    }
-                    Some(block)
-                },
-                Err(e) => {
-                    warn!(
-                        logger,
-                        "Unable to validate start block for '{}', block_num: {}, error: {}",
-                        &block_number.to_string(),
-                        &data_source.name,
-                        e
-                    );
-                    None
-                }
-            }
+        .filter(|data_source| {
+            data_source.start_block > 0
         })
-        .filter(|&n| n.is_some())
-        .collect();
+        .min()
+        .map(|block_number| ethereum_adapter.block_pointer_from_number(logger, block_number));
 
     // Create deployment only if it does not exist already
     if !deployment_exists {
         let chain_head_block = chain_store.chain_head_ptr()?;
-        let start_blocks = start_blocks.unwrap();
-        let genesis_block = if start_blocks.is_empty() {
-            chain_store.genesis_block_ptr()?
-        } else {
-            EthereumBlockPointer::earliest_block(start_blocks)
-                .or_else(|| chain_store.genesis_block_ptr().ok())
-                .unwrap()
+        let earliest_block = match start_block {
+            None => chain_store.genesis_block_ptr()?,
+            Some(block_pointer_future) => block_pointer_future.wait().unwrap(),
         };
         info!(
             logger,
-            "Set the earliest available Ethereum block, start_block: {}", genesis_block.number
+            "Set the earliest available Ethereum block, start_block: {}", earliest_block.number
         );
         ops.extend(
-            SubgraphDeploymentEntity::new(&manifest, false, false, genesis_block, chain_head_block)
-                .create_operations(&manifest.id),
+            SubgraphDeploymentEntity::new(
+                &manifest,
+                false,
+                false,
+                earliest_block,
+                chain_head_block,
+            )
+            .create_operations(&manifest.id),
         );
     }
 
