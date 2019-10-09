@@ -171,12 +171,6 @@ impl<E, L, S> RuntimeHost<E, L, S> {
             ));
         }
 
-        // Start the WASMI module runtime
-        let data_source_name = config.data_source_name.clone();
-        let data_source_contract = config.contract.clone();
-        let data_source_event_handlers = config.mapping.event_handlers.clone();
-        let data_source_call_handlers = config.mapping.call_handlers.clone();
-        let data_source_block_handlers = config.mapping.block_handlers.clone();
         let data_source_contract_abi = config
             .mapping
             .abis
@@ -185,16 +179,17 @@ impl<E, L, S> RuntimeHost<E, L, S> {
             .ok_or_else(|| {
                 format_err!(
                     "No ABI entry found for the main contract of data source \"{}\": {}",
-                    data_source_name,
+                    &config.data_source_name,
                     config.contract.abi,
                 )
             })?
             .clone();
+        let data_source_name = config.data_source_name;
 
         let (mapping_request_sender, cancel_guard) = crate::mapping::handle(
             (*config.mapping.runtime).clone(),
             logger.clone(),
-            format!("mapping-{}-{}", &config.subgraph_id, data_source_name),
+            format!("mapping-{}-{}", &config.subgraph_id, &data_source_name),
         )?;
 
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
@@ -202,7 +197,7 @@ impl<E, L, S> RuntimeHost<E, L, S> {
         let host_exports = Arc::new(HostExports::new(
             config.subgraph_id.clone(),
             api_version,
-            config.data_source_name,
+            data_source_name.clone(),
             config.templates,
             config.mapping.abis,
             ethereum_adapter,
@@ -216,11 +211,11 @@ impl<E, L, S> RuntimeHost<E, L, S> {
 
         Ok(RuntimeHost {
             data_source_name,
-            data_source_contract,
+            data_source_contract: config.contract,
             data_source_contract_abi,
-            data_source_event_handlers,
-            data_source_call_handlers,
-            data_source_block_handlers,
+            data_source_event_handlers: config.mapping.event_handlers,
+            data_source_call_handlers: config.mapping.call_handlers,
+            data_source_block_handlers: config.mapping.block_handlers,
             mapping_request_sender,
             host_exports,
             _guard: cancel_guard,
