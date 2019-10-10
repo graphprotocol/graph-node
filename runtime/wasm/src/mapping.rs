@@ -9,16 +9,11 @@ use std::time::Instant;
 use web3::types::{Log, Transaction};
 
 /// The first channel is for mapping requests, the second is a cancelation guard.
-pub(crate) fn handle<E, L, S>(
+pub(crate) fn handle(
     parsed_module: parity_wasm::elements::Module,
     logger: Logger,
     thread_name: String,
-) -> Result<(mpsc::Sender<MappingRequest<E, L, S>>, oneshot::Sender<()>), Error>
-where
-    E: EthereumAdapter,
-    L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + EthereumCallCache,
-{
+) -> Result<(mpsc::Sender<MappingRequest>, oneshot::Sender<()>), Error> {
     let valid_module = Arc::new(ValidModule::new(parsed_module)?);
 
     // Create channel for canceling the module
@@ -134,15 +129,17 @@ pub(crate) enum MappingTrigger {
 
 type MappingResponse = (Result<BlockState, Error>, futures::Finished<Instant, Error>);
 
-pub(crate) struct MappingRequest<E, L, S> {
-    pub(crate) ctx: MappingContext<E, L, S>,
+#[derive(Debug)]
+pub(crate) struct MappingRequest {
+    pub(crate) ctx: MappingContext,
     pub(crate) trigger: MappingTrigger,
     pub(crate) result_sender: oneshot::Sender<MappingResponse>,
 }
 
-pub(crate) struct MappingContext<E, L, S> {
+#[derive(Debug)]
+pub(crate) struct MappingContext {
     pub(crate) logger: Logger,
-    pub(crate) host_exports: Arc<crate::host_exports::HostExports<E, L, S>>,
+    pub(crate) host_exports: Arc<crate::host_exports::HostExports>,
     pub(crate) block: Arc<EthereumBlock>,
     pub(crate) state: BlockState,
 }
@@ -150,7 +147,7 @@ pub(crate) struct MappingContext<E, L, S> {
 /// Cloning an `MappingContext` clones all its fields,
 /// except the `state_operations`, since they are an output
 /// accumulator and are therefore initialized with an empty state.
-impl<E, L, S> Clone for MappingContext<E, L, S> {
+impl Clone for MappingContext {
     fn clone(&self) -> Self {
         MappingContext {
             logger: self.logger.clone(),

@@ -37,7 +37,7 @@ pub struct SubgraphRegistrar<L, P, S, CS> {
 
 impl<L, P, S, CS> SubgraphRegistrar<L, P, S, CS>
 where
-    L: LinkResolver,
+    L: LinkResolver + Clone,
     P: SubgraphAssignmentProviderTrait,
     S: Store,
     CS: ChainStore,

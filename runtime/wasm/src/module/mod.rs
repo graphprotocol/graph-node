@@ -79,11 +79,11 @@ fn format_wasmi_error(e: Error) -> String {
 }
 
 /// A WASM module based on wasmi that powers a subgraph runtime.
-pub(crate) struct WasmiModule<T, L, S, U> {
+pub(crate) struct WasmiModule<U> {
     pub module: ModuleRef,
     memory: MemoryRef,
 
-    pub ctx: MappingContext<T, L, S>,
+    pub ctx: MappingContext,
     pub(crate) valid_module: Arc<ValidModule>,
     pub(crate) task_sink: U,
 
@@ -101,11 +101,8 @@ pub(crate) struct WasmiModule<T, L, S, U> {
     arena_free_size: u32,
 }
 
-impl<E, L, S, U> WasmiModule<E, L, S, U>
+impl<U> WasmiModule<U>
 where
-    E: EthereumAdapter,
-    L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + EthereumCallCache + Send + Sync + 'static,
     U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
         + Clone
         + Send
@@ -115,7 +112,7 @@ where
     /// Creates a new wasmi module
     pub fn from_valid_module_with_ctx(
         valid_module: Arc<ValidModule>,
-        ctx: MappingContext<E, L, S>,
+        ctx: MappingContext,
         task_sink: U,
     ) -> Result<Self, FailureError> {
         // Build import resolver
@@ -306,11 +303,8 @@ where
     }
 }
 
-impl<T, L, S, U> AscHeap for WasmiModule<T, L, S, U>
+impl<U> AscHeap for WasmiModule<U>
 where
-    T: EthereumAdapter,
-    L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + EthereumCallCache + Send + Sync + 'static,
     U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
         + Clone
         + Send
@@ -356,11 +350,8 @@ where
 impl<E> HostError for HostExportError<E> where E: fmt::Debug + fmt::Display + Send + Sync + 'static {}
 
 // Implementation of externals.
-impl<T, L, S, U> WasmiModule<T, L, S, U>
+impl<U> WasmiModule<U>
 where
-    T: EthereumAdapter,
-    L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + EthereumCallCache + Send + Sync + 'static,
     U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
         + Clone
         + Send
@@ -916,11 +907,8 @@ where
     }
 }
 
-impl<T, L, S, U> Externals for WasmiModule<T, L, S, U>
+impl<U> Externals for WasmiModule<U>
 where
-    T: EthereumAdapter,
-    L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + EthereumCallCache + Send + Sync + 'static,
     U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
         + Clone
         + Send

@@ -75,7 +75,7 @@ where
     L: LinkResolver,
     S: Store + SubgraphDeploymentStore + EthereumCallCache,
 {
-    type Host = RuntimeHost<T, L, S>;
+    type Host = RuntimeHost;
 
     fn build(
         &self,
@@ -122,30 +122,21 @@ where
     }
 }
 
-pub struct RuntimeHost<E, L, S> {
+#[derive(Debug)]
+pub struct RuntimeHost {
     data_source_name: String,
     data_source_contract: Source,
     data_source_contract_abi: MappingABI,
     data_source_event_handlers: Vec<MappingEventHandler>,
     data_source_call_handlers: Vec<MappingCallHandler>,
     data_source_block_handlers: Vec<MappingBlockHandler>,
-    mapping_request_sender: Sender<MappingRequest<E, L, S>>,
-    host_exports: Arc<HostExports<E, L, S>>,
+    mapping_request_sender: Sender<MappingRequest>,
+    host_exports: Arc<HostExports>,
     _guard: oneshot::Sender<()>,
 }
 
-impl<E, L, S> std::fmt::Debug for RuntimeHost<E, L, S> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        write!(
-            f,
-            "RuntimeHost, data_source_name: `{}`, data_source_contract: `{:?}",
-            self.data_source_name, self.data_source_contract
-        )
-    }
-}
-
-impl<E, L, S> RuntimeHost<E, L, S> {
-    pub fn new(
+impl RuntimeHost {
+    pub fn new<E, L, S>(
         logger: &Logger,
         ethereum_adapter: Arc<E>,
         link_resolver: Arc<L>,
@@ -187,7 +178,7 @@ impl<E, L, S> RuntimeHost<E, L, S> {
         let data_source_name = config.data_source_name;
 
         let (mapping_request_sender, cancel_guard) = crate::mapping::handle(
-            (*config.mapping.runtime).clone(),
+            config.mapping.runtime.as_ref().clone(),
             logger.clone(),
             format!("mapping-{}-{}", &config.subgraph_id, &data_source_name),
         )?;
@@ -360,12 +351,7 @@ impl<E, L, S> RuntimeHost<E, L, S> {
     }
 }
 
-impl<E, L, S> RuntimeHostTrait for RuntimeHost<E, L, S>
-where
-    E: EthereumAdapter,
-    L: LinkResolver,
-    S: Store + SubgraphDeploymentStore,
-{
+impl RuntimeHostTrait for RuntimeHost {
     fn matches_log(&self, log: &Log) -> bool {
         self.matches_log_address(log) && self.matches_log_signature(log)
     }

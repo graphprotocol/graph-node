@@ -541,6 +541,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         call: EthereumContractCall,
-        cache: Arc<impl EthereumCallCache>,
+        cache: Arc<dyn EthereumCallCache>,
     ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send>;
 }
