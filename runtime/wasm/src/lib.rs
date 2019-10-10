@@ -3,10 +3,11 @@ mod to_from;
 
 /// Public interface of the crate, receives triggers to be processed.
 mod host;
-pub use self::host::{RuntimeHost, RuntimeHostBuilder, RuntimeHostConfig};
+pub use self::host::{RuntimeHostBuilder, RuntimeHostConfig};
 
 /// Pre-processes modules and manages their threads. Serves as an interface from `host` to `module`.
 mod mapping;
+pub use mapping::{spawn_module, MappingRequest};
 
 /// Deals with wasmi.
 mod module;
@@ -15,6 +16,7 @@ mod module;
 mod host_exports;
 
 use graph::prelude::web3::types::Address;
+use graph::prelude::{Store, SubgraphDeploymentStore};
 
 #[derive(Clone, Debug)]
 pub(crate) struct UnresolvedContractCall {
@@ -23,3 +25,6 @@ pub(crate) struct UnresolvedContractCall {
     pub function_name: String,
     pub function_args: Vec<ethabi::Token>,
 }
+
+trait RuntimeStore: Store + SubgraphDeploymentStore {}
+impl<S: Store + SubgraphDeploymentStore> RuntimeStore for S {}

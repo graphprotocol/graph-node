@@ -2,7 +2,7 @@ use crate::UnresolvedContractCall;
 use ethabi::Token;
 use futures::sync::oneshot;
 use graph::components::ethereum::*;
-use graph::components::store::{EntityKey, SubgraphDeploymentStore};
+use graph::components::store::EntityKey;
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
@@ -37,9 +37,6 @@ impl From<graph::prelude::Error> for HostExportError<String> {
     }
 }
 
-trait RuntimeStore: Store + SubgraphDeploymentStore + Send + Sync {}
-impl<S: Store + SubgraphDeploymentStore + Send + Sync> RuntimeStore for S {}
-
 pub(crate) struct HostExports {
     subgraph_id: SubgraphDeploymentId,
     pub(crate) api_version: Version,
@@ -49,7 +46,7 @@ pub(crate) struct HostExports {
     ethereum_adapter: Arc<dyn EthereumAdapter>,
     link_resolver: Arc<dyn LinkResolver>,
     call_cache: Arc<dyn EthereumCallCache>,
-    store: Arc<dyn RuntimeStore>,
+    store: Arc<dyn crate::RuntimeStore>,
     handler_timeout: Option<Duration>,
 }
 
@@ -61,22 +58,18 @@ impl std::fmt::Debug for HostExports {
 }
 
 impl HostExports {
-    pub(crate) fn new<E, L, S>(
+    pub(crate) fn new(
         subgraph_id: SubgraphDeploymentId,
         api_version: Version,
         data_source_name: String,
         templates: Vec<DataSourceTemplate>,
         abis: Vec<MappingABI>,
-        ethereum_adapter: Arc<E>,
-        link_resolver: Arc<L>,
-        store: Arc<S>,
+        ethereum_adapter: Arc<dyn EthereumAdapter>,
+        link_resolver: Arc<dyn LinkResolver>,
+        store: Arc<dyn crate::RuntimeStore>,
+        call_cache: Arc<dyn EthereumCallCache>,
         handler_timeout: Option<Duration>,
-    ) -> Self
-    where
-        E: EthereumAdapter,
-        L: LinkResolver,
-        S: Store + SubgraphDeploymentStore + EthereumCallCache,
-    {
+    ) -> Self {
         Self {
             subgraph_id,
             api_version,
@@ -85,7 +78,7 @@ impl HostExports {
             abis,
             ethereum_adapter,
             link_resolver,
-            call_cache: store.clone(),
+            call_cache,
             store,
             handler_timeout,
         }

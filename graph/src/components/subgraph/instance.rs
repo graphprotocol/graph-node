@@ -15,17 +15,7 @@ pub struct BlockState {
 }
 
 /// Represents a loaded instance of a subgraph.
-pub trait SubgraphInstance<T>: Sized + Sync
-where
-    T: RuntimeHostBuilder,
-{
-    /// Creates a subgraph instance from a manifest.
-    fn from_manifest(
-        logger: &Logger,
-        manifest: SubgraphManifest,
-        host_builder: &T,
-    ) -> Result<Self, Error>;
-
+pub trait SubgraphInstance {
     /// Returns true if the subgraph has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool;
 
@@ -41,12 +31,17 @@ where
     /// Like `process_trigger` but processes an Ethereum event in a given list of hosts.
     fn process_trigger_in_runtime_hosts(
         logger: &Logger,
-        hosts: impl Iterator<Item = Arc<T::Host>>,
+        hosts: impl Iterator<Item = Arc<dyn RuntimeHost>>,
         block: Arc<EthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
     ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
 
     /// Adds dynamic data sources to the subgraph.
-    fn add_dynamic_data_sources(&mut self, runtime_hosts: Vec<Arc<T::Host>>) -> Result<(), Error>;
+    fn add_dynamic_data_source(
+        &mut self,
+        logger: &Logger,
+        data_source: DataSource,
+        top_level_templates: Vec<DataSourceTemplate>,
+    ) -> Result<Arc<dyn RuntimeHost>, Error>;
 }

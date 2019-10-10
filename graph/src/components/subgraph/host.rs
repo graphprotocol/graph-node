@@ -6,7 +6,7 @@ use crate::prelude::*;
 use web3::types::{Log, Transaction};
 
 /// Common trait for runtime host implementations.
-pub trait RuntimeHost: Send + Sync + Debug {
+pub trait RuntimeHost: Send + Sync + Debug + 'static {
     /// Returns true if the RuntimeHost has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool;
 
@@ -44,18 +44,4 @@ pub trait RuntimeHost: Send + Sync + Debug {
         trigger_type: EthereumBlockTriggerType,
         state: BlockState,
     ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
-}
-
-pub trait RuntimeHostBuilder: Clone + Send + Sync + 'static {
-    type Host: RuntimeHost;
-
-    /// Build a new runtime host for a subgraph data source.
-    fn build(
-        &self,
-        logger: &Logger,
-        network_name: String,
-        subgraph_id: SubgraphDeploymentId,
-        data_source: DataSource,
-        top_level_templates: Vec<DataSourceTemplate>,
-    ) -> Result<Self::Host, Error>;
 }

@@ -13,9 +13,7 @@ use ethabi::{LogParam, RawLog};
 use graph::components::ethereum::*;
 use graph::components::store::Store;
 use graph::data::subgraph::{Mapping, Source};
-use graph::prelude::{
-    RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
-};
+use graph::prelude::{RuntimeHost as RuntimeHostTrait, *};
 use graph::util;
 use web3::types::{Log, Transaction};
 
@@ -29,18 +27,13 @@ pub struct RuntimeHostConfig {
     templates: Vec<DataSourceTemplate>,
 }
 
-pub struct RuntimeHostBuilder<T, L, S> {
-    ethereum_adapters: HashMap<String, Arc<T>>,
-    link_resolver: Arc<L>,
+pub struct RuntimeHostBuilder<S> {
+    ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+    link_resolver: Arc<dyn LinkResolver>,
     stores: HashMap<String, Arc<S>>,
 }
 
-impl<T, L, S> Clone for RuntimeHostBuilder<T, L, S>
-where
-    T: EthereumAdapter,
-    L: LinkResolver,
-    S: Store,
-{
+impl<S> Clone for RuntimeHostBuilder<S> {
     fn clone(&self) -> Self {
         RuntimeHostBuilder {
             ethereum_adapters: self.ethereum_adapters.clone(),
@@ -50,41 +43,33 @@ where
     }
 }
 
-impl<T, L, S> RuntimeHostBuilder<T, L, S>
+impl<S> RuntimeHostBuilder<S>
 where
-    T: EthereumAdapter,
-    L: LinkResolver,
-    S: Store,
+    S: Store + SubgraphDeploymentStore + EthereumCallCache,
 {
     pub fn new(
-        ethereum_adapters: HashMap<String, Arc<T>>,
-        link_resolver: Arc<L>,
+        ethereum_adapters: HashMap<String, Arc<impl EthereumAdapter>>,
+        link_resolver: Arc<dyn LinkResolver>,
         stores: HashMap<String, Arc<S>>,
     ) -> Self {
         RuntimeHostBuilder {
-            ethereum_adapters,
+            ethereum_adapters: ethereum_adapters
+                .into_iter()
+                .map(|(key, adapter)| (key, adapter as Arc<dyn EthereumAdapter>))
+                .collect(),
             link_resolver,
             stores,
         }
     }
-}
 
-impl<T, L, S> RuntimeHostBuilderTrait for RuntimeHostBuilder<T, L, S>
-where
-    T: EthereumAdapter,
-    L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + EthereumCallCache,
-{
-    type Host = RuntimeHost;
-
-    fn build(
+    pub fn build(
         &self,
-        logger: &Logger,
         network_name: String,
         subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
         top_level_templates: Vec<DataSourceTemplate>,
-    ) -> Result<Self::Host, Error> {
+        mapping_request_sender: Sender<MappingRequest>,
+    ) -> Result<impl RuntimeHostTrait, Error> {
         let store = self.stores.get(&network_name).ok_or_else(|| {
             format_err!(
                 "No store found that matches subgraph network: \"{}\"",
@@ -107,9 +92,9 @@ where
         };
 
         RuntimeHost::new(
-            logger,
             ethereum_adapter.clone(),
             self.link_resolver.clone(),
+            store.clone(),
             store.clone(),
             RuntimeHostConfig {
                 subgraph_id,
@@ -118,12 +103,13 @@ where
                 contract: data_source.source,
                 templates,
             },
+            mapping_request_sender,
         )
     }
 }
 
 #[derive(Debug)]
-pub struct RuntimeHost {
+struct RuntimeHost {
     data_source_name: String,
     data_source_contract: Source,
     data_source_contract_abi: MappingABI,
@@ -135,23 +121,14 @@ pub struct RuntimeHost {
 }
 
 impl RuntimeHost {
-    pub fn new<E, L, S>(
-        logger: &Logger,
-        ethereum_adapter: Arc<E>,
-        link_resolver: Arc<L>,
-        store: Arc<S>,
+    pub fn new(
+        ethereum_adapter: Arc<dyn EthereumAdapter>,
+        link_resolver: Arc<dyn LinkResolver>,
+        store: Arc<dyn crate::RuntimeStore>,
+        call_cache: Arc<dyn EthereumCallCache>,
         config: RuntimeHostConfig,
-    ) -> Result<Self, Error>
-    where
-        E: EthereumAdapter,
-        L: LinkResolver,
-        S: Store + SubgraphDeploymentStore + EthereumCallCache,
-    {
-        let logger = logger.new(o!(
-            "component" => "RuntimeHost",
-            "data_source" => config.data_source_name.clone(),
-        ));
-
+        mapping_request_sender: Sender<MappingRequest>,
+    ) -> Result<Self, Error> {
         let api_version = Version::parse(&config.mapping.api_version)?;
         if !VersionReq::parse("<= 0.0.3").unwrap().matches(&api_version) {
             return Err(format_err!(
@@ -176,13 +153,6 @@ impl RuntimeHost {
             .clone();
         let data_source_name = config.data_source_name;
 
-        let mapping_request_sender = crate::mapping::handle(
-            config.mapping.runtime.as_ref().clone(),
-            logger.clone(),
-            config.subgraph_id.clone(),
-            &data_source_name,
-        )?;
-
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
         // implementing `Clone` for `HostExports`.
         let host_exports = Arc::new(HostExports::new(
@@ -194,6 +164,7 @@ impl RuntimeHost {
             ethereum_adapter,
             link_resolver,
             store,
+            call_cache,
             std::env::var(TIMEOUT_ENV_VAR)
                 .ok()
                 .and_then(|s| u64::from_str(&s).ok())
