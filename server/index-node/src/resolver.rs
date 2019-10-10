@@ -4,8 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use graph::data::graphql::{TryFromValue, ValueList, ValueMap};
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::*;
-use graph_graphql::prelude::{object_value, ObjectOrInterface, Resolver};
-
+use graph_graphql::prelude::{object_value, ExecutionContext, ObjectOrInterface, Resolver};
 use web3::types::H256;
 
 /// Resolver for the index node GraphQL API.
@@ -501,6 +500,14 @@ where
     R: GraphQlRunner,
     S: Store + SubgraphDeploymentStore,
 {
+    fn prefetch<'r>(
+        &self,
+        _: &ExecutionContext<'r, Self>,
+        _: &q::SelectionSet,
+    ) -> Result<Option<q::Value>, QueryExecutionError> {
+        Ok(None)
+    }
+
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,

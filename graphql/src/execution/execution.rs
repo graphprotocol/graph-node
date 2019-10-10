@@ -339,16 +339,23 @@ where
         }
     }
 
+    // If we are getting 'normal' data, prefetch it from the database
+    let initial_data = if data_set.items.is_empty() {
+        None
+    } else {
+        ctx.resolver.prefetch(&ctx, &data_set)?
+    };
+
     // Execute the root selection set against the root query type
     if data_set.items.is_empty() {
         // Only introspection
         execute_selection_set(&ictx, &intro_set, introspection_query_type, &None)
     } else if intro_set.items.is_empty() {
         // Only data
-        execute_selection_set(&ctx, &data_set, query_type, &None)
+        execute_selection_set(&ctx, &data_set, query_type, &initial_data)
     } else {
         // Both introspection and data
-        let mut values = execute_selection_set_to_map(&ctx, &data_set, query_type, &None)?;
+        let mut values = execute_selection_set_to_map(&ctx, &data_set, query_type, &initial_data)?;
         values.extend(execute_selection_set_to_map(
             &ictx,
             &intro_set,

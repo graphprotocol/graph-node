@@ -12,6 +12,14 @@ use graph_graphql::prelude::*;
 pub struct MockResolver;
 
 impl Resolver for MockResolver {
+    fn prefetch<'r>(
+        &self,
+        _: &ExecutionContext<'r, Self>,
+        _: &q::SelectionSet,
+    ) -> Result<Option<q::Value>, QueryExecutionError> {
+        Ok(None)
+    }
+
     fn resolve_objects<'a>(
         &self,
         _parent: &Option<q::Value>,

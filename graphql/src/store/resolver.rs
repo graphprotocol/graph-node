@@ -160,6 +160,14 @@ impl<S> Resolver for StoreResolver<S>
 where
     S: Store,
 {
+    fn prefetch<'r>(
+        &self,
+        _: &ExecutionContext<'r, Self>,
+        _: &q::SelectionSet,
+    ) -> Result<Option<q::Value>, QueryExecutionError> {
+        Ok(None)
+    }
+
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
