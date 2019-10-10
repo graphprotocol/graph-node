@@ -960,7 +960,7 @@ where
         &self,
         logger: &Logger,
         call: EthereumContractCall,
-        cache: Arc<impl EthereumCallCache>,
+        cache: Arc<dyn EthereumCallCache>,
     ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
         // Emit custom error for type mismatches.
         for (token, kind) in call

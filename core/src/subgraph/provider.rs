@@ -24,7 +24,7 @@ pub struct SubgraphAssignmentProvider<L, Q, S> {
 
 impl<L, Q, S> SubgraphAssignmentProvider<L, Q, S>
 where
-    L: LinkResolver,
+    L: LinkResolver + Clone,
     Q: GraphQlRunner,
     S: Store,
 {
@@ -74,7 +74,7 @@ where
 
 impl<L, Q, S> SubgraphAssignmentProviderTrait for SubgraphAssignmentProvider<L, Q, S>
 where
-    L: LinkResolver,
+    L: LinkResolver + Clone,
     Q: GraphQlRunner,
     S: Store + SubgraphDeploymentStore,
 {

@@ -37,25 +37,31 @@ impl From<graph::prelude::Error> for HostExportError<String> {
     }
 }
 
-pub(crate) struct HostExports<E, L, S> {
+trait RuntimeStore: Store + SubgraphDeploymentStore + Send + Sync {}
+impl<S: Store + SubgraphDeploymentStore + Send + Sync> RuntimeStore for S {}
+
+pub(crate) struct HostExports {
     subgraph_id: SubgraphDeploymentId,
     pub(crate) api_version: Version,
     data_source_name: String,
     templates: Vec<DataSourceTemplate>,
     abis: Vec<MappingABI>,
-    ethereum_adapter: Arc<E>,
-    link_resolver: Arc<L>,
-    store: Arc<S>,
+    ethereum_adapter: Arc<dyn EthereumAdapter>,
+    link_resolver: Arc<dyn LinkResolver>,
+    call_cache: Arc<dyn EthereumCallCache>,
+    store: Arc<dyn RuntimeStore>,
     handler_timeout: Option<Duration>,
 }
 
-impl<E, L, S> HostExports<E, L, S>
-where
-    E: EthereumAdapter,
-    L: LinkResolver,
-    S: Store + SubgraphDeploymentStore + EthereumCallCache + Send + Sync,
-{
-    pub(crate) fn new(
+// Not meant to be useful, only to allow deriving.
+impl std::fmt::Debug for HostExports {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(f, "HostExports",)
+    }
+}
+
+impl HostExports {
+    pub(crate) fn new<E, L, S>(
         subgraph_id: SubgraphDeploymentId,
         api_version: Version,
         data_source_name: String,
@@ -65,7 +71,12 @@ where
         link_resolver: Arc<L>,
         store: Arc<S>,
         handler_timeout: Option<Duration>,
-    ) -> Self {
+    ) -> Self
+    where
+        E: EthereumAdapter,
+        L: LinkResolver,
+        S: Store + SubgraphDeploymentStore + EthereumCallCache,
+    {
         Self {
             subgraph_id,
             api_version,
@@ -74,6 +85,7 @@ where
             abis,
             ethereum_adapter,
             link_resolver,
+            call_cache: store.clone(),
             store,
             handler_timeout,
         }
@@ -232,10 +244,10 @@ where
         // Run Ethereum call in tokio runtime
         let eth_adapter = self.ethereum_adapter.clone();
         let logger1 = logger.clone();
-        let store = self.store.clone();
+        let call_cache = self.call_cache.clone();
         let result = match block_on(
             task_sink,
-            future::lazy(move || eth_adapter.contract_call(&logger1, call, store)),
+            future::lazy(move || eth_adapter.contract_call(&logger1, call, call_cache)),
         ) {
             Ok(tokens) => Ok(Some(tokens)),
             Err(EthereumContractCallError::Revert(reason)) => {
@@ -358,7 +370,7 @@ where
     // parameter is passed to the callback without any changes
     pub(crate) fn ipfs_map<U>(
         &self,
-        module: &WasmiModule<E, L, S, U>,
+        module: &WasmiModule<U>,
         link: String,
         callback: &str,
         user_data: store::Value,

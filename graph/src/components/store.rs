@@ -1137,7 +1137,7 @@ impl EntityCache {
 
     pub fn get(
         &mut self,
-        store: &dyn Store,
+        store: &(impl Store + ?Sized),
         key: &EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
         let current = match self.current.get(&key) {
@@ -1211,7 +1211,7 @@ impl EntityCache {
     /// to the current state is actually needed
     pub fn as_modifications(
         mut self,
-        store: &dyn Store,
+        store: &(impl Store + ?Sized),
     ) -> Result<Vec<EntityModification>, QueryExecutionError> {
         let missing = self
             .updates
