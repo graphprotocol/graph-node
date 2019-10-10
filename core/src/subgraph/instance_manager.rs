@@ -238,7 +238,7 @@ impl SubgraphInstanceManager {
     }
 
     fn stop_subgraph(instances: SharedInstanceKeepAliveMap, id: SubgraphDeploymentId) {
-        // Drop the cancel guard to shut down the sujbgraph now
+        // Drop the cancel guard to shut down the subgraph now
         let mut instances = instances.write().unwrap();
         instances.remove(&id);
     }

@@ -549,7 +549,6 @@ impl RuntimeHostTrait for RuntimeHost {
         state: BlockState,
     ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
         let logger = logger.clone();
-        let mapping_request_sender = self.mapping_request_sender.clone();
 
         let block = block.clone();
         let transaction = transaction.clone();
@@ -676,7 +675,7 @@ impl RuntimeHostTrait for RuntimeHost {
         let start_time = Instant::now();
 
         Box::new(
-            mapping_request_sender
+            self.mapping_request_sender
                 .clone()
                 .send(MappingRequest {
                     ctx: MappingContext {
