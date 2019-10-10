@@ -132,7 +132,6 @@ pub struct RuntimeHost {
     data_source_block_handlers: Vec<MappingBlockHandler>,
     mapping_request_sender: Sender<MappingRequest>,
     host_exports: Arc<HostExports>,
-    _guard: oneshot::Sender<()>,
 }
 
 impl RuntimeHost {
@@ -177,10 +176,11 @@ impl RuntimeHost {
             .clone();
         let data_source_name = config.data_source_name;
 
-        let (mapping_request_sender, cancel_guard) = crate::mapping::handle(
+        let mapping_request_sender = crate::mapping::handle(
             config.mapping.runtime.as_ref().clone(),
             logger.clone(),
-            format!("mapping-{}-{}", &config.subgraph_id, &data_source_name),
+            config.subgraph_id.clone(),
+            &data_source_name,
         )?;
 
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
@@ -209,7 +209,6 @@ impl RuntimeHost {
             data_source_block_handlers: config.mapping.block_handlers,
             mapping_request_sender,
             host_exports,
-            _guard: cancel_guard,
         })
     }
 

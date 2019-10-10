@@ -4,20 +4,40 @@ use futures::sync::mpsc;
 use futures::sync::oneshot;
 use graph::components::ethereum::*;
 use graph::prelude::*;
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Instant;
 use web3::types::{Log, Transaction};
 
-/// The first channel is for mapping requests, the second is a cancelation guard.
+lazy_static::lazy_static! {
+    // Maps a subgraph id and serialized module to a channel to the thread in which the module is
+    // instantiated.
+    //
+    // Separation by subgraph avoids this being a point of contention, and data sources do not run
+    // in parallel so the mutex will never be contended.
+    static ref HANDLE_CACHE: Mutex<HashMap<(SubgraphDeploymentId, Vec<u8>), mpsc::Sender<MappingRequest>>> =
+        Mutex::new(HashMap::new());
+}
+
 pub(crate) fn handle(
     parsed_module: parity_wasm::elements::Module,
     logger: Logger,
-    thread_name: String,
-) -> Result<(mpsc::Sender<MappingRequest>, oneshot::Sender<()>), Error> {
-    let valid_module = Arc::new(ValidModule::new(parsed_module)?);
+    subgraph_id: SubgraphDeploymentId,
+    data_source_name: &str,
+) -> Result<mpsc::Sender<MappingRequest>, Error> {
+    let module_as_bytes = parsed_module.clone().to_bytes()?;
 
-    // Create channel for canceling the module
-    let (cancel_sender, cancel_receiver) = oneshot::channel();
+    // Check the cache first.
+    if let Some(handle) = HANDLE_CACHE
+        .lock()
+        .unwrap()
+        .get(&(subgraph_id.clone(), module_as_bytes.clone()))
+    {
+        return Ok(handle.clone());
+    }
+
+    let valid_module = Arc::new(ValidModule::new(parsed_module)?);
 
     // Create channel for event handling requests
     let (mapping_request_sender, mapping_request_receiver) = mpsc::channel(100);
@@ -35,18 +55,13 @@ pub(crate) fn handle(
     // In case of failure, this thread may panic or simply terminate,
     // dropping the `mapping_request_receiver` which ultimately causes the
     // subgraph to fail the next time it tries to handle an event.
-    let conf = thread::Builder::new().name(thread_name);
+    let conf =
+        thread::Builder::new().name(format!("mapping-{}-{}", &subgraph_id, data_source_name));
     conf.spawn(move || {
         // Pass incoming triggers to the WASM module and return entity changes;
-        // Stop when cancelled.
-        let canceler = cancel_receiver.into_stream();
+        // Stop when canceled because all RuntimeHosts and their senders were dropped.
         mapping_request_receiver
-            .select(
-                canceler
-                    .map(|_| panic!("WASM module thread cancelled"))
-                    .map_err(|_| ()),
-            )
-            .map_err(|()| err_msg("Cancelled"))
+            .map_err(|()| err_msg("Canceled"))
             .for_each(move |request| -> Result<(), Error> {
                 let MappingRequest {
                     ctx,
@@ -104,7 +119,11 @@ pub(crate) fn handle(
     .map(|_| ())
     .map_err(|e| format_err!("Spawning WASM runtime thread failed: {}", e))?;
 
-    Ok((mapping_request_sender, cancel_sender))
+    HANDLE_CACHE.lock().unwrap().insert(
+        (subgraph_id, module_as_bytes),
+        mapping_request_sender.clone(),
+    );
+    Ok(mapping_request_sender)
 }
 
 #[derive(Debug)]
