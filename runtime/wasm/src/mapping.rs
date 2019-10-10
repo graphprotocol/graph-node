@@ -4,39 +4,17 @@ use futures::sync::mpsc;
 use futures::sync::oneshot;
 use graph::components::ethereum::*;
 use graph::prelude::*;
-use std::collections::HashMap;
-use std::sync::Mutex;
 use std::thread;
 use std::time::Instant;
 use web3::types::{Log, Transaction};
 
-lazy_static::lazy_static! {
-    // Maps a subgraph id and serialized module to a channel to the thread in which the module is
-    // instantiated.
-    //
-    // Separation by subgraph avoids this being a point of contention, and data sources do not run
-    // in parallel so the mutex will never be contended.
-    static ref HANDLE_CACHE: Mutex<HashMap<(SubgraphDeploymentId, Vec<u8>), mpsc::Sender<MappingRequest>>> =
-        Mutex::new(HashMap::new());
-}
-
-pub(crate) fn handle(
+/// Spawn a wasm module in its own thread.
+pub fn spawn_module(
     parsed_module: parity_wasm::elements::Module,
     logger: Logger,
     subgraph_id: SubgraphDeploymentId,
     data_source_name: &str,
 ) -> Result<mpsc::Sender<MappingRequest>, Error> {
-    let module_as_bytes = parsed_module.clone().to_bytes()?;
-
-    // Check the cache first.
-    if let Some(handle) = HANDLE_CACHE
-        .lock()
-        .unwrap()
-        .get(&(subgraph_id.clone(), module_as_bytes.clone()))
-    {
-        return Ok(handle.clone());
-    }
-
     let valid_module = Arc::new(ValidModule::new(parsed_module)?);
 
     // Create channel for event handling requests
@@ -119,10 +97,6 @@ pub(crate) fn handle(
     .map(|_| ())
     .map_err(|e| format_err!("Spawning WASM runtime thread failed: {}", e))?;
 
-    HANDLE_CACHE.lock().unwrap().insert(
-        (subgraph_id, module_as_bytes),
-        mapping_request_sender.clone(),
-    );
     Ok(mapping_request_sender)
 }
 
@@ -149,7 +123,7 @@ pub(crate) enum MappingTrigger {
 type MappingResponse = (Result<BlockState, Error>, futures::Finished<Instant, Error>);
 
 #[derive(Debug)]
-pub(crate) struct MappingRequest {
+pub struct MappingRequest {
     pub(crate) ctx: MappingContext,
     pub(crate) trigger: MappingTrigger,
     pub(crate) result_sender: oneshot::Sender<MappingResponse>,

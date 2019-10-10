@@ -62,7 +62,7 @@ pub mod prelude {
         SUBSCRIPTION_THROTTLE_INTERVAL,
     };
     pub use crate::components::subgraph::{
-        BlockState, DataSourceLoader, DataSourceTemplateInfo, RuntimeHost, RuntimeHostBuilder,
+        BlockState, DataSourceLoader, DataSourceTemplateInfo, RuntimeHost,
         SubgraphAssignmentProvider, SubgraphInstance, SubgraphInstanceManager, SubgraphRegistrar,
         SubgraphVersionSwitchingMode,
     };
