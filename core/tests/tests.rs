@@ -10,18 +10,14 @@ use ipfs_api::IpfsClient;
 use walkdir::WalkDir;
 
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fs::read_to_string;
 use std::io::Cursor;
-use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
-use graph::components::ethereum::*;
 use graph::prelude::*;
-use graph_core::{LinkResolver, SubgraphInstanceManager};
-use graph_mock::{FakeStore, MockBlockStreamBuilder, MockStore};
-use web3::types::*;
+use graph_core::LinkResolver;
+use graph_mock::MockStore;
 
 use crate::tokio::timer::Delay;
 
@@ -69,6 +65,7 @@ fn add_subgraph_to_ipfs(
 
 #[ignore]
 #[test]
+#[cfg(any())]
 fn multiple_data_sources_per_subgraph() {
     #[derive(Debug)]
     struct MockRuntimeHost {}
