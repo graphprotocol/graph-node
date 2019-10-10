@@ -38,8 +38,8 @@ pub fn spawn_module(
     conf.spawn(move || {
         // Pass incoming triggers to the WASM module and return entity changes;
         // Stop when canceled because all RuntimeHosts and their senders were dropped.
-        mapping_request_receiver
-            .map_err(|()| err_msg("Canceled"))
+        match mapping_request_receiver
+            .map_err(|()| unreachable!())
             .for_each(move |request| -> Result<(), Error> {
                 let MappingRequest {
                     ctx,
@@ -89,10 +89,11 @@ pub fn spawn_module(
                     .map_err(|_| err_msg("WASM module result receiver dropped."))
             })
             .wait()
-            .unwrap_or_else(|e| {
-                debug!(logger, "WASM runtime thread terminating";
-                           "reason" => e.to_string())
-            });
+        {
+            Ok(()) => debug!(logger, "Subgraph stopped, WASM runtime thread terminated"),
+            Err(e) => debug!(logger, "WASM runtime thread terminated abnormally";
+                                    "error" => e.to_string()),
+        }
     })
     .map(|_| ())
     .map_err(|e| format_err!("Spawning WASM runtime thread failed: {}", e))?;
