@@ -308,9 +308,7 @@ impl EthereumCallFilter {
         iter.into_iter()
             .filter_map(|data_source| data_source.source.address.map(|addr| (addr, data_source)))
             .map(|(contract_addr, data_source)| {
-                let start_block = data_source
-                    .source
-                    .start_block;
+                let start_block = data_source.source.start_block;
                 data_source
                     .mapping
                     .call_handlers
@@ -427,9 +425,7 @@ impl EthereumBlockFilter {
                     trigger_every_block: has_block_handler_without_filter,
                     contract_addresses: if has_block_handler_with_call_filter {
                         vec![(
-                            data_source
-                                .source
-                                .start_block,
+                            data_source.source.start_block,
                             data_source.source.address.unwrap().to_owned(),
                         )]
                         .into_iter()

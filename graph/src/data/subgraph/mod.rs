@@ -245,6 +245,8 @@ pub enum SubgraphRegistrarError {
     StoreError(StoreError),
     #[fail(display = "subgraph validation error: {:?}", _0)]
     ManifestValidationError(Vec<SubgraphManifestValidationError>),
+    #[fail(display = "subgraph deployment error: {}", _0)]
+    SubgraphDeploymentError(StoreError),
     #[fail(display = "subgraph registrar error: {}", _0)]
     Unknown(failure::Error),
 }
