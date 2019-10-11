@@ -507,7 +507,7 @@ fn create_subgraph(
     Ok(CreateSubgraphResult { id: entity_id })
 }
 
-/// Resolves the chain head block and subgraph start block
+/// Resolves the chain head block and the subgraph's earliest block
 fn resolve_subgraph_chain_blocks(
     manifest: SubgraphManifest,
     chain_store: Arc<impl ChainStore>,
