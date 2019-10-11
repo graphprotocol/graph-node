@@ -303,21 +303,42 @@ where
         let version_switching_mode = self.version_switching_mode;
 
         let logger = self.logger_factory.subgraph_logger(&hash);
+        let logger2 = logger.clone();
 
         Box::new(
             SubgraphManifest::resolve(hash.to_ipfs_link(), self.resolver.clone(), logger.clone())
                 .map_err(SubgraphRegistrarError::ResolveError)
                 .and_then(validation::validate_manifest)
                 .and_then(move |manifest| {
-                    let network_name = manifest.network_name()?;
-                    let chain_store = chain_stores.get(&network_name).ok_or(
-                        SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
-                    )?;
-                    let ethereum_adapter = ethereum_adapters.get(&network_name).ok_or(
-                        SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
-                    )?;
+                    manifest
+                        .network_name()
+                        .map_err(|e| SubgraphRegistrarError::ManifestValidationError(vec![e]))
+                        .and_then(move |network_name| {
+                            chain_stores
+                                .clone()
+                                .get(&network_name)
+                                .ok_or(SubgraphRegistrarError::NetworkNotSupported(
+                                    network_name.clone(),
+                                ))
+                                .and_then(move |chain_store| {
+                                    ethereum_adapters
+                                        .get(&network_name)
+                                        .ok_or(SubgraphRegistrarError::NetworkNotSupported(
+                                            network_name.clone(),
+                                        ))
+                                        .map(move |ethereum_adapter| {
+                                            (
+                                                manifest,
+                                                ethereum_adapter.clone(),
+                                                chain_store.clone(),
+                                            )
+                                        })
+                                })
+                        })
+                })
+                .and_then(move |(manifest, ethereum_adapter, chain_store)| {
                     create_subgraph_version(
-                        &logger,
+                        &logger2,
                         store,
                         chain_store.clone(),
                         ethereum_adapter.clone(),
@@ -473,29 +494,63 @@ fn create_subgraph(
     Ok(CreateSubgraphResult { id: entity_id })
 }
 
-fn create_subgraph_version(
-    logger: &Logger,
-    store: Arc<impl Store>,
+fn get_head_and_earliest_blocks(
+    manifest: SubgraphManifest,
     chain_store: Arc<impl ChainStore>,
     ethereum_adapter: Arc<impl EthereumAdapter>,
-    name: SubgraphName,
-    manifest: SubgraphManifest,
-    node_id: NodeId,
-    version_switching_mode: SubgraphVersionSwitchingMode,
-) -> Result<(), SubgraphRegistrarError> {
-    let mut ops = vec![];
+    logger: &Logger,
+) -> Result<(Option<EthereumBlockPointer>, EthereumBlockPointer), SubgraphRegistrarError> {
+    let start_block: Option<
+        Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send>,
+    > = manifest
+        .data_sources
+        .clone()
+        .into_iter()
+        .filter(|data_source| {
+            data_source.start_block > 0
+        })
+        .min()
+        .map(|block_number| ethereum_adapter.block_pointer_from_number(logger, block_number));
+    let chain_head_block = chain_store.chain_head_ptr()?;
 
+    let earliest_block = match start_block {
+        None => chain_store.genesis_block_ptr()?,
+        Some(block_pointer_future) => block_pointer_future.wait().unwrap(),
+    };
+
+    Ok((chain_head_block, earliest_block))
+}
+
+fn get_version_ids_and_summaries(
+    logger: Logger,
+    store: Arc<impl Store>,
+    name: String,
+    manifest_id: SubgraphDeploymentId,
+    version_switching_mode: SubgraphVersionSwitchingMode,
+) -> Result<
+    (
+        String,
+        String,
+        bool,
+        Option<String>,
+        Option<String>,
+        Vec<SubgraphVersionSummary>,
+        Vec<SubgraphVersionSummary>,
+        Vec<MetadataOperation>,
+    ),
+    SubgraphRegistrarError,
+> {
+    let name = name.clone();
     // Look up subgraph entity by name
-    let subgraph_entity_opt = store.find_one(
-        SubgraphEntity::query().filter(EntityFilter::new_equal("name", name.to_string())),
-    )?;
+    let subgraph_entity_opt = store
+        .find_one(SubgraphEntity::query().filter(EntityFilter::new_equal("name", name.clone())))?;
     let subgraph_entity = subgraph_entity_opt.ok_or_else(|| {
         debug!(
             logger,
             "Subgraph not found, could not create_subgraph_version";
             "subgraph_name" => name.to_string()
         );
-        SubgraphRegistrarError::NameNotFound(name.to_string())
+        SubgraphRegistrarError::NameNotFound(name)
     })?;
     let subgraph_entity_id = subgraph_entity.id()?;
     let current_version_id_opt = match subgraph_entity.get("currentVersion") {
@@ -510,18 +565,8 @@ fn create_subgraph_version(
         None => None,
         Some(_) => panic!("subgraph entity has invalid type in pendingVersion field"),
     };
-    ops.push(MetadataOperation::AbortUnless {
-        description:
-            "Subgraph entity must still exist, have same name/currentVersion/pendingVersion"
-                .to_owned(),
-        query: SubgraphEntity::query().filter(EntityFilter::And(vec![
-            EntityFilter::new_equal("name", name.to_string()),
-            EntityFilter::new_equal("currentVersion", current_version_id_opt.clone()),
-            EntityFilter::new_equal("pendingVersion", pending_version_id_opt.clone()),
-        ])),
-        entity_ids: vec![subgraph_entity_id.clone()],
-    });
 
+    let store = store.clone();
     // Look up current version's deployment hash
     let current_version_hash_opt = match current_version_id_opt {
         Some(ref current_version_id) => Some(get_subgraph_version_deployment_id(
@@ -548,25 +593,13 @@ fn create_subgraph_version(
 
     // Find all subgraph version entities that point to this hash or a hash
     let (version_summaries_before, read_summaries_ops) = store.read_subgraph_version_summaries(
-        iter::once(manifest.id.clone())
+        iter::once(manifest_id.clone())
             .chain(current_version_hash_opt)
             .chain(pending_version_hash_opt)
             .collect(),
     )?;
-    ops.extend(read_summaries_ops);
 
-    // Create the subgraph version entity
     let version_entity_id = generate_entity_id();
-    let created_at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    ops.extend(
-        SubgraphVersionEntity::new(subgraph_entity_id.clone(), manifest.id.clone(), created_at)
-            .write_operations(&version_entity_id)
-            .into_iter()
-            .map(|op| op.into()),
-    );
 
     // Simulate the creation of the new version and updating of Subgraph.pending/current
     let version_summaries_after = match version_switching_mode {
@@ -592,7 +625,7 @@ fn create_subgraph_version(
             version_summaries_after.push(SubgraphVersionSummary {
                 id: version_entity_id.clone(),
                 subgraph_id: subgraph_entity_id.clone(),
-                deployment_id: manifest.id.clone(),
+                deployment_id: manifest_id.clone(),
                 pending: false,
                 current: true,
             });
@@ -639,7 +672,7 @@ fn create_subgraph_version(
                 version_summaries_after.push(SubgraphVersionSummary {
                     id: version_entity_id.clone(),
                     subgraph_id: subgraph_entity_id.clone(),
-                    deployment_id: manifest.id.clone(),
+                    deployment_id: manifest_id.clone(),
                     pending,
                     current,
                 });
@@ -653,7 +686,7 @@ fn create_subgraph_version(
                 version_summaries_after.push(SubgraphVersionSummary {
                     id: version_entity_id.clone(),
                     subgraph_id: subgraph_entity_id.clone(),
-                    deployment_id: manifest.id.clone(),
+                    deployment_id: manifest_id.clone(),
                     pending: false,
                     current: true,
                 });
@@ -662,121 +695,193 @@ fn create_subgraph_version(
             }
         }
     };
+    Ok((
+        subgraph_entity_id,
+        version_entity_id,
+        current_is_synced,
+        current_version_id_opt,
+        pending_version_id_opt,
+        version_summaries_before,
+        version_summaries_after,
+        read_summaries_ops,
+    ))
+}
 
-    // Check if subgraph deployment already exists for this hash
-    let deployment_exists = store
-        .get(SubgraphDeploymentEntity::key(manifest.id.clone()))?
-        .is_some();
+fn create_subgraph_version(
+    logger: &Logger,
+    store: Arc<impl Store>,
+    chain_store: Arc<impl ChainStore>,
+    ethereum_adapter: Arc<impl EthereumAdapter>,
+    name: SubgraphName,
+    manifest: SubgraphManifest,
+    node_id: NodeId,
+    version_switching_mode: SubgraphVersionSwitchingMode,
+) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send> {
+    let logger = logger.clone();
+    let loggering = logger.clone();
+    let manifest = manifest.clone();
+    let manifest_id = manifest.id.clone();
+    let store = store.clone();
+    let store_for_inner_closure = store.clone();
 
-    ops.push(MetadataOperation::AbortUnless {
-        description: "Subgraph deployment entity must continue to exist/not exist".to_owned(),
-        query: SubgraphDeploymentEntity::query()
-            .filter(EntityFilter::new_equal("id", manifest.id.to_string())),
-        entity_ids: if deployment_exists {
-            vec![manifest.id.to_string()]
-        } else {
-            vec![]
-        },
-    });
-
-    let start_block: Option<
-        Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send>,
-    > = manifest
-        .data_sources
-        .clone()
-        .into_iter()
-        .filter(|data_source| {
-            data_source.start_block > 0
-        })
-        .min()
-        .map(|block_number| ethereum_adapter.block_pointer_from_number(logger, block_number));
-
-    // Create deployment only if it does not exist already
-    if !deployment_exists {
-        let chain_head_block = chain_store.chain_head_ptr()?;
-        let earliest_block = match start_block {
-            None => chain_store.genesis_block_ptr()?,
-            Some(block_pointer_future) => block_pointer_future.wait().unwrap(),
-        };
-        info!(
-            logger,
-            "Set the earliest available Ethereum block, start_block: {}", earliest_block.number
-        );
-        ops.extend(
-            SubgraphDeploymentEntity::new(
-                &manifest,
-                false,
-                false,
-                earliest_block,
-                chain_head_block,
-            )
-            .create_operations(&manifest.id),
-        );
-    }
-
-    // Possibly add assignment for new deployment hash, and possibly remove assignments for old
-    // current/pending
-    ops.extend(
-        store
-            .reconcile_assignments(
-                logger,
+    Box::new(
+        future::result(get_version_ids_and_summaries(
+            logger.clone(),
+            store.clone(),
+            name.to_string(),
+            manifest_id.clone(),
+            version_switching_mode,
+        ))
+        .and_then(
+            move |(
+                subgraph_entity_id,
+                version_entity_id,
+                current_is_synced,
+                current_version_id_opt,
+                pending_version_id_opt,
                 version_summaries_before,
                 version_summaries_after,
-                Some(node_id),
-            )
-            .into_iter()
-            .map(|op| op.into()),
-    );
+                read_summaries_ops,
+            )| {
+                let mut ops = vec![];
+                ops.push(MetadataOperation::AbortUnless {
+                    description:
+                        "Subgraph entity must still exist, have same name/currentVersion/pendingVersion"
+                            .to_owned(),
+                    query: SubgraphEntity::query().filter(EntityFilter::And(vec![
+                        EntityFilter::new_equal("name", name.to_string()),
+                        EntityFilter::new_equal("currentVersion", current_version_id_opt.clone()),
+                        EntityFilter::new_equal("pendingVersion", pending_version_id_opt.clone()),
+                    ])),
+                    entity_ids: vec![subgraph_entity_id.clone()],
+                });
 
-    // Update current/pending versions in Subgraph entity
-    match version_switching_mode {
-        SubgraphVersionSwitchingMode::Instant => {
-            ops.extend(SubgraphEntity::update_pending_version_operations(
-                &subgraph_entity_id,
-                None,
-            ));
-            ops.extend(SubgraphEntity::update_current_version_operations(
-                &subgraph_entity_id,
-                Some(version_entity_id),
-            ));
-        }
-        SubgraphVersionSwitchingMode::Synced => {
-            // Set the new version as pending, unless there is no fully synced
-            // current versions
-            if current_is_synced {
-                ops.extend(SubgraphEntity::update_pending_version_operations(
-                    &subgraph_entity_id,
-                    Some(version_entity_id),
-                ));
+                // uses manifest, subgraph_entity_id, read_summaries_ops
+                // Create the subgraph version entity
+                let created_at = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                ops.extend(read_summaries_ops);
+                ops.extend(
+                    SubgraphVersionEntity::new(
+                        subgraph_entity_id.clone(),
+                        manifest_id.clone(),
+                        created_at,
+                    )
+                    .write_operations(&version_entity_id)
+                    .into_iter()
+                    .map(|op| op.into()),
+                );
+
+                // Use version_summaries_before, version_summaries_after, node_id
+                // Possibly add assignment for new deployment hash, and possibly remove assignments for old
+                // current/pending
+                ops.extend(
+                    store
+                        .reconcile_assignments(
+                            &loggering.clone(),
+                            version_summaries_before,
+                            version_summaries_after,
+                            Some(node_id),
+                        )
+                        .into_iter()
+                        .map(|op| op.into()),
+                );
+
+                // Use subgraph_entity_id, version_entity_id,
+                // Update current/pending versions in Subgraph entity
+                match version_switching_mode {
+                    SubgraphVersionSwitchingMode::Instant => {
+                        ops.extend(SubgraphEntity::update_pending_version_operations(
+                            &subgraph_entity_id,
+                            None,
+                        ));
+                        ops.extend(SubgraphEntity::update_current_version_operations(
+                            &subgraph_entity_id,
+                            Some(version_entity_id),
+                        ));
+                    }
+                    SubgraphVersionSwitchingMode::Synced => {
+                        // Set the new version as pending, unless there is no fully synced
+                        // current versions
+                        if current_is_synced {
+                            ops.extend(SubgraphEntity::update_pending_version_operations(
+                                &subgraph_entity_id,
+                                Some(version_entity_id),
+                            ));
+                        } else {
+                            ops.extend(SubgraphEntity::update_pending_version_operations(
+                                &subgraph_entity_id,
+                                None,
+                            ));
+                            ops.extend(SubgraphEntity::update_current_version_operations(
+                                &subgraph_entity_id,
+                                Some(version_entity_id),
+                            ));
+                        }
+                    }
+                }
+
+                store
+                    .get(SubgraphDeploymentEntity::key(manifest_id.clone()))
+                    .map_err(|e| SubgraphRegistrarError::QueryExecutionError(e))
+                    .map(|a| (ops, a.is_some()))
+            },
+        )
+        .and_then(move |(mut ops, deployment_exists)| {
+            // uses manifest, deployment_exists
+            ops.push(MetadataOperation::AbortUnless {
+                description: "Subgraph deployment entity must continue to exist/not exist"
+                    .to_owned(),
+                query: SubgraphDeploymentEntity::query()
+                    .filter(EntityFilter::new_equal("id", manifest.id.to_string())),
+                entity_ids: if deployment_exists {
+                    vec![manifest.id.to_string()]
+                } else {
+                    vec![]
+                },
+            });
+
+            // Commit entity ops
+            if deployment_exists {
+                store_for_inner_closure
+                    .clone()
+                    .apply_metadata_operations(ops)
+                    .map_err(|e| SubgraphRegistrarError::StoreError(e))
             } else {
-                ops.extend(SubgraphEntity::update_pending_version_operations(
-                    &subgraph_entity_id,
-                    None,
-                ));
-                ops.extend(SubgraphEntity::update_current_version_operations(
-                    &subgraph_entity_id,
-                    Some(version_entity_id),
-                ));
+                get_head_and_earliest_blocks(
+                    manifest.clone(),
+                    chain_store.clone(),
+                    ethereum_adapter.clone(),
+                    &logger.clone(),
+                )
+                .map(|(chain_head_block, earliest_block)| {
+                    info!(
+                        logger,
+                        "Set the earliest available Ethereum block, start_block: {}",
+                        earliest_block.number
+                    );
+
+                    ops.extend(
+                        SubgraphDeploymentEntity::new(
+                            &manifest,
+                            false,
+                            false,
+                            earliest_block,
+                            chain_head_block,
+                        )
+                        .create_operations(&manifest.id),
+                    )
+                })
+                .and_then(|_| {
+                    store_for_inner_closure
+                        .create_subgraph_deployment(&logger, &manifest.schema, ops)
+                        .map_err(|e| SubgraphRegistrarError::StoreError(e))
+                })
             }
-        }
-    }
-
-    // Commit entity ops
-    let manifest_id = manifest.id.to_string();
-    if deployment_exists {
-        store.apply_metadata_operations(ops)?
-    } else {
-        store.create_subgraph_deployment(&manifest.schema, ops)?;
-    }
-
-    debug!(
-        logger,
-        "Wrote new subgraph version to store";
-        "subgraph_name" => name.to_string(),
-        "subgraph_hash" => manifest_id,
-    );
-
-    Ok(())
+        }),
+    )
 }
 
 fn get_subgraph_version_deployment_id(
