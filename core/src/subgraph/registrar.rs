@@ -507,7 +507,8 @@ fn create_subgraph(
     Ok(CreateSubgraphResult { id: entity_id })
 }
 
-fn get_head_and_earliest_blocks(
+/// Resolves the chain head block and subgraph start block
+fn resolve_subgraph_chain_blocks(
     manifest: SubgraphManifest,
     chain_store: Arc<impl ChainStore>,
     ethereum_adapter: Arc<impl EthereumAdapter>,
@@ -520,38 +521,32 @@ fn get_head_and_earliest_blocks(
 > {
     let chain_store_inner = chain_store.clone();
 
-    let start_block = manifest
-        .data_sources
-        .clone()
-        .into_iter()
-        .filter(|data_source| {
-            data_source.start_block > 0
-        })
-        .min()
-        .or_else(|| Some(0 as u64))
-        .map(|block_number| {
-            ethereum_adapter
-                .block_pointer_from_number(logger, block_number)
-                .map(|pointer| Some(pointer))
-                .and_then(|pointer_opt| {
-                    Ok(pointer_opt.and_then(|pointer| {
-                        if pointer.number == 0 {
-                            None
-                        } else {
-                            Some(pointer)
-                        }
-                    }))
-                })
-                .map_err(|_| {
-                    SubgraphRegistrarError::ManifestValidationError(vec![
-                        SubgraphManifestValidationError::StartBlockNotFound("".to_string()),
-                    ])
-                })
-        })
-        .unwrap();
-
     Box::new(
-        start_block
+        manifest
+            .data_sources
+            .clone()
+            .into_iter()
+            .min()
+            .map(|block_number| {
+                ethereum_adapter
+                    .block_pointer_from_number(logger, block_number)
+                    .map(|pointer| Some(pointer))
+                    .and_then(|pointer_opt| {
+                        Ok(pointer_opt.and_then(|pointer| {
+                            if pointer.number == 0 {
+                                None
+                            } else {
+                                Some(pointer)
+                            }
+                        }))
+                    })
+                    .map_err(|_| {
+                        SubgraphRegistrarError::ManifestValidationError(vec![
+                            SubgraphManifestValidationError::StartBlockNotFound("".to_string()),
+                        ])
+                    })
+            })
+            .unwrap()
             .and_then(move |start_block_pointer_opt| {
                 chain_store
                     .chain_head_ptr()
@@ -565,7 +560,7 @@ fn get_head_and_earliest_blocks(
                     .or_else(|| chain_store_inner.genesis_block_ptr().ok())
                     .ok_or(SubgraphRegistrarError::StoreError(
                         StoreError::QueryExecutionError(
-                            "Couldn't get genesis block ptr".to_string(),
+                            "Could not get genesis block pointer".to_string(),
                         ),
                     ))
                     .map(|earliest_block_pointer| {
@@ -773,7 +768,7 @@ fn create_subgraph_version(
 ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send> {
     let logger = logger.clone();
     let logger_inner = logger.clone();
-    let loggering = logger.clone();
+    let logger_3 = logger.clone();
     let manifest = manifest.clone();
     let manifest_inner = manifest.clone();
     let manifest_id = manifest.id.clone();
@@ -812,7 +807,6 @@ fn create_subgraph_version(
                     entity_ids: vec![subgraph_entity_id.clone()],
                 });
 
-                // uses manifest, subgraph_entity_id, read_summaries_ops
                 // Create the subgraph version entity
                 let created_at = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -830,13 +824,12 @@ fn create_subgraph_version(
                     .map(|op| op.into()),
                 );
 
-                // Use version_summaries_before, version_summaries_after, node_id
-                // Possibly add assignment for new deployment hash, and possibly remove assignments for old
-                // current/pending
+                // Possibly add assignment for new deployment hash, and possibly remove
+                // assignments for old current/pending
                 ops.extend(
                     store
                         .reconcile_assignments(
-                            &loggering.clone(),
+                            &logger_3.clone(),
                             version_summaries_before,
                             version_summaries_after,
                             Some(node_id),
@@ -845,7 +838,6 @@ fn create_subgraph_version(
                         .map(|op| op.into()),
                 );
 
-                // Use subgraph_entity_id, version_entity_id,
                 // Update current/pending versions in Subgraph entity
                 match version_switching_mode {
                     SubgraphVersionSwitchingMode::Instant => {
@@ -879,6 +871,7 @@ fn create_subgraph_version(
                     }
                 }
 
+                // Check if deployment exists
                 store
                     .get(SubgraphDeploymentEntity::key(manifest_id.clone()))
                     .map_err(|e| SubgraphRegistrarError::QueryExecutionError(e))
@@ -886,7 +879,9 @@ fn create_subgraph_version(
             },
         )
         .and_then(move |(mut ops, deployment_exists)| {
-            // uses manifest, deployment_exists
+            // Now that we've created the versioning operations and checked whether the
+            // deployment already exists, let's get the chain block pointers and
+            // commit the necessary entity operations
             ops.push(MetadataOperation::AbortUnless {
                 description: "Subgraph deployment entity must continue to exist/not exist"
                     .to_owned(),
@@ -899,8 +894,11 @@ fn create_subgraph_version(
                 },
             });
 
-            // Commit entity ops
-            get_head_and_earliest_blocks(
+            // TODO: Move deployment_exists check to before resolve_subgraph_chain_blocks() to avoid calling it for existing deployments?
+            // Get the subgraph chain's startup blocks,
+            // create the subgraph deployment entity and
+            // apply the subgraph versioning and deployment operations
+            resolve_subgraph_chain_blocks(
                 manifest.clone(),
                 chain_store.clone(),
                 ethereum_adapter.clone(),
@@ -926,9 +924,16 @@ fn create_subgraph_version(
                 Ok(ops)
             })
             .and_then(move |ops| {
-                store_for_inner_closure
-                    .create_subgraph_deployment(&logger_inner, &manifest_inner.schema, ops)
-                    .map_err(|e| SubgraphRegistrarError::StoreError(e))
+                if deployment_exists {
+                    store_for_inner_closure
+                        .clone()
+                        .apply_metadata_operations(ops)
+                        .map_err(|e| SubgraphRegistrarError::StoreError(e))
+                } else {
+                    store_for_inner_closure
+                        .create_subgraph_deployment(&logger_inner, &manifest_inner.schema, ops)
+                        .map_err(|e| SubgraphRegistrarError::StoreError(e))
+                }
             })
         }),
     )
