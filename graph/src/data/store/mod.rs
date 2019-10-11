@@ -371,9 +371,12 @@ impl From<u64> for Value {
     }
 }
 
-impl From<Vec<Value>> for Value {
-    fn from(list: Vec<Value>) -> Value {
-        Value::List(list)
+impl<T> From<Vec<T>> for Value
+where
+    T: Into<Value>,
+{
+    fn from(list: Vec<T>) -> Value {
+        Value::List(list.into_iter().map(|v| v.into()).collect::<Vec<_>>())
     }
 }
 
