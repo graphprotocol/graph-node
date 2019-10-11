@@ -304,6 +304,8 @@ where
 
         let logger = self.logger_factory.subgraph_logger(&hash);
         let logger2 = logger.clone();
+        let logger3 = logger.clone();
+        let name_inner = name.clone();
 
         Box::new(
             SubgraphManifest::resolve(hash.to_ipfs_link(), self.resolver.clone(), logger.clone())
@@ -337,6 +339,7 @@ where
                         })
                 })
                 .and_then(move |(manifest, ethereum_adapter, chain_store)| {
+                    let manifest_id = manifest.id.clone();
                     create_subgraph_version(
                         &logger2,
                         store,
@@ -347,6 +350,16 @@ where
                         node_id,
                         version_switching_mode,
                     )
+                    .map(|_| manifest_id)
+                })
+                .and_then(move |manifest_id| {
+                    debug!(
+                        logger3,
+                        "Wrote new subgraph version to store";
+                        "subgraph_name" => name_inner.to_string(),
+                        "subgraph_hash" => manifest_id.to_string(),
+                    );
+                    Ok(())
                 }),
         )
     }
@@ -499,10 +512,15 @@ fn get_head_and_earliest_blocks(
     chain_store: Arc<impl ChainStore>,
     ethereum_adapter: Arc<impl EthereumAdapter>,
     logger: &Logger,
-) -> Result<(Option<EthereumBlockPointer>, EthereumBlockPointer), SubgraphRegistrarError> {
-    let start_block: Option<
-        Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send>,
-    > = manifest
+) -> Box<
+    dyn Future<
+            Item = (Option<EthereumBlockPointer>, EthereumBlockPointer),
+            Error = SubgraphRegistrarError,
+        > + Send,
+> {
+    let chain_store_inner = chain_store.clone();
+
+    let start_block = manifest
         .data_sources
         .clone()
         .into_iter()
@@ -510,15 +528,51 @@ fn get_head_and_earliest_blocks(
             data_source.start_block > 0
         })
         .min()
-        .map(|block_number| ethereum_adapter.block_pointer_from_number(logger, block_number));
-    let chain_head_block = chain_store.chain_head_ptr()?;
+        .or_else(|| Some(0 as u64))
+        .map(|block_number| {
+            ethereum_adapter
+                .block_pointer_from_number(logger, block_number)
+                .map(|pointer| Some(pointer))
+                .and_then(|pointer_opt| {
+                    Ok(pointer_opt.and_then(|pointer| {
+                        if pointer.number == 0 {
+                            None
+                        } else {
+                            Some(pointer)
+                        }
+                    }))
+                })
+                .map_err(|_| {
+                    SubgraphRegistrarError::ManifestValidationError(vec![
+                        SubgraphManifestValidationError::StartBlockNotFound("".to_string()),
+                    ])
+                })
+        })
+        .unwrap();
 
-    let earliest_block = match start_block {
-        None => chain_store.genesis_block_ptr()?,
-        Some(block_pointer_future) => block_pointer_future.wait().unwrap(),
-    };
-
-    Ok((chain_head_block, earliest_block))
+    Box::new(
+        start_block
+            .and_then(move |start_block_pointer_opt| {
+                chain_store
+                    .chain_head_ptr()
+                    .map(|chain_head_block_pointer| {
+                        (chain_head_block_pointer, start_block_pointer_opt)
+                    })
+                    .map_err(SubgraphRegistrarError::Unknown)
+            })
+            .and_then(move |(chain_head_block_pointer, start_block_pointer_opt)| {
+                start_block_pointer_opt
+                    .or_else(|| chain_store_inner.genesis_block_ptr().ok())
+                    .ok_or(SubgraphRegistrarError::StoreError(
+                        StoreError::QueryExecutionError(
+                            "Couldn't get genesis block ptr".to_string(),
+                        ),
+                    ))
+                    .map(|earliest_block_pointer| {
+                        (chain_head_block_pointer, earliest_block_pointer)
+                    })
+            }),
+    )
 }
 
 fn get_version_ids_and_summaries(
@@ -718,8 +772,10 @@ fn create_subgraph_version(
     version_switching_mode: SubgraphVersionSwitchingMode,
 ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send> {
     let logger = logger.clone();
+    let logger_inner = logger.clone();
     let loggering = logger.clone();
     let manifest = manifest.clone();
+    let manifest_inner = manifest.clone();
     let manifest_id = manifest.id.clone();
     let store = store.clone();
     let store_for_inner_closure = store.clone();
@@ -844,42 +900,36 @@ fn create_subgraph_version(
             });
 
             // Commit entity ops
-            if deployment_exists {
-                store_for_inner_closure
-                    .clone()
-                    .apply_metadata_operations(ops)
-                    .map_err(|e| SubgraphRegistrarError::StoreError(e))
-            } else {
-                get_head_and_earliest_blocks(
-                    manifest.clone(),
-                    chain_store.clone(),
-                    ethereum_adapter.clone(),
-                    &logger.clone(),
-                )
-                .map(|(chain_head_block, earliest_block)| {
-                    info!(
-                        logger,
-                        "Set the earliest available Ethereum block, start_block: {}",
-                        earliest_block.number
-                    );
+            get_head_and_earliest_blocks(
+                manifest.clone(),
+                chain_store.clone(),
+                ethereum_adapter.clone(),
+                &logger.clone(),
+            )
+            .and_then(move |(chain_head_block, earliest_block)| {
+                info!(
+                    logger,
+                    "Set the earliest available Ethereum block, start_block: {}",
+                    earliest_block.number
+                );
 
-                    ops.extend(
-                        SubgraphDeploymentEntity::new(
-                            &manifest,
-                            false,
-                            false,
-                            earliest_block,
-                            chain_head_block,
-                        )
-                        .create_operations(&manifest.id),
+                ops.extend(
+                    SubgraphDeploymentEntity::new(
+                        &manifest,
+                        false,
+                        false,
+                        earliest_block,
+                        chain_head_block,
                     )
-                })
-                .and_then(|_| {
-                    store_for_inner_closure
-                        .create_subgraph_deployment(&logger, &manifest.schema, ops)
-                        .map_err(|e| SubgraphRegistrarError::StoreError(e))
-                })
-            }
+                    .create_operations(&manifest.id),
+                );
+                Ok(ops)
+            })
+            .and_then(move |ops| {
+                store_for_inner_closure
+                    .create_subgraph_deployment(&logger_inner, &manifest_inner.schema, ops)
+                    .map_err(|e| SubgraphRegistrarError::StoreError(e))
+            })
         }),
     )
 }
