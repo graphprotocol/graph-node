@@ -41,11 +41,10 @@ impl TryFromValue for String {
 impl TryFromValue for u64 {
     fn try_from_value(value: &Value) -> Result<Self, Error> {
         match value {
-            Value::Int(n) => {
-              n.as_i64().map(|n| n as u64).ok_or_else(|| {format_err!(
-                "Cannot parse value into an integer/u64: {:?}",
-                n
-            )})},
+            Value::Int(n) => n
+                .as_i64()
+                .map(|n| n as u64)
+                .ok_or_else(|| format_err!("Cannot parse value into an integer/u64: {:?}", n)),
             _ => Err(format_err!(
                 "Cannot parse value into an integer/u64: {:?}",
                 value
