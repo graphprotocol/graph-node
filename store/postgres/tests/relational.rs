@@ -169,14 +169,7 @@ fn insert_user_entity(
             .unwrap_or(Value::Null),
     );
     if let Some(drinks) = drinks {
-        user.insert(
-            "drinks".to_owned(),
-            drinks
-                .into_iter()
-                .map(|drink| drink.into())
-                .collect::<Vec<_>>()
-                .into(),
-        );
+        user.insert("drinks".to_owned(), drinks.into());
     }
 
     insert_entity(conn, layout, entity_type, user);
@@ -632,12 +625,7 @@ fn find_string_contains() {
 #[test]
 fn find_list_contains() {
     fn query(v: Vec<&str>) -> EntityQuery {
-        let drinks: Option<Value> = Some(
-            v.into_iter()
-                .map(|drink| drink.into())
-                .collect::<Vec<_>>()
-                .into(),
-        );
+        let drinks: Option<Value> = Some(v.into());
         let filter = Some(EntityFilter::Contains("drinks".into(), drinks.into()));
         EntityQuery {
             subgraph_id: THINGS_SUBGRAPH_ID.clone(),
