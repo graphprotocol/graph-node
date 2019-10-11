@@ -16,7 +16,6 @@ use web3::types::{Filter, *};
 #[derive(Clone)]
 pub struct EthereumAdapter<T: web3::Transport> {
     web3: Arc<Web3<T>>,
-    start_block: u64,
 }
 
 lazy_static! {
@@ -47,10 +46,9 @@ where
     T: web3::BatchTransport + Send + Sync + 'static,
     T::Out: Send,
 {
-    pub fn new(transport: T, start_block: u64) -> Self {
+    pub fn new(transport: T) -> Self {
         EthereumAdapter {
             web3: Arc::new(Web3::new(transport)),
-            start_block,
         }
     }
 
@@ -441,7 +439,6 @@ where
         logger: &Logger,
     ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
         let logger = logger.clone();
-        let start_block = self.start_block;
 
         let web3 = self.web3.clone();
         let net_version_future = retry("net_version RPC call", &logger)
@@ -455,11 +452,7 @@ where
             .timeout_secs(30)
             .run(move || {
                 web3.eth()
-                    .block(if start_block > 0 {
-                        BlockNumber::Number(start_block).into()
-                    } else {
-                        BlockNumber::Earliest.into()
-                    })
+                    .block(BlockNumber::Earliest.into())
                     .from_err()
                     .and_then(|gen_block_opt| {
                         future::result(

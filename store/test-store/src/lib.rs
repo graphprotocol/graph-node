@@ -48,7 +48,6 @@ lazy_static! {
                 StoreConfig {
                     postgres_url,
                     network_name: NETWORK_NAME.to_owned(),
-                    start_block: 0u64,
                 },
                 &logger,
                 net_identifiers,

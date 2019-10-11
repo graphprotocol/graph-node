@@ -44,13 +44,6 @@ lazy_static! {
              .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_ANCESTOR_COUNT")))
         .unwrap_or(50);
 
-    // Start block to use when indexing Ethereum.
-    static ref ETHEREUM_START_BLOCK: u64 = env::var("ETHEREUM_START_BLOCK")
-        .ok()
-        .map(|s| u64::from_str(&s)
-             .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_START_BLOCK")))
-        .unwrap_or(0);
-
     static ref TOKIO_THREAD_COUNT: usize = env::var("GRAPH_TOKIO_THREAD_COUNT")
         .ok()
         .map(|s| usize::from_str(&s)
@@ -452,16 +445,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         }
     });
 
-    // Warn if the start block is != genesis
-    if *ETHEREUM_START_BLOCK > 0 {
-        warn!(
-            logger,
-            "Using {} as the block to start indexing at. \
-             This may cause subgraphs to be only indexed partially",
-            *ETHEREUM_START_BLOCK,
-        );
-    }
-
     // Set up Store
     info!(
         logger,
@@ -493,7 +476,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                             StoreConfig {
                                 postgres_url: postgres_url.clone(),
                                 network_name: network_name.to_string(),
-                                start_block: *ETHEREUM_START_BLOCK,
                             },
                             &logger,
                             network_identifier,
@@ -763,10 +745,7 @@ fn parse_ethereum_networks_and_nodes(
 
                 Ok((
                     name.to_string(),
-                    Arc::new(graph_datasource_ethereum::EthereumAdapter::new(
-                        transport,
-                        *ETHEREUM_START_BLOCK,
-                    )) as Arc<dyn EthereumAdapter>,
+                    Arc::new(graph_datasource_ethereum::EthereumAdapter::new(transport)) as Arc<dyn EthereumAdapter>,
                 ))
             }
         })

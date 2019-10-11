@@ -166,7 +166,7 @@ fn contract_call() {
     )));
 
     let logger = Logger::root(slog::Discard, o!());
-    let adapter = EthereumAdapter::new(transport, 0u64);
+    let adapter = EthereumAdapter::new(transport);
     let balance_of = Function {
         name: "balanceOf".to_owned(),
         inputs: vec![Param {
