@@ -59,13 +59,13 @@ This will also spin up a GraphiQL interface at `http://127.0.0.1:8000/`.
 6.  With this ENS example, to get the subgraph working locally run:
 
 ```
-yarn create-subgraph
+yarn create-local
 ```
 
 Then you can deploy the subgraph:
 
 ```
-yarn deploy --debug
+yarn deploy-local
 ```
 
 This will build and deploy the subgraph to the Graph Node. It should start indexing the subgraph immediately.
