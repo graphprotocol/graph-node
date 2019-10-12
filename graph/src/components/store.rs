@@ -58,6 +58,7 @@ pub enum EntityFilter {
     NotStartsWith(Attribute, Value),
     EndsWith(Attribute, Value),
     NotEndsWith(Attribute, Value),
+    Intersects(Attribute, Vec<Value>),
 }
 
 // Define some convenience methods

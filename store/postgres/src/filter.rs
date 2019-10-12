@@ -426,5 +426,49 @@ where
                 }
             }
         }
+
+        Intersects(attribute, values) => {
+            fn pred<QS, T>(
+                attribute: String,
+                values: Vec<Value>,
+                coercion: &str,
+            ) -> Result<FilterExpression<QS>, UnsupportedFilter>
+            where
+                QS: EntitySource + 'static,
+                Pg: HasSqlType<T>,
+                T: 'static,
+                SqlValue: ToSql<T, Pg>,
+            {
+                // There's no good way to check whether two JSONB arrays
+                // intersect. We do it by turning the `data` parts of the
+                // JSONB array entries into a table of strings and then
+                // check if any of them appear in `values`. This will be slow
+                // if the array in `attribute` is large
+                Ok(Box::new(
+                    sql::<Bool>("exists (select 1 from jsonb_array_elements(data->")
+                        .bind::<Text, _>(attribute)
+                        .sql("->'data') d where (d->>'data')")
+                        .sql(coercion)
+                        .sql(" = any(")
+                        .bind::<Array<T>, _>(SqlValue::new_array(values))
+                        .sql("))"),
+                ))
+            }
+
+            match values[0] {
+                Value::Bool(_) => pred::<_, Bool>(attribute, values, "::bool"),
+                Value::BigDecimal(_) | Value::BigInt(_) => {
+                    pred::<_, Numeric>(attribute, values, "::numeric")
+                }
+                Value::Bytes(_) | Value::String(_) => pred::<_, Text>(attribute, values, "::text"),
+                Value::Int(_) => pred::<_, Integer>(attribute, values, "::int"),
+                Value::List(_) | Value::Null => {
+                    return Err(UnsupportedFilter {
+                        filter: "intersects".to_owned(),
+                        value: Value::List(values),
+                    })
+                }
+            }
+        }
     }
 }

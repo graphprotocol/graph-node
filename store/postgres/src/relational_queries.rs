@@ -155,6 +155,32 @@ impl EntityData {
 /// using the metadata from Column
 struct QueryValue<'a>(&'a Value, &'a ColumnType);
 
+impl<'a> QueryValue<'a> {
+    fn push_list(
+        values: &Vec<Value>,
+        column_type: &ColumnType,
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        let values = SqlValue::new_array(values.clone());
+        match &column_type {
+            ColumnType::BigDecimal | ColumnType::BigInt => {
+                out.push_bind_param::<Array<Numeric>, _>(&values)
+            }
+            ColumnType::Boolean => out.push_bind_param::<Array<Bool>, _>(&values),
+            ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(&values),
+            ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(&values),
+            ColumnType::String => out.push_bind_param::<Array<Text>, _>(&values),
+            ColumnType::Enum(name) => {
+                out.push_bind_param::<Array<Text>, _>(&values)?;
+                out.push_sql("::");
+                out.push_sql(name.as_str());
+                out.push_sql("[]");
+                Ok(())
+            }
+        }
+    }
+}
+
 impl<'a> QueryFragment<Pg> for QueryValue<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
@@ -186,25 +212,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                 }
             }
             Value::Bool(b) => out.push_bind_param::<Bool, _>(b),
-            Value::List(values) => {
-                let values = SqlValue::new_array(values.clone());
-                match &column_type {
-                    ColumnType::BigDecimal | ColumnType::BigInt => {
-                        out.push_bind_param::<Array<Numeric>, _>(&values)
-                    }
-                    ColumnType::Boolean => out.push_bind_param::<Array<Bool>, _>(&values),
-                    ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(&values),
-                    ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(&values),
-                    ColumnType::String => out.push_bind_param::<Array<Text>, _>(&values),
-                    ColumnType::Enum(name) => {
-                        out.push_bind_param::<Array<Text>, _>(&values)?;
-                        out.push_sql("::");
-                        out.push_sql(name.as_str());
-                        out.push_sql("[]");
-                        Ok(())
-                    }
-                }
-            }
+            Value::List(values) => Self::push_list(values, &column_type, &mut out),
             Value::Null => {
                 out.push_sql("null");
                 Ok(())
@@ -412,7 +420,8 @@ impl<'a> QueryFilter<'a> {
             | StartsWith(attr, _)
             | NotStartsWith(attr, _)
             | EndsWith(attr, _)
-            | NotEndsWith(attr, _) => {
+            | NotEndsWith(attr, _)
+            | Intersects(attr, _) => {
                 table.column_for_field(attr)?;
             }
         }
@@ -699,6 +708,18 @@ impl<'a> QueryFilter<'a> {
         }
         Ok(())
     }
+
+    fn intersects(
+        &self,
+        attribute: &Attribute,
+        values: &Vec<Value>,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        let column = self.column(attribute);
+        out.push_identifier(column.name.as_str())?;
+        out.push_sql(" && ");
+        QueryValue::push_list(values, &column.column_type, &mut out)
+    }
 }
 
 impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
@@ -735,6 +756,7 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             NotEndsWith(attr, value) => {
                 self.starts_or_ends_with(attr, value, " not like ", false, out)?
             }
+            Intersects(attr, values) => self.intersects(attr, values, out)?,
         }
         Ok(())
     }
