@@ -327,7 +327,7 @@ where
 
     let ictx = ctx.as_introspection_context();
     let introspection_query_type = sast::get_root_query_type(&ictx.schema.document).unwrap();
-    for (_, fields) in collect_fields(ctx.clone(), query_type, selection_set, None) {
+    for (_, fields) in collect_fields(ctx, query_type, selection_set, None) {
         let name = fields[0].name.clone();
         let selections = fields.into_iter().map(|f| q::Selection::Field(f.clone()));
         // See if this is an introspection or data field. We don't worry about
@@ -393,7 +393,7 @@ where
     let mut result_map: BTreeMap<String, q::Value> = BTreeMap::new();
 
     // Group fields with the same response key, so we can execute them together
-    let grouped_field_set = collect_fields(ctx.clone(), object_type, selection_set, None);
+    let grouped_field_set = collect_fields(ctx, object_type, selection_set, None);
 
     // Process all field groups in order
     for (response_key, fields) in grouped_field_set {
@@ -441,7 +441,7 @@ where
 
 /// Collects fields of a selection set.
 pub fn collect_fields<'a, R>(
-    ctx: ExecutionContext<'a, R>,
+    ctx: &ExecutionContext<'a, R>,
     object_type: &s::ObjectType,
     selection_set: &'a q::SelectionSet,
     visited_fragments: Option<HashSet<&'a q::Name>>,
@@ -498,7 +498,7 @@ where
                             // We have a fragment that applies to the current object type,
                             // collect its fields into response key groups
                             let fragment_grouped_field_set = collect_fields(
-                                ctx.clone(),
+                                ctx,
                                 object_type,
                                 &fragment.selection_set,
                                 Some(visited_fragments.clone()),
@@ -524,7 +524,7 @@ where
 
                 if applies {
                     let fragment_grouped_field_set = collect_fields(
-                        ctx.clone(),
+                        ctx,
                         object_type,
                         &fragment.selection_set,
                         Some(visited_fragments.clone()),
