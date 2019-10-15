@@ -169,17 +169,11 @@ where
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
+        start_blocks: Vec<u64>,
         templates_use_calls: bool,
         reorg_threshold: u64,
         logger: Logger,
     ) -> Self {
-        let mut start_blocks = Vec::new();
-        start_blocks.append(&mut log_filter.start_blocks());
-        start_blocks.append(&mut call_filter.start_blocks());
-        start_blocks.append(&mut block_filter.start_blocks());
-        start_blocks.sort();
-        start_blocks.dedup();
-
         BlockStream {
             state: Mutex::new(BlockStreamState::New),
             consecutive_err_count: 0,
@@ -1271,6 +1265,7 @@ where
         logger: Logger,
         deployment_id: SubgraphDeploymentId,
         network_name: String,
+        start_blocks: Vec<u64>,
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
@@ -1307,6 +1302,7 @@ where
             log_filter,
             call_filter,
             block_filter,
+            start_blocks,
             templates_use_calls,
             self.reorg_threshold,
             logger,

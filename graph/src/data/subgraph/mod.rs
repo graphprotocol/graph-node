@@ -881,6 +881,13 @@ impl SubgraphManifest {
             _ => Err(SubgraphManifestValidationError::MultipleEthereumNetworks),
         }
     }
+
+    pub fn start_blocks(&self) -> Vec<u64> {
+        self.data_sources
+            .iter()
+            .map(|data_source| data_source.source.start_block)
+            .collect()
+    }
 }
 
 impl UnresolvedSubgraphManifest {
