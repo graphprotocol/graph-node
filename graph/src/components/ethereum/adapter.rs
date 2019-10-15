@@ -273,17 +273,16 @@ pub struct EthereumCallFilter {
 }
 
 impl EthereumCallFilter {
-    pub fn matches(&self, call: &EthereumCall, block_number: u64) -> bool {
-        let filters = self.clone().only_activated_filters(block_number);
+    pub fn matches(&self, call: &EthereumCall) -> bool {
         // Ensure the call is to a contract the filter expressed an interest in
-        if !filters
+        if !self
             .contract_addresses_function_signatures
             .contains_key(&call.to)
         {
             return false;
         }
         // If the call is to a contract with no specified functions, keep the call
-        if filters
+        if self
             .contract_addresses_function_signatures
             .get(&call.to)
             .unwrap()
@@ -296,8 +295,7 @@ impl EthereumCallFilter {
             return true;
         }
         // Ensure the call is to run a function the filter expressed an interest in
-        filters
-            .contract_addresses_function_signatures
+        self.contract_addresses_function_signatures
             .get(&call.to)
             .unwrap()
             .1
@@ -338,13 +336,10 @@ impl EthereumCallFilter {
     }
 
     pub fn only_activated_filters(self, current_block: u64) -> Self {
-        let filtered_set: HashMap<Address, (Option<u64>, HashSet<[u8; 4]>)> = self
+        let filtered_set: HashMap<Address, (u64, HashSet<[u8; 4]>)> = self
             .contract_addresses_function_signatures
             .into_iter()
-            .filter(|(_addr, (start_block, _fn_sigs))| match start_block {
-                Some(block_num) => &current_block >= block_num,
-                None => return true,
-            })
+            .filter(|(_addr, (start_block, _fn_sigs))| &current_block >= start_block)
             .collect();
         Self {
             contract_addresses_function_signatures: filtered_set,
@@ -354,7 +349,8 @@ impl EthereumCallFilter {
     pub fn start_blocks(&self) -> Vec<u64> {
         self.contract_addresses_function_signatures
             .values()
-            .filter_map(|(start_block, _fn_sigs)| *start_block)
+            .filter(|(start_block, _fn_sigs)| start_block > &0)
+            .map(|(start_block, _fn_sigs)| *start_block)
             .collect()
     }
 }
@@ -446,7 +442,8 @@ impl EthereumBlockFilter {
     pub fn start_blocks(&self) -> Vec<u64> {
         self.contract_addresses
             .iter()
-            .filter_map(|(start_block, _fn_sigs)| *start_block)
+            .filter(|(start_block, _fn_sigs)| start_block > &0)
+            .map(|(start_block, _fn_sigs)| *start_block)
             .collect()
     }
 }
