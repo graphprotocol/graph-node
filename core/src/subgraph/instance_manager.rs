@@ -17,6 +17,7 @@ type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<SubgraphDeploymentId, Cance
 struct IndexingInputs<B, S> {
     deployment_id: SubgraphDeploymentId,
     network_name: String,
+    start_blocks: Vec<u64>,
     store: Arc<S>,
     stream_builder: B,
     templates_use_calls: bool,
@@ -186,6 +187,7 @@ impl SubgraphInstanceManager {
         let log_filter = EthereumLogFilter::from_data_sources(&manifest.data_sources);
         let call_filter = EthereumCallFilter::from_data_sources(&manifest.data_sources);
         let block_filter = EthereumBlockFilter::from_data_sources(&manifest.data_sources);
+        let start_blocks = manifest.start_blocks();
 
         // Identify whether there are templates with call handlers or
         // block handlers with call filters; in this case, we need to
@@ -206,6 +208,7 @@ impl SubgraphInstanceManager {
             inputs: IndexingInputs {
                 deployment_id,
                 network_name,
+                start_blocks,
                 store,
                 stream_builder,
                 templates_use_calls,
@@ -282,6 +285,7 @@ where
             logger.clone(),
             ctx.inputs.deployment_id.clone(),
             ctx.inputs.network_name.clone(),
+            ctx.inputs.start_blocks.clone(),
             ctx.state.log_filter.clone(),
             ctx.state.call_filter.clone(),
             ctx.state.block_filter.clone(),
