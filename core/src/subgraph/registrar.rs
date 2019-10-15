@@ -526,6 +526,7 @@ fn resolve_subgraph_chain_blocks(
             .data_sources
             .clone()
             .into_iter()
+            .map(|data_source| data_source.source.start_block)
             .min()
             .map(|block_number| {
                 ethereum_adapter
@@ -913,7 +914,7 @@ fn create_subgraph_version(
                         .create_operations(&manifest.id),
                     );
                     deployment_store
-                        .create_subgraph_deployment(&logger, &manifest.schema, ops)
+                        .create_subgraph_deployment(&manifest.schema, ops)
                         .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
                 }
             })
