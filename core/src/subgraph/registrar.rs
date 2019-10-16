@@ -530,7 +530,7 @@ fn resolve_subgraph_chain_blocks(
             .min()
             .map(|block_number| {
                 ethereum_adapter
-                    .block_pointer_from_number(logger, block_number)
+                    .block_pointer_from_number(logger, block_number.saturating_sub(1))
                     .map(|pointer| Some(pointer))
                     .and_then(|pointer_opt| {
                         Ok(pointer_opt.and_then(|pointer| {
@@ -893,7 +893,7 @@ fn create_subgraph_version(
                 info!(
                     logger,
                     "Set the earliest available Ethereum block, start_block: {}",
-                    earliest_block.number
+                    earliest_block.number + 1
                 );
 
                 // Apply the subgraph versioning and deployment operations,
