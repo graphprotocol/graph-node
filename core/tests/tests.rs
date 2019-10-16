@@ -248,8 +248,8 @@ fn subgraph_provider_events() {
                 .into_iter()
                 .map(|s| ("mainnet".to_string(), s))
                 .collect();
-            let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
-            let ethereum_adapters: HashMap<String, Arc<MockEthereumAdapter>> =
+            let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default()) as Arc<dyn EthereumAdapter>;
+            let ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>> =
                 vec![mock_ethereum_adapter]
                     .into_iter()
                     .map(|e| ("mainnet".to_string(), e))

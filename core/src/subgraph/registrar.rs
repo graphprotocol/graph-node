@@ -23,26 +23,25 @@ use graph::prelude::{
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
 
-pub struct SubgraphRegistrar<L, P, S, CS, E> {
+pub struct SubgraphRegistrar<L, P, S, CS> {
     logger: Logger,
     logger_factory: LoggerFactory,
     resolver: Arc<L>,
     provider: Arc<P>,
     store: Arc<S>,
     chain_stores: HashMap<String, Arc<CS>>,
-    ethereum_adapters: HashMap<String, Arc<E>>,
+    ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
 }
 
-impl<L, P, S, CS, E> SubgraphRegistrar<L, P, S, CS, E>
+impl<L, P, S, CS> SubgraphRegistrar<L, P, S, CS>
 where
     L: LinkResolver + Clone,
     P: SubgraphAssignmentProviderTrait,
     S: Store,
     CS: ChainStore,
-    E: EthereumAdapter,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
@@ -50,7 +49,7 @@ where
         provider: Arc<P>,
         store: Arc<S>,
         chain_stores: HashMap<String, Arc<CS>>,
-        ethereum_adapters: HashMap<String, Arc<E>>,
+        ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
     ) -> Self {
@@ -271,13 +270,12 @@ where
     }
 }
 
-impl<L, P, S, CS, E> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS, E>
+impl<L, P, S, CS> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS>
 where
     L: LinkResolver,
     P: SubgraphAssignmentProviderTrait,
     S: Store,
     CS: ChainStore,
-    E: EthereumAdapter,
 {
     fn create_subgraph(
         &self,
@@ -511,7 +509,7 @@ fn create_subgraph(
 fn resolve_subgraph_chain_blocks(
     manifest: SubgraphManifest,
     chain_store: Arc<impl ChainStore>,
-    ethereum_adapter: Arc<impl EthereumAdapter>,
+    ethereum_adapter: Arc<dyn EthereumAdapter>,
     logger: &Logger,
 ) -> Box<
     dyn Future<
@@ -760,7 +758,7 @@ fn create_subgraph_version(
     logger: &Logger,
     store: Arc<impl Store>,
     chain_store: Arc<impl ChainStore>,
-    ethereum_adapter: Arc<impl EthereumAdapter>,
+    ethereum_adapter: Arc<dyn EthereumAdapter>,
     name: SubgraphName,
     manifest: SubgraphManifest,
     node_id: NodeId,
