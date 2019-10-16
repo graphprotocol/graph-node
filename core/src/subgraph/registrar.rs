@@ -526,45 +526,31 @@ fn resolve_subgraph_chain_blocks(
             .into_iter()
             .map(|data_source| data_source.source.start_block)
             .min()
-            .map(|block_number| {
+            .map(move |block_number| {
                 ethereum_adapter
                     .block_pointer_from_number(logger, block_number.saturating_sub(1))
-                    .map(|pointer| Some(pointer))
-                    .and_then(|pointer_opt| {
-                        Ok(pointer_opt.and_then(|pointer| {
-                            if pointer.number == 0 {
-                                None
-                            } else {
-                                Some(pointer)
-                            }
-                        }))
+                    .from_err()
+                    .and_then(move |pointer| {
+                        if pointer.number == 0 {
+                            chain_store_inner.genesis_block_ptr()
+                        } else {
+                            Ok(pointer)
+                        }
                     })
-                    .map_err(|_| {
+                    .map_err(move |_| {
                         SubgraphRegistrarError::ManifestValidationError(vec![
-                            SubgraphManifestValidationError::StartBlockNotFound("".to_string()),
+                            SubgraphManifestValidationError::BlockNotFound(
+                                block_number.clone().to_string(),
+                            ),
                         ])
                     })
             })
             .unwrap()
-            .and_then(move |start_block_pointer_opt| {
+            .and_then(move |start_block_pointer| {
                 chain_store
                     .chain_head_ptr()
-                    .map(|chain_head_block_pointer| {
-                        (chain_head_block_pointer, start_block_pointer_opt)
-                    })
+                    .map(|chain_head_block_pointer| (chain_head_block_pointer, start_block_pointer))
                     .map_err(SubgraphRegistrarError::Unknown)
-            })
-            .and_then(move |(chain_head_block_pointer, start_block_pointer_opt)| {
-                start_block_pointer_opt
-                    .or_else(|| chain_store_inner.genesis_block_ptr().ok())
-                    .ok_or(SubgraphRegistrarError::StoreError(
-                        StoreError::QueryExecutionError(
-                            "Could not get genesis block pointer".to_string(),
-                        ),
-                    ))
-                    .map(|earliest_block_pointer| {
-                        (chain_head_block_pointer, earliest_block_pointer)
-                    })
             }),
     )
 }
