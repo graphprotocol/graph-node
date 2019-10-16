@@ -330,7 +330,7 @@ pub enum SubgraphManifestValidationError {
     #[fail(display = "subgraph data source has too many similar block handlers")]
     DataSourceBlockHandlerLimitExceeded,
     #[fail(display = "the specified block must exist on the Ethereum network")]
-    StartBlockNotFound(String),
+    BlockNotFound(String),
 }
 
 #[derive(Fail, Debug)]
