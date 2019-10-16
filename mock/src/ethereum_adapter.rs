@@ -127,7 +127,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         &self,
         _: &Logger,
         _: EthereumContractCall,
-        _: Arc<impl EthereumCallCache>,
+        _: Arc<dyn EthereumCallCache>,
     ) -> Box<dyn Future<Item = Vec<ethabi::Token>, Error = EthereumContractCallError> + Send> {
         unimplemented!();
     }
