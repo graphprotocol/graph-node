@@ -11,7 +11,6 @@ use std::str::FromStr;
 use wasmi::nan_preserving_float::F64;
 
 use crate::host_exports::HostExports;
-use graph::components::ethereum::*;
 use graph::components::store::*;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
@@ -62,7 +61,7 @@ fn test_module(
         + Sync
         + 'static,
 > {
-    test_module_and_store(data_source).0
+    test_valid_module_and_store(data_source).0
 }
 
 fn mock_data_source(path: &str) -> DataSource {
@@ -311,7 +310,7 @@ fn ipfs_map() {
 
     let mut run_ipfs_map = move |json_string| -> Result<Vec<EntityModification>, Error> {
         let (mut module, store) =
-            test_module_and_store(mock_data_source("wasm_test/ipfs_map.wasm"));
+            test_valid_module_and_store(mock_data_source("wasm_test/ipfs_map.wasm"));
         let hash = if json_string == BAD_IPFS_HASH {
             "Qm".to_string()
         } else {
@@ -763,7 +762,8 @@ fn entity_store() {
     }
 
     fn load_and_set_user_name(id: &str, name: &str) -> (Arc<MockStore>, EntityCache) {
-        let (mut module, store) = test_module_and_store(mock_data_source("wasm_test/store.wasm"));
+        let (mut module, store) =
+            test_valid_module_and_store(mock_data_source("wasm_test/store.wasm"));
         module
             .module
             .clone()

@@ -15,9 +15,8 @@ use std::time::Duration;
 use std::time::Instant;
 
 use graph::prelude::*;
-use graph_core::{LinkResolver, SubgraphInstanceManager};
-use graph_mock::{FakeStore, MockBlockStreamBuilder, MockEthereumAdapter, MockStore};
-use web3::types::*;
+use graph_core::LinkResolver;
+use graph_mock::{MockEthereumAdapter, MockStore};
 
 use crate::tokio::timer::Delay;
 
@@ -248,7 +247,8 @@ fn subgraph_provider_events() {
                 .into_iter()
                 .map(|s| ("mainnet".to_string(), s))
                 .collect();
-            let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default()) as Arc<dyn EthereumAdapter>;
+            let mock_ethereum_adapter =
+                Arc::new(MockEthereumAdapter::default()) as Arc<dyn EthereumAdapter>;
             let ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>> =
                 vec![mock_ethereum_adapter]
                     .into_iter()
