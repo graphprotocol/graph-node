@@ -829,11 +829,10 @@ impl StoreTrait for Store {
             "skip blocks with no changes",
         );
         let conn = self.get_entity_conn(&subgraph_id).map_err(Error::from)?;
-        conn.transaction(|| {
-            let event = self.apply_metadata_operations_with_conn(&conn, ops)?;
-            conn.send_store_event(&event)
-        })?;
+        let event = conn.transaction(|| self.apply_metadata_operations_with_conn(&conn, ops))?;
 
+        // Send the event separately, because NOTIFY uses a global DB lock.
+        conn.transaction(|| conn.send_store_event(&event))?;
         conn.should_migrate(&subgraph_id, &block_ptr_to)
     }
 
@@ -864,34 +863,43 @@ impl StoreTrait for Store {
 
         let econn = self.get_entity_conn(&subgraph_id)?;
 
+        let (event, metadata_event, should_migrate) =
+            econn.transaction(|| -> Result<_, StoreError> {
+                // Ensure the history event exists in the database
+                let history_event = econn.create_history_event(block_ptr_to, &mods)?;
+
+                let should_migrate = econn.should_migrate(&subgraph_id, &block_ptr_to)?;
+
+                // Emit a store event for the changes we are about to make. We
+                // wait with sending it until we have done all our other work
+                // so that we do not hold a lock on the notification queue
+                // for longer than we have to
+                let event: StoreEvent = mods.iter().collect();
+
+                // Make the changes
+                self.apply_entity_modifications(&econn, mods, Some(&history_event))?;
+
+                // Update the subgraph block pointer, without an event source; this way
+                // no entity history is recorded for the block pointer update itself
+                let block_ptr_ops =
+                    SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
+                        &subgraph_id,
+                        block_ptr_from,
+                        block_ptr_to,
+                        "transact block operations",
+                    );
+                let metadata_event =
+                    self.apply_metadata_operations_with_conn(&econn, block_ptr_ops)?;
+                Ok((event, metadata_event, should_migrate))
+            })?;
+
+        // Send the events separately, because NOTIFY uses a global DB lock.
         econn.transaction(|| {
-            // Ensure the history event exists in the database
-            let history_event = econn.create_history_event(block_ptr_to, &mods)?;
-
-            let should_migrate = econn.should_migrate(&subgraph_id, &block_ptr_to)?;
-
-            // Emit a store event for the changes we are about to make. We
-            // wait with sending it until we have done all our other work
-            // so that we do not hold a lock on the notification queue
-            // for longer than we have to
-            let event: StoreEvent = mods.iter().collect();
-
-            // Make the changes
-            self.apply_entity_modifications(&econn, mods, Some(&history_event))?;
-
-            // Update the subgraph block pointer, without an event source; this way
-            // no entity history is recorded for the block pointer update itself
-            let block_ptr_ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
-                &subgraph_id,
-                block_ptr_from,
-                block_ptr_to,
-                "transact block operations",
-            );
-            let metadata_event = self.apply_metadata_operations_with_conn(&econn, block_ptr_ops)?;
             econn.send_store_event(&metadata_event)?;
-            econn.send_store_event(&event)?;
-            Ok(should_migrate)
-        })
+            econn.send_store_event(&event)
+        })?;
+
+        Ok(should_migrate)
     }
 
     /// Apply a series of entity operations. Return `true` if the subgraph
@@ -901,10 +909,11 @@ impl StoreTrait for Store {
         operations: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID)?;
-        econn.transaction(|| {
-            let event = self.apply_metadata_operations_with_conn(&econn, operations)?;
-            econn.send_store_event(&event)
-        })
+        let event =
+            econn.transaction(|| self.apply_metadata_operations_with_conn(&econn, operations))?;
+
+        // Send the event separately, because NOTIFY uses a global DB lock.
+        econn.transaction(|| econn.send_store_event(&event))
     }
 
     fn build_entity_attribute_indexes(
@@ -928,7 +937,7 @@ impl StoreTrait for Store {
         }
 
         let econn = self.get_entity_conn(&subgraph_id)?;
-        econn.transaction(|| {
+        let (event, metadata_event) = econn.transaction(|| -> Result<_, StoreError> {
             let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
                 &subgraph_id,
                 block_ptr_from,
@@ -939,6 +948,11 @@ impl StoreTrait for Store {
 
             let (event, count) = econn.revert_block(&block_ptr_from)?;
             econn.update_entity_count(count)?;
+            Ok((event, metadata_event))
+        })?;
+
+        // Send the events separately, because NOTIFY uses a global DB lock.
+        econn.transaction(|| {
             econn.send_store_event(&metadata_event)?;
             econn.send_store_event(&event)
         })
