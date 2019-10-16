@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use graph::components::forward;
 use graph::log::logger;
-use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
+use graph::prelude::{
+    EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _, JsonRpcServer as _, *,
+};
 use graph::util::security::SafeDisplay;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
@@ -708,13 +710,7 @@ fn parse_ethereum_networks_and_nodes(
     logger: Logger,
     networks: clap::Values,
     connection_type: ConnectionType,
-) -> Result<
-    HashMap<
-        String,
-        Arc<graph_datasource_ethereum::EthereumAdapter<graph_datasource_ethereum::Transport>>,
-    >,
-    Error,
-> {
+) -> Result<HashMap<String, Arc<dyn EthereumAdapterTrait>>, Error> {
     networks
         .map(|network| {
             if network.starts_with("wss://")
@@ -769,7 +765,7 @@ fn parse_ethereum_networks_and_nodes(
                     Arc::new(graph_datasource_ethereum::EthereumAdapter::new(
                         transport,
                         *ETHEREUM_START_BLOCK,
-                    )),
+                    )) as Arc<dyn EthereumAdapter>,
                 ))
             }
         })
