@@ -1,5 +1,6 @@
 use failure::Error;
 use futures::prelude::*;
+use futures::sync::mpsc;
 use std::sync::Arc;
 
 use crate::prelude::*;
@@ -44,4 +45,27 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         trigger_type: EthereumBlockTriggerType,
         state: BlockState,
     ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
+}
+
+pub trait RuntimeHostBuilder: Clone + Send + Sync + 'static {
+    type Host: RuntimeHost;
+    type Req: 'static + Send;
+
+    /// Build a new runtime host for a subgraph data source.
+    fn build(
+        &self,
+        network_name: String,
+        subgraph_id: SubgraphDeploymentId,
+        data_source: DataSource,
+        top_level_templates: Vec<DataSourceTemplate>,
+        mapping_request_sender: mpsc::Sender<Self::Req>,
+    ) -> Result<Self::Host, Error>;
+
+    /// Spawn a mapping and return a channel for mapping requests. The sender should be able to be
+    /// cached and shared among mappings that have the same `parsed_module`.
+    fn spawn_mapping(
+        parsed_module: parity_wasm::elements::Module,
+        logger: Logger,
+        subgraph_id: SubgraphDeploymentId,
+    ) -> Result<mpsc::Sender<Self::Req>, Error>;
 }

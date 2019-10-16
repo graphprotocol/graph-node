@@ -8,7 +8,7 @@ bytes = "0.4.11"
 futures = "0.1.21"
 graph = { path = "../graph" }
 graph-graphql = { path = "../graphql" }
-graph-runtime-wasm = { path = "../runtime/wasm" }
+
 # We're using the latest ipfs-api for the HTTPS support that was merged in
 # https://github.com/ferristseng/rust-ipfs-api/commit/55902e98d868dcce047863859caf596a629d10ec
 # but has not been released yet.

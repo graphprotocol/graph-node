@@ -13,13 +13,15 @@ use ethabi::{LogParam, RawLog};
 use graph::components::ethereum::*;
 use graph::components::store::Store;
 use graph::data::subgraph::{Mapping, Source};
-use graph::prelude::{RuntimeHost as RuntimeHostTrait, *};
+use graph::prelude::{
+    RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
+};
 use graph::util;
 use web3::types::{Log, Transaction};
 
 pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_MAPPING_HANDLER_TIMEOUT";
 
-pub struct RuntimeHostConfig {
+struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
     mapping: Mapping,
     data_source_name: String,
@@ -61,15 +63,31 @@ where
             stores,
         }
     }
+}
 
-    pub fn build(
+impl<S> RuntimeHostBuilderTrait for RuntimeHostBuilder<S>
+where
+    S: Send + Sync + 'static + Store + SubgraphDeploymentStore + EthereumCallCache,
+{
+    type Host = RuntimeHost;
+    type Req = MappingRequest;
+
+    fn spawn_mapping(
+        parsed_module: parity_wasm::elements::Module,
+        logger: Logger,
+        subgraph_id: SubgraphDeploymentId,
+    ) -> Result<Sender<Self::Req>, Error> {
+        crate::mapping::spawn_module(parsed_module, logger, subgraph_id)
+    }
+
+    fn build(
         &self,
         network_name: String,
         subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
         top_level_templates: Vec<DataSourceTemplate>,
         mapping_request_sender: Sender<MappingRequest>,
-    ) -> Result<impl RuntimeHostTrait, Error> {
+    ) -> Result<Self::Host, Error> {
         let store = self.stores.get(&network_name).ok_or_else(|| {
             format_err!(
                 "No store found that matches subgraph network: \"{}\"",
@@ -109,7 +127,7 @@ where
 }
 
 #[derive(Debug)]
-struct RuntimeHost {
+pub struct RuntimeHost {
     data_source_name: String,
     data_source_contract: Source,
     data_source_contract_abi: MappingABI,
@@ -121,7 +139,7 @@ struct RuntimeHost {
 }
 
 impl RuntimeHost {
-    pub fn new(
+    fn new(
         ethereum_adapter: Arc<dyn EthereumAdapter>,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn crate::RuntimeStore>,

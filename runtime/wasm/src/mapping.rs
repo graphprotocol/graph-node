@@ -13,7 +13,6 @@ pub fn spawn_module(
     parsed_module: parity_wasm::elements::Module,
     logger: Logger,
     subgraph_id: SubgraphDeploymentId,
-    data_source_name: &str,
 ) -> Result<mpsc::Sender<MappingRequest>, Error> {
     let valid_module = Arc::new(ValidModule::new(parsed_module)?);
 
@@ -34,7 +33,7 @@ pub fn spawn_module(
     // dropping the `mapping_request_receiver` which ultimately causes the
     // subgraph to fail the next time it tries to handle an event.
     let conf =
-        thread::Builder::new().name(format!("mapping-{}-{}", &subgraph_id, data_source_name));
+        thread::Builder::new().name(format!("mapping-{}-{}", &subgraph_id, uuid::Uuid::new_v4()));
     conf.spawn(move || {
         // Pass incoming triggers to the WASM module and return entity changes;
         // Stop when canceled because all RuntimeHosts and their senders were dropped.

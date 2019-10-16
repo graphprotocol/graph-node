@@ -15,7 +15,7 @@ pub struct BlockState {
 }
 
 /// Represents a loaded instance of a subgraph.
-pub trait SubgraphInstance {
+pub trait SubgraphInstance<H: RuntimeHost> {
     /// Returns true if the subgraph has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool;
 
@@ -31,7 +31,7 @@ pub trait SubgraphInstance {
     /// Like `process_trigger` but processes an Ethereum event in a given list of hosts.
     fn process_trigger_in_runtime_hosts(
         logger: &Logger,
-        hosts: impl Iterator<Item = Arc<dyn RuntimeHost>>,
+        hosts: impl Iterator<Item = Arc<H>>,
         block: Arc<EthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
@@ -43,5 +43,5 @@ pub trait SubgraphInstance {
         logger: &Logger,
         data_source: DataSource,
         top_level_templates: Vec<DataSourceTemplate>,
-    ) -> Result<Arc<dyn RuntimeHost>, Error>;
+    ) -> Result<Arc<H>, Error>;
 }

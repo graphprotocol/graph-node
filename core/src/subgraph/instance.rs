@@ -5,7 +5,6 @@ use std::env;
 use std::str::FromStr;
 
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
-use graph_runtime_wasm::{MappingRequest, RuntimeHostBuilder};
 use web3::types::Log;
 
 lazy_static! {
@@ -15,42 +14,41 @@ lazy_static! {
             .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_SUBGRAPH_MAX_DATA_SOURCES")));
 }
 
-pub struct SubgraphInstance<S> {
+pub struct SubgraphInstance<T: RuntimeHostBuilder> {
     subgraph_id: SubgraphDeploymentId,
     network: String,
-    host_builder: RuntimeHostBuilder<S>,
+    host_builder: T,
 
     /// Runtime hosts, one for each data source mapping.
     ///
     /// The runtime hosts are created and added in the same order the
     /// data sources appear in the subgraph manifest. Incoming block
     /// stream events are processed by the mappings in this same order.
-    hosts: Vec<Arc<dyn RuntimeHost>>,
+    hosts: Vec<Arc<T::Host>>,
 
     /// Maps a serialized module to a channel to the thread in which the module is instantiated.
-    module_cache: HashMap<Vec<u8>, Sender<MappingRequest>>,
+    module_cache: HashMap<Vec<u8>, Sender<T::Req>>,
 }
 
-impl<S> SubgraphInstance<S>
+impl<T> SubgraphInstance<T>
 where
-    S: Store + SubgraphDeploymentStore + EthereumCallCache,
+    T: RuntimeHostBuilder,
 {
     fn new_host(
         &mut self,
         logger: Logger,
         data_source: DataSource,
         top_level_templates: Vec<DataSourceTemplate>,
-    ) -> Result<impl RuntimeHost, Error> {
+    ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
             let module_bytes = data_source.mapping.runtime.as_ref().clone().to_bytes()?;
             if let Some(sender) = self.module_cache.get(&module_bytes) {
                 sender.clone()
             } else {
-                let sender = graph_runtime_wasm::spawn_module(
+                let sender = T::spawn_mapping(
                     data_source.mapping.runtime.as_ref().clone(),
                     logger,
                     self.subgraph_id.clone(),
-                    &data_source.name,
                 )?;
                 self.module_cache.insert(module_bytes, sender.clone());
                 sender
@@ -68,7 +66,7 @@ where
     pub(crate) fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest,
-        host_builder: RuntimeHostBuilder<S>,
+        host_builder: T,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name()?;
@@ -107,16 +105,16 @@ where
         this.hosts = hosts
             .into_iter()
             .map(Result::unwrap)
-            .map(|host| Arc::new(host) as Arc<dyn RuntimeHost>)
+            .map(Arc::new)
             .collect();
 
         Ok(this)
     }
 }
 
-impl<S> SubgraphInstanceTrait for SubgraphInstance<S>
+impl<T> SubgraphInstanceTrait<T::Host> for SubgraphInstance<T>
 where
-    S: Store + SubgraphDeploymentStore + EthereumCallCache,
+    T: RuntimeHostBuilder,
 {
     /// Returns true if the subgraph has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool {
@@ -141,7 +139,7 @@ where
 
     fn process_trigger_in_runtime_hosts(
         logger: &Logger,
-        hosts: impl Iterator<Item = Arc<dyn RuntimeHost>>,
+        hosts: impl Iterator<Item = Arc<T::Host>>,
         block: Arc<EthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
@@ -218,7 +216,7 @@ where
         logger: &Logger,
         data_source: DataSource,
         top_level_templates: Vec<DataSourceTemplate>,
-    ) -> Result<Arc<dyn RuntimeHost>, Error> {
+    ) -> Result<Arc<T::Host>, Error> {
         // Protect against creating more than the allowed maximum number of data sources
         if let Some(max_data_sources) = *MAX_DATA_SOURCES {
             if self.hosts.len() >= max_data_sources {

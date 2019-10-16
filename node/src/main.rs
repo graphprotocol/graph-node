@@ -17,7 +17,7 @@ use graph_core::{
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
-use graph_runtime_wasm::RuntimeHostBuilder;
+use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
@@ -563,7 +563,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         *REORG_THRESHOLD,
     );
     let runtime_host_builder =
-        RuntimeHostBuilder::new(eth_adapters.clone(), link_resolver.clone(), stores.clone());
+        WASMRuntimeHostBuilder::new(eth_adapters.clone(), link_resolver.clone(), stores.clone());
 
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger_factory,
