@@ -480,7 +480,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block: Block<Transaction>,
     ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send>;
 
-    /// Load full information for the specified `block number` (in particular, transaction receipts).
+    /// Load block pointer for the specified `block number`.
     fn block_pointer_from_number(
         &self,
         logger: &Logger,
