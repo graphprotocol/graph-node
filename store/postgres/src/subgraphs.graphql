@@ -73,7 +73,7 @@ type EthereumContractSource @entity {
     id: ID!
     address: String!
     abi: String!
-    start_block: String
+    start_block: BigInt
 }
 
 type EthereumContractMapping @entity {
