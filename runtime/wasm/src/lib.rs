@@ -3,11 +3,10 @@ mod to_from;
 
 /// Public interface of the crate, receives triggers to be processed.
 mod host;
-pub use self::host::{RuntimeHostBuilder, RuntimeHostConfig};
+pub use host::RuntimeHostBuilder;
 
 /// Pre-processes modules and manages their threads. Serves as an interface from `host` to `module`.
 mod mapping;
-pub use mapping::{spawn_module, MappingRequest};
 
 /// Deals with wasmi.
 mod module;

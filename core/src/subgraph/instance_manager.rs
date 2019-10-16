@@ -9,7 +9,6 @@ use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity,
 };
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
-use graph_runtime_wasm::RuntimeHostBuilder;
 
 use super::SubgraphInstance;
 
@@ -24,9 +23,9 @@ struct IndexingInputs<B, S> {
     top_level_templates: Vec<DataSourceTemplate>,
 }
 
-struct IndexingState<S> {
+struct IndexingState<T: RuntimeHostBuilder> {
     logger: Logger,
-    instance: SubgraphInstance<S>,
+    instance: SubgraphInstance<T>,
     instances: SharedInstanceKeepAliveMap,
     log_filter: EthereumLogFilter,
     call_filter: EthereumCallFilter,
@@ -34,12 +33,12 @@ struct IndexingState<S> {
     restarts: u64,
 }
 
-struct IndexingContext<B, S> {
+struct IndexingContext<B, T: RuntimeHostBuilder, S> {
     /// Read only inputs that are needed while indexing a subgraph.
     pub inputs: IndexingInputs<B, S>,
 
     /// Mutable state that may be modified while indexing a subgraph.
-    pub state: IndexingState<S>,
+    pub state: IndexingState<T>,
 }
 
 pub struct SubgraphInstanceManager {
@@ -52,7 +51,7 @@ impl SubgraphInstanceManager {
     pub fn new<B, S>(
         logger_factory: &LoggerFactory,
         stores: HashMap<String, Arc<S>>,
-        host_builder: RuntimeHostBuilder<S>,
+        host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
     ) -> Self
     where
@@ -85,7 +84,7 @@ impl SubgraphInstanceManager {
         logger_factory: LoggerFactory,
         receiver: Receiver<SubgraphAssignmentProviderEvent>,
         stores: HashMap<String, Arc<S>>,
-        host_builder: RuntimeHostBuilder<S>,
+        host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
     ) where
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
@@ -156,7 +155,7 @@ impl SubgraphInstanceManager {
     fn start_subgraph<B, S>(
         logger: Logger,
         instances: SharedInstanceKeepAliveMap,
-        host_builder: RuntimeHostBuilder<S>,
+        host_builder: impl RuntimeHostBuilder,
         stream_builder: B,
         store: Arc<S>,
         manifest: SubgraphManifest,
@@ -256,12 +255,13 @@ impl EventConsumer<SubgraphAssignmentProviderEvent> for SubgraphInstanceManager 
     }
 }
 
-fn run_subgraph<B, S>(
-    ctx: IndexingContext<B, S>,
-) -> impl Future<Item = Loop<(), IndexingContext<B, S>>, Error = ()>
+fn run_subgraph<B, T, S>(
+    ctx: IndexingContext<B, T, S>,
+) -> impl Future<Item = Loop<(), IndexingContext<B, T, S>>, Error = ()>
 where
     B: BlockStreamBuilder,
-    S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
+    T: RuntimeHostBuilder,
+    S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
 {
     let logger = ctx.state.logger.clone();
 
@@ -302,9 +302,9 @@ where
 
     // The processing stream may be end due to an error or for restarting to
     // account for new data sources.
-    enum StreamEnd<B: BlockStreamBuilder, S: Store + ChainStore> {
+    enum StreamEnd<B: BlockStreamBuilder, T: RuntimeHostBuilder, S> {
         Error(CancelableError<Error>),
-        NeedsRestart(IndexingContext<B, S>),
+        NeedsRestart(IndexingContext<B, T, S>),
     }
 
     block_stream
@@ -389,15 +389,15 @@ where
 
 /// Processes a block and returns the updated context and a boolean flag indicating
 /// whether new dynamic data sources have been added to the subgraph.
-fn process_block<B, S>(
+fn process_block<B, T: RuntimeHostBuilder, S>(
     logger: Logger,
-    ctx: IndexingContext<B, S>,
+    ctx: IndexingContext<B, T, S>,
     block_stream_cancel_handle: CancelHandle,
     block: EthereumBlockWithTriggers,
-) -> impl Future<Item = (IndexingContext<B, S>, bool), Error = CancelableError<Error>>
+) -> impl Future<Item = (IndexingContext<B, T, S>, bool), Error = CancelableError<Error>>
 where
     B: BlockStreamBuilder,
-    S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
+    S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
 {
     let calls = block.calls;
     let triggers = block.triggers;
@@ -513,7 +513,7 @@ where
                         .fold(block_state, move |block_state, trigger| {
                             // Process the triggers in each host in the same order the
                             // corresponding data sources have been created.
-                            SubgraphInstance::<S>::process_trigger_in_runtime_hosts(
+                            SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
                                 &logger,
                                 runtime_hosts.iter().cloned(),
                                 block.clone(),
@@ -573,16 +573,15 @@ where
     })
 }
 
-fn process_triggers<B, S>(
+fn process_triggers<B, T: RuntimeHostBuilder, S>(
     logger: Logger,
-    ctx: IndexingContext<B, S>,
+    ctx: IndexingContext<B, T, S>,
     block_state: BlockState,
     block: Arc<EthereumBlock>,
     triggers: Vec<EthereumTrigger>,
-) -> impl Future<Item = (IndexingContext<B, S>, BlockState), Error = CancelableError<Error>>
+) -> impl Future<Item = (IndexingContext<B, T, S>, BlockState), Error = CancelableError<Error>>
 where
     B: BlockStreamBuilder,
-    S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
 {
     stream::iter_ok::<_, CancelableError<Error>>(triggers)
         // Process events from the block stream
@@ -598,11 +597,11 @@ where
         })
 }
 
-fn create_dynamic_data_sources<B, S>(
+fn create_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
     logger: Logger,
-    ctx: &mut IndexingContext<B, S>,
+    ctx: &mut IndexingContext<B, T, S>,
     created_data_sources: impl Iterator<Item = DataSourceTemplateInfo>,
-) -> Result<(Vec<DataSource>, Vec<Arc<dyn RuntimeHost>>), Error>
+) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), Error>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store + SubgraphDeploymentStore + EthereumCallCache,
@@ -628,9 +627,9 @@ where
     Ok((data_sources, runtime_hosts))
 }
 
-fn persist_dynamic_data_sources<B, S>(
+fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
     logger: Logger,
-    ctx: &mut IndexingContext<B, S>,
+    ctx: &mut IndexingContext<B, T, S>,
     entity_cache: &mut EntityCache,
     data_sources: Vec<DataSource>,
     block_ptr: EthereumBlockPointer,

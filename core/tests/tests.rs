@@ -1,7 +1,6 @@
 extern crate graph;
 extern crate graph_core;
 extern crate graph_mock;
-extern crate graph_runtime_wasm;
 extern crate ipfs_api;
 extern crate semver;
 extern crate walkdir;
