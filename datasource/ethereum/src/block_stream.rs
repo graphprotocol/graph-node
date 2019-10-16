@@ -114,10 +114,10 @@ enum ReconciliationStepOutcome {
     Done,
 }
 
-struct BlockStreamContext<S, C, E> {
+struct BlockStreamContext<S, C> {
     subgraph_store: Arc<S>,
     chain_store: Arc<C>,
-    eth_adapter: Arc<E>,
+    eth_adapter: Arc<dyn EthereumAdapter>,
     node_id: NodeId,
     subgraph_id: SubgraphDeploymentId,
     reorg_threshold: u64,
@@ -128,7 +128,7 @@ struct BlockStreamContext<S, C, E> {
     logger: Logger,
 }
 
-impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
+impl<S, C> Clone for BlockStreamContext<S, C> {
     fn clone(&self) -> Self {
         Self {
             subgraph_store: self.subgraph_store.clone(),
@@ -146,23 +146,22 @@ impl<S, C, E> Clone for BlockStreamContext<S, C, E> {
     }
 }
 
-pub struct BlockStream<S, C, E> {
+pub struct BlockStream<S, C> {
     state: Mutex<BlockStreamState>,
     consecutive_err_count: u32,
     chain_head_update_stream: ChainHeadUpdateStream,
-    ctx: BlockStreamContext<S, C, E>,
+    ctx: BlockStreamContext<S, C>,
 }
 
-impl<S, C, E> BlockStream<S, C, E>
+impl<S, C> BlockStream<S, C>
 where
     S: Store,
     C: ChainStore,
-    E: EthereumAdapter,
 {
     pub fn new(
         subgraph_store: Arc<S>,
         chain_store: Arc<C>,
-        eth_adapter: Arc<E>,
+        eth_adapter: Arc<dyn EthereumAdapter>,
         node_id: NodeId,
         subgraph_id: SubgraphDeploymentId,
         log_filter: EthereumLogFilter,
@@ -193,11 +192,10 @@ where
     }
 }
 
-impl<S, C, E> BlockStreamContext<S, C, E>
+impl<S, C> BlockStreamContext<S, C>
 where
     S: Store,
     C: ChainStore,
-    E: EthereumAdapter,
 {
     /// Analyze the trigger filters to determine if we need to query the blocks calls
     /// and populate them in the blocks
@@ -999,11 +997,10 @@ where
     }
 }
 
-impl<S, C, E> BlockStreamTrait for BlockStream<S, C, E>
+impl<S, C> BlockStreamTrait for BlockStream<S, C>
 where
     S: Store,
     C: ChainStore,
-    E: EthereumAdapter,
 {
     fn parse_triggers(
         log_filter: EthereumLogFilter,
@@ -1012,7 +1009,7 @@ where
         include_calls_in_blocks: bool,
         descendant_block: EthereumBlockWithCalls,
     ) -> Result<EthereumBlockWithTriggers, Error> {
-        BlockStreamContext::<S, C, E>::parse_triggers(
+        BlockStreamContext::<S, C>::parse_triggers(
             log_filter,
             call_filter,
             block_filter,
@@ -1022,11 +1019,10 @@ where
     }
 }
 
-impl<S, C, E> Stream for BlockStream<S, C, E>
+impl<S, C> Stream for BlockStream<S, C>
 where
     S: Store,
     C: ChainStore,
-    E: EthereumAdapter,
 {
     type Item = EthereumBlockWithTriggers;
     type Error = Error;
@@ -1200,15 +1196,15 @@ where
     }
 }
 
-pub struct BlockStreamBuilder<S, C, E> {
+pub struct BlockStreamBuilder<S, C> {
     subgraph_store: Arc<S>,
     chain_stores: HashMap<String, Arc<C>>,
-    eth_adapters: HashMap<String, Arc<E>>,
+    eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
     node_id: NodeId,
     reorg_threshold: u64,
 }
 
-impl<S, C, E> Clone for BlockStreamBuilder<S, C, E> {
+impl<S, C> Clone for BlockStreamBuilder<S, C> {
     fn clone(&self) -> Self {
         BlockStreamBuilder {
             subgraph_store: self.subgraph_store.clone(),
@@ -1220,16 +1216,15 @@ impl<S, C, E> Clone for BlockStreamBuilder<S, C, E> {
     }
 }
 
-impl<S, C, E> BlockStreamBuilder<S, C, E>
+impl<S, C> BlockStreamBuilder<S, C>
 where
     S: Store,
     C: ChainStore,
-    E: EthereumAdapter,
 {
     pub fn new(
         subgraph_store: Arc<S>,
         chain_stores: HashMap<String, Arc<C>>,
-        eth_adapters: HashMap<String, Arc<E>>,
+        eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
         node_id: NodeId,
         reorg_threshold: u64,
     ) -> Self {
@@ -1243,13 +1238,12 @@ where
     }
 }
 
-impl<S, C, E> BlockStreamBuilderTrait for BlockStreamBuilder<S, C, E>
+impl<S, C> BlockStreamBuilderTrait for BlockStreamBuilder<S, C>
 where
     S: Store,
     C: ChainStore,
-    E: EthereumAdapter,
 {
-    type Stream = BlockStream<S, C, E>;
+    type Stream = BlockStream<S, C>;
 
     fn build(
         &self,

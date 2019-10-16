@@ -50,15 +50,12 @@ where
     S: Store + SubgraphDeploymentStore + EthereumCallCache,
 {
     pub fn new(
-        ethereum_adapters: HashMap<String, Arc<impl EthereumAdapter>>,
+        ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
         link_resolver: Arc<dyn LinkResolver>,
         stores: HashMap<String, Arc<S>>,
     ) -> Self {
         RuntimeHostBuilder {
-            ethereum_adapters: ethereum_adapters
-                .into_iter()
-                .map(|(key, adapter)| (key, adapter as Arc<dyn EthereumAdapter>))
-                .collect(),
+            ethereum_adapters,
             link_resolver,
             stores,
         }
