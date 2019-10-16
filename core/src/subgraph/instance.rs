@@ -34,35 +34,6 @@ impl<T> SubgraphInstance<T>
 where
     T: RuntimeHostBuilder,
 {
-    fn new_host(
-        &mut self,
-        logger: Logger,
-        data_source: DataSource,
-        top_level_templates: Vec<DataSourceTemplate>,
-    ) -> Result<T::Host, Error> {
-        let mapping_request_sender = {
-            let module_bytes = data_source.mapping.runtime.as_ref().clone().to_bytes()?;
-            if let Some(sender) = self.module_cache.get(&module_bytes) {
-                sender.clone()
-            } else {
-                let sender = T::spawn_mapping(
-                    data_source.mapping.runtime.as_ref().clone(),
-                    logger,
-                    self.subgraph_id.clone(),
-                )?;
-                self.module_cache.insert(module_bytes, sender.clone());
-                sender
-            }
-        };
-        self.host_builder.build(
-            self.network.clone(),
-            self.subgraph_id.clone(),
-            data_source,
-            top_level_templates,
-            mapping_request_sender,
-        )
-    }
-
     pub(crate) fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest,
@@ -109,6 +80,35 @@ where
             .collect();
 
         Ok(this)
+    }
+
+    fn new_host(
+        &mut self,
+        logger: Logger,
+        data_source: DataSource,
+        top_level_templates: Vec<DataSourceTemplate>,
+    ) -> Result<T::Host, Error> {
+        let mapping_request_sender = {
+            let module_bytes = data_source.mapping.runtime.as_ref().clone().to_bytes()?;
+            if let Some(sender) = self.module_cache.get(&module_bytes) {
+                sender.clone()
+            } else {
+                let sender = T::spawn_mapping(
+                    data_source.mapping.runtime.as_ref().clone(),
+                    logger,
+                    self.subgraph_id.clone(),
+                )?;
+                self.module_cache.insert(module_bytes, sender.clone());
+                sender
+            }
+        };
+        self.host_builder.build(
+            self.network.clone(),
+            self.subgraph_id.clone(),
+            data_source,
+            top_level_templates,
+            mapping_request_sender,
+        )
     }
 }
 
