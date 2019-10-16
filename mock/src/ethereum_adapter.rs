@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use graph::components::ethereum::*;
 use graph::prelude::{
-    ethabi,
+    ethabi, future,
     web3::types::{Block, Transaction, H256},
     Arc, Error, EthereumCallCache, Future, Logger,
 };
@@ -46,7 +46,10 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: &Logger,
         _: u64,
     ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send> {
-        unimplemented!()
+        Box::new(future::ok(EthereumBlockPointer::from((
+            H256::zero(),
+            0 as i64,
+        ))))
     }
 
     fn block_parent_hash(
