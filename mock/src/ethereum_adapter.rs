@@ -2,11 +2,9 @@ use std::collections::HashSet;
 
 use graph::components::ethereum::*;
 use graph::prelude::{
-    Arc,
     ethabi,
-    EthereumCallCache,
     web3::types::{Block, Transaction, H256},
-    Error, Future, Logger,
+    Arc, Error, EthereumCallCache, Future, Logger,
 };
 
 #[derive(Default)]
