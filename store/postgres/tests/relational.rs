@@ -587,6 +587,31 @@ fn find_interface() {
             range: EntityRange::first(100),
         },
     );
+
+    // Test that we can order by id
+    test_find(
+        vec!["pluto", "garfield"],
+        EntityQuery {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_types: vec!["Cat".to_owned(), "Dog".to_owned()],
+            filter: None,
+            order_by: Some(("id".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Descending),
+            range: EntityRange::first(100),
+        },
+    );
+
+    test_find(
+        vec!["garfield", "pluto"],
+        EntityQuery {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_types: vec!["Cat".to_owned(), "Dog".to_owned()],
+            filter: None,
+            order_by: Some(("id".to_owned(), ValueType::String)),
+            order_direction: None,
+            range: EntityRange::first(100),
+        },
+    );
 }
 
 #[test]
@@ -648,6 +673,22 @@ fn find_string_equal() {
             )])),
             order_by: None,
             order_direction: None,
+            range: EntityRange::first(100),
+        },
+    );
+
+    // Test that we can order by id
+    test_find(
+        vec!["2"],
+        EntityQuery {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_types: vec!["User".to_owned()],
+            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
+                "name".to_owned(),
+                "Cindini".into(),
+            )])),
+            order_by: Some(("id".to_owned(), ValueType::String)),
+            order_direction: Some(EntityOrder::Descending),
             range: EntityRange::first(100),
         },
     )

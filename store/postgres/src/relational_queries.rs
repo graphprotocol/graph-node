@@ -911,15 +911,22 @@ impl<'a> FilterQuery<'a> {
             out.push_identifier(name.as_str())?;
             out.push_sql(" ");
             out.push_sql(direction);
-            out.push_sql(", ");
+            if name.as_str() != PRIMARY_KEY_COLUMN {
+                out.push_sql(", ");
+                out.push_identifier(PRIMARY_KEY_COLUMN)?;
+            }
+            Ok(())
+        } else {
+            out.push_identifier(PRIMARY_KEY_COLUMN)
         }
-        out.push_identifier(PRIMARY_KEY_COLUMN)
     }
 
     fn add_sort_key(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         if let Some((name, _)) = self.order {
-            out.push_sql(", e.");
-            out.push_identifier(name.as_str())?;
+            if name.as_str() != PRIMARY_KEY_COLUMN {
+                out.push_sql(", e.");
+                out.push_identifier(name.as_str())?;
+            }
         }
         Ok(())
     }
