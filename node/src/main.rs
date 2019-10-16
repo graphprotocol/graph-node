@@ -745,7 +745,8 @@ fn parse_ethereum_networks_and_nodes(
 
                 Ok((
                     name.to_string(),
-                    Arc::new(graph_datasource_ethereum::EthereumAdapter::new(transport)) as Arc<dyn EthereumAdapter>,
+                    Arc::new(graph_datasource_ethereum::EthereumAdapter::new(transport))
+                        as Arc<dyn EthereumAdapter>,
                 ))
             }
         })
