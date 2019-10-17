@@ -270,6 +270,8 @@ impl EthereumLogFilter {
 
 #[derive(Clone, Debug)]
 pub struct EthereumCallFilter {
+    // Each call filter has a map of filters keyed by address, each containing a tuple with
+    // start_block and the set of function signatures
     pub contract_addresses_function_signatures: HashMap<Address, (u64, HashSet<[u8; 4]>)>,
 }
 
