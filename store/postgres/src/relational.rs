@@ -58,10 +58,10 @@ impl SqlName {
         let mut chars = name.chars();
         match chars.next() {
             Some(c) => {
-                if !c.is_ascii_alphabetic() {
+                if !c.is_ascii_alphabetic() && c != '_' {
                     let msg = format!(
                         "the name `{}` can not be used for a {}; \
-                         it must start with an ASCII alphabetic character",
+                         it must start with an ASCII alphabetic character or `_`",
                         name, kind
                     );
                     return Err(StoreError::InvalidIdentifier(msg));
