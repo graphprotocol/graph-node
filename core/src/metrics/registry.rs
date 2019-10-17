@@ -42,7 +42,10 @@ impl MetricsRegistry {
             PrometheusError::InconsistentCardinality(expected, got) => {
                 error!(
                     self.logger,
-                    "registering metric [{}] failed due to inconsistent caridinality", name,
+                    "registering metric [{}] failed due to inconsistent caridinality, expected = {} got = {}",
+                    name,
+                    expected,
+                    got,
                 );
             }
             PrometheusError::Msg(msg) => {
