@@ -715,7 +715,7 @@ impl TryFromValue for EthereumContractSourceEntity {
         Ok(Self {
             address: map.get_optional("address")?,
             abi: map.get_required("abi")?,
-            start_block: map.get_required("startBlock")?,
+            start_block: map.get_optional("startBlock")?.unwrap_or_default(),
         })
     }
 }
