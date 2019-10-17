@@ -374,8 +374,9 @@ where
                         // chain head.
 
                         // As an optimization, instead of advancing one block, we will use an
-                        // Ethereum RPC call to find the first few blocks between the subgraph
-                        // ptr and the reorg threshold that has event(s) we are interested in.
+                        // Ethereum RPC call to find the first few blocks that have event(s) we
+                        // are interested in that lie within the block range between the subgraph ptr
+                        // and either the next data source start_block or the reorg threshold.
                         // Note that we use block numbers here.
                         // This is an artifact of Ethereum RPC limitations.
                         // It is only safe to use block numbers because we are beyond the reorg
@@ -384,6 +385,8 @@ where
                         // Start with first block after subgraph ptr
                         let from = subgraph_ptr.number + 1;
 
+                        // Get the next subsequent data source start block to ensure the block range
+                        // is aligned with data source.
                         let next_start_block: u64 = start_blocks
                             .into_iter()
                             .filter(|block_num| block_num > &from)
