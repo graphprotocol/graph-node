@@ -19,7 +19,6 @@ use graph::prelude::*;
 use graph_core::{LinkResolver, SubgraphInstanceManager};
 use graph_mock::{
     FakeStore, MockBlockStreamBuilder, MockEthereumAdapter, MockMetricsRegistry, MockStore,
-    MockStore,
 };
 use web3::types::*;
 
