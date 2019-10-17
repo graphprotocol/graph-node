@@ -1,10 +1,8 @@
-use std::collections::HashSet;
-
 use graph::components::ethereum::*;
 use graph::prelude::{
     ethabi, future,
-    web3::types::{Block, Transaction, H256},
-    Arc, Error, EthereumCallCache, Future, Logger,
+    web3::types::{Block, Log, Transaction, H256},
+    Arc, Error, EthereumCallCache, Future, Logger, Stream,
 };
 
 #[derive(Default)]
@@ -96,7 +94,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: EthereumLogFilter,
         _: EthereumCallFilter,
         _: EthereumBlockFilter,
-    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<EthereumTrigger>, Error = Error> + Send> {
         unimplemented!();
     }
 
@@ -107,7 +105,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: u64,
         _: u64,
         _: EthereumLogFilter,
-    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<Log>, Error = Error> + Send> {
         unimplemented!();
     }
 
@@ -118,7 +116,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: u64,
         _: u64,
         _: EthereumCallFilter,
-    ) -> Box<dyn Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send> {
         unimplemented!();
     }
 
@@ -138,6 +136,17 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: EthereumContractCall,
         _: Arc<dyn EthereumCallCache>,
     ) -> Box<dyn Future<Item = Vec<ethabi::Token>, Error = EthereumContractCallError> + Send> {
+        unimplemented!();
+    }
+
+    fn triggers_in_block(
+        &self,
+        _: &Logger,
+        _: EthereumLogFilter,
+        _: EthereumCallFilter,
+        _: EthereumBlockFilter,
+        _: BlockFinality,
+    ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send> {
         unimplemented!();
     }
 }

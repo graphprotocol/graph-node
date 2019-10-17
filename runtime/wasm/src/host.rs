@@ -371,7 +371,7 @@ impl RuntimeHostTrait for RuntimeHost {
     fn process_call(
         &self,
         logger: Logger,
-        block: Arc<EthereumBlock>,
+        block: Arc<ThinEthereumBlock>,
         transaction: Arc<Transaction>,
         call: Arc<EthereumCall>,
         state: BlockState,
@@ -524,7 +524,7 @@ impl RuntimeHostTrait for RuntimeHost {
     fn process_block(
         &self,
         logger: Logger,
-        block: Arc<EthereumBlock>,
+        block: Arc<ThinEthereumBlock>,
         trigger_type: EthereumBlockTriggerType,
         state: BlockState,
     ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
@@ -535,8 +535,8 @@ impl RuntimeHostTrait for RuntimeHost {
 
         debug!(
             logger, "Start processing Ethereum block";
-            "hash" => block.block.hash.unwrap().to_string(),
-            "number" => &block.block.number.unwrap().to_string(),
+            "hash" => block.hash.unwrap().to_string(),
+            "number" => &block.number.unwrap().to_string(),
             "handler" => &block_handler.handler,
             "data_source" => &self.data_source_name,
         );
@@ -576,8 +576,8 @@ impl RuntimeHostTrait for RuntimeHost {
                     );
                     info!(
                         logger, "Done processing Ethereum block";
-                        "hash" => block.block.hash.unwrap().to_string(),
-                        "number" => &block.block.number.unwrap().to_string(),
+                        "hash" => block.hash.unwrap().to_string(),
+                        "number" => &block.number.unwrap().to_string(),
                         "handler" => &block_handler.handler,
                         "ms" => elapsed.as_millis(),
                     );
@@ -589,7 +589,7 @@ impl RuntimeHostTrait for RuntimeHost {
     fn process_log(
         &self,
         logger: Logger,
-        block: Arc<EthereumBlock>,
+        block: Arc<ThinEthereumBlock>,
         transaction: Arc<Transaction>,
         log: Arc<Log>,
         state: BlockState,

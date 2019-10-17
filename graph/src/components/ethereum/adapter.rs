@@ -694,4 +694,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         call: EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
     ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send>;
+
+    fn triggers_in_block(
+        &self,
+        logger: &Logger,
+        log_filter: EthereumLogFilter,
+        call_filter: EthereumCallFilter,
+        block_filter: EthereumBlockFilter,
+        ethereum_block: BlockFinality,
+    ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send>;
 }

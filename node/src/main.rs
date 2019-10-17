@@ -584,6 +584,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger_factory,
         stores.clone(),
+        eth_adapters.clone(),
         runtime_host_builder,
         block_stream_builder,
         metrics_registry.clone(),
