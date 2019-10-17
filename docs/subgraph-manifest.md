@@ -42,6 +42,8 @@ Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical For
 | --- | --- | --- |
 | **address** | *String* | The address of the source data in its respective blockchain. |
 | **abi** | *String* | The name of the ABI for this Ethereum contract. See `abis` in the `mapping` manifest. |
+| **startBlock** | optional *BigInt* | The block to start indexing this data source from. |
+
 
 ### 1.5.2 Mapping
 The `mapping` field may be one of the following supported mapping manifests:
