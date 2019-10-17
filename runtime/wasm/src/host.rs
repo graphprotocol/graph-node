@@ -4,7 +4,6 @@ use semver::{Version, VersionReq};
 use tiny_keccak::keccak256;
 
 use std::collections::HashMap;
-use std::fmt;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
