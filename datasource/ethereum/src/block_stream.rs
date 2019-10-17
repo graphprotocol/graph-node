@@ -472,8 +472,8 @@ where
                                     call_filter.clone(),
                                     block_filter.clone(),
                                 )
-                                .and_then(move |descendant_ptrs| -> Box<dyn Future<Item = _, Error = _> + Send> {
-                                    if descendant_ptrs.is_empty() {
+                                .and_then(move |triggers| -> Box<dyn Future<Item = _, Error = _> + Send> {
+                                    if triggers.is_empty() {
                                         // No matching events in range.
                                         // Therefore, we can update the subgraph ptr without any
                                         // changes to the entity data.
@@ -1410,17 +1410,23 @@ fn parse_block_triggers(
     block_filter: EthereumBlockFilter,
     block: &EthereumBlockWithCalls,
 ) -> Vec<EthereumTrigger> {
+    let block_ptr = EthereumBlockPointer::from(&block.ethereum_block);
     let trigger_every_block = block_filter.trigger_every_block;
     let call_filter = EthereumCallFilter::from(block_filter);
     let mut triggers = block.calls.as_ref().map_or(vec![], |calls| {
         calls
             .iter()
             .filter(move |call| call_filter.matches(call))
-            .map(move |call| EthereumTrigger::Block(EthereumBlockTriggerType::WithCallTo(call.to)))
+            .map(move |call| {
+                EthereumTrigger::Block(block_ptr, EthereumBlockTriggerType::WithCallTo(call.to))
+            })
             .collect::<Vec<EthereumTrigger>>()
     });
     if trigger_every_block {
-        triggers.push(EthereumTrigger::Block(EthereumBlockTriggerType::Every));
+        triggers.push(EthereumTrigger::Block(
+            block_ptr,
+            EthereumBlockTriggerType::Every,
+        ));
     }
     triggers
 }

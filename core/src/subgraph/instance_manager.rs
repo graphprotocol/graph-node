@@ -756,7 +756,7 @@ where
             let trigger_type = match trigger {
                 EthereumTrigger::Log(_) => TriggerType::Event,
                 EthereumTrigger::Call(_) => TriggerType::Call,
-                EthereumTrigger::Block(_) => TriggerType::Block,
+                EthereumTrigger::Block(..) => TriggerType::Block,
             };
             let start = Instant::now();
             ctx.state
