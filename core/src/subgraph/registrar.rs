@@ -881,8 +881,8 @@ fn create_subgraph_version(
                 // stream. (the initial block range starts with earliest_block + 1)
                 info!(
                     logger,
-                    "Set the earliest available Ethereum block, start_block: {}",
-                    earliest_block.number + 1
+                    "Set subgraph start block";
+                    "block_number" => earliest_block.number + 1
                 );
 
                 // Apply the subgraph versioning and deployment operations,
