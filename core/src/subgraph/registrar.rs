@@ -527,6 +527,9 @@ fn resolve_subgraph_chain_blocks(
             .map(|data_source| data_source.source.start_block)
             .min()
             .map(move |block_number| {
+                // Resolve a block pointer representation of the earliest subgraph start_block
+                // Since the block stream steps start with subgraph_ptr we use a saturating
+                // subtraction to set to earliest_block - 1
                 ethereum_adapter
                     .block_pointer_from_number(logger, block_number.saturating_sub(1))
                     .from_err()
@@ -874,6 +877,8 @@ fn create_subgraph_version(
                 &logger.clone(),
             )
             .and_then(move |(chain_head_block, earliest_block)| {
+                // Log earliest_block + 1 in order to accurately represent the start of the block
+                // stream. (the initial block range starts with earliest_block + 1)
                 info!(
                     logger,
                     "Set the earliest available Ethereum block, start_block: {}",
