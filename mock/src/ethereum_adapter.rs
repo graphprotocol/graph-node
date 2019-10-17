@@ -71,6 +71,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn is_on_main_chain(
         &self,
         _: &Logger,
+        _: Arc<SubgraphEthRpcMetrics>,
         _: EthereumBlockPointer,
     ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
         unimplemented!();
@@ -79,6 +80,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn calls_in_block(
         &self,
         _: &Logger,
+        _: Arc<SubgraphEthRpcMetrics>,
         _: u64,
         _: H256,
     ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
@@ -88,6 +90,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn blocks_with_triggers(
         &self,
         _: &Logger,
+        _: Arc<SubgraphEthRpcMetrics>,
         _: u64,
         _: u64,
         _: EthereumLogFilter,
@@ -100,6 +103,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn blocks_with_logs(
         &self,
         _: &Logger,
+        _: Arc<SubgraphEthRpcMetrics>,
         _: u64,
         _: u64,
         _: EthereumLogFilter,
@@ -110,6 +114,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn blocks_with_calls(
         &self,
         _: &Logger,
+        _: Arc<SubgraphEthRpcMetrics>,
         _: u64,
         _: u64,
         _: EthereumCallFilter,
@@ -120,6 +125,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn blocks(
         &self,
         _: &Logger,
+        _: Arc<SubgraphEthRpcMetrics>,
         _: u64,
         _: u64,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
