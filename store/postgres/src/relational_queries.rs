@@ -11,7 +11,6 @@ use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::QueryResult;
 use diesel::sql_types::{Array, Binary, Bool, Integer, Jsonb, Numeric, Range, Text};
 use diesel::Connection;
-use failure::Fail;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
@@ -150,12 +149,6 @@ impl EntityData {
             ),
         }
     }
-}
-
-fn query_builder_error(msg: String) -> diesel::result::Error {
-    diesel::result::Error::QueryBuilderError(Box::new(
-        StoreError::Unknown(format_err!("{}", msg)).compat(),
-    ))
 }
 
 /// A `QueryValue` makes it possible to bind a `Value` into a SQL query
@@ -385,13 +378,47 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
 /// the `filter` must all come from the given `table`, which is used to
 /// map GraphQL names to column names, and to determine the type of the
 /// column an attribute refers to
-#[derive(Constructor)]
-struct QueryFilter<'a> {
+#[derive(Debug, Clone)]
+pub struct QueryFilter<'a> {
     filter: &'a EntityFilter,
     table: &'a Table,
 }
 
 impl<'a> QueryFilter<'a> {
+    pub fn new(filter: &'a EntityFilter, table: &'a Table) -> Result<Self, StoreError> {
+        Self::valid_attributes(filter, table)?;
+        Ok(QueryFilter { filter, table })
+    }
+
+    fn valid_attributes(filter: &'a EntityFilter, table: &'a Table) -> Result<(), StoreError> {
+        use EntityFilter::*;
+        match filter {
+            And(filters) | Or(filters) => {
+                for filter in filters {
+                    Self::valid_attributes(filter, table)?;
+                }
+            }
+
+            Contains(attr, _)
+            | NotContains(attr, _)
+            | Equal(attr, _)
+            | Not(attr, _)
+            | GreaterThan(attr, _)
+            | LessThan(attr, _)
+            | GreaterOrEqual(attr, _)
+            | LessOrEqual(attr, _)
+            | In(attr, _)
+            | NotIn(attr, _)
+            | StartsWith(attr, _)
+            | NotStartsWith(attr, _)
+            | EndsWith(attr, _)
+            | NotEndsWith(attr, _) => {
+                table.column_for_field(attr)?;
+            }
+        }
+        Ok(())
+    }
+
     fn with(&self, filter: &'a EntityFilter) -> Self {
         QueryFilter {
             filter,
@@ -399,10 +426,10 @@ impl<'a> QueryFilter<'a> {
         }
     }
 
-    fn column(&self, attribute: &Attribute) -> QueryResult<&'a Column> {
+    fn column(&self, attribute: &Attribute) -> &'a Column {
         self.table
             .column_for_field(attribute)
-            .map_err(|e| query_builder_error(e.to_string()))
+            .expect("the constructor already checked that all attribute names are valid")
     }
 
     fn binary_op(
@@ -434,7 +461,7 @@ impl<'a> QueryFilter<'a> {
         negated: bool,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
-        let column = self.column(attribute)?;
+        let column = self.column(attribute);
 
         match value {
             Value::String(s) => {
@@ -493,7 +520,7 @@ impl<'a> QueryFilter<'a> {
         op: Comparison,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
-        let column = self.column(attribute)?;
+        let column = self.column(attribute);
 
         if column.is_text() && value.is_string() {
             PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
@@ -531,7 +558,7 @@ impl<'a> QueryFilter<'a> {
         op: Comparison,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
-        let column = self.column(attribute)?;
+        let column = self.column(attribute);
 
         if column.is_text() && value.is_string() {
             PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
@@ -561,7 +588,7 @@ impl<'a> QueryFilter<'a> {
         negated: bool,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
-        let column = self.column(attribute)?;
+        let column = self.column(attribute);
 
         // NULLs in SQL are very special creatures, and we need to treat
         // them special. For non-NULL values, we generate
@@ -643,7 +670,7 @@ impl<'a> QueryFilter<'a> {
         starts_with: bool,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
-        let column = self.column(attribute)?;
+        let column = self.column(attribute);
 
         out.push_identifier(column.name.as_str())?;
         out.push_sql(op);
@@ -840,11 +867,28 @@ impl<'a> QueryId for InsertQuery<'a> {
 
 impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
 
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug, Clone)]
 pub struct ConflictingEntityQuery<'a> {
     layout: &'a Layout,
-    entities: &'a Vec<&'a String>,
+    tables: Vec<&'a Table>,
     entity_id: &'a String,
+}
+impl<'a> ConflictingEntityQuery<'a> {
+    pub fn new(
+        layout: &'a Layout,
+        entities: Vec<&'a String>,
+        entity_id: &'a String,
+    ) -> Result<Self, StoreError> {
+        let tables = entities
+            .iter()
+            .map(|entity| layout.table_for_entity(entity).map(|table| table.as_ref()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ConflictingEntityQuery {
+            layout,
+            tables,
+            entity_id,
+        })
+    }
 }
 
 impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
@@ -857,19 +901,15 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
         //   select 'Type2' as entity from schema.table2 where id = $1
         //   union all
         //   ...
-        for (i, entity) in self.entities.iter().enumerate() {
+        for (i, table) in self.tables.iter().enumerate() {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(entity)?;
+            out.push_bind_param::<Text, _>(&table.object)?;
             out.push_sql(" as entity from ");
             out.push_identifier(&self.layout.schema)?;
             out.push_sql(".");
-            let table = self
-                .layout
-                .table_for_entity(entity)
-                .map_err(|e| diesel::result::Error::QueryBuilderError(e.to_string().into()))?;
             out.push_identifier(table.name.as_str())?;
             out.push_sql(" where id = ");
             out.push_bind_param::<Text, _>(self.entity_id)?;
@@ -901,8 +941,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for ConflictingEntityQuery<'a> {}
 #[derive(Debug, Clone, Constructor)]
 pub struct FilterQuery<'a> {
     schema: &'a str,
-    tables: Vec<&'a Table>,
-    filter: Option<EntityFilter>,
+    table_filter_pairs: Vec<(&'a Table, Option<QueryFilter<'a>>)>,
     order: Option<(&'a SqlName, &'a str)>,
     first: Option<String>,
     skip: Option<String>,
@@ -947,7 +986,12 @@ impl<'a> FilterQuery<'a> {
         }
     }
 
-    fn filtered_rows(&self, table: &Table, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn filtered_rows(
+        &self,
+        table: &Table,
+        filter: &Option<QueryFilter<'a>>,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
         // Generate
         //     from schema.table e
         //    where block_range @> $block
@@ -959,9 +1003,9 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(" e");
         out.push_sql("\n where ");
         BlockRangeContainsClause::new(self.block).walk_ast(out.reborrow())?;
-        if let Some(filter) = &self.filter {
+        if let Some(filter) = filter {
             out.push_sql(" and ");
-            QueryFilter::new(filter, table).walk_ast(out)?;
+            filter.walk_ast(out)?;
         }
         Ok(())
     }
@@ -970,7 +1014,7 @@ impl<'a> FilterQuery<'a> {
 impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
-        if self.tables.is_empty() {
+        if self.table_filter_pairs.is_empty() {
             return Ok(());
         }
 
@@ -978,7 +1022,7 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
         // JSONB until we actually know which rows we really need to make these
         // queries fast; otherwise, Postgres spends too much time generating
         // JSONB, most of which will never get used
-        if self.tables.len() == 1 {
+        if self.table_filter_pairs.len() == 1 {
             // The common case is that we have just one table; for that we
             // can generate a simpler/faster query. We generate
             // select '..' as entity, to_jsonb(e.*) as data
@@ -990,14 +1034,17 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
             //    order by ...
             //    limit n offset m
             // ) e
-            let table = self.tables.first().unwrap();
+            let (table, filter) = self
+                .table_filter_pairs
+                .first()
+                .expect("we just checked that there is exactly one");
             out.push_sql("select ");
             out.push_bind_param::<Text, _>(&table.object)?;
             out.push_sql(
                 " as entity, to_jsonb(e.*) as data\n  from (\n  select *\
                  \n",
             );
-            self.filtered_rows(table, out.reborrow())?;
+            self.filtered_rows(table, filter, out.reborrow())?;
             self.order_by(&mut out)?;
             self.limit(&mut out);
             // close the outer select
@@ -1029,7 +1076,7 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
 
             // Step 1: build matches CTE
             out.push_sql("with matches as (");
-            for (i, table) in self.tables.iter().enumerate() {
+            for (i, (table, filter)) in self.table_filter_pairs.iter().enumerate() {
                 if i > 0 {
                     out.push_sql("\nunion all\n");
                 }
@@ -1037,14 +1084,14 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
                 out.push_bind_param::<Text, _>(&table.object)?;
                 out.push_sql(" as entity, e.id, e.vid");
                 self.add_sort_key(&mut out)?;
-                self.filtered_rows(table, out.reborrow())?;
+                self.filtered_rows(table, filter, out.reborrow())?;
             }
             self.order_by(&mut out)?;
             self.limit(&mut out);
             out.push_sql(")\n");
 
             // Step 2: convert to JSONB
-            for (i, table) in self.tables.iter().enumerate() {
+            for (i, (table, _)) in self.table_filter_pairs.iter().enumerate() {
                 if i > 0 {
                     out.push_sql("\nunion all\n");
                 }

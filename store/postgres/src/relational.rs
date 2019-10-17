@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use crate::relational_queries::{
     ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindQuery, InsertQuery,
-    RevertClampQuery, RevertRemoveQuery,
+    QueryFilter, RevertClampQuery, RevertRemoveQuery,
 };
 use graph::prelude::{
     format_err, Entity, EntityChange, EntityChangeOperation, EntityFilter, EntityKey,
@@ -352,7 +352,7 @@ impl Layout {
         entity_id: &String,
         entities: Vec<&String>,
     ) -> Result<Option<String>, StoreError> {
-        Ok(ConflictingEntityQuery::new(self, &entities, entity_id)
+        Ok(ConflictingEntityQuery::new(self, entities, entity_id)?
             .load(conn)?
             .pop()
             .map(|data| data.entity))
@@ -369,10 +369,20 @@ impl Layout {
         skip: u32,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        let tables = entity_types
+        let filter = filter.as_ref();
+        let table_filter_pairs = entity_types
             .into_iter()
-            .map(|entity| self.table_for_entity(&entity).map(|rc| rc.as_ref()))
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|entity| {
+                self.table_for_entity(&entity)
+                    .map(|rc| rc.as_ref())
+                    .and_then(|table| {
+                        filter
+                            .map(|filter| QueryFilter::new(filter, table))
+                            .transpose()
+                            .map(|filter| (table, filter))
+                    })
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
         let first = first.map(|first| first.to_string());
         let skip = if skip == 0 {
             None
@@ -384,18 +394,18 @@ impl Layout {
         // table, we are querying an interface, and the order is on an attribute
         // in that interface so that all tables have a column for that. It is
         // therefore enough to just look at the first table to get the name
-        let order = match (order, tables.first()) {
+        let order = match (order, table_filter_pairs.first()) {
             (_, None) => {
                 unreachable!("an entity query always contains at least one entity type/table");
             }
-            (Some((attribute, _, direction)), Some(table)) => {
+            (Some((ref attribute, _, direction)), Some((table, _))) => {
                 let column = table.column_for_field(&attribute)?;
                 Some((&column.name, direction))
             }
             (None, _) => None,
         };
 
-        let query = FilterQuery::new(&self.schema, tables, filter, order, first, skip, block);
+        let query = FilterQuery::new(&self.schema, table_filter_pairs, order, first, skip, block);
         let query_debug_info = query.clone();
 
         let values = query.load::<EntityData>(conn).map_err(|e| {

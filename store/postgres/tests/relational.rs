@@ -493,10 +493,7 @@ fn conflicting_entity() {
         let chair = "Chair".to_owned();
         let result = layout.conflicting_entity(&conn, &id.to_owned(), vec![&dog, &ferret, &chair]);
         assert!(result.is_err());
-        assert_eq!(
-            "store error: unknown table 'Chair'",
-            result.err().unwrap().to_string()
-        );
+        assert_eq!("unknown table 'Chair'", result.err().unwrap().to_string());
         Ok(())
     })
 }
