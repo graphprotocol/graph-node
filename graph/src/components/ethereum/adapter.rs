@@ -647,7 +647,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
-    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Vec<EthereumTrigger>, Error = Error> + Send>;
 
     /// Find the first few blocks in the specified range containing at least one transaction with
     /// at least one log entry matching the specified `log_filter`.
@@ -668,7 +668,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Vec<Log>, Error = Error> + Send>;
 
     fn blocks_with_calls(
         &self,
@@ -677,7 +677,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         from: u64,
         to: u64,
         call_filter: EthereumCallFilter,
-    ) -> Box<dyn Future<Item = HashSet<EthereumBlockPointer>, Error = Error> + Send>;
+    ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send>;
 
     fn blocks(
         &self,

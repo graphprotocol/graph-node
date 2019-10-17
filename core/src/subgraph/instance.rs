@@ -195,7 +195,7 @@ where
                     })
                 }))
             }
-            EthereumTrigger::Block(trigger_type) => {
+            EthereumTrigger::Block(_, trigger_type) => {
                 let matching_hosts: Vec<_> = hosts
                     .into_iter()
                     .filter(|host| {

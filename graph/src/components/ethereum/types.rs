@@ -89,7 +89,7 @@ impl EthereumCall {
 
 #[derive(Clone, Debug)]
 pub enum EthereumTrigger {
-    Block(EthereumBlockTriggerType),
+    Block(EthereumBlockPointer, EthereumBlockTriggerType),
     Call(EthereumCall),
     Log(Log),
 }
@@ -106,7 +106,15 @@ impl EthereumTrigger {
             // We only handle logs that are in a block and therefore have a `transaction_index`.
             EthereumTrigger::Log(log) => Some(log.transaction_index.unwrap().as_u64()),
             EthereumTrigger::Call(call) => Some(call.transaction_index),
-            EthereumTrigger::Block(_) => None,
+            EthereumTrigger::Block(_, _) => None,
+        }
+    }
+
+    pub fn block_number(&self) -> u64 {
+        match self {
+            EthereumTrigger::Block(block_ptr, _) => block_ptr.number,
+            EthereumTrigger::Call(call) => call.block_number,
+            EthereumTrigger::Log(log) => log.block_number.unwrap().as_u64(),
         }
     }
 }
@@ -333,6 +341,15 @@ impl From<(H256, i64)> for EthereumBlockPointer {
         EthereumBlockPointer {
             hash,
             number: number as u64,
+        }
+    }
+}
+
+impl<'a> From<&'a EthereumCall> for EthereumBlockPointer {
+    fn from(call: &'a EthereumCall) -> EthereumBlockPointer {
+        EthereumBlockPointer {
+            hash: call.block_hash,
+            number: call.block_number,
         }
     }
 }
