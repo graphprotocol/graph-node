@@ -496,8 +496,9 @@ pub fn validate_entity(
         })?;
 
     for field in &object_type.fields {
-        match entity.get(&field.name) {
-            Some(value) => {
+        let is_derived = get_derived_from_directive(field).is_some();
+        match (entity.get(&field.name), is_derived) {
+            (Some(value), false) => {
                 let scalar_type = scalar_value_type(schema, &field.field_type);
                 if is_list(&field.field_type) {
                     // Check for inhomgeneous lists to produce a better
@@ -531,7 +532,7 @@ pub fn validate_entity(
                     ));
                 }
             }
-            None => {
+            (None, false) => {
                 if is_non_null_type(&field.field_type) {
                     return Err(format_err!(
                         "Entity {}[{}]: missing value for non-nullable field `{}`",
@@ -540,6 +541,17 @@ pub fn validate_entity(
                         field.name
                     ));
                 }
+            }
+            (Some(_), true) => {
+                return Err(format_err!(
+                    "Entity {}[{}]: field `{}` is derived and can not be set",
+                    key.entity_type,
+                    key.entity_id,
+                    field.name,
+                ));
+            }
+            (None, true) => {
+                // derived fields should not be set
             }
         }
     }
@@ -562,12 +574,19 @@ fn entity_validation() {
         const DOCUMENT: &str = "
       enum Color { red, yellow, blue }
       interface Stuff { id: ID!, name: String! }
+      type Cruft @entity {
+          id: ID!,
+          thing: Thing!
+      }
       type Thing @entity {
           id: ID!,
           name: String!,
           favorite_color: Color,
           stuff: Stuff,
           things: [Thing!]!
+          # Make sure we do not validate derived fields; it's ok
+          # to store a thing with a null Cruft
+          cruft: Cruft! @derivedFrom(field: \"thing\")
       }";
         let subgraph = SubgraphDeploymentId::new("doesntmatter").unwrap();
         let schema =
@@ -646,4 +665,11 @@ fn entity_validation() {
     thing.remove("favorite_color");
     thing.remove("stuff");
     check(thing, "");
+
+    let mut thing = make_thing("t8");
+    thing.set("cruft", "wat");
+    check(
+        thing,
+        "Entity Thing[t8]: field `cruft` is derived and can not be set",
+    );
 }
