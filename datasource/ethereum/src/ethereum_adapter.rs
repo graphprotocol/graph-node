@@ -773,7 +773,7 @@ where
     fn is_on_main_chain(
         &self,
         logger: &Logger,
-        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+        _: Arc<SubgraphEthRpcMetrics>,
         block_ptr: EthereumBlockPointer,
     ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
         Box::new(
@@ -908,7 +908,7 @@ where
     fn blocks(
         &self,
         logger: &Logger,
-        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+        _: Arc<SubgraphEthRpcMetrics>,
         from: u64,
         to: u64,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
