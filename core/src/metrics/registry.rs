@@ -17,9 +17,9 @@ impl MetricsRegistry {
         let const_labels = HashMap::new();
 
         // Generate internal metrics
-        let register_errors = Self::gen_register_errors_counter();
-        let unregister_errors = Self::gen_unregister_errors_counter();
-        let registered_metrics = Self::gen_registered_metrics_gauge();
+        let register_errors = Self::gen_register_errors_counter(registry.clone());
+        let unregister_errors = Self::gen_unregister_errors_counter(registry.clone());
+        let registered_metrics = Self::gen_registered_metrics_gauge(registry.clone());
 
         MetricsRegistry {
             logger: logger.new(o!("component" => String::from("MetricsRegistry"))),
@@ -31,33 +31,45 @@ impl MetricsRegistry {
         }
     }
 
-    fn gen_register_errors_counter() -> Box<Counter> {
+    fn gen_register_errors_counter(registry: Arc<Registry>) -> Box<Counter> {
         let opts = Opts::new(
             String::from("metrics_register_errors"),
             String::from("Counts Prometheus metrics register errors"),
         );
-        let counter =
-            Counter::with_opts(opts).expect("failed to create `metrics_register_errors` counter");
-        Box::new(counter)
+        let counter = Box::new(
+            Counter::with_opts(opts).expect("failed to create `metrics_register_errors` counter"),
+        );
+        registry
+            .register(counter.clone())
+            .expect("failed to register `metrics_register_errors` counter");
+        counter
     }
 
-    fn gen_unregister_errors_counter() -> Box<Counter> {
+    fn gen_unregister_errors_counter(registry: Arc<Registry>) -> Box<Counter> {
         let opts = Opts::new(
             String::from("metrics_unregister_errors"),
             String::from("Counts Prometheus metrics unregister errors"),
         );
-        let counter =
-            Counter::with_opts(opts).expect("failed to create `metrics_unregister_errors` counter");
-        Box::new(counter)
+        let counter = Box::new(
+            Counter::with_opts(opts).expect("failed to create `metrics_unregister_errors` counter"),
+        );
+        registry
+            .register(counter.clone())
+            .expect("failed to register `metrics_unregister_errors` counter");
+        counter
     }
 
-    fn gen_registered_metrics_gauge() -> Box<Gauge> {
+    fn gen_registered_metrics_gauge(registry: Arc<Registry>) -> Box<Gauge> {
         let opts = Opts::new(
             String::from("registered_metrics"),
             String::from("Tracks the number of registered metrics on the node"),
         );
-        let gauge = Gauge::with_opts(opts).expect("failed to create `registered_metrics` gauge");
-        Box::new(gauge)
+        let gauge =
+            Box::new(Gauge::with_opts(opts).expect("failed to create `registered_metrics` gauge"));
+        registry
+            .register(gauge.clone())
+            .expect("failed to register `registered_metrics` gauge");
+        gauge
     }
 
     pub fn register(&self, name: String, c: Box<dyn Collector>) {
