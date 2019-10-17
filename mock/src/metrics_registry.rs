@@ -118,7 +118,7 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
         Ok(histogram)
     }
 
-    fn unregister(&self, metric: Box<dyn Collector>) {
+    fn unregister(&self, _: Box<dyn Collector>) {
         return;
     }
 }
