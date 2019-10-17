@@ -2,6 +2,7 @@ use ethabi::{Bytes, Error as ABIError, Function, ParamType, Token};
 use failure::SyncFailure;
 use futures::Future;
 use petgraph::graphmap::GraphMap;
+use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use tiny_keccak::keccak256;
@@ -322,8 +323,14 @@ impl EthereumCallFilter {
 
     /// Extends this call filter with another one.
     pub fn extend(&mut self, other: EthereumCallFilter) {
-        self.contract_addresses_function_signatures
-            .extend(other.contract_addresses_function_signatures.into_iter());
+        for (key, (start_block, sigs)) in self.contract_addresses_function_signatures.iter_mut() {
+            if let Some((potential_start_block, new_sigs)) =
+                other.contract_addresses_function_signatures.get(key)
+            {
+                *start_block = cmp::min(*potential_start_block, start_block.clone());
+                sigs.extend(new_sigs)
+            }
+        }
     }
 
     /// An empty filter is one that never matches.
@@ -436,7 +443,25 @@ impl EthereumBlockFilter {
 
     pub fn extend(&mut self, other: EthereumBlockFilter) {
         self.trigger_every_block = self.trigger_every_block || other.trigger_every_block;
-        self.contract_addresses.extend(other.contract_addresses);
+        self.contract_addresses = self.contract_addresses.iter().cloned().fold(
+            HashSet::new(),
+            |mut addresses, (start_block, address)| {
+                match other
+                    .contract_addresses
+                    .iter()
+                    .cloned()
+                    .find(|(_, other_address)| &address == other_address)
+                {
+                    Some((other_start_block, address)) => {
+                        addresses.insert((cmp::min(other_start_block, start_block), address));
+                    }
+                    None => {
+                        addresses.insert((start_block, address));
+                    }
+                }
+                addresses
+            },
+        );
     }
 
     pub fn start_blocks(&self) -> Vec<u64> {
