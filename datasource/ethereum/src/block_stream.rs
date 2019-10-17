@@ -81,10 +81,7 @@ enum ReconciliationStep {
     /// Move forwards, processing one or more blocks.
     ProcessDescendantBlocks {
         from: EthereumBlockPointer,
-        log_filter: EthereumLogFilter,
-        call_filter: EthereumCallFilter,
-        block_filter: EthereumBlockFilter,
-        descendant_blocks: Box<dyn Stream<Item = EthereumBlockWithCalls, Error = Error> + Send>,
+        descendant_blocks: Box<dyn Stream<Item = EthereumBlockWithTriggers, Error = Error> + Send>,
     },
 
     /// Skip forwards from `from` to `to`, with no processing needed.
@@ -510,25 +507,32 @@ where
                                         // Load the blocks
                                         debug!(
                                             ctx.logger,
-                                            "Found {} relevant block(s)",
-                                            descendant_ptrs.len()
+                                            "Found {} trigger(s)",
+                                            triggers.len()
                                         );
 
-                                        let descendant_hashes = descendant_ptrs
-                                            .into_iter()
-                                            .map(|ptr| ptr.hash)
-                                            .collect();
+                                        let descendant_blocks = ctx.load_blocks(triggers
+                                            .iter()
+                                            .map(EthereumTrigger::block_hash)
+                                            .collect()
+                                        ).map(move |block| {
+                                            let triggers = triggers
+                                                            .iter()
+                                                            .filter(|trigger| trigger.block_ptr() == (&block.ethereum_block).into())
+                                                            .cloned()
+                                                            .collect();
+                                            EthereumBlockWithTriggers {
+                                                triggers,
+                                                ethereum_block: block.ethereum_block,
+                                                calls: block.calls,
+                                            }
+                                        });
 
                                         Box::new(future::ok(
                                             // Proceed to those blocks
                                             ReconciliationStep::ProcessDescendantBlocks {
                                                 from: subgraph_ptr,
-                                                log_filter: log_filter.clone(),
-                                                call_filter: call_filter.clone(),
-                                                block_filter: block_filter.clone(),
-                                                descendant_blocks: Box::new(
-                                                    ctx.load_blocks(descendant_hashes)
-                                                ),
+                                                descendant_blocks: Box::new(descendant_blocks),
                                             }
                                         ))
                                     }
@@ -588,34 +592,41 @@ where
                         // due to the race conditions previously mentioned,
                         // so instead we will advance the subgraph ptr by one block.
                         // Note that head_ancestor is a child of subgraph_ptr.
-                        let block_future = future::ok(head_ancestor).and_then(
-                            move |block| -> Box<dyn Future<Item = _, Error = _> + Send> {
-                                if !include_calls_in_blocks {
-                                    return Box::new(future::ok(EthereumBlockWithCalls {
-                                        ethereum_block: block,
-                                        calls: None,
-                                    }));
-                                }
-                                let block_with_calls = ctx
-                                    .eth_adapter
-                                    .calls_in_block(
-                                        &logger,
-                                        ctx.metrics.ethrpc_metrics.clone(),
-                                        block.block.number.unwrap().as_u64(),
-                                        block.block.hash.unwrap(),
-                                    )
-                                    .map(move |calls| EthereumBlockWithCalls {
-                                        ethereum_block: block,
-                                        calls: Some(calls),
-                                    });
-                                Box::new(block_with_calls)
-                            },
-                        );
+                        let block_future = {
+                            let block_with_calls = if !include_calls_in_blocks {
+                                Box::new(future::ok(EthereumBlockWithCalls {
+                                    ethereum_block: head_ancestor,
+                                    calls: None,
+                                }))
+                                    as Box<dyn Future<Item = _, Error = _> + Send>
+                            } else {
+                                Box::new(
+                                    ctx.eth_adapter
+                                        .calls_in_block(
+                                            &logger,
+                                            ctx.metrics.ethrpc_metrics.clone(),
+                                            head_ancestor.block.number.unwrap().as_u64(),
+                                            head_ancestor.block.hash.unwrap(),
+                                        )
+                                        .map(move |calls| EthereumBlockWithCalls {
+                                            ethereum_block: head_ancestor,
+                                            calls: Some(calls),
+                                        }),
+                                )
+                            };
+
+                            Box::new(block_with_calls.and_then(move |block| {
+                                future::result(Self::parse_triggers(
+                                    log_filter.clone(),
+                                    call_filter.clone(),
+                                    block_filter.clone(),
+                                    include_calls_in_blocks,
+                                    block,
+                                ))
+                            }))
+                        };
                         Box::new(future::ok(ReconciliationStep::ProcessDescendantBlocks {
                             from: subgraph_ptr,
-                            log_filter: log_filter.clone(),
-                            call_filter: call_filter.clone(),
-                            block_filter: block_filter.clone(),
                             descendant_blocks: Box::new(stream::futures_ordered(vec![
                                 block_future,
                             ])),
@@ -637,7 +648,6 @@ where
         step: ReconciliationStep,
     ) -> Box<dyn Future<Item = ReconciliationStepOutcome, Error = Error> + Send> {
         let ctx = self.clone();
-        let include_calls_in_blocks = self.include_calls_in_blocks();
 
         // We now know where to take the subgraph ptr.
         match step {
@@ -686,61 +696,39 @@ where
             )),
             ReconciliationStep::ProcessDescendantBlocks {
                 from,
-                log_filter,
-                call_filter,
-                block_filter,
                 descendant_blocks,
             } => {
                 let mut subgraph_ptr = from;
-                let log_filter = log_filter.clone();
-                let call_filter = call_filter.clone();
-                let block_filter = block_filter.clone();
 
                 // Advance the subgraph ptr to each of the specified descendants and yield each
                 // block with relevant events.
                 Box::new(future::ok(ReconciliationStepOutcome::YieldBlocks(
-                    Box::new(
-                        descendant_blocks
-                            .and_then(move |descendant_block| {
-                                // First, check if there are blocks between subgraph_ptr and
-                                // descendant_block.
-                                let descendant_parent_ptr = EthereumBlockPointer::to_parent(
-                                    &descendant_block.ethereum_block,
-                                );
-                                if subgraph_ptr != descendant_parent_ptr {
-                                    // descendant_block is not a direct child.
-                                    // Therefore, there are blocks that are irrelevant to this subgraph
-                                    // that we can skip.
-                                    debug!(
-                                        ctx.logger,
-                                        "Skipping {} irrelevant block(s)",
-                                        descendant_parent_ptr.number - subgraph_ptr.number
-                                    );
+                    Box::new(descendant_blocks.and_then(move |descendant_block| {
+                        // First, check if there are blocks between subgraph_ptr and
+                        // descendant_block.
+                        let descendant_parent_ptr =
+                            EthereumBlockPointer::to_parent(&descendant_block.ethereum_block);
+                        if subgraph_ptr != descendant_parent_ptr {
+                            // descendant_block is not a direct child.
+                            // Therefore, there are blocks that are irrelevant to this subgraph
+                            // that we can skip.
+                            debug!(
+                                ctx.logger,
+                                "Skipping {} irrelevant block(s)",
+                                descendant_parent_ptr.number - subgraph_ptr.number
+                            );
 
-                                    // Update subgraph_ptr in store to skip the irrelevant blocks.
-                                    ctx.set_block_ptr_with_no_changes(
-                                        subgraph_ptr,
-                                        descendant_parent_ptr,
-                                    )?;
-                                }
+                            // Update subgraph_ptr in store to skip the irrelevant blocks.
+                            ctx.set_block_ptr_with_no_changes(subgraph_ptr, descendant_parent_ptr)?;
+                        }
 
-                                // Update our copy of the subgraph ptr to reflect the
-                                // value it will have after descendant_block is
-                                // processed.
-                                subgraph_ptr = (&descendant_block.ethereum_block).into();
+                        // Update our copy of the subgraph ptr to reflect the
+                        // value it will have after descendant_block is
+                        // processed.
+                        subgraph_ptr = (&descendant_block.ethereum_block).into();
 
-                                Ok(descendant_block)
-                            })
-                            .and_then(move |descendant_block| {
-                                future::result(Self::parse_triggers(
-                                    log_filter.clone(),
-                                    call_filter.clone(),
-                                    block_filter.clone(),
-                                    include_calls_in_blocks,
-                                    descendant_block,
-                                ))
-                            }),
-                    ) as Box<dyn Stream<Item = _, Error = _> + Send>,
+                        Ok(descendant_block)
+                    })) as Box<dyn Stream<Item = _, Error = _> + Send>,
                 )))
             }
         }
