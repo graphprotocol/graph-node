@@ -24,7 +24,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
     fn process_log(
         &self,
         logger: Logger,
-        block: Arc<EthereumBlock>,
+        block: Arc<ThinEthereumBlock>,
         transaction: Arc<Transaction>,
         log: Arc<Log>,
         state: BlockState,
@@ -34,7 +34,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
     fn process_call(
         &self,
         logger: Logger,
-        block: Arc<EthereumBlock>,
+        block: Arc<ThinEthereumBlock>,
         transaction: Arc<Transaction>,
         call: Arc<EthereumCall>,
         state: BlockState,
@@ -44,7 +44,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
     fn process_block(
         &self,
         logger: Logger,
-        block: Arc<EthereumBlock>,
+        block: Arc<ThinEthereumBlock>,
         trigger_type: EthereumBlockTriggerType,
         state: BlockState,
     ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;

@@ -128,7 +128,7 @@ where
     fn process_trigger(
         &self,
         logger: &Logger,
-        block: Arc<EthereumBlock>,
+        block: Arc<ThinEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
     ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
@@ -144,7 +144,7 @@ where
     fn process_trigger_in_runtime_hosts(
         logger: &Logger,
         hosts: impl Iterator<Item = Arc<T::Host>>,
-        block: Arc<EthereumBlock>,
+        block: Arc<ThinEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
     ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
@@ -199,10 +199,7 @@ where
                 let matching_hosts: Vec<_> = hosts
                     .into_iter()
                     .filter(|host| {
-                        host.matches_block(
-                            trigger_type.clone(),
-                            block.block.number.unwrap().as_u64(),
-                        )
+                        host.matches_block(trigger_type.clone(), block.number.unwrap().as_u64())
                     })
                     .collect();
 

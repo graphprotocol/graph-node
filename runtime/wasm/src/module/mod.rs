@@ -180,7 +180,7 @@ where
     ) -> Result<BlockState, FailureError> {
         self.start_time = Instant::now();
 
-        let block = self.ctx.block.block.clone();
+        let block = self.ctx.block.clone();
 
         // Prepare an EthereumEvent for the WASM runtime
         // Decide on the destination type using the mapping
@@ -189,7 +189,7 @@ where
             RuntimeValue::from(
                 self.asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _>(
                     &EthereumEventData {
-                        block: EthereumBlockData::from(&block),
+                        block: EthereumBlockData::from(block.as_ref()),
                         transaction: EthereumTransactionData::from(transaction.deref()),
                         address: log.address,
                         log_index: log.log_index.unwrap_or(U256::zero()),
@@ -202,7 +202,7 @@ where
         } else {
             RuntimeValue::from(self.asc_new::<AscEthereumEvent<AscEthereumTransaction>, _>(
                 &EthereumEventData {
-                    block: EthereumBlockData::from(&block),
+                    block: EthereumBlockData::from(block.as_ref()),
                     transaction: EthereumTransactionData::from(transaction.deref()),
                     address: log.address,
                     log_index: log.log_index.unwrap_or(U256::zero()),
@@ -267,7 +267,7 @@ where
         let call = EthereumCallData {
             to: call.to,
             from: call.from,
-            block: EthereumBlockData::from(&self.ctx.block.block),
+            block: EthereumBlockData::from(self.ctx.block.as_ref()),
             transaction: EthereumTransactionData::from(transaction.deref()),
             inputs,
             outputs,
@@ -299,7 +299,7 @@ where
         self.start_time = Instant::now();
 
         // Prepare an EthereumBlock for the WASM runtime
-        let arg = EthereumBlockData::from(&self.ctx.block.block);
+        let arg = EthereumBlockData::from(self.ctx.block.as_ref());
 
         let result = self.module.clone().invoke_export(
             handler_name,

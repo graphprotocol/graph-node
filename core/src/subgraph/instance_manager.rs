@@ -1,7 +1,6 @@
 use futures::future::{loop_fn, Loop};
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::sync::RwLock;
 use std::time::Instant;
 use uuid::Uuid;
@@ -20,6 +19,7 @@ struct IndexingInputs<B, S> {
     network_name: String,
     start_blocks: Vec<u64>,
     store: Arc<S>,
+    eth_adapter: Arc<dyn EthereumAdapter>,
     stream_builder: B,
     templates_use_calls: bool,
     top_level_templates: Vec<DataSourceTemplate>,
@@ -162,6 +162,7 @@ impl SubgraphInstanceManager {
     pub fn new<B, S, M>(
         logger_factory: &LoggerFactory,
         stores: HashMap<String, Arc<S>>,
+        eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
         metrics_registry: Arc<M>,
@@ -182,6 +183,7 @@ impl SubgraphInstanceManager {
             logger_factory,
             subgraph_receiver,
             stores,
+            eth_adapters,
             host_builder,
             block_stream_builder,
             metrics_registry.clone(),
@@ -198,6 +200,7 @@ impl SubgraphInstanceManager {
         logger_factory: LoggerFactory,
         receiver: Receiver<SubgraphAssignmentProviderEvent>,
         stores: HashMap<String, Arc<S>>,
+        eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
         metrics_registry: Arc<M>,
@@ -236,6 +239,13 @@ impl SubgraphInstanceManager {
                                     .get(&n)
                                     .expect(&format!(
                                         "expected store that matches subgraph network: {}",
+                                        &n
+                                    ))
+                                    .clone(),
+                                eth_adapters
+                                    .get(&n)
+                                    .expect(&format!(
+                                        "expected eth adapter that matches subgraph network: {}",
                                         &n
                                     ))
                                     .clone(),
@@ -283,6 +293,7 @@ impl SubgraphInstanceManager {
         host_builder: impl RuntimeHostBuilder,
         stream_builder: B,
         store: Arc<S>,
+        eth_adapter: Arc<dyn EthereumAdapter>,
         manifest: SubgraphManifest,
         registry: Arc<M>,
     ) -> Result<(), Error>
@@ -346,6 +357,7 @@ impl SubgraphInstanceManager {
                 network_name,
                 start_blocks,
                 store,
+                eth_adapter,
                 stream_builder,
                 templates_use_calls,
                 top_level_templates,
@@ -478,6 +490,7 @@ where
                 .observe(block.triggers.len() as f64);
             process_block(
                 logger.clone(),
+                ctx.inputs.eth_adapter.clone(),
                 ctx,
                 block_stream_cancel_handle.clone(),
                 block,
@@ -548,6 +561,7 @@ where
 /// whether new dynamic data sources have been added to the subgraph.
 fn process_block<B, T: RuntimeHostBuilder, S>(
     logger: Logger,
+    eth_adapter: Arc<dyn EthereumAdapter>,
     ctx: IndexingContext<B, T, S>,
     block_stream_cancel_handle: CancelHandle,
     block: EthereumBlockWithTriggers,
@@ -556,13 +570,13 @@ where
     B: BlockStreamBuilder,
     S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
 {
-    let calls = block.calls;
     let triggers = block.triggers;
     let block = block.ethereum_block;
 
+    let block_ptr = EthereumBlockPointer::from(&block);
     let logger = logger.new(o!(
-        "block_number" => format!("{:?}", block.block.number.unwrap()),
-        "block_hash" => format!("{:?}", block.block.hash.unwrap())
+        "block_number" => format!("{:?}", block_ptr.number),
+        "block_hash" => format!("{:?}", block_ptr.hash)
     ));
     let logger1 = logger.clone();
 
@@ -577,9 +591,9 @@ where
     }
 
     // Obtain current and new block pointer (after this block is processed)
-    let block = Arc::new(block);
-    let block_ptr_now = EthereumBlockPointer::to_parent(&block);
-    let block_ptr_after = EthereumBlockPointer::from(&*block);
+    let thin_block = Arc::new(block.thin_block());
+    let block_ptr_now = EthereumBlockPointer::from(&block).to_parent();
+    let block_ptr_after = EthereumBlockPointer::from(&block);
     let block_ptr_for_new_data_sources = block_ptr_after.clone();
 
     let metrics = ctx.subgraph_metrics.clone();
@@ -590,7 +604,7 @@ where
         logger.clone(),
         ctx,
         BlockState::default(),
-        block.clone(),
+        Arc::new(block.thin_block()),
         triggers,
     )
     .and_then(move |(ctx, block_state)| {
@@ -626,67 +640,68 @@ where
                 };
 
                 // Reprocess the triggers from this block that match the new data sources
-
-                let block_with_calls = EthereumBlockWithCalls {
-                    ethereum_block: block.deref().clone(),
-                    calls: calls.clone(),
-                };
-
-                let block_with_triggers = match <B>::Stream::parse_triggers(
-                    EthereumLogFilter::from_data_sources(data_sources.iter()),
-                    EthereumCallFilter::from_data_sources(data_sources.iter()),
-                    EthereumBlockFilter::from_data_sources(data_sources.iter()),
-                    false,
-                    block_with_calls,
-                ) {
-                    Ok(block_with_triggers) => block_with_triggers,
-                    Err(err) => return Box::new(future::err(err.into())),
-                };
-                let triggers = block_with_triggers.triggers;
-
-                if triggers.len() == 1 {
-                    info!(
-                        logger,
-                        "1 trigger found in this block for the new data sources"
-                    );
-                } else if triggers.len() > 1 {
-                    info!(
-                        logger,
-                        "{} triggers found in this block for the new data sources",
-                        triggers.len()
-                    );
-                }
-
-                // Add entity operations for the new data sources to the block state
-                // and add runtimes for the data sources to the subgraph instance.
-                persist_dynamic_data_sources(
-                    logger.clone(),
-                    &mut ctx,
-                    &mut block_state.entity_cache,
-                    data_sources,
-                    block_ptr_for_new_data_sources,
-                );
-
                 let logger = logger.clone();
-                let block = block.clone();
+                let thin_block = thin_block.clone();
                 Box::new(
-                    stream::iter_ok(triggers)
-                        .fold(block_state, move |block_state, trigger| {
-                            // Process the triggers in each host in the same order the
-                            // corresponding data sources have been created.
-                            SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
-                                &logger,
-                                runtime_hosts.iter().cloned(),
-                                block.clone(),
-                                trigger,
-                                block_state,
+                    eth_adapter
+                        .triggers_in_block(
+                            &logger,
+                            EthereumLogFilter::from_data_sources(data_sources.iter()),
+                            EthereumCallFilter::from_data_sources(data_sources.iter()),
+                            EthereumBlockFilter::from_data_sources(data_sources.iter()),
+                            block.clone(),
+                        )
+                        .and_then(move |block_with_triggers| {
+                            let triggers = block_with_triggers.triggers;
+
+                            if triggers.len() == 1 {
+                                info!(
+                                    logger,
+                                    "1 trigger found in this block for the new data sources"
+                                );
+                            } else if triggers.len() > 1 {
+                                info!(
+                                    logger,
+                                    "{} triggers found in this block for the new data sources",
+                                    triggers.len()
+                                );
+                            }
+
+                            // Add entity operations for the new data sources to the block state
+                            // and add runtimes for the data sources to the subgraph instance.
+                            persist_dynamic_data_sources(
+                                logger.clone(),
+                                &mut ctx,
+                                &mut block_state.entity_cache,
+                                data_sources,
+                                block_ptr_for_new_data_sources,
+                            );
+
+                            let logger = logger.clone();
+                            let thin_block = thin_block.clone();
+                            Box::new(
+                                stream::iter_ok(triggers)
+                                    .fold(block_state, move |block_state, trigger| {
+                                        // Process the triggers in each host in the same order the
+                                        // corresponding data sources have been created.
+                                        SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
+                                            &logger,
+                                            runtime_hosts.iter().cloned(),
+                                            thin_block.clone(),
+                                            trigger,
+                                            block_state,
+                                        )
+                                    })
+                                    .and_then(|block_state| {
+                                        future::ok(Loop::Continue((ctx, block_state)))
+                                    }),
                             )
-                        })
-                        .and_then(|block_state| future::ok(Loop::Continue((ctx, block_state)))),
+                        }),
                 )
             },
         )
         .map(move |(ctx, block_state)| (ctx, block_state, needs_restart))
+        .from_err()
     })
     // Apply entity operations and advance the stream
     .and_then(move |(ctx, block_state, needs_restart)| {
@@ -741,7 +756,7 @@ fn process_triggers<B, T: RuntimeHostBuilder, S>(
     logger: Logger,
     ctx: IndexingContext<B, T, S>,
     block_state: BlockState,
-    block: Arc<EthereumBlock>,
+    block: Arc<ThinEthereumBlock>,
     triggers: Vec<EthereumTrigger>,
 ) -> impl Future<Item = (IndexingContext<B, T, S>, BlockState), Error = CancelableError<Error>>
 where

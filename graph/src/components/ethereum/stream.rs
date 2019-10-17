@@ -4,13 +4,13 @@ use futures::Stream;
 use crate::prelude::*;
 
 pub trait BlockStream: Stream<Item = EthereumBlockWithTriggers, Error = Error> {
-    fn parse_triggers(
+    fn triggers_in_block(
+        &self,
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
-        include_calls_in_blocks: bool,
-        descendant_block: EthereumBlockWithCalls,
-    ) -> Result<EthereumBlockWithTriggers, Error>;
+        descendant_block: BlockFinality,
+    ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send>;
 }
 
 pub trait BlockStreamBuilder: Clone + Send + Sync + 'static {

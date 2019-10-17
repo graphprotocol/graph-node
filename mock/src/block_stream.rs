@@ -34,13 +34,13 @@ impl EventConsumer<ChainHeadUpdate> for MockBlockStream {
 }
 
 impl BlockStream for MockBlockStream {
-    fn parse_triggers(
+    fn triggers_in_block(
+        &self,
         _: EthereumLogFilter,
         _: EthereumCallFilter,
         _: EthereumBlockFilter,
-        _include_calls_in_blocks: bool,
-        _descendant_block: EthereumBlockWithCalls,
-    ) -> Result<EthereumBlockWithTriggers, Error> {
+        _descendant_block: BlockFinality,
+    ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send> {
         unimplemented!()
     }
 }
