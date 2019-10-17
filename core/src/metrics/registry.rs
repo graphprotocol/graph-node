@@ -222,6 +222,9 @@ impl MetricsRegistryTrait for MetricsRegistry {
     }
 
     fn unregister(&self, metric: Box<dyn Collector>) {
-        self.registry.unregister(metric);
+        match self.registry.unregister(metric) {
+            Ok(_) => (),
+            Err(e) => error!(self.logger, "Unregistering metric failed = {:?}", e,),
+        };
     }
 }
