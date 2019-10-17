@@ -446,8 +446,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let metrics_registry = Arc::new(MetricsRegistry::new(
         logger.clone(),
         prometheus_registry.clone(),
-        String::from("graph_node"),
-        node_id.to_string(),
     ));
     let mut metrics_server =
         PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
