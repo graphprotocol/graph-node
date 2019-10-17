@@ -14,7 +14,7 @@ use std::io::Cursor;
 use std::time::Duration;
 use std::time::Instant;
 
-use graph::prelude::*;
+use graph::prelude::{SubgraphInstanceManager as _, *};
 
 use graph_core::{LinkResolver, SubgraphInstanceManager};
 use graph_mock::{
