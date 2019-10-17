@@ -7,23 +7,29 @@ pub struct MetricsRegistry {
     logger: Logger,
     registry: Arc<Registry>,
     const_labels: HashMap<String, String>,
-    namespace: String,
+    registration_errors_counter: Box<Counter>,
 }
 
 impl MetricsRegistry {
-    pub fn new(
-        logger: Logger,
-        registry: Arc<Registry>,
-        namespace: String,
-        node_id: String,
-    ) -> Self {
-        let mut const_labels = HashMap::new();
-        const_labels.insert(String::from("node_id"), node_id);
+    pub fn new(logger: Logger, registry: Arc<Registry>) -> Self {
+        let const_labels = HashMap::new();
+
+        // Generate counter for internal usage
+        let registration_errors_counter = {
+            let opts = Opts::new(
+                String::from("metrics_registration_errors"),
+                String::from("Counts Prometheus metrics registration errors."),
+            );
+            let counter = Counter::with_opts(opts)
+                .expect("failed to create `metrics_registration_errors` counter");
+            Box::new(counter)
+        };
+
         MetricsRegistry {
             logger: logger.new(o!("component" => String::from("MetricsRegistry"))),
             registry,
             const_labels,
-            namespace,
+            registration_errors_counter,
         }
     }
 
@@ -32,6 +38,7 @@ impl MetricsRegistry {
             None => return,
             Some(err) => err,
         };
+        self.registration_errors_counter.inc();
         match err {
             PrometheusError::AlreadyReg => {
                 error!(
@@ -76,7 +83,7 @@ impl Clone for MetricsRegistry {
             logger: self.logger.clone(),
             registry: self.registry.clone(),
             const_labels: self.const_labels.clone(),
-            namespace: self.namespace.clone(),
+            registration_errors_counter: self.registration_errors_counter.clone(),
         };
     }
 }
