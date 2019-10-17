@@ -117,6 +117,21 @@ impl EthereumTrigger {
             EthereumTrigger::Log(log) => log.block_number.unwrap().as_u64(),
         }
     }
+
+    pub fn block_hash(&self) -> H256 {
+        match self {
+            EthereumTrigger::Block(block_ptr, _) => block_ptr.hash,
+            EthereumTrigger::Call(call) => call.block_hash,
+            EthereumTrigger::Log(log) => log.block_hash.unwrap(),
+        }
+    }
+
+    pub fn block_ptr(&self) -> EthereumBlockPointer {
+        EthereumBlockPointer {
+            hash: self.block_hash(),
+            number: self.block_number(),
+        }
+    }
 }
 
 /// Ethereum block data.
