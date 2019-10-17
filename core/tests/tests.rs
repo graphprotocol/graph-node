@@ -14,13 +14,10 @@ use std::io::Cursor;
 use std::time::Duration;
 use std::time::Instant;
 
-use graph::prelude::{SubgraphInstanceManager as _, *};
+use graph::prelude::*;
 
-use graph_core::{LinkResolver, SubgraphInstanceManager};
-use graph_mock::{
-    FakeStore, MockBlockStreamBuilder, MockEthereumAdapter, MockMetricsRegistry, MockStore,
-};
-use web3::types::*;
+use graph_core::LinkResolver;
+use graph_mock::{MockEthereumAdapter, MockStore};
 
 use crate::tokio::timer::Delay;
 
