@@ -7,38 +7,70 @@ pub struct MetricsRegistry {
     logger: Logger,
     registry: Arc<Registry>,
     const_labels: HashMap<String, String>,
-    registration_errors_counter: Box<Counter>,
+    register_errors: Box<Counter>,
+    unregister_errors: Box<Counter>,
+    registered_metrics: Box<Gauge>,
 }
 
 impl MetricsRegistry {
     pub fn new(logger: Logger, registry: Arc<Registry>) -> Self {
         let const_labels = HashMap::new();
 
-        // Generate counter for internal usage
-        let registration_errors_counter = {
-            let opts = Opts::new(
-                String::from("metrics_registration_errors"),
-                String::from("Counts Prometheus metrics registration errors."),
-            );
-            let counter = Counter::with_opts(opts)
-                .expect("failed to create `metrics_registration_errors` counter");
-            Box::new(counter)
-        };
+        // Generate internal metrics
+        let register_errors = Self::gen_register_errors_counter();
+        let unregister_errors = Self::gen_unregister_errors_counter();
+        let registered_metrics = Self::gen_registered_metrics_gauge();
 
         MetricsRegistry {
             logger: logger.new(o!("component" => String::from("MetricsRegistry"))),
             registry,
             const_labels,
-            registration_errors_counter,
+            register_errors,
+            unregister_errors,
+            registered_metrics,
         }
+    }
+
+    fn gen_register_errors_counter() -> Box<Counter> {
+        let opts = Opts::new(
+            String::from("metrics_register_errors"),
+            String::from("Counts Prometheus metrics register errors"),
+        );
+        let counter =
+            Counter::with_opts(opts).expect("failed to create `metrics_register_errors` counter");
+        Box::new(counter)
+    }
+
+    fn gen_unregister_errors_counter() -> Box<Counter> {
+        let opts = Opts::new(
+            String::from("metrics_unregister_errors"),
+            String::from("Counts Prometheus metrics unregister errors"),
+        );
+        let counter =
+            Counter::with_opts(opts).expect("failed to create `metrics_unregister_errors` counter");
+        Box::new(counter)
+    }
+
+    fn gen_registered_metrics_gauge() -> Box<Gauge> {
+        let opts = Opts::new(
+            String::from("registered_metrics"),
+            String::from("Tracks the number of registered metrics on the node"),
+        );
+        let gauge = Gauge::with_opts(opts).expect("failed to create `registered_metrics` gauge");
+        Box::new(gauge)
     }
 
     pub fn register(&self, name: String, c: Box<dyn Collector>) {
         let err = match self.registry.register(c).err() {
-            None => return,
-            Some(err) => err,
+            None => {
+                self.registered_metrics.inc();
+                return;
+            }
+            Some(err) => {
+                self.register_errors.inc();
+                err
+            }
         };
-        self.registration_errors_counter.inc();
         match err {
             PrometheusError::AlreadyReg => {
                 error!(
@@ -83,7 +115,9 @@ impl Clone for MetricsRegistry {
             logger: self.logger.clone(),
             registry: self.registry.clone(),
             const_labels: self.const_labels.clone(),
-            registration_errors_counter: self.registration_errors_counter.clone(),
+            register_errors: self.register_errors.clone(),
+            unregister_errors: self.unregister_errors.clone(),
+            registered_metrics: self.registered_metrics.clone(),
         };
     }
 }
@@ -230,8 +264,13 @@ impl MetricsRegistryTrait for MetricsRegistry {
 
     fn unregister(&self, metric: Box<dyn Collector>) {
         match self.registry.unregister(metric) {
-            Ok(_) => (),
-            Err(e) => error!(self.logger, "Unregistering metric failed = {:?}", e,),
+            Ok(_) => {
+                self.registered_metrics.dec();
+            }
+            Err(e) => {
+                self.unregister_errors.inc();
+                error!(self.logger, "Unregistering metric failed = {:?}", e,);
+            }
         };
     }
 }
