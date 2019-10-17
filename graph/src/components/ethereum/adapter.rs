@@ -342,17 +342,6 @@ impl EthereumCallFilter {
         contract_addresses_function_signatures.is_empty()
     }
 
-    pub fn only_activated_filters(self, current_block: u64) -> Self {
-        let filtered_set: HashMap<Address, (u64, HashSet<[u8; 4]>)> = self
-            .contract_addresses_function_signatures
-            .into_iter()
-            .filter(|(_addr, (start_block, _fn_sigs))| &current_block >= start_block)
-            .collect();
-        Self {
-            contract_addresses_function_signatures: filtered_set,
-        }
-    }
-
     pub fn start_blocks(&self) -> Vec<u64> {
         self.contract_addresses_function_signatures
             .values()
@@ -374,6 +363,9 @@ impl FromIterator<(u64, Address, [u8; 4])> for EthereumCallFilter {
                     lookup.insert(address, (start_block, HashSet::default()));
                 }
                 lookup.get_mut(&address).map(|set| {
+                    if set.0 > start_block {
+                        set.0 = start_block
+                    }
                     set.1.insert(function_signature);
                     set
                 });
@@ -467,8 +459,9 @@ impl EthereumBlockFilter {
     pub fn start_blocks(&self) -> Vec<u64> {
         self.contract_addresses
             .iter()
+            .cloned()
             .filter(|(start_block, _fn_sigs)| start_block > &0)
-            .map(|(start_block, _fn_sigs)| *start_block)
+            .map(|(start_block, _fn_sigs)| start_block)
             .collect()
     }
 }
