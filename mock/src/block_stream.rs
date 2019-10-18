@@ -66,8 +66,8 @@ impl BlockStreamBuilder for MockBlockStreamBuilder {
         _: EthereumLogFilter,
         _: EthereumCallFilter,
         _: EthereumBlockFilter,
-        _include_calls_in_blocks: bool,
-        ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+        _: bool,
+        _: Arc<SubgraphEthRpcMetrics>,
     ) -> Self::Stream {
         MockBlockStream::new()
     }
