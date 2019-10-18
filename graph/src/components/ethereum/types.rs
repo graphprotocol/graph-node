@@ -435,3 +435,15 @@ impl<'a> From<&'a BlockFinality> for EthereumBlockPointer {
         }
     }
 }
+
+impl From<EthereumBlockPointer> for H256 {
+    fn from(ptr: EthereumBlockPointer) -> Self {
+        ptr.hash
+    }
+}
+
+impl From<EthereumBlockPointer> for u64 {
+    fn from(ptr: EthereumBlockPointer) -> Self {
+        ptr.number
+    }
+}
