@@ -23,6 +23,14 @@ impl EthereumAdapter for MockEthereumAdapter {
         unimplemented!();
     }
 
+    fn load_block(
+        &self,
+        _: &Logger,
+        _: H256,
+    ) -> Box<dyn Future<Item = ThinEthereumBlock, Error = Error> + Send> {
+        unimplemented!()
+    }
+
     fn block_by_hash(
         &self,
         _: &Logger,
@@ -142,6 +150,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn triggers_in_block(
         &self,
         _: &Logger,
+        _: Arc<SubgraphEthRpcMetrics>,
         _: EthereumLogFilter,
         _: EthereumCallFilter,
         _: EthereumBlockFilter,

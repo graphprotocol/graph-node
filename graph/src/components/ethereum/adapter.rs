@@ -570,6 +570,12 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
     ) -> Box<dyn Future<Item = Block<Transaction>, Error = EthereumAdapterError> + Send>;
 
+    fn load_block(
+        &self,
+        logger: &Logger,
+        block_hash: H256,
+    ) -> Box<dyn Future<Item = ThinEthereumBlock, Error = Error> + Send>;
+
     /// Find a block by its hash.
     fn block_by_hash(
         &self,
@@ -698,6 +704,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn triggers_in_block(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,

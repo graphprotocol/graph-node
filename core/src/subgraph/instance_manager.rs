@@ -47,6 +47,9 @@ struct IndexingContext<B, T: RuntimeHostBuilder, S> {
 
     /// Sensors to measue the execution of the subgraphs runtime hosts
     pub host_metrics: Arc<HostMetrics>,
+
+    /// Sensors to measue the execution of eth rpc calls
+    pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
 }
 
 pub struct SubgraphInstanceManager {
@@ -347,6 +350,10 @@ impl SubgraphInstanceManager {
             registry.clone(),
             deployment_id.clone().to_string(),
         ));
+        let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(
+            registry.clone(),
+            deployment_id.to_string(),
+        ));
         let instance =
             SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
 
@@ -373,6 +380,7 @@ impl SubgraphInstanceManager {
             },
             subgraph_metrics,
             host_metrics,
+            ethrpc_metrics,
         };
 
         // Keep restarting the subgraph until it terminates. The subgraph
@@ -445,6 +453,7 @@ where
             ctx.state.call_filter.clone(),
             ctx.state.block_filter.clone(),
             ctx.inputs.templates_use_calls,
+            ctx.ethrpc_metrics.clone(),
         )
         .from_err()
         .cancelable(&block_stream_canceler, || CancelableError::Cancel);
@@ -592,7 +601,7 @@ where
 
     // Obtain current and new block pointer (after this block is processed)
     let thin_block = Arc::new(block.thin_block());
-    let block_ptr_now = EthereumBlockPointer::from(&block).to_parent();
+    let block_ptr_now = thin_block.parent_ptr();
     let block_ptr_after = EthereumBlockPointer::from(&block);
     let block_ptr_for_new_data_sources = block_ptr_after.clone();
 
@@ -646,6 +655,7 @@ where
                     eth_adapter
                         .triggers_in_block(
                             &logger,
+                            ctx.ethrpc_metrics.clone(),
                             EthereumLogFilter::from_data_sources(data_sources.iter()),
                             EthereumCallFilter::from_data_sources(data_sources.iter()),
                             EthereumBlockFilter::from_data_sources(data_sources.iter()),

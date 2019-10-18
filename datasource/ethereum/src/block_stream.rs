@@ -154,11 +154,11 @@ pub struct BlockStreamMetrics {
 }
 
 impl BlockStreamMetrics {
-    pub fn new<M: MetricsRegistry>(registry: Arc<M>, deployment_id: SubgraphDeploymentId) -> Self {
-        let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(
-            registry.clone(),
-            deployment_id.to_string(),
-        ));
+    pub fn new<M: MetricsRegistry>(
+        registry: Arc<M>,
+        ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+        deployment_id: SubgraphDeploymentId,
+    ) -> Self {
         let blocks_behind = registry
             .new_gauge(
                 format!("subgraph_blocks_behind_{}", deployment_id.to_string()),
@@ -318,9 +318,7 @@ where
     }
 
     /// Determine the next reconciliation step. Does not modify Store or ChainStore.
-    fn get_next_step(
-        &self,
-    ) -> impl Future<Item = ReconciliationStep, Error = Error> + Send + 'static {
+    fn get_next_step(&self) -> impl Future<Item = ReconciliationStep, Error = Error> + Send {
         let ctx = self.clone();
         let log_filter = self.log_filter.clone();
         let call_filter = self.call_filter.clone();
@@ -399,7 +397,7 @@ where
         // Most importantly: Our ability to make this assumption (or not) will determine what
         // Ethereum RPC calls can give us accurate data without race conditions.
         // (This is mostly due to some unfortunate API design decisions on the Ethereum side)
-        if (head_ptr.number - subgraph_ptr.number) > reorg_threshold {
+        if head_ptr.number - subgraph_ptr.number > reorg_threshold {
             // Since we are beyond the reorg threshold, the Ethereum node knows what block has
             // been permanently assigned this block number.
             // This allows us to ask the node: does subgraph_ptr point to a block that was
@@ -620,6 +618,7 @@ where
                             Box::new(block_with_calls.and_then(move |block| {
                                 eth_adapter.triggers_in_block(
                                     &logger,
+                                    ctx.metrics.ethrpc_metrics.clone(),
                                     log_filter.clone(),
                                     call_filter.clone(),
                                     block_filter.clone(),
@@ -663,34 +662,35 @@ where
                 // This means we need to revert this block.
 
                 // First, load the block in order to get the parent hash.
-                Box::new(ctx.load_block(subgraph_ptr.hash).and_then(move |block| {
-                    debug!(
-                        ctx.logger,
-                        "Reverting block to get back to main chain";
-                        "block_number" => format!("{}", block.number.unwrap()),
-                        "block_hash" => format!("{}", block.hash.unwrap())
-                    );
+                Box::new(
+                    self.eth_adapter
+                        .load_block(&ctx.logger, subgraph_ptr.hash)
+                        .and_then(move |block| {
+                            debug!(
+                                ctx.logger,
+                                "Reverting block to get back to main chain";
+                                "block_number" => format!("{}", block.number.unwrap()),
+                                "block_hash" => format!("{}", block.hash.unwrap())
+                            );
 
-                    // Produce pointer to parent block (using parent hash).
-                    let parent_ptr = EthereumBlockPointer::from(&block).to_parent();
-
-                    // Revert entity changes from this block, and update subgraph ptr.
-                    future::result(
-                        ctx.subgraph_store
-                            .revert_block_operations(
-                                ctx.subgraph_id.clone(),
-                                subgraph_ptr,
-                                parent_ptr,
+                            // Revert entity changes from this block, and update subgraph ptr.
+                            future::result(
+                                ctx.subgraph_store
+                                    .revert_block_operations(
+                                        ctx.subgraph_id.clone(),
+                                        subgraph_ptr,
+                                        block.parent_ptr(),
+                                    )
+                                    .map_err(Error::from)
+                                    .map(|()| {
+                                        metrics.reverted_blocks.set(reverted_block_number);
+                                        // At this point, the loop repeats, and we try to move
+                                        // the subgraph ptr another step in the right direction.
+                                        ReconciliationStepOutcome::MoreSteps
+                                    }),
                             )
-                            .map_err(Error::from)
-                            .map(|()| {
-                                metrics.reverted_blocks.set(reverted_block_number);
-                                // At this point, the loop repeats, and we try to move
-                                // the subgraph ptr another step in the right direction.
-                                ReconciliationStepOutcome::MoreSteps
-                            }),
-                    )
-                }))
+                        }),
+                )
             }
             ReconciliationStep::AdvanceToDescendantBlock { from, to } => Box::new(future::result(
                 self.set_block_ptr_with_no_changes(from, to)
@@ -709,8 +709,7 @@ where
                         // First, check if there are blocks between subgraph_ptr and
                         // descendant_block.
                         let descendant_parent_ptr =
-                            EthereumBlockPointer::from(&descendant_block.ethereum_block)
-                                .to_parent();
+                            descendant_block.ethereum_block.thin_block().parent_ptr();
                         if subgraph_ptr != descendant_parent_ptr {
                             // descendant_block is not a direct child.
                             // Therefore, there are blocks that are irrelevant to this subgraph
@@ -908,24 +907,39 @@ where
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
     fn load_blocks(
         &self,
-        block_hashes: Vec<H256>,
+        block_hashes: HashSet<H256>,
     ) -> impl Stream<Item = ThinEthereumBlock, Error = Error> + Send {
-        let ctx = self.clone();
+        // Search for the block in the store first then use the ethereum adapter as a backup.
+        let mut blocks = self
+            .chain_store
+            .blocks(block_hashes.iter().cloned())
+            .map_err(|e| error!(self.logger, "Error accessing block cache {}", e))
+            .unwrap_or_default();
+
+        let missing_blocks = Vec::from_iter(
+            block_hashes
+                .into_iter()
+                .filter(|hash| !blocks.iter().any(|b| b.hash == Some(*hash))),
+        );
 
         let block_batch_size: usize = env::var_os("ETHEREUM_BLOCK_BATCH_SIZE")
             .map(|s| s.to_str().unwrap().parse().unwrap())
             .unwrap_or(50);
 
-        let block_hashes_batches = block_hashes
+        let block_hashes_batches = missing_blocks
             .chunks(block_batch_size) // maximum batch size
             .map(|chunk| chunk.to_vec())
             .collect::<Vec<_>>();
 
         // Return a stream that lazily loads batches of blocks
+        let chain_store = self.chain_store.clone();
+        let logger = self.logger.clone();
+        let logger1 = self.logger.clone();
+        let eth_adapter = self.eth_adapter.clone();
         stream::iter_ok::<_, Error>(block_hashes_batches)
             .map(move |block_hashes_batch| {
                 debug!(
-                    ctx.logger,
+                    logger,
                     "Requesting {} block(s) in parallel",
                     block_hashes_batch.len()
                 );
@@ -933,29 +947,21 @@ where
                 // Start loading all blocks in this batch
                 let block_futures = block_hashes_batch
                     .into_iter()
-                    .map(|block_hash| ctx.load_block(block_hash));
+                    .map(|block_hash| eth_adapter.load_block(&logger, block_hash));
 
                 stream::futures_ordered(block_futures)
             })
             .flatten()
-    }
-
-    fn load_block(
-        &self,
-        block_hash: H256,
-    ) -> impl Future<Item = ThinEthereumBlock, Error = Error> + Send {
-        Box::new(
-            self.eth_adapter
-                .block_by_hash(&self.logger, block_hash)
-                .and_then(move |block_opt| {
-                    block_opt.ok_or_else(move || {
-                        format_err!(
-                            "Ethereum node could not find block with hash {}",
-                            block_hash
-                        )
-                    })
-                }),
-        )
+            .collect()
+            .map(move |new_blocks| {
+                if let Err(e) = chain_store.upsert_thin_blocks(new_blocks.clone()) {
+                    error!(logger1, "Error writing to block cache {}", e);
+                }
+                blocks.extend(new_blocks);
+                blocks.sort_by_key(|block| block.number);
+                stream::iter_ok(blocks)
+            })
+            .flatten_stream()
     }
 }
 
@@ -973,6 +979,7 @@ where
     ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send> {
         Box::new(self.ctx.eth_adapter.triggers_in_block(
             &self.ctx.logger,
+            self.ctx.metrics.ethrpc_metrics.clone(),
             log_filter,
             call_filter,
             block_filter,
@@ -1223,6 +1230,7 @@ where
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
         templates_use_calls: bool,
+        ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
     ) -> Self::Stream {
         let logger = logger.new(o!(
             "component" => "BlockStream",
@@ -1246,7 +1254,11 @@ where
             .clone();
 
         // Instantiate metrics needed by the BlockStream
-        let metrics = BlockStreamMetrics::new(self.metrics_registry.clone(), deployment_id.clone());
+        let metrics = BlockStreamMetrics::new(
+            self.metrics_registry.clone(),
+            ethrpc_metrics,
+            deployment_id.clone(),
+        );
 
         // Create the actual subgraph-specific block stream
         BlockStream::new(

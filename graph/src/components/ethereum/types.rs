@@ -9,6 +9,7 @@ pub trait ThinEthereumBlockExt {
     fn number(&self) -> u64;
     fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
     fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
+    fn parent_ptr(&self) -> EthereumBlockPointer;
 }
 
 impl ThinEthereumBlockExt for ThinEthereumBlock {
@@ -26,6 +27,13 @@ impl ThinEthereumBlockExt for ThinEthereumBlock {
         call.transaction_hash
             .and_then(|hash| self.transactions.iter().find(|tx| tx.hash == hash))
             .cloned()
+    }
+
+    fn parent_ptr(&self) -> EthereumBlockPointer {
+        EthereumBlockPointer {
+            hash: self.parent_hash,
+            number: self.number() - 1,
+        }
     }
 }
 
@@ -338,14 +346,6 @@ pub struct EthereumBlockPointer {
 }
 
 impl EthereumBlockPointer {
-    /// Creates a pointer to the parent of the specified block.
-    pub fn to_parent(&self) -> EthereumBlockPointer {
-        EthereumBlockPointer {
-            hash: self.hash,
-            number: self.number - 1,
-        }
-    }
-
     /// Encodes the block hash into a hexadecimal string **without** a "0x" prefix.
     /// Hashes are stored in the database in this format.
     ///
