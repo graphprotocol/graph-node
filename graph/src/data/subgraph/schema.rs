@@ -239,7 +239,7 @@ impl SubgraphDeploymentEntity {
             latest_ethereum_block_number: earliest_ethereum_block.map(Into::into),
             ethereum_head_block_hash: chain_head_block.map(Into::into),
             ethereum_head_block_number: chain_head_block.map(Into::into),
-            total_ethereum_blocks_count: 0,
+            total_ethereum_blocks_count: chain_head_block.map_or(0, |block| block.number + 1),
         }
     }
 
