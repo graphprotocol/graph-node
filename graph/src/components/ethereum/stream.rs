@@ -3,15 +3,7 @@ use futures::Stream;
 
 use crate::prelude::*;
 
-pub trait BlockStream: Stream<Item = EthereumBlockWithTriggers, Error = Error> {
-    fn triggers_in_block(
-        &self,
-        log_filter: EthereumLogFilter,
-        call_filter: EthereumCallFilter,
-        block_filter: EthereumBlockFilter,
-        descendant_block: BlockFinality,
-    ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send>;
-}
+pub trait BlockStream: Stream<Item = EthereumBlockWithTriggers, Error = Error> {}
 
 pub trait BlockStreamBuilder: Clone + Send + Sync + 'static {
     type Stream: BlockStream + Send + 'static;

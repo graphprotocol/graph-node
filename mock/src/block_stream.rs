@@ -33,17 +33,7 @@ impl EventConsumer<ChainHeadUpdate> for MockBlockStream {
     }
 }
 
-impl BlockStream for MockBlockStream {
-    fn triggers_in_block(
-        &self,
-        _: EthereumLogFilter,
-        _: EthereumCallFilter,
-        _: EthereumBlockFilter,
-        _descendant_block: BlockFinality,
-    ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send> {
-        unimplemented!()
-    }
-}
+impl BlockStream for MockBlockStream {}
 
 #[derive(Clone)]
 pub struct MockBlockStreamBuilder;
