@@ -969,22 +969,6 @@ where
     S: Store,
     C: ChainStore,
 {
-    fn triggers_in_block(
-        &self,
-        log_filter: EthereumLogFilter,
-        call_filter: EthereumCallFilter,
-        block_filter: EthereumBlockFilter,
-        descendant_block: BlockFinality,
-    ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send> {
-        Box::new(self.ctx.eth_adapter.triggers_in_block(
-            &self.ctx.logger,
-            self.ctx.metrics.ethrpc_metrics.clone(),
-            log_filter,
-            call_filter,
-            block_filter,
-            descendant_block,
-        ))
-    }
 }
 
 impl<S, C> Stream for BlockStream<S, C>
