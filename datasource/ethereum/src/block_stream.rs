@@ -571,7 +571,6 @@ where
             // Walk back to one block short of subgraph_ptr.number
             let offset = head_ptr.number - subgraph_ptr.number - 1;
             let head_ancestor_opt = ctx.chain_store.ancestor_block(head_ptr, offset).unwrap();
-            let include_calls_in_blocks = self.include_calls_in_blocks();
             let logger = self.logger.clone();
             match head_ancestor_opt {
                 None => {
@@ -593,7 +592,7 @@ where
                         // Note that head_ancestor is a child of subgraph_ptr.
                         let eth_adapter = self.eth_adapter.clone();
                         let block_future = {
-                            let block_with_calls = if !include_calls_in_blocks {
+                            let block_with_calls = if !self.include_calls_in_blocks() {
                                 Box::new(future::ok(EthereumBlockWithCalls {
                                     ethereum_block: head_ancestor,
                                     calls: None,
