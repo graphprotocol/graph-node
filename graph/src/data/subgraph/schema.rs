@@ -209,8 +209,8 @@ pub struct SubgraphDeploymentEntity {
     synced: bool,
     earliest_ethereum_block_hash: Option<H256>,
     earliest_ethereum_block_number: Option<u64>,
-    latest_ethereum_block_hash: H256,
-    latest_ethereum_block_number: u64,
+    latest_ethereum_block_hash: Option<H256>,
+    latest_ethereum_block_number: Option<u64>,
     ethereum_head_block_hash: Option<H256>,
     ethereum_head_block_number: Option<u64>,
     total_ethereum_blocks_count: u64,
@@ -226,23 +226,20 @@ impl SubgraphDeploymentEntity {
         source_manifest: &SubgraphManifest,
         failed: bool,
         synced: bool,
-        earliest_ethereum_block: EthereumBlockPointer,
-        latest_ethereum_block: Option<EthereumBlockPointer>,
+        earliest_ethereum_block: Option<EthereumBlockPointer>,
+        chain_head_block: Option<EthereumBlockPointer>,
     ) -> Self {
-        let latest_ethereum_block =
-            latest_ethereum_block.unwrap_or(earliest_ethereum_block.clone());
-
         Self {
             manifest: SubgraphManifestEntity::from(source_manifest),
             failed,
             synced,
-            earliest_ethereum_block_hash: Some(earliest_ethereum_block.hash),
-            earliest_ethereum_block_number: Some(earliest_ethereum_block.number),
-            latest_ethereum_block_hash: earliest_ethereum_block.hash,
-            latest_ethereum_block_number: earliest_ethereum_block.number,
-            ethereum_head_block_hash: Some(latest_ethereum_block.hash),
-            ethereum_head_block_number: Some(latest_ethereum_block.number),
-            total_ethereum_blocks_count: latest_ethereum_block.number,
+            earliest_ethereum_block_hash: earliest_ethereum_block.map(Into::into),
+            earliest_ethereum_block_number: earliest_ethereum_block.map(Into::into),
+            latest_ethereum_block_hash: earliest_ethereum_block.map(Into::into),
+            latest_ethereum_block_number: earliest_ethereum_block.map(Into::into),
+            ethereum_head_block_hash: chain_head_block.map(Into::into),
+            ethereum_head_block_number: chain_head_block.map(Into::into),
+            total_ethereum_blocks_count: 0,
         }
     }
 
@@ -279,31 +276,27 @@ impl SubgraphDeploymentEntity {
         entity.set("synced", self.synced);
         entity.set(
             "earliestEthereumBlockHash",
-            self.earliest_ethereum_block_hash
-                .map_or(Value::Null, |hash| Value::from(format!("{:x}", hash))),
+            Value::from(self.earliest_ethereum_block_hash),
         );
         entity.set(
             "earliestEthereumBlockNumber",
-            self.earliest_ethereum_block_number
-                .map_or(Value::Null, Value::from),
+            Value::from(self.earliest_ethereum_block_number),
         );
         entity.set(
             "latestEthereumBlockHash",
-            format!("{:x}", self.latest_ethereum_block_hash),
+            Value::from(self.latest_ethereum_block_hash),
         );
         entity.set(
             "latestEthereumBlockNumber",
-            self.latest_ethereum_block_number,
+            Value::from(self.latest_ethereum_block_number),
         );
         entity.set(
             "ethereumHeadBlockHash",
-            self.ethereum_head_block_hash
-                .map_or(Value::Null, |hash| Value::from(format!("{:x}", hash))),
+            Value::from(self.ethereum_head_block_hash),
         );
         entity.set(
             "ethereumHeadBlockNumber",
-            self.ethereum_head_block_number
-                .map_or(Value::Null, Value::from),
+            Value::from(self.ethereum_head_block_number),
         );
         entity.set("totalEthereumBlocksCount", self.total_ethereum_blocks_count);
         entity.set("entityCount", 0 as u64);
