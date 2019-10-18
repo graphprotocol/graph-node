@@ -19,12 +19,12 @@ type SubgraphDeployment @entity {
     manifest: SubgraphManifest!
     failed: Boolean!
     synced: Boolean!
-    earliestEthereumBlockHash: String
+    earliestEthereumBlockHash: Bytes
     earliestEthereumBlockNumber: BigInt
-    latestEthereumBlockHash: String!
-    latestEthereumBlockNumber: BigInt!
+    latestEthereumBlockHash: Bytes
+    latestEthereumBlockNumber: BigInt
     ethereumHeadBlockNumber: BigInt
-    ethereumHeadBlockHash: String
+    ethereumHeadBlockHash: Bytes
     totalEthereumBlocksCount: BigInt!
     entityCount: BigInt!
     dynamicDataSources: [DynamicEthereumContractDataSource!] @derivedFrom(field: "deployment")
