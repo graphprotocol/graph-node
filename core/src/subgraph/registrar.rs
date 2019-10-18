@@ -513,48 +513,40 @@ fn resolve_subgraph_chain_blocks(
     logger: &Logger,
 ) -> Box<
     dyn Future<
-            Item = (Option<EthereumBlockPointer>, EthereumBlockPointer),
+            Item = (Option<EthereumBlockPointer>, Option<EthereumBlockPointer>),
             Error = SubgraphRegistrarError,
         > + Send,
 > {
-    let chain_store_inner = chain_store.clone();
-
     Box::new(
-        manifest
-            .data_sources
-            .clone()
+        // If the minimum start block is 0 (i.e. the genesis block),
+        // return `None` to start indexing from the genesis block. Otherwise
+        // return a block pointer for the block with number `min_start_block - 1`.
+        match manifest
+            .start_blocks()
             .into_iter()
-            .map(|data_source| data_source.source.start_block)
             .min()
-            .map(move |block_number| {
-                // Resolve a block pointer representation of the earliest subgraph start_block
-                // Since the block stream steps start with subgraph_ptr we use a saturating
-                // subtraction to set to earliest_block - 1
+            .expect("cannot identify minimum start block because there are no data sources")
+        {
+            0 => Box::new(future::ok(None)) as Box<dyn Future<Item = _, Error = _> + Send>,
+            min_start_block => Box::new(
                 ethereum_adapter
-                    .block_pointer_from_number(logger, block_number.saturating_sub(1))
-                    .from_err()
-                    .and_then(move |pointer| {
-                        if pointer.number == 0 {
-                            chain_store_inner.genesis_block_ptr()
-                        } else {
-                            Ok(pointer)
-                        }
-                    })
+                    .block_pointer_from_number(logger, min_start_block - 1)
+                    .map(move |block_ptr| Some(block_ptr))
                     .map_err(move |_| {
                         SubgraphRegistrarError::ManifestValidationError(vec![
                             SubgraphManifestValidationError::BlockNotFound(
-                                block_number.clone().to_string(),
+                                min_start_block.to_string(),
                             ),
                         ])
-                    })
-            })
-            .unwrap()
-            .and_then(move |start_block_pointer| {
-                chain_store
-                    .chain_head_ptr()
-                    .map(|chain_head_block_pointer| (chain_head_block_pointer, start_block_pointer))
-                    .map_err(SubgraphRegistrarError::Unknown)
-            }),
+                    }),
+            ) as Box<dyn Future<Item = _, Error = _> + Send>,
+        }
+        .and_then(move |start_block_ptr| {
+            chain_store
+                .chain_head_ptr()
+                .map(|chain_head_block_ptr| (chain_head_block_ptr, start_block_ptr))
+                .map_err(SubgraphRegistrarError::Unknown)
+        }),
     )
 }
 
@@ -876,13 +868,12 @@ fn create_subgraph_version(
                 ethereum_adapter.clone(),
                 &logger.clone(),
             )
-            .and_then(move |(chain_head_block, earliest_block)| {
-                // Log earliest_block + 1 in order to accurately represent the start of the block
-                // stream. (the initial block range starts with earliest_block + 1)
+            .and_then(move |(chain_head_block, start_block)| {
                 info!(
                     logger,
                     "Set subgraph start block";
-                    "block_number" => earliest_block.number + 1
+                    "block_number" => format!("{:?}", start_block.map(|block| block.number)),
+                    "block_hashr" => format!("{:?}", start_block.map(|block| block.hash)),
                 );
 
                 // Apply the subgraph versioning and deployment operations,
@@ -897,7 +888,7 @@ fn create_subgraph_version(
                             &manifest,
                             false,
                             false,
-                            earliest_block,
+                            start_block,
                             chain_head_block,
                         )
                         .create_operations(&manifest.id),
