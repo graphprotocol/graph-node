@@ -546,6 +546,24 @@ where
         )
     }
 
+    fn load_block(
+        &self,
+        logger: &Logger,
+        block_hash: H256,
+    ) -> Box<dyn Future<Item = ThinEthereumBlock, Error = Error> + Send> {
+        Box::new(
+            self.block_by_hash(&logger, block_hash)
+                .and_then(move |block_opt| {
+                    block_opt.ok_or_else(move || {
+                        format_err!(
+                            "Ethereum node could not find block with hash {}",
+                            block_hash
+                        )
+                    })
+                }),
+        )
+    }
+
     fn block_by_hash(
         &self,
         logger: &Logger,
@@ -861,14 +879,14 @@ where
         // Scan the block range from triggers to find relevant blocks
         if !log_filter.is_empty() {
             trigger_futs.push(Box::new(
-                eth.blocks_with_logs(&logger, from, to, log_filter)
+                eth.blocks_with_logs(&logger, subgraph_metrics.clone(), from, to, log_filter)
                     .map(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect()),
             ))
         }
 
         if !call_filter.is_empty() {
             trigger_futs.push(Box::new(
-                eth.blocks_with_calls(&logger, from, to, call_filter)
+                eth.blocks_with_calls(&logger, subgraph_metrics.clone(), from, to, call_filter)
                     .map(EthereumTrigger::Call)
                     .collect(),
             ));
@@ -882,7 +900,7 @@ where
                 // a `call_filter` and run `blocks_with_calls`
                 let call_filter = EthereumCallFilter::from(block_filter);
                 trigger_futs.push(Box::new(
-                    eth.blocks_with_calls(&logger, from, to, call_filter)
+                    eth.blocks_with_calls(&logger, subgraph_metrics.clone(), from, to, call_filter)
                         .map(|call| {
                             EthereumTrigger::Block(
                                 EthereumBlockPointer::from(&call),
@@ -954,11 +972,9 @@ where
         let eth = self.clone();
         let logger = logger.clone();
         Box::new(
-            stream::iter_ok(
-                log_filter
-                    .eth_get_logs_filters()
-                    .map(move |filter| eth.log_stream(logger.clone(), from, to, filter)),
-            )
+            stream::iter_ok(log_filter.eth_get_logs_filters().map(move |filter| {
+                eth.log_stream(logger.clone(), subgraph_metrics.clone(), from, to, filter)
+            }))
             .buffered(*LOG_STREAM_PARALLEL_CHUNKS as usize)
             .concat2(),
         )
@@ -1061,6 +1077,7 @@ where
     fn triggers_in_block(
         &self,
         logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
@@ -1070,6 +1087,7 @@ where
             match &ethereum_block {
                 BlockFinality::Final(block) => self.blocks_with_triggers(
                     logger,
+                    subgraph_metrics,
                     block.number(),
                     block.number(),
                     log_filter.clone(),

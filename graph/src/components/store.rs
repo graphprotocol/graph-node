@@ -1006,13 +1006,15 @@ pub trait ChainStore: Send + Sync + 'static {
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
 
     /// Insert blocks into the store (or update if they are already present).
-    fn upsert_blocks<'a, B, E>(
-        &self,
-        blocks: B,
-    ) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
+    fn upsert_blocks<'a, B, E>(&self, _: B) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
     where
         B: Stream<Item = EthereumBlock, Error = E> + Send + 'a,
-        E: From<Error> + Send + 'a;
+        E: From<Error> + Send + 'a,
+    {
+        unimplemented!()
+    }
+
+    fn upsert_thin_blocks(&self, blocks: Vec<ThinEthereumBlock>) -> Result<(), Error>;
 
     /// Try to update the head block pointer to the block with the highest block number.
     ///
@@ -1042,8 +1044,8 @@ pub trait ChainStore: Send + Sync + 'static {
     /// The head block pointer will be None on initial set up.
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
 
-    /// Get Some(block) if it is present in the chain store, or None.
-    fn block(&self, block_hash: H256) -> Result<Option<EthereumBlock>, Error>;
+    /// Returns the blocks present in the store.
+    fn blocks(&self, hashes: impl Iterator<Item = H256>) -> Result<Vec<ThinEthereumBlock>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to

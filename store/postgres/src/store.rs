@@ -1081,10 +1081,9 @@ impl ChainStore for Store {
             );
 
             // Insert blocks.
-            // If the table already contains a block with the same hash,
-            // then overwrite that block (on conflict do update).
-            // That case is a no-op because blocks are immutable
-            // (unless the Ethereum node returned corrupt data).
+            //
+            // If the table already contains a block with the same hash, then overwrite that block
+            // if it may be adding transaction receipts.
             insert_into(ethereum_blocks)
                 .values(values.clone())
                 .on_conflict(hash)
@@ -1095,6 +1094,38 @@ impl ChainStore for Store {
                 .map_err(E::from)
                 .map(|_| ())
         }))
+    }
+
+    fn upsert_thin_blocks(&self, blocks: Vec<ThinEthereumBlock>) -> Result<(), Error> {
+        use crate::db_schema::ethereum_blocks::dsl::*;
+
+        let conn = self.conn.clone();
+        let net_name = self.network_name.clone();
+        for block in blocks {
+            let block_hash = format!("{:x}", block.hash.unwrap());
+            let p_hash = format!("{:x}", block.parent_hash);
+            let block_number = block.number.unwrap().as_u64();
+            let json_blob = serde_json::to_value(&EthereumBlock {
+                block,
+                transaction_receipts: Vec::new(),
+            })
+            .expect("Failed to serialize block");
+            let values = (
+                hash.eq(block_hash),
+                number.eq(block_number as i64),
+                parent_hash.eq(p_hash),
+                network_name.eq(&net_name),
+                data.eq(json_blob),
+            );
+
+            // Insert blocks. On conflict do nothing, we don't want to erase transaction receipts.
+            insert_into(ethereum_blocks)
+                .values(values.clone())
+                .on_conflict(hash)
+                .do_nothing()
+                .execute(&*conn.get()?)?;
+        }
+        Ok(())
     }
 
     fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error> {
@@ -1143,21 +1174,18 @@ impl ChainStore for Store {
             .map_err(Error::from)
     }
 
-    fn block(&self, block_hash: H256) -> Result<Option<EthereumBlock>, Error> {
+    fn blocks(&self, hashes: impl Iterator<Item = H256>) -> Result<Vec<ThinEthereumBlock>, Error> {
         use crate::db_schema::ethereum_blocks::dsl::*;
+        use diesel::dsl::any;
 
         ethereum_blocks
             .select(data)
             .filter(network_name.eq(&self.network_name))
-            .filter(hash.eq(format!("{:x}", block_hash)))
-            .load::<serde_json::Value>(&*self.get_conn()?)
-            .map_err(Error::from)
-            .map(|json_blocks| match json_blocks.len() {
-                0 => Ok(None),
-                1 => Ok(Some(serde_json::from_value(json_blocks[0].clone())?)),
-                _ => unreachable!(),
-            })
-            .and_then(|x| x)
+            .filter(hash.eq(any(Vec::from_iter(hashes.map(|h| format!("{:x}", h))))))
+            .load::<serde_json::Value>(&*self.get_conn()?)?
+            .into_iter()
+            .map(|block| serde_json::from_value(block["block"].clone()).map_err(Into::into))
+            .collect()
     }
 
     fn ancestor_block(

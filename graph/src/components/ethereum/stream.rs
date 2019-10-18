@@ -26,5 +26,6 @@ pub trait BlockStreamBuilder: Clone + Send + Sync + 'static {
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
         include_calls_in_blocks: bool,
+        ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
     ) -> Self::Stream;
 }
