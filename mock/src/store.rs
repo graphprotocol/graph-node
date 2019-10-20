@@ -179,7 +179,7 @@ impl Store for MockStore {
         }
     }
 
-    fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
+    fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<Option<EthereumBlockPointer>, Error> {
         unimplemented!();
     }
 
@@ -478,7 +478,7 @@ impl Store for FakeStore {
         }
     }
 
-    fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
+    fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<Option<EthereumBlockPointer>, Error> {
         unimplemented!();
     }
 
