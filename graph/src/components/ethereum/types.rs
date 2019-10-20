@@ -9,7 +9,7 @@ pub trait LightEthereumBlockExt {
     fn number(&self) -> u64;
     fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
     fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
-    fn parent_ptr(&self) -> EthereumBlockPointer;
+    fn parent_ptr(&self) -> Option<EthereumBlockPointer>;
 }
 
 impl LightEthereumBlockExt for LightEthereumBlock {
@@ -29,10 +29,13 @@ impl LightEthereumBlockExt for LightEthereumBlock {
             .cloned()
     }
 
-    fn parent_ptr(&self) -> EthereumBlockPointer {
-        EthereumBlockPointer {
-            hash: self.parent_hash,
-            number: self.number() - 1,
+    fn parent_ptr(&self) -> Option<EthereumBlockPointer> {
+        match self.number() {
+            0 => None,
+            n => Some(EthereumBlockPointer {
+                hash: self.parent_hash,
+                number: n - 1,
+            }),
         }
     }
 }
