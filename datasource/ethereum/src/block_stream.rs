@@ -258,18 +258,21 @@ where
         );
         trace!(
             ctx.logger, "Subgraph pointer";
-            "hash" => format!("{:?}", subgraph_ptr.hash),
-            "number" => &subgraph_ptr.number
+            "hash" => format!("{:?}", subgraph_ptr.map(|block| block.hash)),
+            "number" => subgraph_ptr.map(|block| block.number),
         );
 
         // Only continue if the subgraph block ptr is behind the head block ptr.
         // subgraph_ptr > head_ptr shouldn't happen, but if it does, it's safest to just stop.
-        self.metrics
-            .blocks_behind
-            .set((head_ptr.number - subgraph_ptr.number) as f64);
-        if subgraph_ptr.number >= head_ptr.number {
-            return Box::new(future::ok(ReconciliationStep::Done))
-                as Box<dyn Future<Item = _, Error = _> + Send>;
+        if let Some(ptr) = subgraph_ptr {
+            self.metrics
+                .blocks_behind
+                .set((head_ptr.number - ptr.number) as f64);
+
+            if ptr.number >= head_ptr.number {
+                return Box::new(future::ok(ReconciliationStep::Done))
+                    as Box<dyn Future<Item = _, Error = _> + Send>;
+            }
         }
 
         // Subgraph ptr is behind head ptr.
@@ -306,26 +309,36 @@ where
         // Most importantly: Our ability to make this assumption (or not) will determine what
         // Ethereum RPC calls can give us accurate data without race conditions.
         // (This is mostly due to some unfortunate API design decisions on the Ethereum side)
-        if head_ptr.number - subgraph_ptr.number > reorg_threshold {
+        if subgraph_ptr.is_none()
+            || (head_ptr.number - subgraph_ptr.unwrap().number) > reorg_threshold
+        {
             // Since we are beyond the reorg threshold, the Ethereum node knows what block has
             // been permanently assigned this block number.
             // This allows us to ask the node: does subgraph_ptr point to a block that was
             // permanently accepted into the main chain, or does it point to a block that was
             // uncled?
             Box::new(
-                ctx.eth_adapter
-                    .is_on_main_chain(
-                        &ctx.logger,
-                        ctx.metrics.ethrpc_metrics.clone(),
-                        subgraph_ptr,
+                subgraph_ptr
+                    .map_or(
+                        Box::new(future::ok(true)) as Box<dyn Future<Item = _, Error = _> + Send>,
+                        |ptr| {
+                            ctx.eth_adapter.is_on_main_chain(
+                                &ctx.logger,
+                                ctx.metrics.ethrpc_metrics.clone(),
+                                ptr,
+                            )
+                        },
                     )
                     .and_then(
                         move |is_on_main_chain| -> Box<dyn Future<Item = _, Error = _> + Send> {
                             if !is_on_main_chain {
                                 // The subgraph ptr points to a block that was uncled.
                                 // We need to revert this block.
+                                //
+                                // Note: We can safely unwrap the subgraph ptr here, because
+                                // if it was `None`, `is_on_main_chain` would be true.
                                 return Box::new(future::ok(ReconciliationStep::RevertBlock(
-                                    subgraph_ptr,
+                                    subgraph_ptr.unwrap(),
                                 )));
                             }
 
@@ -344,8 +357,9 @@ where
                             // It is only safe to use block numbers because we are beyond the reorg
                             // threshold.
 
-                            // Start with first block after subgraph ptr
-                            let from = subgraph_ptr.number + 1;
+                            // Start with first block after subgraph ptr; if the ptr is None,
+                            // then we start with the genesis block
+                            let from = subgraph_ptr.map_or(0, |ptr| ptr.number + 1);
 
                             // Get the next subsequent data source start block to ensure the block range
                             // is aligned with data source.
@@ -413,6 +427,9 @@ where
             // We can do so by walking back up the chain from the head block to the appropriate
             // block number, and checking to see if the block we found matches the
             // subgraph_ptr.
+
+            let subgraph_ptr =
+                subgraph_ptr.expect("subgraph block pointer should not be `None` here");
 
             // Precondition: subgraph_ptr.number < head_ptr.number
             // Walk back to one block short of subgraph_ptr.number
@@ -519,13 +536,18 @@ where
                                 "block_hash" => format!("{}", block.hash.unwrap())
                             );
 
+                            // Produce pointer to parent block (using parent hash).
+                            let parent_ptr = block
+                                .parent_ptr()
+                                .expect("genesis block cannot be reverted");
+
                             // Revert entity changes from this block, and update subgraph ptr.
                             future::result(
                                 ctx.subgraph_store
                                     .revert_block_operations(
                                         ctx.subgraph_id.clone(),
                                         subgraph_ptr,
-                                        block.parent_ptr(),
+                                        parent_ptr,
                                     )
                                     .map_err(Error::from)
                                     .map(|()| {
@@ -554,7 +576,7 @@ where
         let head_ptr_opt = self.chain_store.chain_head_ptr()?;
         let subgraph_ptr = self.subgraph_store.block_ptr(self.subgraph_id.clone())?;
 
-        if head_ptr_opt != Some(subgraph_ptr) {
+        if head_ptr_opt != subgraph_ptr {
             // Not synced yet
             Ok(())
         } else {
