@@ -6,6 +6,7 @@ use diesel::{insert_into, select, update};
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -731,7 +732,10 @@ impl Store {
 }
 
 impl StoreTrait for Store {
-    fn block_ptr(&self, subgraph_id: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
+    fn block_ptr(
+        &self,
+        subgraph_id: SubgraphDeploymentId,
+    ) -> Result<Option<EthereumBlockPointer>, Error> {
         let subgraph_entity = self
             .get(SubgraphDeploymentEntity::key(subgraph_id.clone()))
             .map_err(|e| format_err!("error reading subgraph entity: {}", e))?
@@ -742,28 +746,27 @@ impl StoreTrait for Store {
                 )
             })?;
 
-        let hash = subgraph_entity
-            .get("latestEthereumBlockHash")
-            .ok_or_else(|| format_err!("SubgraphDeployment is missing latestEthereumBlockHash"))?
-            .to_owned()
-            .as_string()
-            .ok_or_else(|| {
-                format_err!("SubgraphDeployment has wrong type in latestEthereumBlockHash")
-            })?
-            .parse::<H256>()
-            .map_err(|e| format_err!("latestEthereumBlockHash: {}", e))?;
+        let hash: Option<H256> = match subgraph_entity.get("latestEthereumBlockHash") {
+            None => None,
+            Some(value) => value.clone().try_into()?,
+        };
 
-        let number = subgraph_entity
-            .get("latestEthereumBlockNumber")
-            .ok_or_else(|| format_err!("SubgraphDeployment is missing latestEthereumBlockNumber"))?
-            .to_owned()
-            .as_bigint()
-            .ok_or_else(|| {
-                format_err!("SubgraphDeployment has wrong type in latestEthereumBlockNumber")
-            })?
-            .to_u64();
+        let number: Option<BigInt> = match subgraph_entity.get("latestEthereumBlockNumber") {
+            None => None,
+            Some(value) => value.clone().try_into()?,
+        };
 
-        Ok(EthereumBlockPointer { hash, number })
+        match (hash, number) {
+            (Some(hash), Some(number)) => Ok(Some(EthereumBlockPointer {
+                hash,
+                number: number.to_u64(),
+            })),
+            (None, None) => Ok(None),
+            _ => Err(format_err!(
+                "Ethereum block pointer has invalid `latestEthereumBlockHash` \
+                 or `latestEthereumBlockNumber`"
+            )),
+        }
     }
 
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
@@ -818,7 +821,7 @@ impl StoreTrait for Store {
     fn set_block_ptr_with_no_changes(
         &self,
         subgraph_id: SubgraphDeploymentId,
-        block_ptr_from: EthereumBlockPointer,
+        block_ptr_from: Option<EthereumBlockPointer>,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<bool, StoreError> {
         let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
@@ -838,13 +841,21 @@ impl StoreTrait for Store {
     fn transact_block_operations(
         &self,
         subgraph_id: SubgraphDeploymentId,
-        block_ptr_from: EthereumBlockPointer,
+        block_ptr_from: Option<EthereumBlockPointer>,
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
     ) -> Result<bool, StoreError> {
         // Sanity check on block numbers
-        if block_ptr_from.number != block_ptr_to.number - 1 {
-            panic!("transact_block_operations must transact a single block only");
+        match (block_ptr_from, block_ptr_to) {
+            (None, block_ptr_to) if block_ptr_to.number > 0 => {
+                panic!("transact_block_operations must transact a single block only");
+            }
+            (Some(block_ptr_from), block_ptr_to)
+                if block_ptr_from.number != block_ptr_to.number - 1 =>
+            {
+                panic!("transact_block_operations must transact a single block only");
+            }
+            _ => {}
         }
 
         // All operations should apply only to entities in this subgraph or
@@ -939,7 +950,7 @@ impl StoreTrait for Store {
         let (event, metadata_event) = econn.transaction(|| -> Result<_, StoreError> {
             let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
                 &subgraph_id,
-                block_ptr_from,
+                Some(block_ptr_from),
                 block_ptr_to,
                 "revert block",
             );
