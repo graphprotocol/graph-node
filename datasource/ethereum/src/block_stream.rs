@@ -80,7 +80,7 @@ enum ReconciliationStep {
 
     /// Move forwards, processing one or more blocks.
     ProcessDescendantBlocks {
-        from: EthereumBlockPointer,
+        from: Option<EthereumBlockPointer>,
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
@@ -89,7 +89,7 @@ enum ReconciliationStep {
 
     /// Skip forwards from `from` to `to`, with no processing needed.
     AdvanceToDescendantBlock {
-        from: EthereumBlockPointer,
+        from: Option<EthereumBlockPointer>,
         to: EthereumBlockPointer,
     },
 
@@ -254,7 +254,7 @@ where
     /// migrate its database schema
     fn set_block_ptr_with_no_changes(
         &self,
-        from: EthereumBlockPointer,
+        from: Option<EthereumBlockPointer>,
         to: EthereumBlockPointer,
     ) -> Result<(), Error> {
         let result =
@@ -274,7 +274,7 @@ where
             }
             Err(e) => Err(format_err!(
                 "Failed to skip {} irrelevant blocks: {}",
-                to.number - from.number,
+                from.map_or(to.number, |from| to.number - from.number),
                 e
             )),
         }
@@ -353,18 +353,21 @@ where
         );
         trace!(
             ctx.logger, "Subgraph pointer";
-            "hash" => format!("{:?}", subgraph_ptr.hash),
-            "number" => &subgraph_ptr.number
+            "hash" => format!("{:?}", subgraph_ptr.map(|block| block.hash)),
+            "number" => subgraph_ptr.map(|block| block.number),
         );
 
         // Only continue if the subgraph block ptr is behind the head block ptr.
         // subgraph_ptr > head_ptr shouldn't happen, but if it does, it's safest to just stop.
-        self.metrics
-            .blocks_behind
-            .set((head_ptr.number - subgraph_ptr.number) as f64);
-        if subgraph_ptr.number >= head_ptr.number {
-            return Box::new(future::ok(ReconciliationStep::Done))
-                as Box<dyn Future<Item = _, Error = _> + Send>;
+        if let Some(ptr) = subgraph_ptr {
+            self.metrics
+                .blocks_behind
+                .set((head_ptr.number - ptr.number) as f64);
+
+            if ptr.number >= head_ptr.number {
+                return Box::new(future::ok(ReconciliationStep::Done))
+                    as Box<dyn Future<Item = _, Error = _> + Send>;
+            }
         }
 
         // Subgraph ptr is behind head ptr.
@@ -401,16 +404,29 @@ where
         // Most importantly: Our ability to make this assumption (or not) will determine what
         // Ethereum RPC calls can give us accurate data without race conditions.
         // (This is mostly due to some unfortunate API design decisions on the Ethereum side)
-        if (head_ptr.number - subgraph_ptr.number) > reorg_threshold {
+        if subgraph_ptr.is_none()
+            || (head_ptr.number - subgraph_ptr.unwrap().number) > reorg_threshold
+        {
             // Since we are beyond the reorg threshold, the Ethereum node knows what block has
             // been permanently assigned this block number.
             // This allows us to ask the node: does subgraph_ptr point to a block that was
             // permanently accepted into the main chain, or does it point to a block that was
             // uncled?
-            Box::new(ctx.eth_adapter
-                .is_on_main_chain(&ctx.logger, ctx.metrics.ethrpc_metrics.clone(), subgraph_ptr)
-                .and_then(move |is_on_main_chain| -> Box<dyn Future<Item = _, Error = _> + Send> {
-                    if is_on_main_chain {
+            Box::new(
+                subgraph_ptr
+                    .map_or(
+                        Box::new(future::ok(true)) as Box<dyn Future<Item = _, Error = _> + Send>,
+                        |ptr| {
+                            ctx.eth_adapter
+                               .is_on_main_chain(
+                                   &ctx.logger,
+                                   ctx.metrics.ethrpc_metrics.clone(),
+                                   ptr
+                               )
+                        }
+                    )
+                    .and_then(move |is_on_main_chain| -> Box<dyn Future<Item = _, Error = _> + Send> {
+                        if is_on_main_chain {
                         // The subgraph ptr points to a block on the main chain.
                         // This means that the last block we processed does not need to be
                         // reverted.
@@ -426,8 +442,9 @@ where
                         // It is only safe to use block numbers because we are beyond the reorg
                         // threshold.
 
-                        // Start with first block after subgraph ptr
-                        let from = subgraph_ptr.number + 1;
+                        // Start with first block after subgraph ptr; if the ptr is None,
+                        // then we start with the genesis block
+                        let from = subgraph_ptr.map_or(0, |ptr| ptr.number + 1);
 
                         // Get the next subsequent data source start block to ensure the block range
                         // is aligned with data source.
@@ -537,7 +554,10 @@ where
                     } else {
                         // The subgraph ptr points to a block that was uncled.
                         // We need to revert this block.
-                        Box::new(future::ok(ReconciliationStep::RevertBlock(subgraph_ptr)))
+                        //
+                        // Note: We can safely unwrap the subgraph ptr here, because
+                        // if it was `None`, we would be in the `if` branch and not here.
+                        Box::new(future::ok(ReconciliationStep::RevertBlock(subgraph_ptr.unwrap())))
                     }
                 })
             )
@@ -563,6 +583,9 @@ where
             // We can do so by walking back up the chain from the head block to the appropriate
             // block number, and checking to see if the block we found matches the
             // subgraph_ptr.
+
+            let subgraph_ptr =
+                subgraph_ptr.expect("subgraph block pointer should not be `None` here");
 
             // Precondition: subgraph_ptr.number < head_ptr.number
             // Walk back to one block short of subgraph_ptr.number
@@ -612,7 +635,7 @@ where
                             },
                         );
                         Box::new(future::ok(ReconciliationStep::ProcessDescendantBlocks {
-                            from: subgraph_ptr,
+                            from: Some(subgraph_ptr),
                             log_filter: log_filter.clone(),
                             call_filter: call_filter.clone(),
                             block_filter: block_filter.clone(),
@@ -660,7 +683,8 @@ where
                     );
 
                     // Produce pointer to parent block (using parent hash).
-                    let parent_ptr = EthereumBlockPointer::to_parent(&block.ethereum_block);
+                    let parent_ptr = EthereumBlockPointer::to_parent(&block.ethereum_block)
+                        .expect("genesis block cannot be reverted");
 
                     // Revert entity changes from this block, and update subgraph ptr.
                     future::result(
@@ -707,27 +731,38 @@ where
                                 let descendant_parent_ptr = EthereumBlockPointer::to_parent(
                                     &descendant_block.ethereum_block,
                                 );
-                                if subgraph_ptr != descendant_parent_ptr {
-                                    // descendant_block is not a direct child.
-                                    // Therefore, there are blocks that are irrelevant to this subgraph
-                                    // that we can skip.
-                                    debug!(
-                                        ctx.logger,
-                                        "Skipping {} irrelevant block(s)",
-                                        descendant_parent_ptr.number - subgraph_ptr.number
-                                    );
 
-                                    // Update subgraph_ptr in store to skip the irrelevant blocks.
-                                    ctx.set_block_ptr_with_no_changes(
-                                        subgraph_ptr,
-                                        descendant_parent_ptr,
-                                    )?;
-                                }
+                                match (subgraph_ptr, descendant_parent_ptr) {
+                                    (None, None) => {
+                                        // `descendant_block` is the genesis block, which
+                                        // immediately follows `None`, hence there are no
+                                        // intermediate blocks that we need to skip
+                                    }
+                                    (Some(ptr), None) => {
+                                        bail!("cannot go from block {:?} to `None`", ptr);
+                                    }
+                                    (subgraph_ptr, Some(descendant_parent_ptr)) => {
+                                        if subgraph_ptr != Some(descendant_parent_ptr) {
+                                            debug!(
+                                                ctx.logger,
+                                                "Skipping {} irrelevant blocks",
+                                                descendant_parent_ptr.number
+                                                    - subgraph_ptr.map_or(0, |ptr| ptr.number),
+                                            );
+
+                                            // Update subgraph_ptr in store to skip the irrelevant blocks.
+                                            ctx.set_block_ptr_with_no_changes(
+                                                subgraph_ptr,
+                                                descendant_parent_ptr,
+                                            )?;
+                                        }
+                                    }
+                                };
 
                                 // Update our copy of the subgraph ptr to reflect the
                                 // value it will have after descendant_block is
                                 // processed.
-                                subgraph_ptr = (&descendant_block.ethereum_block).into();
+                                subgraph_ptr = Some((&descendant_block.ethereum_block).into());
 
                                 Ok(descendant_block)
                             })
@@ -752,7 +787,7 @@ where
         let head_ptr_opt = self.chain_store.chain_head_ptr()?;
         let subgraph_ptr = self.subgraph_store.block_ptr(self.subgraph_id.clone())?;
 
-        if head_ptr_opt != Some(subgraph_ptr) {
+        if head_ptr_opt != subgraph_ptr {
             // Not synced yet
             Ok(())
         } else {
