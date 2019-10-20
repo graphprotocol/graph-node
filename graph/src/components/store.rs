@@ -596,7 +596,10 @@ pub enum TransactionAbortError {
 /// Common trait for store implementations.
 pub trait Store: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
-    fn block_ptr(&self, subgraph_id: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error>;
+    fn block_ptr(
+        &self,
+        subgraph_id: SubgraphDeploymentId,
+    ) -> Result<Option<EthereumBlockPointer>, Error>;
 
     /// Looks up an entity using the given store key.
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
@@ -621,7 +624,7 @@ pub trait Store: Send + Sync + 'static {
     fn set_block_ptr_with_no_changes(
         &self,
         subgraph_id: SubgraphDeploymentId,
-        block_ptr_from: EthereumBlockPointer,
+        block_ptr_from: Option<EthereumBlockPointer>,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<bool, StoreError>;
 
@@ -636,7 +639,7 @@ pub trait Store: Send + Sync + 'static {
     fn transact_block_operations(
         &self,
         subgraph_id: SubgraphDeploymentId,
-        block_ptr_from: EthereumBlockPointer,
+        block_ptr_from: Option<EthereumBlockPointer>,
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
     ) -> Result<bool, StoreError>;
