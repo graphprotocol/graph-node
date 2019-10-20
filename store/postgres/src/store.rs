@@ -6,6 +6,7 @@ use diesel::{insert_into, select, update};
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -725,7 +726,7 @@ impl Store {
         &self,
         subgraph_id: SubgraphDeploymentId,
         conn: &e::Connection,
-    ) -> Result<EthereumBlockPointer, Error> {
+    ) -> Result<Option<EthereumBlockPointer>, Error> {
         let key = SubgraphDeploymentEntity::key(subgraph_id.clone());
         let subgraph_entity = conn
             .find_metadata(&key.entity_type, &key.entity_id)
@@ -737,33 +738,35 @@ impl Store {
                 )
             })?;
 
-        let hash = subgraph_entity
-            .get("latestEthereumBlockHash")
-            .ok_or_else(|| format_err!("SubgraphDeployment is missing latestEthereumBlockHash"))?
-            .to_owned()
-            .as_string()
-            .ok_or_else(|| {
-                format_err!("SubgraphDeployment has wrong type in latestEthereumBlockHash")
-            })?
-            .parse::<H256>()
-            .map_err(|e| format_err!("latestEthereumBlockHash: {}", e))?;
+        let hash: Option<H256> = match subgraph_entity.get("latestEthereumBlockHash") {
+            None => None,
+            Some(value) => value.clone().try_into()?,
+        };
 
-        let number = subgraph_entity
-            .get("latestEthereumBlockNumber")
-            .ok_or_else(|| format_err!("SubgraphDeployment is missing latestEthereumBlockNumber"))?
-            .to_owned()
-            .as_bigint()
-            .ok_or_else(|| {
-                format_err!("SubgraphDeployment has wrong type in latestEthereumBlockNumber")
-            })?
-            .to_u64();
+        let number: Option<BigInt> = match subgraph_entity.get("latestEthereumBlockNumber") {
+            None => None,
+            Some(value) => value.clone().try_into()?,
+        };
 
-        Ok(EthereumBlockPointer { hash, number })
+        match (hash, number) {
+            (Some(hash), Some(number)) => Ok(Some(EthereumBlockPointer {
+                hash,
+                number: number.to_u64(),
+            })),
+            (None, None) => Ok(None),
+            _ => Err(format_err!(
+                "Ethereum block pointer has invalid `latestEthereumBlockHash` \
+                 or `latestEthereumBlockNumber`"
+            )),
+        }
     }
 }
 
 impl StoreTrait for Store {
-    fn block_ptr(&self, subgraph_id: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
+    fn block_ptr(
+        &self,
+        subgraph_id: SubgraphDeploymentId,
+    ) -> Result<Option<EthereumBlockPointer>, Error> {
         self.block_ptr_with_conn(
             subgraph_id,
             &self
@@ -845,7 +848,9 @@ impl StoreTrait for Store {
         let (event, metadata_event, should_migrate) =
             econn.transaction(|| -> Result<_, StoreError> {
                 let block_ptr_from = self.block_ptr_with_conn(subgraph_id.clone(), &econn)?;
-                assert!(block_ptr_from.number < block_ptr_to.number);
+                if let Some(ref block_ptr_from) = block_ptr_from {
+                    assert!(block_ptr_from.number < block_ptr_to.number);
+                }
 
                 // Ensure the history event exists in the database
                 let history_event = econn.create_history_event(block_ptr_to, &mods)?;
@@ -919,7 +924,7 @@ impl StoreTrait for Store {
         let econn = self.get_entity_conn(&subgraph_id)?;
         let (event, metadata_event) = econn.transaction(|| -> Result<_, StoreError> {
             assert_eq!(
-                block_ptr_from,
+                Some(block_ptr_from),
                 self.block_ptr_with_conn(subgraph_id.clone(), &econn)?
             );
             let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
