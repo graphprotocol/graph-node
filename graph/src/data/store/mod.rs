@@ -5,6 +5,7 @@ use graphql_parser::schema;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
+use std::convert::TryFrom;
 use std::fmt;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
@@ -385,6 +386,34 @@ impl From<Address> for Value {
 impl From<H256> for Value {
     fn from(hash: H256) -> Value {
         Value::Bytes(scalar::Bytes::from(hash.as_ref()))
+    }
+}
+
+impl TryFrom<Value> for Option<H256> {
+    type Error = Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Bytes(bytes) => {
+                let hex = format!("{}", bytes);
+                Ok(Some(H256::from_str(hex.as_str())?))
+            }
+            Value::String(s) => Ok(Some(H256::from_str(s.as_str())?)),
+            Value::Null => Ok(None),
+            _ => Err(format_err!("Value is not an H256")),
+        }
+    }
+}
+
+impl TryFrom<Value> for Option<scalar::BigInt> {
+    type Error = Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::BigInt(n) => Ok(Some(n.clone())),
+            Value::Null => Ok(None),
+            _ => Err(format_err!("Value is not an BigInt")),
+        }
     }
 }
 
