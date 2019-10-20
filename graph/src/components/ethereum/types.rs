@@ -261,11 +261,14 @@ pub struct EthereumBlockPointer {
 
 impl EthereumBlockPointer {
     /// Creates a pointer to the parent of the specified block.
-    pub fn to_parent(b: &EthereumBlock) -> EthereumBlockPointer {
-        EthereumBlockPointer {
-            hash: b.block.parent_hash,
-            number: b.block.number.unwrap().as_u64() - 1,
-        }
+    pub fn to_parent(b: &EthereumBlock) -> Option<EthereumBlockPointer> {
+        b.block.number.map_or(None, |number| match number.as_u64() {
+            0 => None,
+            n => Some(EthereumBlockPointer {
+                hash: b.block.parent_hash,
+                number: n - 1,
+            }),
+        })
     }
 
     /// Encodes the block hash into a hexadecimal string **without** a "0x" prefix.
