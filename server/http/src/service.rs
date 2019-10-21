@@ -479,10 +479,7 @@ mod tests {
                     &manifest,
                     false,
                     false,
-                    EthereumBlockPointer {
-                        hash: H256::zero(),
-                        number: 0,
-                    },
+                    None,
                     Some(EthereumBlockPointer {
                         hash: H256::zero(),
                         number: 0,
@@ -553,10 +550,7 @@ mod tests {
                                 &manifest,
                                 false,
                                 false,
-                                EthereumBlockPointer {
-                                    hash: H256::zero(),
-                                    number: 0,
-                                },
+                                None,
                                 Some(EthereumBlockPointer {
                                     hash: H256::zero(),
                                     number: 0,

@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use graph::prelude::*;
 use graph_graphql::prelude::*;
-use test_store::{transact_entity_operations, BLOCK_ONE, GENESIS_PTR, STORE};
+use test_store::{transact_entity_operations, GENESIS_PTR, STORE};
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId = {
@@ -77,7 +77,7 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         templates: vec![],
     };
 
-    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, GENESIS_PTR.clone(), None)
+    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, None, None)
         .create_operations_replace(&id)
         .into_iter()
         .map(|op| op.into())
@@ -189,7 +189,7 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
     transact_entity_operations(
         &STORE,
         id.clone(),
-        BLOCK_ONE.clone(),
+        GENESIS_PTR.clone(),
         insert_ops.collect::<Vec<_>>(),
     )
     .unwrap();
