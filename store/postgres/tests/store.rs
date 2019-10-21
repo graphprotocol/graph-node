@@ -2251,7 +2251,6 @@ fn handle_large_string_with_index() {
         store
             .transact_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
                 *TEST_BLOCK_4_PTR,
                 vec![
                     make_insert_op(ONE, &long_text),

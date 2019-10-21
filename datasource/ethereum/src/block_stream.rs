@@ -1,5 +1,5 @@
 use std::cmp;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::mem;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -37,21 +37,14 @@ enum BlockStreamState {
     ///
     /// Valid next states: YieldingBlocks, Idle
     Reconciliation(
-        Box<
-            dyn Future<
-                    Item = Option<
-                        Box<dyn Stream<Item = EthereumBlockWithTriggers, Error = Error> + Send>,
-                    >,
-                    Error = Error,
-                > + Send,
-        >,
+        Box<dyn Future<Item = Option<VecDeque<EthereumBlockWithTriggers>>, Error = Error> + Send>,
     ),
 
     /// The BlockStream is emitting blocks that must be processed in order to bring the subgraph
     /// store up to date with the chain store.
     ///
     /// Valid next states: Reconciliation
-    YieldingBlocks(Box<dyn Stream<Item = EthereumBlockWithTriggers, Error = Error> + Send>),
+    YieldingBlocks(VecDeque<EthereumBlockWithTriggers>),
 
     /// The BlockStream experienced an error and is pausing before attempting to produce
     /// blocks again.
@@ -76,10 +69,7 @@ enum ReconciliationStep {
     RevertBlock(EthereumBlockPointer),
 
     /// Move forwards, processing one or more blocks.
-    ProcessDescendantBlocks {
-        from: EthereumBlockPointer,
-        descendant_blocks: Vec<EthereumBlockWithTriggers>,
-    },
+    ProcessDescendantBlocks(Vec<EthereumBlockWithTriggers>),
 
     /// This step is a no-op, but we need to check again for a next step.
     Retry,
@@ -92,7 +82,7 @@ enum ReconciliationStep {
 /// The result of performing a single ReconciliationStep.
 enum ReconciliationStepOutcome {
     /// These blocks must be processed before reconciliation can continue.
-    YieldBlocks(Box<dyn Stream<Item = EthereumBlockWithTriggers, Error = Error> + Send>),
+    YieldBlocks(Vec<EthereumBlockWithTriggers>),
 
     /// Continue to the next reconciliation step.
     MoreSteps,
@@ -271,14 +261,8 @@ where
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
     fn next_blocks(
         &self,
-    ) -> Box<
-        dyn Future<
-                Item = Option<
-                    Box<dyn Stream<Item = EthereumBlockWithTriggers, Error = Error> + Send>,
-                >,
-                Error = Error,
-            > + Send,
-    > {
+    ) -> Box<dyn Future<Item = Option<VecDeque<EthereumBlockWithTriggers>>, Error = Error> + Send>
+    {
         let ctx = self.clone();
 
         Box::new(future::loop_fn((), move |()| {
@@ -296,7 +280,7 @@ where
                 // Exit loop if done or there are blocks to process.
                 .and_then(move |outcome| match outcome {
                     ReconciliationStepOutcome::YieldBlocks(next_blocks) => {
-                        Ok(future::Loop::Break(Some(next_blocks)))
+                        Ok(future::Loop::Break(Some(next_blocks.into_iter().collect())))
                     }
                     ReconciliationStepOutcome::MoreSteps => Ok(future::Loop::Continue(())),
                     ReconciliationStepOutcome::Done => {
@@ -483,10 +467,9 @@ where
                                                 .sum::<usize>()
                                         );
 
-                                        ReconciliationStep::ProcessDescendantBlocks {
-                                            from: subgraph_ptr,
+                                        ReconciliationStep::ProcessDescendantBlocks(
                                             descendant_blocks,
-                                        }
+                                        )
                                     }),
                             )
                         },
@@ -575,9 +558,8 @@ where
                                         BlockFinality::NonFinal(block),
                                     )
                                 })
-                                .map(move |block| ReconciliationStep::ProcessDescendantBlocks {
-                                    from: subgraph_ptr,
-                                    descendant_blocks: vec![block],
+                                .map(move |block| {
+                                    ReconciliationStep::ProcessDescendantBlocks(vec![block])
                                 }),
                         )
                     } else {
@@ -640,47 +622,12 @@ where
                         }),
                 )
             }
-            ReconciliationStep::ProcessDescendantBlocks {
-                from,
-                descendant_blocks,
-            } => {
-                let mut subgraph_ptr = from;
-
+            ReconciliationStep::ProcessDescendantBlocks(descendant_blocks) => {
                 // Advance the subgraph ptr to each of the specified descendants and yield each
                 // block with relevant events.
                 Box::new(future::ok(ReconciliationStepOutcome::YieldBlocks(
-                    Box::new(
-                        stream::iter_ok(descendant_blocks).and_then(move |descendant_block| {
-                            // First, check if there are blocks between subgraph_ptr and
-                            // descendant_block.
-                            let descendant_parent_ptr =
-                                descendant_block.ethereum_block.thin_block().parent_ptr();
-                            if subgraph_ptr != descendant_parent_ptr {
-                                // descendant_block is not a direct child.
-                                // Therefore, there are blocks that are irrelevant to this subgraph
-                                // that we can skip.
-                                debug!(
-                                    ctx.logger,
-                                    "Skipping {} irrelevant block(s)",
-                                    descendant_parent_ptr.number - subgraph_ptr.number
-                                );
-
-                                // Update subgraph_ptr in store to skip the irrelevant blocks.
-                                ctx.set_block_ptr_with_no_changes(
-                                    subgraph_ptr,
-                                    descendant_parent_ptr,
-                                )?;
-                            }
-
-                            // Update our copy of the subgraph ptr to reflect the
-                            // value it will have after descendant_block is
-                            // processed.
-                            subgraph_ptr = (&descendant_block.ethereum_block).into();
-
-                            Ok(descendant_block)
-                        }),
-                    ) as Box<dyn Stream<Item = _, Error = _> + Send>,
-                )))
+                    descendant_blocks,
+                ))) as Box<dyn Future<Item = _, Error = _> + Send>
             }
         }
     }
@@ -936,44 +883,21 @@ where
 
                 // Yielding blocks from reconciliation process
                 BlockStreamState::YieldingBlocks(mut next_blocks) => {
-                    match next_blocks.poll() {
+                    match next_blocks.pop_front() {
                         // Yield one block
-                        Ok(Async::Ready(Some(next_block))) => {
+                        Some(next_block) => {
                             state = BlockStreamState::YieldingBlocks(next_blocks);
                             break Ok(Async::Ready(Some(next_block)));
                         }
 
                         // Done yielding blocks
-                        Ok(Async::Ready(None)) => {
-                            // Reset error count
-                            self.consecutive_err_count = 0;
-
+                        None => {
                             // Restart reconciliation until more blocks or done
                             let next_blocks_future = self.ctx.next_blocks();
                             state = BlockStreamState::Reconciliation(next_blocks_future);
 
                             // Poll the next_blocks() future
                             continue;
-                        }
-
-                        Ok(Async::NotReady) => {
-                            // Nothing to change or yield yet
-                            state = BlockStreamState::YieldingBlocks(next_blocks);
-                            break Ok(Async::NotReady);
-                        }
-
-                        Err(e) => {
-                            self.consecutive_err_count += 1;
-
-                            // Pause before trying again
-                            let secs = (5 * self.consecutive_err_count).max(120) as u64;
-                            let instant = Instant::now() + Duration::from_secs(secs);
-                            state = BlockStreamState::RetryAfterDelay(Box::new(
-                                Delay::new(instant).map_err(|err| {
-                                    format_err!("RetryAfterDelay future failed: {}", err)
-                                }),
-                            ));
-                            break Err(e);
                         }
                     }
                 }

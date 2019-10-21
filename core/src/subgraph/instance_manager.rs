@@ -601,7 +601,6 @@ where
 
     // Obtain current and new block pointer (after this block is processed)
     let thin_block = Arc::new(block.thin_block());
-    let block_ptr_now = thin_block.parent_ptr();
     let block_ptr_after = EthereumBlockPointer::from(&block);
     let block_ptr_for_new_data_sources = block_ptr_after.clone();
 
@@ -741,12 +740,7 @@ where
         let start = Instant::now();
         ctx.inputs
             .store
-            .transact_block_operations(
-                ctx.inputs.deployment_id.clone(),
-                block_ptr_now,
-                block_ptr_after,
-                mods,
-            )
+            .transact_block_operations(ctx.inputs.deployment_id.clone(), block_ptr_after, mods)
             .map(|should_migrate| {
                 let elapsed = start.elapsed().as_secs_f64();
                 metrics.block_ops_transaction_duration.observe(elapsed);
