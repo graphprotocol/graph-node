@@ -585,6 +585,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_hashes: HashSet<H256>,
     ) -> Box<dyn Stream<Item = ThinEthereumBlock, Error = Error> + Send>;
 
+    fn block_range_to_ptrs(
+        &self,
+        logger: &Logger,
+        from: u64,
+        to: u64,
+    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
+
     /// Find a block by its hash.
     fn block_by_hash(
         &self,
@@ -686,7 +693,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         > = futures::stream::FuturesUnordered::new();
 
         if block_filter.trigger_every_block {
-            // load_blocks(trigger
+            trigger_futs.push(Box::new(self.block_range_to_ptrs(&logger, from, to).map(
+                move |ptrs| {
+                    ptrs.into_iter()
+                        .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
+                        .collect()
+                },
+            )))
         }
 
         // Scan the block range from triggers to find relevant blocks
