@@ -228,36 +228,6 @@ where
             || self.block_filter.contract_addresses.len() > 0
     }
 
-    /// Update the block pointer for `self.subgraph_id`, and, if needed,
-    /// migrate its database schema
-    fn set_block_ptr_with_no_changes(
-        &self,
-        from: EthereumBlockPointer,
-        to: EthereumBlockPointer,
-    ) -> Result<(), Error> {
-        let result =
-            self.subgraph_store
-                .set_block_ptr_with_no_changes(self.subgraph_id.clone(), from, to);
-
-        match result {
-            Ok(should_migrate) => {
-                if should_migrate {
-                    self.subgraph_store.migrate_subgraph_deployment(
-                        &self.logger,
-                        &self.subgraph_id,
-                        &to,
-                    );
-                }
-                Ok(())
-            }
-            Err(e) => Err(format_err!(
-                "Failed to skip {} irrelevant blocks: {}",
-                to.number - from.number,
-                e
-            )),
-        }
-    }
-
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
     fn next_blocks(
         &self,

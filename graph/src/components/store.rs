@@ -611,20 +611,6 @@ pub trait Store: Send + Sync + 'static {
     /// rainbow table.
     fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError>;
 
-    /// Updates the block pointer.  Careful: this is only safe to use if it is known that no store
-    /// changes are needed to go from `block_ptr_from` to `block_ptr_to`.
-    ///
-    /// `block_ptr_from` must match the current value of the subgraph block pointer.
-    ///
-    /// Return `true` if the subgraph mentioned in `history_event` should have
-    /// its schema migrated at `block_ptr_to`
-    fn set_block_ptr_with_no_changes(
-        &self,
-        subgraph_id: SubgraphDeploymentId,
-        block_ptr_from: EthereumBlockPointer,
-        block_ptr_to: EthereumBlockPointer,
-    ) -> Result<bool, StoreError>;
-
     /// Transact the entity changes from a single block atomically into the store, and update the
     /// subgraph block pointer to `block_ptr_to`.
     ///

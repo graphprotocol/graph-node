@@ -183,15 +183,6 @@ impl Store for MockStore {
         unimplemented!();
     }
 
-    fn set_block_ptr_with_no_changes(
-        &self,
-        _: SubgraphDeploymentId,
-        _: EthereumBlockPointer,
-        _: EthereumBlockPointer,
-    ) -> Result<bool, StoreError> {
-        unimplemented!();
-    }
-
     fn transact_block_operations(
         &self,
         _: SubgraphDeploymentId,
@@ -505,15 +496,6 @@ impl Store for FakeStore {
     }
 
     fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
-        unimplemented!();
-    }
-
-    fn set_block_ptr_with_no_changes(
-        &self,
-        _: SubgraphDeploymentId,
-        _: EthereumBlockPointer,
-        _: EthereumBlockPointer,
-    ) -> Result<bool, StoreError> {
         unimplemented!();
     }
 

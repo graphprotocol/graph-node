@@ -815,26 +815,6 @@ impl StoreTrait for Store {
             })
     }
 
-    fn set_block_ptr_with_no_changes(
-        &self,
-        subgraph_id: SubgraphDeploymentId,
-        block_ptr_from: EthereumBlockPointer,
-        block_ptr_to: EthereumBlockPointer,
-    ) -> Result<bool, StoreError> {
-        let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
-            &subgraph_id,
-            block_ptr_from,
-            block_ptr_to,
-            "skip blocks with no changes",
-        );
-        let conn = self.get_entity_conn(&subgraph_id).map_err(Error::from)?;
-        let event = conn.transaction(|| self.apply_metadata_operations_with_conn(&conn, ops))?;
-
-        // Send the event separately, because NOTIFY uses a global DB lock.
-        conn.transaction(|| conn.send_store_event(&event))?;
-        conn.should_migrate(&subgraph_id, &block_ptr_to)
-    }
-
     fn transact_block_operations(
         &self,
         subgraph_id: SubgraphDeploymentId,
