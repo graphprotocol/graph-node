@@ -15,7 +15,7 @@ impl Resolver for MockResolver {
     fn resolve_objects<'a>(
         &self,
         _parent: &Option<q::Value>,
-        _field: &q::Name,
+        _field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,

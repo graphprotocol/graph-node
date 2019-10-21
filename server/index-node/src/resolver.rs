@@ -504,14 +504,14 @@ where
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
-        field: &q::Name,
+        field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
         _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
-        match (parent, object_type.name(), field.as_str()) {
+        match (parent, object_type.name(), field.name.as_str()) {
             // The top-level `indexingStatuses` field
             (None, "SubgraphIndexingStatus", "indexingStatuses") => {
                 self.resolve_indexing_statuses(arguments)

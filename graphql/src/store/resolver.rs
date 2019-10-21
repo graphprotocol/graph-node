@@ -163,7 +163,7 @@ where
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
-        _field: &q::Name,
+        _field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,

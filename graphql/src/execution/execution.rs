@@ -670,7 +670,7 @@ where
                     .resolver
                     .resolve_objects(
                         object_value,
-                        &field.name,
+                        field,
                         field_definition,
                         t.into(),
                         argument_values,
@@ -703,7 +703,7 @@ where
                     .resolver
                     .resolve_objects(
                         object_value,
-                        &field.name,
+                        field,
                         field_definition,
                         t.into(),
                         argument_values,

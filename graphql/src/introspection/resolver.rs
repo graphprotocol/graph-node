@@ -458,14 +458,14 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
-        field: &q::Name,
+        field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
         _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
-        match field.as_str() {
+        match field.name.as_str() {
             "possibleTypes" => {
                 let type_names = object_field(parent, "possibleTypes")
                     .and_then(|value| match value {
@@ -489,7 +489,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                     Ok(q::Value::Null)
                 }
             }
-            _ => object_field(parent, field.as_str())
+            _ => object_field(parent, field.name.as_str())
                 .map_or(Ok(q::Value::Null), |value| Ok(value.clone())),
         }
     }
