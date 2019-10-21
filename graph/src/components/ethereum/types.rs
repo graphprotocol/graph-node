@@ -53,6 +53,13 @@ impl BlockFinality {
             BlockFinality::NonFinal(block) => block.ethereum_block.block.clone(),
         }
     }
+
+    pub fn number(&self) -> u64 {
+        match self {
+            BlockFinality::Final(block) => block.number(),
+            BlockFinality::NonFinal(block) => block.ethereum_block.block.number(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -62,7 +69,7 @@ pub struct EthereumBlockWithTriggers {
 }
 
 impl EthereumBlockWithTriggers {
-    pub fn new(ethereum_block: BlockFinality, mut triggers: Vec<EthereumTrigger>) -> Self {
+    pub fn new(mut triggers: Vec<EthereumTrigger>, ethereum_block: BlockFinality) -> Self {
         // Sort the triggers
         triggers.sort_by(|a, b| {
             let a_tx_index = a.transaction_index();
@@ -186,13 +193,6 @@ impl EthereumTrigger {
             EthereumTrigger::Block(block_ptr, _) => block_ptr.hash,
             EthereumTrigger::Call(call) => call.block_hash,
             EthereumTrigger::Log(log) => log.block_hash.unwrap(),
-        }
-    }
-
-    pub fn block_ptr(&self) -> EthereumBlockPointer {
-        EthereumBlockPointer {
-            hash: self.block_hash(),
-            number: self.block_number(),
         }
     }
 }

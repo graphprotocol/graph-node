@@ -1000,8 +1000,6 @@ pub trait SubgraphDeploymentStore: Send + Sync + 'static {
 
 /// Common trait for blockchain store implementations.
 pub trait ChainStore: Send + Sync + 'static {
-    type ChainHeadUpdateListener: ChainHeadUpdateListener;
-
     /// Get a pointer to this blockchain's genesis block.
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
 
@@ -1010,6 +1008,7 @@ pub trait ChainStore: Send + Sync + 'static {
     where
         B: Stream<Item = EthereumBlock, Error = E> + Send + 'a,
         E: From<Error> + Send + 'a,
+        Self: Sized,
     {
         unimplemented!()
     }
@@ -1045,7 +1044,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
 
     /// Returns the blocks present in the store.
-    fn blocks(&self, hashes: impl Iterator<Item = H256>) -> Result<Vec<ThinEthereumBlock>, Error>;
+    fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<ThinEthereumBlock>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to

@@ -2,8 +2,9 @@ use graph::components::ethereum::*;
 use graph::prelude::{
     ethabi, future,
     web3::types::{Block, Log, Transaction, H256},
-    Arc, Error, EthereumCallCache, Future, Logger, Stream,
+    Arc, ChainStore, Error, EthereumCallCache, Future, Logger, Stream,
 };
+use std::collections::HashSet;
 
 #[derive(Default)]
 pub struct MockEthereumAdapter {}
@@ -93,19 +94,6 @@ impl EthereumAdapter for MockEthereumAdapter {
         unimplemented!();
     }
 
-    fn blocks_with_triggers(
-        &self,
-        _: &Logger,
-        _: Arc<SubgraphEthRpcMetrics>,
-        _: u64,
-        _: u64,
-        _: EthereumLogFilter,
-        _: EthereumCallFilter,
-        _: EthereumBlockFilter,
-    ) -> Box<dyn Future<Item = Vec<EthereumTrigger>, Error = Error> + Send> {
-        unimplemented!();
-    }
-
     fn blocks_with_logs(
         &self,
         _: &Logger,
@@ -128,16 +116,6 @@ impl EthereumAdapter for MockEthereumAdapter {
         unimplemented!();
     }
 
-    fn blocks(
-        &self,
-        _: &Logger,
-        _: Arc<SubgraphEthRpcMetrics>,
-        _: u64,
-        _: u64,
-    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
-        unimplemented!();
-    }
-
     fn contract_call(
         &self,
         _: &Logger,
@@ -148,8 +126,9 @@ impl EthereumAdapter for MockEthereumAdapter {
     }
 
     fn triggers_in_block(
-        &self,
-        _: &Logger,
+        self: Arc<Self>,
+        _: Logger,
+        _: Arc<dyn ChainStore>,
         _: Arc<SubgraphEthRpcMetrics>,
         _: EthereumLogFilter,
         _: EthereumCallFilter,
@@ -157,5 +136,15 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: BlockFinality,
     ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send> {
         unimplemented!();
+    }
+
+    /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
+    fn load_blocks(
+        &self,
+        _: Logger,
+        _: Arc<dyn ChainStore>,
+        _: HashSet<H256>,
+    ) -> Box<dyn Stream<Item = ThinEthereumBlock, Error = Error> + Send> {
+        unimplemented!()
     }
 }

@@ -11,15 +11,6 @@ use graph::prelude::*;
 use graph_graphql::prelude::api_schema;
 use web3::types::H256;
 
-/// A mock `ChainHeadUpdateListener`
-pub struct MockChainHeadUpdateListener {}
-
-impl ChainHeadUpdateListener for MockChainHeadUpdateListener {
-    fn subscribe(&self) -> ChainHeadUpdateStream {
-        unimplemented!();
-    }
-}
-
 #[derive(Debug)]
 pub struct MockStore {
     schemas: HashMap<SubgraphDeploymentId, Schema>,
@@ -426,8 +417,6 @@ impl SubgraphDeploymentStore for MockStore {
 }
 
 impl ChainStore for MockStore {
-    type ChainHeadUpdateListener = MockChainHeadUpdateListener;
-
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error> {
         Ok(EthereumBlockPointer {
             hash: H256::zero(),
@@ -459,7 +448,7 @@ impl ChainStore for MockStore {
         Ok(None)
     }
 
-    fn blocks(&self, _: impl Iterator<Item = H256>) -> Result<Vec<ThinEthereumBlock>, Error> {
+    fn blocks(&self, _: Vec<H256>) -> Result<Vec<ThinEthereumBlock>, Error> {
         unimplemented!();
     }
 
@@ -591,8 +580,6 @@ impl Store for FakeStore {
 }
 
 impl ChainStore for FakeStore {
-    type ChainHeadUpdateListener = MockChainHeadUpdateListener;
-
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error> {
         unimplemented!();
     }
@@ -621,7 +608,7 @@ impl ChainStore for FakeStore {
         unimplemented!();
     }
 
-    fn blocks(&self, _: impl Iterator<Item = H256>) -> Result<Vec<ThinEthereumBlock>, Error> {
+    fn blocks(&self, _: Vec<H256>) -> Result<Vec<ThinEthereumBlock>, Error> {
         unimplemented!();
     }
 
