@@ -147,4 +147,13 @@ impl EthereumAdapter for MockEthereumAdapter {
     ) -> Box<dyn Stream<Item = ThinEthereumBlock, Error = Error> + Send> {
         unimplemented!()
     }
+
+    fn block_range_to_ptrs(
+        &self,
+        _: &Logger,
+        _: u64,
+        _: u64,
+    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+        unimplemented!()
+    }
 }

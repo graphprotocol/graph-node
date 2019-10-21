@@ -189,7 +189,6 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
     transact_entity_operations(
         &STORE,
         id.clone(),
-        GENESIS_PTR.clone(),
         BLOCK_ONE.clone(),
         insert_ops.collect::<Vec<_>>(),
     )

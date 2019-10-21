@@ -48,7 +48,6 @@ fn insert_and_query(
     transact_entity_operations(
         &STORE,
         subgraph_id.clone(),
-        GENESIS_PTR.clone(),
         BLOCK_ONE.clone(),
         insert_ops.collect::<Vec<_>>(),
     )?;

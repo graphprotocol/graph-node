@@ -174,7 +174,6 @@ fn insert_test_data(store: Arc<DieselStore>) {
     transact_entity_operations(
         &store,
         TEST_SUBGRAPH_ID.clone(),
-        *TEST_BLOCK_0_PTR,
         *TEST_BLOCK_1_PTR,
         vec![test_entity_1],
     )
@@ -203,7 +202,6 @@ fn insert_test_data(store: Arc<DieselStore>) {
     transact_entity_operations(
         &store,
         TEST_SUBGRAPH_ID.clone(),
-        *TEST_BLOCK_1_PTR,
         *TEST_BLOCK_2_PTR,
         vec![test_entity_2, test_entity_3_1],
     )
@@ -222,7 +220,6 @@ fn insert_test_data(store: Arc<DieselStore>) {
     transact_entity_operations(
         &store,
         TEST_SUBGRAPH_ID.clone(),
-        *TEST_BLOCK_2_PTR,
         *TEST_BLOCK_3_PTR,
         vec![test_entity_3_2],
     )
@@ -310,7 +307,6 @@ fn delete_entity() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
             *TEST_BLOCK_4_PTR,
             vec![EntityOperation::Remove {
                 key: entity_key.clone(),
@@ -425,7 +421,6 @@ fn insert_entity() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
             *TEST_BLOCK_4_PTR,
             vec![test_entity],
         )
@@ -474,7 +469,6 @@ fn update_existing() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
             *TEST_BLOCK_4_PTR,
             vec![op],
         )
@@ -519,7 +513,6 @@ fn partially_update_existing() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
             *TEST_BLOCK_4_PTR,
             vec![EntityOperation::Set {
                 key: entity_key.clone(),
@@ -1594,7 +1587,6 @@ fn revert_block_with_delete() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
             *TEST_BLOCK_4_PTR,
             vec![EntityOperation::Remove { key: del_key }],
         )
@@ -1666,7 +1658,6 @@ fn revert_block_with_partial_update() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
             *TEST_BLOCK_4_PTR,
             vec![EntityOperation::Set {
                 key: entity_key.clone(),
@@ -1795,14 +1786,8 @@ fn revert_block_with_dynamic_data_source_operations() {
         ops.extend(dynamic_ds.write_entity_operations("dynamic-data-source"));
 
         // Add user and dynamic data source to the store
-        transact_entity_operations(
-            &store,
-            TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
-            *TEST_BLOCK_4_PTR,
-            ops,
-        )
-        .unwrap();
+        transact_entity_operations(&store, TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_4_PTR, ops)
+            .unwrap();
 
         // Verify that the user is no longer the original
         assert_ne!(
@@ -1955,7 +1940,6 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         transact_entity_operations(
             &store,
             subgraph_id.clone(),
-            *TEST_BLOCK_0_PTR,
             *TEST_BLOCK_1_PTR,
             added_entities
                 .iter()
@@ -1998,7 +1982,6 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         transact_entity_operations(
             &store,
             subgraph_id.clone(),
-            *TEST_BLOCK_1_PTR,
             *TEST_BLOCK_2_PTR,
             vec![update_op, delete_op],
         )
@@ -2092,7 +2075,6 @@ fn throttle_subscription_delivers() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
             *TEST_BLOCK_4_PTR,
             vec![user4],
         )
@@ -2142,7 +2124,6 @@ fn throttle_subscription_throttles() {
             transact_entity_operations(
                 &store,
                 TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
                 *TEST_BLOCK_4_PTR,
                 vec![user4],
             )
