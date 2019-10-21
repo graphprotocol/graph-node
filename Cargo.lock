@@ -928,7 +928,7 @@ dependencies = [
  "graph 0.15.1",
  "graph-mock 0.15.1",
  "hex-literal 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "jsonrpc-core 13.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "jsonrpc-core 14.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1399,6 +1399,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "jsonrpc-core"
 version = "13.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_json 1.0.41 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "jsonrpc-core"
+version = "14.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3556,6 +3568,7 @@ dependencies = [
 "checksum isatty 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)" = "e31a8281fc93ec9693494da65fbf28c0c2aa60a2eaec25dc58e2f31952e95edc"
 "checksum itoa 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)" = "501266b7edd0174f8530248f87f99c88fbe60ca4ef3dd486835b8d8d53136f7f"
 "checksum jsonrpc-core 13.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "91d767c183a7e58618a609499d359ce3820700b3ebb4823a18c343b4a2a41a0d"
+"checksum jsonrpc-core 14.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "9b392c9e8e43a12e6b21160903f473b1066e57fe18477394a93a1efd25654003"
 "checksum jsonrpc-http-server 13.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "601fcc7bec888c7cbc7fd124d3d6744d72c0ebb540eca6fe2261b71f9cff6320"
 "checksum jsonrpc-server-utils 13.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "4d415f51d016a4682878e19dd03e8c0b61cd4394912d7cd3dc48d4f19f061a4e"
 "checksum kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"
