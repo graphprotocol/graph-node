@@ -316,13 +316,13 @@ impl SubgraphDeploymentEntity {
         reason: &str,
     ) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
-        entity.set("latestEthereumBlockHash", block_ptr_to.hash_hex());
+        entity.set("latestEthereumBlockHash", block_ptr_to.hash);
         entity.set("latestEthereumBlockNumber", block_ptr_to.number);
 
         let guard = EntityFilter::And(vec![
             EntityFilter::new_equal(
                 "latestEthereumBlockHash",
-                block_ptr_from.map(|ptr| ptr.hash_hex()),
+                block_ptr_from.map(|ptr| ptr.hash),
             ),
             EntityFilter::new_equal(
                 "latestEthereumBlockNumber",
