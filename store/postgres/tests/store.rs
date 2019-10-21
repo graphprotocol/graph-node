@@ -149,14 +149,8 @@ fn insert_test_data(store: Arc<DieselStore>) {
     };
 
     // Create SubgraphDeploymentEntity
-    let ops = SubgraphDeploymentEntity::new(
-        &manifest,
-        false,
-        false,
-        *TEST_BLOCK_0_PTR,
-        Some(*TEST_BLOCK_0_PTR),
-    )
-    .create_operations(&*TEST_SUBGRAPH_ID);
+    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, None, Some(*TEST_BLOCK_0_PTR))
+        .create_operations(&*TEST_SUBGRAPH_ID);
     store
         .create_subgraph_deployment(&TEST_SUBGRAPH_SCHEMA, ops)
         .unwrap();
@@ -174,7 +168,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
     transact_entity_operations(
         &store,
         TEST_SUBGRAPH_ID.clone(),
-        *TEST_BLOCK_1_PTR,
+        *GENESIS_PTR,
         vec![test_entity_1],
     )
     .unwrap();
@@ -202,7 +196,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
     transact_entity_operations(
         &store,
         TEST_SUBGRAPH_ID.clone(),
-        *TEST_BLOCK_2_PTR,
+        *TEST_BLOCK_1_PTR,
         vec![test_entity_2, test_entity_3_1],
     )
     .unwrap();
@@ -220,7 +214,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
     transact_entity_operations(
         &store,
         TEST_SUBGRAPH_ID.clone(),
-        *TEST_BLOCK_3_PTR,
+        *TEST_BLOCK_2_PTR,
         vec![test_entity_3_2],
     )
     .unwrap();
@@ -307,7 +301,7 @@ fn delete_entity() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_4_PTR,
+            *TEST_BLOCK_3_PTR,
             vec![EntityOperation::Remove {
                 key: entity_key.clone(),
             }],
@@ -421,7 +415,7 @@ fn insert_entity() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_4_PTR,
+            *TEST_BLOCK_3_PTR,
             vec![test_entity],
         )
         .unwrap();
@@ -469,7 +463,7 @@ fn update_existing() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_4_PTR,
+            *TEST_BLOCK_3_PTR,
             vec![op],
         )
         .unwrap();
@@ -513,7 +507,7 @@ fn partially_update_existing() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_4_PTR,
+            *TEST_BLOCK_3_PTR,
             vec![EntityOperation::Set {
                 key: entity_key.clone(),
                 data: partial_entity.clone(),
@@ -1510,8 +1504,8 @@ fn check_basic_revert(
     store
         .revert_block_operations(
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
             *TEST_BLOCK_2_PTR,
+            *TEST_BLOCK_1_PTR,
         )
         .unwrap();
 
@@ -1587,7 +1581,7 @@ fn revert_block_with_delete() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_4_PTR,
+            *TEST_BLOCK_3_PTR,
             vec![EntityOperation::Remove { key: del_key }],
         )
         .unwrap();
@@ -1599,8 +1593,8 @@ fn revert_block_with_delete() {
         store
             .revert_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_4_PTR,
                 *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_2_PTR,
             )
             .unwrap();
         assert_eq!(
@@ -1658,7 +1652,7 @@ fn revert_block_with_partial_update() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_4_PTR,
+            *TEST_BLOCK_3_PTR,
             vec![EntityOperation::Set {
                 key: entity_key.clone(),
                 data: partial_entity.clone(),
@@ -1673,8 +1667,8 @@ fn revert_block_with_partial_update() {
         store
             .revert_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_4_PTR,
                 *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_2_PTR,
             )
             .unwrap();
         assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
@@ -1786,7 +1780,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         ops.extend(dynamic_ds.write_entity_operations("dynamic-data-source"));
 
         // Add user and dynamic data source to the store
-        transact_entity_operations(&store, TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_4_PTR, ops)
+        transact_entity_operations(&store, TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR, ops)
             .unwrap();
 
         // Verify that the user is no longer the original
@@ -1815,8 +1809,8 @@ fn revert_block_with_dynamic_data_source_operations() {
         store
             .revert_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_4_PTR,
                 *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_2_PTR,
             )
             .expect("revert block operations failed unexpectedly");
 
@@ -1909,7 +1903,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             &manifest,
             false,
             false,
-            *TEST_BLOCK_0_PTR,
+            Some(*TEST_BLOCK_0_PTR),
             Some(*TEST_BLOCK_0_PTR),
         )
         .create_operations(&subgraph_id);
@@ -2075,7 +2069,7 @@ fn throttle_subscription_delivers() {
         transact_entity_operations(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_4_PTR,
+            *TEST_BLOCK_3_PTR,
             vec![user4],
         )
         .unwrap();
@@ -2124,7 +2118,7 @@ fn throttle_subscription_throttles() {
             transact_entity_operations(
                 &store,
                 TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_4_PTR,
+                *TEST_BLOCK_3_PTR,
                 vec![user4],
             )
             .unwrap();
@@ -2232,7 +2226,7 @@ fn handle_large_string_with_index() {
         store
             .transact_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_4_PTR,
+                *TEST_BLOCK_3_PTR,
                 vec![
                     make_insert_op(ONE, &long_text),
                     make_insert_op(TWO, &other_text),

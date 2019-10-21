@@ -27,7 +27,7 @@ fn insert_and_query(
 
     let logger = Logger::root(slog::Discard, o!());
 
-    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, GENESIS_PTR.clone(), None)
+    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, None, None)
         .create_operations_replace(&subgraph_id)
         .into_iter()
         .map(|op| op.into())
@@ -48,7 +48,7 @@ fn insert_and_query(
     transact_entity_operations(
         &STORE,
         subgraph_id.clone(),
-        BLOCK_ONE.clone(),
+        GENESIS_PTR.clone(),
         insert_ops.collect::<Vec<_>>(),
     )?;
 
