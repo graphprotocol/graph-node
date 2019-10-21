@@ -73,7 +73,7 @@ lazy_static! {
 pub fn transact_entity_operations(
     store: &Arc<Store>,
     subgraph_id: SubgraphDeploymentId,
-    block_ptr_from: EthereumBlockPointer,
+    block_ptr_from: Option<EthereumBlockPointer>,
     block_ptr_to: EthereumBlockPointer,
     ops: Vec<EntityOperation>,
 ) -> Result<bool, StoreError> {
