@@ -1052,8 +1052,6 @@ impl SubgraphDeploymentStore for Store {
 }
 
 impl ChainStore for Store {
-    type ChainHeadUpdateListener = ChainHeadUpdateListener;
-
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error> {
         Ok(self.genesis_block_ptr)
     }
@@ -1174,14 +1172,16 @@ impl ChainStore for Store {
             .map_err(Error::from)
     }
 
-    fn blocks(&self, hashes: impl Iterator<Item = H256>) -> Result<Vec<ThinEthereumBlock>, Error> {
+    fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<ThinEthereumBlock>, Error> {
         use crate::db_schema::ethereum_blocks::dsl::*;
         use diesel::dsl::any;
 
         ethereum_blocks
             .select(data)
             .filter(network_name.eq(&self.network_name))
-            .filter(hash.eq(any(Vec::from_iter(hashes.map(|h| format!("{:x}", h))))))
+            .filter(hash.eq(any(Vec::from_iter(
+                hashes.into_iter().map(|h| format!("{:x}", h)),
+            ))))
             .load::<serde_json::Value>(&*self.get_conn()?)?
             .into_iter()
             .map(|block| serde_json::from_value(block["block"].clone()).map_err(Into::into))

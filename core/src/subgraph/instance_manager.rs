@@ -650,11 +650,14 @@ where
 
                 // Reprocess the triggers from this block that match the new data sources
                 let logger = logger.clone();
+                let logger1 = logger.clone();
                 let thin_block = thin_block.clone();
                 Box::new(
                     eth_adapter
+                        .clone()
                         .triggers_in_block(
-                            &logger,
+                            logger,
+                            ctx.inputs.store.clone(),
                             ctx.ethrpc_metrics.clone(),
                             EthereumLogFilter::from_data_sources(data_sources.iter()),
                             EthereumCallFilter::from_data_sources(data_sources.iter()),
@@ -666,12 +669,12 @@ where
 
                             if triggers.len() == 1 {
                                 info!(
-                                    logger,
+                                    logger1,
                                     "1 trigger found in this block for the new data sources"
                                 );
                             } else if triggers.len() > 1 {
                                 info!(
-                                    logger,
+                                    logger1,
                                     "{} triggers found in this block for the new data sources",
                                     triggers.len()
                                 );
@@ -680,14 +683,14 @@ where
                             // Add entity operations for the new data sources to the block state
                             // and add runtimes for the data sources to the subgraph instance.
                             persist_dynamic_data_sources(
-                                logger.clone(),
+                                logger1.clone(),
                                 &mut ctx,
                                 &mut block_state.entity_cache,
                                 data_sources,
                                 block_ptr_for_new_data_sources,
                             );
 
-                            let logger = logger.clone();
+                            let logger = logger1.clone();
                             let thin_block = thin_block.clone();
                             Box::new(
                                 stream::iter_ok(triggers)

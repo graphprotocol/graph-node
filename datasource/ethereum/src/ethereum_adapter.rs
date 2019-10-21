@@ -46,6 +46,7 @@ lazy_static! {
 impl<T> EthereumAdapter<T>
 where
     T: web3::BatchTransport + Send + Sync + 'static,
+    T::Batch: Send,
     T::Out: Send,
 {
     pub fn new(transport: T, provider_metrics: Arc<ProviderEthRpcMetrics>) -> Self {
@@ -461,6 +462,48 @@ where
                     .map_err(|e| e.into_inner().unwrap_or(EthereumContractCallError::Timeout))
             })
     }
+
+    fn block_range_to_ptrs(
+        &self,
+        logger: &Logger,
+        from: u64,
+        to: u64,
+    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+        let eth = self.clone();
+        let logger = logger.clone();
+
+        // Generate `EthereumBlockPointers` from `to` backwards to `from`
+        Box::new(
+            self.block_hash_by_block_number(&logger, to)
+                .map(move |block_hash_opt| EthereumBlockPointer {
+                    hash: block_hash_opt.unwrap(),
+                    number: to,
+                })
+                .and_then(move |block_pointer| {
+                    stream::unfold(block_pointer, move |descendant_block_pointer| {
+                        if descendant_block_pointer.number < from {
+                            return None;
+                        }
+                        // Populate the parent block pointer
+                        Some(
+                            eth.block_parent_hash(&logger, descendant_block_pointer.hash)
+                                .map(move |block_hash_opt| {
+                                    let parent_block_pointer = EthereumBlockPointer {
+                                        hash: block_hash_opt.unwrap(),
+                                        number: descendant_block_pointer.number - 1,
+                                    };
+                                    (descendant_block_pointer, parent_block_pointer)
+                                }),
+                        )
+                    })
+                    .collect()
+                })
+                .map(move |mut block_pointers| {
+                    block_pointers.reverse();
+                    block_pointers
+                }),
+        )
+    }
 }
 
 impl<T> EthereumAdapterTrait for EthereumAdapter<T>
@@ -858,109 +901,6 @@ where
         Box::new(calls)
     }
 
-    fn blocks_with_triggers(
-        &self,
-        logger: &Logger,
-        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        from: u64,
-        to: u64,
-        log_filter: EthereumLogFilter,
-        call_filter: EthereumCallFilter,
-        block_filter: EthereumBlockFilter,
-    ) -> Box<dyn Future<Item = Vec<EthereumTrigger>, Error = Error> + Send> {
-        // Each trigger filter needs to be queried for the same block range
-        // and the blocks yielded need to be deduped. If any error occurs
-        // while searching for a trigger type, the entire operation fails.
-        let eth = self.clone();
-        let mut trigger_futs: futures::stream::FuturesUnordered<
-            Box<dyn Future<Item = Vec<EthereumTrigger>, Error = Error> + Send>,
-        > = futures::stream::FuturesUnordered::new();
-
-        // Scan the block range from triggers to find relevant blocks
-        if !log_filter.is_empty() {
-            trigger_futs.push(Box::new(
-                eth.blocks_with_logs(&logger, subgraph_metrics.clone(), from, to, log_filter)
-                    .map(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect()),
-            ))
-        }
-
-        if !call_filter.is_empty() {
-            trigger_futs.push(Box::new(
-                eth.blocks_with_calls(&logger, subgraph_metrics.clone(), from, to, call_filter)
-                    .map(EthereumTrigger::Call)
-                    .collect(),
-            ));
-        }
-
-        match block_filter.contract_addresses.len() {
-            0 => (),
-            _ => {
-                // To determine which blocks include a call to addresses
-                // in the block filter, transform the `block_filter` into
-                // a `call_filter` and run `blocks_with_calls`
-                let call_filter = EthereumCallFilter::from(block_filter);
-                trigger_futs.push(Box::new(
-                    eth.blocks_with_calls(&logger, subgraph_metrics.clone(), from, to, call_filter)
-                        .map(|call| {
-                            EthereumTrigger::Block(
-                                EthereumBlockPointer::from(&call),
-                                EthereumBlockTriggerType::WithCallTo(call.to),
-                            )
-                        })
-                        .collect(),
-                ));
-            }
-        }
-
-        Box::new(trigger_futs.concat2().and_then(|mut triggers| {
-            triggers.sort_by_key(|trigger| trigger.block_number());
-            future::ok(triggers)
-        }))
-    }
-
-    fn blocks(
-        &self,
-        logger: &Logger,
-        _: Arc<SubgraphEthRpcMetrics>,
-        from: u64,
-        to: u64,
-    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
-        let eth = self.clone();
-        let logger = logger.clone();
-
-        // Generate `EthereumBlockPointers` from `to` backwards to `from`
-        Box::new(
-            self.block_hash_by_block_number(&logger, to)
-                .map(move |block_hash_opt| EthereumBlockPointer {
-                    hash: block_hash_opt.unwrap(),
-                    number: to,
-                })
-                .and_then(move |block_pointer| {
-                    stream::unfold(block_pointer, move |descendant_block_pointer| {
-                        if descendant_block_pointer.number < from {
-                            return None;
-                        }
-                        // Populate the parent block pointer
-                        Some(
-                            eth.block_parent_hash(&logger, descendant_block_pointer.hash)
-                                .map(move |block_hash_opt| {
-                                    let parent_block_pointer = EthereumBlockPointer {
-                                        hash: block_hash_opt.unwrap(),
-                                        number: descendant_block_pointer.number - 1,
-                                    };
-                                    (descendant_block_pointer, parent_block_pointer)
-                                }),
-                        )
-                    })
-                    .collect()
-                })
-                .map(move |mut block_pointers| {
-                    block_pointers.reverse();
-                    block_pointers
-                }),
-        )
-    }
-
     fn blocks_with_logs(
         &self,
         logger: &Logger,
@@ -1075,37 +1015,109 @@ where
     }
 
     fn triggers_in_block(
-        &self,
-        logger: &Logger,
+        self: Arc<Self>,
+        logger: Logger,
+        chain_store: Arc<dyn ChainStore>,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
         ethereum_block: BlockFinality,
     ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send> {
-        Box::new(
-            match &ethereum_block {
-                BlockFinality::Final(block) => self.blocks_with_triggers(
+        Box::new(match &ethereum_block {
+            BlockFinality::Final(block) => Box::new(
+                self.blocks_with_triggers(
                     logger,
+                    chain_store,
                     subgraph_metrics,
                     block.number(),
                     block.number(),
                     log_filter.clone(),
                     call_filter.clone(),
                     block_filter.clone(),
-                ),
-                BlockFinality::NonFinal(fat_block) => Box::new(future::ok({
-                    let mut triggers = Vec::new();
-                    triggers.append(&mut parse_log_triggers(
-                        log_filter,
-                        &fat_block.ethereum_block,
-                    ));
-                    triggers.append(&mut parse_call_triggers(call_filter, &fat_block));
-                    triggers.append(&mut parse_block_triggers(block_filter, &fat_block));
-                    triggers
-                })),
-            }
-            .map(|triggers| EthereumBlockWithTriggers::new(ethereum_block, triggers)),
+                )
+                .map(|blocks| {
+                    assert!(blocks.len() <= 1);
+                    blocks
+                        .into_iter()
+                        .next()
+                        .unwrap_or(EthereumBlockWithTriggers::new(vec![], ethereum_block))
+                }),
+            )
+                as Box<dyn Future<Item = _, Error = _> + Send>,
+            BlockFinality::NonFinal(fat_block) => Box::new(future::ok({
+                let mut triggers = Vec::new();
+                triggers.append(&mut parse_log_triggers(
+                    log_filter,
+                    &fat_block.ethereum_block,
+                ));
+                triggers.append(&mut parse_call_triggers(call_filter, &fat_block));
+                triggers.append(&mut parse_block_triggers(block_filter, &fat_block));
+                EthereumBlockWithTriggers::new(triggers, ethereum_block)
+            })),
+        })
+    }
+
+    /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
+    fn load_blocks(
+        &self,
+        logger: Logger,
+        chain_store: Arc<dyn ChainStore>,
+        block_hashes: HashSet<H256>,
+    ) -> Box<dyn Stream<Item = ThinEthereumBlock, Error = Error> + Send> {
+        // Search for the block in the store first then use json-rpc as a backup.
+        let mut blocks = chain_store
+            .blocks(block_hashes.iter().cloned().collect())
+            .map_err(|e| error!(&logger, "Error accessing block cache {}", e))
+            .unwrap_or_default();
+
+        let missing_blocks = Vec::from_iter(
+            block_hashes
+                .into_iter()
+                .filter(|hash| !blocks.iter().any(|b| b.hash == Some(*hash))),
+        );
+
+        let block_batch_size: usize = std::env::var_os("ETHEREUM_BLOCK_BATCH_SIZE")
+            .map(|s| s.to_str().unwrap().parse().unwrap())
+            .unwrap_or(50);
+
+        let block_hashes_batches = missing_blocks
+            .chunks(block_batch_size) // maximum batch size
+            .map(|chunk| chunk.to_vec())
+            .collect::<Vec<_>>();
+
+        // Return a stream that lazily loads batches of blocks
+        Box::new(
+            stream::iter_ok::<_, Error>(
+                block_hashes_batches
+                    .into_iter()
+                    .map(|block_hashes_batch| {
+                        debug!(
+                            logger,
+                            "Requesting {} block(s) in parallel",
+                            block_hashes_batch.len()
+                        );
+
+                        // Start loading all blocks in this batch
+                        stream::futures_ordered(
+                            block_hashes_batch
+                                .into_iter()
+                                .map(|block_hash| self.load_block(&logger, block_hash)),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .flatten()
+            .collect()
+            .map(move |new_blocks| {
+                if let Err(e) = chain_store.upsert_thin_blocks(new_blocks.clone()) {
+                    error!(logger, "Error writing to block cache {}", e);
+                }
+                blocks.extend(new_blocks);
+                blocks.sort_by_key(|block| block.number);
+                stream::iter_ok(blocks)
+            })
+            .flatten_stream(),
         )
     }
 }
