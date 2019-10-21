@@ -105,7 +105,7 @@ struct BlockStreamContext<S, C> {
     start_blocks: Vec<u64>,
     templates_use_calls: bool,
     logger: Logger,
-    metrics: BlockStreamMetrics,
+    metrics: Arc<BlockStreamMetrics>,
 }
 
 impl<S, C> Clone for BlockStreamContext<S, C> {
@@ -124,43 +124,6 @@ impl<S, C> Clone for BlockStreamContext<S, C> {
             templates_use_calls: self.templates_use_calls,
             logger: self.logger.clone(),
             metrics: self.metrics.clone(),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct BlockStreamMetrics {
-    pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
-    pub blocks_behind: Box<Gauge>,
-    pub reverted_blocks: Box<Gauge>,
-}
-
-impl BlockStreamMetrics {
-    pub fn new<M: MetricsRegistry>(
-        registry: Arc<M>,
-        ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
-        deployment_id: SubgraphDeploymentId,
-    ) -> Self {
-        let blocks_behind = registry
-            .new_gauge(
-                format!("subgraph_blocks_behind_{}", deployment_id.to_string()),
-                String::from(
-                    "Track the number of blocks a subgraph deployment is behind the HEAD block",
-                ),
-                HashMap::new(),
-            )
-            .expect("failed to create `subgraph_blocks_behind` gauge");
-        let reverted_blocks = registry
-            .new_gauge(
-                format!("subgraph_reverted_blocks_{}", deployment_id.to_string()),
-                String::from("Track the last reverted block for a subgraph deployment"),
-                HashMap::new(),
-            )
-            .expect("Failed to create `subgraph_reverted_blocks` gauge");
-        Self {
-            ethrpc_metrics,
-            blocks_behind,
-            reverted_blocks,
         }
     }
 }
@@ -190,7 +153,7 @@ where
         templates_use_calls: bool,
         reorg_threshold: u64,
         logger: Logger,
-        metrics: BlockStreamMetrics,
+        metrics: Arc<BlockStreamMetrics>,
     ) -> Self {
         BlockStream {
             state: Mutex::new(BlockStreamState::New),
@@ -997,7 +960,7 @@ where
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
         templates_use_calls: bool,
-        ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+        metrics: Arc<BlockStreamMetrics>,
     ) -> Self::Stream {
         let logger = logger.new(o!(
             "component" => "BlockStream",
@@ -1019,13 +982,6 @@ where
                 &network_name
             ))
             .clone();
-
-        // Instantiate metrics needed by the BlockStream
-        let metrics = BlockStreamMetrics::new(
-            self.metrics_registry.clone(),
-            ethrpc_metrics,
-            deployment_id.clone(),
-        );
 
         // Create the actual subgraph-specific block stream
         BlockStream::new(

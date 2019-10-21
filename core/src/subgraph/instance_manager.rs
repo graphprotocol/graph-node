@@ -50,6 +50,8 @@ struct IndexingContext<B, T: RuntimeHostBuilder, S> {
 
     /// Sensors to measue the execution of eth rpc calls
     pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+
+    pub block_stream_metrics: Arc<BlockStreamMetrics>,
 }
 
 pub struct SubgraphInstanceManager {
@@ -354,6 +356,11 @@ impl SubgraphInstanceManager {
             registry.clone(),
             deployment_id.to_string(),
         ));
+        let block_stream_metrics = Arc::new(BlockStreamMetrics::new(
+            registry.clone(),
+            ethrpc_metrics.clone(),
+            deployment_id.clone(),
+        ));
         let instance =
             SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
 
@@ -381,6 +388,7 @@ impl SubgraphInstanceManager {
             subgraph_metrics,
             host_metrics,
             ethrpc_metrics,
+            block_stream_metrics,
         };
 
         // Keep restarting the subgraph until it terminates. The subgraph
@@ -453,7 +461,7 @@ where
             ctx.state.call_filter.clone(),
             ctx.state.block_filter.clone(),
             ctx.inputs.templates_use_calls,
-            ctx.ethrpc_metrics.clone(),
+            ctx.block_stream_metrics.clone(),
         )
         .from_err()
         .cancelable(&block_stream_canceler, || CancelableError::Cancel);

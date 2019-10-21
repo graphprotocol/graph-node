@@ -4,10 +4,10 @@ mod stream;
 mod types;
 
 pub use self::adapter::{
-    EthGetLogsFilter, EthereumAdapter, EthereumAdapterError, EthereumBlockFilter,
-    EthereumCallFilter, EthereumContractCall, EthereumContractCallError, EthereumContractState,
-    EthereumContractStateError, EthereumContractStateRequest, EthereumLogFilter,
-    EthereumNetworkIdentifier, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
+    BlockStreamMetrics, EthGetLogsFilter, EthereumAdapter, EthereumAdapterError,
+    EthereumBlockFilter, EthereumCallFilter, EthereumContractCall, EthereumContractCallError,
+    EthereumContractState, EthereumContractStateError, EthereumContractStateRequest,
+    EthereumLogFilter, EthereumNetworkIdentifier, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
 };
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream};
 pub use self::stream::{BlockStream, BlockStreamBuilder};
