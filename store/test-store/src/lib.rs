@@ -73,7 +73,6 @@ lazy_static! {
 pub fn transact_entity_operations(
     store: &Arc<Store>,
     subgraph_id: SubgraphDeploymentId,
-    block_ptr_from: EthereumBlockPointer,
     block_ptr_to: EthereumBlockPointer,
     ops: Vec<EntityOperation>,
 ) -> Result<bool, StoreError> {
@@ -82,5 +81,5 @@ pub fn transact_entity_operations(
     let mods = entity_cache
         .as_modifications(store.as_ref())
         .expect("failed to convert to modifications");
-    store.transact_block_operations(subgraph_id, block_ptr_from, block_ptr_to, mods)
+    store.transact_block_operations(subgraph_id, block_ptr_to, mods)
 }

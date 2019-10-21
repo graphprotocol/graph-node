@@ -196,7 +196,6 @@ impl Store for MockStore {
         &self,
         _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
-        _: EthereumBlockPointer,
         _: Vec<EntityModification>,
     ) -> Result<bool, StoreError> {
         unimplemented!();
@@ -521,7 +520,6 @@ impl Store for FakeStore {
     fn transact_block_operations(
         &self,
         _: SubgraphDeploymentId,
-        _: EthereumBlockPointer,
         _: EthereumBlockPointer,
         _: Vec<EntityModification>,
     ) -> Result<bool, StoreError> {

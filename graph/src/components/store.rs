@@ -626,17 +626,15 @@ pub trait Store: Send + Sync + 'static {
     ) -> Result<bool, StoreError>;
 
     /// Transact the entity changes from a single block atomically into the store, and update the
-    /// subgraph block pointer from `block_ptr_from` to `block_ptr_to`.
+    /// subgraph block pointer to `block_ptr_to`.
     ///
-    /// `block_ptr_from` must match the current value of the subgraph block pointer.
-    /// `block_ptr_to` must point to a child block of `block_ptr_from`.
+    /// `block_ptr_to` must point to a child block of the current subgraph block pointer.
     ///
     /// Return `true` if the subgraph mentioned in `history_event` should have
     /// its schema migrated at `block_ptr_to`
     fn transact_block_operations(
         &self,
         subgraph_id: SubgraphDeploymentId,
-        block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
     ) -> Result<bool, StoreError>;

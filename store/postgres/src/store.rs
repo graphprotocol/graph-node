@@ -838,14 +838,10 @@ impl StoreTrait for Store {
     fn transact_block_operations(
         &self,
         subgraph_id: SubgraphDeploymentId,
-        block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
     ) -> Result<bool, StoreError> {
-        // Sanity check on block numbers
-        if block_ptr_from.number != block_ptr_to.number - 1 {
-            panic!("transact_block_operations must transact a single block only");
-        }
+        let block_ptr_from = self.block_ptr(subgraph_id.clone())?;
 
         // All operations should apply only to entities in this subgraph or
         // the subgraph of subgraphs
