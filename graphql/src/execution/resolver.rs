@@ -52,7 +52,7 @@ pub trait Resolver: Clone + Send + Sync {
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
-        field: &q::Name,
+        field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
