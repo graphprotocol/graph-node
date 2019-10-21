@@ -303,7 +303,6 @@ where
 pub fn execute_root_selection_set<'a, R>(
     ctx: &ExecutionContext<'a, R>,
     selection_set: &'a q::SelectionSet,
-    initial_value: &Option<q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R: Resolver,
@@ -343,18 +342,18 @@ where
     // Execute the root selection set against the root query type
     if data_set.items.is_empty() {
         // Only introspection
-        execute_selection_set(&ictx, &intro_set, introspection_query_type, initial_value)
+        execute_selection_set(&ictx, &intro_set, introspection_query_type, &None)
     } else if intro_set.items.is_empty() {
         // Only data
-        execute_selection_set(&ctx, &data_set, query_type, initial_value)
+        execute_selection_set(&ctx, &data_set, query_type, &None)
     } else {
         // Both introspection and data
-        let mut values = execute_selection_set_to_map(&ctx, &data_set, query_type, initial_value)?;
+        let mut values = execute_selection_set_to_map(&ctx, &data_set, query_type, &None)?;
         values.extend(execute_selection_set_to_map(
             &ictx,
             &intro_set,
             introspection_query_type,
-            initial_value,
+            &None,
         )?);
         Ok(q::Value::Object(values))
     }

@@ -98,7 +98,7 @@ where
                         max_complexity,
                     )])
                 }
-                (Ok(_), _) => execute_root_selection_set(&ctx, selection_set, &None),
+                (Ok(_), _) => execute_root_selection_set(&ctx, selection_set),
             }
         }
         // Everything else (e.g. mutations) is unsupported
