@@ -775,6 +775,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
             }
         }
 
+        let logger1 = logger.clone();
         Box::new(
             trigger_futs
                 .concat2()
@@ -788,6 +789,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
                             map
                         });
 
+                    debug!(logger, "Found {} relevant block(s)", block_hashes.len());
+
                     // Make sure `to` is included, even if empty.
                     block_hashes.insert(to_hash.unwrap());
                     triggers_by_block.entry(to).or_insert(Vec::new());
@@ -795,7 +798,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
                     (block_hashes, triggers_by_block)
                 })
                 .and_then(move |(block_hashes, mut triggers_by_block)| {
-                    self.load_blocks(logger.clone(), chain_store, block_hashes)
+                    self.load_blocks(logger1, chain_store, block_hashes)
                         .map(move |block| {
                             EthereumBlockWithTriggers::new(
                                 // All blocks with triggers should are in `triggers_by_block`, and

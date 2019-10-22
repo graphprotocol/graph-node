@@ -376,7 +376,6 @@ where
                                 cmp::min(from + speedup * *ETHEREUM_BLOCK_RANGE_SIZE - 1, to_limit)
                             };
 
-                            let logger = ctx.logger.clone();
                             debug!(ctx.logger, "Scanning blocks [{}, {}]", from, to);
                             Box::new(
                                 ctx.eth_adapter
@@ -390,20 +389,7 @@ where
                                         call_filter.clone(),
                                         block_filter.clone(),
                                     )
-                                    .map(move |descendant_blocks| {
-                                        debug!(
-                                            logger,
-                                            "Found {} trigger(s)",
-                                            descendant_blocks
-                                                .iter()
-                                                .map(|b| b.triggers.len())
-                                                .sum::<usize>()
-                                        );
-
-                                        ReconciliationStep::ProcessDescendantBlocks(
-                                            descendant_blocks,
-                                        )
-                                    }),
+                                    .map(ReconciliationStep::ProcessDescendantBlocks),
                             )
                         },
                     ),
