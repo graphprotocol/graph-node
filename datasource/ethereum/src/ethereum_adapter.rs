@@ -521,7 +521,7 @@ where
     fn latest_block(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = Block<Transaction>, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = ThinEthereumBlock, Error = EthereumAdapterError> + Send> {
         let web3 = self.web3.clone();
 
         Box::new(
@@ -569,7 +569,7 @@ where
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = Option<Block<Transaction>>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Option<ThinEthereumBlock>, Error = Error> + Send> {
         let web3 = self.web3.clone();
         let logger = logger.clone();
 
@@ -593,7 +593,7 @@ where
     fn load_full_block(
         &self,
         logger: &Logger,
-        block: Block<Transaction>,
+        block: ThinEthereumBlock,
     ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
         let logger = logger.clone();
         let block_hash = block.hash.expect("block is missing block hash");

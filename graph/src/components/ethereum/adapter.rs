@@ -605,7 +605,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn latest_block(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = Block<Transaction>, Error = EthereumAdapterError> + Send>;
+    ) -> Box<dyn Future<Item = ThinEthereumBlock, Error = EthereumAdapterError> + Send>;
 
     fn load_block(
         &self,
@@ -634,13 +634,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = Option<Block<Transaction>>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Option<ThinEthereumBlock>, Error = Error> + Send>;
 
     /// Load full information for the specified `block` (in particular, transaction receipts).
     fn load_full_block(
         &self,
         logger: &Logger,
-        block: Block<Transaction>,
+        block: ThinEthereumBlock,
     ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send>;
 
     /// Load block pointer for the specified `block number`.
