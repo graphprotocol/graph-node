@@ -114,11 +114,11 @@ where
                     .from_err()
                     .then(move |result| {
                         let elapsed = start.elapsed().as_secs_f64();
-                        provider_metrics.observe_request(elapsed, "eth_getLogs");
-                        subgraph_metrics.observe_request(elapsed, "eth_getLogs");
+                        provider_metrics.observe_request(elapsed, "trace_filter");
+                        subgraph_metrics.observe_request(elapsed, "trace_filter");
                         if result.is_err() {
-                            provider_metrics.add_error("eth_getLogs");
-                            subgraph_metrics.add_error("eth_getLogs");
+                            provider_metrics.add_error("trace_filter");
+                            subgraph_metrics.add_error("trace_filter");
                             debug!(
                                 logger_for_error,
                                 "Error querying traces error = {:?} from = {:?} to = {:?}",
