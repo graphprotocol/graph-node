@@ -201,6 +201,44 @@ fn reference_interface() {
 }
 
 #[test]
+fn follow_interface_reference() {
+    let subgraph_id = "FollowInterfaceReference";
+    let schema = "interface Legged { legs: Int! }
+                  type Animal implements Legged @entity {
+                    id: ID!
+                    legs: Int!
+                    parent: Legged
+                  }";
+
+    let query = "query { legged(id: \"child\") { parent { id } } }";
+
+    let parent = (
+        Entity::from(vec![
+            ("id", Value::from("parent")),
+            ("legs", Value::from(4)),
+            ("parent", Value::Null),
+        ]),
+        "Animal",
+    );
+    let child = (
+        Entity::from(vec![
+            ("id", Value::from("child")),
+            ("legs", Value::from(3)),
+            ("parent", Value::String("parent".into())),
+        ]),
+        "Animal",
+    );
+
+    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
+
+    assert!(res.errors.is_none(), format!("{:#?}", res.errors));
+    assert_eq!(
+        format!("{:?}", res.data.unwrap()),
+        "Object({\"legged\": Object({\"parent\": Object({\"id\": String(\"parent\")})})})"
+    )
+}
+
+#[test]
 fn conflicting_implementors_id() {
     let subgraph_id = "ConflictingImplementorsId";
     let schema = "interface Legged { legs: Int }
