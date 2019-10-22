@@ -1,7 +1,7 @@
 use graph::components::ethereum::*;
 use graph::prelude::{
     ethabi, future,
-    web3::types::{Block, Log, Transaction, H256},
+    web3::types::{Log, H256},
     Arc, ChainStore, Error, EthereumCallCache, Future, Logger, Stream,
 };
 use std::collections::HashSet;
@@ -20,7 +20,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn latest_block(
         &self,
         _: &Logger,
-    ) -> Box<dyn Future<Item = Block<Transaction>, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = ThinEthereumBlock, Error = EthereumAdapterError> + Send> {
         unimplemented!();
     }
 
@@ -36,14 +36,14 @@ impl EthereumAdapter for MockEthereumAdapter {
         &self,
         _: &Logger,
         _: H256,
-    ) -> Box<dyn Future<Item = Option<Block<Transaction>>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Option<ThinEthereumBlock>, Error = Error> + Send> {
         unimplemented!();
     }
 
     fn load_full_block(
         &self,
         _: &Logger,
-        _: Block<Transaction>,
+        _: ThinEthereumBlock,
     ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
         unimplemented!();
     }

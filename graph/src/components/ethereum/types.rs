@@ -40,7 +40,7 @@ impl ThinEthereumBlockExt for ThinEthereumBlock {
 #[derive(Clone, Debug)]
 pub enum BlockFinality {
     /// If a block is final, we only need the header and the triggers.
-    Final(Block<Transaction>),
+    Final(ThinEthereumBlock),
 
     // If a block may still be reorged, we need to work with more local data.
     NonFinal(EthereumBlockWithCalls),
@@ -101,7 +101,7 @@ pub struct EthereumBlockWithCalls {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct EthereumBlock {
-    pub block: Block<Transaction>,
+    pub block: ThinEthereumBlock,
     pub transaction_receipts: Vec<TransactionReceipt>,
 }
 
