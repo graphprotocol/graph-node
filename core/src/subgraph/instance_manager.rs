@@ -620,7 +620,7 @@ where
         logger.clone(),
         ctx,
         BlockState::default(),
-        Arc::new(block.thin_block()),
+        thin_block.clone(),
         triggers,
     )
     .and_then(move |(ctx, block_state)| {
@@ -698,7 +698,6 @@ where
                             );
 
                             let logger = logger1.clone();
-                            let thin_block = thin_block.clone();
                             Box::new(
                                 stream::iter_ok(triggers)
                                     .fold(block_state, move |block_state, trigger| {
