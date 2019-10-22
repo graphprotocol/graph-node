@@ -195,12 +195,10 @@ where
                     })
                 }))
             }
-            EthereumTrigger::Block(_, trigger_type) => {
+            EthereumTrigger::Block(ptr, trigger_type) => {
                 let matching_hosts: Vec<_> = hosts
                     .into_iter()
-                    .filter(|host| {
-                        host.matches_block(trigger_type.clone(), block.number.unwrap().as_u64())
-                    })
+                    .filter(|host| host.matches_block(trigger_type.clone(), ptr.number))
                     .collect();
 
                 Box::new(
