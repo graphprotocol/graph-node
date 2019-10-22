@@ -409,16 +409,21 @@ impl<'a> QueryFilter<'a> {
         &self,
         filters: &Vec<EntityFilter>,
         op: &str,
+        on_empty: &str,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
-        out.push_sql("(");
-        for (i, filter) in filters.iter().enumerate() {
-            if i > 0 {
-                out.push_sql(op);
+        if !filters.is_empty() {
+            out.push_sql("(");
+            for (i, filter) in filters.iter().enumerate() {
+                if i > 0 {
+                    out.push_sql(op);
+                }
+                self.with(&filter).walk_ast(out.reborrow())?;
             }
-            self.with(&filter).walk_ast(out.reborrow())?;
+            out.push_sql(")");
+        } else {
+            out.push_sql(on_empty);
         }
-        out.push_sql(")");
         Ok(())
     }
 
@@ -676,8 +681,8 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
         use Comparison as c;
         use EntityFilter::*;
         match &self.filter {
-            And(filters) => self.binary_op(filters, " and ", out)?,
-            Or(filters) => self.binary_op(filters, " or ", out)?,
+            And(filters) => self.binary_op(filters, " and ", " true ", out)?,
+            Or(filters) => self.binary_op(filters, " or ", " false ", out)?,
 
             Contains(attr, value) => self.contains(attr, value, false, out)?,
             NotContains(attr, value) => self.contains(attr, value, true, out)?,

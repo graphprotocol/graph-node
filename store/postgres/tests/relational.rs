@@ -1753,3 +1753,36 @@ fn text_not_in() {
     text_find(vec!["a2b", "a3"], filter(vec![&a1, &a2]));
     text_find(vec!["a2", "a2b"], filter(vec![&a1, &a3]));
 }
+
+#[test]
+fn find_empty_and_or() {
+    // It's somewhat arbitrary that we define empty 'or' and 'and' to
+    // be 'true' and 'false'; it's mostly this way since that's what the
+    // JSONB storage filters do
+
+    // An empty 'or' is 'false'
+    test_find(
+        vec![],
+        EntityQuery {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_types: vec!["User".to_owned()],
+            filter: Some(EntityFilter::And(vec![EntityFilter::Or(vec![])])),
+            order_by: None,
+            order_direction: None,
+            range: EntityRange::first(100),
+        },
+    );
+
+    // An empty 'and' is 'true'
+    test_find(
+        vec!["1", "2", "3"],
+        EntityQuery {
+            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+            entity_types: vec!["User".to_owned()],
+            filter: Some(EntityFilter::Or(vec![EntityFilter::And(vec![])])),
+            order_by: None,
+            order_direction: None,
+            range: EntityRange::first(100),
+        },
+    )
+}
