@@ -748,26 +748,21 @@ pub trait EthereumAdapter: Send + Sync + 'static {
                             .collect()
                     }),
             ))
-        }
-
-        match block_filter.contract_addresses.len() {
-            0 => (),
-            _ => {
-                // To determine which blocks include a call to addresses
-                // in the block filter, transform the `block_filter` into
-                // a `call_filter` and run `blocks_with_calls`
-                let call_filter = EthereumCallFilter::from(block_filter);
-                trigger_futs.push(Box::new(
-                    eth.blocks_with_calls(&logger, subgraph_metrics.clone(), from, to, call_filter)
-                        .map(|call| {
-                            EthereumTrigger::Block(
-                                EthereumBlockPointer::from(&call),
-                                EthereumBlockTriggerType::WithCallTo(call.to),
-                            )
-                        })
-                        .collect(),
-                ));
-            }
+        } else if !block_filter.contract_addresses.is_empty() {
+            // To determine which blocks include a call to addresses
+            // in the block filter, transform the `block_filter` into
+            // a `call_filter` and run `blocks_with_calls`
+            let call_filter = EthereumCallFilter::from(block_filter);
+            trigger_futs.push(Box::new(
+                eth.blocks_with_calls(&logger, subgraph_metrics.clone(), from, to, call_filter)
+                    .map(|call| {
+                        EthereumTrigger::Block(
+                            EthereumBlockPointer::from(&call),
+                            EthereumBlockTriggerType::WithCallTo(call.to),
+                        )
+                    })
+                    .collect(),
+            ));
         }
 
         let logger1 = logger.clone();
