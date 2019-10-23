@@ -361,13 +361,10 @@ where
                             let to_limit =
                                 cmp::min(head_ptr.number - reorg_threshold, next_start_block - 1);
 
-                            let to = if block_filter.trigger_every_block {
-                                // If there is a block trigger on every block, go
-                                // one block at a time.
-                                from
-                            } else {
-                                // Otherwise use ETHEREUM_BLOCK_RANGE_SIZE to ensure the subgraph
-                                //  block ptr is updated frequently.
+                            // The range should not be too small, due to the overhead of finding
+                            // triggers for each range, neither too large, so that progress is
+                            // commited frequently and memory usage is under control.
+                            let to = {
                                 let speedup = if from < *ETHEREUM_FAST_SCAN_END {
                                     FAST_SCAN_SPEEDUP
                                 } else {
