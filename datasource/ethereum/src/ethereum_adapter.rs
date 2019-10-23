@@ -41,6 +41,11 @@ lazy_static! {
         .unwrap_or("500".into())
         .parse::<u64>()
         .expect("invalid number of parallel Ethereum block ranges to scan");
+
+    static ref BLOCK_BATCH_SIZE: usize = std::env::var("ETHEREUM_BLOCK_BATCH_SIZE")
+            .unwrap_or("10".into())
+            .parse::<usize>()
+            .expect("invalid ETHEREUM_BLOCK_BATCH_SIZE env var");
 }
 
 impl<T> EthereumAdapter<T>
@@ -462,6 +467,67 @@ where
                     .map_err(|e| e.into_inner().unwrap_or(EthereumContractCallError::Timeout))
             })
     }
+
+    /// Request blocks by hash through JSON-RPC.
+    fn load_blocks_rpc(
+        &self,
+        logger: Logger,
+        ids: Vec<H256>,
+    ) -> impl Stream<Item = ThinEthereumBlock, Error = Error> + Send {
+        let web3 = self.web3.clone();
+
+        stream::iter_ok::<_, Error>(ids.into_iter().map(move |hash| {
+            let web3 = web3.clone();
+            retry(format!("load block {}", hash), &logger)
+                .no_limit()
+                .timeout_secs(60)
+                .run(move || {
+                    web3.eth()
+                        .block_with_txs(BlockId::Hash(hash))
+                        .from_err::<Error>()
+                        .map_err(|e| e.compat())
+                        .and_then(move |block| {
+                            block.ok_or_else(|| {
+                                format_err!("eth node did not find block {:?}", hash).compat()
+                            })
+                        })
+                })
+                .from_err()
+        }))
+        .buffered(*BLOCK_BATCH_SIZE)
+    }
+
+    /// Request blocks ptrs for numbers through JSON-RPC.
+    ///
+    /// Reorg safety: If ids are numbers, they must be a final blocks.
+    fn load_block_ptrs_rpc(
+        &self,
+        logger: Logger,
+        block_nums: Vec<u64>,
+    ) -> impl Stream<Item = EthereumBlockPointer, Error = Error> + Send {
+        let web3 = self.web3.clone();
+
+        stream::iter_ok::<_, Error>(block_nums.into_iter().map(move |block_num| {
+            let web3 = web3.clone();
+            retry(format!("load block ptr {}", block_num), &logger)
+                .no_limit()
+                .timeout_secs(60)
+                .run(move || {
+                    web3.eth()
+                        .block(BlockId::Number(BlockNumber::Number(block_num)))
+                        .from_err::<Error>()
+                        .map_err(|e| e.compat())
+                        .and_then(move |block| {
+                            block.ok_or_else(|| {
+                                format_err!("eth node did not find block {:?}", block_num).compat()
+                            })
+                        })
+                })
+                .from_err()
+        }))
+        .buffered(*BLOCK_BATCH_SIZE)
+        .map(|b| b.into())
+    }
 }
 
 impl<T> EthereumAdapterTrait for EthereumAdapter<T>
@@ -729,34 +795,6 @@ where
                 .map(move |block_hash| EthereumBlockPointer {
                     hash: block_hash,
                     number: block_number,
-                }),
-        )
-    }
-
-    fn block_parent_hash(
-        &self,
-        logger: &Logger,
-        descendant_block_hash: H256,
-    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
-        let web3 = self.web3.clone();
-
-        Box::new(
-            retry("eth_getBlockByHash RPC call", &logger)
-                .no_limit()
-                .timeout_secs(60)
-                .run(move || {
-                    web3.eth()
-                        .block(BlockId::Hash(descendant_block_hash))
-                        .from_err()
-                        .map(|block_opt| block_opt.map(|block| block.parent_hash))
-                })
-                .map_err(move |e| {
-                    e.into_inner().unwrap_or_else(move || {
-                        format_err!(
-                            "Ethereum node took too long to return data for block hash = `{}`",
-                            descendant_block_hash
-                        )
-                    })
                 }),
         )
     }
@@ -1035,89 +1073,36 @@ where
                 .filter(|hash| !blocks.iter().any(|b| b.hash == Some(*hash))),
         );
 
-        let block_batch_size: usize = std::env::var_os("ETHEREUM_BLOCK_BATCH_SIZE")
-            .map(|s| s.to_str().unwrap().parse().unwrap())
-            .unwrap_or(50);
-
-        let block_hashes_batches = missing_blocks
-            .chunks(block_batch_size) // maximum batch size
-            .map(|chunk| chunk.to_vec())
-            .collect::<Vec<_>>();
-
-        // Return a stream that lazily loads batches of blocks
+        // Return a stream that lazily loads batches of blocks.
+        debug!(logger, "Requesting {} block(s)", missing_blocks.len());
         Box::new(
-            stream::iter_ok::<_, Error>(
-                block_hashes_batches
-                    .into_iter()
-                    .map(|block_hashes_batch| {
-                        debug!(
-                            logger,
-                            "Requesting {} block(s) in parallel",
-                            block_hashes_batch.len()
-                        );
-
-                        // Start loading all blocks in this batch
-                        stream::futures_ordered(
-                            block_hashes_batch
-                                .into_iter()
-                                .map(|block_hash| self.load_block(&logger, block_hash)),
-                        )
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .flatten()
-            .collect()
-            .map(move |new_blocks| {
-                if let Err(e) = chain_store.upsert_thin_blocks(new_blocks.clone()) {
-                    error!(logger, "Error writing to block cache {}", e);
-                }
-                blocks.extend(new_blocks);
-                blocks.sort_by_key(|block| block.number);
-                stream::iter_ok(blocks)
-            })
-            .flatten_stream(),
+            self.load_blocks_rpc(logger.clone(), missing_blocks.into_iter().collect())
+                .collect()
+                .map(move |new_blocks| {
+                    if let Err(e) = chain_store.upsert_thin_blocks(new_blocks.clone()) {
+                        error!(logger, "Error writing to block cache {}", e);
+                    }
+                    blocks.extend(new_blocks);
+                    blocks.sort_by_key(|block| block.number);
+                    stream::iter_ok(blocks)
+                })
+                .flatten_stream(),
         )
     }
 
+    /// Reorg safety: `to` must be a final block.
     fn block_range_to_ptrs(
         &self,
-        logger: &Logger,
+        logger: Logger,
         from: u64,
         to: u64,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
-        let eth = self.clone();
-        let logger = logger.clone();
-
-        // Generate `EthereumBlockPointers` from `to` backwards to `from`
+        // Currently we can't go to the DB for this because there might be duplicate entries for
+        // the same block number.
+        debug!(&logger, "Requesting hashes for blocks [{}, {}]", from, to);
         Box::new(
-            self.block_hash_by_block_number(&logger, to)
-                .map(move |block_hash_opt| EthereumBlockPointer {
-                    hash: block_hash_opt.unwrap(),
-                    number: to,
-                })
-                .and_then(move |block_pointer| {
-                    stream::unfold(block_pointer, move |descendant_block_pointer| {
-                        if descendant_block_pointer.number < from {
-                            return None;
-                        }
-                        // Populate the parent block pointer
-                        Some(
-                            eth.block_parent_hash(&logger, descendant_block_pointer.hash)
-                                .map(move |block_hash_opt| {
-                                    let parent_block_pointer = EthereumBlockPointer {
-                                        hash: block_hash_opt.unwrap(),
-                                        number: descendant_block_pointer.number - 1,
-                                    };
-                                    (descendant_block_pointer, parent_block_pointer)
-                                }),
-                        )
-                    })
-                    .collect()
-                })
-                .map(move |mut block_pointers| {
-                    block_pointers.reverse();
-                    block_pointers
-                }),
+            self.load_block_ptrs_rpc(logger, (from..=to).collect())
+                .collect(),
         )
     }
 }

@@ -59,14 +59,6 @@ impl EthereumAdapter for MockEthereumAdapter {
         ))))
     }
 
-    fn block_parent_hash(
-        &self,
-        _: &Logger,
-        _: H256,
-    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
-        unimplemented!();
-    }
-
     fn block_hash_by_block_number(
         &self,
         _: &Logger,
@@ -150,7 +142,7 @@ impl EthereumAdapter for MockEthereumAdapter {
 
     fn block_range_to_ptrs(
         &self,
-        _: &Logger,
+        _: Logger,
         _: u64,
         _: u64,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
