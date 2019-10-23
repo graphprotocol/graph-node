@@ -622,9 +622,10 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_hashes: HashSet<H256>,
     ) -> Box<dyn Stream<Item = ThinEthereumBlock, Error = Error> + Send>;
 
+    /// Reorg safety: `to` must be a final block.
     fn block_range_to_ptrs(
         &self,
-        logger: &Logger,
+        logger: Logger,
         from: u64,
         to: u64,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
@@ -649,13 +650,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         block_number: u64,
     ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send>;
-
-    /// Find the hash for the parent block of the provided block hash
-    fn block_parent_hash(
-        &self,
-        logger: &Logger,
-        block_hash: H256,
-    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
     /// Find a block by its number.
     ///
@@ -729,16 +723,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
             Box<dyn Future<Item = Vec<EthereumTrigger>, Error = Error> + Send>,
         > = futures::stream::FuturesUnordered::new();
 
-        if block_filter.trigger_every_block {
-            trigger_futs.push(Box::new(self.block_range_to_ptrs(&logger, from, to).map(
-                move |ptrs| {
-                    ptrs.into_iter()
-                        .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
-                        .collect()
-                },
-            )))
-        }
-
         // Scan the block range from triggers to find relevant blocks
         if !log_filter.is_empty() {
             trigger_futs.push(Box::new(
@@ -753,6 +737,17 @@ pub trait EthereumAdapter: Send + Sync + 'static {
                     .map(EthereumTrigger::Call)
                     .collect(),
             ));
+        }
+
+        if block_filter.trigger_every_block {
+            trigger_futs.push(Box::new(
+                self.block_range_to_ptrs(logger.clone(), from, to)
+                    .map(move |ptrs| {
+                        ptrs.into_iter()
+                            .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
+                            .collect()
+                    }),
+            ))
         }
 
         match block_filter.contract_addresses.len() {
@@ -801,8 +796,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
                     self.load_blocks(logger1, chain_store, block_hashes)
                         .map(move |block| {
                             EthereumBlockWithTriggers::new(
-                                // All blocks with triggers should are in `triggers_by_block`, and
-                                // will be accessed here exactly once.
+                                // All blocks with triggers are in `triggers_by_block`, and will be
+                                // accessed here exactly once.
                                 triggers_by_block.remove(&block.number()).unwrap(),
                                 BlockFinality::Final(block),
                             )
