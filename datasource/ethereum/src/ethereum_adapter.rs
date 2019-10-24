@@ -473,7 +473,7 @@ where
         &self,
         logger: Logger,
         ids: Vec<H256>,
-    ) -> impl Stream<Item = ThinEthereumBlock, Error = Error> + Send {
+    ) -> impl Stream<Item = LightEthereumBlock, Error = Error> + Send {
         let web3 = self.web3.clone();
 
         stream::iter_ok::<_, Error>(ids.into_iter().map(move |hash| {
@@ -587,7 +587,7 @@ where
     fn latest_block(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = ThinEthereumBlock, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = EthereumAdapterError> + Send> {
         let web3 = self.web3.clone();
 
         Box::new(
@@ -617,7 +617,7 @@ where
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = ThinEthereumBlock, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send> {
         Box::new(
             self.block_by_hash(&logger, block_hash)
                 .and_then(move |block_opt| {
@@ -635,7 +635,7 @@ where
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = Option<ThinEthereumBlock>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
         let web3 = self.web3.clone();
         let logger = logger.clone();
 
@@ -659,7 +659,7 @@ where
     fn load_full_block(
         &self,
         logger: &Logger,
-        block: ThinEthereumBlock,
+        block: LightEthereumBlock,
     ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
         let logger = logger.clone();
         let block_hash = block.hash.expect("block is missing block hash");
@@ -1041,14 +1041,14 @@ where
                 }),
             )
                 as Box<dyn Future<Item = _, Error = _> + Send>,
-            BlockFinality::NonFinal(fat_block) => Box::new(future::ok({
+            BlockFinality::NonFinal(full_block) => Box::new(future::ok({
                 let mut triggers = Vec::new();
                 triggers.append(&mut parse_log_triggers(
                     log_filter,
-                    &fat_block.ethereum_block,
+                    &full_block.ethereum_block,
                 ));
-                triggers.append(&mut parse_call_triggers(call_filter, &fat_block));
-                triggers.append(&mut parse_block_triggers(block_filter, &fat_block));
+                triggers.append(&mut parse_call_triggers(call_filter, &full_block));
+                triggers.append(&mut parse_block_triggers(block_filter, &full_block));
                 EthereumBlockWithTriggers::new(triggers, ethereum_block)
             })),
         })
@@ -1060,7 +1060,7 @@ where
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<H256>,
-    ) -> Box<dyn Stream<Item = ThinEthereumBlock, Error = Error> + Send> {
+    ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send> {
         // Search for the block in the store first then use json-rpc as a backup.
         let mut blocks = chain_store
             .blocks(block_hashes.iter().cloned().collect())

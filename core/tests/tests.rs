@@ -86,7 +86,7 @@ fn multiple_data_sources_per_subgraph() {
         fn process_log(
             &self,
             _: Logger,
-            _: Arc<ThinEthereumBlock>,
+            _: Arc<LightEthereumBlock>,
             _: Arc<Transaction>,
             _: Arc<Log>,
             _: BlockState,
@@ -97,7 +97,7 @@ fn multiple_data_sources_per_subgraph() {
         fn process_call(
             &self,
             _logger: Logger,
-            _block: Arc<ThinEthereumBlock>,
+            _block: Arc<LightEthereumBlock>,
             _transaction: Arc<Transaction>,
             _call: Arc<EthereumCall>,
             _state: BlockState,
@@ -108,7 +108,7 @@ fn multiple_data_sources_per_subgraph() {
         fn process_block(
             &self,
             _logger: Logger,
-            _block: Arc<ThinEthereumBlock>,
+            _block: Arc<LightEthereumBlock>,
             _trigger_type: EthereumBlockTriggerType,
             _state: BlockState,
         ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {

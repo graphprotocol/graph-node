@@ -135,7 +135,7 @@ pub struct MappingRequest {
 pub(crate) struct MappingContext {
     pub(crate) logger: Logger,
     pub(crate) host_exports: Arc<crate::host_exports::HostExports>,
-    pub(crate) block: Arc<ThinEthereumBlock>,
+    pub(crate) block: Arc<LightEthereumBlock>,
     pub(crate) state: BlockState,
 }
 

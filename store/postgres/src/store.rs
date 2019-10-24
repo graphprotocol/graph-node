@@ -1070,7 +1070,7 @@ impl ChainStore for Store {
         }))
     }
 
-    fn upsert_thin_blocks(&self, blocks: Vec<ThinEthereumBlock>) -> Result<(), Error> {
+    fn upsert_thin_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {
         use crate::db_schema::ethereum_blocks::dsl::*;
 
         let conn = self.conn.clone();
@@ -1148,7 +1148,7 @@ impl ChainStore for Store {
             .map_err(Error::from)
     }
 
-    fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<ThinEthereumBlock>, Error> {
+    fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error> {
         use crate::db_schema::ethereum_blocks::dsl::*;
         use diesel::dsl::any;
 

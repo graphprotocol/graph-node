@@ -3,16 +3,16 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use web3::types::*;
 
-pub type ThinEthereumBlock = Block<Transaction>;
+pub type LightEthereumBlock = Block<Transaction>;
 
-pub trait ThinEthereumBlockExt {
+pub trait LightEthereumBlockExt {
     fn number(&self) -> u64;
     fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
     fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
     fn parent_ptr(&self) -> EthereumBlockPointer;
 }
 
-impl ThinEthereumBlockExt for ThinEthereumBlock {
+impl LightEthereumBlockExt for LightEthereumBlock {
     fn number(&self) -> u64 {
         self.number.unwrap().as_u64()
     }
@@ -40,14 +40,14 @@ impl ThinEthereumBlockExt for ThinEthereumBlock {
 #[derive(Clone, Debug)]
 pub enum BlockFinality {
     /// If a block is final, we only need the header and the triggers.
-    Final(ThinEthereumBlock),
+    Final(LightEthereumBlock),
 
     // If a block may still be reorged, we need to work with more local data.
     NonFinal(EthereumBlockWithCalls),
 }
 
 impl BlockFinality {
-    pub fn thin_block(&self) -> ThinEthereumBlock {
+    pub fn thin_block(&self) -> LightEthereumBlock {
         match self {
             BlockFinality::Final(block) => block.clone(),
             BlockFinality::NonFinal(block) => block.ethereum_block.block.clone(),
@@ -101,7 +101,7 @@ pub struct EthereumBlockWithCalls {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct EthereumBlock {
-    pub block: ThinEthereumBlock,
+    pub block: LightEthereumBlock,
     pub transaction_receipts: Vec<TransactionReceipt>,
 }
 

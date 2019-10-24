@@ -198,7 +198,7 @@ impl HostExports {
         &self,
         task_sink: &mut impl Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>,
         logger: &Logger,
-        block: &ThinEthereumBlock,
+        block: &LightEthereumBlock,
         unresolved_call: UnresolvedContractCall,
     ) -> Result<Option<Vec<Token>>, HostExportError<impl ExportError>> {
         let start_time = Instant::now();

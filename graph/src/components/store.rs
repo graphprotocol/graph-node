@@ -997,7 +997,7 @@ pub trait ChainStore: Send + Sync + 'static {
         unimplemented!()
     }
 
-    fn upsert_thin_blocks(&self, blocks: Vec<ThinEthereumBlock>) -> Result<(), Error>;
+    fn upsert_thin_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
 
     /// Try to update the head block pointer to the block with the highest block number.
     ///
@@ -1028,7 +1028,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
 
     /// Returns the blocks present in the store.
-    fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<ThinEthereumBlock>, Error>;
+    fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to

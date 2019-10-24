@@ -605,13 +605,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn latest_block(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = ThinEthereumBlock, Error = EthereumAdapterError> + Send>;
+    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = EthereumAdapterError> + Send>;
 
     fn load_block(
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = ThinEthereumBlock, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
     /// May use the `chain_store` as a cache.
@@ -620,7 +620,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<H256>,
-    ) -> Box<dyn Stream<Item = ThinEthereumBlock, Error = Error> + Send>;
+    ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send>;
 
     /// Reorg safety: `to` must be a final block.
     fn block_range_to_ptrs(
@@ -635,13 +635,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = Option<ThinEthereumBlock>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
 
     /// Load full information for the specified `block` (in particular, transaction receipts).
     fn load_full_block(
         &self,
         logger: &Logger,
-        block: ThinEthereumBlock,
+        block: LightEthereumBlock,
     ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send>;
 
     /// Load block pointer for the specified `block number`.

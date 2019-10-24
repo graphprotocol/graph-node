@@ -770,7 +770,7 @@ fn process_triggers<B, T: RuntimeHostBuilder, S>(
     logger: Logger,
     ctx: IndexingContext<B, T, S>,
     block_state: BlockState,
-    block: Arc<ThinEthereumBlock>,
+    block: Arc<LightEthereumBlock>,
     triggers: Vec<EthereumTrigger>,
 ) -> impl Future<Item = (IndexingContext<B, T, S>, BlockState), Error = CancelableError<Error>>
 where
