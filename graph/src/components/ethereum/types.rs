@@ -37,6 +37,9 @@ impl LightEthereumBlockExt for LightEthereumBlock {
     }
 }
 
+/// This is used in `EthereumAdapter::triggers_in_block`, called when re-processing a block for
+/// newly created data sources. This allows the re-processing to be reorg safe without having to
+/// always fetch the full block data.
 #[derive(Clone, Debug)]
 pub enum BlockFinality {
     /// If a block is final, we only need the header and the triggers.
