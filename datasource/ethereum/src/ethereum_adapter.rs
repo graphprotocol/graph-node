@@ -897,7 +897,7 @@ where
         Box::new(calls)
     }
 
-    fn blocks_with_logs(
+    fn logs_in_block_range(
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
@@ -916,7 +916,7 @@ where
         )
     }
 
-    fn blocks_with_calls(
+    fn calls_in_block_range(
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,

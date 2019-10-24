@@ -86,7 +86,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         unimplemented!();
     }
 
-    fn blocks_with_logs(
+    fn logs_in_block_range(
         &self,
         _: &Logger,
         _: Arc<SubgraphEthRpcMetrics>,
@@ -97,7 +97,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         unimplemented!();
     }
 
-    fn blocks_with_calls(
+    fn calls_in_block_range(
         &self,
         _: &Logger,
         _: Arc<SubgraphEthRpcMetrics>,
