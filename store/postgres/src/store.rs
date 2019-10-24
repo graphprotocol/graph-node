@@ -1070,7 +1070,7 @@ impl ChainStore for Store {
         }))
     }
 
-    fn upsert_thin_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {
+    fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {
         use crate::db_schema::ethereum_blocks::dsl::*;
 
         let conn = self.conn.clone();

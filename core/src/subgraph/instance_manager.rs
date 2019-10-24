@@ -608,7 +608,7 @@ where
     }
 
     // Obtain current and new block pointer (after this block is processed)
-    let thin_block = Arc::new(block.thin_block());
+    let light_block = Arc::new(block.light_block());
     let block_ptr_after = EthereumBlockPointer::from(&block);
     let block_ptr_for_new_data_sources = block_ptr_after.clone();
 
@@ -620,7 +620,7 @@ where
         logger.clone(),
         ctx,
         BlockState::default(),
-        thin_block.clone(),
+        light_block.clone(),
         triggers,
     )
     .and_then(move |(ctx, block_state)| {
@@ -658,7 +658,7 @@ where
                 // Reprocess the triggers from this block that match the new data sources
                 let logger = logger.clone();
                 let logger1 = logger.clone();
-                let thin_block = thin_block.clone();
+                let light_block = light_block.clone();
                 Box::new(
                     eth_adapter
                         .clone()
@@ -706,7 +706,7 @@ where
                                         SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
                                             &logger,
                                             runtime_hosts.iter().cloned(),
-                                            thin_block.clone(),
+                                            light_block.clone(),
                                             trigger,
                                             block_state,
                                         )
