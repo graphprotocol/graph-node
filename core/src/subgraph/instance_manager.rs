@@ -502,9 +502,11 @@ where
         .fold(ctx, move |ctx, block| {
             let subgraph_metrics = ctx.subgraph_metrics.clone();
             let start = Instant::now();
-            subgraph_metrics
-                .block_trigger_count
-                .observe(block.triggers.len() as f64);
+            if block.triggers.len() > 0 {
+                subgraph_metrics
+                    .block_trigger_count
+                    .observe(block.triggers.len() as f64);
+            }
             process_block(
                 logger.clone(),
                 ctx.inputs.eth_adapter.clone(),
