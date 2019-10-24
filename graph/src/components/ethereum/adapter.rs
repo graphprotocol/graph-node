@@ -726,14 +726,14 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         // Scan the block range from triggers to find relevant blocks
         if !log_filter.is_empty() {
             trigger_futs.push(Box::new(
-                eth.blocks_with_logs(&logger, subgraph_metrics.clone(), from, to, log_filter)
+                eth.logs_in_block_range(&logger, subgraph_metrics.clone(), from, to, log_filter)
                     .map(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect()),
             ))
         }
 
         if !call_filter.is_empty() {
             trigger_futs.push(Box::new(
-                eth.blocks_with_calls(&logger, subgraph_metrics.clone(), from, to, call_filter)
+                eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
                     .map(EthereumTrigger::Call)
                     .collect(),
             ));
@@ -754,7 +754,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
             // a `call_filter` and run `blocks_with_calls`
             let call_filter = EthereumCallFilter::from(block_filter);
             trigger_futs.push(Box::new(
-                eth.blocks_with_calls(&logger, subgraph_metrics.clone(), from, to, call_filter)
+                eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
                     .map(|call| {
                         EthereumTrigger::Block(
                             EthereumBlockPointer::from(&call),
@@ -806,7 +806,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         )
     }
 
-    fn blocks_with_logs(
+    fn logs_in_block_range(
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
@@ -815,7 +815,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         log_filter: EthereumLogFilter,
     ) -> Box<dyn Future<Item = Vec<Log>, Error = Error> + Send>;
 
-    fn blocks_with_calls(
+    fn calls_in_block_range(
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
