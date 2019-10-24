@@ -821,7 +821,9 @@ impl StoreTrait for Store {
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
     ) -> Result<bool, StoreError> {
+        // Improvement: Move this inside the transaction.
         let block_ptr_from = self.block_ptr(subgraph_id.clone())?;
+        assert!(block_ptr_from.number < block_ptr_to.number);
 
         // All operations should apply only to entities in this subgraph or
         // the subgraph of subgraphs
