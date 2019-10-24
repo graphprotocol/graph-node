@@ -488,7 +488,7 @@ where
                         .map_err(|e| e.compat())
                         .and_then(move |block| {
                             block.ok_or_else(|| {
-                                format_err!("eth node did not find block {:?}", hash).compat()
+                                format_err!("Ethereum node did not find block {:?}", hash).compat()
                             })
                         })
                 })
@@ -519,7 +519,8 @@ where
                         .map_err(|e| e.compat())
                         .and_then(move |block| {
                             block.ok_or_else(|| {
-                                format_err!("eth node did not find block {:?}", block_num).compat()
+                                format_err!("Ethereum node did not find block {:?}", block_num)
+                                    .compat()
                             })
                         })
                 })
