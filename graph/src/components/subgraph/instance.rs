@@ -23,7 +23,7 @@ pub trait SubgraphInstance<H: RuntimeHost> {
     fn process_trigger(
         &self,
         logger: &Logger,
-        block: Arc<ThinEthereumBlock>,
+        block: Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
     ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
@@ -32,7 +32,7 @@ pub trait SubgraphInstance<H: RuntimeHost> {
     fn process_trigger_in_runtime_hosts(
         logger: &Logger,
         hosts: impl Iterator<Item = Arc<H>>,
-        block: Arc<ThinEthereumBlock>,
+        block: Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
     ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;

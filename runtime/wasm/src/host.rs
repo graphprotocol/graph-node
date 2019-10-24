@@ -371,7 +371,7 @@ impl RuntimeHostTrait for RuntimeHost {
     fn process_call(
         &self,
         logger: Logger,
-        block: Arc<ThinEthereumBlock>,
+        block: Arc<LightEthereumBlock>,
         transaction: Arc<Transaction>,
         call: Arc<EthereumCall>,
         state: BlockState,
@@ -524,7 +524,7 @@ impl RuntimeHostTrait for RuntimeHost {
     fn process_block(
         &self,
         logger: Logger,
-        block: Arc<ThinEthereumBlock>,
+        block: Arc<LightEthereumBlock>,
         trigger_type: EthereumBlockTriggerType,
         state: BlockState,
     ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
@@ -589,7 +589,7 @@ impl RuntimeHostTrait for RuntimeHost {
     fn process_log(
         &self,
         logger: Logger,
-        block: Arc<ThinEthereumBlock>,
+        block: Arc<LightEthereumBlock>,
         transaction: Arc<Transaction>,
         log: Arc<Log>,
         state: BlockState,

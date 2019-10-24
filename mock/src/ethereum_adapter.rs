@@ -20,7 +20,7 @@ impl EthereumAdapter for MockEthereumAdapter {
     fn latest_block(
         &self,
         _: &Logger,
-    ) -> Box<dyn Future<Item = ThinEthereumBlock, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = EthereumAdapterError> + Send> {
         unimplemented!();
     }
 
@@ -28,7 +28,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         &self,
         _: &Logger,
         _: H256,
-    ) -> Box<dyn Future<Item = ThinEthereumBlock, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send> {
         unimplemented!()
     }
 
@@ -36,14 +36,14 @@ impl EthereumAdapter for MockEthereumAdapter {
         &self,
         _: &Logger,
         _: H256,
-    ) -> Box<dyn Future<Item = Option<ThinEthereumBlock>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
         unimplemented!();
     }
 
     fn load_full_block(
         &self,
         _: &Logger,
-        _: ThinEthereumBlock,
+        _: LightEthereumBlock,
     ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
         unimplemented!();
     }
@@ -136,7 +136,7 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: Logger,
         _: Arc<dyn ChainStore>,
         _: HashSet<H256>,
-    ) -> Box<dyn Stream<Item = ThinEthereumBlock, Error = Error> + Send> {
+    ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send> {
         unimplemented!()
     }
 

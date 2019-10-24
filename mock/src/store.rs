@@ -422,7 +422,7 @@ impl ChainStore for MockStore {
         unimplemented!();
     }
 
-    fn upsert_thin_blocks(&self, _: Vec<ThinEthereumBlock>) -> Result<(), Error> {
+    fn upsert_thin_blocks(&self, _: Vec<LightEthereumBlock>) -> Result<(), Error> {
         unimplemented!();
     }
 
@@ -438,7 +438,7 @@ impl ChainStore for MockStore {
         Ok(None)
     }
 
-    fn blocks(&self, _: Vec<H256>) -> Result<Vec<ThinEthereumBlock>, Error> {
+    fn blocks(&self, _: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error> {
         unimplemented!();
     }
 
@@ -572,7 +572,7 @@ impl ChainStore for FakeStore {
         unimplemented!();
     }
 
-    fn upsert_thin_blocks(&self, _: Vec<ThinEthereumBlock>) -> Result<(), Error> {
+    fn upsert_thin_blocks(&self, _: Vec<LightEthereumBlock>) -> Result<(), Error> {
         unimplemented!()
     }
 
@@ -588,7 +588,7 @@ impl ChainStore for FakeStore {
         unimplemented!();
     }
 
-    fn blocks(&self, _: Vec<H256>) -> Result<Vec<ThinEthereumBlock>, Error> {
+    fn blocks(&self, _: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error> {
         unimplemented!();
     }
 

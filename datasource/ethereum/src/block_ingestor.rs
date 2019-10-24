@@ -95,7 +95,7 @@ where
                 // Ask for latest block from Ethereum node
                 self.eth_adapter.latest_block(&self.logger)
                     // Compare latest block with head ptr, alert user if far behind
-                    .and_then(move |latest_block: ThinEthereumBlock| -> Box<dyn Future<Item=_, Error=_> + Send> {
+                    .and_then(move |latest_block: LightEthereumBlock| -> Box<dyn Future<Item=_, Error=_> + Send> {
                         match head_block_ptr_opt {
                             None => {
                                 info!(
