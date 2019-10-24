@@ -50,7 +50,7 @@ pub enum BlockFinality {
 }
 
 impl BlockFinality {
-    pub fn thin_block(&self) -> LightEthereumBlock {
+    pub fn light_block(&self) -> LightEthereumBlock {
         match self {
             BlockFinality::Final(block) => block.clone(),
             BlockFinality::NonFinal(block) => block.ethereum_block.block.clone(),

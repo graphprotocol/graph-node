@@ -997,7 +997,7 @@ pub trait ChainStore: Send + Sync + 'static {
         unimplemented!()
     }
 
-    fn upsert_thin_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
+    fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
 
     /// Try to update the head block pointer to the block with the highest block number.
     ///
