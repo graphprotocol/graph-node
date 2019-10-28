@@ -1,5 +1,5 @@
 use crate::UnresolvedContractCall;
-use ethabi::Token;
+use ethabi::{Address, Token};
 use futures::sync::oneshot;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
@@ -41,6 +41,8 @@ pub(crate) struct HostExports {
     subgraph_id: SubgraphDeploymentId,
     pub(crate) api_version: Version,
     data_source_name: String,
+    data_source_address: Option<Address>,
+    data_source_network: String,
     templates: Vec<DataSourceTemplate>,
     abis: Vec<MappingABI>,
     ethereum_adapter: Arc<dyn EthereumAdapter>,
@@ -62,6 +64,8 @@ impl HostExports {
         subgraph_id: SubgraphDeploymentId,
         api_version: Version,
         data_source_name: String,
+        data_source_address: Option<Address>,
+        data_source_network: String,
         templates: Vec<DataSourceTemplate>,
         abis: Vec<MappingABI>,
         ethereum_adapter: Arc<dyn EthereumAdapter>,
@@ -74,6 +78,8 @@ impl HostExports {
             subgraph_id,
             api_version,
             data_source_name,
+            data_source_address,
+            data_source_network,
             templates,
             abis,
             ethereum_adapter,
@@ -629,6 +635,14 @@ impl HostExports {
         if level == slog::Level::Critical {
             panic!("Critical error logged in mapping");
         }
+    }
+
+    pub(crate) fn data_source_address(&self) -> H160 {
+        self.data_source_address.clone().unwrap_or_default()
+    }
+
+    pub(crate) fn data_source_network(&self) -> String {
+        self.data_source_network.clone()
     }
 }
 

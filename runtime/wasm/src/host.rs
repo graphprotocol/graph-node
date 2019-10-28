@@ -24,6 +24,7 @@ pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_MAPPING_HANDLER_TIMEOUT";
 struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
     mapping: Mapping,
+    data_source_network: String,
     data_source_name: String,
     contract: Source,
     templates: Vec<DataSourceTemplate>,
@@ -119,6 +120,7 @@ where
             RuntimeHostConfig {
                 subgraph_id,
                 mapping: data_source.mapping,
+                data_source_network: network_name,
                 data_source_name: data_source.name,
                 contract: data_source.source,
                 templates,
@@ -183,6 +185,8 @@ impl RuntimeHost {
             config.subgraph_id.clone(),
             api_version,
             data_source_name.clone(),
+            config.contract.address.clone(),
+            config.data_source_network,
             config.templates,
             config.mapping.abis,
             ethereum_adapter,

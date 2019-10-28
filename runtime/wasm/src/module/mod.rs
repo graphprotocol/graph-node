@@ -66,6 +66,8 @@ const DATA_SOURCE_CREATE_INDEX: usize = 35;
 const ENS_NAME_BY_HASH: usize = 36;
 const LOG_LOG: usize = 37;
 const BIG_INT_POW: usize = 38;
+const DATA_SOURCE_ADDRESS: usize = 39;
+const DATA_SOURCE_NETWORK: usize = 40;
 
 /// Transform function index into the function name string
 fn fn_index_to_metrics_string(index: usize) -> Option<String> {
@@ -897,6 +899,20 @@ where
         Ok(None)
     }
 
+    /// function dataSource.address(): Bytes
+    fn data_source_address(&mut self) -> Result<Option<RuntimeValue>, Trap> {
+        Ok(Some(RuntimeValue::from(
+            self.asc_new(&self.ctx.host_exports.data_source_address()),
+        )))
+    }
+
+    /// function dataSource.network(): String
+    fn data_source_network(&mut self) -> Result<Option<RuntimeValue>, Trap> {
+        Ok(Some(RuntimeValue::from(
+            self.asc_new(&self.ctx.host_exports.data_source_network()),
+        )))
+    }
+
     fn ens_name_by_hash(
         &mut self,
         hash_ptr: AscPtr<AscString>,
@@ -1005,6 +1021,8 @@ where
             }
             ENS_NAME_BY_HASH => self.ens_name_by_hash(args.nth_checked(0)?),
             LOG_LOG => self.log_log(args.nth_checked(0)?, args.nth_checked(1)?),
+            DATA_SOURCE_ADDRESS => self.data_source_address(),
+            DATA_SOURCE_NETWORK => self.data_source_network(),
             _ => panic!("Unimplemented function at {}", index),
         };
         // Record execution time
@@ -1110,6 +1128,8 @@ impl ModuleImportResolver for ModuleResolver {
 
             // dataSource
             "dataSource.create" => FuncInstance::alloc_host(signature, DATA_SOURCE_CREATE_INDEX),
+            "dataSource.address" => FuncInstance::alloc_host(signature, DATA_SOURCE_ADDRESS),
+            "dataSource.network" => FuncInstance::alloc_host(signature, DATA_SOURCE_NETWORK),
 
             // ens.nameByHash
             "ens.nameByHash" => FuncInstance::alloc_host(signature, ENS_NAME_BY_HASH),
