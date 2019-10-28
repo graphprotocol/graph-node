@@ -6,6 +6,7 @@ edition = "2018"
 [dependencies]
 bs58 = "0.3"
 failure = "0.1.6"
+ether-converter = "0.1"
 futures = "0.1.21"
 jsonrpc-core = "13.2.0"
 graph = { path = "../../graph" }

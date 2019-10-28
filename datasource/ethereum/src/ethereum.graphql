@@ -67,7 +67,7 @@ type Transaction @entity {
   from: Address!
   to: Address
   value: BigInt!
-  input: Bytes!
+  # input: Bytes!
 
   receipt: TransactionReceipt @derivedFrom(field: "transaction")
   gasPrice:  BigInt!

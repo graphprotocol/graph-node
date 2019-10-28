@@ -2,6 +2,7 @@ use futures::future::{loop_fn, Loop};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::ops::Shr;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::timer::Delay;
@@ -11,7 +12,13 @@ use graph::data::subgraph::schema::{
     generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphEntity, SubgraphVersionEntity,
 };
 use graph::prelude::*;
-use web3::types::{Block, Bytes, Log, Transaction, TransactionReceipt, H160, H256, U256};
+use web3::types::{Block, Bytes, Log, Transaction, TransactionReceipt, H160, H256, U128, U256};
+
+/// Helper type to bundle blocks and their uncles together.
+struct BlockWithUncles {
+    block: EthereumBlock,
+    uncles: Vec<Option<Block<H256>>>,
+}
 
 /// Internal result type used to thread (NetworkIngestor, EntityCache) through
 /// the chain of futures when ingesting a block.
@@ -25,11 +32,32 @@ struct Account {
     balance: Option<U256>,
 }
 
+/// Ethash parameters.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EthashParams {
+    block_reward: BTreeMap<U128, U256>,
+}
+
+/// Ethash configuration.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct EthashConfig {
+    params: EthashParams,
+}
+
+/// Ethereum engine configuration..
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct EngineConfig {
+    #[serde(rename = "Ethash")]
+    ethash: EthashConfig,
+}
+
 /// A network configuration as defined in files like `mainnet.json` or
 /// `ropsten.json`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct NetworkConfig {
     accounts: BTreeMap<H160, Account>,
+    engine: EngineConfig,
 }
 
 lazy_static! {
@@ -42,6 +70,14 @@ lazy_static! {
                 .expect("failed to parse network config from mainnet.json"),
         )].into_iter(),
     );
+
+    static ref WEI_TO_ETHER_FACTOR: BigDecimal =
+        serde_json::from_str("\"0.000000000000000001\"")
+        .expect("failed to parse BigDecimal");
+}
+
+fn wei_to_ether(n: &U256) -> BigDecimal {
+    BigInt::from_unsigned_u256(n).to_big_decimal(0.into()) * &*WEI_TO_ETHER_FACTOR
 }
 
 /// Network ingestor.
@@ -55,6 +91,7 @@ where
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
     logger: Logger,
+    network_config: NetworkConfig,
 }
 
 impl<S> NetworkIngestor<S>
@@ -71,18 +108,15 @@ where
         let subgraph_name = SubgraphName::new(format!("ethereum/{}", network_name))
             .expect("invalid network subgraph name");
 
-        println!("{:?}, {}", subgraph_name, subgraph_name.to_string());
-        println!(
-            "{:?}",
-            bs58::encode(subgraph_name.to_string().as_str()).into_string()
-        );
+        let network_config = match NETWORK_CONFIGS.get(&network_name.as_str()) {
+            Some(config) => config.clone(),
+            None => panic!("genesis block config not found for network"),
+        };
 
         let subgraph_id = SubgraphDeploymentId::new(
             bs58::encode(subgraph_name.to_string().as_str()).into_string(),
         )
         .expect("invalid network subgraph ID");
-
-        println!("{:?}", subgraph_id);
 
         let term_logger = logger.new(o!(
             "component" => "NetworkIngestor",
@@ -116,6 +150,7 @@ where
             subgraph_name,
             subgraph_id,
             logger,
+            network_config,
         }
     }
 
@@ -137,7 +172,7 @@ where
             .and_then(|ingestor| {
                 loop_fn(ingestor, |ingestor| {
                     ingestor
-                        .ingest_next_block()
+                        .ingest_next_blocks()
                         .map(|ingestor| Loop::Continue(ingestor))
                 })
                 .map(|_: Self| ())
@@ -264,7 +299,7 @@ where
         }
     }
 
-    fn ingest_next_block(self) -> impl Future<Item = Self, Error = Error> {
+    fn ingest_next_blocks(self) -> impl Future<Item = Self, Error = Error> {
         let store_for_latest_block = self.store.clone();
         let subgraph_id_for_latest_block = self.subgraph_id.clone();
 
@@ -277,8 +312,8 @@ where
 
         // TODO:
         // - Handle block reorgs
-        // - Parallelize fetching ranges of blocks
-        // - Execute / ingest them sequentally to make sure balances are updated correctly
+        // - Incorporate mining rewards according to
+        //   https://github.com/ethereum/wiki/wiki/Mining#mining-rewards
         // - Try to fetch block from the `ethereum_blocks` table first, only
         //   fall back to getting it from Ethereum if we don't have it
         // - Support truncated subgraph support where we only keep the most recent
@@ -357,10 +392,10 @@ where
                 let chain_head_number = chain_head.number.unwrap().as_u64();
 
                 // Calculate the number of blocks to ingest;
-                // fetch no more than 100 blocks at a time
+                // fetch no more than 10000 blocks at a time
                 let remaining_blocks =
                     chain_head_number - latest_block.map_or(0u64, |ptr| ptr.number);
-                let blocks_to_ingest = remaining_blocks.min(50);
+                let blocks_to_ingest = remaining_blocks.min(10000);
                 let block_range = latest_block.map_or(0u64, |ptr| ptr.number + 1)
                     ..(latest_block.map_or(0u64, |ptr| ptr.number + 1) + blocks_to_ingest);
 
@@ -373,34 +408,47 @@ where
                 );
 
                 Box::new(
-                    futures::stream::futures_ordered(block_range.map(move |block_number| {
+                    futures::stream::iter_ok::<_, Error>(block_range.map(move |block_number| {
                         let eth_adapter_for_fetching_block = eth_adapter_for_fetching_hash.clone();
                         let eth_adapter_for_full_block = eth_adapter_for_fetching_hash.clone();
+                        let eth_adapter_for_uncles = eth_adapter_for_fetching_hash.clone();
 
                         let logger_for_fetching_block = logger_for_fetching_hash.clone();
                         let logger_for_full_block = logger_for_fetching_hash.clone();
+                        let logger_for_uncles = logger_for_fetching_hash.clone();
 
                         eth_adapter_for_fetching_hash
                             .block_hash_by_block_number(&logger_for_fetching_hash, block_number)
                             .and_then(move |hash| {
-                                // TODO: No hash returned for number, try again?
                                 let hash = hash.expect("no block hash returned for block number");
                                 eth_adapter_for_fetching_block
                                     .block_by_hash(&logger_for_fetching_block, hash)
                             })
                             .from_err()
                             .and_then(move |block| {
-                                // TODO: No block returned for hash, try again?
                                 let block = block.expect("no block returned for hash");
                                 eth_adapter_for_full_block
                                     .load_full_block(&logger_for_full_block, block)
+                                    .from_err()
+                            })
+                            .and_then(move |block| {
+                                eth_adapter_for_uncles
+                                    .uncles(
+                                        &logger_for_uncles,
+                                        block.block.hash.clone().unwrap(),
+                                        block.block.uncles.len(),
+                                    )
+                                    .and_then(move |uncles| {
+                                        future::ok(BlockWithUncles { block, uncles })
+                                    })
                             })
                     }))
                     .from_err()
+                    .buffered(50)
                     .fold(
                         (self, latest_block),
                         move |(ingestor, block_ptr_from), block| {
-                            let block_ptr = Some((&block).into());
+                            let block_ptr = Some((&block.block).into());
                             ingestor
                                 .ingest_block(block_ptr_from, block)
                                 .and_then(move |ingestor| future::ok((ingestor, block_ptr)))
@@ -414,31 +462,42 @@ where
     fn ingest_block(
         self,
         block_ptr_from: Option<EthereumBlockPointer>,
-        mut block: EthereumBlock,
+        mut block: BlockWithUncles,
     ) -> impl Future<Item = Self, Error = Error> {
+        let hash = block.block.block.hash.clone().expect("block has no hash");
+        let number = block
+            .block
+            .block
+            .number
+            .clone()
+            .expect("block has no number");
+
         let logger = self.logger.new(o!(
-            "block_hash" => format!("{:x}", block.block.hash.clone().unwrap()),
-            "block_number" => format!("{}", block.block.number.clone().unwrap()),
+            "block_hash" => format!("{:x}", hash),
+            "block_number" => format!("{}", number),
         ));
 
         debug!(logger, "Ingest block");
 
         let logger_for_txes = logger.clone();
+        let logger_for_mining_reward = logger.clone();
 
         // Create genesis block transactions from the chain config file,
         // because the initial account balances defined in in that file
         // are not represented as transactions in the genesis block
-        if block.block.number.unwrap().is_zero() {
-            block.block.transactions = match self.create_genesis_transactions(&block.block) {
-                Ok(txes) => txes,
-                Err(e) => {
-                    return Box::new(future::done(Err(e)))
-                        as Box<dyn Future<Item = Self, Error = Error> + Send>
+        if number.is_zero() {
+            block.block.block.transactions =
+                match self.create_genesis_transactions(&block.block.block) {
+                    Ok(txes) => txes,
+                    Err(e) => {
+                        return Box::new(future::done(Err(e)))
+                            as Box<dyn Future<Item = Self, Error = Error> + Send>
+                    }
                 }
-            }
         }
 
         let block = Arc::new(block);
+        let block_for_mining_reward = block.clone();
         let block_for_ops = block.clone();
 
         let subgraph_id_for_block = self.subgraph_id.clone();
@@ -450,10 +509,17 @@ where
                 EntityKey {
                     subgraph_id: subgraph_id_for_block,
                     entity_type: "Block".into(),
-                    entity_id: block_id(&block.block.hash.clone().unwrap()),
+                    entity_id: block_id(&hash),
                 },
-                block.clone(),
+                block.block.clone(),
             )
+            .and_then(move |(ingestor, cache)| {
+                ingestor.apply_mining_rewards(
+                    logger_for_mining_reward,
+                    cache,
+                    block_for_mining_reward,
+                )
+            })
             .and_then(move |(ingestor, cache)| {
                 // Create block transactions
                 // TODO: Optimize away cloning all the transactions
@@ -461,7 +527,7 @@ where
                     logger_for_txes,
                     cache,
                     block.clone(),
-                    block.block.transactions.clone(),
+                    block.block.block.transactions.clone(),
                 )
             })
             .and_then(move |(ingestor, cache)| {
@@ -476,7 +542,7 @@ where
                         .transact_block_operations(
                             ingestor.subgraph_id.clone(),
                             block_ptr_from,
-                            EthereumBlockPointer::from(block_for_ops.as_ref()),
+                            EthereumBlockPointer::from(&block_for_ops.block),
                             modifications,
                         )
                         .map_err(|e| e.into())
@@ -493,12 +559,8 @@ where
         // The genesis block transactions come from the genesis block config
         // rather than being real transactions in the block on chain.
 
-        let config = match NETWORK_CONFIGS.get(&self.network_name.as_str()) {
-            Some(config) => config,
-            None => return Err(format_err!("genesis block config not found for network")),
-        };
-
-        Ok(config
+        Ok(self
+            .network_config
             .accounts
             .iter()
             .filter(|(_, account)| account.balance.is_some())
@@ -519,13 +581,119 @@ where
             .collect())
     }
 
+    fn apply_mining_rewards(
+        self,
+        logger: Logger,
+        cache: EntityCache,
+        block: Arc<BlockWithUncles>,
+    ) -> NetworkIngestorResult<S> {
+        let logger_for_uncles = logger.clone();
+
+        // Block rewards based on
+        // https://github.com/paritytech/parity-ethereum/blob/9c8b7c23d173f3a768550f956d0e0f34a9a74ae2/ethcore/engines/ethash/src/lib.rs#L250-L309
+        // but without ECIP1017 eras support.
+
+        let block_number = block.block.block.number.unwrap();
+        let num_uncles = block.block.block.uncles.len();
+
+        // Identify static mining reward for the current block number
+        // FIXME: ethash is valid for mainnet but not for POA networks like kovan.
+        let static_block_reward = self
+            .network_config
+            .engine
+            .ethash
+            .params
+            .block_reward
+            .range(..=block.block.block.number.expect("block has no number"))
+            .last()
+            .expect("no block reward defined for block")
+            .1
+            .clone();
+
+        // Mining reward: reward + 1/32 * reward * num_uncles
+        let mining_reward =
+            static_block_reward + static_block_reward.shr(5) * U256::from(num_uncles);
+
+        // Transaction fees
+        let transaction_fees = block
+            .block
+            .block
+            .transactions
+            .iter()
+            .map(|tx| tx.gas * tx.gas_price)
+            .fold(U256::from(0), |sum, n| sum + n);
+
+        // Apply the mining reward
+        Box::new(
+            self.update_account_balance(
+                "block-mining",
+                logger.clone(),
+                cache,
+                (block.block.block.author.clone(), "Account"),
+                move |balance| balance + mining_reward + transaction_fees,
+            )
+            .and_then(move |(ingestor, cache)| {
+                let uncle_numbers_and_miners: Vec<_> = block
+                    .uncles
+                    .iter()
+                    .filter_map(|uncle| match uncle {
+                        Some(uncle) => Some((
+                            uncle.number.expect("uncle without number"),
+                            uncle.author.clone(),
+                        )),
+                        None => None,
+                    })
+                    .collect();
+
+                futures::stream::iter_ok(uncle_numbers_and_miners).fold(
+                    (ingestor, cache),
+                    move |(ingestor, cache), (uncle_number, uncle_miner)| {
+                        ingestor.update_account_balance(
+                            "uncle-mining",
+                            logger_for_uncles.clone(),
+                            cache,
+                            (uncle_miner, "Account"),
+                            move |balance| {
+                                // Uncle reward: reward * (8 + uncle_number - block_number) / 8
+                                balance
+                                    + (static_block_reward
+                                        * U256::from(U128::from(8) + uncle_number - block_number))
+                                    .shr(3)
+                            },
+                        )
+                    },
+                )
+            }),
+        )
+    }
+
     fn ingest_transactions(
         self,
         logger: Logger,
         cache: EntityCache,
-        block: Arc<EthereumBlock>,
+        block: Arc<BlockWithUncles>,
         txes: Vec<Transaction>,
     ) -> NetworkIngestorResult<S> {
+        // Extract block information
+        let block_number = block.block.block.number.unwrap();
+
+        // Transactions w/o receipts are only acceptable in the genesis
+        // block, because we need the `gas_used` field of the receipt to
+        // subtract the transaction fee (gas_used * gas_price) from the
+        // sender's balance
+        if block_number > 0.into()
+            && txes.iter().any(|tx| {
+                block
+                    .block
+                    .transaction_receipts
+                    .iter()
+                    .find(|receipt| receipt.transaction_hash == tx.hash)
+                    .is_none()
+            })
+        {
+            return Box::new(future::err(format_err!("no receipt for transaction")));
+        }
+
         Box::new(futures::stream::iter_ok(txes.into_iter()).fold(
             (self, cache),
             move |(ingestor, cache), tx| {
@@ -534,30 +702,46 @@ where
                 let logger_for_sender = logger.clone();
                 let logger_for_recipient = logger.clone();
 
-                debug!(logger, "Ingest transaction");
-
                 let subgraph_id = ingestor.subgraph_id.clone();
+
+                debug!(logger, "Ingest transaction");
 
                 // Obtain receipt if there is one
                 let tx_receipt = block
+                    .block
                     .transaction_receipts
                     .iter()
                     .find(|receipt| receipt.transaction_hash == tx.hash)
                     .cloned();
 
                 let from = tx.from.clone();
-                let to = match tx.to.clone().map(|address| (address, "Account")) {
-                    Some((address, entity_type)) => (address, entity_type),
-                    None => match tx_receipt {
-                        Some(ref receipt) => receipt
-                            .contract_address
-                            .clone()
-                            .map(|address| (address, "Contract"))
-                            .expect("`to` and `contract_address` are both missing"),
-                        None => panic!("`to` and `receipt` are both missing"),
-                    },
+                let to = match (
+                    tx.to.clone().map(|address| (address, "Account")),
+                    &tx_receipt,
+                ) {
+                    (Some((address, entity_type)), _) => (address, entity_type),
+                    (None, Some(receipt)) => receipt
+                        .contract_address
+                        .clone()
+                        .map(|address| (address, "Contract"))
+                        .expect("`to` and `contract_address` are both missing"),
+                    (None, None) => panic!("`to` and `receipt` are both missing"),
                 };
-                let value_for_recipient = tx.value.clone();
+
+                // Copy transaction amount for sender and recipient balances
+                let amount_sender = tx.value.clone();
+                let amount_recipient = tx.value.clone();
+
+                // Calculate transaction fee; we can safely unwrap the `gas_used`
+                // here, since we're not talking to an Ethereum light client
+                //
+                // If there is no receipt, we assume the transaction free is 0.
+                // We already validate receipts on transactions for non-genesis
+                // blocks above.
+                let transaction_fee = match tx_receipt {
+                    None => 0.into(),
+                    Some(ref receipt) => receipt.gas_used.unwrap() * tx.gas_price,
+                };
 
                 // Add transaction entity
                 ingestor
@@ -584,107 +768,30 @@ where
                         }
                     })
                     // Update sender balance
-                    .and_then(move |(ingestor, mut cache)| {
-                        // Look up or create sender account
-                        let (key, mut entity) = Self::lookup_contract_or_account(
-                            ingestor.store.clone(),
-                            &ingestor.subgraph_id,
-                            &mut cache,
-                            &from,
+                    .and_then(move |(ingestor, cache)| {
+                        ingestor.update_account_balance(
+                            "tx-sender",
+                            logger_for_sender,
+                            cache,
+                            (from.clone(), "Account"),
+                            |balance| {
+                                if from == H160::zero() {
+                                    balance
+                                } else {
+                                    balance - amount_sender - transaction_fee
+                                }
+                            },
                         )
-                        .unwrap_or_else(|| {
-                            (
-                                EntityKey {
-                                    subgraph_id: ingestor.subgraph_id.clone(),
-                                    entity_type: "Account".into(),
-                                    entity_id: address_id(&from),
-                                },
-                                Entity::from(vec![
-                                    ("id", address_id(&from).into()),
-                                    ("address", from.into()),
-                                    ("balance", U256::zero().into()),
-                                ]),
-                            )
-                        });
-
-                        // Update sender balance
-                        let balance: U256 = entity
-                            .get_value("balance")
-                            .expect("failed to obtain account balance")
-                            .expect("account balance missing");
-
-                        debug!(
-                            logger_for_sender,
-                            "Update account balance";
-                            "entity_type" => &key.entity_type,
-                            "entity_id" => &key.entity_id,
-                            "balance_before" => format!("{}", balance),
-                        );
-
-                        let new_balance = if from == H160::zero() {
-                            // Keep the balance of 0x0000000000000000000000000000000000000000 at zero
-                            // because it's not a real account
-                            U256::zero()
-                        } else {
-                            balance - value_for_recipient
-                        };
-                        entity.set("balance", new_balance);
-
-                        debug!(
-                            logger_for_sender,
-                            "Updated account balance";
-                            "entity_type" => &key.entity_type,
-                            "entity_id" => &key.entity_id,
-                            "balance_before" => format!("{}", balance),
-                            "balance_after" => format!("{}", new_balance),
-                        );
-
-                        cache.set(key, entity);
-                        future::ok((ingestor, cache))
                     })
                     // Update recipient balance
-                    .and_then(move |(ingestor, mut cache)| {
-                        // Look up or create recipient account/contract
-                        let (key, mut entity) = Self::lookup_contract_or_account(
-                            ingestor.store.clone(),
-                            &ingestor.subgraph_id,
-                            &mut cache,
-                            &to.0,
-                        )
-                        .unwrap_or_else(|| {
-                            (
-                                EntityKey {
-                                    subgraph_id: ingestor.subgraph_id.clone(),
-                                    entity_type: to.1.into(),
-                                    entity_id: address_id(&to.0),
-                                },
-                                Entity::from(vec![
-                                    ("id", address_id(&to.0).into()),
-                                    ("address", to.0.into()),
-                                    ("balance", U256::zero().into()),
-                                ]),
-                            )
-                        });
-
-                        // Update recipient balance
-                        let balance: U256 = entity
-                            .get_value("balance")
-                            .expect("failed to obtain account balance")
-                            .expect("account balance missing");
-                        let new_balance = balance + tx.value;
-                        entity.set("balance", new_balance);
-
-                        debug!(
+                    .and_then(move |(ingestor, cache)| {
+                        ingestor.update_account_balance(
+                            "tx-recipient",
                             logger_for_recipient,
-                            "Update account balance";
-                            "entity_type" => &key.entity_type,
-                            "entity_id" => &key.entity_id,
-                            "balance_before" => format!("{}", balance),
-                            "balance_after" => format!("{}", new_balance),
-                        );
-
-                        cache.set(key, entity);
-                        future::ok((ingestor, cache))
+                            cache,
+                            to.clone(),
+                            |balance| balance + amount_recipient,
+                        )
                     })
             },
         ))
@@ -779,6 +886,77 @@ where
 
         None
     }
+
+    fn update_account_balance<F>(
+        self,
+        reason: &'static str,
+        logger: Logger,
+        mut cache: EntityCache,
+        account: (H160, &'static str),
+        updater: F,
+    ) -> NetworkIngestorResult<S>
+    where
+        F: FnOnce(U256) -> U256,
+    {
+        let address = account.0;
+        let entity_type = account.1;
+        let account_id = address_id(&address);
+
+        // Fetch account entity
+        let (key, mut entity) = Self::lookup_contract_or_account(
+            self.store.clone(),
+            &self.subgraph_id,
+            &mut cache,
+            &address,
+        )
+        .unwrap_or_else(|| {
+            (
+                EntityKey {
+                    subgraph_id: self.subgraph_id.clone(),
+                    entity_type: entity_type.clone().into(),
+                    entity_id: account_id.clone(),
+                },
+                Entity::from(vec![
+                    ("id", account_id.clone().into()),
+                    ("address", address.into()),
+                    ("balance", U256::zero().into()),
+                ]),
+            )
+        });
+
+        // Obtain miner balance from entity
+        let old_balance: U256 = entity
+            .get_value("balance")
+            .expect("failed to obtain account balance")
+            .expect("account balance missing");
+
+        trace!(
+            logger,
+            "Update account balance";
+            "account" => &account_id,
+            "type" => entity_type,
+            "reason" => reason,
+            "balance_before" => format!("{}", &old_balance),
+        );
+
+        let new_balance = updater(old_balance);
+
+        entity.set("balance", new_balance);
+
+        trace!(
+            logger,
+            "Updated account balance";
+            "account" => account_id,
+            "type" => entity_type,
+            "reason" => reason,
+            "balance_before" => format!("{}", &old_balance),
+            "balance_after" => format!("{}", &new_balance),
+        );
+
+        cache.set(key, entity);
+
+        Box::new(future::ok((self, cache)))
+    }
 }
 
 trait ToEntity {
@@ -854,7 +1032,7 @@ impl ToEntity for &Transaction {
                 self.to.map_or(Value::Null, |to| address_id(&to).into()),
             ),
             ("value", self.value.into()),
-            ("input", self.input.clone().into()),
+            // ("input", self.input.clone().into()),
             ("gasPrice", self.gas_price.into()),
             ("gas", self.gas.into()),
         ]))
