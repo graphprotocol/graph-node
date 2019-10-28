@@ -384,9 +384,9 @@ where
                             //
                             // - Parity/Alchemy returns a reliable RPC error response for reverts.
                             // - Ganache also returns a reliable RPC error.
-                            // - Geth/Infura will return an `0x` RPC result on a revert, which
-                            //   cannot be differentiated from random failures. However Solidity
-                            //   `revert` and `require` calls with a reason string can be detected.
+                            // - Geth/Infura will either return `0x` on a revert with no reason
+                            //   string, or a Solidity encoded `Error(string)` call from `revert`
+                            //   and `require` calls with a reason string.
 
                             // 0xfe is the "designated bad instruction" of the EVM, and Solidity
                             // uses it for asserts.
@@ -412,7 +412,7 @@ where
                             };
 
                             match result {
-                                // Check for Geth revert.
+                                // Check for Geth revert with reason.
                                 Ok(bytes) => match as_solidity_revert_with_reason(&bytes.0) {
                                     None => Ok(bytes),
                                     Some(reason) => Err(EthereumContractCallError::Revert(reason)),
@@ -1007,7 +1007,17 @@ where
                 }
             }
             // Decode the return values according to the ABI
-            .and_then(move |output| call.function.decode_output(&output).map_err(From::from)),
+            .and_then(move |output| {
+                // We got a `0x` response. For Geth, this can mean a revert. It can also be that
+                // the contract actually returned an empty response. A view call is meant to return
+                // something, so we treat empty responses the same as reverts. See support/#85 for
+                // a use case.
+                if output.is_empty() {
+                    Err(EthereumContractCallError::Revert("empty response".into()))
+                } else {
+                    call.function.decode_output(&output).map_err(From::from)
+                }
+            }),
         )
     }
 
