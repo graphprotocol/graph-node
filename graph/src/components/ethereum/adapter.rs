@@ -564,6 +564,14 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
     ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send>;
 
+    /// Obtain the balance of an account at the given block.
+    fn balance(
+        &self,
+        logger: &Logger,
+        address: H160,
+        block_ptr: EthereumBlockPointer,
+    ) -> Box<dyn Future<Item = U256, Error = Error> + Send>;
+
     /// Find the most recent block.
     fn latest_block(
         &self,
@@ -612,6 +620,14 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         block_number: u64,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
+
+    /// Return the uncles of a block. Fails if there are fewer uncles than `n`.
+    fn uncles(
+        &self,
+        logger: &Logger,
+        block_hash: H256,
+        n: usize,
+    ) -> Box<dyn Future<Item = Vec<Option<Block<H256>>>, Error = Error> + Send>;
 
     /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
     /// node.

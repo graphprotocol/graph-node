@@ -5,6 +5,7 @@ extern crate jsonrpc_core;
 #[macro_use]
 extern crate lazy_static;
 extern crate bs58;
+extern crate ether_converter;
 extern crate ethjson;
 extern crate serde;
 

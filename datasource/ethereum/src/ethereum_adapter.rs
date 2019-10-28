@@ -517,6 +517,32 @@ where
         )
     }
 
+    fn balance(
+        &self,
+        logger: &Logger,
+        address: H160,
+        block_ptr: EthereumBlockPointer,
+    ) -> Box<dyn Future<Item = U256, Error = Error> + Send> {
+        let web3 = self.web3.clone();
+
+        Box::new(
+            retry("eth_getBalance RPC call", logger)
+                .no_limit()
+                .timeout_secs(60)
+                .run(move || {
+                    web3.eth()
+                        .balance(address.clone(), Some(block_ptr.number.into()))
+                        .map_err(|e| format_err!("count not get balance from Ethereum: {}", e))
+                        .from_err()
+                })
+                .map_err(move |e| {
+                    e.into_inner().unwrap_or_else(move || {
+                        format_err!("Ethereum node took too long to return a balance").into()
+                    })
+                }),
+        )
+    }
+
     fn latest_block(
         &self,
         logger: &Logger,
@@ -767,6 +793,42 @@ where
                         )
                     })
                 }),
+        )
+    }
+
+    fn uncles(
+        &self,
+        logger: &Logger,
+        block_hash: H256,
+        n: usize,
+    ) -> Box<dyn Future<Item = Vec<Option<Block<H256>>>, Error = Error> + Send> {
+        Box::new(
+            futures::stream::futures_ordered((0..n).map(move |index| {
+                let web3 = self.web3.clone();
+
+                retry("eth_getUncleByBlockHashAndIndex RPC call", &logger)
+                    .no_limit()
+                    .timeout_secs(60)
+                    .run(move || {
+                        web3.eth()
+                            .uncle(block_hash.clone().into(), index.into())
+                            .map_err(move |e| {
+                                format_err!(
+                                    "could not get uncle {} for block {:?} ({} uncles): {}",
+                                    index,
+                                    block_hash,
+                                    n,
+                                    e
+                                )
+                            })
+                    })
+                    .map_err(move |e| {
+                        e.into_inner().unwrap_or_else(move || {
+                            format_err!("Ethereum node took too long to return uncle")
+                        })
+                    })
+            }))
+            .collect(),
         )
     }
 
