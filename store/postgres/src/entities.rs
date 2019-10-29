@@ -492,6 +492,21 @@ impl Connection {
         }
     }
 
+    pub(crate) fn find_metadata(
+        &self,
+        entity: &String,
+        id: &String,
+    ) -> Result<Option<Entity>, StoreError> {
+        use self::subgraphs::entities;
+        entities::dsl::entities
+            .filter(entities::entity.eq(entity).and(entities::id.eq(id)))
+            .select(entities::data)
+            .first::<serde_json::Value>(&self.conn)
+            .optional()?
+            .map(|json| entity_from_json(json, entity))
+            .transpose()
+    }
+
     pub(crate) fn delete(
         &self,
         key: &EntityKey,

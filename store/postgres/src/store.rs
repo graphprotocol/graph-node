@@ -727,8 +727,8 @@ impl Store {
         conn: &e::Connection,
     ) -> Result<EthereumBlockPointer, Error> {
         let key = SubgraphDeploymentEntity::key(subgraph_id.clone());
-        let subgraph_entity = self
-            .get_entity(&conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
+        let subgraph_entity = conn
+            .find_metadata(&key.entity_type, &key.entity_id)
             .map_err(|e| format_err!("error reading subgraph entity: {}", e))?
             .ok_or_else(|| {
                 format_err!(
@@ -844,7 +844,7 @@ impl StoreTrait for Store {
 
         let (event, metadata_event, should_migrate) =
             econn.transaction(|| -> Result<_, StoreError> {
-                let block_ptr_from = self.block_ptr(subgraph_id.clone())?;
+                let block_ptr_from = self.block_ptr_with_conn(subgraph_id.clone(), &econn)?;
                 assert!(block_ptr_from.number < block_ptr_to.number);
 
                 // Ensure the history event exists in the database
