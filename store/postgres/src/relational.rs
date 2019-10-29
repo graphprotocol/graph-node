@@ -84,6 +84,10 @@ impl SqlName {
         }
         Ok(())
     }
+
+    pub fn from_snake_case(s: String) -> Self {
+        SqlName(s)
+    }
 }
 
 impl From<&str> for SqlName {

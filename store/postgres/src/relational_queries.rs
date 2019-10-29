@@ -136,7 +136,7 @@ impl EntityData {
                     // Simply ignore keys that do not have an underlying table
                     // column; those will be things like the block_range that
                     // is used internally for versioning
-                    if let Some(column) = table.column(&SqlName::from(&*key)).ok() {
+                    if let Some(column) = table.column(&SqlName::from_snake_case(key)).ok() {
                         let value = Self::value_from_json(&column.column_type, json)?;
                         if value != Value::Null {
                             entity.insert(column.field.clone(), value);
