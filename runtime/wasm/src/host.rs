@@ -186,7 +186,7 @@ impl RuntimeHost {
             api_version,
             data_source_name.clone(),
             config.contract.address.clone(),
-            config.data_source_network,
+            Some(config.data_source_network),
             config.templates,
             config.mapping.abis,
             ethereum_adapter,

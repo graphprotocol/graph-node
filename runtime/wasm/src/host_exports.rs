@@ -42,7 +42,7 @@ pub(crate) struct HostExports {
     pub(crate) api_version: Version,
     data_source_name: String,
     data_source_address: Option<Address>,
-    data_source_network: String,
+    data_source_network: Option<String>,
     templates: Vec<DataSourceTemplate>,
     abis: Vec<MappingABI>,
     ethereum_adapter: Arc<dyn EthereumAdapter>,
@@ -65,7 +65,7 @@ impl HostExports {
         api_version: Version,
         data_source_name: String,
         data_source_address: Option<Address>,
-        data_source_network: String,
+        data_source_network: Option<String>,
         templates: Vec<DataSourceTemplate>,
         abis: Vec<MappingABI>,
         ethereum_adapter: Arc<dyn EthereumAdapter>,
@@ -642,7 +642,7 @@ impl HostExports {
     }
 
     pub(crate) fn data_source_network(&self) -> String {
-        self.data_source_network.clone()
+        self.data_source_network.clone().unwrap_or_default()
     }
 }
 
