@@ -34,6 +34,7 @@ those.
   calls to make when scanning logs for a subgraph. Defaults to 100.
 - `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`: Maximum range size for `eth.getLogs`
   requests that dont filter on contract address, only event signature.
+- `ETHEREUM_JSON_RPC_TIMEOUT`: Timeout for Ethereum JSON-RPC requests.
 
 ## Running mapping handlers
 

@@ -46,6 +46,13 @@ lazy_static! {
             .unwrap_or("10".into())
             .parse::<usize>()
             .expect("invalid ETHEREUM_BLOCK_BATCH_SIZE env var");
+
+    /// This should not be too large that it causes requests to timeout without us catching it, nor
+    /// too small that it causes us to timeout requests that would've succeeded.
+    static ref JSON_RPC_TIMEOUT: u64 = std::env::var("ETHEREUM_JSON_RPC_TIMEOUT")
+            .unwrap_or("120".into())
+            .parse::<u64>()
+            .expect("invalid ETHEREUM_JSON_RPC_TIMEOUT env var");
 }
 
 impl<T> EthereumAdapter<T>
@@ -74,7 +81,7 @@ where
 
         retry("trace_filter RPC call", &logger)
             .no_limit()
-            .timeout_secs(60)
+            .timeout_secs(*JSON_RPC_TIMEOUT)
             .run(move || {
                 let trace_filter: TraceFilter = match addresses.len() {
                     0 => TraceFilterBuilder::default()
@@ -167,7 +174,7 @@ where
                     .any(|f| e.to_string().contains(f)),
             })
             .no_limit()
-            .timeout_secs(60)
+            .timeout_secs(*JSON_RPC_TIMEOUT)
             .run(move || {
                 let start = Instant::now();
                 let subgraph_metrics = subgraph_metrics.clone();
@@ -367,7 +374,7 @@ where
                         Err(_) => true,
                     })
                     .no_limit()
-                    .timeout_secs(60)
+                    .timeout_secs(*JSON_RPC_TIMEOUT)
                     .run(move || {
                         let req = CallRequest {
                             from: None,
@@ -482,7 +489,7 @@ where
             let web3 = web3.clone();
             retry(format!("load block {}", hash), &logger)
                 .no_limit()
-                .timeout_secs(60)
+                .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
                         .block_with_txs(BlockId::Hash(hash))
@@ -513,7 +520,7 @@ where
             let web3 = web3.clone();
             retry(format!("load block ptr {}", block_num), &logger)
                 .no_limit()
-                .timeout_secs(60)
+                .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
                         .block(BlockId::Number(BlockNumber::Number(block_num)))
@@ -596,7 +603,7 @@ where
         Box::new(
             retry("eth_getBlockByNumber(latest) RPC call", logger)
                 .no_limit()
-                .timeout_secs(60)
+                .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
                         .block_with_txs(BlockNumber::Latest.into())
@@ -645,7 +652,7 @@ where
         Box::new(
             retry("eth_getBlockByHash RPC call", &logger)
                 .no_limit()
-                .timeout_secs(60)
+                .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
                         .block_with_txs(BlockId::Hash(block_hash))
@@ -685,7 +692,7 @@ where
             retry("batch eth_getTransactionReceipt RPC call", &logger)
                 .limit(16)
                 .no_logging()
-                .timeout_secs(60)
+                .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     let block = block.clone();
                     let batching_web3 = Web3::new(Batch::new(web3.transport().clone()));
@@ -812,7 +819,7 @@ where
         Box::new(
             retry("eth_getBlockByNumber RPC call", &logger)
                 .no_limit()
-                .timeout_secs(60)
+                .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
                         .block(BlockId::Number(block_number.into()))
