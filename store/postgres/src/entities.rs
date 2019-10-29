@@ -45,7 +45,7 @@ use graph::prelude::{
     debug, format_err, info, serde_json, warn, AttributeIndexDefinition, Entity, EntityChange,
     EntityChangeOperation, EntityFilter, EntityKey, EntityModification, Error,
     EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
-    SubgraphDeploymentId, SubgraphDeploymentStore, TransactionAbortError, ValueType,
+    SubgraphDeploymentId, SubgraphDeploymentStore, ValueType,
 };
 
 use crate::block_range::{block_number, BlockNumber};
@@ -485,10 +485,9 @@ impl Connection {
         &self,
         key: &EntityKey,
         entity: &Entity,
-        guard: Option<EntityFilter>,
     ) -> Result<usize, StoreError> {
         match &*self.metadata {
-            Storage::Json(json) => json.update_metadata(&self.conn, key, entity, guard),
+            Storage::Json(json) => json.update_metadata(&self.conn, key, entity),
             Storage::Relational(_) => unreachable!("relational storeage is not used for metadata"),
         }
     }
@@ -1048,7 +1047,6 @@ impl JsonStorage {
         conn: &PgConnection,
         key: &EntityKey,
         entity: &Entity,
-        guard: Option<EntityFilter>,
     ) -> Result<usize, StoreError> {
         const NONE: &str = "none";
         assert_eq!(
@@ -1067,18 +1065,7 @@ impl JsonStorage {
                 entities::event_source.eq(NONE),
             ));
 
-        match guard {
-            Some(filter) => {
-                let filter = build_filter(filter).map_err(|e| {
-                    TransactionAbortError::Other(format!(
-                        "invalid filter '{}' for value '{}'",
-                        e.filter, e.value
-                    ))
-                })?;
-                Ok(query.filter(filter).execute(conn)?)
-            }
-            None => Ok(query.execute(conn)?),
-        }
+        Ok(query.execute(conn)?)
     }
 
     fn delete(

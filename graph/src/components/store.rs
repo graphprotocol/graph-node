@@ -500,7 +500,6 @@ pub enum MetadataOperation {
         entity: String,
         id: String,
         data: Entity,
-        guard: Option<(EntityFilter, String)>,
     },
 }
 
