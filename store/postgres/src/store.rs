@@ -453,25 +453,17 @@ impl Store {
                     .into()
                 })
             }
-            MetadataOperation::Update {
-                entity,
-                id,
-                data,
-                guard,
-            } => {
+            MetadataOperation::Update { entity, id, data } => {
                 let key = MetadataOperation::entity_key(entity, id);
 
                 self.check_interface_entity_uniqueness(conn, &key)?;
 
                 // Update the entity in Postgres
-                let (filter, msg) = guard
-                    .map(|(filter, msg)| (Some(filter), msg))
-                    .unwrap_or((None, "".to_owned()));
-                match conn.update_metadata(&key, &data, filter)? {
+                match conn.update_metadata(&key, &data)? {
                     0 => Err(TransactionAbortError::AbortUnless {
                         expected_entity_ids: vec![key.entity_id.clone()],
                         actual_entity_ids: vec![],
-                        description: format!("{}: update did not change any rows", msg),
+                        description: format!("update for entity {:?} with data {:?} did not change any rows", key, data),
                     }
                     .into()),
                     1 => Ok(0),
@@ -479,8 +471,8 @@ impl Store {
                         expected_entity_ids: vec![key.entity_id.clone()],
                         actual_entity_ids: vec![],
                         description: format!(
-                            "{}: update changed {} rows instead of just one",
-                            msg, res
+                            "update for entity {:?} with data {:?} changed {} rows instead of just one",
+                            key, data, res
                         ),
                     }
                     .into()),
@@ -728,12 +720,15 @@ impl Store {
 
         Ok(cache.get(&subgraph_id).unwrap().clone())
     }
-}
 
-impl StoreTrait for Store {
-    fn block_ptr(&self, subgraph_id: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
+    fn block_ptr_with_conn(
+        &self,
+        subgraph_id: SubgraphDeploymentId,
+        conn: &e::Connection,
+    ) -> Result<EthereumBlockPointer, Error> {
+        let key = SubgraphDeploymentEntity::key(subgraph_id.clone());
         let subgraph_entity = self
-            .get(SubgraphDeploymentEntity::key(subgraph_id.clone()))
+            .get_entity(&conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
             .map_err(|e| format_err!("error reading subgraph entity: {}", e))?
             .ok_or_else(|| {
                 format_err!(
@@ -764,6 +759,17 @@ impl StoreTrait for Store {
             .to_u64();
 
         Ok(EthereumBlockPointer { hash, number })
+    }
+}
+
+impl StoreTrait for Store {
+    fn block_ptr(&self, subgraph_id: SubgraphDeploymentId) -> Result<EthereumBlockPointer, Error> {
+        self.block_ptr_with_conn(
+            subgraph_id,
+            &self
+                .get_entity_conn(&*SUBGRAPHS_ID)
+                .map_err(|e| QueryExecutionError::StoreError(e.into()))?,
+        )
     }
 
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
@@ -821,10 +827,6 @@ impl StoreTrait for Store {
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
     ) -> Result<bool, StoreError> {
-        // Improvement: Move this inside the transaction.
-        let block_ptr_from = self.block_ptr(subgraph_id.clone())?;
-        assert!(block_ptr_from.number < block_ptr_to.number);
-
         // All operations should apply only to entities in this subgraph or
         // the subgraph of subgraphs
         if mods
@@ -842,6 +844,9 @@ impl StoreTrait for Store {
 
         let (event, metadata_event, should_migrate) =
             econn.transaction(|| -> Result<_, StoreError> {
+                let block_ptr_from = self.block_ptr(subgraph_id.clone())?;
+                assert!(block_ptr_from.number < block_ptr_to.number);
+
                 // Ensure the history event exists in the database
                 let history_event = econn.create_history_event(block_ptr_to, &mods)?;
 
@@ -861,9 +866,7 @@ impl StoreTrait for Store {
                 let block_ptr_ops =
                     SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
                         &subgraph_id,
-                        block_ptr_from,
                         block_ptr_to,
-                        "transact block operations",
                     );
                 let metadata_event =
                     self.apply_metadata_operations_with_conn(&econn, block_ptr_ops)?;
@@ -915,11 +918,13 @@ impl StoreTrait for Store {
 
         let econn = self.get_entity_conn(&subgraph_id)?;
         let (event, metadata_event) = econn.transaction(|| -> Result<_, StoreError> {
+            assert_eq!(
+                block_ptr_from,
+                self.block_ptr_with_conn(subgraph_id.clone(), &econn)?
+            );
             let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
                 &subgraph_id,
-                block_ptr_from,
                 block_ptr_to,
-                "revert block",
             );
             let metadata_event = self.apply_metadata_operations_with_conn(&econn, ops)?;
 

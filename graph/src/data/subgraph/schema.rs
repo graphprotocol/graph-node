@@ -157,7 +157,7 @@ impl SubgraphEntity {
         let mut entity = Entity::new();
         entity.set("currentVersion", version_id_opt);
 
-        vec![update_metadata_operation(Self::TYPENAME, id, entity, None)]
+        vec![update_metadata_operation(Self::TYPENAME, id, entity)]
     }
 
     pub fn update_pending_version_operations(
@@ -167,7 +167,7 @@ impl SubgraphEntity {
         let mut entity = Entity::new();
         entity.set("pendingVersion", version_id_opt);
 
-        vec![update_metadata_operation(Self::TYPENAME, id, entity, None)]
+        vec![update_metadata_operation(Self::TYPENAME, id, entity)]
     }
 }
 
@@ -318,27 +318,16 @@ impl SubgraphDeploymentEntity {
 
     pub fn update_ethereum_block_pointer_operations(
         id: &SubgraphDeploymentId,
-        block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
-        reason: &str,
     ) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("latestEthereumBlockHash", block_ptr_to.hash_hex());
         entity.set("latestEthereumBlockNumber", block_ptr_to.number);
 
-        let guard = EntityFilter::And(vec![
-            EntityFilter::new_equal("latestEthereumBlockHash", block_ptr_from.hash_hex()),
-            EntityFilter::new_equal("latestEthereumBlockNumber", block_ptr_from.number),
-        ]);
-        let msg = format!(
-            "advance block pointer ({}) from {} to {}",
-            reason, block_ptr_from.number, block_ptr_to.number
-        );
         vec![update_metadata_operation(
             Self::TYPENAME,
             id.to_string(),
             entity,
-            Some((guard, msg)),
         )]
     }
 
@@ -355,7 +344,6 @@ impl SubgraphDeploymentEntity {
             Self::TYPENAME,
             id.to_string(),
             entity,
-            None,
         )]
     }
 
@@ -370,7 +358,6 @@ impl SubgraphDeploymentEntity {
             Self::TYPENAME,
             id.as_str(),
             entity,
-            None,
         )]
     }
 
@@ -385,7 +372,6 @@ impl SubgraphDeploymentEntity {
             Self::TYPENAME,
             id.as_str(),
             entity,
-            None,
         )]
     }
 }
@@ -1230,13 +1216,11 @@ fn update_metadata_operation(
     entity_type_name: impl Into<String>,
     entity_id: impl Into<String>,
     data: impl Into<Entity>,
-    guard: Option<(EntityFilter, String)>,
 ) -> MetadataOperation {
     MetadataOperation::Update {
         entity: entity_type_name.into(),
         id: entity_id.into(),
         data: data.into(),
-        guard,
     }
 }
 
