@@ -144,10 +144,11 @@ impl ValueMap for &BTreeMap<String, Value> {
     where
         T: TryFromValue,
     {
-        self.get(key).map_or(Ok(None), |value| {
-            T::try_from_value(value)
+        self.get(key).map_or(Ok(None), |value| match value {
+            Value::Null => Ok(None),
+            _ => T::try_from_value(value)
                 .map(|value| Some(value))
-                .map_err(|e| e.into())
+                .map_err(|e| e.into()),
         })
     }
 }
@@ -166,11 +167,13 @@ impl ValueMap for &HashMap<&Name, Value> {
     where
         T: TryFromValue,
     {
-        self.get(&Name::from(key)).map_or(Ok(None), |value| {
-            T::try_from_value(value)
-                .map(|value| Some(value))
-                .map_err(|e| e.into())
-        })
+        self.get(&Name::from(key))
+            .map_or(Ok(None), |value| match value {
+                Value::Null => Ok(None),
+                _ => T::try_from_value(value)
+                    .map(|value| Some(value))
+                    .map_err(|e| e.into()),
+            })
     }
 }
 
