@@ -1008,11 +1008,11 @@ where
             }
             // Decode the return values according to the ABI
             .and_then(move |output| {
-                // We got a `0x` response. For Geth, this can mean a revert. It can also be that
-                // the contract actually returned an empty response. A view call is meant to return
-                // something, so we treat empty responses the same as reverts. See support/#85 for
-                // a use case.
                 if output.is_empty() {
+                    // We got a `0x` response. For Geth, this can mean a revert. It can also be
+                    // that the contract actually returned an empty response. A view call is meant
+                    // to return something, so we treat empty responses the same as reverts. See
+                    // support/#85 for a use case.
                     Err(EthereumContractCallError::Revert("empty response".into()))
                 } else {
                     call.function.decode_output(&output).map_err(From::from)
