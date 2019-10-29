@@ -128,6 +128,8 @@ fn mock_host_exports(data_source: DataSource, store: Arc<MockStore>) -> HostExpo
         MockStore::user_subgraph_id(),
         Version::parse(&data_source.mapping.api_version).unwrap(),
         data_source.name,
+        data_source.source.address,
+        data_source.network.unwrap(),
         data_source.templates,
         data_source.mapping.abis,
         mock_ethereum_adapter,
