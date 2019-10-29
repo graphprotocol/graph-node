@@ -873,7 +873,7 @@ fn create_subgraph_version(
                     logger,
                     "Set subgraph start block";
                     "block_number" => format!("{:?}", start_block.map(|block| block.number)),
-                    "block_hashr" => format!("{:?}", start_block.map(|block| block.hash)),
+                    "block_hash" => format!("{:?}", start_block.map(|block| block.hash)),
                 );
 
                 // Apply the subgraph versioning and deployment operations,
