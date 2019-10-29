@@ -391,6 +391,7 @@ where
                             // 0xfe is the "designated bad instruction" of the EVM, and Solidity
                             // uses it for asserts.
                             const PARITY_BAD_INSTRUCTION_FE: &str = "Bad instruction fe";
+                            const PARITY_BAD_JUMP_PREFIX: &str = "Bad jump";
                             const GANACHE_VM_EXECUTION_ERROR: i64 = -32000;
                             const GANACHE_REVERT_MESSAGE: &str =
                                 "VM Exception while processing transaction: revert";
@@ -425,6 +426,7 @@ where
                                     match rpc_error.data.as_ref().and_then(|d| d.as_str()) {
                                         Some(data)
                                             if data.starts_with(PARITY_REVERT_PREFIX)
+                                                || data.starts_with(PARITY_BAD_JUMP_PREFIX)
                                                 || data == PARITY_BAD_INSTRUCTION_FE =>
                                         {
                                             let reason = if data == PARITY_BAD_INSTRUCTION_FE {
