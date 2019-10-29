@@ -373,7 +373,7 @@ where
                                 cmp::min(from + speedup * *ETHEREUM_BLOCK_RANGE_SIZE - 1, to_limit)
                             };
 
-                            debug!(ctx.logger, "Scanning blocks [{}, {}]", from, to);
+                            info!(ctx.logger, "Scanning blocks [{}, {}]", from, to);
                             Box::new(
                                 ctx.eth_adapter
                                     .blocks_with_triggers(
