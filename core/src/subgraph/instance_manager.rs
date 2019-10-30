@@ -32,6 +32,7 @@ struct IndexingState<T: RuntimeHostBuilder> {
     log_filter: EthereumLogFilter,
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
+    stopwatch_metrics: StopwatchMetrics,
     restarts: u64,
 }
 
@@ -363,6 +364,7 @@ impl SubgraphInstanceManager {
         ));
         let instance =
             SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
+        let stopwatch_metrics = StopwatchMetrics::new(deployment_id.clone(), logger.clone());
 
         // The subgraph state tracks the state of the subgraph instance over time
         let ctx = IndexingContext {
@@ -383,6 +385,7 @@ impl SubgraphInstanceManager {
                 log_filter,
                 call_filter,
                 block_filter,
+                stopwatch_metrics,
                 restarts: 0,
             },
             subgraph_metrics,
