@@ -138,6 +138,16 @@ pub struct EntityQuery {
 
     /// A range to limit the size of the result.
     pub range: EntityRange,
+
+    /// A field by which to window the results. This affects how `order_by`,
+    /// `order_direction`, and `range` are interpreted. If `window` is `None`,
+    /// they are applied to the entire query. If the value is `Some("attr")`,
+    /// ordering and range limiting is applied for each distinct value of the
+    /// `attr` field separately. The latter is useful when the query has a
+    /// clause like `where attr in (v1, v2, ..)` so that the result will have
+    /// `range` many results for each of `v1`, `v2`, etc., and each ordered
+    /// according to `order_by` and `order_direction`.
+    pub window: Option<String>,
 }
 
 impl EntityQuery {
@@ -153,6 +163,7 @@ impl EntityQuery {
             order_by: None,
             order_direction: None,
             range,
+            window: None,
         }
     }
 
@@ -169,6 +180,11 @@ impl EntityQuery {
 
     pub fn range(mut self, range: EntityRange) -> Self {
         self.range = range;
+        self
+    }
+
+    pub fn window_by(mut self, window: String) -> Self {
+        self.window = Some(window);
         self
     }
 }

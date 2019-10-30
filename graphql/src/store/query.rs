@@ -31,6 +31,7 @@ pub fn build_query<'a>(
         filter: build_filter(entity, arguments)?,
         order_by: build_order_by(entity, arguments)?,
         order_direction: build_order_direction(arguments)?,
+        window: None,
     })
 }
 
