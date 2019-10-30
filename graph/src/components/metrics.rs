@@ -6,6 +6,9 @@ pub use prometheus::{
 
 use std::collections::HashMap;
 
+/// Metrics for measuring where time is spent during indexing.
+pub mod stopwatch;
+
 pub trait MetricsRegistry: Clone + Send + Sync + 'static + Sized {
     fn new_gauge(
         &self,
