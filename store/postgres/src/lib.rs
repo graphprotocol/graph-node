@@ -29,6 +29,7 @@ mod filter;
 mod functions;
 mod history_event;
 mod jsonb;
+mod jsonb_queries;
 mod notification_listener;
 pub mod relational;
 mod relational_queries;
