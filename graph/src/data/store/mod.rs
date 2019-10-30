@@ -396,7 +396,7 @@ impl TryFrom<Value> for Option<H256> {
         match value {
             Value::Bytes(bytes) => {
                 let hex = format!("{}", bytes);
-                Ok(Some(H256::from_str(hex.as_str().trim_start_matches("0x"))?))
+                Ok(Some(H256::from_str(hex.trim_start_matches("0x"))?))
             }
             Value::String(s) => Ok(Some(H256::from_str(s.as_str())?)),
             Value::Null => Ok(None),
