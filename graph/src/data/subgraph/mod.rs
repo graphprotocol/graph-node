@@ -321,6 +321,8 @@ pub enum SubgraphAssignmentProviderEvent {
 
 #[derive(Fail, Debug)]
 pub enum SubgraphManifestValidationError {
+    #[fail(display = "subgraph has no data sources")]
+    NoDataSources,
     #[fail(display = "subgraph source address is required")]
     SourceAddressRequired,
     #[fail(display = "subgraph cannot index data from different Ethereum networks")]
