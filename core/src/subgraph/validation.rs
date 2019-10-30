@@ -5,6 +5,11 @@ pub fn validate_manifest(
 ) -> Result<SubgraphManifest, SubgraphRegistrarError> {
     let mut errors: Vec<SubgraphManifestValidationError> = Vec::new();
 
+    // Validate that the manifest has at least one data source
+    if manifest.data_sources.is_empty() {
+        errors.push(SubgraphManifestValidationError::NoDataSources);
+    }
+
     // Validate that the manifest has a `source` address in each data source
     // which has call or block handlers
     let has_invalid_data_source = manifest.data_sources.iter().any(|data_source| {
