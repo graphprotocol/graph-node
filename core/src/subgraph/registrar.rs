@@ -531,7 +531,7 @@ fn resolve_subgraph_chain_blocks(
             min_start_block => Box::new(
                 ethereum_adapter
                     .block_pointer_from_number(logger, min_start_block - 1)
-                    .map(move |block_ptr| Some(block_ptr))
+                    .map(Some)
                     .map_err(move |_| {
                         SubgraphRegistrarError::ManifestValidationError(vec![
                             SubgraphManifestValidationError::BlockNotFound(
