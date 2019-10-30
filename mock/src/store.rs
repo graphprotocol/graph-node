@@ -105,6 +105,7 @@ impl MockStore {
             order_by,
             order_direction,
             range: _,
+            window: _,
         } = query;
 
         // List all entities with correct type
