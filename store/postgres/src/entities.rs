@@ -22,7 +22,7 @@
 use diesel::connection::SimpleConnection;
 use diesel::debug_query;
 use diesel::deserialize::QueryableByName;
-use diesel::dsl::{any, sql};
+use diesel::dsl::any;
 use diesel::pg::{Pg, PgConnection};
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::{Integer, Jsonb, Nullable, Text};
@@ -49,9 +49,9 @@ use graph::prelude::{
 };
 
 use crate::block_range::{block_number, BlockNumber};
-use crate::filter::build_filter;
 use crate::history_event::HistoryEvent;
 use crate::jsonb::PgJsonbExpressionMethods as _;
+use crate::jsonb_queries::FilterQuery;
 use crate::notification_listener::JsonNotification;
 use crate::relational::{IdType, Layout};
 use crate::store::Store;
@@ -910,76 +910,7 @@ impl JsonStorage {
         first: Option<u32>,
         skip: u32,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        let entities = self.clone();
-        let mut query = if entity_types.len() == 1 {
-            // If there is only one entity_type, which is the case in all
-            // queries that do not involve interfaces, leaving out `any`
-            // lets Postgres use the primary key index on the entities table
-            let entity_type = entity_types.first().unwrap();
-            entities
-                .table
-                .select((&self.data, &self.entity))
-                .filter((&self.entity).eq(entity_type))
-                .into_boxed::<Pg>()
-        } else {
-            entities
-                .table
-                .select((&self.data, &self.entity))
-                .filter((&self.entity).eq(any(entity_types)))
-                .into_boxed::<Pg>()
-        };
-
-        if let Some(filter) = filter {
-            let filter = build_filter(filter).map_err(|e| {
-                QueryExecutionError::FilterNotSupportedError(format!("{}", e.value), e.filter)
-            })?;
-            query = query.filter(filter);
-        }
-
-        if let Some((attribute, value_type, direction)) = order {
-            let cast = match value_type {
-                ValueType::BigInt | ValueType::BigDecimal => "::numeric",
-                ValueType::Boolean => "::boolean",
-                ValueType::Bytes => "",
-                ValueType::ID => "",
-                ValueType::Int => "::bigint",
-                ValueType::String => "",
-                ValueType::List => {
-                    return Err(QueryExecutionError::OrderByNotSupportedForType(
-                        "List".to_string(),
-                    ));
-                }
-            };
-
-            query = match value_type {
-                ValueType::String => query.order(
-                    sql::<Text>("left(data ->")
-                        .bind::<Text, _>(attribute)
-                        .sql("->> 'data', ")
-                        .sql(&STRING_PREFIX_SIZE.to_string())
-                        .sql(") ")
-                        .sql(direction)
-                        .sql(" NULLS LAST"),
-                ),
-                _ => query.order(
-                    sql::<Text>("(data ->")
-                        .bind::<Text, _>(attribute)
-                        .sql("->> 'data')")
-                        .sql(cast)
-                        .sql(" ")
-                        .sql(direction)
-                        .sql(" NULLS LAST"),
-                ),
-            };
-        }
-        query = query.then_order_by(entities.id.asc());
-
-        if let Some(first) = first {
-            query = query.limit(first as i64);
-        }
-        if skip > 0 {
-            query = query.offset(skip as i64);
-        }
+        let query = FilterQuery::new(&self.table, entity_types, filter, order, first, skip)?;
 
         let query_debug_info = debug_query(&query).to_string();
 
