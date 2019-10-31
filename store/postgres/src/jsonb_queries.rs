@@ -8,7 +8,7 @@ use diesel::query_dsl::RunQueryDsl;
 use diesel::result::QueryResult;
 use diesel::sql_types::{Array, Bool, Jsonb, Text};
 
-use graph::prelude::{EntityFilter, QueryExecutionError, ValueType};
+use graph::prelude::{EntityFilter, EntityOrder, QueryExecutionError, ValueType};
 
 use crate::entities::{EntityTable, STRING_PREFIX_SIZE};
 use crate::filter::build_filter;
@@ -18,7 +18,7 @@ pub struct OrderDetails {
     attribute: String,
     cast: &'static str,
     prefix_only: bool,
-    direction: &'static str,
+    direction: EntityOrder,
 }
 
 pub struct FilterQuery<'a> {
@@ -35,7 +35,7 @@ impl<'a> FilterQuery<'a> {
         table: &'a EntityTable,
         entity_types: Vec<String>,
         filter: Option<EntityFilter>,
-        order: Option<(String, ValueType, &str)>,
+        order: Option<(String, ValueType, EntityOrder)>,
         first: Option<u32>,
         skip: u32,
     ) -> Result<Self, QueryExecutionError> {
@@ -52,14 +52,6 @@ impl<'a> FilterQuery<'a> {
                         "List".to_string(),
                     ));
                 }
-            };
-
-            let direction = if direction.eq_ignore_ascii_case("asc") {
-                "asc"
-            } else if direction.eq_ignore_ascii_case("desc") {
-                "desc"
-            } else {
-                unreachable!("GraphQL validation makes sure we only get asc or desc")
             };
 
             let prefix_only = &attribute != PRIMARY_KEY_COLUMN && value_type == ValueType::String;
@@ -109,7 +101,7 @@ impl<'a> FilterQuery<'a> {
                 }
                 out.push_sql(" ");
             }
-            out.push_sql(&order.direction);
+            out.push_sql(order.direction.to_sql());
             out.push_sql(" nulls last, ");
         }
         out.push_identifier(PRIMARY_KEY_COLUMN)

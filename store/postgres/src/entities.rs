@@ -43,7 +43,7 @@ use graph::data::schema::Schema as SubgraphSchema;
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{
     debug, format_err, info, serde_json, warn, AttributeIndexDefinition, Entity, EntityChange,
-    EntityChangeOperation, EntityFilter, EntityKey, EntityModification, Error,
+    EntityChangeOperation, EntityFilter, EntityKey, EntityModification, EntityOrder, Error,
     EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
     SubgraphDeploymentId, SubgraphDeploymentStore, ValueType,
 };
@@ -449,7 +449,7 @@ impl Connection {
         &self,
         entity_types: Vec<String>,
         filter: Option<EntityFilter>,
-        order: Option<(String, ValueType, &str)>,
+        order: Option<(String, ValueType, EntityOrder)>,
         first: Option<u32>,
         skip: u32,
         block: BlockNumber,
@@ -906,7 +906,7 @@ impl JsonStorage {
         conn: &PgConnection,
         entity_types: Vec<String>,
         filter: Option<EntityFilter>,
-        order: Option<(String, ValueType, &str)>,
+        order: Option<(String, ValueType, EntityOrder)>,
         first: Option<u32>,
         skip: u32,
     ) -> Result<Vec<Entity>, QueryExecutionError> {

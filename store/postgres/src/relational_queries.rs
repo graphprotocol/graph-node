@@ -17,7 +17,8 @@ use std::str::FromStr;
 
 use graph::data::store::scalar;
 use graph::prelude::{
-    format_err, serde_json, Attribute, Entity, EntityFilter, EntityKey, StoreError, Value,
+    format_err, serde_json, Attribute, Entity, EntityFilter, EntityKey, EntityOrder, StoreError,
+    Value,
 };
 
 use crate::block_range::{
@@ -1005,7 +1006,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for ConflictingEntityQuery<'a> {}
 pub struct FilterQuery<'a> {
     schema: &'a str,
     table_filter_pairs: Vec<(&'a Table, Option<QueryFilter<'a>>)>,
-    order: Option<(&'a SqlName, &'a str)>,
+    order: Option<(&'a SqlName, EntityOrder)>,
     first: Option<String>,
     skip: Option<String>,
     block: BlockNumber,
@@ -1017,7 +1018,7 @@ impl<'a> FilterQuery<'a> {
         if let Some((name, direction)) = &self.order {
             out.push_identifier(name.as_str())?;
             out.push_sql(" ");
-            out.push_sql(direction);
+            out.push_sql(direction.to_sql());
             if name.as_str() != PRIMARY_KEY_COLUMN {
                 out.push_sql(", ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;

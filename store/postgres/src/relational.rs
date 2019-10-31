@@ -21,7 +21,7 @@ use crate::relational_queries::{
     InsertQuery, QueryFilter, RevertClampQuery, RevertRemoveQuery,
 };
 use graph::prelude::{
-    format_err, Entity, EntityChange, EntityChangeOperation, EntityFilter, EntityKey,
+    format_err, Entity, EntityChange, EntityChangeOperation, EntityFilter, EntityKey, EntityOrder,
     QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, ValueType,
 };
 
@@ -390,7 +390,7 @@ impl Layout {
         conn: &PgConnection,
         entity_types: Vec<String>,
         filter: Option<EntityFilter>,
-        order: Option<(String, ValueType, &str)>,
+        order: Option<(String, ValueType, EntityOrder)>,
         first: Option<u32>,
         skip: u32,
         block: BlockNumber,

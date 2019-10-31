@@ -81,10 +81,20 @@ impl EntityFilter {
 }
 
 /// The order in which entities should be restored from a store.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EntityOrder {
     Ascending,
     Descending,
+}
+
+impl EntityOrder {
+    /// Return `"asc"` or `"desc"` as is used in SQL
+    pub fn to_sql(&self) -> &'static str {
+        match self {
+            EntityOrder::Ascending => "asc",
+            EntityOrder::Descending => "desc",
+        }
+    }
 }
 
 /// How many entities to return, how many to skip etc.
