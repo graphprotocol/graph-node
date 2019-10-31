@@ -501,13 +501,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
 
         let order = match query.order_by {
             Some((attribute, value_type)) => {
-                let direction = query
-                    .order_direction
-                    .map(|direction| match direction {
-                        EntityOrder::Ascending => "ASC",
-                        EntityOrder::Descending => "DESC",
-                    })
-                    .unwrap_or("ASC");
+                let direction = query.order_direction.unwrap_or(EntityOrder::Ascending);
                 Some((attribute, value_type, direction))
             }
             None => None,
@@ -1586,13 +1580,7 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
 
         let order = match query.order_by {
             Some((attribute, value_type)) => {
-                let direction = query
-                    .order_direction
-                    .map(|direction| match direction {
-                        EntityOrder::Ascending => "ASC",
-                        EntityOrder::Descending => "DESC",
-                    })
-                    .unwrap_or("ASC");
+                let direction = query.order_direction.unwrap_or(EntityOrder::Ascending);
                 Some((attribute, value_type, direction))
             }
             None => None,
