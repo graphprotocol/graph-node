@@ -8,7 +8,7 @@ use diesel::query_dsl::RunQueryDsl;
 use diesel::result::QueryResult;
 use diesel::sql_types::{Array, Bool, Jsonb, Text};
 
-use graph::prelude::{EntityFilter, EntityOrder, QueryExecutionError, ValueType};
+use graph::prelude::{EntityFilter, EntityOrder, EntityRange, QueryExecutionError, ValueType};
 
 use crate::entities::{EntityTable, STRING_PREFIX_SIZE};
 use crate::filter::build_filter;
@@ -26,8 +26,7 @@ pub struct FilterQuery<'a> {
     entity_types: Vec<String>,
     filter: Option<Box<dyn BoxableExpression<EntityTable, Pg, SqlType = Bool>>>,
     order: Option<OrderDetails>,
-    first: Option<u32>,
-    skip: u32,
+    range: EntityRange,
 }
 
 impl<'a> FilterQuery<'a> {
@@ -36,8 +35,7 @@ impl<'a> FilterQuery<'a> {
         entity_types: Vec<String>,
         filter: Option<EntityFilter>,
         order: Option<(String, ValueType, EntityOrder)>,
-        first: Option<u32>,
-        skip: u32,
+        range: EntityRange,
     ) -> Result<Self, QueryExecutionError> {
         let order = if let Some((attribute, value_type, direction)) = order {
             let cast = match value_type {
@@ -76,8 +74,7 @@ impl<'a> FilterQuery<'a> {
             entity_types,
             filter,
             order,
-            first,
-            skip,
+            range,
         })
     }
 
@@ -108,13 +105,13 @@ impl<'a> FilterQuery<'a> {
     }
 
     fn limit(&self, out: &mut AstPass<Pg>) {
-        if let Some(first) = &self.first {
+        if let Some(first) = &self.range.first {
             out.push_sql("\n limit ");
             out.push_sql(&first.to_string());
         }
-        if self.skip > 0 {
+        if self.range.skip > 0 {
             out.push_sql("\noffset ");
-            out.push_sql(&self.skip.to_string());
+            out.push_sql(&self.range.skip.to_string());
         }
     }
 }

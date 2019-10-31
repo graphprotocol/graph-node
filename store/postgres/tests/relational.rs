@@ -422,8 +422,10 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
             vec!["Scalar".to_owned()],
             Some(filter),
             None,
-            None,
-            0,
+            EntityRange {
+                first: None,
+                skip: 0,
+            },
             BLOCK_NUMBER_MAX,
         )
         .expect("Count query failed")
@@ -513,8 +515,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
                 query.entity_types,
                 query.filter,
                 order,
-                query.range.first,
-                query.range.skip,
+                query.range,
                 BLOCK_NUMBER_MAX,
             )
             .expect("layout.query failed to execute query");
@@ -1592,8 +1593,7 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
                 query.entity_types,
                 query.filter,
                 order,
-                query.range.first,
-                query.range.skip,
+                query.range,
                 BLOCK_NUMBER_MAX,
             )
             .expect("layout.query failed to execute query");
