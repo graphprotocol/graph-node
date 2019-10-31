@@ -770,9 +770,16 @@ impl Table {
             block_range = BLOCK_RANGE_COLUMN
         )?;
 
-        // Create indexes. Don't bother with enum types, since an index on a
-        // column that can take only a handful of values is pointless
-        for (i, column) in self.columns.iter().enumerate() {
+        // Create indexes. Skip columns whose type is an array of enum,
+        // since there is no good way to index them with Postgres 9.6.
+        // Once we move to Postgres 11, we can enable that
+        // (tracked in graph-node issue #1330)
+        for (i, column) in self
+            .columns
+            .iter()
+            .filter(|col| !(col.is_list() && col.is_enum()))
+            .enumerate()
+        {
             // Attributes that are plain strings are indexed with a BTree; but
             // they can be too large for Postgres' limit on values that can go
             // into a BTree. For those attributes, only index the first
