@@ -398,6 +398,11 @@ where
                             // 0xfe is the "designated bad instruction" of the EVM, and Solidity
                             // uses it for asserts.
                             const PARITY_BAD_INSTRUCTION_FE: &str = "Bad instruction fe";
+
+                            // 0xfd is REVERT, but on some contracts, and only on older blocks,
+                            // this happens. Makes sense to consider it a revert as well.
+                            const PARITY_BAD_INSTRUCTION_FD: &str = "Bad instruction fd";
+
                             const PARITY_BAD_JUMP_PREFIX: &str = "Bad jump";
                             const GANACHE_VM_EXECUTION_ERROR: i64 = -32000;
                             const GANACHE_REVERT_MESSAGE: &str =
@@ -434,7 +439,8 @@ where
                                         Some(data)
                                             if data.starts_with(PARITY_REVERT_PREFIX)
                                                 || data.starts_with(PARITY_BAD_JUMP_PREFIX)
-                                                || data == PARITY_BAD_INSTRUCTION_FE =>
+                                                || data == PARITY_BAD_INSTRUCTION_FE
+                                                || data == PARITY_BAD_INSTRUCTION_FD =>
                                         {
                                             let reason = if data == PARITY_BAD_INSTRUCTION_FE {
                                                 PARITY_BAD_INSTRUCTION_FE.to_owned()
