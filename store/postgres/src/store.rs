@@ -1157,17 +1157,18 @@ impl ChainStore for Store {
 
     fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error> {
         use crate::db_schema::ethereum_blocks::dsl::*;
-        use diesel::dsl::any;
+        use diesel::dsl::{any, sql};
+        use diesel::sql_types::Jsonb;
 
         ethereum_blocks
-            .select(data)
+            .select(sql::<Jsonb>("data -> 'block'"))
             .filter(network_name.eq(&self.network_name))
             .filter(hash.eq(any(Vec::from_iter(
                 hashes.into_iter().map(|h| format!("{:x}", h)),
             ))))
             .load::<serde_json::Value>(&*self.get_conn()?)?
             .into_iter()
-            .map(|block| serde_json::from_value(block["block"].clone()).map_err(Into::into))
+            .map(|block| serde_json::from_value(block).map_err(Into::into))
             .collect()
     }
 
