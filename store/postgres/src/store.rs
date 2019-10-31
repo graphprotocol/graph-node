@@ -362,8 +362,7 @@ impl Store {
             query.entity_types,
             query.filter,
             order,
-            query.range.first,
-            query.range.skip,
+            query.range,
             BLOCK_NUMBER_MAX,
         )
     }

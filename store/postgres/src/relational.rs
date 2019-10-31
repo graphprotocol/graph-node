@@ -22,7 +22,7 @@ use crate::relational_queries::{
 };
 use graph::prelude::{
     format_err, Entity, EntityChange, EntityChangeOperation, EntityFilter, EntityKey, EntityOrder,
-    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, ValueType,
+    EntityRange, QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, ValueType,
 };
 
 use crate::block_range::{BlockNumber, BLOCK_RANGE_COLUMN};
@@ -391,8 +391,7 @@ impl Layout {
         entity_types: Vec<String>,
         filter: Option<EntityFilter>,
         order: Option<(String, ValueType, EntityOrder)>,
-        first: Option<u32>,
-        skip: u32,
+        range: EntityRange,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let filter = filter.as_ref();
@@ -409,12 +408,6 @@ impl Layout {
                     })
             })
             .collect::<Result<Vec<_>, StoreError>>()?;
-        let first = first.map(|first| first.to_string());
-        let skip = if skip == 0 {
-            None
-        } else {
-            Some(skip.to_string())
-        };
 
         // Get the name of the column we order by; if there is more than one
         // table, we are querying an interface, and the order is on an attribute
@@ -431,7 +424,7 @@ impl Layout {
             (None, _) => None,
         };
 
-        let query = FilterQuery::new(&self.schema, table_filter_pairs, order, first, skip, block);
+        let query = FilterQuery::new(&self.schema, table_filter_pairs, order, range, block);
         let query_debug_info = query.clone();
 
         let values = query.load::<EntityData>(conn).map_err(|e| {

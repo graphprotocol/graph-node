@@ -17,8 +17,8 @@ use std::str::FromStr;
 
 use graph::data::store::scalar;
 use graph::prelude::{
-    format_err, serde_json, Attribute, Entity, EntityFilter, EntityKey, EntityOrder, StoreError,
-    Value,
+    format_err, serde_json, Attribute, Entity, EntityFilter, EntityKey, EntityOrder, EntityRange,
+    StoreError, Value,
 };
 
 use crate::block_range::{
@@ -1007,8 +1007,7 @@ pub struct FilterQuery<'a> {
     schema: &'a str,
     table_filter_pairs: Vec<(&'a Table, Option<QueryFilter<'a>>)>,
     order: Option<(&'a SqlName, EntityOrder)>,
-    first: Option<String>,
-    skip: Option<String>,
+    range: EntityRange,
     block: BlockNumber,
 }
 
@@ -1040,13 +1039,13 @@ impl<'a> FilterQuery<'a> {
     }
 
     fn limit(&self, out: &mut AstPass<Pg>) {
-        if let Some(first) = &self.first {
+        if let Some(first) = &self.range.first {
             out.push_sql("\n limit ");
-            out.push_sql(first);
+            out.push_sql(&first.to_string());
         }
-        if let Some(skip) = &self.skip {
+        if self.range.skip > 0 {
             out.push_sql("\noffset ");
-            out.push_sql(skip);
+            out.push_sql(&self.range.skip.to_string());
         }
     }
 
