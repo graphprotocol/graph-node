@@ -9,7 +9,7 @@ use std::collections::HashMap;
 /// Metrics for measuring where time is spent during indexing.
 pub mod stopwatch;
 
-pub trait MetricsRegistry: Clone + Send + Sync + 'static + Sized {
+pub trait MetricsRegistry: Send + Sync + 'static {
     fn new_gauge(
         &self,
         name: String,
