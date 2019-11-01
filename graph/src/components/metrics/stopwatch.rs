@@ -29,26 +29,16 @@ impl StopwatchMetrics {
 
     /// Register the current totals and resets the stopwatch.
     pub fn commit_and_reset(&mut self, registry: impl MetricsRegistry) {
-        let mut stopwatch = match self.stopwatch.inner.try_lock() {
-            Ok(stopwatch) => stopwatch,
-            Err(e) => {
-                error!(self.stopwatch.logger, "could not lock stopwatch for commit";
-                                              "error" => e.to_string());
-                return;
-            }
-        };
+        let mut stopwatch = self.stopwatch.inner.lock().unwrap();
 
         // Increase the counters.
         for (id, time) in &stopwatch.totals {
             let counter = if let Some(counter) = self.counters.get(id) {
                 counter.clone()
             } else {
-                let mut name = id.clone();
-                name.push_str("_secs");
+                let name = format!("{}_{}_secs", self.subgraph_id, id);
                 let help = format!("indexing section {}", id);
-                let mut labels = HashMap::new();
-                labels.insert("subgraph_id".to_owned(), (*self.subgraph_id).clone());
-                match registry.new_counter(name, help, labels) {
+                match registry.new_counter(name, help, HashMap::new()) {
                     Ok(counter) => {
                         self.counters.insert(id.clone(), (*counter).clone());
                         *counter
@@ -100,36 +90,16 @@ pub struct Stopwatch {
 impl Stopwatch {
     pub fn section_start(&self, id: &str) -> Section {
         let id = id.to_owned();
-        match self.inner.try_lock() {
-            Ok(mut stopwatch) => {
-                stopwatch.section_start(id.clone());
-                Section {
-                    id,
-                    stopwatch: self.clone(),
-                }
-            }
-            Err(e) => {
-                // The stopwatch was used in a non-sequential manner, log error and return a dummy
-                // section, which will also log an error when dropped, making this a noop.
-                error!(self.logger, "cannot `section_start`, stopwatch is being used concurrently";
-                                "error" => e.to_string());
-                Section {
-                    id: String::new(),
-                    stopwatch: Stopwatch {
-                        logger: self.logger.clone(),
-                        inner: Arc::new(Mutex::new(StopwatchInner::new())),
-                    },
-                }
-            }
+        let mut stopwatch = self.inner.lock().unwrap();
+        stopwatch.section_start(id.clone());
+        Section {
+            id,
+            stopwatch: self.clone(),
         }
     }
 
     fn section_end(&self, id: String) {
-        match self.inner.try_lock() {
-            Ok(mut stopwatch) => stopwatch.section_end(id, &self.logger),
-            Err(e) => error!(self.logger, "cannot `section_end`, stopwatch is being used concurrently";
-                                          "error" => e.to_string()),
-        }
+        self.inner.lock().unwrap().section_end(id, &self.logger)
     }
 }
 
